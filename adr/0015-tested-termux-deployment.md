@@ -17,7 +17,7 @@ maintenance burden to a weak device.
   request.
 - After a successful push to `main`, fast-forward the repository's `deploy`
   branch to that exact tested commit.
-- Let Termux check `deploy` once daily at 04:00, before the 07:30 digest.
+- Let Termux check `deploy` once daily at 04:00, before the morning digest.
 - Accept only a clean working tree and a fast-forward update.
 - Install declared Python dependencies and rerun the tests on the phone.
 - Restore the previous commit if installation or device tests fail.

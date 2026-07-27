@@ -41,7 +41,7 @@ deployment agent or self-hosted CI runner.
 
 ### CPU and battery
 
-- Perform source collection exactly once during the 07:30 execution.
+- Perform source collection exactly once during the 10:07 execution.
 - Leave exact timing to a lightweight external Termux scheduler.
 - Avoid continuous parsing, transformation, or monitoring.
 - Do not optimize speculatively, but reject designs with obvious background

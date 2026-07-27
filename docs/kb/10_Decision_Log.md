@@ -26,7 +26,7 @@ Detailed decisions belong in `adr/`.
 | 2026-07-27 | Use AEMET Centro / La Roqueta water temperature only as a SafeBeach fallback | The official forecast keeps the sea row useful outside lifeguard hours, while the flag remains exclusively an active Platja Centre SafeBeach value. | `adr/0006-aemet-beach-temperature-fallback.md` |
 | 2026-07-27 | Add at most two same-day events from Agenda Guardamar | Its official event pages expose deterministic title and start-time fields; optional failure stays silent and no media or AI processing is needed. | `adr/0007-agenda-guardamar-events.md` |
 | 2026-07-27 | ~~Defer Policía Local traffic integration~~ | Superseded for one explicit official festival restriction; the site still is not treated as a general traffic feed. | `adr/0009-explicit-police-traffic-notice.md` |
-| 2026-07-27 | Run one external-triggered Morning Digest process at 07:30 | Direct one-time collection, success-only state, and immediate exit remove resident scheduling, inbound polling, collectors, and cache concerns. | `adr/0008-one-shot-morning-execution.md` |
+| 2026-07-27 | ~~Run one external-triggered Morning Digest process at 07:30~~ | The one-shot model remains; only the publication time is superseded by ADR 0016. | `adr/0008-one-shot-morning-execution.md` |
 | 2026-07-27 | Add one explicit Policía Local festival traffic notice | The official HTML page states concrete access, closure, reason, and 15–29 July validity; strict matching can add value without polling, PDF parsing, or inference. | `adr/0009-explicit-police-traffic-notice.md` |
 | 2026-07-27 | Restore only private allowlisted `/preview` through a separate listener | Immediate Telegram previews require inbound updates; isolating one standard-library long poll preserves the one-shot publication path and avoids webhooks or a bot framework. | `adr/0010-private-preview-listener.md` |
 | 2026-07-27 | Permit Gemini only as a fail-closed Policía Local translation fallback | Unknown official traffic formats need automated Russian compression; exact evidence, date, street, activity, schema, and length validation prevents the model from deciding publication alone. | `adr/0011-gemini-traffic-fallback.md` |
@@ -38,6 +38,7 @@ Detailed decisions belong in `adr/`.
 | 2026-07-27 | Apply market holiday moves from a reviewed annual calendar | The ordinance moves a holiday Wednesday market to Tuesday; a tiny official calendar is deterministic, while unsupported years omit the market instead of guessing. | `adr/0014-reviewed-holiday-calendar.md` |
 | 2026-07-27 | Add Campo de Guardamar as a recurring Sunday event | The accepted operator schedule provides `07:00–16:00` and Camino del Raso, 15; no cancellation or holiday behavior is inferred. | `docs/kb/06_Data_Sources.md` |
 | 2026-07-27 | Deploy only CI-tested commits through a daily Termux pull | A promoted `deploy` branch avoids exposing the phone or running a heavy self-hosted runner; the phone keeps secrets and state local and validates each update before use. | `adr/0015-tested-termux-deployment.md` |
+| 2026-07-28 | Publish at 10:07 to prefer an active beach flag | SafeBeach normally becomes active after the beach service starts; the later one-shot collection improves flag availability without making it mandatory or adding another publication. | `adr/0016-1007-publication-time.md` |
 
 ## Adding a decision
 

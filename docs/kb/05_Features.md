@@ -162,8 +162,10 @@ presented as absence of warnings.
 ### Delivery and schedule
 
 - One configured Telegram chat or channel
-- One external invocation at `07:30` in `Europe/Madrid`
+- One external invocation at `10:07` in `Europe/Madrid`
 - One direct source-collection pass, followed by delivery and process exit
+- Use an active SafeBeach flag when it is available at collection time; an
+  unavailable flag does not block publication
 - Skip when the current local date already has a confirmed publication
 - At most three bounded Telegram HTTP attempts within that run
 - One atomic state value: `last_successful_date`

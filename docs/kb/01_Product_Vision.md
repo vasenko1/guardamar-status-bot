@@ -34,7 +34,7 @@ service. Users should follow the responsible authority for urgent instructions.
 
 A good digest is calm and predictable:
 
-- one message at 07:30 local time;
+- one message at 10:07 local time;
 - important items appear before routine conditions;
 - wording is factual and compact;
 - missing optional sections do not create clutter;

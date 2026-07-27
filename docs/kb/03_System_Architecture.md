@@ -11,7 +11,7 @@ schemas, and library choices belong in later design work or ADRs.
 
 ## High-level flow
 
-1. **External 07:30 trigger** starts one short-lived digest process.
+1. **External 10:07 trigger** starts one short-lived digest process.
 2. **Source collection** requests current data from approved official sources.
 3. **Normalization** converts source-specific responses into small, consistent
    records while preserving source, place, and time.
@@ -85,7 +85,7 @@ speculatively. Its architecture is defined only after the feature is approved.
 - One short-lived Python process per local day
 - Optional lightweight operator listener with one idle Telegram long poll
 - One event loop with bounded asynchronous I/O
-- One direct collection pass during the 07:30 execution
+- One direct collection pass during the 10:07 execution
 - No webhook or public server
 - No resident scheduler, source polling, watcher, or synchronization job
 - Small local state
@@ -106,7 +106,7 @@ invocations. It checks the last successfully published date before collection.
 After Telegram confirms delivery, it atomically writes only that local date.
 Collection or delivery failure writes no publication state.
 
-The external Termux scheduling mechanism invokes the command at 07:30 in
+The external Termux scheduling mechanism invokes the command at 10:07 in
 `Europe/Madrid`. Scheduling is deployment responsibility, not application
 runtime behavior.
 

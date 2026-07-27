@@ -1,6 +1,6 @@
 # ADR 0008: One-shot morning execution
 
-- Status: Accepted
+- Status: Accepted; publication time superseded by ADR 0016
 - Date: 2026-07-27
 - Supersedes: ADR 0001 scheduling/state rules and ADR 0005
 
