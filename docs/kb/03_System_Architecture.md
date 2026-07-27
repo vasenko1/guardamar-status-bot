@@ -112,7 +112,7 @@ runtime behavior.
 
 Deployment is also external to the application. GitHub Actions promotes a
 `main` commit to the `deploy` branch only after the complete test suite passes.
-A short Termux cron job checks that branch once before the morning run,
+A short Termux cron job checks that branch once at 04:00 before the morning run,
 accepts fast-forward updates only, validates them on the phone, and restarts
 the optional preview listener. Secrets and runtime state remain local.
 

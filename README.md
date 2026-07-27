@@ -90,7 +90,7 @@ The validated Android deployment uses the scripts in `termux/`:
   `guardamar-preview`;
 - `termux/run-daily.sh` from this crontab:
   `CRON_TZ=Europe/Madrid` and `30 7 * * * .../termux/run-daily.sh`;
-- `termux/deploy.sh` at `06:45` to apply only commits promoted to the
+- `termux/deploy.sh` at `04:00` to apply only commits promoted to the
   GitHub `deploy` branch after successful CI;
 - `termux/start-services` copied to `~/.termux/boot/start-services` for the
   F-Droid Termux:Boot add-on.
@@ -107,7 +107,7 @@ Recommended crontab entries:
 
 ```cron
 CRON_TZ=Europe/Madrid
-45 6 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/deploy.sh
+0 4 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/deploy.sh
 30 7 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-daily.sh
 ```
 
