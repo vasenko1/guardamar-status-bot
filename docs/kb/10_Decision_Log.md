@@ -37,6 +37,7 @@ Detailed decisions belong in `adr/`.
 | 2026-07-27 | Make the compact weather icon dynamic from AEMET | A fixed icon can contradict the official daily sky forecast; a small deterministic mapping adds useful context without more text, AI, or sources. | `adr/0013-dynamic-weather-icon.md` |
 | 2026-07-27 | Apply market holiday moves from a reviewed annual calendar | The ordinance moves a holiday Wednesday market to Tuesday; a tiny official calendar is deterministic, while unsupported years omit the market instead of guessing. | `adr/0014-reviewed-holiday-calendar.md` |
 | 2026-07-27 | Add Campo de Guardamar as a recurring Sunday event | The accepted operator schedule provides `07:00–16:00` and Camino del Raso, 15; no cancellation or holiday behavior is inferred. | `docs/kb/06_Data_Sources.md` |
+| 2026-07-27 | Deploy only CI-tested commits through a daily Termux pull | A promoted `deploy` branch avoids exposing the phone or running a heavy self-hosted runner; the phone keeps secrets and state local and validates each update before use. | `adr/0015-tested-termux-deployment.md` |
 
 ## Adding a decision
 

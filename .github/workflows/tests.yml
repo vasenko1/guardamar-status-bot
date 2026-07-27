@@ -26,3 +26,23 @@ jobs:
 
       - name: Run tests
         run: python -m unittest discover -s tests -v
+
+  promote:
+    name: Promote tested commit
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out tested commit
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Update deploy branch
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
+        run: git push origin "$DEPLOY_SHA:refs/heads/deploy"

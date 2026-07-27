@@ -33,6 +33,10 @@ long poll solely for allowlisted private `/preview`. It must not schedule
 publication, poll data sources until a command arrives, use a webhook, or
 persist update history.
 
+One short daily deployment check may fetch the tested GitHub `deploy` branch.
+It must exit immediately when no update exists and must not become a resident
+deployment agent or self-hosted CI runner.
+
 ## Resource policy
 
 ### CPU and battery

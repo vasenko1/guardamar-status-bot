@@ -110,6 +110,12 @@ The external Termux scheduling mechanism invokes the command at 07:30 in
 `Europe/Madrid`. Scheduling is deployment responsibility, not application
 runtime behavior.
 
+Deployment is also external to the application. GitHub Actions promotes a
+`main` commit to the `deploy` branch only after the complete test suite passes.
+A short Termux cron job checks that branch once before the morning run,
+accepts fast-forward updates only, validates them on the phone, and restarts
+the optional preview listener. Secrets and runtime state remain local.
+
 The optional `listen` process is independent of publication. It accepts only
 fresh `/preview` commands in private chats from configured user IDs, fetches
 the same sources on demand, replies privately, and writes no publication

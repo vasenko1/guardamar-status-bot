@@ -90,8 +90,26 @@ The validated Android deployment uses the scripts in `termux/`:
   `guardamar-preview`;
 - `termux/run-daily.sh` from this crontab:
   `CRON_TZ=Europe/Madrid` and `30 7 * * * .../termux/run-daily.sh`;
+- `termux/deploy.sh` at `06:45` to apply only commits promoted to the
+  GitHub `deploy` branch after successful CI;
 - `termux/start-services` copied to `~/.termux/boot/start-services` for the
   F-Droid Termux:Boot add-on.
+
+The deployment check is a short daily process, not a resident agent. It
+requires a Git checkout with the repository configured as `origin`. It refuses
+tracked local changes and non-fast-forward history, installs declared Python
+dependencies, reruns the test suite on the phone, and restarts only the
+private preview listener. On installation or test failure it restores the
+previous commit. `.env`, `state/`, logs, and the virtual environment remain
+local and are never pulled from GitHub.
+
+Recommended crontab entries:
+
+```cron
+CRON_TZ=Europe/Madrid
+45 6 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/deploy.sh
+30 7 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-daily.sh
+```
 
 Install `cronie`, `termux-services`, and the Python `tzdata` dependency before
 enabling the services. Open Termux:Boot once after installation. On Android,
