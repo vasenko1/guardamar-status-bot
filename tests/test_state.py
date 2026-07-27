@@ -1,0 +1,87 @@
+import json
+import tempfile
+import unittest
+from datetime import date
+from pathlib import Path
+
+from telegrambot.state import PublicationState, StateError
+
+
+class PublicationStateTests(unittest.TestCase):
+    def test_stores_only_last_successful_date(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "delivery.json"
+            state = PublicationState(path)
+
+            state.mark_published(date(2026, 7, 26))
+
+            self.assertEqual(
+                json.loads(path.read_text()),
+                {"last_successful_date": "2026-07-26"},
+            )
+            self.assertTrue(state.is_published(date(2026, 7, 26)))
+
+    def test_reads_confirmed_success_from_previous_schema(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "delivery.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "local_date": "2026-07-26",
+                        "status": "success",
+                        "updated_at": "2026-07-26T07:30:00+02:00",
+                    }
+                )
+            )
+
+            self.assertEqual(
+                PublicationState(path).last_successful_date(),
+                date(2026, 7, 26),
+            )
+
+    def test_ignores_unsuccessful_previous_attempt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "delivery.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "local_date": "2026-07-26",
+                        "status": "failed",
+                    }
+                )
+            )
+
+            self.assertIsNone(
+                PublicationState(path).last_successful_date()
+            )
+
+    def test_corrupt_state_fails_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "delivery.json"
+            path.write_text("not json")
+
+            with self.assertRaises(StateError):
+                PublicationState(path).last_successful_date()
+
+    def test_unknown_state_shape_fails_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "delivery.json"
+            path.write_text(json.dumps({"unexpected": "value"}))
+
+            with self.assertRaises(StateError):
+                PublicationState(path).last_successful_date()
+
+    def test_overlapping_run_fails_immediately(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "delivery.json"
+            first = PublicationState(path)
+            second = PublicationState(path)
+
+            with first.exclusive_run():
+                with self.assertRaises(StateError):
+                    with second.exclusive_run():
+                        self.fail("overlapping run acquired the lock")
+
+
+if __name__ == "__main__":
+    unittest.main()

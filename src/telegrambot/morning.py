@@ -1,0 +1,156 @@
+"""Collect the Morning Digest while isolating optional source failures."""
+
+import asyncio
+import logging
+from dataclasses import replace
+from datetime import datetime
+from pathlib import Path
+
+from .agenda import (
+    AgendaError,
+    fetch_today_events,
+    recurring_events,
+    requires_market_exception_check,
+)
+from .aemet import fetch_morning_digest
+from .digest import build_message
+from .mayor import MayorChannelError, market_is_cancelled
+from .municipal_agenda import (
+    MunicipalAgendaError,
+    fetch_today_municipal_events,
+)
+from .police import PoliceTrafficError, fetch_traffic_notices
+from .safebeach import SafeBeachError, fetch_beach_status
+
+LOGGER = logging.getLogger(__name__)
+
+
+def _merge_events(*groups):
+    result = []
+    seen = set()
+    for group in groups:
+        for event in group:
+            key = (event.title.strip().casefold(), event.starts_at)
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(event)
+            if len(result) == 2:
+                return tuple(result)
+    return tuple(result)
+
+
+async def produce_message(
+    api_key: str,
+    now: datetime,
+    gemini_api_key: str = "",
+    municipal_agenda_state_path: Path = Path(
+        "state/municipal_agenda.json"
+    ),
+) -> str:
+    """Build a digest; SafeBeach failure must not block AEMET delivery."""
+
+    beach_task = asyncio.create_task(fetch_beach_status())
+    agenda_task = asyncio.create_task(fetch_today_events(now))
+    weekly_events = recurring_events(now)
+    market_status_task = (
+        asyncio.create_task(
+            market_is_cancelled(now, gemini_api_key)
+        )
+        if weekly_events and requires_market_exception_check(now)
+        else None
+    )
+    municipal_agenda_task = asyncio.create_task(
+        fetch_today_municipal_events(
+            now,
+            gemini_api_key,
+            municipal_agenda_state_path,
+        )
+    )
+    traffic_task = asyncio.create_task(
+        fetch_traffic_notices(now, gemini_api_key or None)
+    )
+    try:
+        digest = await fetch_morning_digest(api_key=api_key, now=now)
+    except BaseException:
+        beach_task.cancel()
+        agenda_task.cancel()
+        municipal_agenda_task.cancel()
+        traffic_task.cancel()
+        if market_status_task is not None:
+            market_status_task.cancel()
+        raise
+
+    try:
+        beach = await beach_task
+    except SafeBeachError as exc:
+        LOGGER.warning("SafeBeach unavailable; omitting beach status: %s", exc)
+        beach = None
+
+    if (
+        beach is not None
+        and beach.wind_direction is not None
+        and beach.wind_speed_kmh is not None
+    ):
+        digest = replace(
+            digest,
+            weather=replace(
+                digest.weather,
+                wind_direction=beach.wind_direction,
+                wind_speed_kmh=beach.wind_speed_kmh,
+            ),
+        )
+
+    try:
+        events = await agenda_task
+    except AgendaError as exc:
+        LOGGER.warning(
+            "Agenda Guardamar unavailable; omitting events: %s",
+            exc,
+        )
+        events = ()
+
+    try:
+        municipal_events = await municipal_agenda_task
+    except MunicipalAgendaError as exc:
+        LOGGER.warning(
+            "Municipal agenda unavailable; omitting poster events: %s",
+            exc,
+        )
+        municipal_events = ()
+
+    try:
+        traffic_notices = await traffic_task
+    except PoliceTrafficError as exc:
+        LOGGER.warning(
+            "Policía Local unavailable; omitting traffic notices: %s",
+            exc,
+        )
+        traffic_notices = ()
+
+    if market_status_task is not None:
+        try:
+            if await market_status_task:
+                weekly_events = ()
+                LOGGER.info(
+                    "Scheduled market omitted after explicit cancellation"
+                )
+        except MayorChannelError as exc:
+            weekly_events = ()
+            LOGGER.warning(
+                "Mayor channel unavailable; omitting regular market: %s",
+                exc,
+            )
+
+    return build_message(
+        replace(
+            digest,
+            beach=beach,
+            traffic_notices=traffic_notices,
+            events=_merge_events(
+                weekly_events,
+                events,
+                municipal_events,
+            ),
+        )
+    )

@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "guardamar-telegram-bot"
+version = "0.1.0"
+description = "Lightweight Guardamar morning digest for Termux"
+requires-python = ">=3.9"
+dependencies = ["tzdata>=2024.1"]
+
+[project.scripts]
+morning-digest = "telegrambot.__main__:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
