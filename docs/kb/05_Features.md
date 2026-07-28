@@ -32,7 +32,7 @@ This exact visual structure is the product contract:
 🌅 Доброе утро, Гуардамар!
 
 {значок} Погода: 24° → 31°
-🌊 Море: 29° • слабое → умеренное волнение
+🌊 Море: 29° • слабые → умеренные волны
 💨 Ветер: СВ 5 → 7 м/с
 🏖 Флаги на пляжах:
   🟡 Roqueta
@@ -76,8 +76,8 @@ then green; beach names within each group use north-to-south order `Vivers`,
 `Centre`, `Roqueta`. Missing beaches are omitted rather than assigned a
 reassuring default. The sea temperature and sea-state text use the AEMET
 Centro / La Roqueta forecast. Equal sea-state periods render once as
-`волнение умеренное`; a change renders compactly as
-`слабое → умеренное волнение`. SafeBeach Centre values are fallbacks when the
+`умеренные волны`; a change renders compactly as
+`слабые → умеренные волны`. SafeBeach Centre values are fallbacks when the
 AEMET beach values are unavailable. The jellyfish row is
 shown only for beaches where SafeBeach explicitly reports presence. A negative,
 missing, or unknown jellyfish field produces no row. The wind

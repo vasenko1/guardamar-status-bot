@@ -17,9 +17,9 @@ sea-state periods.
   sea temperature.
 - Normalize both AEMET `oleaje` descriptions.
 - If both periods are equal, render one phrase such as
-  `волнение умеренное`.
+  `умеренные волны`.
 - If they differ, render one compact transition such as
-  `слабое → умеренное волнение`.
+  `слабые → умеренные волны`.
 - Use active SafeBeach Centre temperature and sea state only when the
   corresponding AEMET value is unavailable.
 - Continue to obtain flags and jellyfish only from SafeBeach.

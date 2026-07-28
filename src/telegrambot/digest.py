@@ -34,11 +34,11 @@ FLAG_DOTS = {
     "red": "🔴",
 }
 SEA_STATES = {
-    "calm": "спокойное",
-    "slight": "слабое",
-    "moderate": "умеренное",
-    "rough": "сильное",
-    "very_rough": "очень сильное",
+    "calm": "спокойные",
+    "slight": "слабые",
+    "moderate": "умеренные",
+    "rough": "сильные",
+    "very_rough": "очень сильные",
 }
 WARNING_LEVELS = {
     "yellow": "Жёлтое предупреждение",
@@ -130,10 +130,10 @@ def build_message(digest: MorningDigest) -> str:
         and later_sea_label
         and later_sea_label != first_sea_label
     ):
-        sea_state = f"{first_sea_label} → {later_sea_label} волнение"
+        sea_state = f"{first_sea_label} → {later_sea_label} волны"
     else:
         sea_label = first_sea_label or later_sea_label
-        sea_state = f"волнение {sea_label}" if sea_label else None
+        sea_state = f"{sea_label} волны" if sea_label else None
     sea_suffix = f" • {sea_state}" if sea_state else ""
     lines.append(f"🌊 Море: {sea_temperature}{sea_suffix}")
 

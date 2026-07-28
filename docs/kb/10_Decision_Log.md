@@ -42,7 +42,7 @@ Detailed decisions belong in `adr/`.
 | 2026-07-28 | Preserve event time, type, and place in the digest | Events remain useful without a published time, but any official time range, activity type or medium, and location must survive extraction and appear compactly without inference. | `adr/0017-event-display-facts.md` |
 | 2026-07-28 | Name three nearby beaches and keep their flags separate | A single unnamed Centre flag can be mistaken for a city-wide status; explicit Centre, Roqueta, and Vivers indicators stay compact and avoid unsafe averaging. | `adr/0018-nearby-beach-flags.md` |
 | 2026-07-28 | Correct verified July poster facts without repeat OCR | The official text agenda identifies `Entropía`, Conchi Montes, `08:00–14:00`, and Biblioteca Pública Municipal; an exact poster-specific correction repairs the stored OCR record safely. | `adr/0012-monthly-municipal-agenda-snapshot.md` |
-| 2026-07-28 | Use one AEMET temperature and compact sea-state forecast | Centro / La Roqueta supplies one official representative temperature and two wave periods; equal states render once and changes render as `слабое → умеренное волнение`, without averaging nearby beaches. | `adr/0019-aemet-sea-forecast.md` |
+| 2026-07-28 | Use one AEMET temperature and compact sea-state forecast | Centro / La Roqueta supplies one official representative temperature and two wave periods; equal states render once and changes render as `слабые → умеренные волны`, without averaging nearby beaches. | `adr/0019-aemet-sea-forecast.md` |
 
 ## Adding a decision
 

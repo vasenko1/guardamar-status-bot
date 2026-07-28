@@ -81,7 +81,7 @@ class DigestMessageTests(unittest.TestCase):
         self.assertNotIn("дайджест", message.casefold())
         self.assertIn("⛈️ Погода: 21° → 30°", message)
         self.assertIn(
-            "🌊 Море: 29° • слабое → умеренное волнение",
+            "🌊 Море: 29° • слабые → умеренные волны",
             message,
         )
         self.assertIn(
@@ -164,8 +164,8 @@ class DigestMessageTests(unittest.TestCase):
 
         message = build_message(digest)
 
-        self.assertIn("🌊 Море: 29° • волнение умеренное", message)
-        self.assertNotIn("умеренное → умеренное", message)
+        self.assertIn("🌊 Море: 29° • умеренные волны", message)
+        self.assertNotIn("умеренные → умеренные", message)
 
     def test_labels_all_day_exhibition_without_inventing_time(self):
         digest = MorningDigest(
