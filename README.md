@@ -33,7 +33,7 @@ with [docs/kb/00_Project_Overview.md](docs/kb/00_Project_Overview.md).
 
 - Python with `asyncio`
 - standard-library HTTP for sources and outbound Telegram delivery
-- one short-lived process invoked externally at 10:07
+- one short-lived process invoked externally at 10:00
 - optional isolated listener for allowlisted private `/preview`
 - one atomic JSON value for the last successful local date
 - no Docker, PostgreSQL, webhooks, or heavy background services
@@ -72,13 +72,13 @@ The command checks the successful publication date, collects every implemented
 source directly once, builds and sends the digest, stores the date after
 confirmed success, and exits.
 
-Use an external Termux scheduler to invoke this command at `10:07` in
+Use an external Termux scheduler to invoke this command at `10:00` in
 `Europe/Madrid`. For example, a `cronie` entry can invoke a small local shell
 command that changes to the repository, loads `.env`, and runs the command:
 
 ```cron
 CRON_TZ=Europe/Madrid
-7 10 * * * cd /path/to/TelegramBot && bash -lc 'source .env; PYTHONPATH=src python -m telegrambot run'
+0 10 * * * cd /path/to/TelegramBot && bash -lc 'source .env; PYTHONPATH=src python -m telegrambot run'
 ```
 
 Keep the Android device timezone set to `Europe/Madrid` as an additional
@@ -89,7 +89,7 @@ The validated Android deployment uses the scripts in `termux/`:
 - `termux/listen.sh` under a `termux-services` service named
   `guardamar-preview`;
 - `termux/run-daily.sh` from this crontab:
-  `CRON_TZ=Europe/Madrid` and `7 10 * * * .../termux/run-daily.sh`;
+  `CRON_TZ=Europe/Madrid` and `0 10 * * * .../termux/run-daily.sh`;
 - `termux/deploy.sh` at `04:00` to apply only commits promoted to the
   GitHub `deploy` branch after successful CI;
 - `termux/start-services` copied to `~/.termux/boot/start-services` for the
@@ -108,14 +108,14 @@ Recommended crontab entries:
 ```cron
 CRON_TZ=Europe/Madrid
 0 4 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/deploy.sh
-7 10 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-daily.sh
+0 10 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-daily.sh
 ```
 
 Install `cronie`, `termux-services`, and the Python `tzdata` dependency before
 enabling the services. Open Termux:Boot once after installation. On Android,
 allow Termux and Termux:Boot to auto-start and run without battery
 restrictions. The boot script holds a wake lock for reliable exact-time cron
-execution; remove that line if battery use is more important than exact 10:07
+execution; remove that line if battery use is more important than exact 10:00
 delivery.
 
 Local inspection remains available:

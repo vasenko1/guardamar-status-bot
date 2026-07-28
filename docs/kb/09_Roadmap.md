@@ -22,7 +22,7 @@
 - Implement the approved canonical phone layout and inline wind comparison
   without changing source collection or message size. Complete.
 - Add one-shot Telegram delivery. An external Termux scheduler invokes the
-  short-lived process at 10:07; the application has no resident scheduler.
+  short-lived process at 10:00; the application has no resident scheduler.
 - Add one isolated private `/preview` listener for allowlisted operators,
   without publication state changes or source polling between commands.
 - Add a fail-closed Gemini fallback for previously unknown official Policía
@@ -35,7 +35,7 @@
 - Review the Campo de Guardamar operator schedule periodically and replace its
   local Sunday rule if an authoritative cancellation feed becomes available.
 - Done: validated Python 3.12 operation, resource use, `termux-services`,
-  Termux:Boot recovery, private preview, and the 10:07 `cronie` schedule on the
+  Termux:Boot recovery, private preview, and the 10:00 `cronie` schedule on the
   target Android device.
 
 ## Next steps

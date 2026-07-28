@@ -31,3 +31,16 @@ both cron entries after the observation period.
 For each day, record the first transition from `None` to `BeachStatus`. Use
 multiple days before choosing a retry time because staff or platform updates
 may vary. Do not infer a current flag from the prior day's last value.
+
+## Observations
+
+### 2026-07-28
+
+- 09:50: no active eligible record.
+- 09:54: no active eligible record.
+- 09:59: active green flag, sea temperature 27 °C, east wind approximately
+  2.8 m/s.
+
+The observed activation window was 09:54–09:59. This single day supports a
+10:00 publication experiment but does not establish a guaranteed SafeBeach
+update time.

@@ -38,7 +38,7 @@ Detailed decisions belong in `adr/`.
 | 2026-07-27 | Apply market holiday moves from a reviewed annual calendar | The ordinance moves a holiday Wednesday market to Tuesday; a tiny official calendar is deterministic, while unsupported years omit the market instead of guessing. | `adr/0014-reviewed-holiday-calendar.md` |
 | 2026-07-27 | Add Campo de Guardamar as a recurring Sunday event | The accepted operator schedule provides `07:00–16:00` and Camino del Raso, 15; no cancellation or holiday behavior is inferred. | `docs/kb/06_Data_Sources.md` |
 | 2026-07-27 | Deploy only CI-tested commits through a daily Termux pull | A promoted `deploy` branch avoids exposing the phone or running a heavy self-hosted runner; the phone keeps secrets and state local and validates each update before use. | `adr/0015-tested-termux-deployment.md` |
-| 2026-07-28 | Publish at 10:07 to prefer an active beach flag | SafeBeach normally becomes active after the beach service starts; the later one-shot collection improves flag availability without making it mandatory or adding another publication. | `adr/0016-1007-publication-time.md` |
+| 2026-07-28 | Publish at 10:00 to prefer an active beach flag | Direct observation found the first active Platja Centre record between 09:54 and 09:59; the later one-shot collection improves flag availability without making it mandatory or adding another publication. | `adr/0016-1000-publication-time.md` |
 
 ## Adding a decision
 
