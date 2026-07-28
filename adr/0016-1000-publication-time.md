@@ -1,4 +1,4 @@
-# ADR 0016: 10:00 publication time
+# ADR 0016: 10:02 publication time
 
 ## Status
 
@@ -15,7 +15,9 @@ between 09:54 and 09:59.
 
 ## Decision
 
-- Invoke the one-shot Morning Digest at `10:00` in `Europe/Madrid`.
+- Invoke the one-shot Morning Digest at `10:02` in `Europe/Madrid`.
+- The two-minute margin allows SafeBeach updates posted at 10:00 or 10:01 to
+  become visible before the single collection pass.
 - Collect SafeBeach once during that same run, exactly like every other
   approved source.
 - Include the flag only when SafeBeach exposes an active, non-ended Platja

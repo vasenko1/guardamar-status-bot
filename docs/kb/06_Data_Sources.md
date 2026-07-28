@@ -52,7 +52,7 @@ provide one later-day comparison with current wind. No source footer or source
 label is shown in the user-facing digest.
 
 The municipality forecast supplies precipitation probabilities by period. At
-10:00 the adapter considers future periods, falling back to a period that
+10:02 the adapter considers future periods, falling back to a period that
 still spans the current hour when no future period exists. The digest shows
 only the highest eligible probability when it is at least 75%, together with
 AEMET's period. Lower or malformed values are omitted.

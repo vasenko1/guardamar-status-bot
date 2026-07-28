@@ -198,7 +198,7 @@ presented as absence of warnings.
 ### Delivery and schedule
 
 - One configured Telegram chat or channel
-- One external invocation at `10:00` in `Europe/Madrid`
+- One external invocation at `10:02` in `Europe/Madrid`
 - One direct source-collection pass, followed by delivery and process exit
 - Use an active SafeBeach flag when it is available at collection time; an
   unavailable flag does not block publication
