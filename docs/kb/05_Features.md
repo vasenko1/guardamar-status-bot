@@ -32,7 +32,8 @@ This exact visual structure is the product contract:
 🌅 Доброе утро, Гуардамар!
 
 {значок} Погода      24° → 31°
-🌊 Море        28° • 🟢 Зелёный флаг
+🌊 Море        28° • волнение умеренное
+🏖 Флаги       Centre 🟢 • Roqueta 🟡 • Vivers 🟢
 💨 Ветер       СВ 5 → 7 м/с
 
 ⚠️ Внимание
@@ -50,18 +51,22 @@ The order never changes:
 
 1. Greeting
 2. Weather
-3. Sea and beach flag
-4. Current wind with optional inline forecast
-5. Warning
-6. Traffic or closure
-7. Today's events
+3. Sea temperature and optional Centre sea state
+4. Available individual flags for Centre, Roqueta, and Vivers
+5. Current wind with optional inline forecast
+6. Warning
+7. Traffic or closure
+8. Today's events
 
 The greeting must be exactly `🌅 Доброе утро, Гуардамар!`. The word
 `дайджест` must not appear in the user-facing message.
 
-Weather, sea, and wind are mandatory compact rows. A missing individual value
-uses `—`; it must not be invented or replaced with a reassuring default. The
-wind forecast is appended to the wind row as `→ <speed>` and is omitted when
+Weather, sea, and wind are mandatory compact rows. The flag row is shown only
+when SafeBeach has at least one active nearby record. It names each available
+beach and never averages flags: `Centre`, `Roqueta`, then `Vivers`. Missing
+beaches are omitted rather than assigned a reassuring default. The sea-state
+text is the active Centre value and is omitted when unavailable. The wind
+forecast is appended to the wind row as `→ <speed>` and is omitted when
 unavailable. It never creates another row.
 
 The weather icon is dynamic from the existing AEMET daily sky forecast:
@@ -102,14 +107,15 @@ row layout.
 
 The beach-status slice adds:
 
-- the active SafeBeach flag for `Platja Centre / Babilònia`;
-- sea temperature from that record when present;
+- separate active SafeBeach flags for `Platja Centre / Babilònia`,
+  `Platja La Roqueta`, and `Platja dels Vivers`;
+- sea temperature and sea state from the Centre record when present;
 - today's AEMET water-temperature forecast for `Centro / La Roqueta` as a
   fallback when SafeBeach has no temperature;
-- an explicit `—` for unavailable beach values, without blocking weather
-  delivery or inventing a normal status.
+- omission of individual unavailable flags and sea state without blocking
+  weather delivery or inventing a normal status.
 
-The fallback never supplies or infers a beach flag.
+The fallback never supplies or infers a beach flag or sea state.
 
 The event slice adds today's official ticketed Agenda Guardamar events. It
 reads the title, local time range, and place, sorts chronologically, removes

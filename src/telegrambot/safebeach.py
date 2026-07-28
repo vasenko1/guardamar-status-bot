@@ -7,7 +7,7 @@ import re
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional
 
 from .models import BeachStatus
 
@@ -15,6 +15,11 @@ SAFEBEACH_URL = "https://info.safebeach.es/guardamar-del-segura"
 REQUEST_TIMEOUT_SECONDS = 10
 HTML_LIMIT_BYTES = 500_000
 TARGET_BEACH_NAME = "platja centre / babilònia"
+NEARBY_BEACHES = {
+    "platja centre / babilònia": "Centre",
+    "platja la roqueta": "Roqueta",
+    "platja dels vivers": "Vivers",
+}
 
 _MARKERS_PATTERN = re.compile(
     rb"window\.SB_MARKERS\s*=\s*(\[.*?\]);", re.DOTALL
@@ -128,8 +133,25 @@ def _wind_direction(value: Any) -> Optional[str]:
     return directions[round(degrees / 22.5) % 16]
 
 
+def _sea_state(value: Any) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().casefold()
+    states = {
+        "calma": "calm",
+        "calmado": "calm",
+        "tranquilo": "calm",
+        "débil": "slight",
+        "debil": "slight",
+        "moderado": "moderate",
+        "fuerte": "rough",
+        "muy fuerte": "very_rough",
+    }
+    return states.get(normalized)
+
+
 def normalize_beach_status(payload: bytes) -> Optional[BeachStatus]:
-    """Return the most restrictive current Guardamar beach flag."""
+    """Return Centre conditions and individual nearby beach flags."""
 
     match = _MARKERS_PATTERN.search(payload)
     if match is None:
@@ -141,9 +163,8 @@ def normalize_beach_status(payload: bytes) -> Optional[BeachStatus]:
     if not isinstance(markers, list):
         raise SafeBeachError("SafeBeach beach data was not a list")
 
-    active: List[
-        Tuple[int, str, Optional[int], Optional[str], Optional[int]]
-    ] = []
+    centre = None
+    nearby_flags = []
     for marker in markers:
         if not isinstance(marker, dict):
             continue
@@ -153,35 +174,41 @@ def normalize_beach_status(payload: bytes) -> Optional[BeachStatus]:
         for item in items:
             if (
                 not isinstance(item, dict)
-                or str(item.get("beachName", "")).strip().casefold()
-                != TARGET_BEACH_NAME
                 or item.get("hasActividad") is not True
                 or item.get("serviceEnded") is not False
             ):
                 continue
+            beach_name = str(item.get("beachName", "")).strip().casefold()
+            short_name = NEARBY_BEACHES.get(beach_name)
+            if short_name is None:
+                continue
             flag = _flag_color(item)
             if flag is not None:
-                active.append(
-                    (
-                        _FLAG_PRIORITY[flag],
-                        flag,
-                        _sea_temperature(item.get("waterTemp")),
-                        _wind_direction(item.get("windDeg")),
-                        _wind_speed_kmh(item.get("viento")),
-                    )
+                nearby_flags.append((short_name, flag))
+            if beach_name == TARGET_BEACH_NAME:
+                centre = (
+                    flag,
+                    _sea_temperature(item.get("waterTemp")),
+                    _wind_direction(item.get("windDeg")),
+                    _wind_speed_kmh(item.get("viento")),
+                    _sea_state(item.get("oleaje")),
                 )
 
-    if not active:
+    if centre is None and not nearby_flags:
         return None
-    _, flag, sea_temperature, wind_direction, wind_speed = max(
-        active,
-        key=lambda item: item[0],
-    )
+    if centre is None:
+        flag = sea_temperature = wind_direction = wind_speed = sea_state = None
+    else:
+        flag, sea_temperature, wind_direction, wind_speed, sea_state = centre
+    order = {"Centre": 0, "Roqueta": 1, "Vivers": 2}
+    nearby_flags.sort(key=lambda item: order[item[0]])
     return BeachStatus(
         flag_color=flag,
         sea_temperature_c=sea_temperature,
         wind_direction=wind_direction,
         wind_speed_kmh=wind_speed,
+        sea_state=sea_state,
+        nearby_flags=tuple(nearby_flags),
     )
 
 

@@ -56,19 +56,19 @@ label is shown in the user-facing digest.
 Guardamar municipality links to
 `https://info.safebeach.es/guardamar-del-segura`. The public page embeds
 structured records for Guardamar beaches. The adapter selects
-`Platja Centre / Babilònia` and reads only its name, activity state,
-service-ended state, flag color, water temperature, wind speed, and wind
-direction.
+`Platja Centre / Babilònia`, `Platja La Roqueta`, and `Platja dels Vivers`.
+It reads only their name, activity state, service-ended state, and flag color,
+plus Centre water temperature, sea state, wind speed, and wind direction.
 
-Only its active, non-ended lifeguard record is eligible. SafeBeach supplies
-the flag, water temperature, and current beach wind when present. The
+Only active, non-ended lifeguard records are eligible. SafeBeach supplies
+individual nearby flags and Centre water temperature, sea state, and current
+beach wind when present. Flags are never averaged or generalized. The
 user-facing digest renders both current and forecast wind in metres per
 second. The AEMET daily wind remains the compact forecast after the arrow. If
-SafeBeach water temperature is
-missing, the digest may use today's AEMET forecast for Centro / La Roqueta.
-AEMET never supplies or implies a flag. Unknown colors, ended service, missing
-data, request failure, or schema failure leave the affected value as `—` and
-never block the weather digest.
+Centre water temperature is missing, the digest may use today's AEMET forecast
+for Centro / La Roqueta. AEMET never supplies or implies a flag or sea state.
+Unknown colors, ended service, missing data, request failure, or schema failure
+omit the affected flag or sea-state value and never block the weather digest.
 
 ## Approved Agenda Guardamar data
 

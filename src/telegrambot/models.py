@@ -26,10 +26,12 @@ class Warning:
 
 @dataclass(frozen=True)
 class BeachStatus:
-    flag_color: str
+    flag_color: Optional[str]
     sea_temperature_c: Optional[int]
     wind_direction: Optional[str] = None
     wind_speed_kmh: Optional[int] = None
+    sea_state: Optional[str] = None
+    nearby_flags: Tuple[Tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)

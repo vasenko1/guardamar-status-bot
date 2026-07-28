@@ -28,10 +28,17 @@ WIND_DIRECTIONS = {
     "NNW": "ССЗ",
     "C": "штиль",
 }
-FLAG_COLORS = {
-    "green": "🟢 Зелёный флаг",
-    "yellow": "🟡 Жёлтый флаг",
-    "red": "🔴 Красный флаг",
+FLAG_DOTS = {
+    "green": "🟢",
+    "yellow": "🟡",
+    "red": "🔴",
+}
+SEA_STATES = {
+    "calm": "волнение слабое",
+    "slight": "волнение небольшое",
+    "moderate": "волнение умеренное",
+    "rough": "волнение сильное",
+    "very_rough": "волнение очень сильное",
 }
 WARNING_LEVELS = {
     "yellow": "Жёлтое предупреждение",
@@ -108,12 +115,32 @@ def build_message(digest: MorningDigest) -> str:
         if sea_temperature_c is not None
         else "—"
     )
-    flag = (
-        FLAG_COLORS.get(digest.beach.flag_color, "—")
+    sea_state = (
+        SEA_STATES.get(digest.beach.sea_state)
         if digest.beach is not None
-        else "—"
+        else None
     )
-    lines.append(f"🌊 Море        {sea_temperature} • {flag}")
+    sea_suffix = f" • {sea_state}" if sea_state else ""
+    lines.append(f"🌊 Море        {sea_temperature}{sea_suffix}")
+
+    nearby_flags = (
+        digest.beach.nearby_flags
+        if digest.beach is not None
+        else ()
+    )
+    if (
+        not nearby_flags
+        and digest.beach is not None
+        and digest.beach.flag_color in FLAG_DOTS
+    ):
+        nearby_flags = (("Centre", digest.beach.flag_color),)
+    rendered_flags = [
+        f"{name} {FLAG_DOTS[color]}"
+        for name, color in nearby_flags
+        if color in FLAG_DOTS
+    ]
+    if rendered_flags:
+        lines.append(f"🏖 Флаги       {' • '.join(rendered_flags)}")
 
     if weather.wind_direction and weather.wind_speed_kmh is not None:
         direction = WIND_DIRECTIONS.get(

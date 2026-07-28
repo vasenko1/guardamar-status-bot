@@ -24,6 +24,7 @@ def _marker(
     temperature="24º C",
     ended=False,
     beach_name="Platja Centre / Babilònia",
+    sea_state="Moderado",
 ):
     return {
         "items": [
@@ -35,17 +36,28 @@ def _marker(
                 "waterTemp": temperature,
                 "viento": "3 m/s",
                 "windDeg": 100.34,
+                "oleaje": sea_state,
             }
         ]
     }
 
 
 class SafeBeachNormalizationTests(unittest.TestCase):
-    def test_selects_centre_flag_and_ignores_other_beaches(self):
+    def test_selects_centre_conditions_and_three_nearby_flags(self):
         status = normalize_beach_status(
             _page(
                 [
                     _marker("verde", "25º C"),
+                    _marker(
+                        "amarilla",
+                        "23º C",
+                        beach_name="Platja La Roqueta",
+                    ),
+                    _marker(
+                        "verde",
+                        "24º C",
+                        beach_name="Platja dels Vivers",
+                    ),
                     _marker(
                         "roja",
                         "23º C",
@@ -59,6 +71,15 @@ class SafeBeachNormalizationTests(unittest.TestCase):
         self.assertEqual(status.sea_temperature_c, 25)
         self.assertEqual(status.wind_direction, "E")
         self.assertEqual(status.wind_speed_kmh, 11)
+        self.assertEqual(status.sea_state, "moderate")
+        self.assertEqual(
+            status.nearby_flags,
+            (
+                ("Centre", "green"),
+                ("Roqueta", "yellow"),
+                ("Vivers", "green"),
+            ),
+        )
 
     def test_ignores_ended_service_and_allows_missing_temperature(self):
         status = normalize_beach_status(
