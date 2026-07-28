@@ -84,7 +84,7 @@ class DigestMessageTests(unittest.TestCase):
         self.assertIn("⛈️ Погода: 21° → 30°", message)
         self.assertIn("🌧 Дождь: 80% • 12:00–18:00", message)
         self.assertIn(
-            "🌊 Море: 29° • слабые→умеренные",
+            "🌊 Море: 29° • слабые → умеренные",
             message,
         )
         self.assertIn(

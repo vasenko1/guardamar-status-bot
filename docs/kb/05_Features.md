@@ -33,7 +33,7 @@ This exact visual structure is the product contract:
 
 {значок} Погода: 24° → 31°
 🌧 Дождь: 80% • 12:00–18:00
-🌊 Море: 29° • слабые→умеренные
+🌊 Море: 29° • слабые → умеренные
 💨 Ветер: СВ 5 → 7 м/с
 🏖 Флаги на пляжах:
   🟡 Roqueta
@@ -83,7 +83,7 @@ then green; beach names within each group use north-to-south order `Vivers`,
 reassuring default. The sea temperature and sea-state text use the AEMET
 Centro / La Roqueta forecast. Equal sea-state periods render once as
 `умеренные волны`; a change renders compactly as
-`слабые→умеренные`, without repeating `волны`. SafeBeach Centre values are fallbacks when the
+`слабые → умеренные`, without repeating `волны`. SafeBeach Centre values are fallbacks when the
 AEMET beach values are unavailable. The jellyfish row is
 shown only for beaches where SafeBeach explicitly reports presence. A negative,
 missing, or unknown jellyfish field produces no row. The wind

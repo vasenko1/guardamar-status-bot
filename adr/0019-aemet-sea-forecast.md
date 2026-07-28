@@ -19,7 +19,7 @@ sea-state periods.
 - If both periods are equal, render one phrase such as
   `умеренные волны`.
 - If they differ, render one compact transition such as
-  `слабые→умеренные`, omitting the redundant word `волны`.
+  `слабые → умеренные`, omitting the redundant word `волны`.
 - Use active SafeBeach Centre temperature and sea state only when the
   corresponding AEMET value is unavailable.
 - Continue to obtain flags and jellyfish only from SafeBeach.
