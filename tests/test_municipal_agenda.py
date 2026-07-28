@@ -9,7 +9,9 @@ from zoneinfo import ZoneInfo
 from telegrambot.municipal_agenda import (
     MunicipalAgendaError,
     _current_events,
+    _apply_reviewed_corrections,
     _load_snapshot,
+    _merge_reviewed_text_agenda,
     _snapshot_data,
     _write_snapshot,
     extract_poster_url,
@@ -86,6 +88,69 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(loaded["_events"]), 2)
         self.assertNotIn("title_ru", path.read_text() if path.exists() else json.dumps(raw))
         self.assertEqual(raw["events"][0]["title_es"], "Concierto en el castillo")
+
+    def test_repairs_reviewed_entropia_facts_without_reprocessing_poster(self):
+        incorrect = (
+            normalize_extraction(
+                {
+                    "events": [
+                        {
+                            "title_es": "Exposición de pintura: Conchi Montes",
+                            "start_date": "2026-07-03",
+                            "end_date": "2026-07-29",
+                            "start_time": "09:00",
+                            "end_time": "14:00",
+                            "place": "Biblioteca Municipal",
+                            "category": "exhibition",
+                        }
+                    ]
+                }
+            )
+        )
+
+        corrected = _apply_reviewed_corrections(
+            (
+                "https://www.guardamardelsegura.es/wp-content/uploads/"
+                "2026/07/MUPI-JULIO-2026-scaled.jpg"
+            ),
+            incorrect,
+        )
+
+        self.assertEqual(
+            corrected[0].title_es,
+            "Exposición de pintura «Entropía» de Conchi Montes",
+        )
+        self.assertEqual(corrected[0].start_time, "08:00")
+        self.assertEqual(corrected[0].end_time, "14:00")
+        self.assertEqual(
+            corrected[0].place,
+            "Biblioteca Pública Municipal",
+        )
+
+    def test_keeps_entropia_when_site_advances_to_august_poster(self):
+        august_events = normalize_extraction(
+            {
+                "events": [
+                    {
+                        "title_es": "Evento de agosto",
+                        "start_date": "2026-08-01",
+                        "end_date": "2026-08-01",
+                        "start_time": None,
+                        "end_time": None,
+                        "place": None,
+                        "category": "event",
+                    }
+                ]
+            }
+        )
+
+        merged = _merge_reviewed_text_agenda(august_events)
+
+        entropia = next(
+            event for event in merged if "Entropía" in event.title_es
+        )
+        self.assertEqual(entropia.end_date, datetime(2026, 7, 29).date())
+        self.assertEqual(entropia.start_time, "08:00")
 
     async def test_unchanged_poster_uses_snapshot_without_ocr(self):
         events = normalize_extraction(extraction())

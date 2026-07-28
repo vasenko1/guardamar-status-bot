@@ -47,6 +47,12 @@ the target Android device.
 - Gemini unavailable or OCR invalid: keep the prior valid snapshot.
 - No valid snapshot: omit the event section.
 - Conflicting dates or unreadable poster content: omit the affected event.
+- A fact manually confirmed in the accompanying official text agenda may
+  receive a narrow poster-specific correction in code. The correction must
+  name the exact poster, preserve the official wording, have a regression
+  test, and must not trigger repeat OCR.
+- A reviewed current-month text-agenda record may remain eligible through its
+  explicit end date when the page advances to next month's poster early.
 
 ## Consequences
 

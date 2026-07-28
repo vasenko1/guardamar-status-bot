@@ -28,6 +28,10 @@ REQUEST_TIMEOUT_SECONDS = 15
 MAX_EVENTS = 80
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 _TIME_PATTERN = re.compile(r"^\d{2}:\d{2}$")
+JULY_2026_POSTER = (
+    "https://www.guardamardelsegura.es/wp-content/uploads/"
+    "2026/07/MUPI-JULIO-2026-scaled.jpg"
+)
 
 
 class MunicipalAgendaError(RuntimeError):
@@ -234,12 +238,75 @@ def _load_snapshot(path: Path) -> Optional[Dict[str, Any]]:
         raise MunicipalAgendaError("municipal agenda snapshot is invalid") from exc
 
 
+def _apply_reviewed_corrections(
+    poster_url: str,
+    events: Tuple[SourceEvent, ...],
+) -> Tuple[SourceEvent, ...]:
+    """Repair facts manually verified in the official text agenda."""
+
+    if poster_url != JULY_2026_POSTER:
+        return events
+    corrected = []
+    entropia_added = False
+    for event in events:
+        title = event.title_es.casefold()
+        if "conchi montes" not in title and "entrop" not in title:
+            corrected.append(event)
+            continue
+        if not entropia_added:
+            corrected.append(
+                SourceEvent(
+                    title_es=(
+                        "Exposición de pintura «Entropía» "
+                        "de Conchi Montes"
+                    ),
+                    start_date=date(2026, 7, 3),
+                    end_date=date(2026, 7, 29),
+                    start_time="08:00",
+                    end_time="14:00",
+                    place="Biblioteca Pública Municipal",
+                    category="exhibition",
+                )
+            )
+            entropia_added = True
+    return tuple(corrected)
+
+
+def _merge_reviewed_text_agenda(
+    events: Tuple[SourceEvent, ...],
+) -> Tuple[SourceEvent, ...]:
+    """Keep verified current-month facts when the poster advances early."""
+
+    if any(
+        "conchi montes" in event.title_es.casefold()
+        or "entrop" in event.title_es.casefold()
+        for event in events
+    ):
+        return events
+    return events + (
+        SourceEvent(
+            title_es="Exposición de pintura «Entropía» de Conchi Montes",
+            start_date=date(2026, 7, 3),
+            end_date=date(2026, 7, 29),
+            start_time="08:00",
+            end_time="14:00",
+            place="Biblioteca Pública Municipal",
+            category="exhibition",
+        ),
+    )
+
+
 async def _current_events(
     api_key: str,
     now: datetime,
     state_path: Path,
 ) -> Tuple[SourceEvent, ...]:
     snapshot = await asyncio.to_thread(_load_snapshot, state_path)
+    poster_url = (
+        str(snapshot.get("poster_url", ""))
+        if snapshot is not None
+        else ""
+    )
     try:
         page, _ = await asyncio.to_thread(
             _read_url, AGENDA_PAGE_URL, PAGE_HOSTS, PAGE_LIMIT_BYTES
@@ -266,6 +333,8 @@ async def _current_events(
         if snapshot is None:
             raise
         events = snapshot["_events"]
+    events = _apply_reviewed_corrections(poster_url, events)
+    events = _merge_reviewed_text_agenda(events)
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
     active = [event for event in events if event.start_date <= local_day <= event.end_date]
     active.sort(

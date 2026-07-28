@@ -136,6 +136,14 @@ until its covered period ends. Generated Russian translations are not stored.
 Routine facility hours and municipal services, including the mobile ecopark,
 are not eligible for the event section.
 
+For the July 2026 poster, the accompanying official text agenda is the
+reviewed authority for the exhibition `Entropía`: painting by Conchi Montes,
+3–29 July, `08:00–14:00` on weekdays, at Biblioteca Pública Municipal. A
+small poster-specific correction repairs an incomplete or inaccurate stored
+OCR record at read time without repeating OCR or changing unrelated events.
+The same reviewed record remains eligible through 29 July if the agenda page
+switches its poster link to August before the July exhibition ends.
+
 ## Approved Policía Local traffic data
 
 `https://policiaguardamar.com/cortecallefiestas.html` is an official Policía
