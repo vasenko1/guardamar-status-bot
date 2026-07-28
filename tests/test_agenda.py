@@ -35,6 +35,8 @@ class AgendaNormalizationTests(unittest.TestCase):
           "@type": "TheaterEvent",
           "name": "SPANISH BRASS. TOP SECRET",
           "startDate": "2026-08-05T22:00",
+          "endDate": "2026-08-05T23:30",
+          "location": {"@type": "Place", "name": "Castillo"},
         }
         </script>
         """
@@ -44,6 +46,9 @@ class AgendaNormalizationTests(unittest.TestCase):
         self.assertIsNotNone(event)
         self.assertEqual(event.title, "SPANISH BRASS. TOP SECRET")
         self.assertEqual(event.starts_at.hour, 22)
+        self.assertEqual(event.ends_at.hour, 23)
+        self.assertEqual(event.ends_at.minute, 30)
+        self.assertEqual(event.place, "Castillo")
         self.assertIsNone(
             normalize_event_page(payload, date(2026, 8, 6))
         )

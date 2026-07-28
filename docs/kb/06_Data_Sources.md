@@ -74,13 +74,19 @@ never block the weather digest.
 
 `https://www.agendaguardamar.com/` identifies the Ayuntamiento as the site
 operator and publishes event detail pages with Schema.org `name` and
-`startDate`. The adapter reads a bounded programming page, follows at most
-twelve same-host event links, and returns at most two events whose local date
-is today. It performs no media processing and stores no event history.
+`startDate`, optional `endDate`, and `location`. The adapter reads a bounded
+programming page, follows at most twelve same-host event links, and returns at
+most two events whose local date is today. It performs no media processing and
+stores no event history.
 
 Agenda failure or malformed event details omit the optional `📅 События`
 section. Cultura Guardamar is not used because its current site has a
 certificate mismatch and placeholder content.
+
+The official monthly municipal poster may additionally supply explicit event
+type or medium, time range, and place through the bounded snapshot defined in
+ADR 0012. Missing time does not exclude an otherwise valid event; it is simply
+not rendered. Missing facts are never inferred.
 
 ## Approved Wednesday market
 

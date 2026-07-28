@@ -22,8 +22,9 @@ the target Android device.
 - Use the bounded Gemini Vision API to extract a strict structured event list
   from a new or changed poster. Do not run a local OCR model.
 - Store only normalized event facts for the current month and any explicit
-  next-month preview: title in source language, date, time, place, source URL,
-  poster hash, and last successful verification time.
+  next-month preview: title and explicit activity type in source language,
+  date, time range, place, source URL, poster hash, and last successful
+  verification time.
 - Do not store generated Russian translations. Translate only events selected
   for today's digest.
 - Merge poster and HTML events, prefer the more explicit official record, and

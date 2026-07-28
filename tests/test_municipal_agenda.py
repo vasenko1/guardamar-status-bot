@@ -29,6 +29,7 @@ def extraction():
                 "start_date": "2026-07-27",
                 "end_date": None,
                 "start_time": "21:00",
+                "end_time": "23:00",
                 "place": "Castillo",
                 "category": "event",
             },
@@ -37,6 +38,7 @@ def extraction():
                 "start_date": "2026-07-01",
                 "end_date": "2026-07-31",
                 "start_time": None,
+                "end_time": None,
                 "place": "Biblioteca",
                 "category": "exhibition",
             },
@@ -45,6 +47,7 @@ def extraction():
                 "start_date": "2026-07-27",
                 "end_date": None,
                 "start_time": "09:00",
+                "end_time": "12:00",
                 "place": None,
                 "category": "municipal_service",
             },
@@ -139,6 +142,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                 )
         self.assertEqual(current[0].title, "Концерт в замке")
         self.assertEqual(current[0].starts_at.hour, 21)
+        self.assertEqual(current[0].ends_at.hour, 23)
         self.assertEqual(current[1].place, "Biblioteca")
         self.assertEqual(current[1].category, "exhibition")
 

@@ -162,20 +162,23 @@ def build_message(digest: MorningDigest) -> str:
                 and "выстав" not in title.casefold()
             ):
                 title = f"Выставка «{title}»"
-            detail = ""
+            time_prefix = ""
             if event.starts_at is not None:
                 start_time = event.starts_at.astimezone(
                     GUARDAMAR_TIMEZONE
                 ).strftime("%H:%M")
-                detail = f", {start_time}"
+                time_prefix = start_time
                 if event.ends_at is not None:
                     end_time = event.ends_at.astimezone(
                         GUARDAMAR_TIMEZONE
                     ).strftime("%H:%M")
-                    detail += f"–{end_time}"
-                if event.place:
-                    detail += f" — {_event_title(event.place)}"
-            elif event.place:
-                detail = f" — {_event_title(event.place)}"
-            lines.append(f"• {title}{detail}")
+                    time_prefix += f"–{end_time}"
+                time_prefix += " — "
+            place_separator = ", " if time_prefix else " — "
+            place = (
+                f"{place_separator}{_event_title(event.place)}"
+                if event.place
+                else ""
+            )
+            lines.append(f"• {time_prefix}{title}{place}")
     return "\n".join(lines)

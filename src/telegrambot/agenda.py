@@ -32,6 +32,13 @@ _NAME_PATTERN = re.compile(
 _START_PATTERN = re.compile(
     r'"startDate"\s*:\s*"([^"]+)"',
 )
+_END_PATTERN = re.compile(
+    r'"endDate"\s*:\s*"([^"]+)"',
+)
+_LOCATION_PATTERN = re.compile(
+    r'"location"\s*:\s*\{.*?"name"\s*:\s*"((?:\\.|[^"\\])*)"',
+    re.DOTALL,
+)
 
 
 class AgendaError(RuntimeError):
@@ -137,7 +144,36 @@ def normalize_event_page(
         starts_at = starts_at.astimezone(GUARDAMAR_TIMEZONE)
     if starts_at.date() != local_day:
         return None
-    return Event(title=title, starts_at=starts_at)
+    ends_at = None
+    end_match = _END_PATTERN.search(page)
+    if end_match is not None:
+        try:
+            ends_at = datetime.fromisoformat(end_match.group(1))
+            if ends_at.tzinfo is None:
+                ends_at = ends_at.replace(tzinfo=GUARDAMAR_TIMEZONE)
+            else:
+                ends_at = ends_at.astimezone(GUARDAMAR_TIMEZONE)
+            if ends_at < starts_at:
+                ends_at = None
+        except ValueError:
+            ends_at = None
+    place = None
+    location_match = _LOCATION_PATTERN.search(page)
+    if location_match is not None:
+        try:
+            decoded_place = json.loads(f'"{location_match.group(1)}"')
+        except json.JSONDecodeError:
+            decoded_place = None
+        if isinstance(decoded_place, str):
+            decoded_place = " ".join(html.unescape(decoded_place).split())
+            if 1 <= len(decoded_place) <= 120:
+                place = decoded_place
+    return Event(
+        title=title,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        place=place,
+    )
 
 
 async def fetch_today_events(now: datetime) -> Tuple[Event, ...]:

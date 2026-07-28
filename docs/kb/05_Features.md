@@ -42,8 +42,8 @@ This exact visual structure is the product contract:
 С 19:30 перекрыта Calle Mayor.
 
 📅 События
-• Средовый рынок
-• Концерт в замке 21:00
+• 07:00–13:30 — рынок, парковка La Redonda
+• 21:00 — концерт в замке, Castillo
 ```
 
 The order never changes:
@@ -74,6 +74,12 @@ Warning, traffic, and event sections are optional. Omit an entire optional
 section when it has no verified, useful items. Do not render empty headings.
 The event section contains at most two official Agenda Guardamar events whose
 structured start date is today.
+
+Each event uses the compact order `{time or range} — {type and title}, {place}`.
+When the official source has no time, omit only the time prefix and keep the
+event. Preserve an explicit activity type or medium such as painting,
+sculpture, concert, workshop, guided tour, or night route. Include the
+official place when available. Never invent missing time, type, or place.
 
 The message has no source footer, links, report-style title, explanatory prose,
 or separate weather section. It must fit on one phone screen and be scannable
@@ -106,7 +112,7 @@ The beach-status slice adds:
 The fallback never supplies or infers a beach flag.
 
 The event slice adds today's official ticketed Agenda Guardamar events. It
-reads only event title and local start time, sorts chronologically, removes
+reads the title, local time range, and place, sorts chronologically, removes
 duplicates, and shows at most two items. Source failure or no event today
 omits the complete section.
 
@@ -129,7 +135,8 @@ ADR 0012 implements an expansion using the Ayuntamiento monthly poster linked
 from the official Turismo Guardamar agenda page. A poster with a new URL is
 processed once with Gemini Vision and stored as a bounded structured monthly
 event snapshot. The snapshot may supply today's events during a temporary
-source outage. Russian translations are not stored. Poster and Agenda
+source outage. Extraction preserves explicit event type, medium, time range,
+and place. Russian translations are not stored. Poster and Agenda
 Guardamar records are merged and deduplicated; routine opening hours and
 municipal services such as the mobile ecopark are excluded from `📅 События`.
 

@@ -92,7 +92,7 @@ class DigestMessageTests(unittest.TestCase):
             message,
         )
         self.assertIn(
-            "\n\n📅 События\n• Концерт в замке, 23:00",
+            "\n\n📅 События\n• 23:00 — Концерт в замке",
             message,
         )
         self.assertLess(len(message), 320)
@@ -180,7 +180,7 @@ class DigestMessageTests(unittest.TestCase):
         message = build_message(digest)
 
         self.assertIn(
-            "• Рынок, 09:00–15:30 — парковка La Redonda",
+            "• 09:00–15:30 — Рынок, парковка La Redonda",
             message,
         )
 

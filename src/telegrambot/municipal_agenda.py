@@ -10,7 +10,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -40,6 +40,7 @@ class SourceEvent:
     start_date: date
     end_date: date
     start_time: Optional[str]
+    end_time: Optional[str]
     place: Optional[str]
     category: str
 
@@ -144,19 +145,28 @@ def normalize_extraction(result: Dict[str, Any]) -> Tuple[SourceEvent, ...]:
             raise MunicipalAgendaError("invalid poster event date") from exc
         if start_date > end_date or (end_date - start_date).days > 62:
             raise MunicipalAgendaError("invalid poster event range")
-        start_time = raw.get("start_time")
-        if start_time is not None:
-            if not isinstance(start_time, str) or not _TIME_PATTERN.match(start_time):
-                raise MunicipalAgendaError("invalid poster event time")
-            try:
-                datetime.strptime(start_time, "%H:%M")
-            except ValueError as exc:
-                raise MunicipalAgendaError("invalid poster event time") from exc
+        times = []
+        for field in ("start_time", "end_time"):
+            value = raw.get(field)
+            if value is not None:
+                if not isinstance(value, str) or not _TIME_PATTERN.match(value):
+                    raise MunicipalAgendaError("invalid poster event time")
+                try:
+                    datetime.strptime(value, "%H:%M")
+                except ValueError as exc:
+                    raise MunicipalAgendaError(
+                        "invalid poster event time"
+                    ) from exc
+            times.append(value)
+        start_time, end_time = times
+        if end_time is not None and start_time is None:
+            raise MunicipalAgendaError("event end time has no start time")
         event = SourceEvent(
             title_es=_clean_text(raw.get("title_es"), 120) or "",
             start_date=start_date,
             end_date=end_date,
             start_time=start_time,
+            end_time=end_time,
             place=_clean_text(raw.get("place"), 120),
             category="event" if category == "workshop" else category,
         )
@@ -184,6 +194,7 @@ def _snapshot_data(
                 "start_date": event.start_date.isoformat(),
                 "end_date": event.end_date.isoformat(),
                 "start_time": event.start_time,
+                "end_time": event.end_time,
                 "place": event.place,
                 "category": event.category,
             }
@@ -286,19 +297,36 @@ async def fetch_today_municipal_events(
     except GeminiError as exc:
         raise MunicipalAgendaError("event translation failed") from exc
     result = []
+    local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
     for source, title in zip(source_events, titles):
         starts_at = None
+        ends_at = None
         if source.start_time:
             hour, minute = (int(part) for part in source.start_time.split(":"))
             starts_at = datetime.combine(
-                source.start_date,
+                local_day,
                 datetime.min.time().replace(hour=hour, minute=minute),
                 tzinfo=GUARDAMAR_TIMEZONE,
             )
+            if source.end_time:
+                end_hour, end_minute = (
+                    int(part) for part in source.end_time.split(":")
+                )
+                ends_at = datetime.combine(
+                    local_day,
+                    datetime.min.time().replace(
+                        hour=end_hour,
+                        minute=end_minute,
+                    ),
+                    tzinfo=GUARDAMAR_TIMEZONE,
+                )
+                if ends_at <= starts_at:
+                    ends_at += timedelta(days=1)
         result.append(
             Event(
                 title=title,
                 starts_at=starts_at,
+                ends_at=ends_at,
                 place=source.place,
                 active_until=source.end_date,
                 category=source.category,
