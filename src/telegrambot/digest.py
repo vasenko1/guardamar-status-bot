@@ -99,7 +99,7 @@ def build_message(digest: MorningDigest) -> str:
         "🌅 Доброе утро, Гуардамар!",
         "",
         (
-            f"{weather_icon} Погода      {weather.minimum_temperature_c}°"
+            f"{weather_icon} Погода   {weather.minimum_temperature_c}°"
             f" → {weather.maximum_temperature_c}°"
         ),
     ]
@@ -121,7 +121,7 @@ def build_message(digest: MorningDigest) -> str:
         else None
     )
     sea_suffix = f" • {sea_state}" if sea_state else ""
-    lines.append(f"🌊 Море        {sea_temperature}{sea_suffix}")
+    lines.append(f"🌊 Centre    {sea_temperature}{sea_suffix}")
 
     nearby_flags = (
         digest.beach.nearby_flags
@@ -134,13 +134,25 @@ def build_message(digest: MorningDigest) -> str:
         and digest.beach.flag_color in FLAG_DOTS
     ):
         nearby_flags = (("Centre", digest.beach.flag_color),)
-    rendered_flags = [
-        f"{name} {FLAG_DOTS[color]}"
-        for name, color in nearby_flags
-        if color in FLAG_DOTS
-    ]
-    if rendered_flags:
-        lines.append(f"🏖 Флаги       {' • '.join(rendered_flags)}")
+    grouped_flags = []
+    for color in ("red", "yellow", "green"):
+        names = [
+            name
+            for name, flag_color in nearby_flags
+            if flag_color == color
+        ]
+        if names:
+            grouped_flags.append(
+                f"{FLAG_DOTS[color]} {', '.join(names)}"
+            )
+    if grouped_flags:
+        lines.append(f"🏖 Флаги    {' • '.join(grouped_flags)}")
+
+    if digest.beach is not None and digest.beach.jellyfish_beaches:
+        lines.append(
+            "🪼 Медузы    "
+            + ", ".join(digest.beach.jellyfish_beaches)
+        )
 
     if weather.wind_direction and weather.wind_speed_kmh is not None:
         direction = WIND_DIRECTIONS.get(
@@ -148,7 +160,7 @@ def build_message(digest: MorningDigest) -> str:
             "—",
         )
         current_wind_mps = _wind_mps(weather.wind_speed_kmh)
-        wind_line = f"💨 Ветер       {direction} {current_wind_mps}"
+        wind_line = f"💨 Ветер    {direction} {current_wind_mps}"
         if (
             weather.forecast_wind_speed_kmh is not None
             and _wind_mps(weather.forecast_wind_speed_kmh)
@@ -160,7 +172,7 @@ def build_message(digest: MorningDigest) -> str:
         wind_line += " м/с"
         lines.append(wind_line)
     else:
-        lines.append("💨 Ветер       —")
+        lines.append("💨 Ветер    —")
 
     if digest.warnings:
         lines.extend(["", "⚠️ Внимание"])

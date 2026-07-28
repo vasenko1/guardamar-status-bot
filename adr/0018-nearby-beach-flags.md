@@ -14,13 +14,16 @@ published, while listing all six SafeBeach positions would add noise.
 
 - Show individual active flags for the three beaches closest to the urban
   centre: Centre / Babilònia, La Roqueta, and Vivers.
-- Render them in the fixed compact order `Centre`, `Roqueta`, `Vivers`.
+- Group them by color in the fixed safety order red, yellow, green. Within a
+  color, use north-to-south order `Vivers`, `Centre`, `Roqueta`.
 - Never average flags or replace a missing beach with another beach's value.
 - Omit an unavailable individual flag; omit the complete flag row when none
   are active.
 - Keep sea temperature, sea state, and current beach wind tied to the Centre
   record. The existing AEMET temperature fallback remains unchanged.
 - Put the optional Centre sea state beside the sea temperature.
+- Show a separate jellyfish row only for selected beaches with an explicit
+  positive SafeBeach value. Do not render routine negative reassurance.
 
 ## Consequences
 

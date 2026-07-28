@@ -31,10 +31,11 @@ This exact visual structure is the product contract:
 ```text
 🌅 Доброе утро, Гуардамар!
 
-{значок} Погода      24° → 31°
-🌊 Море        28° • волнение умеренное
-🏖 Флаги       Centre 🟢 • Roqueta 🟡 • Vivers 🟢
-💨 Ветер       СВ 5 → 7 м/с
+{значок} Погода   24° → 31°
+🌊 Centre    28° • волнение умеренное
+🏖 Флаги    🟡 Roqueta • 🟢 Vivers, Centre
+🪼 Медузы    Roqueta
+💨 Ветер    СВ 5 → 7 м/с
 
 ⚠️ Внимание
 Жёлтое предупреждение о жаре до 20:00.
@@ -52,20 +53,25 @@ The order never changes:
 1. Greeting
 2. Weather
 3. Sea temperature and optional Centre sea state
-4. Available individual flags for Centre, Roqueta, and Vivers
-5. Current wind with optional inline forecast
-6. Warning
-7. Traffic or closure
-8. Today's events
+4. Available flags for Centre, Roqueta, and Vivers, grouped by color
+5. Jellyfish beaches, only when explicitly reported
+6. Current wind with optional inline forecast
+7. Warning
+8. Traffic or closure
+9. Today's events
 
 The greeting must be exactly `🌅 Доброе утро, Гуардамар!`. The word
 `дайджест` must not appear in the user-facing message.
 
 Weather, sea, and wind are mandatory compact rows. The flag row is shown only
 when SafeBeach has at least one active nearby record. It names each available
-beach and never averages flags: `Centre`, `Roqueta`, then `Vivers`. Missing
-beaches are omitted rather than assigned a reassuring default. The sea-state
-text is the active Centre value and is omitted when unavailable. The wind
+beach and never averages flags. Groups use the fixed safety order red, yellow,
+then green; beach names within each group use north-to-south order `Vivers`,
+`Centre`, `Roqueta`. Missing beaches are omitted rather than assigned a
+reassuring default. The sea temperature and sea-state text are the active
+Centre values; sea state is omitted when unavailable. The jellyfish row is
+shown only for beaches where SafeBeach explicitly reports presence. A negative,
+missing, or unknown jellyfish field produces no row. The wind
 forecast is appended to the wind row as `→ <speed>` and is omitted when
 unavailable. It never creates another row.
 

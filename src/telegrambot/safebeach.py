@@ -150,6 +150,12 @@ def _sea_state(value: Any) -> Optional[str]:
     return states.get(normalized)
 
 
+def _jellyfish_present(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    return value.strip().casefold() in {"sí", "si", "yes"}
+
+
 def normalize_beach_status(payload: bytes) -> Optional[BeachStatus]:
     """Return Centre conditions and individual nearby beach flags."""
 
@@ -165,6 +171,7 @@ def normalize_beach_status(payload: bytes) -> Optional[BeachStatus]:
 
     centre = None
     nearby_flags = []
+    jellyfish_beaches = []
     for marker in markers:
         if not isinstance(marker, dict):
             continue
@@ -185,6 +192,8 @@ def normalize_beach_status(payload: bytes) -> Optional[BeachStatus]:
             flag = _flag_color(item)
             if flag is not None:
                 nearby_flags.append((short_name, flag))
+            if _jellyfish_present(item.get("medusas")):
+                jellyfish_beaches.append(short_name)
             if beach_name == TARGET_BEACH_NAME:
                 centre = (
                     flag,
@@ -200,8 +209,9 @@ def normalize_beach_status(payload: bytes) -> Optional[BeachStatus]:
         flag = sea_temperature = wind_direction = wind_speed = sea_state = None
     else:
         flag, sea_temperature, wind_direction, wind_speed, sea_state = centre
-    order = {"Centre": 0, "Roqueta": 1, "Vivers": 2}
+    order = {"Vivers": 0, "Centre": 1, "Roqueta": 2}
     nearby_flags.sort(key=lambda item: order[item[0]])
+    jellyfish_beaches.sort(key=order.__getitem__)
     return BeachStatus(
         flag_color=flag,
         sea_temperature_c=sea_temperature,
@@ -209,6 +219,7 @@ def normalize_beach_status(payload: bytes) -> Optional[BeachStatus]:
         wind_speed_kmh=wind_speed,
         sea_state=sea_state,
         nearby_flags=tuple(nearby_flags),
+        jellyfish_beaches=tuple(jellyfish_beaches),
     )
 
 

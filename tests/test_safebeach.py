@@ -25,6 +25,7 @@ def _marker(
     ended=False,
     beach_name="Platja Centre / Babilònia",
     sea_state="Moderado",
+    jellyfish="No",
 ):
     return {
         "items": [
@@ -37,6 +38,7 @@ def _marker(
                 "viento": "3 m/s",
                 "windDeg": 100.34,
                 "oleaje": sea_state,
+                "medusas": jellyfish,
             }
         ]
     }
@@ -52,6 +54,7 @@ class SafeBeachNormalizationTests(unittest.TestCase):
                         "amarilla",
                         "23º C",
                         beach_name="Platja La Roqueta",
+                        jellyfish="Sí",
                     ),
                     _marker(
                         "verde",
@@ -75,11 +78,12 @@ class SafeBeachNormalizationTests(unittest.TestCase):
         self.assertEqual(
             status.nearby_flags,
             (
+                ("Vivers", "green"),
                 ("Centre", "green"),
                 ("Roqueta", "yellow"),
-                ("Vivers", "green"),
             ),
         )
+        self.assertEqual(status.jellyfish_beaches, ("Roqueta",))
 
     def test_ignores_ended_service_and_allows_missing_temperature(self):
         status = normalize_beach_status(
@@ -142,7 +146,7 @@ class SafeBeachFailureTests(unittest.IsolatedAsyncioTestCase):
         ):
             message = await produce_message("api-key", now)
 
-        self.assertIn("💨 Ветер       В 3 → 4 м/с", message)
+        self.assertIn("💨 Ветер    В 3 → 4 м/с", message)
 
     async def test_failure_omits_beach_without_blocking_weather(self):
         digest = MorningDigest(
@@ -181,7 +185,7 @@ class SafeBeachFailureTests(unittest.IsolatedAsyncioTestCase):
         ):
             message = await produce_message("api-key", now)
 
-        self.assertIn("🌊 Море        —", message)
+        self.assertIn("🌊 Centre    —", message)
         self.assertNotIn("Источник", message)
         self.assertNotIn("Флаг", message)
         self.assertNotIn("SafeBeach", message)

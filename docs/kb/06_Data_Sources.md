@@ -58,11 +58,14 @@ Guardamar municipality links to
 structured records for Guardamar beaches. The adapter selects
 `Platja Centre / Babilònia`, `Platja La Roqueta`, and `Platja dels Vivers`.
 It reads only their name, activity state, service-ended state, and flag color,
-plus Centre water temperature, sea state, wind speed, and wind direction.
+plus jellyfish presence, and Centre water temperature, sea state, wind speed,
+and wind direction.
 
 Only active, non-ended lifeguard records are eligible. SafeBeach supplies
 individual nearby flags and Centre water temperature, sea state, and current
-beach wind when present. Flags are never averaged or generalized. The
+beach wind when present. Flags are never averaged or generalized; they are
+grouped by color in the message. Jellyfish are shown only for beaches with an
+explicit positive SafeBeach value, never as a daily reassurance. The
 user-facing digest renders both current and forecast wind in metres per
 second. The AEMET daily wind remains the compact forecast after the arrow. If
 Centre water temperature is missing, the digest may use today's AEMET forecast
