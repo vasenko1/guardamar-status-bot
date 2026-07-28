@@ -111,7 +111,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         corrected = _apply_reviewed_corrections(
             (
                 "https://www.guardamardelsegura.es/wp-content/uploads/"
-                "2026/07/MUPI-JULIO-2026-scaled.jpg"
+                "2026/07/MUPI-JULIO-2026.jpg"
             ),
             incorrect,
         )

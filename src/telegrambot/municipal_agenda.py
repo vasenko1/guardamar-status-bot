@@ -28,10 +28,6 @@ REQUEST_TIMEOUT_SECONDS = 15
 MAX_EVENTS = 80
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 _TIME_PATTERN = re.compile(r"^\d{2}:\d{2}$")
-JULY_2026_POSTER = (
-    "https://www.guardamardelsegura.es/wp-content/uploads/"
-    "2026/07/MUPI-JULIO-2026-scaled.jpg"
-)
 
 
 class MunicipalAgendaError(RuntimeError):
@@ -244,7 +240,15 @@ def _apply_reviewed_corrections(
 ) -> Tuple[SourceEvent, ...]:
     """Repair facts manually verified in the official text agenda."""
 
-    if poster_url != JULY_2026_POSTER:
+    parsed = urllib.parse.urlparse(poster_url)
+    poster_name = parsed.path.rsplit("/", 1)[-1].casefold()
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname not in POSTER_HOSTS
+        or "/wp-content/uploads/2026/07/" not in parsed.path.casefold()
+        or not poster_name.startswith("mupi-julio-2026")
+        or not poster_name.endswith((".jpg", ".jpeg", ".png", ".webp"))
+    ):
         return events
     corrected = []
     entropia_added = False
