@@ -87,7 +87,8 @@ safeguard.
 The validated Android deployment uses the scripts in `termux/`:
 
 - `termux/listen.sh` under a `termux-services` service named
-  `guardamar-preview`;
+  `guardamar-preview`; its `run` file may be a symlink because the launcher
+  resolves the real target path before loading the project `.env`;
 - `termux/run-daily.sh` from this crontab:
   `CRON_TZ=Europe/Madrid` and `0 10 * * * .../termux/run-daily.sh`;
 - `termux/deploy.sh` at `04:00` to apply only commits promoted to the

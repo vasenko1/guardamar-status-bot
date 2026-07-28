@@ -35,6 +35,10 @@ Direct tracked-file edits on the phone intentionally block deployment until
 the operator reviews them. A rewritten or divergent Git history also fails
 closed instead of overwriting the device.
 
+The runit preview service may invoke `termux/listen.sh` through a `run`
+symlink. The launcher resolves that link before locating the project `.env`
+and virtual environment.
+
 ## Alternatives rejected
 
 - Self-hosted GitHub Actions runner: too heavy and privileged for the target

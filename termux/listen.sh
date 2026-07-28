@@ -1,7 +1,8 @@
 #!/data/data/com.termux/files/usr/bin/sh
 
 exec 2>&1
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+SCRIPT_PATH=$(readlink -f "$0") || exit 1
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$SCRIPT_PATH")" && pwd)
 PROJECT_DIR=$(dirname "$SCRIPT_DIR")
 cd "$PROJECT_DIR" || exit 1
 . ./.env
