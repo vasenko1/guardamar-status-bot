@@ -34,11 +34,11 @@ FLAG_DOTS = {
     "red": "🔴",
 }
 SEA_STATES = {
-    "calm": "волнение слабое",
-    "slight": "волнение небольшое",
-    "moderate": "волнение умеренное",
-    "rough": "волнение сильное",
-    "very_rough": "волнение очень сильное",
+    "calm": "спокойное",
+    "slight": "слабое",
+    "moderate": "умеренное",
+    "rough": "сильное",
+    "very_rough": "очень сильное",
 }
 WARNING_LEVELS = {
     "yellow": "Жёлтое предупреждение",
@@ -104,26 +104,58 @@ def build_message(digest: MorningDigest) -> str:
         ),
     ]
 
-    sea_temperature_c = (
-        digest.beach.sea_temperature_c
-        if digest.beach is not None
-        and digest.beach.sea_temperature_c is not None
-        else digest.forecast_sea_temperature_c
-    )
+    sea_temperature_c = digest.forecast_sea_temperature_c
+    if (
+        sea_temperature_c is None
+        and digest.beach is not None
+    ):
+        sea_temperature_c = digest.beach.sea_temperature_c
     sea_temperature = (
         f"{sea_temperature_c}°"
         if sea_temperature_c is not None
         else "—"
     )
-    sea_state = (
-        SEA_STATES.get(digest.beach.sea_state)
-        if digest.beach is not None
-        else None
-    )
+    first_sea_state = digest.forecast_sea_state
+    later_sea_state = digest.forecast_later_sea_state
+    if (
+        first_sea_state is None
+        and later_sea_state is None
+        and digest.beach is not None
+    ):
+        first_sea_state = digest.beach.sea_state
+    first_sea_label = SEA_STATES.get(first_sea_state)
+    later_sea_label = SEA_STATES.get(later_sea_state)
+    if (
+        first_sea_label
+        and later_sea_label
+        and later_sea_label != first_sea_label
+    ):
+        sea_state = f"{first_sea_label} → {later_sea_label} волнение"
+    else:
+        sea_label = first_sea_label or later_sea_label
+        sea_state = f"волнение {sea_label}" if sea_label else None
     sea_suffix = f" • {sea_state}" if sea_state else ""
-    lines.append(
-        f"🌊 Море: {sea_temperature}{sea_suffix} (Centre)"
-    )
+    lines.append(f"🌊 Море: {sea_temperature}{sea_suffix}")
+
+    if weather.wind_direction and weather.wind_speed_kmh is not None:
+        direction = WIND_DIRECTIONS.get(
+            weather.wind_direction,
+            "—",
+        )
+        current_wind_mps = _wind_mps(weather.wind_speed_kmh)
+        wind_line = f"💨 Ветер: {direction} {current_wind_mps}"
+        if (
+            weather.forecast_wind_speed_kmh is not None
+            and _wind_mps(weather.forecast_wind_speed_kmh)
+            != current_wind_mps
+        ):
+            wind_line += (
+                f" → {_wind_mps(weather.forecast_wind_speed_kmh)}"
+            )
+        wind_line += " м/с"
+        lines.append(wind_line)
+    else:
+        lines.append("💨 Ветер: —")
 
     nearby_flags = (
         digest.beach.nearby_flags
@@ -148,33 +180,14 @@ def build_message(digest: MorningDigest) -> str:
                 f"{FLAG_DOTS[color]} {', '.join(names)}"
             )
     if grouped_flags:
-        lines.append(f"🏖 Флаги: {' • '.join(grouped_flags)}")
+        lines.append("🏖 Флаги на пляжах:")
+        lines.extend(f"  {group}" for group in grouped_flags)
 
     if digest.beach is not None and digest.beach.jellyfish_beaches:
         lines.append(
             "🪼 Медузы: "
             + ", ".join(digest.beach.jellyfish_beaches)
         )
-
-    if weather.wind_direction and weather.wind_speed_kmh is not None:
-        direction = WIND_DIRECTIONS.get(
-            weather.wind_direction,
-            "—",
-        )
-        current_wind_mps = _wind_mps(weather.wind_speed_kmh)
-        wind_line = f"💨 Ветер: {direction} {current_wind_mps}"
-        if (
-            weather.forecast_wind_speed_kmh is not None
-            and _wind_mps(weather.forecast_wind_speed_kmh)
-            != current_wind_mps
-        ):
-            wind_line += (
-                f" → {_wind_mps(weather.forecast_wind_speed_kmh)}"
-            )
-        wind_line += " м/с"
-        lines.append(wind_line)
-    else:
-        lines.append("💨 Ветер: —")
 
     if digest.warnings:
         lines.extend(["", "⚠️ Внимание"])

@@ -230,8 +230,8 @@ def normalize_daily_forecast(
 def normalize_beach_forecast(
     payload: bytes,
     local_day: date,
-) -> Optional[int]:
-    """Return today's forecast water temperature for Centro / La Roqueta."""
+) -> Tuple[Optional[int], Optional[str], Optional[str]]:
+    """Return today's water temperature and sea state for the named beach."""
 
     documents = _decode_json(payload)
     if not isinstance(documents, list) or not documents:
@@ -259,12 +259,43 @@ def normalize_beach_forecast(
     if selected is None:
         raise AemetError("AEMET beach forecast did not include today")
     water = selected.get("tAgua", selected.get("tagua"))
-    if not isinstance(water, dict):
-        return None
-    temperature = _as_int(water.get("valor1"))
+    temperature = (
+        _as_int(water.get("valor1"))
+        if isinstance(water, dict)
+        else None
+    )
     if temperature is None or not 0 <= temperature <= 40:
+        temperature = None
+
+    waves = selected.get("oleaje")
+    first_state = None
+    later_state = None
+    if isinstance(waves, dict):
+        first_state = _normalize_sea_state(waves.get("descripcion1"))
+        later_state = _normalize_sea_state(waves.get("descripcion2"))
+    return temperature, first_state, later_state
+
+
+def _normalize_sea_state(value: Any) -> Optional[str]:
+    if not isinstance(value, str):
         return None
-    return temperature
+    normalized = unicodedata.normalize("NFKD", value.strip().casefold())
+    text = "".join(
+        character
+        for character in normalized
+        if not unicodedata.combining(character)
+    )
+    if "muy fuerte" in text or "muy grues" in text:
+        return "very_rough"
+    if "fuerte" in text or "grues" in text:
+        return "rough"
+    if "moderad" in text:
+        return "moderate"
+    if "debil" in text or "liger" in text:
+        return "slight"
+    if "calma" in text:
+        return "calm"
+    return None
 
 
 def _compass_direction(degrees: Any) -> Optional[str]:
@@ -569,11 +600,16 @@ async def fetch_morning_digest(api_key: str, now: datetime) -> MorningDigest:
             LOGGER.warning("AEMET warnings could not be interpreted")
 
     forecast_sea_temperature = None
+    forecast_sea_state = None
+    forecast_later_sea_state = None
     if beach_result is not None:
         try:
-            forecast_sea_temperature = normalize_beach_forecast(
-                beach_result,
-                now.astimezone(GUARDAMAR_TIMEZONE).date(),
+            (
+                forecast_sea_temperature,
+                forecast_sea_state,
+                forecast_later_sea_state,
+            ) = normalize_beach_forecast(
+                beach_result, now.astimezone(GUARDAMAR_TIMEZONE).date()
             )
         except AemetError:
             LOGGER.warning(
@@ -594,4 +630,6 @@ async def fetch_morning_digest(api_key: str, now: datetime) -> MorningDigest:
         warnings=warnings,
         warnings_available=warnings_available,
         forecast_sea_temperature_c=forecast_sea_temperature,
+        forecast_sea_state=forecast_sea_state,
+        forecast_later_sea_state=forecast_later_sea_state,
     )

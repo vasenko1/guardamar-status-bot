@@ -185,7 +185,7 @@ class SafeBeachFailureTests(unittest.IsolatedAsyncioTestCase):
         ):
             message = await produce_message("api-key", now)
 
-        self.assertIn("🌊 Море: — (Centre)", message)
+        self.assertIn("🌊 Море: —", message)
         self.assertNotIn("Источник", message)
         self.assertNotIn("Флаг", message)
         self.assertNotIn("SafeBeach", message)

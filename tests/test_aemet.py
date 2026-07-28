@@ -26,6 +26,10 @@ class BeachForecastTests(unittest.TestCase):
                             {
                                 "fecha": 20260727,
                                 "tAgua": {"valor1": 29},
+                                "oleaje": {
+                                    "descripcion1": "Débil",
+                                    "descripcion2": "Moderado",
+                                },
                             }
                         ]
                     }
@@ -35,7 +39,7 @@ class BeachForecastTests(unittest.TestCase):
 
         self.assertEqual(
             normalize_beach_forecast(payload, date(2026, 7, 27)),
-            29,
+            (29, "slight", "moderate"),
         )
 
     def test_allows_missing_water_temperature(self):
@@ -49,8 +53,9 @@ class BeachForecastTests(unittest.TestCase):
             ]
         ).encode()
 
-        self.assertIsNone(
-            normalize_beach_forecast(payload, date(2026, 7, 27))
+        self.assertEqual(
+            normalize_beach_forecast(payload, date(2026, 7, 27)),
+            (None, None, None),
         )
 
 
@@ -277,6 +282,7 @@ class AemetCollectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(digest.weather.maximum_temperature_c, 30)
         self.assertEqual(fetch_mock.await_count, 5)
         self.assertEqual(digest.forecast_sea_temperature_c, 29)
+        self.assertIsNone(digest.forecast_sea_state)
         sleep_mock.assert_awaited_once_with(2)
 
     async def test_fetches_products_sequentially(self):

@@ -62,16 +62,19 @@ plus jellyfish presence, and Centre water temperature, sea state, wind speed,
 and wind direction.
 
 Only active, non-ended lifeguard records are eligible. SafeBeach supplies
-individual nearby flags and Centre water temperature, sea state, and current
-beach wind when present. Flags are never averaged or generalized; they are
-grouped by color in the message. Jellyfish are shown only for beaches with an
-explicit positive SafeBeach value, never as a daily reassurance. The
+individual nearby flags and current beach wind when present. Its Centre water
+temperature and sea state are fallbacks when the AEMET beach forecast omits
+those values. Flags are never averaged or generalized; they are grouped by
+color on separate compact lines in the message. Jellyfish are shown only for
+beaches with an explicit positive SafeBeach value, never as a daily
+reassurance. The
 user-facing digest renders both current and forecast wind in metres per
-second. The AEMET daily wind remains the compact forecast after the arrow. If
-Centre water temperature is missing, the digest may use today's AEMET forecast
-for Centro / La Roqueta. AEMET never supplies or implies a flag or sea state.
-Unknown colors, ended service, missing data, request failure, or schema failure
-omit the affected flag or sea-state value and never block the weather digest.
+second. The AEMET daily wind remains the compact forecast after the arrow.
+Today's AEMET Centro / La Roqueta forecast is the primary representative water
+temperature and sea state. Its two sea-state periods are shown once when equal
+or as one compact transition when they differ. AEMET never supplies or implies
+a flag. Unknown colors, ended service, missing data, request failure, or schema
+failure omit the affected optional value and never block the weather digest.
 
 ## Approved Agenda Guardamar data
 

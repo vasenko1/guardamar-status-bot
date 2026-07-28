@@ -47,6 +47,8 @@ class DigestMessageTests(unittest.TestCase):
                 jellyfish_beaches=("Roqueta",),
             ),
             forecast_sea_temperature_c=29,
+            forecast_sea_state="slight",
+            forecast_later_sea_state="moderate",
             traffic_notices=(
                 TrafficNotice(
                     text=(
@@ -79,11 +81,13 @@ class DigestMessageTests(unittest.TestCase):
         self.assertNotIn("дайджест", message.casefold())
         self.assertIn("⛈️ Погода: 21° → 30°", message)
         self.assertIn(
-            "🌊 Море: 24° • волнение умеренное (Centre)",
+            "🌊 Море: 29° • слабое → умеренное волнение",
             message,
         )
         self.assertIn(
-            "🏖 Флаги: 🟡 Roqueta • 🟢 Vivers, Centre",
+            "🏖 Флаги на пляжах:\n"
+            "  🟡 Roqueta\n"
+            "  🟢 Vivers, Centre",
             message,
         )
         self.assertIn("🪼 Медузы: Roqueta", message)
@@ -130,12 +134,38 @@ class DigestMessageTests(unittest.TestCase):
         message = build_message(digest)
 
         self.assertIn("🌤 Погода: 21° → 30°", message)
-        self.assertIn("🌊 Море: 28° (Centre)", message)
+        self.assertIn("🌊 Море: 28°", message)
         self.assertNotIn("🏖 Флаги", message)
         self.assertNotIn("🪼 Медузы", message)
         self.assertIn("💨 Ветер: —", message)
         self.assertNotIn("⚠️ Внимание", message)
         self.assertNotIn("Предупреждений нет", message)
+
+    def test_uses_one_label_when_sea_state_does_not_change(self):
+        digest = MorningDigest(
+            weather=Weather(
+                current_temperature_c=None,
+                minimum_temperature_c=22,
+                maximum_temperature_c=30,
+                wind_direction="E",
+                wind_speed_kmh=10,
+                observed_at=None,
+            ),
+            warnings=(),
+            warnings_available=True,
+            beach=BeachStatus(
+                flag_color=None,
+                sea_temperature_c=27,
+            ),
+            forecast_sea_temperature_c=29,
+            forecast_sea_state="moderate",
+            forecast_later_sea_state="moderate",
+        )
+
+        message = build_message(digest)
+
+        self.assertIn("🌊 Море: 29° • волнение умеренное", message)
+        self.assertNotIn("умеренное → умеренное", message)
 
     def test_labels_all_day_exhibition_without_inventing_time(self):
         digest = MorningDigest(

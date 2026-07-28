@@ -32,10 +32,12 @@ This exact visual structure is the product contract:
 🌅 Доброе утро, Гуардамар!
 
 {значок} Погода: 24° → 31°
-🌊 Море: 28° • волнение умеренное (Centre)
-🏖 Флаги: 🟡 Roqueta • 🟢 Vivers, Centre
-🪼 Медузы: Roqueta
+🌊 Море: 29° • слабое → умеренное волнение
 💨 Ветер: СВ 5 → 7 м/с
+🏖 Флаги на пляжах:
+  🟡 Roqueta
+  🟢 Vivers, Centre
+🪼 Медузы: Roqueta
 
 ⚠️ Внимание
 Жёлтое предупреждение о жаре до 20:00.
@@ -52,10 +54,10 @@ The order never changes:
 
 1. Greeting
 2. Weather
-3. Sea temperature and optional Centre sea state
-4. Available flags for Centre, Roqueta, and Vivers, grouped by color
-5. Jellyfish beaches, only when explicitly reported
-6. Current wind with optional inline forecast
+3. AEMET sea temperature and optional sea-state forecast
+4. Current wind with optional inline forecast
+5. Available flags for Centre, Roqueta, and Vivers, grouped by color
+6. Jellyfish beaches, only when explicitly reported
 7. Warning
 8. Traffic or closure
 9. Today's events
@@ -65,15 +67,18 @@ The greeting must be exactly `🌅 Доброе утро, Гуардамар!`. 
 
 Compact condition labels end with `:` and use one following space. Do not
 align columns with runs of spaces. The sea row keeps the user-facing label
-`Море` and names its reference beach as `(Centre)`.
+`Море`.
 
 Weather, sea, and wind are mandatory compact rows. The flag row is shown only
 when SafeBeach has at least one active nearby record. It names each available
 beach and never averages flags. Groups use the fixed safety order red, yellow,
 then green; beach names within each group use north-to-south order `Vivers`,
 `Centre`, `Roqueta`. Missing beaches are omitted rather than assigned a
-reassuring default. The sea temperature and sea-state text are the active
-Centre values; sea state is omitted when unavailable. The jellyfish row is
+reassuring default. The sea temperature and sea-state text use the AEMET
+Centro / La Roqueta forecast. Equal sea-state periods render once as
+`волнение умеренное`; a change renders compactly as
+`слабое → умеренное волнение`. SafeBeach Centre values are fallbacks when the
+AEMET beach values are unavailable. The jellyfish row is
 shown only for beaches where SafeBeach explicitly reports presence. A negative,
 missing, or unknown jellyfish field produces no row. The wind
 forecast is appended to the wind row as `→ <speed>` and is omitted when

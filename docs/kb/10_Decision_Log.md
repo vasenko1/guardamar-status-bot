@@ -23,7 +23,7 @@ Detailed decisions belong in `adr/`.
 | 2026-07-26 | Add one compact later-day wind comparison to the digest contract | A single deterministic line adds planning value using the existing AEMET forecast, without new sources, architecture, or a larger weather section. | `adr/0003-compact-wind-forecast.md` |
 | 2026-07-26 | Accept one fixed phone-first Morning Digest layout | A learned visual order, three compact mandatory rows, inline wind forecast, and optional empty-section omission make the message scannable in under five seconds. | `adr/0004-phone-first-digest-layout.md` |
 | 2026-07-27 | ~~Accept private allowlisted operator commands through long polling~~ | Superseded: inbound polling was removed with the resident process. | `adr/0008-one-shot-morning-execution.md` |
-| 2026-07-27 | Use AEMET Centro / La Roqueta water temperature only as a SafeBeach fallback | The official forecast keeps the sea row useful outside lifeguard hours, while the flag remains exclusively an active Platja Centre SafeBeach value. | `adr/0006-aemet-beach-temperature-fallback.md` |
+| 2026-07-27 | ~~Use AEMET Centro / La Roqueta water temperature only as a SafeBeach fallback~~ | Superseded: AEMET is now the primary representative sea forecast. | `adr/0019-aemet-sea-forecast.md` |
 | 2026-07-27 | Add at most two same-day events from Agenda Guardamar | Its official event pages expose deterministic title and start-time fields; optional failure stays silent and no media or AI processing is needed. | `adr/0007-agenda-guardamar-events.md` |
 | 2026-07-27 | ~~Defer Policía Local traffic integration~~ | Superseded for one explicit official festival restriction; the site still is not treated as a general traffic feed. | `adr/0009-explicit-police-traffic-notice.md` |
 | 2026-07-27 | ~~Run one external-triggered Morning Digest process at 07:30~~ | The one-shot model remains; only the publication time is superseded by ADR 0016. | `adr/0008-one-shot-morning-execution.md` |
@@ -42,6 +42,7 @@ Detailed decisions belong in `adr/`.
 | 2026-07-28 | Preserve event time, type, and place in the digest | Events remain useful without a published time, but any official time range, activity type or medium, and location must survive extraction and appear compactly without inference. | `adr/0017-event-display-facts.md` |
 | 2026-07-28 | Name three nearby beaches and keep their flags separate | A single unnamed Centre flag can be mistaken for a city-wide status; explicit Centre, Roqueta, and Vivers indicators stay compact and avoid unsafe averaging. | `adr/0018-nearby-beach-flags.md` |
 | 2026-07-28 | Correct verified July poster facts without repeat OCR | The official text agenda identifies `Entropía`, Conchi Montes, `08:00–14:00`, and Biblioteca Pública Municipal; an exact poster-specific correction repairs the stored OCR record safely. | `adr/0012-monthly-municipal-agenda-snapshot.md` |
+| 2026-07-28 | Use one AEMET temperature and compact sea-state forecast | Centro / La Roqueta supplies one official representative temperature and two wave periods; equal states render once and changes render as `слабое → умеренное волнение`, without averaging nearby beaches. | `adr/0019-aemet-sea-forecast.md` |
 
 ## Adding a decision
 

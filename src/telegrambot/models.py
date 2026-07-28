@@ -57,5 +57,7 @@ class MorningDigest:
     warnings_available: bool
     beach: Optional[BeachStatus] = None
     forecast_sea_temperature_c: Optional[int] = None
+    forecast_sea_state: Optional[str] = None
+    forecast_later_sea_state: Optional[str] = None
     traffic_notices: Tuple[TrafficNotice, ...] = ()
     events: Tuple[Event, ...] = ()

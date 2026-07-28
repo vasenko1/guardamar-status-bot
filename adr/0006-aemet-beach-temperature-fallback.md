@@ -1,6 +1,6 @@
 # ADR 0006: AEMET beach-temperature fallback
 
-- Status: Accepted
+- Status: Superseded by ADR 0019
 - Date: 2026-07-27
 
 ## Context
