@@ -189,7 +189,7 @@ def build_message(digest: MorningDigest) -> str:
             )
     if grouped_flags:
         lines.append("🏖 Флаги на пляжах:")
-        lines.extend(f"  {group}" for group in grouped_flags)
+        lines.extend(f"   {group}" for group in grouped_flags)
 
     if digest.beach is not None and digest.beach.jellyfish_beaches:
         lines.append(

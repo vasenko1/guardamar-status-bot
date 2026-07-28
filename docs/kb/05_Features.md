@@ -36,8 +36,8 @@ This exact visual structure is the product contract:
 🌊 Море: 29° • слабые → умеренные
 💨 Ветер: СВ 5 → 7 м/с
 🏖 Флаги на пляжах:
-  🟡 Roqueta
-  🟢 Vivers, Centre
+   🟡 Roqueta
+   🟢 Vivers, Centre
 🪼 Медузы: Roqueta
 
 ⚠️ Внимание
