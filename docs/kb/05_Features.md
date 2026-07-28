@@ -31,11 +31,11 @@ This exact visual structure is the product contract:
 ```text
 🌅 Доброе утро, Гуардамар!
 
-{значок} Погода   24° → 31°
-🌊 Centre    28° • волнение умеренное
-🏖 Флаги    🟡 Roqueta • 🟢 Vivers, Centre
-🪼 Медузы    Roqueta
-💨 Ветер    СВ 5 → 7 м/с
+{значок} Погода: 24° → 31°
+🌊 Море: 28° • волнение умеренное (Centre)
+🏖 Флаги: 🟡 Roqueta • 🟢 Vivers, Centre
+🪼 Медузы: Roqueta
+💨 Ветер: СВ 5 → 7 м/с
 
 ⚠️ Внимание
 Жёлтое предупреждение о жаре до 20:00.
@@ -62,6 +62,10 @@ The order never changes:
 
 The greeting must be exactly `🌅 Доброе утро, Гуардамар!`. The word
 `дайджест` must not appear in the user-facing message.
+
+Compact condition labels end with `:` and use one following space. Do not
+align columns with runs of spaces. The sea row keeps the user-facing label
+`Море` and names its reference beach as `(Centre)`.
 
 Weather, sea, and wind are mandatory compact rows. The flag row is shown only
 when SafeBeach has at least one active nearby record. It names each available

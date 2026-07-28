@@ -77,17 +77,17 @@ class DigestMessageTests(unittest.TestCase):
         )
         self.assertNotIn("Rojales", message)
         self.assertNotIn("дайджест", message.casefold())
-        self.assertIn("⛈️ Погода   21° → 30°", message)
+        self.assertIn("⛈️ Погода: 21° → 30°", message)
         self.assertIn(
-            "🌊 Centre    24° • волнение умеренное",
+            "🌊 Море: 24° • волнение умеренное (Centre)",
             message,
         )
         self.assertIn(
-            "🏖 Флаги    🟡 Roqueta • 🟢 Vivers, Centre",
+            "🏖 Флаги: 🟡 Roqueta • 🟢 Vivers, Centre",
             message,
         )
-        self.assertIn("🪼 Медузы    Roqueta", message)
-        self.assertIn("💨 Ветер    В 3 → 5 м/с", message)
+        self.assertIn("🪼 Медузы: Roqueta", message)
+        self.assertIn("💨 Ветер: В 3 → 5 м/с", message)
         self.assertIn("\n\n⚠️ Внимание\n", message)
         self.assertIn(
             (
@@ -129,11 +129,11 @@ class DigestMessageTests(unittest.TestCase):
 
         message = build_message(digest)
 
-        self.assertIn("🌤 Погода   21° → 30°", message)
-        self.assertIn("🌊 Centre    28°", message)
+        self.assertIn("🌤 Погода: 21° → 30°", message)
+        self.assertIn("🌊 Море: 28° (Centre)", message)
         self.assertNotIn("🏖 Флаги", message)
         self.assertNotIn("🪼 Медузы", message)
-        self.assertIn("💨 Ветер    —", message)
+        self.assertIn("💨 Ветер: —", message)
         self.assertNotIn("⚠️ Внимание", message)
         self.assertNotIn("Предупреждений нет", message)
 

@@ -146,7 +146,7 @@ class SafeBeachFailureTests(unittest.IsolatedAsyncioTestCase):
         ):
             message = await produce_message("api-key", now)
 
-        self.assertIn("💨 Ветер    В 3 → 4 м/с", message)
+        self.assertIn("💨 Ветер: В 3 → 4 м/с", message)
 
     async def test_failure_omits_beach_without_blocking_weather(self):
         digest = MorningDigest(
@@ -185,7 +185,7 @@ class SafeBeachFailureTests(unittest.IsolatedAsyncioTestCase):
         ):
             message = await produce_message("api-key", now)
 
-        self.assertIn("🌊 Centre    —", message)
+        self.assertIn("🌊 Море: — (Centre)", message)
         self.assertNotIn("Источник", message)
         self.assertNotIn("Флаг", message)
         self.assertNotIn("SafeBeach", message)
