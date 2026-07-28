@@ -138,7 +138,7 @@ def build_message(digest: MorningDigest) -> str:
         and later_sea_label
         and later_sea_label != first_sea_label
     ):
-        sea_state = f"{first_sea_label} → {later_sea_label} волны"
+        sea_state = f"{first_sea_label}→{later_sea_label}"
     else:
         sea_label = first_sea_label or later_sea_label
         sea_state = f"{sea_label} волны" if sea_label else None
