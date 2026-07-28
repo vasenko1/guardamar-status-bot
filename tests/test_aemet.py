@@ -73,6 +73,11 @@ class DailyForecastTests(unittest.TestCase):
                                     {"descripcion": "Poco nuboso"},
                                     {"descripcion": "Lluvia escasa"},
                                 ],
+                                "probPrecipitacion": [
+                                    {"value": 40, "periodo": "00-12"},
+                                    {"value": 80, "periodo": "12-18"},
+                                    {"value": 65, "periodo": "18-24"},
+                                ],
                                 "viento": [
                                     {"direccion": "E", "velocidad": 10},
                                     {"direccion": "SE", "velocidad": 20},
@@ -85,9 +90,40 @@ class DailyForecastTests(unittest.TestCase):
         ).encode()
 
         self.assertEqual(
-            normalize_daily_forecast(payload, date(2026, 7, 26)),
-            (23, 31, "SE", 20, "rain"),
+            normalize_daily_forecast(
+                payload,
+                date(2026, 7, 26),
+                local_hour=10,
+            ),
+            (23, 31, "SE", 20, "rain", 80, "12:00–18:00"),
         )
+
+    def test_uses_encompassing_rain_period_when_no_future_period_exists(self):
+        payload = json.dumps(
+            [
+                {
+                    "prediccion": {
+                        "dia": [
+                            {
+                                "fecha": "2026-07-26T00:00:00",
+                                "temperatura": {"minima": 23, "maxima": 31},
+                                "probPrecipitacion": [
+                                    {"value": 76, "periodo": "00-24"}
+                                ],
+                            }
+                        ]
+                    }
+                }
+            ]
+        ).encode()
+
+        result = normalize_daily_forecast(
+            payload,
+            date(2026, 7, 26),
+            local_hour=10,
+        )
+
+        self.assertEqual(result[-2:], (76, "00:00–24:00"))
 
     def test_rejects_forecast_without_today(self):
         payload = json.dumps(

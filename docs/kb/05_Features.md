@@ -32,6 +32,7 @@ This exact visual structure is the product contract:
 🌅 Доброе утро, Гуардамар!
 
 {значок} Погода: 24° → 31°
+🌧 Дождь: 80% • 12:00–18:00
 🌊 Море: 29° • слабые → умеренные волны
 💨 Ветер: СВ 5 → 7 м/с
 🏖 Флаги на пляжах:
@@ -54,13 +55,14 @@ The order never changes:
 
 1. Greeting
 2. Weather
-3. AEMET sea temperature and optional sea-state forecast
-4. Current wind with optional inline forecast
-5. Available flags for Centre, Roqueta, and Vivers, grouped by color
-6. Jellyfish beaches, only when explicitly reported
-7. Warning
-8. Traffic or closure
-9. Today's events
+3. Rain probability and period, only at 75% or above
+4. AEMET sea temperature and optional sea-state forecast
+5. Current wind with optional inline forecast
+6. Available flags for Centre, Roqueta, and Vivers, grouped by color
+7. Jellyfish beaches, only when explicitly reported
+8. Warning
+9. Traffic or closure
+10. Today's events
 
 The greeting must be exactly `🌅 Доброе утро, Гуардамар!`. The word
 `дайджест` must not appear in the user-facing message.
@@ -69,7 +71,9 @@ Compact condition labels end with `:` and use one following space. Do not
 align columns with runs of spaces. The sea row keeps the user-facing label
 `Море`.
 
-Weather, sea, and wind are mandatory compact rows. The flag row is shown only
+Weather, sea, and wind are mandatory compact rows. Rain is one optional compact
+row. It uses the highest AEMET probability for an eligible remaining period
+and appears only at `75%` or above; otherwise it is omitted. The flag row is shown only
 when SafeBeach has at least one active nearby record. It names each available
 beach and never averages flags. Groups use the fixed safety order red, yellow,
 then green; beach names within each group use north-to-south order `Vivers`,
@@ -113,6 +117,8 @@ The first MVP slice covers Guardamar weather and AEMET warnings:
   station;
 - today's minimum and maximum temperature from AEMET's Guardamar municipal
   forecast;
+- the highest eligible remaining precipitation probability and its period
+  when it is at least 75%;
 - active or upcoming-today CAP warnings for Guardamar's warning zone;
 - deterministic formatting with no runtime AI.
 
@@ -124,13 +130,13 @@ The beach-status slice adds:
 
 - separate active SafeBeach flags for `Platja Centre / Babilònia`,
   `Platja La Roqueta`, and `Platja dels Vivers`;
-- sea temperature and sea state from the Centre record when present;
-- today's AEMET water-temperature forecast for `Centro / La Roqueta` as a
-  fallback when SafeBeach has no temperature;
+- today's AEMET water temperature and sea-state forecast for
+  `Centro / La Roqueta`;
+- Centre water temperature and sea state as SafeBeach fallbacks;
 - omission of individual unavailable flags and sea state without blocking
   weather delivery or inventing a normal status.
 
-The fallback never supplies or infers a beach flag or sea state.
+Neither AEMET nor fallback logic supplies or infers a beach flag.
 
 The event slice adds today's official ticketed Agenda Guardamar events. It
 reads the title, local time range, and place, sorts chronologically, removes

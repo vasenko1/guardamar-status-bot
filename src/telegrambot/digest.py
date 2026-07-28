@@ -103,6 +103,14 @@ def build_message(digest: MorningDigest) -> str:
             f" → {weather.maximum_temperature_c}°"
         ),
     ]
+    if (
+        weather.rain_probability_percent is not None
+        and weather.rain_probability_percent >= 75
+    ):
+        rain_line = f"🌧 Дождь: {weather.rain_probability_percent}%"
+        if weather.rain_period:
+            rain_line += f" • {weather.rain_period}"
+        lines.append(rain_line)
 
     sea_temperature_c = digest.forecast_sea_temperature_c
     if (

@@ -26,6 +26,8 @@ class DigestMessageTests(unittest.TestCase):
                 ),
                 forecast_wind_speed_kmh=18,
                 sky_condition="storm",
+                rain_probability_percent=80,
+                rain_period="12:00–18:00",
             ),
             warnings=(
                 Warning(
@@ -80,6 +82,7 @@ class DigestMessageTests(unittest.TestCase):
         self.assertNotIn("Rojales", message)
         self.assertNotIn("дайджест", message.casefold())
         self.assertIn("⛈️ Погода: 21° → 30°", message)
+        self.assertIn("🌧 Дождь: 80% • 12:00–18:00", message)
         self.assertIn(
             "🌊 Море: 29° • слабые → умеренные волны",
             message,
@@ -114,7 +117,46 @@ class DigestMessageTests(unittest.TestCase):
             "\n\n📅 События\n• 23:00 — Концерт в замке",
             message,
         )
-        self.assertLess(len(message), 380)
+        self.assertLess(len(message), 430)
+
+    def test_omits_rain_below_threshold(self):
+        digest = MorningDigest(
+            weather=Weather(
+                current_temperature_c=None,
+                minimum_temperature_c=21,
+                maximum_temperature_c=30,
+                wind_direction="E",
+                wind_speed_kmh=10,
+                observed_at=None,
+                rain_probability_percent=74,
+                rain_period="12:00–18:00",
+            ),
+            warnings=(),
+            warnings_available=True,
+        )
+
+        self.assertNotIn("🌧 Дождь", build_message(digest))
+
+    def test_includes_rain_at_threshold(self):
+        digest = MorningDigest(
+            weather=Weather(
+                current_temperature_c=None,
+                minimum_temperature_c=21,
+                maximum_temperature_c=30,
+                wind_direction="E",
+                wind_speed_kmh=10,
+                observed_at=None,
+                rain_probability_percent=75,
+                rain_period="18:00–24:00",
+            ),
+            warnings=(),
+            warnings_available=True,
+        )
+
+        self.assertIn(
+            "🌧 Дождь: 75% • 18:00–24:00",
+            build_message(digest),
+        )
 
     def test_uses_mandatory_rows_and_omits_unavailable_optional_section(self):
         digest = MorningDigest(

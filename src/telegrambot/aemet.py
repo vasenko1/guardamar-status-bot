@@ -112,9 +112,19 @@ def _parse_datetime(value: Any) -> Optional[datetime]:
 
 
 def normalize_daily_forecast(
-    payload: bytes, local_day: date
-) -> Tuple[int, int, Optional[str], Optional[int], Optional[str]]:
-    """Return today's range, strongest wind, and sky condition."""
+    payload: bytes,
+    local_day: date,
+    local_hour: int = 0,
+) -> Tuple[
+    int,
+    int,
+    Optional[str],
+    Optional[int],
+    Optional[str],
+    Optional[int],
+    Optional[str],
+]:
+    """Return today's temperature, wind, sky, and remaining rain forecast."""
 
     documents = _decode_json(payload)
     if not isinstance(documents, list) or not documents:
@@ -215,6 +225,10 @@ def normalize_daily_forecast(
         if speed is not None and isinstance(direction, str) and direction:
             wind_options.append((speed, direction))
 
+    rain_probability, rain_period = _remaining_rain_forecast(
+        selected.get("probPrecipitacion"),
+        local_hour,
+    )
     if wind_options:
         wind_speed, wind_direction = max(wind_options, key=lambda item: item[0])
         return (
@@ -223,8 +237,65 @@ def normalize_daily_forecast(
             wind_direction,
             wind_speed,
             sky_condition,
+            rain_probability,
+            rain_period,
         )
-    return minimum, maximum, None, None, sky_condition
+    return (
+        minimum,
+        maximum,
+        None,
+        None,
+        sky_condition,
+        rain_probability,
+        rain_period,
+    )
+
+
+def _remaining_rain_forecast(
+    items: Any,
+    local_hour: int,
+) -> Tuple[Optional[int], Optional[str]]:
+    if not isinstance(items, list):
+        return None, None
+    future = []
+    encompassing = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        probability = _as_int(item.get("value"))
+        period = item.get("periodo")
+        if (
+            probability is None
+            or not 0 <= probability <= 100
+            or not isinstance(period, str)
+        ):
+            continue
+        parts = period.split("-")
+        if len(parts) != 2:
+            continue
+        start = _as_int(parts[0])
+        end = _as_int(parts[1])
+        if (
+            start is None
+            or end is None
+            or not 0 <= start <= 23
+            or not 1 <= end <= 24
+            or start >= end
+        ):
+            continue
+        candidate = (probability, start, end)
+        if start >= local_hour:
+            future.append(candidate)
+        elif end > local_hour:
+            encompassing.append(candidate)
+    candidates = future or encompassing
+    if not candidates:
+        return None, None
+    probability, start, end = max(
+        candidates,
+        key=lambda item: (item[0], -(item[2] - item[1])),
+    )
+    return probability, f"{start:02d}:00–{end:02d}:00"
 
 
 def normalize_beach_forecast(
@@ -564,13 +635,20 @@ async def fetch_morning_digest(api_key: str, now: datetime) -> MorningDigest:
         beach_result = None
         LOGGER.warning("AEMET Centro / La Roqueta forecast is unavailable")
 
+    local_now = now.astimezone(GUARDAMAR_TIMEZONE)
     (
         minimum,
         maximum,
         forecast_direction,
         forecast_speed,
         sky_condition,
-    ) = normalize_daily_forecast(daily_result, now.date())
+        rain_probability,
+        rain_period,
+    ) = normalize_daily_forecast(
+        daily_result,
+        local_now.date(),
+        local_now.hour,
+    )
     wind_direction = forecast_direction
     wind_speed = forecast_speed
     forecast_comparison = forecast_speed
@@ -626,6 +704,8 @@ async def fetch_morning_digest(api_key: str, now: datetime) -> MorningDigest:
             observed_at=observed_at,
             forecast_wind_speed_kmh=forecast_comparison,
             sky_condition=sky_condition,
+            rain_probability_percent=rain_probability,
+            rain_period=rain_period,
         ),
         warnings=warnings,
         warnings_available=warnings_available,

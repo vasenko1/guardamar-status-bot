@@ -27,10 +27,10 @@ official endpoints and lightweight access methods are validated.
 
 | Product | Selection | MVP use |
 | --- | --- | --- |
-| Municipal daily forecast | Guardamar municipality `03076` | Today's temperature range, most significant sky condition, and one later-day wind comparison |
+| Municipal daily forecast | Guardamar municipality `03076` | Today's temperature range, most significant sky condition, one later-day wind comparison, and high-probability remaining rain |
 | Conventional observation | Rojales station `7261X`, listed by AEMET as 5.3 km from Guardamar | Current temperature and wind, only when no more than three hours old |
 | CAP warnings | Comunitat Valenciana area `77`, filtered to `Litoral sur de Alicante` | Warnings active now or beginning later today |
-| Beach forecast | Centro / La Roqueta `0307605` | Today's forecast water temperature when SafeBeach has no current value |
+| Beach forecast | Centro / La Roqueta `0307605` | Today's representative water temperature and two sea-state periods |
 
 The AEMET API returns a metadata response containing a separate product
 download URL. Both requests are bounded by time and response size. The API key
@@ -50,6 +50,12 @@ The nearby Rojales origin remains explicit in project documentation, but its
 location label is omitted from the compact message. AEMET forecast wind may
 provide one later-day comparison with current wind. No source footer or source
 label is shown in the user-facing digest.
+
+The municipality forecast supplies precipitation probabilities by period. At
+10:00 the adapter considers future periods, falling back to a period that
+still spans the current hour when no future period exists. The digest shows
+only the highest eligible probability when it is at least 75%, together with
+AEMET's period. Lower or malformed values are omitted.
 
 ## Approved SafeBeach data
 
