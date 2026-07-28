@@ -82,6 +82,13 @@ or as one compact transition when they differ. AEMET never supplies or implies
 a flag. Unknown colors, ended service, missing data, request failure, or schema
 failure omit the affected optional value and never block the weather digest.
 
+SafeBeach is requested only inside the conservative local season from 20 June
+through 14 September, inclusive. Outside this window all operational
+SafeBeach values are omitted, preventing a stale active record from exposing a
+winter flag. This is an operator-selected safety window, not a claim that the
+municipality uses immutable annual service dates. AEMET sea temperature and
+wave forecast remain available year-round.
+
 ## Approved Agenda Guardamar data
 
 `https://www.agendaguardamar.com/` identifies the Ayuntamiento as the site

@@ -73,7 +73,9 @@ align columns with runs of spaces. The sea row keeps the user-facing label
 
 Weather, sea, and wind are mandatory compact rows. Rain is one optional compact
 row. It uses the highest AEMET probability for an eligible remaining period
-and appears only at `75%` or above; otherwise it is omitted. The flag row is shown only
+and appears only at `75%` or above; otherwise it is omitted. SafeBeach
+operational rows are considered only from 20 June through 14 September,
+inclusive. The flag row is shown only
 when SafeBeach has at least one active nearby record. It names each available
 beach and never averages flags. Groups use the fixed safety order red, yellow,
 then green; beach names within each group use north-to-south order `Vivers`,

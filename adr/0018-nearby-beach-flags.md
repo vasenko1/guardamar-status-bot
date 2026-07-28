@@ -25,6 +25,11 @@ published, while listing all six SafeBeach positions would add noise.
   and state follow ADR 0019.
 - Show a separate jellyfish row only for selected beaches with an explicit
   positive SafeBeach value. Do not render routine negative reassurance.
+- Request and use operational SafeBeach data only from 20 June through
+  14 September, inclusive, in `Europe/Madrid`.
+- Treat this as a conservative product window rather than an assertion of
+  exact municipal service dates; retain SafeBeach's active and service-ended
+  checks inside the window.
 
 ## Consequences
 
@@ -33,6 +38,7 @@ published, while listing all six SafeBeach positions would add noise.
   one indicator as city-wide.
 - SafeBeach schema tests now cover three selected beach records and sea state.
 - Source failure still cannot block the weather digest.
+- Stale SafeBeach records cannot expose flags during autumn, winter, or spring.
 
 ## Alternatives considered
 

@@ -5,6 +5,7 @@ import logging
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from .agenda import (
     AgendaError,
@@ -23,6 +24,15 @@ from .police import PoliceTrafficError, fetch_traffic_notices
 from .safebeach import SafeBeachError, fetch_beach_status
 
 LOGGER = logging.getLogger(__name__)
+GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
+SAFEBEACH_SEASON_START = (6, 20)
+SAFEBEACH_SEASON_END = (9, 14)
+
+
+def _safebeach_is_in_season(now: datetime) -> bool:
+    local = now.astimezone(GUARDAMAR_TIMEZONE)
+    month_day = (local.month, local.day)
+    return SAFEBEACH_SEASON_START <= month_day <= SAFEBEACH_SEASON_END
 
 
 def _merge_events(*groups):
@@ -50,7 +60,11 @@ async def produce_message(
 ) -> str:
     """Build a digest; SafeBeach failure must not block AEMET delivery."""
 
-    beach_task = asyncio.create_task(fetch_beach_status())
+    beach_task = (
+        asyncio.create_task(fetch_beach_status())
+        if _safebeach_is_in_season(now)
+        else None
+    )
     agenda_task = asyncio.create_task(fetch_today_events(now))
     weekly_events = recurring_events(now)
     market_status_task = (
@@ -73,7 +87,8 @@ async def produce_message(
     try:
         digest = await fetch_morning_digest(api_key=api_key, now=now)
     except BaseException:
-        beach_task.cancel()
+        if beach_task is not None:
+            beach_task.cancel()
         agenda_task.cancel()
         municipal_agenda_task.cancel()
         traffic_task.cancel()
@@ -82,9 +97,12 @@ async def produce_message(
         raise
 
     try:
-        beach = await beach_task
+        beach = await beach_task if beach_task is not None else None
     except SafeBeachError as exc:
-        LOGGER.warning("SafeBeach unavailable; omitting beach status: %s", exc)
+        LOGGER.warning(
+            "SafeBeach unavailable; omitting beach status: %s",
+            exc,
+        )
         beach = None
 
     if (

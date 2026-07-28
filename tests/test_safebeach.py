@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
 from telegrambot.models import BeachStatus, MorningDigest, Weather
-from telegrambot.morning import produce_message
+from telegrambot.morning import _safebeach_is_in_season, produce_message
 from telegrambot.safebeach import (
     SafeBeachError,
     normalize_beach_status,
@@ -45,6 +45,28 @@ def _marker(
 
 
 class SafeBeachNormalizationTests(unittest.TestCase):
+    def test_conservative_season_boundaries_are_inclusive(self):
+        self.assertFalse(
+            _safebeach_is_in_season(
+                datetime(2026, 6, 19, 23, 59, tzinfo=MADRID)
+            )
+        )
+        self.assertTrue(
+            _safebeach_is_in_season(
+                datetime(2026, 6, 20, 0, 0, tzinfo=MADRID)
+            )
+        )
+        self.assertTrue(
+            _safebeach_is_in_season(
+                datetime(2026, 9, 14, 23, 59, tzinfo=MADRID)
+            )
+        )
+        self.assertFalse(
+            _safebeach_is_in_season(
+                datetime(2026, 9, 15, 0, 0, tzinfo=MADRID)
+            )
+        )
+
     def test_selects_centre_conditions_and_three_nearby_flags(self):
         status = normalize_beach_status(
             _page(
@@ -100,6 +122,49 @@ class SafeBeachNormalizationTests(unittest.TestCase):
 
 
 class SafeBeachFailureTests(unittest.IsolatedAsyncioTestCase):
+    async def test_skips_safebeach_outside_conservative_season(self):
+        digest = MorningDigest(
+            weather=Weather(
+                current_temperature_c=18,
+                minimum_temperature_c=12,
+                maximum_temperature_c=20,
+                wind_direction="E",
+                wind_speed_kmh=10,
+                observed_at=None,
+            ),
+            warnings=(),
+            warnings_available=True,
+            forecast_sea_temperature_c=18,
+        )
+        now = datetime(2026, 12, 15, 10, 0, tzinfo=MADRID)
+        with (
+            patch(
+                "telegrambot.morning.fetch_morning_digest",
+                new=AsyncMock(return_value=digest),
+            ),
+            patch(
+                "telegrambot.morning.fetch_beach_status",
+                new=AsyncMock(),
+            ) as beach_fetch,
+            patch(
+                "telegrambot.morning.fetch_today_events",
+                new=AsyncMock(return_value=()),
+            ),
+            patch(
+                "telegrambot.morning.fetch_today_municipal_events",
+                new=AsyncMock(return_value=()),
+            ),
+            patch(
+                "telegrambot.morning.fetch_traffic_notices",
+                new=AsyncMock(return_value=()),
+            ),
+        ):
+            message = await produce_message("api-key", now)
+
+        beach_fetch.assert_not_awaited()
+        self.assertIn("🌊 Море: 18°", message)
+        self.assertNotIn("🏖 Флаги", message)
+
     async def test_uses_beach_wind_as_current_and_aemet_as_forecast(self):
         digest = MorningDigest(
             weather=Weather(
