@@ -124,8 +124,6 @@ async def _run_command(command: str) -> int:
                 collect_beach=False,
                 beach_status=status,
                 beach_notice=notice,
-                aemet_daily_attempts=3,
-                aemet_retry_seconds=120,
             )
         except AemetError:
             morning_message = existing.get("morning_message")

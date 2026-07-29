@@ -62,8 +62,9 @@ deployment agent or self-hosted CI runner.
   authorized on-demand preview.
 - Reuse connections when simple and safe.
 - Never retry indefinitely.
-- A replacement may keep one process alive for two bounded two-minute AEMET
-  retry intervals; this occurs only after a verified beach update.
+- Any digest collection may keep its process alive for two bounded two-minute
+  AEMET retry intervals. The retry policy lives in the AEMET adapter and is
+  not duplicated by publication or preview code.
 - Do not make digest delivery depend on every source succeeding.
 
 ### Storage

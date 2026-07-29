@@ -14,7 +14,6 @@ LOGGER = logging.getLogger(__name__)
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 MAX_COMMAND_AGE_SECONDS = 120
 RETRY_DELAY_SECONDS = 5
-PREVIEW_AEMET_RETRY_SECONDS = 3
 PREVIEW_FAILURE_PREFIX = "Не удалось сформировать предпросмотр."
 
 
@@ -68,14 +67,9 @@ def preview_destination(
 async def _produce_preview(
     produce: Callable[[datetime], Awaitable[str]],
 ) -> str:
-    """Retry only the required AEMET source once for an interactive preview."""
+    """Use the source adapter's single shared retry policy."""
 
-    try:
-        return await produce(datetime.now(GUARDAMAR_TIMEZONE))
-    except AemetError:
-        LOGGER.warning("AEMET preview failed; retrying once")
-        await asyncio.sleep(PREVIEW_AEMET_RETRY_SECONDS)
-        return await produce(datetime.now(GUARDAMAR_TIMEZONE))
+    return await produce(datetime.now(GUARDAMAR_TIMEZONE))
 
 
 def preview_failure_message(exc: Exception) -> str:

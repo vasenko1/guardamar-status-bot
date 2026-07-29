@@ -26,6 +26,8 @@ ROJALES_STATION_CODE = "7261X"
 CENTRO_LA_ROQUETA_BEACH_CODE = "0307605"
 
 REQUEST_TIMEOUT_SECONDS = 15
+DAILY_FORECAST_ATTEMPTS = 3
+DAILY_FORECAST_RETRY_SECONDS = 120
 JSON_LIMIT_BYTES = 1_000_000
 WARNING_LIMIT_BYTES = 4_000_000
 WARNING_UNCOMPRESSED_LIMIT_BYTES = 8_000_000
@@ -583,8 +585,8 @@ async def fetch_morning_digest(
     api_key: str,
     now: datetime,
     *,
-    daily_attempts: int = 2,
-    daily_retry_seconds: float = 2,
+    daily_attempts: int = DAILY_FORECAST_ATTEMPTS,
+    daily_retry_seconds: float = DAILY_FORECAST_RETRY_SECONDS,
 ) -> MorningDigest:
     """Fetch AEMET products sequentially and return one normalized model."""
 

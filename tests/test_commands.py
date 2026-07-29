@@ -96,19 +96,13 @@ class PreviewCommandTests(unittest.TestCase):
 
 
 class PreviewRetryTests(unittest.IsolatedAsyncioTestCase):
-    async def test_retries_aemet_once(self):
-        produce = AsyncMock(
-            side_effect=[AemetError("temporary"), "digest"]
-        )
-        with patch(
-            "telegrambot.commands.asyncio.sleep",
-            new=AsyncMock(),
-        ) as sleep:
-            result = await _produce_preview(produce)
+    async def test_does_not_add_an_outer_aemet_retry(self):
+        produce = AsyncMock(side_effect=AemetError("temporary"))
 
-        self.assertEqual(result, "digest")
-        self.assertEqual(produce.await_count, 2)
-        sleep.assert_awaited_once()
+        with self.assertRaises(AemetError):
+            await _produce_preview(produce)
+
+        self.assertEqual(produce.await_count, 1)
 
     async def test_does_not_retry_other_failures(self):
         produce = AsyncMock(side_effect=RuntimeError("broken"))

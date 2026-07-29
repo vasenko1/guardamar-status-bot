@@ -6,7 +6,7 @@ Detailed decisions belong in `adr/`.
 | Date | Decision | Context and reason | Record |
 | --- | --- | --- | --- |
 | 2026-07-29 | Publish at 07:30 and conditionally replace after bounded SafeBeach checks | City information arrives early; one later full replacement adds verified beach data without leaving two messages or keeping a process asleep. | `adr/0021-two-stage-daily-replacement.md` |
-| 2026-07-29 | Retry AEMET twice at two-minute intervals during replacement, then preserve the morning copy | A short overload may clear in two minutes; a verified beach or Mayor update must still be delivered when AEMET remains unavailable. | `adr/0021-two-stage-daily-replacement.md` |
+| 2026-07-29 | Use one AEMET retry policy everywhere: two retries at two-minute intervals | A short overload may clear in two minutes; centralizing the rule prevents different behavior in the morning, replacement, and preview paths. Replacement still preserves the morning copy after final failure. | `adr/0021-two-stage-daily-replacement.md` |
 | 2026-07-26 | Target Termux on a weak Android device | The bot must run cheaply on limited hardware and unstable mobile internet. | Project brief |
 | 2026-07-26 | ~~Use one lightweight Python process with Telegram long polling~~ | Superseded: the process is now one-shot and outbound-only. | `adr/0008-one-shot-morning-execution.md` |
 | 2026-07-26 | Keep persistent state local and small | Server databases are unnecessary for the planned scope. | Project brief |

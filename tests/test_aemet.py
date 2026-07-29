@@ -272,7 +272,7 @@ class WarningTests(unittest.TestCase):
 
 
 class AemetCollectionTests(unittest.IsolatedAsyncioTestCase):
-    async def test_update_policy_can_retry_twice_after_two_minutes(self):
+    async def test_shared_policy_retries_twice_after_two_minutes(self):
         from telegrambot.aemet import fetch_morning_digest
 
         with patch(
@@ -293,8 +293,6 @@ class AemetCollectionTests(unittest.IsolatedAsyncioTestCase):
                         10,
                         tzinfo=ZoneInfo("Europe/Madrid"),
                     ),
-                    daily_attempts=3,
-                    daily_retry_seconds=120,
                 )
 
         self.assertEqual(fetch_mock.await_count, 3)
@@ -350,7 +348,7 @@ class AemetCollectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(fetch_mock.await_count, 5)
         self.assertEqual(digest.forecast_sea_temperature_c, 29)
         self.assertIsNone(digest.forecast_sea_state)
-        sleep_mock.assert_awaited_once_with(2)
+        sleep_mock.assert_awaited_once_with(120)
 
     async def test_fetches_products_sequentially(self):
         from telegrambot.aemet import fetch_morning_digest
