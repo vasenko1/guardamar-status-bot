@@ -21,6 +21,11 @@ infrastructure.
 - Collect the current digest only after an accepted command and reply silently
   to that private chat.
 - Never publish to the configured destination or read/write publication state.
+- Expose stable operator-safe source and stage codes for failed consulted
+  sources. Successful previews append diagnostics after the digest; a fatal
+  AEMET failure returns its code instead of a digest.
+- A code may include a safe HTTP or API status, but never a URL, credential,
+  response body, traceback, or raw transport error.
 - Keep the 07:30 publication process one-shot and independent.
 - Add no webhook, Telegram framework, database, or persisted update offset.
 

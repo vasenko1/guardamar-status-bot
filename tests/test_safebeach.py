@@ -275,6 +275,7 @@ class SafeBeachFailureTests(unittest.IsolatedAsyncioTestCase):
         )
         now = datetime(2026, 7, 26, 8, 0, tzinfo=MADRID)
 
+        diagnostics = []
         with (
             patch(
                 "telegrambot.morning.fetch_morning_digest",
@@ -295,12 +296,21 @@ class SafeBeachFailureTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value=()),
             ),
         ):
-            message = await produce_message("api-key", now)
+            message = await produce_message(
+                "api-key",
+                now,
+                diagnostics=diagnostics,
+            )
 
         self.assertIn("🌊 Море: —", message)
         self.assertNotIn("Источник", message)
         self.assertNotIn("Флаг", message)
         self.assertNotIn("SafeBeach", message)
+        safe_beach = [
+            item for item in diagnostics if item.source == "SafeBeach"
+        ]
+        self.assertEqual(len(safe_beach), 1)
+        self.assertEqual(safe_beach[0].code, "SB-INVALID")
 
 
 if __name__ == "__main__":

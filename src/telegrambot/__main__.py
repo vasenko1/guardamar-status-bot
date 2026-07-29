@@ -13,6 +13,7 @@ from .aemet import AemetError
 from .commands import listen_for_preview, parse_allowed_user_ids
 from .delivery import publish_morning, publish_update
 from .digest import build_fallback_update
+from .diagnostics import render_diagnostics
 from .mayor import latest_beach_notice
 from .morning import _safebeach_is_in_season, produce_message
 from .safebeach import (
@@ -36,7 +37,8 @@ def _required_environment(name: str) -> str:
 
 
 async def _produce_message(api_key: str, now: datetime) -> str:
-    return await produce_message(
+    diagnostics = []
+    message = await produce_message(
         api_key,
         now,
         os.environ.get("GEMINI_API_KEY", "").strip(),
@@ -46,7 +48,9 @@ async def _produce_message(api_key: str, now: datetime) -> str:
                 DEFAULT_MUNICIPAL_AGENDA_STATE_PATH,
             )
         ),
+        diagnostics=diagnostics,
     )
+    return message + render_diagnostics(diagnostics)
 
 
 async def _run_command(command: str) -> int:

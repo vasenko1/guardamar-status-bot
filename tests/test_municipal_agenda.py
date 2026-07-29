@@ -182,6 +182,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_site_failure_uses_snapshot_and_translates_selected_events(self):
         events = normalize_extraction(extraction())
+        diagnostics = []
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "agenda.json"
             _write_snapshot(
@@ -203,13 +204,21 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                 ),
             ):
                 current = await fetch_today_municipal_events(
-                    datetime(2026, 7, 27, tzinfo=TZ), "key", path
+                    datetime(2026, 7, 27, tzinfo=TZ),
+                    "key",
+                    path,
+                    diagnostics,
                 )
         self.assertEqual(current[0].title, "Концерт в замке")
         self.assertEqual(current[0].starts_at.hour, 21)
         self.assertEqual(current[0].ends_at.hour, 23)
         self.assertEqual(current[1].place, "Biblioteca")
         self.assertEqual(current[1].category, "exhibition")
+        self.assertEqual(
+            diagnostics[0].code,
+            "MUNI-AGENDA-FALLBACK-INVALID",
+        )
+        self.assertIn("локальный снимок", diagnostics[0].description)
 
 
 if __name__ == "__main__":

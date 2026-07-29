@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 
 from .gemini import GeminiError, extract_agenda_events, translate_event_titles
 from .models import Event
+from .diagnostics import SourceDiagnostic, source_error
 
 AGENDA_PAGE_URL = "https://guardamarturismo.com/agenda-cultural/"
 PAGE_HOSTS = {"guardamarturismo.com", "www.guardamarturismo.com"}
@@ -304,6 +305,7 @@ async def _current_events(
     api_key: str,
     now: datetime,
     state_path: Path,
+    diagnostics: Optional[List[SourceDiagnostic]] = None,
 ) -> Tuple[SourceEvent, ...]:
     snapshot = await asyncio.to_thread(_load_snapshot, state_path)
     poster_url = (
@@ -333,9 +335,23 @@ async def _current_events(
                 state_path,
                 _snapshot_data(poster_url, poster_hash, now, events),
             )
-    except (MunicipalAgendaError, GeminiError):
+    except (MunicipalAgendaError, GeminiError) as exc:
         if snapshot is None:
             raise
+        if diagnostics is not None:
+            failure = source_error(
+                "MUNI-AGENDA",
+                "Agenda municipal",
+                exc,
+                stage="FALLBACK",
+            )
+            diagnostics.append(
+                SourceDiagnostic(
+                    failure.code,
+                    failure.source,
+                    f"{failure.description}; использован локальный снимок",
+                )
+            )
         events = snapshot["_events"]
     events = _apply_reviewed_corrections(poster_url, events)
     events = _merge_reviewed_text_agenda(events)
@@ -355,12 +371,18 @@ async def fetch_today_municipal_events(
     now: datetime,
     api_key: str,
     state_path: Path,
+    diagnostics: Optional[List[SourceDiagnostic]] = None,
 ) -> Tuple[Event, ...]:
     """Return up to two translated events, using the snapshot during outages."""
 
     if not api_key:
         raise MunicipalAgendaError("Gemini key is required for municipal agenda")
-    source_events = await _current_events(api_key, now, state_path)
+    source_events = await _current_events(
+        api_key,
+        now,
+        state_path,
+        diagnostics,
+    )
     if not source_events:
         return ()
     try:

@@ -8,6 +8,7 @@ from typing import Any, Awaitable, Callable, Dict, Optional, Set
 from zoneinfo import ZoneInfo
 
 from .aemet import AemetError
+from .diagnostics import source_error
 from .telegram import TelegramError, get_updates, send_message
 
 LOGGER = logging.getLogger(__name__)
@@ -76,19 +77,22 @@ def preview_failure_message(exc: Exception) -> str:
     """Return a concise operator-safe reason without raw transport details."""
 
     if isinstance(exc, AemetError):
-        reason = str(exc)
-        translations = {
-            "The daily Guardamar forecast is unavailable": (
-                "AEMET OpenData не предоставил дневной прогноз "
-                "для Гуардамара после 3 попыток"
-            ),
-            "AEMET request failed": "запрос к AEMET не выполнен",
-            "AEMET did not provide a product download": (
-                "AEMET не предоставил данные прогноза"
-            ),
-        }
-        detail = translations.get(reason, "AEMET вернул некорректные данные")
-        return f"{PREVIEW_FAILURE_PREFIX}\nПричина: {detail}."
+        diagnostic = source_error(
+            "AEMET",
+            "AEMET OpenData",
+            exc,
+            stage="DAY",
+        )
+        return (
+            f"{PREVIEW_FAILURE_PREFIX}\n"
+            f"• {diagnostic.render()}\n"
+            + (
+                "Дневной прогноз обязателен; выполнены 3 попытки."
+                if str(exc)
+                == "The daily Guardamar forecast is unavailable"
+                else "Полученный дневной прогноз не прошёл проверку."
+            )
+        )
     return (
         f"{PREVIEW_FAILURE_PREFIX}\n"
         f"Причина: внутренняя ошибка ({type(exc).__name__})."

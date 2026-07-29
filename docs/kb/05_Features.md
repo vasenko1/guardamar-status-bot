@@ -233,8 +233,13 @@ a user ID listed in `TELEGRAM_ALLOWED_USER_IDS`. It replies privately with
 freshly collected data. Group commands, unauthorized users, stale updates, and
 other commands are ignored. Neither preview path changes publication state or
 publishes to the configured group. If preview generation fails, the private
-reply includes a short safe cause category; raw URLs, credentials, transport
-details, and tracebacks are never returned.
+reply includes a stable source-and-stage code plus a concrete safe cause. A
+successful private preview appends an operator-only diagnostics block for each
+consulted optional source that failed or returned no active SafeBeach data.
+Examples include `AEMET-DAY-HTTP-503`, `AEMET-WARN-INVALID-XML`,
+`SB-NO-ACTIVE`, `POLICE-NETWORK`, and `MUNI-AGENDA-NO-POSTER`. Raw URLs,
+credentials, response bodies, transport internals, and tracebacks are never
+returned. Group publication never includes this diagnostics block.
 
 ### Boundaries
 

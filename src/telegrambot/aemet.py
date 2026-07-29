@@ -17,6 +17,7 @@ from xml.etree import ElementTree
 from zoneinfo import ZoneInfo
 
 from .models import MorningDigest, Warning, Weather
+from .diagnostics import SourceDiagnostic, source_error
 
 AEMET_API_ROOT = "https://opendata.aemet.es/opendata/api"
 GUARDAMAR_MUNICIPALITY_CODE = "03076"
@@ -85,7 +86,11 @@ async def _fetch_product(path: str, api_key: str, limit: int) -> bytes:
     )
     metadata = _decode_json(metadata_bytes)
     if not isinstance(metadata, dict) or metadata.get("estado") != 200:
-        raise AemetError("AEMET did not provide a product download")
+        error = AemetError("AEMET did not provide a product download")
+        if isinstance(metadata, dict):
+            error.api_status = metadata.get("estado")
+            error.api_description = metadata.get("descripcion")
+        raise error
 
     download_url = metadata.get("datos")
     if not isinstance(download_url, str) or not download_url:
@@ -587,6 +592,7 @@ async def fetch_morning_digest(
     *,
     daily_attempts: int = DAILY_FORECAST_ATTEMPTS,
     daily_retry_seconds: float = DAILY_FORECAST_RETRY_SECONDS,
+    diagnostics: Optional[List[SourceDiagnostic]] = None,
 ) -> MorningDigest:
     """Fetch AEMET products sequentially and return one normalized model."""
 
@@ -608,6 +614,15 @@ async def fetch_morning_digest(
             if attempt + 1 < daily_attempts:
                 await asyncio.sleep(daily_retry_seconds)
     if daily_result is None:
+        if diagnostics is not None and daily_error is not None:
+            diagnostics.append(
+                source_error(
+                    "AEMET",
+                    "AEMET OpenData",
+                    daily_error,
+                    stage="DAY",
+                )
+            )
         raise AemetError(
             "The daily Guardamar forecast is unavailable"
         ) from daily_error
@@ -619,9 +634,18 @@ async def fetch_morning_digest(
             api_key,
             JSON_LIMIT_BYTES,
         )
-    except AemetError:
+    except AemetError as exc:
         observation_result = None
         LOGGER.warning("Current Rojales observation is unavailable")
+        if diagnostics is not None:
+            diagnostics.append(
+                source_error(
+                    "AEMET",
+                    "AEMET OpenData",
+                    exc,
+                    stage="OBS",
+                )
+            )
 
     try:
         warning_result = await _fetch_product(
@@ -630,9 +654,18 @@ async def fetch_morning_digest(
             api_key,
             WARNING_LIMIT_BYTES,
         )
-    except AemetError:
+    except AemetError as exc:
         warning_result = None
         LOGGER.warning("AEMET warnings are unavailable")
+        if diagnostics is not None:
+            diagnostics.append(
+                source_error(
+                    "AEMET",
+                    "AEMET OpenData",
+                    exc,
+                    stage="WARN",
+                )
+            )
 
     try:
         beach_result = await _fetch_product(
@@ -641,9 +674,18 @@ async def fetch_morning_digest(
             api_key,
             JSON_LIMIT_BYTES,
         )
-    except AemetError:
+    except AemetError as exc:
         beach_result = None
         LOGGER.warning("AEMET Centro / La Roqueta forecast is unavailable")
+        if diagnostics is not None:
+            diagnostics.append(
+                source_error(
+                    "AEMET",
+                    "AEMET OpenData",
+                    exc,
+                    stage="SEA",
+                )
+            )
 
     local_now = now.astimezone(GUARDAMAR_TIMEZONE)
     (
@@ -683,9 +725,18 @@ async def fetch_morning_digest(
     if warning_result is not None:
         try:
             warnings = normalize_warnings(warning_result, now)
-        except AemetError:
+        except AemetError as exc:
             warnings_available = False
             LOGGER.warning("AEMET warnings could not be interpreted")
+            if diagnostics is not None:
+                diagnostics.append(
+                    source_error(
+                        "AEMET",
+                        "AEMET OpenData",
+                        exc,
+                        stage="WARN",
+                    )
+                )
 
     forecast_sea_temperature = None
     forecast_sea_state = None
@@ -699,11 +750,20 @@ async def fetch_morning_digest(
             ) = normalize_beach_forecast(
                 beach_result, now.astimezone(GUARDAMAR_TIMEZONE).date()
             )
-        except AemetError:
+        except AemetError as exc:
             LOGGER.warning(
                 "AEMET Centro / La Roqueta forecast "
                 "could not be interpreted"
             )
+            if diagnostics is not None:
+                diagnostics.append(
+                    source_error(
+                        "AEMET",
+                        "AEMET OpenData",
+                        exc,
+                        stage="SEA",
+                    )
+                )
     return MorningDigest(
         weather=Weather(
             current_temperature_c=current_temperature,

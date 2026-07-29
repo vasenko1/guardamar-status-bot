@@ -5,7 +5,7 @@ import logging
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 from zoneinfo import ZoneInfo
 
 from .agenda import (
@@ -20,6 +20,7 @@ from .aemet import (
     fetch_morning_digest,
 )
 from .digest import build_message
+from .diagnostics import SourceDiagnostic, source_error
 from .mayor import MayorChannelError, market_is_cancelled
 from .municipal_agenda import (
     MunicipalAgendaError,
@@ -69,6 +70,7 @@ async def produce_message(
     beach_notice: Optional[BeachNotice] = None,
     aemet_daily_attempts: int = DAILY_FORECAST_ATTEMPTS,
     aemet_retry_seconds: float = DAILY_FORECAST_RETRY_SECONDS,
+    diagnostics: Optional[List[SourceDiagnostic]] = None,
 ) -> str:
     """Build a digest; SafeBeach failure must not block AEMET delivery."""
 
@@ -91,17 +93,20 @@ async def produce_message(
             now,
             gemini_api_key,
             municipal_agenda_state_path,
+            diagnostics,
         )
     )
     traffic_task = asyncio.create_task(
         fetch_traffic_notices(now, gemini_api_key or None)
     )
+    beach_failed = False
     try:
         digest = await fetch_morning_digest(
             api_key=api_key,
             now=now,
             daily_attempts=aemet_daily_attempts,
             daily_retry_seconds=aemet_retry_seconds,
+            diagnostics=diagnostics,
         )
     except BaseException:
         if beach_task is not None:
@@ -120,11 +125,29 @@ async def produce_message(
             else beach_status
         )
     except SafeBeachError as exc:
+        beach_failed = True
         LOGGER.warning(
             "SafeBeach unavailable; omitting beach status: %s",
             exc,
         )
+        if diagnostics is not None:
+            diagnostics.append(
+                source_error("SB", "SafeBeach", exc)
+            )
         beach = None
+    if (
+        diagnostics is not None
+        and beach_task is not None
+        and beach is None
+        and not beach_failed
+    ):
+        diagnostics.append(
+            SourceDiagnostic(
+                "SB-NO-ACTIVE",
+                "SafeBeach",
+                "ответ получен, но активных данных выбранных пляжей нет",
+            )
+        )
 
     if (
         beach is not None
@@ -147,6 +170,10 @@ async def produce_message(
             "Agenda Guardamar unavailable; omitting events: %s",
             exc,
         )
+        if diagnostics is not None:
+            diagnostics.append(
+                source_error("AGENDA", "Agenda Guardamar", exc)
+            )
         events = ()
 
     try:
@@ -156,6 +183,14 @@ async def produce_message(
             "Municipal agenda unavailable; omitting poster events: %s",
             exc,
         )
+        if diagnostics is not None:
+            diagnostics.append(
+                source_error(
+                    "MUNI-AGENDA",
+                    "Agenda municipal",
+                    exc,
+                )
+            )
         municipal_events = ()
 
     try:
@@ -165,6 +200,10 @@ async def produce_message(
             "Policía Local unavailable; omitting traffic notices: %s",
             exc,
         )
+        if diagnostics is not None:
+            diagnostics.append(
+                source_error("POLICE", "Policía Local", exc)
+            )
         traffic_notices = ()
 
     if market_status_task is not None:
@@ -180,6 +219,15 @@ async def produce_message(
                 "Mayor channel unavailable; omitting regular market: %s",
                 exc,
             )
+            if diagnostics is not None:
+                diagnostics.append(
+                    source_error(
+                        "MAYOR",
+                        "@AlcaldeGuardamar",
+                        exc,
+                        stage="MARKET",
+                    )
+                )
 
     return build_message(
         replace(
