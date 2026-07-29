@@ -20,6 +20,9 @@ published, while listing all six SafeBeach positions would add noise.
 - Render each color group on its own indented line under
   `🏖 Флаги на пляжах:`.
 - Use SafeBeach update times only to validate freshness; do not display them.
+- Require the public page date to match the current `Europe/Madrid` date.
+- Omit an individual beach when duplicate active records conflict or its known
+  flag label contradicts its known color value.
 - Never average flags or replace a missing beach with another beach's value.
 - Publish when at least one selected beach has a current flag. Omit unavailable
   selected beaches; omit the complete flag row when none are current.

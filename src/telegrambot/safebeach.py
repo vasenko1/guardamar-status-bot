@@ -4,19 +4,19 @@ import asyncio
 import json
 import math
 import re
+import socket
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, time
-from typing import Any, Dict, Optional
+from datetime import date, datetime, time
+from typing import Any, Dict, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from .models import BeachStatus
 
 SAFEBEACH_URL = "https://info.safebeach.es/guardamar-del-segura"
 REQUEST_TIMEOUT_SECONDS = 10
-HTML_LIMIT_BYTES = 500_000
-TARGET_BEACH_NAME = "platja centre / babilònia"
+HTML_LIMIT_BYTES = 256_000
 NEARBY_BEACHES = {
     "platja centre / babilònia": "Centre",
     "platja la roqueta": "Roqueta",
@@ -24,10 +24,12 @@ NEARBY_BEACHES = {
 }
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 
-_MARKERS_PATTERN = re.compile(
-    rb"window\.SB_MARKERS\s*=\s*(\[.*?\]);", re.DOTALL
+_MARKERS_ANCHOR = b"window.SB_MARKERS"
+_PAGE_DATE_PATTERN = re.compile(
+    rb"""<div\s+class=["']sub["'][^>]*>[^<]*?"""
+    rb"(\d{2}/\d{2}/\d{4})\s*</div>",
+    re.IGNORECASE,
 )
-_FLAG_PRIORITY = {"green": 1, "yellow": 2, "red": 3}
 _FLAG_HEX = {
     "#00ff00": "green",
     "#008000": "green",
@@ -41,58 +43,156 @@ _FLAG_HEX = {
 class SafeBeachError(RuntimeError):
     """Raised when SafeBeach data cannot be safely retrieved or parsed."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "INVALID",
+        status: Optional[int] = None,
+        description: Optional[str] = None,
+    ) -> None:
+        super().__init__(message)
+        self.diagnostic_code = code
+        self.server_status = status
+        self.safe_description = description
+
+
+def _is_safebeach_url(url: str) -> bool:
+    parsed = urllib.parse.urlparse(url)
+    return (
+        parsed.scheme == "https"
+        and parsed.hostname == "info.safebeach.es"
+    )
+
+
+class _SafeBeachRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self,
+        request,
+        file_pointer,
+        code,
+        message,
+        headers,
+        new_url,
+    ):
+        if not _is_safebeach_url(new_url):
+            raise SafeBeachError(
+                "SafeBeach redirected outside its public host",
+                code="REDIRECT",
+                description="сервер перенаправил запрос за пределы SafeBeach",
+            )
+        return super().redirect_request(
+            request,
+            file_pointer,
+            code,
+            message,
+            headers,
+            new_url,
+        )
+
 
 def _read_page() -> bytes:
     request = urllib.request.Request(
         SAFEBEACH_URL,
         headers={
             "Accept": "text/html",
-            "User-Agent": "GuardamarMorningDigest/0.1",
+            "Accept-Language": "es",
+            "User-Agent": "GuardamarMorningDigest/0.11",
         },
     )
     try:
-        with urllib.request.urlopen(
-            request, timeout=REQUEST_TIMEOUT_SECONDS
-        ) as response:
-            final_url = urllib.parse.urlparse(response.geturl())
-            if (
-                final_url.scheme != "https"
-                or final_url.hostname != "info.safebeach.es"
-            ):
+        opener = urllib.request.build_opener(
+            _SafeBeachRedirectHandler()
+        )
+        with opener.open(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+            if not _is_safebeach_url(response.geturl()):
                 raise SafeBeachError(
-                    "SafeBeach returned an unexpected redirect"
+                    "SafeBeach returned an unexpected URL",
+                    code="REDIRECT",
+                    description="получен недопустимый адрес ответа",
+                )
+            content_type = response.headers.get_content_type()
+            if content_type != "text/html":
+                raise SafeBeachError(
+                    "SafeBeach returned an unexpected content type",
+                    code="CONTENT-TYPE",
+                    description=(
+                        "сервер вернул содержимое не в формате HTML"
+                    ),
                 )
             payload = response.read(HTML_LIMIT_BYTES + 1)
-    except (
-        urllib.error.HTTPError,
-        urllib.error.URLError,
-        TimeoutError,
-    ) as exc:
-        raise SafeBeachError("SafeBeach request failed") from exc
+    except urllib.error.HTTPError as exc:
+        raise SafeBeachError(
+            f"SafeBeach HTTP status {exc.code}",
+            code=f"HTTP-{exc.code}",
+            status=exc.code,
+            description=f"сервер вернул HTTP {exc.code}",
+        ) from exc
+    except (TimeoutError, socket.timeout) as exc:
+        raise SafeBeachError(
+            "SafeBeach request timed out",
+            code="TIMEOUT",
+            description="сервер не ответил до истечения тайм-аута",
+        ) from exc
+    except urllib.error.URLError as exc:
+        raise SafeBeachError(
+            "SafeBeach network request failed",
+            code="NETWORK",
+            description="не удалось установить сетевое соединение",
+        ) from exc
 
     if len(payload) > HTML_LIMIT_BYTES:
         raise SafeBeachError(
-            "SafeBeach response exceeded the configured size limit"
+            "SafeBeach response exceeded the configured size limit",
+            code="TOO-LARGE",
+            description="ответ превысил допустимый размер",
         )
     return payload
 
 
-def _flag_color(item: Dict[str, Any]) -> Optional[str]:
-    label = item.get("textoBandera")
-    if isinstance(label, str):
-        normalized = label.casefold()
-        for color in _FLAG_PRIORITY:
-            if color in normalized:
-                return color
-        spanish = {"verde": "green", "amarilla": "yellow", "roja": "red"}
-        for word, color in spanish.items():
-            if word in normalized:
-                return color
+def _label_flag_color(value: Any) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().casefold()
+    colors = {
+        "green"
+        if word in {"green", "verde"}
+        else "yellow"
+        if word in {"yellow", "amarilla", "amarillo"}
+        else "red"
+        for word in re.findall(r"[a-záéíóúüñ]+", normalized)
+        if word
+        in {
+            "green",
+            "verde",
+            "yellow",
+            "amarilla",
+            "amarillo",
+            "red",
+            "roja",
+        }
+    }
+    return next(iter(colors)) if len(colors) == 1 else None
 
+
+def _flag_color(
+    item: Dict[str, Any],
+) -> Tuple[Optional[str], bool]:
+    label = item.get("textoBandera")
+    label_color = _label_flag_color(label)
     color = item.get("colorBandera")
-    if isinstance(color, str):
-        return _FLAG_HEX.get(color.casefold())
-    return None
+    hex_color = (
+        _FLAG_HEX.get(color.strip().casefold())
+        if isinstance(color, str)
+        else None
+    )
+    if (
+        label_color is not None
+        and hex_color is not None
+        and label_color != hex_color
+    ):
+        return None, False
+    return label_color or hex_color, True
 
 
 def _sea_temperature(value: Any) -> Optional[int]:
@@ -168,23 +268,80 @@ def _updated_time(value: Any) -> Optional[time]:
         return None
 
 
-def normalize_beach_status(payload: bytes) -> Optional[BeachStatus]:
+def _page_date(payload: bytes) -> date:
+    match = _PAGE_DATE_PATTERN.search(payload)
+    if match is None:
+        raise SafeBeachError(
+            "SafeBeach page had no current date",
+            code="NO-DATE",
+            description="страница не содержит дату данных",
+        )
+    try:
+        return datetime.strptime(
+            match.group(1).decode("ascii"),
+            "%d/%m/%Y",
+        ).date()
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise SafeBeachError(
+            "SafeBeach page date was invalid",
+            code="INVALID-DATE",
+            description="страница содержит некорректную дату",
+        ) from exc
+
+
+def _markers(payload: bytes) -> Any:
+    anchor = payload.find(_MARKERS_ANCHOR)
+    if anchor < 0:
+        raise SafeBeachError(
+            "SafeBeach page did not contain beach data",
+            code="NO-DATA",
+            description="на странице отсутствует блок данных пляжей",
+        )
+    equals = payload.find(b"=", anchor + len(_MARKERS_ANCHOR))
+    if equals < 0:
+        raise SafeBeachError(
+            "SafeBeach beach data assignment was invalid",
+            code="INVALID-DATA",
+            description="блок данных пляжей имеет некорректный формат",
+        )
+    try:
+        text = payload[equals + 1 :].decode("utf-8").lstrip()
+        markers, _ = json.JSONDecoder().raw_decode(text)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise SafeBeachError(
+            "SafeBeach returned invalid beach data",
+            code="INVALID-JSON",
+            description="данные пляжей не являются корректным JSON",
+        ) from exc
+    return markers
+
+
+def normalize_beach_status(
+    payload: bytes,
+    expected_date: date,
+) -> Optional[BeachStatus]:
     """Return Centre conditions and individual nearby beach flags."""
 
-    match = _MARKERS_PATTERN.search(payload)
-    if match is None:
-        raise SafeBeachError("SafeBeach page did not contain beach data")
-    try:
-        markers = json.loads(match.group(1).decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise SafeBeachError("SafeBeach returned invalid beach data") from exc
+    source_date = _page_date(payload)
+    if source_date != expected_date:
+        raise SafeBeachError(
+            "SafeBeach page date did not match today",
+            code="STALE-DATE",
+            description=(
+                f"дата страницы {source_date:%d.%m.%Y} "
+                f"не совпадает с текущей {expected_date:%d.%m.%Y}"
+            ),
+        )
+    markers = _markers(payload)
     if not isinstance(markers, list):
-        raise SafeBeachError("SafeBeach beach data was not a list")
+        raise SafeBeachError(
+            "SafeBeach beach data was not a list",
+            code="INVALID-STRUCTURE",
+            description="список пляжей имеет некорректную структуру",
+        )
 
-    centre = None
-    nearby_flags = []
-    jellyfish_beaches = []
-    updated_times = []
+    records: Dict[str, Tuple[Any, ...]] = {}
+    conflicted = set()
     for marker in markers:
         if not isinstance(marker, dict):
             continue
@@ -200,38 +357,65 @@ def normalize_beach_status(payload: bytes) -> Optional[BeachStatus]:
                 continue
             beach_name = str(item.get("beachName", "")).strip().casefold()
             short_name = NEARBY_BEACHES.get(beach_name)
-            if short_name is None:
+            if short_name is None or short_name in conflicted:
                 continue
-            flag = _flag_color(item)
-            if flag is not None:
-                nearby_flags.append((short_name, flag))
-                updated = _updated_time(item.get("hora"))
-                if updated is not None:
-                    updated_times.append((short_name, updated))
-            if _jellyfish_present(item.get("medusas")):
-                jellyfish_beaches.append(short_name)
-            if beach_name == TARGET_BEACH_NAME:
-                centre = (
-                    flag,
-                    _sea_temperature(item.get("waterTemp")),
-                    _wind_direction(item.get("windDeg")),
-                    _wind_speed_kmh(item.get("viento")),
-                    _sea_state(item.get("oleaje")),
-                )
+            flag, flag_is_consistent = _flag_color(item)
+            if not flag_is_consistent:
+                conflicted.add(short_name)
+                records.pop(short_name, None)
+                continue
+            record = (
+                flag,
+                _sea_temperature(item.get("waterTemp")),
+                _wind_direction(item.get("windDeg")),
+                _wind_speed_kmh(item.get("viento")),
+                _sea_state(item.get("oleaje")),
+                _jellyfish_present(item.get("medusas")),
+                _updated_time(item.get("hora")),
+            )
+            previous = records.get(short_name)
+            if previous is not None and previous != record:
+                conflicted.add(short_name)
+                records.pop(short_name, None)
+                continue
+            records[short_name] = record
 
-    if centre is None and not nearby_flags:
+    if not records:
         return None
+    centre = records.get("Centre")
     if centre is None:
         flag = sea_temperature = wind_direction = wind_speed = sea_state = None
     else:
-        flag, sea_temperature, wind_direction, wind_speed, sea_state = centre
+        (
+            flag,
+            sea_temperature,
+            wind_direction,
+            wind_speed,
+            sea_state,
+            _,
+            _,
+        ) = centre
     order = {"Centre": 0, "Roqueta": 1, "Vivers": 2}
+    nearby_flags = [
+        (name, record[0])
+        for name, record in records.items()
+        if record[0] is not None
+    ]
+    jellyfish_beaches = [
+        name for name, record in records.items() if record[5]
+    ]
+    updated_times = [
+        (name, record[6])
+        for name, record in records.items()
+        if record[0] is not None and record[6] is not None
+    ]
     nearby_flags.sort(key=lambda item: order[item[0]])
     jellyfish_beaches.sort(key=order.__getitem__)
     updated_times.sort(key=lambda item: order[item[0]])
     return BeachStatus(
         flag_color=flag,
         sea_temperature_c=sea_temperature,
+        source_date=source_date,
         wind_direction=wind_direction,
         wind_speed_kmh=wind_speed,
         sea_state=sea_state,
@@ -255,6 +439,8 @@ def is_complete_current_status(
     if not flags or not flags <= expected or set(times) != flags:
         return False
     local_now = now.astimezone(GUARDAMAR_TIMEZONE)
+    if status.source_date != local_now.date():
+        return False
     latest_allowed = (
         local_now.hour * 60 + local_now.minute + 5
     )
@@ -264,8 +450,15 @@ def is_complete_current_status(
     )
 
 
-async def fetch_beach_status() -> Optional[BeachStatus]:
+async def fetch_beach_status(
+    now: Optional[datetime] = None,
+) -> Optional[BeachStatus]:
     """Fetch the official public Guardamar SafeBeach status."""
 
+    local_now = (
+        now.astimezone(GUARDAMAR_TIMEZONE)
+        if now is not None
+        else datetime.now(GUARDAMAR_TIMEZONE)
+    )
     payload = await asyncio.to_thread(_read_page)
-    return normalize_beach_status(payload)
+    return normalize_beach_status(payload, local_now.date())

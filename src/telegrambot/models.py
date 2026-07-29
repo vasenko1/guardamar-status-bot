@@ -30,6 +30,7 @@ class Warning:
 class BeachStatus:
     flag_color: Optional[str]
     sea_temperature_c: Optional[int]
+    source_date: Optional[date] = None
     wind_direction: Optional[str] = None
     wind_speed_kmh: Optional[int] = None
     sea_state: Optional[str] = None

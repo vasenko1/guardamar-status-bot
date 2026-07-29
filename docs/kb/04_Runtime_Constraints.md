@@ -66,6 +66,9 @@ deployment agent or self-hosted CI runner.
   mandatory forecast and two for each optional product, with short exponential
   delays or a server-provided `Retry-After` only when it fits the runtime
   budget.
+- SafeBeach uses one bounded request per invocation. Do not add an inner retry,
+  response cache, cookies, or browser execution; the external five-minute
+  checks already provide seasonal recovery.
 - Do not make digest delivery depend on every source succeeding.
 
 ### Storage

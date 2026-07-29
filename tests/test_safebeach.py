@@ -1,23 +1,42 @@
+import email.message
 import json
 import unittest
-from datetime import datetime
-from unittest.mock import AsyncMock, patch
+import urllib.error
+from datetime import date, datetime, time
+from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
 from telegrambot.models import BeachStatus, MorningDigest, Weather
 from telegrambot.morning import _safebeach_is_in_season, produce_message
 from telegrambot.safebeach import (
     SafeBeachError,
+    _read_page,
+    fetch_beach_status,
     is_complete_current_status,
     normalize_beach_status,
 )
 
 MADRID = ZoneInfo("Europe/Madrid")
+TEST_DAY = date(2026, 7, 29)
 
 
-def _page(markers):
+def _page(markers, page_date=TEST_DAY):
     data = json.dumps(markers, separators=(",", ":")).encode()
-    return b"<script>window.SB_MARKERS = " + data + b";</script>"
+    displayed = page_date.strftime("%d/%m/%Y").encode()
+    return (
+        b'<div class="sub">Mi\xc3\xa9rcoles - '
+        + displayed
+        + b"</div><script>window.SB_MARKERS = "
+        + data
+        + b";</script>"
+    )
+
+
+def _normalize(markers, page_date=TEST_DAY):
+    return normalize_beach_status(
+        _page(markers, page_date),
+        TEST_DAY,
+    )
 
 
 def _marker(
@@ -71,28 +90,26 @@ class SafeBeachNormalizationTests(unittest.TestCase):
         )
 
     def test_selects_centre_conditions_and_three_nearby_flags(self):
-        status = normalize_beach_status(
-            _page(
-                [
-                    _marker("verde", "25º C"),
-                    _marker(
-                        "amarilla",
-                        "23º C",
-                        beach_name="Platja La Roqueta",
-                        jellyfish="Sí",
-                    ),
-                    _marker(
-                        "verde",
-                        "24º C",
-                        beach_name="Platja dels Vivers",
-                    ),
-                    _marker(
-                        "roja",
-                        "23º C",
-                        beach_name="Platja del Camp",
-                    ),
-                ]
-            )
+        status = _normalize(
+            [
+                _marker("verde", "25º C"),
+                _marker(
+                    "amarilla",
+                    "23º C",
+                    beach_name="Platja La Roqueta",
+                    jellyfish="Sí",
+                ),
+                _marker(
+                    "verde",
+                    "24º C",
+                    beach_name="Platja dels Vivers",
+                ),
+                _marker(
+                    "roja",
+                    "23º C",
+                    beach_name="Platja del Camp",
+                ),
+            ]
         )
 
         self.assertEqual(status.flag_color, "green")
@@ -109,63 +126,191 @@ class SafeBeachNormalizationTests(unittest.TestCase):
             ),
         )
         self.assertEqual(status.jellyfish_beaches, ("Roqueta",))
+        self.assertEqual(status.source_date, TEST_DAY)
+
+    def test_rejects_page_from_another_local_date(self):
+        with self.assertRaises(SafeBeachError) as raised:
+            _normalize(
+                [_marker("verde")],
+                date(2026, 7, 28),
+            )
+
+        self.assertEqual(raised.exception.diagnostic_code, "STALE-DATE")
+
+    def test_omits_conflicting_flag_but_keeps_other_valid_beach(self):
+        centre = _marker("verde")
+        centre["items"][0]["colorBandera"] = "#FF0000"
+
+        status = _normalize(
+            [
+                centre,
+                _marker(
+                    "amarilla",
+                    beach_name="Platja La Roqueta",
+                ),
+            ]
+        )
+
+        self.assertEqual(status.nearby_flags, (("Roqueta", "yellow"),))
+        self.assertIsNone(status.flag_color)
+
+    def test_omits_conflicting_duplicate_beach_records(self):
+        status = _normalize(
+            [
+                _marker("verde"),
+                _marker("roja"),
+                _marker(
+                    "amarilla",
+                    beach_name="Platja La Roqueta",
+                ),
+            ]
+        )
+
+        self.assertEqual(status.nearby_flags, (("Roqueta", "yellow"),))
+
+    def test_json_extraction_is_not_broken_by_script_text_in_a_value(self):
+        marker = _marker("verde")
+        marker["note"] = "literal ]; inside JSON"
+
+        status = _normalize([marker])
+
+        self.assertEqual(status.nearby_flags, (("Centre", "green"),))
 
     def test_accepts_one_or_more_flags_with_plausible_update_times(self):
-        status = normalize_beach_status(
-            _page(
-                [
-                    _marker("verde", updated="10:05"),
-                    _marker(
-                        "amarilla",
-                        beach_name="Platja La Roqueta",
-                        updated="10:04",
-                    ),
-                    _marker(
-                        "verde",
-                        beach_name="Platja dels Vivers",
-                        updated="10:03",
-                    ),
-                ]
-            )
+        status = _normalize(
+            [
+                _marker("verde", updated="10:05"),
+                _marker(
+                    "amarilla",
+                    beach_name="Platja La Roqueta",
+                    updated="10:04",
+                ),
+                _marker(
+                    "verde",
+                    beach_name="Platja dels Vivers",
+                    updated="10:03",
+                ),
+            ]
         )
         now = datetime(2026, 7, 29, 10, 10, tzinfo=MADRID)
 
         self.assertTrue(is_complete_current_status(status, now))
         self.assertTrue(
             is_complete_current_status(
-                normalize_beach_status(_page([_marker("verde")])),
+                _normalize([_marker("verde")]),
                 now,
             )
         )
         self.assertFalse(
             is_complete_current_status(
-                normalize_beach_status(
-                    _page([_marker("verde", updated="")])
-                ),
+                _normalize([_marker("verde", updated="")]),
                 now,
             )
         )
         self.assertFalse(
             is_complete_current_status(
-                normalize_beach_status(
-                    _page([_marker("verde", updated="10:16")])
+                _normalize([_marker("verde", updated="10:16")]),
+                now,
+            )
+        )
+        self.assertFalse(
+            is_complete_current_status(
+                BeachStatus(
+                    flag_color="green",
+                    sea_temperature_c=24,
+                    source_date=date(2026, 7, 28),
+                    nearby_flags=(("Centre", "green"),),
+                    updated_times=(("Centre", time(10, 5)),),
                 ),
                 now,
             )
         )
 
     def test_ignores_ended_service_and_allows_missing_temperature(self):
-        status = normalize_beach_status(
-            _page(
-                [
-                    _marker("roja", "22º C", ended=True),
-                    _marker("amarilla", "not available"),
-                ]
-            )
+        status = _normalize(
+            [
+                _marker("roja", "22º C", ended=True),
+                _marker("amarilla", "not available"),
+            ]
         )
 
         self.assertEqual(status.flag_color, "yellow")
         self.assertIsNone(status.sea_temperature_c)
+
+
+class SafeBeachTransportTests(unittest.IsolatedAsyncioTestCase):
+    def _response(self, payload, content_type="text/html; charset=UTF-8"):
+        headers = email.message.Message()
+        headers["Content-Type"] = content_type
+        response = MagicMock()
+        response.geturl.return_value = (
+            "https://info.safebeach.es/guardamar-del-segura"
+        )
+        response.headers = headers
+        response.read.return_value = payload
+        response.__enter__.return_value = response
+        return response
+
+    def test_accepts_one_bounded_html_response(self):
+        response = self._response(b"<html></html>")
+        opener = MagicMock()
+        opener.open.return_value = response
+
+        with patch(
+            "telegrambot.safebeach.urllib.request.build_opener",
+            return_value=opener,
+        ):
+            self.assertEqual(_read_page(), b"<html></html>")
+
+        opener.open.assert_called_once()
+        self.assertEqual(
+            response.read.call_args.args[0],
+            256_001,
+        )
+
+    def test_rejects_non_html_response(self):
+        response = self._response(b"{}", "application/json")
+        opener = MagicMock()
+        opener.open.return_value = response
+
+        with patch(
+            "telegrambot.safebeach.urllib.request.build_opener",
+            return_value=opener,
+        ), self.assertRaises(SafeBeachError) as raised:
+            _read_page()
+
+        self.assertEqual(raised.exception.diagnostic_code, "CONTENT-TYPE")
+
+    def test_exposes_server_http_status_without_retry(self):
+        opener = MagicMock()
+        opener.open.side_effect = urllib.error.HTTPError(
+            "https://info.safebeach.es/guardamar-del-segura",
+            503,
+            "unavailable",
+            {},
+            None,
+        )
+
+        with patch(
+            "telegrambot.safebeach.urllib.request.build_opener",
+            return_value=opener,
+        ), self.assertRaises(SafeBeachError) as raised:
+            _read_page()
+
+        self.assertEqual(raised.exception.diagnostic_code, "HTTP-503")
+        self.assertEqual(raised.exception.server_status, 503)
+        opener.open.assert_called_once()
+
+    async def test_fetch_validates_against_supplied_local_date(self):
+        with patch(
+            "telegrambot.safebeach._read_page",
+            return_value=_page([_marker("verde")]),
+        ):
+            status = await fetch_beach_status(
+                datetime(2026, 7, 29, 10, 10, tzinfo=MADRID)
+            )
+
+        self.assertEqual(status.source_date, TEST_DAY)
 
 
 class SafeBeachFailureTests(unittest.IsolatedAsyncioTestCase):

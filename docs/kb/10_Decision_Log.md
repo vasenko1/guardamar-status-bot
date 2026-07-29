@@ -5,6 +5,7 @@ Detailed decisions belong in `adr/`.
 
 | Date | Decision | Context and reason | Record |
 | --- | --- | --- | --- |
+| 2026-07-30 | Harden the public SafeBeach adapter without history or caching | One bounded same-day HTML request, strict host/type/schema checks, and fail-closed conflict handling improve safety while external five-minute invocations remain the only retry mechanism. | `adr/0024-safebeach-public-client.md` |
 | 2026-07-29 | Replace fixed AEMET delays with bounded protocol-aware recovery | Retry only transient failures, honor usable `Retry-After`, repeat the complete two-step request, keep the key off product URLs, and convert UTC forecast periods to Madrid time. | `adr/0023-aemet-client-reliability.md` |
 | 2026-07-29 | Add stable source diagnostics to private previews only | The operator needs a transferable code and concrete failure stage for every consulted source; group messages remain free of technical noise and secrets. | `adr/0010-private-preview-listener.md` |
 | 2026-07-29 | Publish available SafeBeach flags without waiting for all three selected beaches | One missing record must not hide current official flags for other beaches; absent beaches are omitted, Centre is labeled as the combined Centre / Babilònia zone, and generic flag meanings are omitted. | `adr/0018-nearby-beach-flags.md` |

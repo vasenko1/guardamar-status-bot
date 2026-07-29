@@ -95,6 +95,16 @@ or as one compact transition when they differ. AEMET never supplies or implies
 a flag. Unknown colors, ended service, missing data, request failure, or schema
 failure omit the affected optional value and never block the weather digest.
 
+The adapter makes one bounded HTTPS request to the exact public SafeBeach host,
+accepts HTML only, and validates the page date against `Europe/Madrid`. It
+extracts the embedded JSON from its fixed assignment with the standard JSON
+decoder rather than executing JavaScript or matching the complete array with a
+regular expression. Equal duplicate records are collapsed; conflicting
+duplicates or disagreements between a known flag label and known flag color
+omit that beach. There is no internal retry, cookie state, raw-response cache,
+or status history. A page with no active selected record is a valid empty
+result, not a source error.
+
 SafeBeach is requested only inside the conservative local season from 20 June
 through 14 September, inclusive. Outside this window all operational
 SafeBeach values are omitted, preventing a stale active record from exposing a
