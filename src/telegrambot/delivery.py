@@ -130,7 +130,7 @@ async def publish_update(
 
             beach_ready = beach_status is not None
             if not beach_ready and not final_attempt:
-                LOGGER.info("WAIT: SafeBeach has no current selected flag yet")
+                LOGGER.info("WAIT: SafeBeach has no eligible current flag yet")
                 return "waiting"
 
             published_at = datetime.fromisoformat(

@@ -125,8 +125,11 @@ copy and inserts only newly verified beach information.
 
 The SafeBeach adapter performs one bounded HTML request per invocation and
 does not add an internal retry or cache. The external five-minute invocations
-provide recovery. It accepts only a same-day page and independently valid
-selected-beach records; conflicting or malformed records are omitted.
+provide recovery. It accepts only a page carrying today's local calendar date
+and independently valid, timestamped beach records. It returns at most three
+flags: Centre / Babilònia, Roqueta, and Vivers first, then other active
+Guardamar beaches as named fallbacks. Conflicting or malformed records are
+omitted.
 
 Termux invokes the morning command at 07:30 and the update command every five
 minutes from 10:10 through 10:40 in `Europe/Madrid`.

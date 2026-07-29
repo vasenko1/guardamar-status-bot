@@ -72,15 +72,20 @@ AEMET's period. Lower or malformed values are omitted.
 Guardamar municipality links to
 `https://info.safebeach.es/guardamar-del-segura`. The public page embeds
 structured records for Guardamar beaches. The adapter selects
-`Platja Centre / Babilònia`, `Platja La Roqueta`, and `Platja dels Vivers`.
-It reads only their name, activity state, service-ended state, and flag color,
-plus jellyfish presence, and Centre water temperature, sea state, wind speed,
-and wind direction.
+up to three active records. It prioritizes `Platja Centre / Babilònia`,
+`Platja La Roqueta`, and `Platja dels Vivers`, then fills missing slots from
+`Platja del Montcaio`, `Platja del Camp`, and `Platja de les Ortigues`.
+Fallback records retain their own beach names and are never treated as
+measurements for a missing preferred beach. The adapter reads only name,
+activity state, service-ended state, update time, and flag color, plus
+jellyfish presence, and Centre water temperature, sea state, wind speed, and
+wind direction.
 
 Only active, non-ended lifeguard records are eligible. A replacement requires
-at least one selected flag with a plausible update time. Missing selected
-beaches are omitted; their colors are never inferred. Optional sea, wind, and
-jellyfish fields never block publication. SafeBeach supplies
+at least one flag with a plausible update time. A missing timestamp omits only
+that beach and does not block another valid one. Missing beaches are omitted;
+their colors are never inferred. Optional sea, wind, and jellyfish fields
+never block publication. SafeBeach supplies
 individual nearby flags and current beach wind when present. Its Centre water
 temperature and sea state are fallbacks when the AEMET beach forecast omits
 those values. Flags are never averaged or generalized; they are grouped by
@@ -96,14 +101,16 @@ a flag. Unknown colors, ended service, missing data, request failure, or schema
 failure omit the affected optional value and never block the weather digest.
 
 The adapter makes one bounded HTTPS request to the exact public SafeBeach host,
-accepts HTML only, and validates the page date against `Europe/Madrid`. It
+accepts HTML only, and validates the page's calendar date against
+`Europe/Madrid`. That rejects an old complete response but does not prove when
+each beach record synchronized. It
 extracts the embedded JSON from its fixed assignment with the standard JSON
 decoder rather than executing JavaScript or matching the complete array with a
-regular expression. Equal duplicate records are collapsed; conflicting
-duplicates or disagreements between a known flag label and known flag color
-omit that beach. There is no internal retry, cookie state, raw-response cache,
-or status history. A page with no active selected record is a valid empty
-result, not a source error.
+regular expression. Same-color duplicate records use the newest valid update
+time. Conflicting timestamped flag colors or disagreements between a known
+flag label and known flag color omit that beach. There is no internal retry,
+cookie state, raw-response cache, or status history. A page with no eligible
+record is a valid empty result, not a source error.
 
 SafeBeach is requested only inside the conservative local season from 20 June
 through 14 September, inclusive. Outside this window all operational

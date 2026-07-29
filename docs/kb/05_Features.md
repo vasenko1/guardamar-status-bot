@@ -58,7 +58,7 @@ The order never changes:
 3. Rain probability and period, only at 75% or above
 4. AEMET sea temperature and optional sea-state forecast
 5. Current wind with optional inline forecast
-6. Available flags for Centre / Babilònia, Roqueta, and Vivers, grouped by color
+6. Up to three available Guardamar beach flags, grouped by color
 7. Jellyfish beaches, only when explicitly reported
 8. Warning
 9. Traffic or closure
@@ -78,10 +78,14 @@ operational rows are considered only from 20 June through 14 September,
 inclusive. The flag row is shown only
 when SafeBeach has at least one active nearby record. It names each available
 beach and never averages flags. Groups use the fixed safety order red, yellow,
-then green. Within every beach-name list use the product order `Centre /
-Babilònia`, `Roqueta`, `Vivers`, so the central zone is first whenever
-represented. When at least one selected flag is current, unavailable selected
-beaches are omitted rather than assigned a reassuring default. The sea
+then green. Beach selection uses the fixed priority `Centre / Babilònia`,
+`Roqueta`, `Vivers`, `Montcaio`, `Camp`, `Ortigues`. The first three remain
+preferred; missing or unusable preferred records are replaced by the next
+active timestamped Guardamar beach until at most three are available. Within
+every beach-name list use the same product order, so the central zone is first
+whenever represented. No fallback is presented under another beach's name.
+When at least one flag is current, unavailable beaches are omitted rather than
+assigned a reassuring default. The sea
 temperature and sea-state text use the AEMET
 Centro / La Roqueta forecast. Equal sea-state periods render once as
 `умеренные волны`; a change renders compactly as
@@ -136,8 +140,9 @@ row layout.
 
 The beach-status slice adds:
 
-- separate active SafeBeach flags for `Platja Centre / Babilònia`,
-  `Platja La Roqueta`, and `Platja dels Vivers`;
+- up to three separate active SafeBeach flags, preferring
+  `Platja Centre / Babilònia`, `Platja La Roqueta`, and `Platja dels Vivers`,
+  with `Montcaio`, `Camp`, and `Ortigues` as named availability fallbacks;
 - today's AEMET water temperature and sea-state forecast for
   `Centro / La Roqueta`;
 - Centre water temperature and sea state as SafeBeach fallbacks;
@@ -209,7 +214,8 @@ presented as absence of warnings.
 - One configured Telegram chat or channel
 - Publish the full non-operational beach briefing at `07:30`
 - Check SafeBeach at `10:10`, then every five minutes through `10:40`
-- Accept one or more active, non-ended, timestamped selected beach flags
+- Accept one or more active, non-ended, timestamped Guardamar beach flags,
+  selecting at most three by the documented priority
 - Before completeness, exit without checking or collecting other sources
 - After completeness, or after the final failed check, inspect the Mayor
   channel once for a new explicit bathing-status transition since 07:30

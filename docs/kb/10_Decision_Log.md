@@ -5,6 +5,7 @@ Detailed decisions belong in `adr/`.
 
 | Date | Decision | Context and reason | Record |
 | --- | --- | --- | --- |
+| 2026-07-30 | Fill up to three SafeBeach flag slots from named Guardamar beaches | Centre / Babilònia, Roqueta, and Vivers remain preferred, while Montcaio, Camp, and Ortigues prevent one unavailable preferred record from unnecessarily shrinking the useful beach status. Flags are never averaged or renamed. | `adr/0024-safebeach-public-client.md` |
 | 2026-07-30 | Harden the public SafeBeach adapter without history or caching | One bounded same-day HTML request, strict host/type/schema checks, and fail-closed conflict handling improve safety while external five-minute invocations remain the only retry mechanism. | `adr/0024-safebeach-public-client.md` |
 | 2026-07-29 | Replace fixed AEMET delays with bounded protocol-aware recovery | Retry only transient failures, honor usable `Retry-After`, repeat the complete two-step request, keep the key off product URLs, and convert UTC forecast periods to Madrid time. | `adr/0023-aemet-client-reliability.md` |
 | 2026-07-29 | Add stable source diagnostics to private previews only | The operator needs a transferable code and concrete failure stage for every consulted source; group messages remain free of technical noise and secrets. | `adr/0010-private-preview-listener.md` |

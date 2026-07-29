@@ -119,8 +119,8 @@ async def produce_message(
     except SafeBeachError as exc:
         beach_failed = True
         LOGGER.warning(
-            "SafeBeach unavailable; omitting beach status: %s",
-            exc,
+            "SafeBeach %s; omitting beach status",
+            exc.diagnostic_code,
         )
         if diagnostics is not None:
             diagnostics.append(

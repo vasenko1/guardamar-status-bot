@@ -341,6 +341,30 @@ class DigestMessageTests(unittest.TestCase):
         self.assertNotIn("Vivers", message)
         self.assertNotIn("купание запрещено", message)
 
+    def test_renders_named_fallback_beaches_without_renaming(self):
+        morning = (
+            "🌅 Доброе утро, Гуардамар!\n\n"
+            "🌤 Погода: 22° → 30°\n"
+            "🌊 Море: 27° • умеренные волны\n"
+            "💨 Ветер: В 3 → 5 м/с"
+        )
+        beach = BeachStatus(
+            flag_color=None,
+            sea_temperature_c=None,
+            nearby_flags=(
+                ("Roqueta", "yellow"),
+                ("Vivers", "green"),
+                ("Montcaio", "red"),
+            ),
+        )
+
+        updated = build_fallback_update(morning, beach, None)
+
+        self.assertIn("   🔴 Montcaio", updated)
+        self.assertIn("   🟡 Roqueta", updated)
+        self.assertIn("   🟢 Vivers", updated)
+        self.assertNotIn("Centre / Babilònia", updated)
+
 
 if __name__ == "__main__":
     unittest.main()

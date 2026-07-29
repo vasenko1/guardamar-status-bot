@@ -30,7 +30,6 @@ class Warning:
 class BeachStatus:
     flag_color: Optional[str]
     sea_temperature_c: Optional[int]
-    source_date: Optional[date] = None
     wind_direction: Optional[str] = None
     wind_speed_kmh: Optional[int] = None
     sea_state: Optional[str] = None
@@ -38,6 +37,7 @@ class BeachStatus:
     jellyfish_beaches: Tuple[str, ...] = ()
     flag_meanings: Tuple[Tuple[str, str], ...] = ()
     updated_times: Tuple[Tuple[str, time], ...] = ()
+    source_date: Optional[date] = None
 
 
 @dataclass(frozen=True)

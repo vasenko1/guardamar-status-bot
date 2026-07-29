@@ -23,6 +23,10 @@ Observed public-page behavior:
 - The page exposes a local calendar date and per-record activity,
   service-ended state, last update time, flag text/color, temperature, wind,
   waves, and jellyfish fields.
+- The Guardamar page exposed six named zones: Centre / Babilònia, La Roqueta,
+  Vivers, Montcaio, Camp, and les Ortigues. This observation supports the
+  bounded named-fallback order but is not treated as a permanent schema
+  guarantee.
 - SafeBeach describes lifeguard input as real-time information but also states
   that its mobile tool can collect data without connectivity. Therefore an
   available page is not proof that every beach has synchronized current data.

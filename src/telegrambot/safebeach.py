@@ -16,15 +16,22 @@ from .models import BeachStatus
 
 SAFEBEACH_URL = "https://info.safebeach.es/guardamar-del-segura"
 REQUEST_TIMEOUT_SECONDS = 10
-HTML_LIMIT_BYTES = 256_000
-NEARBY_BEACHES = {
+HTML_LIMIT_BYTES = 512 * 1024
+BEACH_PRIORITY = {
     "platja centre / babilònia": "Centre",
     "platja la roqueta": "Roqueta",
     "platja dels vivers": "Vivers",
+    "platja del montcaio": "Montcaio",
+    "platja del camp": "Camp",
+    "platja de les ortigues": "Ortigues",
 }
+BEACH_ORDER = {
+    name: index for index, name in enumerate(BEACH_PRIORITY.values())
+}
+MAX_DISPLAYED_BEACHES = 3
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 
-_MARKERS_ANCHOR = b"window.SB_MARKERS"
+_MARKERS_ASSIGNMENT = re.compile(rb"\bwindow\.SB_MARKERS\s*=\s*")
 _PAGE_DATE_PATTERN = re.compile(
     rb"""<div\s+class=["']sub["'][^>]*>[^<]*?"""
     rb"(\d{2}/\d{2}/\d{4})\s*</div>",
@@ -274,7 +281,7 @@ def _page_date(payload: bytes) -> date:
         raise SafeBeachError(
             "SafeBeach page had no current date",
             code="NO-DATE",
-            description="страница не содержит дату данных",
+            description="страница не содержит календарную дату",
         )
     try:
         return datetime.strptime(
@@ -290,22 +297,15 @@ def _page_date(payload: bytes) -> date:
 
 
 def _markers(payload: bytes) -> Any:
-    anchor = payload.find(_MARKERS_ANCHOR)
-    if anchor < 0:
+    assignment = _MARKERS_ASSIGNMENT.search(payload)
+    if assignment is None:
         raise SafeBeachError(
             "SafeBeach page did not contain beach data",
             code="NO-DATA",
             description="на странице отсутствует блок данных пляжей",
         )
-    equals = payload.find(b"=", anchor + len(_MARKERS_ANCHOR))
-    if equals < 0:
-        raise SafeBeachError(
-            "SafeBeach beach data assignment was invalid",
-            code="INVALID-DATA",
-            description="блок данных пляжей имеет некорректный формат",
-        )
     try:
-        text = payload[equals + 1 :].decode("utf-8").lstrip()
+        text = payload[assignment.end() :].decode("utf-8").lstrip()
         markers, _ = json.JSONDecoder().raw_decode(text)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise SafeBeachError(
@@ -356,7 +356,7 @@ def normalize_beach_status(
             ):
                 continue
             beach_name = str(item.get("beachName", "")).strip().casefold()
-            short_name = NEARBY_BEACHES.get(beach_name)
+            short_name = BEACH_PRIORITY.get(beach_name)
             if short_name is None or short_name in conflicted:
                 continue
             flag, flag_is_consistent = _flag_color(item)
@@ -374,10 +374,25 @@ def normalize_beach_status(
                 _updated_time(item.get("hora")),
             )
             previous = records.get(short_name)
-            if previous is not None and previous != record:
-                conflicted.add(short_name)
-                records.pop(short_name, None)
-                continue
+            if previous is not None:
+                previous_flag = previous[0]
+                current_flag = record[0]
+                previous_time = previous[6]
+                current_time = record[6]
+                if (
+                    previous_time is not None
+                    and current_time is not None
+                    and previous_flag is not None
+                    and current_flag is not None
+                    and previous_flag != current_flag
+                ):
+                    conflicted.add(short_name)
+                    records.pop(short_name, None)
+                    continue
+                if previous_time is not None and (
+                    current_time is None or current_time <= previous_time
+                ):
+                    continue
             records[short_name] = record
 
     if not records:
@@ -395,7 +410,6 @@ def normalize_beach_status(
             _,
             _,
         ) = centre
-    order = {"Centre": 0, "Roqueta": 1, "Vivers": 2}
     nearby_flags = [
         (name, record[0])
         for name, record in records.items()
@@ -409,9 +423,9 @@ def normalize_beach_status(
         for name, record in records.items()
         if record[0] is not None and record[6] is not None
     ]
-    nearby_flags.sort(key=lambda item: order[item[0]])
-    jellyfish_beaches.sort(key=order.__getitem__)
-    updated_times.sort(key=lambda item: order[item[0]])
+    nearby_flags.sort(key=lambda item: BEACH_ORDER[item[0]])
+    jellyfish_beaches.sort(key=BEACH_ORDER.__getitem__)
+    updated_times.sort(key=lambda item: BEACH_ORDER[item[0]])
     return BeachStatus(
         flag_color=flag,
         sea_temperature_c=sea_temperature,
@@ -433,10 +447,19 @@ def is_complete_current_status(
 
     if status is None:
         return False
-    expected = set(NEARBY_BEACHES.values())
+    expected = set(BEACH_PRIORITY.values())
     flags = {name for name, _ in status.nearby_flags}
     times = dict(status.updated_times)
-    if not flags or not flags <= expected or set(times) != flags:
+    if (
+        not flags
+        or len(flags) > MAX_DISPLAYED_BEACHES
+        or not flags <= expected
+        or set(times) != flags
+        or any(
+            color not in {"green", "yellow", "red"}
+            for _, color in status.nearby_flags
+        )
+    ):
         return False
     local_now = now.astimezone(GUARDAMAR_TIMEZONE)
     if status.source_date != local_now.date():
@@ -447,6 +470,56 @@ def is_complete_current_status(
     return all(
         updated.hour * 60 + updated.minute <= latest_allowed
         for updated in times.values()
+    )
+
+
+def _current_status(
+    status: Optional[BeachStatus],
+    now: datetime,
+) -> Optional[BeachStatus]:
+    """Keep up to three timestamped current flags in product priority order."""
+
+    if status is None:
+        return None
+    local_now = now.astimezone(GUARDAMAR_TIMEZONE)
+    if status.source_date != local_now.date():
+        return None
+    latest_allowed = local_now.hour * 60 + local_now.minute + 5
+    times = dict(status.updated_times)
+    flags = [
+        (name, color)
+        for name, color in status.nearby_flags
+        if (
+            name in BEACH_ORDER
+            and name in times
+            and times[name].hour * 60 + times[name].minute <= latest_allowed
+        )
+    ]
+    flags.sort(key=lambda item: BEACH_ORDER[item[0]])
+    selected_flags = tuple(flags[:MAX_DISPLAYED_BEACHES])
+    if not selected_flags:
+        return None
+    selected_names = {name for name, _ in selected_flags}
+    selected_times = tuple(
+        (name, times[name]) for name, _ in selected_flags
+    )
+    centre_selected = "Centre" in selected_names
+    return BeachStatus(
+        flag_color=status.flag_color if centre_selected else None,
+        sea_temperature_c=(
+            status.sea_temperature_c if centre_selected else None
+        ),
+        source_date=status.source_date,
+        wind_direction=status.wind_direction if centre_selected else None,
+        wind_speed_kmh=status.wind_speed_kmh if centre_selected else None,
+        sea_state=status.sea_state if centre_selected else None,
+        nearby_flags=selected_flags,
+        jellyfish_beaches=tuple(
+            name
+            for name in status.jellyfish_beaches
+            if name in selected_names
+        ),
+        updated_times=selected_times,
     )
 
 
@@ -461,4 +534,5 @@ async def fetch_beach_status(
         else datetime.now(GUARDAMAR_TIMEZONE)
     )
     payload = await asyncio.to_thread(_read_page)
-    return normalize_beach_status(payload, local_now.date())
+    status = normalize_beach_status(payload, local_now.date())
+    return _current_status(status, local_now)

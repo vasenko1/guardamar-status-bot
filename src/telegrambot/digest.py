@@ -33,11 +33,21 @@ FLAG_DOTS = {
     "yellow": "🟡",
     "red": "🔴",
 }
-BEACH_ORDER = {"Centre": 0, "Roqueta": 1, "Vivers": 2}
+BEACH_ORDER = {
+    "Centre": 0,
+    "Roqueta": 1,
+    "Vivers": 2,
+    "Montcaio": 3,
+    "Camp": 4,
+    "Ortigues": 5,
+}
 BEACH_NAMES = {
     "Centre": "Centre / Babilònia",
     "Roqueta": "Roqueta",
     "Vivers": "Vivers",
+    "Montcaio": "Montcaio",
+    "Camp": "Camp",
+    "Ortigues": "Ortigues",
 }
 SEA_STATES = {
     "calm": "спокойные",

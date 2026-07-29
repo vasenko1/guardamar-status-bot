@@ -177,7 +177,10 @@ async def _run_command(command: str) -> int:
         if is_complete_current_status(candidate, now):
             beach = candidate
     except SafeBeachError as exc:
-        logging.warning("SafeBeach update check failed: %s", exc)
+        logging.warning(
+            "SafeBeach update check failed: SB-%s",
+            exc.diagnostic_code,
+        )
     final_attempt = (now.hour, now.minute) >= (10, 40)
     result = await publish_update(
         now,

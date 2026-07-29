@@ -68,7 +68,7 @@ deployment agent or self-hosted CI runner.
   budget.
 - SafeBeach uses one bounded request per invocation. Do not add an inner retry,
   response cache, cookies, or browser execution; the external five-minute
-  checks already provide seasonal recovery.
+  checks already provide seasonal recovery. Its bounded HTML limit is 512 KiB.
 - Do not make digest delivery depend on every source succeeding.
 
 ### Storage
