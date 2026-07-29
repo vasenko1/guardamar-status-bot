@@ -14,15 +14,16 @@
 - Define the compact normalized records. Weather, warning, and beach-status
   records are implemented.
 - Establish lightweight configuration and state. Environment configuration
-  and an atomic `last_successful_date` state are implemented.
+  and a small atomic daily message-replacement state are implemented.
 - Implement Morning Digest collection and formatting. The AEMET weather and
   warning slice, Platja Centre SafeBeach status, and AEMET beach-temperature
   fallback are implemented. The optional Agenda Guardamar same-day event slice
   and strict Policía Local festival traffic notice are implemented.
 - Implement the approved canonical phone layout and inline wind comparison
   without changing source collection or message size. Complete.
-- Add one-shot Telegram delivery. An external Termux scheduler invokes the
-  short-lived process at 10:02; the application has no resident scheduler.
+- Add two-stage Telegram delivery. Termux invokes the full briefing at 07:30
+  and bounded SafeBeach checks at 10:10–10:40; every process exits and the
+  group retains one current message.
 - Add one isolated private `/preview` listener for allowlisted operators,
   without publication state changes or source polling between commands.
 - Add a fail-closed Gemini fallback for previously unknown official Policía
@@ -35,8 +36,7 @@
 - Review the Campo de Guardamar operator schedule periodically and replace its
   local Sunday rule if an authoritative cancellation feed becomes available.
 - Done: validated Python 3.12 operation, resource use, `termux-services`,
-  Termux:Boot recovery, private preview, and the 10:02 `cronie` schedule on the
-  target Android device.
+  Termux:Boot recovery and private preview on the target Android device.
 
 ## Next steps
 

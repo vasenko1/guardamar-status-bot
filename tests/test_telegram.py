@@ -7,6 +7,7 @@ from telegrambot.telegram import (
     TelegramError,
     _get_updates,
     _post_message,
+    _delete_message,
     send_message,
 )
 
@@ -79,6 +80,20 @@ class TelegramDeliveryTests(unittest.IsolatedAsyncioTestCase):
             },
         )
         self.assertTrue(request.full_url.endswith("/sendMessage"))
+
+    async def test_delete_message_uses_known_message_identifier(self):
+        with patch(
+            "telegrambot.telegram.urllib.request.urlopen",
+            return_value=_SuccessfulResponse(),
+        ) as urlopen:
+            _delete_message("secret-token", "@destination", 42)
+
+        request = urlopen.call_args.args[0]
+        self.assertEqual(
+            json.loads(request.data.decode("utf-8")),
+            {"chat_id": "@destination", "message_id": 42},
+        )
+        self.assertTrue(request.full_url.endswith("/deleteMessage"))
 
     async def test_successful_send_has_no_retry(self):
         delays = []

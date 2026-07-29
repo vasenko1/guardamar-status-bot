@@ -1,7 +1,7 @@
 """Small normalized models used by the Morning Digest."""
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Optional, Tuple
 
 
@@ -35,6 +35,8 @@ class BeachStatus:
     sea_state: Optional[str] = None
     nearby_flags: Tuple[Tuple[str, str], ...] = ()
     jellyfish_beaches: Tuple[str, ...] = ()
+    flag_meanings: Tuple[Tuple[str, str], ...] = ()
+    updated_times: Tuple[Tuple[str, time], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -53,6 +55,13 @@ class TrafficNotice:
 
 
 @dataclass(frozen=True)
+class BeachNotice:
+    text: str
+    bathing_prohibited: bool
+    published_at: datetime
+
+
+@dataclass(frozen=True)
 class MorningDigest:
     weather: Weather
     warnings: Tuple[Warning, ...]
@@ -63,3 +72,4 @@ class MorningDigest:
     forecast_later_sea_state: Optional[str] = None
     traffic_notices: Tuple[TrafficNotice, ...] = ()
     events: Tuple[Event, ...] = ()
+    beach_notice: Optional[BeachNotice] = None

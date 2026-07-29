@@ -8,6 +8,7 @@ from telegrambot.models import BeachStatus, MorningDigest, Weather
 from telegrambot.morning import _safebeach_is_in_season, produce_message
 from telegrambot.safebeach import (
     SafeBeachError,
+    is_complete_current_status,
     normalize_beach_status,
 )
 
@@ -26,6 +27,8 @@ def _marker(
     beach_name="Platja Centre / Babilònia",
     sea_state="Moderado",
     jellyfish="No",
+    updated="10:05",
+    meaning=None,
 ):
     return {
         "items": [
@@ -39,6 +42,8 @@ def _marker(
                 "windDeg": 100.34,
                 "oleaje": sea_state,
                 "medusas": jellyfish,
+                "hora": updated,
+                "texto": meaning,
             }
         ]
     }
@@ -106,6 +111,51 @@ class SafeBeachNormalizationTests(unittest.TestCase):
             ),
         )
         self.assertEqual(status.jellyfish_beaches, ("Roqueta",))
+
+    def test_requires_all_selected_flags_with_plausible_update_times(self):
+        status = normalize_beach_status(
+            _page(
+                [
+                    _marker("verde", updated="10:05"),
+                    _marker(
+                        "amarilla",
+                        beach_name="Platja La Roqueta",
+                        updated="10:04",
+                    ),
+                    _marker(
+                        "verde",
+                        beach_name="Platja dels Vivers",
+                        updated="10:03",
+                    ),
+                ]
+            )
+        )
+        now = datetime(2026, 7, 29, 10, 10, tzinfo=MADRID)
+
+        self.assertTrue(is_complete_current_status(status, now))
+        self.assertFalse(
+            is_complete_current_status(
+                normalize_beach_status(_page([_marker("verde")])),
+                now,
+            )
+        )
+
+    def test_normalizes_safe_text_meaning_without_generated_copy(self):
+        status = normalize_beach_status(
+            _page(
+                [
+                    _marker(
+                        "roja",
+                        meaning="Baño prohibido",
+                    )
+                ]
+            )
+        )
+
+        self.assertEqual(
+            status.flag_meanings,
+            (("Centre", "купание запрещено"),),
+        )
 
     def test_ignores_ended_service_and_allows_missing_temperature(self):
         status = normalize_beach_status(

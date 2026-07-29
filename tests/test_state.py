@@ -1,7 +1,7 @@
 import json
 import tempfile
 import unittest
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from telegrambot.state import PublicationState, StateError
@@ -33,11 +33,28 @@ class PublicationStateTests(unittest.TestCase):
                     }
                 )
             )
-
             self.assertEqual(
                 PublicationState(path).last_successful_date(),
                 date(2026, 7, 26),
             )
+
+    def test_stores_message_ids_needed_for_safe_replacement(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "delivery.json"
+            state = PublicationState(path)
+            local_day = date(2026, 7, 29)
+            sent_at = datetime.fromisoformat(
+                "2026-07-29T07:30:00+02:00"
+            )
+
+            state.mark_morning(local_day, 101, sent_at)
+            state.mark_update_sent(local_day, 202)
+            state.mark_morning_deleted(local_day)
+
+            record = state.morning_record(local_day)
+            self.assertEqual(record["morning_message_id"], 101)
+            self.assertEqual(record["update_message_id"], 202)
+            self.assertTrue(record["morning_deleted"])
 
     def test_ignores_unsuccessful_previous_attempt(self):
         with tempfile.TemporaryDirectory() as directory:

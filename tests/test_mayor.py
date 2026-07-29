@@ -7,6 +7,7 @@ from telegrambot.models import MorningDigest, Weather
 from telegrambot.morning import produce_message
 from telegrambot.mayor import (
     extract_recent_posts,
+    latest_beach_notice,
     market_is_cancelled,
     validate_market_status,
 )
@@ -104,6 +105,25 @@ class MayorChannelTests(unittest.IsolatedAsyncioTestCase):
             cancelled = await market_is_cancelled(now, "key")
 
         self.assertTrue(cancelled)
+
+    async def test_extracts_new_explicit_bathing_restriction(self):
+        now = datetime(2026, 7, 29, 10, 40, tzinfo=TZ)
+        since = datetime(2026, 7, 29, 7, 30, tzinfo=TZ)
+        with patch(
+            "telegrambot.mayor._read_page",
+            return_value=page(
+                "BANDERA ROJA. PROHIBIDO EL BAÑO por fuertes "
+                "corrientes y oleaje.",
+                "2026-07-29T08:15:00+00:00",
+            ),
+        ):
+            notice = await latest_beach_notice(now, since)
+
+        self.assertTrue(notice.bathing_prohibited)
+        self.assertEqual(
+            notice.text,
+            "Купание запрещено: течения, волны.",
+        )
 
     async def test_explicit_cancellation_hides_recurring_market(self):
         now = datetime(2026, 7, 29, 7, 30, tzinfo=TZ)

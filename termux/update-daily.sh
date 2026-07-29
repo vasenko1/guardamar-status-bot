@@ -6,10 +6,10 @@ cd "$PROJECT_DIR" || exit 1
 . ./.env
 export PYTHONPATH="$PROJECT_DIR/src"
 
-LOG="$PROJECT_DIR/state/daily.log"
+LOG="$PROJECT_DIR/state/update.log"
 if [ -f "$LOG" ] && [ "$(wc -c < "$LOG")" -gt 1048576 ]; then
     mv "$LOG" "$LOG.1"
 fi
 
 exec >>"$LOG" 2>&1
-exec ./.venv/bin/python -m telegrambot morning
+exec ./.venv/bin/python -m telegrambot update

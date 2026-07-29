@@ -8,10 +8,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from .gemini import GeminiError, extract_market_status
+from .models import BeachNotice
 
 CHANNEL_URL = "https://t.me/s/AlcaldeGuardamar"
 ALLOWED_HOST = "t.me"
@@ -104,6 +105,74 @@ def _normalized(value: str) -> str:
         for character in decomposed
         if not unicodedata.combining(character)
     ).casefold()
+
+
+def _beach_notice(
+    published_at: datetime,
+    text: str,
+) -> Optional[BeachNotice]:
+    normalized = _normalized(text)
+    beach_context = any(
+        marker in normalized
+        for marker in ("playa", "bano", "bandera")
+    )
+    prohibited = any(
+        marker in normalized
+        for marker in ("prohibido el bano", "bandera roja")
+    )
+    allowed = any(
+        marker in normalized
+        for marker in ("permitido el bano", "bandera amarilla")
+    )
+    if not beach_context or not (prohibited or allowed):
+        return None
+
+    if prohibited:
+        message = "Купание запрещено."
+        causes = (
+            ("corrient", "течения"),
+            ("oleaje", "волны"),
+            ("contamin", "загрязнение воды"),
+            ("dragon azul", "обнаружен синий дракон"),
+        )
+        details = [
+            russian
+            for marker, russian in causes
+            if marker in normalized
+        ]
+        if details:
+            message = (
+                "Купание запрещено: " + ", ".join(details) + "."
+            )
+    else:
+        message = "Купание разрешено с осторожностью."
+    return BeachNotice(
+        text=message,
+        bathing_prohibited=prohibited,
+        published_at=published_at,
+    )
+
+
+async def latest_beach_notice(
+    now: datetime,
+    since: datetime,
+) -> Optional[BeachNotice]:
+    """Return the newest explicit official bathing-status transition."""
+
+    payload = await asyncio.to_thread(_read_page)
+    posts = extract_recent_posts(payload, now)
+    notices = [
+        notice
+        for published_at, text in posts
+        if published_at > since.astimezone(GUARDAMAR_TIMEZONE)
+        for notice in (_beach_notice(published_at, text),)
+        if notice is not None
+    ]
+    return max(
+        notices,
+        key=lambda notice: notice.published_at,
+        default=None,
+    )
 
 
 def validate_market_status(

@@ -1,6 +1,6 @@
 # ADR 0008: One-shot morning execution
 
-- Status: Accepted; publication time superseded by ADR 0016
+- Status: Partially superseded by ADR 0021
 - Date: 2026-07-27
 - Supersedes: ADR 0001 scheduling/state rules and ADR 0005
 
@@ -17,7 +17,7 @@ synchronization provide no proportional value on a weak Android device.
 - During that invocation, collect every implemented official source directly
   once, normalize, build, publish, persist success, and exit.
 - Keep no periodic collector, watcher, synchronization job, or webhook.
-- Store only `last_successful_date` in one atomic JSON file.
+- The original one-field state rule is superseded by ADR 0021.
 - Hold an empty local lock file during the run to prevent overlapping
   processes; the lock contains no source or publication state.
 - Skip collection when the current local date is already confirmed successful.

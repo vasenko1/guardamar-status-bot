@@ -18,7 +18,7 @@ Development on a desktop must not introduce assumptions that fail in Termux.
 The publication process must:
 
 - start quickly;
-- terminate after the one morning run;
+- terminate after each morning or update-check run;
 - run as one short-lived lightweight process;
 - use outbound Telegram calls only;
 - perform network work asynchronously and with explicit timeouts;
@@ -41,7 +41,8 @@ deployment agent or self-hosted CI runner.
 
 ### CPU and battery
 
-- Perform source collection exactly once during the 10:02 execution.
+- Collect once at 07:30. In season, allow only seven quick SafeBeach checks
+  from 10:10 through 10:40 and at most one later full recollection.
 - Leave exact timing to a lightweight external Termux scheduler.
 - Avoid continuous parsing, transformation, or monitoring.
 - Do not optimize speculatively, but reject designs with obvious background
@@ -65,8 +66,8 @@ deployment agent or self-hosted CI runner.
 
 ### Storage
 
-- Store configuration, the last successfully published local date, and the
-  bounded monthly event snapshot accepted in ADR 0012.
+- Store configuration, minimal daily replacement state, and the bounded
+  monthly event snapshot accepted in ADR 0012.
 - Keep logs rotated or otherwise bounded.
 - Do not archive raw responses by default.
 - Do not cache raw source responses or municipal information except the
@@ -82,7 +83,7 @@ deployment agent or self-hosted CI runner.
 - standard-library HTTP for the current small source and delivery set
 - aiogram or aiohttp only if a later requirement clearly justifies them
 - Python standard-library facilities where they are sufficient
-- one atomic JSON file for the successful publication date
+- one atomic JSON file for daily Telegram message IDs and cleanup state
 
 These are directions, not permission to add unused dependencies before their
 need is demonstrated.

@@ -4,7 +4,7 @@ import fcntl
 import json
 import os
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Iterator, Optional
 
@@ -14,14 +14,14 @@ class StateError(RuntimeError):
 
 
 class PublicationState:
-    """Store only the last successfully published local date."""
+    """Store the minimal identifiers needed for safe daily replacement."""
 
     def __init__(self, path: Path) -> None:
         self.path = path
 
-    def last_successful_date(self) -> Optional[date]:
+    def _read(self) -> dict:
         if not self.path.exists():
-            return None
+            return {}
         try:
             value = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -29,6 +29,12 @@ class PublicationState:
         if not isinstance(value, dict):
             raise StateError("publication state has an invalid structure")
 
+        return value
+
+    def last_successful_date(self) -> Optional[date]:
+        value = self._read()
+        if not value:
+            return None
         raw_date = value.get("last_successful_date")
         if raw_date is None:
             # Read the previous schema once so an existing confirmed success
@@ -50,10 +56,67 @@ class PublicationState:
         return self.last_successful_date() == local_day
 
     def mark_published(self, local_day: date) -> None:
-        temporary_path = self.path.with_name(f".{self.path.name}.tmp")
-        value = {
+        self._write({
             "last_successful_date": local_day.isoformat(),
-        }
+        })
+
+    def morning_record(self, local_day: date) -> Optional[dict]:
+        value = self._read()
+        if value.get("local_date") != local_day.isoformat():
+            return None
+        message_id = value.get("morning_message_id")
+        published_at = value.get("morning_published_at")
+        if not isinstance(message_id, int) or not isinstance(
+            published_at, str
+        ):
+            raise StateError("publication state has an invalid morning record")
+        try:
+            parsed_time = datetime.fromisoformat(published_at)
+        except ValueError as exc:
+            raise StateError(
+                "publication state has an invalid publication time"
+            ) from exc
+        if parsed_time.tzinfo is None:
+            raise StateError(
+                "publication state has an invalid publication time"
+            )
+        return value
+
+    def mark_morning(
+        self,
+        local_day: date,
+        message_id: int,
+        published_at: datetime,
+    ) -> None:
+        self._write({
+            "last_successful_date": local_day.isoformat(),
+            "local_date": local_day.isoformat(),
+            "morning_message_id": message_id,
+            "morning_published_at": published_at.isoformat(),
+            "update_message_id": None,
+            "morning_deleted": False,
+        })
+
+    def mark_update_sent(
+        self,
+        local_day: date,
+        message_id: int,
+    ) -> None:
+        value = self.morning_record(local_day)
+        if value is None:
+            raise StateError("morning publication record is missing")
+        value["update_message_id"] = message_id
+        self._write(value)
+
+    def mark_morning_deleted(self, local_day: date) -> None:
+        value = self.morning_record(local_day)
+        if value is None:
+            raise StateError("morning publication record is missing")
+        value["morning_deleted"] = True
+        self._write(value)
+
+    def _write(self, value: dict) -> None:
+        temporary_path = self.path.with_name(f".{self.path.name}.tmp")
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             temporary_path.write_text(

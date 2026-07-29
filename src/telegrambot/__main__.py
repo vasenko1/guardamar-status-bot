@@ -7,15 +7,20 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Awaitable, Callable
 from zoneinfo import ZoneInfo
 
 from .aemet import AemetError
 from .commands import listen_for_preview, parse_allowed_user_ids
-from .delivery import attempt_delivery
-from .morning import produce_message
+from .delivery import publish_morning, publish_update
+from .mayor import latest_beach_notice
+from .morning import _safebeach_is_in_season, produce_message
+from .safebeach import (
+    SafeBeachError,
+    fetch_beach_status,
+    is_complete_current_status,
+)
 from .state import PublicationState, StateError
-from .telegram import TelegramError, send_message
+from .telegram import TelegramError, delete_message, send_message
 
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 DEFAULT_STATE_PATH = "state/delivery.json"
@@ -41,28 +46,6 @@ async def _produce_message(api_key: str, now: datetime) -> str:
             )
         ),
     )
-
-
-def _delivery_runner(
-    api_key: str,
-    bot_token: str,
-    chat_id: str,
-    state: PublicationState,
-) -> Callable[[datetime], Awaitable[str]]:
-    async def run(now: datetime) -> str:
-        return await attempt_delivery(
-            now=now,
-            state=state,
-            produce_message=lambda: _produce_message(api_key, now),
-            deliver_message=lambda message: send_message(
-                bot_token,
-                chat_id,
-                message,
-                disable_notification=True,
-            ),
-        )
-
-    return run
 
 
 async def _run_command(command: str) -> int:
@@ -92,10 +75,108 @@ async def _run_command(command: str) -> int:
         os.environ.get("MORNING_DIGEST_STATE_PATH", DEFAULT_STATE_PATH)
     )
     state = PublicationState(state_path)
-    run_once = _delivery_runner(api_key, bot_token, chat_id, state)
+    now = datetime.now(GUARDAMAR_TIMEZONE)
+    if command in {"run", "morning"}:
+        result = await publish_morning(
+            now,
+            state,
+            lambda: produce_message(
+                api_key,
+                now,
+                os.environ.get("GEMINI_API_KEY", "").strip(),
+                Path(
+                    os.environ.get(
+                        "MUNICIPAL_AGENDA_STATE_PATH",
+                        DEFAULT_MUNICIPAL_AGENDA_STATE_PATH,
+                    )
+                ),
+                collect_beach=False,
+            ),
+            lambda message: send_message(
+                bot_token,
+                chat_id,
+                message,
+                disable_notification=False,
+            ),
+        )
+        return 0 if result in {"success", "duplicate"} else 1
 
-    result = await run_once(datetime.now(GUARDAMAR_TIMEZONE))
-    return 0 if result in {"success", "duplicate"} else 1
+    if not _safebeach_is_in_season(now):
+        logging.info("SKIP: SafeBeach update phase is out of season")
+        return 0
+
+    async def find_notice(since: datetime):
+        return await latest_beach_notice(now, since)
+
+    async def produce_update(status, notice):
+        return await produce_message(
+            api_key,
+            now,
+            os.environ.get("GEMINI_API_KEY", "").strip(),
+            Path(
+                os.environ.get(
+                    "MUNICIPAL_AGENDA_STATE_PATH",
+                    DEFAULT_MUNICIPAL_AGENDA_STATE_PATH,
+                )
+            ),
+            collect_beach=False,
+            beach_status=status,
+            beach_notice=notice,
+        )
+
+    async def deliver_update(message: str) -> int:
+        return await send_message(
+            bot_token,
+            chat_id,
+            message,
+            disable_notification=False,
+        )
+
+    async def delete_old(message_id: int) -> None:
+        await delete_message(bot_token, chat_id, message_id)
+
+    existing = state.morning_record(now.date())
+    if existing is None:
+        logging.info("SKIP: no morning message exists for %s", now.date())
+        return 0
+    if isinstance(existing.get("update_message_id"), int):
+        result = await publish_update(
+            now,
+            state,
+            None,
+            False,
+            find_notice,
+            produce_update,
+            deliver_update,
+            delete_old,
+        )
+        return 0 if result == "duplicate" else 1
+
+    beach = None
+    try:
+        candidate = await fetch_beach_status()
+        if is_complete_current_status(candidate, now):
+            beach = candidate
+    except SafeBeachError as exc:
+        logging.warning("SafeBeach update check failed: %s", exc)
+    final_attempt = (now.hour, now.minute) >= (10, 40)
+    result = await publish_update(
+        now,
+        state,
+        beach,
+        final_attempt,
+        find_notice,
+        produce_update,
+        deliver_update,
+        delete_old,
+    )
+    return 0 if result in {
+        "success",
+        "duplicate",
+        "waiting",
+        "no_update",
+        "no_morning",
+    } else 1
 
 
 def main() -> None:
@@ -105,7 +186,7 @@ def main() -> None:
     parser.add_argument(
         "command",
         nargs="?",
-        choices=("run", "preview", "status", "listen"),
+        choices=("run", "morning", "update", "preview", "status", "listen"),
         default="run",
     )
     arguments = parser.parse_args()

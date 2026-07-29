@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted and implemented
+Superseded by ADR 0021
 
 ## Context
 

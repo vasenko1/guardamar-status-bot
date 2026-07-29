@@ -7,7 +7,9 @@ import re
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, time
 from typing import Any, Dict, Optional
+from zoneinfo import ZoneInfo
 
 from .models import BeachStatus
 
@@ -20,6 +22,7 @@ NEARBY_BEACHES = {
     "platja la roqueta": "Roqueta",
     "platja dels vivers": "Vivers",
 }
+GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 
 _MARKERS_PATTERN = re.compile(
     rb"window\.SB_MARKERS\s*=\s*(\[.*?\]);", re.DOTALL
@@ -156,6 +159,28 @@ def _jellyfish_present(value: Any) -> bool:
     return value.strip().casefold() in {"sí", "si", "yes"}
 
 
+def _updated_time(value: Any) -> Optional[time]:
+    if not isinstance(value, str):
+        return None
+    try:
+        return time.fromisoformat(value.strip())
+    except ValueError:
+        return None
+
+
+def _flag_meaning(value: Any) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    normalized = " ".join(value.split()).casefold()
+    meanings = {
+        "baño prohibido": "купание запрещено",
+        "baño con precaución": "с осторожностью",
+        "baño con precaucion": "с осторожностью",
+        "baño permitido": "купание разрешено",
+    }
+    return meanings.get(normalized)
+
+
 def normalize_beach_status(payload: bytes) -> Optional[BeachStatus]:
     """Return Centre conditions and individual nearby beach flags."""
 
@@ -172,6 +197,8 @@ def normalize_beach_status(payload: bytes) -> Optional[BeachStatus]:
     centre = None
     nearby_flags = []
     jellyfish_beaches = []
+    flag_meanings = []
+    updated_times = []
     for marker in markers:
         if not isinstance(marker, dict):
             continue
@@ -192,6 +219,12 @@ def normalize_beach_status(payload: bytes) -> Optional[BeachStatus]:
             flag = _flag_color(item)
             if flag is not None:
                 nearby_flags.append((short_name, flag))
+                meaning = _flag_meaning(item.get("texto"))
+                if meaning is not None:
+                    flag_meanings.append((short_name, meaning))
+                updated = _updated_time(item.get("hora"))
+                if updated is not None:
+                    updated_times.append((short_name, updated))
             if _jellyfish_present(item.get("medusas")):
                 jellyfish_beaches.append(short_name)
             if beach_name == TARGET_BEACH_NAME:
@@ -212,6 +245,8 @@ def normalize_beach_status(payload: bytes) -> Optional[BeachStatus]:
     order = {"Vivers": 0, "Centre": 1, "Roqueta": 2}
     nearby_flags.sort(key=lambda item: order[item[0]])
     jellyfish_beaches.sort(key=order.__getitem__)
+    flag_meanings.sort(key=lambda item: order[item[0]])
+    updated_times.sort(key=lambda item: order[item[0]])
     return BeachStatus(
         flag_color=flag,
         sea_temperature_c=sea_temperature,
@@ -220,6 +255,31 @@ def normalize_beach_status(payload: bytes) -> Optional[BeachStatus]:
         sea_state=sea_state,
         nearby_flags=tuple(nearby_flags),
         jellyfish_beaches=tuple(jellyfish_beaches),
+        flag_meanings=tuple(flag_meanings),
+        updated_times=tuple(updated_times),
+    )
+
+
+def is_complete_current_status(
+    status: Optional[BeachStatus],
+    now: datetime,
+) -> bool:
+    """Require current-day operational flags for all three selected beaches."""
+
+    if status is None:
+        return False
+    expected = set(NEARBY_BEACHES.values())
+    flags = {name for name, _ in status.nearby_flags}
+    times = dict(status.updated_times)
+    if flags != expected or set(times) != expected:
+        return False
+    local_now = now.astimezone(GUARDAMAR_TIMEZONE)
+    latest_allowed = (
+        local_now.hour * 60 + local_now.minute + 5
+    )
+    return all(
+        updated.hour * 60 + updated.minute <= latest_allowed
+        for updated in times.values()
     )
 
 

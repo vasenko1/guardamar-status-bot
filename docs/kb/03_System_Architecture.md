@@ -11,7 +11,7 @@ schemas, and library choices belong in later design work or ADRs.
 
 ## High-level flow
 
-1. **External 10:02 trigger** starts one short-lived digest process.
+1. **External 07:30 trigger** starts one short-lived digest process.
 2. **Source collection** requests current data from approved official sources.
 3. **Normalization** converts source-specific responses into small, consistent
    records while preserving source, place, and time.
@@ -19,10 +19,16 @@ schemas, and library choices belong in later design work or ADRs.
    out-of-area, or low-value records using explicit rules.
 5. **Digest building** orders the remaining facts and formats one short
    message.
-6. **Telegram delivery** sends the message.
-7. **Success state** atomically saves only the successfully published local
-   date.
-8. **Exit** ends the process; no collector or watcher remains active.
+6. **Telegram delivery** sends the early message and stores its message ID.
+7. **External beach checks** run at 10:10–10:40 in five-minute steps. Each
+   process checks SafeBeach first and normally exits immediately.
+8. **Conditional replacement** checks the Mayor channel once after SafeBeach
+   succeeds or its retry window expires. A verified update permits one fresh
+   full collection, delivery of the replacement, then deletion of the earlier
+   message.
+9. **Minimal state** keeps the local date, both Telegram message IDs, morning
+   publication time, and cleanup result.
+10. **Exit** ends every process; no collector or watcher remains active.
 
 If nothing trustworthy and useful remains after filtering, the run may produce
 no message.
@@ -82,10 +88,10 @@ speculatively. Its architecture is defined only after the feature is approved.
 
 ## Operating model
 
-- One short-lived Python process per local day
+- One 07:30 process plus up to seven short update checks in season
 - Optional lightweight operator listener with one idle Telegram long poll
 - One event loop with bounded asynchronous I/O
-- One direct collection pass during the 10:02 execution
+- One direct 07:30 collection; one later full collection only after an update
 - No webhook or public server
 - No resident scheduler, source polling, watcher, or synchronization job
 - Small local state
@@ -101,14 +107,12 @@ speculatively. Its architecture is defined only after the feature is approved.
 - **Telegram unavailable:** use bounded recovery and avoid duplicate delivery.
 - **Later invocation:** retry when no confirmed success was stored.
 
-The process holds a local file lock during its run to prevent overlapping
-invocations. It checks the last successfully published date before collection.
-After Telegram confirms delivery, it atomically writes only that local date.
-Collection or delivery failure writes no publication state.
+Every process holds the same local file lock. State is one small atomic JSON
+file. The replacement is sent and recorded before deletion of the morning
+message; a later invocation retries only failed cleanup.
 
-The external Termux scheduling mechanism invokes the command at 10:02 in
-`Europe/Madrid`. Scheduling is deployment responsibility, not application
-runtime behavior.
+Termux invokes the morning command at 07:30 and the update command every five
+minutes from 10:10 through 10:40 in `Europe/Madrid`.
 
 Deployment is also external to the application. GitHub Actions promotes a
 `main` commit to the `deploy` branch only after the complete test suite passes.
@@ -122,15 +126,13 @@ the same sources on demand, replies privately, and writes no publication
 state. It uses no webhook, framework, update-offset file, or additional
 dependency.
 
-Telegram `sendMessage` has no idempotency key. If Telegram accepts a message
-but the response is lost before the success date is stored, a later invocation
-cannot distinguish that outcome from failure. This is the unavoidable edge of
-the required success-only state model.
+Telegram `sendMessage` has no idempotency key. A lost success response before
+the message ID is stored remains an unavoidable duplicate edge.
 
 ## Architecture guardrails
 
 - Prefer structured official feeds or APIs over page scraping.
-- Collect every source directly once; do not continuously refresh information.
+- Collect sources only in bounded scheduled runs; never continuously.
 - Bound network time, retries, response sizes, concurrency, and stored history.
 - Keep domain rules independent from transport and source formats.
 - Do not add a cache layer for municipal or event information.

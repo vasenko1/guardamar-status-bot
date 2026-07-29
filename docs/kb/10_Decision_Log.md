@@ -5,6 +5,7 @@ Detailed decisions belong in `adr/`.
 
 | Date | Decision | Context and reason | Record |
 | --- | --- | --- | --- |
+| 2026-07-29 | Publish at 07:30 and conditionally replace after bounded SafeBeach checks | City information arrives early; one later full replacement adds verified beach data without leaving two messages or keeping a process asleep. | `adr/0021-two-stage-daily-replacement.md` |
 | 2026-07-26 | Target Termux on a weak Android device | The bot must run cheaply on limited hardware and unstable mobile internet. | Project brief |
 | 2026-07-26 | ~~Use one lightweight Python process with Telegram long polling~~ | Superseded: the process is now one-shot and outbound-only. | `adr/0008-one-shot-morning-execution.md` |
 | 2026-07-26 | Keep persistent state local and small | Server databases are unnecessary for the planned scope. | Project brief |
@@ -38,7 +39,7 @@ Detailed decisions belong in `adr/`.
 | 2026-07-27 | Apply market holiday moves from a reviewed annual calendar | The ordinance moves a holiday Wednesday market to Tuesday; a tiny official calendar is deterministic, while unsupported years omit the market instead of guessing. | `adr/0014-reviewed-holiday-calendar.md` |
 | 2026-07-27 | Add Campo de Guardamar as a recurring Sunday event | The accepted operator schedule provides `07:00–16:00` and Camino del Raso, 15; no cancellation or holiday behavior is inferred. | `docs/kb/06_Data_Sources.md` |
 | 2026-07-27 | Deploy only CI-tested commits through a daily Termux pull | A promoted `deploy` branch avoids exposing the phone or running a heavy self-hosted runner; the phone keeps secrets and state local and validates each update before use. | `adr/0015-tested-termux-deployment.md` |
-| 2026-07-28 | Publish at 10:02 to prefer an active beach flag | Direct observation found the first active Platja Centre record near 10:00; a two-minute margin can include updates posted at 10:00 or 10:01 without adding polling or another publication. | `adr/0016-1000-publication-time.md` |
+| 2026-07-28 | ~~Publish at 10:02 to prefer an active beach flag~~ | Superseded by the two-stage 07:30 plus conditional replacement flow. | `adr/0021-two-stage-daily-replacement.md` |
 | 2026-07-28 | Preserve event time, type, and place in the digest | Events remain useful without a published time, but any official time range, activity type or medium, and location must survive extraction and appear compactly without inference. | `adr/0017-event-display-facts.md` |
 | 2026-07-28 | Name three nearby beaches and keep their flags separate | A single unnamed Centre flag can be mistaken for a city-wide status; explicit Centre, Roqueta, and Vivers indicators stay compact and avoid unsafe averaging. | `adr/0018-nearby-beach-flags.md` |
 | 2026-07-28 | Correct verified July poster facts without repeat OCR | The official text agenda identifies `Entropía`, Conchi Montes, `08:00–14:00`, and Biblioteca Pública Municipal; an exact poster-specific correction repairs the stored OCR record safely. | `adr/0012-monthly-municipal-agenda-snapshot.md` |

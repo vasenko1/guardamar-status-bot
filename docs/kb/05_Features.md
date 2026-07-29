@@ -4,7 +4,7 @@
 
 ### Purpose
 
-Provide one concise daily overview of conditions and notable city information.
+Keep one concise current overview of conditions and notable city information.
 
 ### User value
 
@@ -35,9 +35,9 @@ This exact visual structure is the product contract:
 🌧 Дождь: 80% • 12:00–18:00
 🌊 Море: 29° • слабые → умеренные
 💨 Ветер: СВ 5 → 7 м/с
-🏖 Флаги на пляжах:
-   🟡 Roqueta
-   🟢 Vivers, Centre
+🏖 Флаги на пляжах • 10:05:
+   🟡 Roqueta — с осторожностью
+   🟢 Vivers, Centre — купание разрешено
 🪼 Медузы: Roqueta
 
 ⚠️ Внимание
@@ -89,6 +89,10 @@ shown only for beaches where SafeBeach explicitly reports presence. A negative,
 missing, or unknown jellyfish field produces no row. The wind
 forecast is appended to the wind row as `→ <speed>` and is omitted when
 unavailable. It never creates another row.
+
+SafeBeach flag lines may append only its exact generic operational meaning:
+`купание запрещено`, `с осторожностью`, or `купание разрешено`. The flag
+heading includes the latest selected-beach SafeBeach update time.
 
 The weather icon is dynamic from the existing AEMET daily sky forecast:
 `☀️` clear, `🌤` partly cloudy, `☁️` cloudy, `🌫️` fog, `🌧️` rain,
@@ -198,17 +202,22 @@ presented as absence of warnings.
 ### Delivery and schedule
 
 - One configured Telegram chat or channel
-- One external invocation at `10:02` in `Europe/Madrid`
-- One direct source-collection pass, followed by delivery and process exit
-- Use an active SafeBeach flag when it is available at collection time; an
-  unavailable flag does not block publication
-- Skip when the current local date already has a confirmed publication
+- Publish the full non-operational beach briefing at `07:30`
+- Check SafeBeach at `10:10`, then every five minutes through `10:40`
+- Require active, non-ended, timestamped flags for Centre, Roqueta, and Vivers
+- Before completeness, exit without checking or collecting other sources
+- After completeness, or after the final failed check, inspect the Mayor
+  channel once for a new explicit bathing-status transition since 07:30
+- If neither source has an update, retain the 07:30 message and exit
+- If either has an update, recollect all other sources once, send one full
+  replacement with a normal notification, then delete the 07:30 message
 - At most three bounded Telegram HTTP attempts within that run
-- One atomic state value: `last_successful_date`
+- One small atomic JSON state with the date, morning time, message IDs, and
+  deletion result
 - Concise process output for success, duplicate, skip, and failure
 
-The success date is written only after Telegram confirms delivery. Collection
-or delivery failure writes no state, so a later external invocation may retry.
+The replacement ID is stored before deleting the earlier message. If deletion
+fails, the next invocation retries cleanup without sending another replacement.
 The CLI `preview` command remains available for local inspection. An optional
 `listen` process accepts only a fresh `/preview` command in a private chat from
 a user ID listed in `TELEGRAM_ALLOWED_USER_IDS`. It replies privately with

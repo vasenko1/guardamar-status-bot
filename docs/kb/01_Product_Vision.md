@@ -34,7 +34,8 @@ service. Users should follow the responsible authority for urgent instructions.
 
 A good digest is calm and predictable:
 
-- one message at 10:02 local time;
+- one current group message: an early 07:30 briefing, replaced later only
+  when verified beach or Mayor-channel information adds value;
 - important items appear before routine conditions;
 - wording is factual and compact;
 - missing optional sections do not create clutter;

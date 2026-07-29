@@ -4,7 +4,12 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from telegrambot.delivery import attempt_delivery
+from telegrambot.delivery import (
+    attempt_delivery,
+    publish_morning,
+    publish_update,
+)
+from telegrambot.models import BeachStatus
 from telegrambot.state import PublicationState
 
 MADRID = ZoneInfo("Europe/Madrid")
@@ -60,6 +65,88 @@ class DeliveryRunTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result, "skipped")
             self.assertFalse(delivered)
             self.assertIsNone(state.last_successful_date())
+
+    async def test_update_waits_for_safebeach_before_final_attempt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = PublicationState(Path(directory) / "delivery.json")
+            morning = datetime(2026, 7, 29, 7, 30, tzinfo=MADRID)
+            state.mark_morning(morning.date(), 10, morning)
+            mayor_calls = 0
+
+            async def mayor(since):
+                nonlocal mayor_calls
+                mayor_calls += 1
+
+            result = await publish_update(
+                datetime(2026, 7, 29, 10, 20, tzinfo=MADRID),
+                state,
+                None,
+                False,
+                mayor,
+                lambda beach, notice: None,
+                lambda message: None,
+                lambda message_id: None,
+            )
+
+            self.assertEqual(result, "waiting")
+            self.assertEqual(mayor_calls, 0)
+
+    async def test_update_sends_first_then_deletes_and_does_not_resend(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = PublicationState(Path(directory) / "delivery.json")
+            morning = datetime(2026, 7, 29, 7, 30, tzinfo=MADRID)
+            state.mark_morning(morning.date(), 10, morning)
+            actions = []
+            beach = BeachStatus(
+                flag_color="green",
+                sea_temperature_c=27,
+                nearby_flags=(
+                    ("Vivers", "green"),
+                    ("Centre", "green"),
+                    ("Roqueta", "yellow"),
+                ),
+            )
+
+            async def produce(status, notice):
+                return "updated"
+
+            async def deliver(message):
+                actions.append(("send", message))
+                return 20
+
+            async def delete(message_id):
+                actions.append(("delete", message_id))
+
+            async def mayor(since):
+                return None
+
+            first = await publish_update(
+                datetime(2026, 7, 29, 10, 15, tzinfo=MADRID),
+                state,
+                beach,
+                False,
+                mayor,
+                produce,
+                deliver,
+                delete,
+            )
+            second = await publish_update(
+                datetime(2026, 7, 29, 10, 20, tzinfo=MADRID),
+                state,
+                beach,
+                False,
+                mayor,
+                produce,
+                deliver,
+                delete,
+            )
+
+            self.assertEqual(first, "success")
+            self.assertEqual(second, "duplicate")
+            self.assertEqual(
+                actions,
+                [("send", "updated"), ("delete", 10)],
+            )
 
     async def test_telegram_failure_is_not_persisted_and_can_be_retried(self):
         with tempfile.TemporaryDirectory() as directory:

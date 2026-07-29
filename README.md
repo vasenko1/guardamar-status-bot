@@ -12,7 +12,7 @@ prematurely.
 
 The Morning Digest MVP can fetch official AEMET weather and warning data plus
 Guardamar's public SafeBeach status, format one short message, and deliver it
-daily to one configured Telegram chat or channel. It may also include up to
+to one configured Telegram chat or channel. It may also include up to
 two official Agenda Guardamar events occurring today and an explicit active
 festival traffic restriction from Policía Local Guardamar.
 
@@ -33,7 +33,7 @@ with [docs/kb/00_Project_Overview.md](docs/kb/00_Project_Overview.md).
 
 - Python with `asyncio`
 - standard-library HTTP for sources and outbound Telegram delivery
-- one short-lived process invoked externally at 10:02
+- one short-lived 07:30 process and bounded seasonal update checks
 - optional isolated listener for allowlisted private `/preview`
 - one atomic JSON value for the last successful local date
 - no Docker, PostgreSQL, webhooks, or heavy background services
@@ -62,23 +62,22 @@ State defaults to `state/delivery.json`; override it with
 
 ## Run
 
-Run one complete Morning Digest execution:
+Run the early Morning Digest execution:
 
 ```sh
 PYTHONPATH=src python -m telegrambot run
 ```
 
-The command checks the successful publication date, collects every implemented
-source directly once, builds and sends the digest, stores the date after
-confirmed success, and exits.
+The command collects the approved sources without operational SafeBeach rows,
+sends the briefing, stores its Telegram message ID, and exits.
 
-Use an external Termux scheduler to invoke this command at `10:02` in
-`Europe/Madrid`. For example, a `cronie` entry can invoke a small local shell
-command that changes to the repository, loads `.env`, and runs the command:
+Use external Termux cron entries at `07:30` and every five minutes from
+`10:10` through `10:40` in `Europe/Madrid`:
 
 ```cron
 CRON_TZ=Europe/Madrid
-2 10 * * * cd /path/to/TelegramBot && bash -lc 'source .env; PYTHONPATH=src python -m telegrambot run'
+30 7 * * * /path/to/TelegramBot/termux/run-daily.sh
+10-40/5 10 * * * /path/to/TelegramBot/termux/update-daily.sh
 ```
 
 Keep the Android device timezone set to `Europe/Madrid` as an additional
@@ -89,8 +88,8 @@ The validated Android deployment uses the scripts in `termux/`:
 - `termux/listen.sh` under a `termux-services` service named
   `guardamar-preview`; its `run` file may be a symlink because the launcher
   resolves the real target path before loading the project `.env`;
-- `termux/run-daily.sh` from this crontab:
-  `CRON_TZ=Europe/Madrid` and `2 10 * * * .../termux/run-daily.sh`;
+- `termux/run-daily.sh` at 07:30 and `termux/update-daily.sh` every five
+  minutes from 10:10 through 10:40;
 - `termux/deploy.sh` at `04:00` to apply only commits promoted to the
   GitHub `deploy` branch after successful CI;
 - `termux/start-services` copied to `~/.termux/boot/start-services` for the
@@ -109,15 +108,14 @@ Recommended crontab entries:
 ```cron
 CRON_TZ=Europe/Madrid
 0 4 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/deploy.sh
-2 10 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-daily.sh
+30 7 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-daily.sh
+10-40/5 10 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/update-daily.sh
 ```
 
 Install `cronie`, `termux-services`, and the Python `tzdata` dependency before
 enabling the services. Open Termux:Boot once after installation. On Android,
 allow Termux and Termux:Boot to auto-start and run without battery
-restrictions. The boot script holds a wake lock for reliable exact-time cron
-execution; remove that line if battery use is more important than exact 10:02
-delivery.
+restrictions. The boot script holds a wake lock for reliable cron execution.
 
 Local inspection remains available:
 
@@ -140,11 +138,9 @@ Send `/preview` to the bot in a private chat. Only IDs in
 to the configured group, and does not change publication state. The listener
 does not fetch any source until an authorized command arrives.
 
-No state is written for collection or delivery failure. No source cache is
-currently implemented: source responses and normalized records live only for
-the current process and are discarded when it exits. The empty lock file
-beside the state file only prevents overlapping processes; it contains no
-cached data.
+State contains only the current local date, morning publication time, Telegram
+message IDs, and cleanup result. No source cache is implemented: source
+responses and normalized records live only for the current process.
 
 Gemini is optional and is called only when the official Policía Local traffic
 page contains an unknown notice format. Known notices use deterministic rules

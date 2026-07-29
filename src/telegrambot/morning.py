@@ -5,6 +5,7 @@ import logging
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 from zoneinfo import ZoneInfo
 
 from .agenda import (
@@ -22,6 +23,7 @@ from .municipal_agenda import (
 )
 from .police import PoliceTrafficError, fetch_traffic_notices
 from .safebeach import SafeBeachError, fetch_beach_status
+from .models import BeachNotice, BeachStatus
 
 LOGGER = logging.getLogger(__name__)
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
@@ -57,12 +59,16 @@ async def produce_message(
     municipal_agenda_state_path: Path = Path(
         "state/municipal_agenda.json"
     ),
+    *,
+    collect_beach: bool = True,
+    beach_status: Optional[BeachStatus] = None,
+    beach_notice: Optional[BeachNotice] = None,
 ) -> str:
     """Build a digest; SafeBeach failure must not block AEMET delivery."""
 
     beach_task = (
         asyncio.create_task(fetch_beach_status())
-        if _safebeach_is_in_season(now)
+        if collect_beach and _safebeach_is_in_season(now)
         else None
     )
     agenda_task = asyncio.create_task(fetch_today_events(now))
@@ -97,7 +103,11 @@ async def produce_message(
         raise
 
     try:
-        beach = await beach_task if beach_task is not None else None
+        beach = (
+            await beach_task
+            if beach_task is not None
+            else beach_status
+        )
     except SafeBeachError as exc:
         LOGGER.warning(
             "SafeBeach unavailable; omitting beach status: %s",
@@ -164,6 +174,7 @@ async def produce_message(
         replace(
             digest,
             beach=beach,
+            beach_notice=beach_notice,
             traffic_notices=traffic_notices,
             events=_merge_events(
                 weekly_events,

@@ -1,8 +1,10 @@
 # Data Sources
 
 The implemented providers are AEMET, Guardamar's public SafeBeach page,
-Agenda Guardamar, and the official Policía Local traffic page. Each morning
-run requests current data directly; it does not read a source cache.
+Agenda Guardamar, the official Policía Local traffic page, and the public
+`@AlcaldeGuardamar` channel. The 07:30 run requests current data directly. A
+later verified beach update permits one fresh complete collection; no
+source-response cache is used.
 
 The remaining municipal, police, and seasonal publisher roles are mapped in
 `research/2026-07-27-guardamar-municipal-source-map.md`. Except for the
@@ -19,7 +21,7 @@ official endpoints and lightweight access methods are validated.
 | Agenda Guardamar | Official ticketed events occurring today | High for listed Ayuntamiento events | Bounded HTML index plus Schema.org event details | Yes |
 | Turismo Guardamar municipal agenda | Broader cultural program from the linked monthly Ayuntamiento poster | High; official but image-based | Daily link check plus change-triggered Gemini Vision extraction | Yes |
 | Ayuntamiento Wednesday market page and official holiday calendar | Weekly market at parking La Redonda, including holiday moves | High; official recurring schedule and annual calendars | Small reviewed local calendar rule | Yes |
-| `@AlcaldeGuardamar` public channel | Explicit market cancellations or exceptional moves | Operational municipal channel; text must be mechanically grounded | Market-day bounded HTML check with validated Gemini extraction | Yes, narrow role |
+| `@AlcaldeGuardamar` public channel | Explicit market exceptions and bathing-status transitions | Operational municipal channel; text must be mechanically grounded | Bounded market check or one check after SafeBeach retries | Yes, narrow role |
 | Campo de Guardamar market website | Sunday market at Camino del Raso, 15 | Operator-published schedule; no authoritative cancellation feed found | Local Sunday rule, `07:00–16:00` | Yes, explicit product exception |
 | Community or commercial sources | Gap filling only | Variable | Varies | No by default |
 
@@ -52,7 +54,7 @@ provide one later-day comparison with current wind. No source footer or source
 label is shown in the user-facing digest.
 
 The municipality forecast supplies precipitation probabilities by period. At
-10:02 the adapter considers future periods, falling back to a period that
+collection time the adapter considers future periods, falling back to one that
 still spans the current hour when no future period exists. The digest shows
 only the highest eligible probability when it is at least 75%, together with
 AEMET's period. Lower or malformed values are omitted.
@@ -67,7 +69,9 @@ It reads only their name, activity state, service-ended state, and flag color,
 plus jellyfish presence, and Centre water temperature, sea state, wind speed,
 and wind direction.
 
-Only active, non-ended lifeguard records are eligible. SafeBeach supplies
+Only active, non-ended lifeguard records are eligible. A replacement requires
+all three selected flags and a plausible update time for each. Optional sea,
+wind, and jellyfish fields never block completeness. SafeBeach supplies
 individual nearby flags and current beach wind when present. Its Centre water
 temperature and sea state are fallbacks when the AEMET beach forecast omits
 those values. Flags are never averaged or generalized; they are grouped by
@@ -176,8 +180,10 @@ describes different routing. No PDF processing, Facebook scraping, cache, or
 inference is used.
 
 The Mayor channel uses Telegram's bounded public HTML preview and requires no
-bot membership or user session. Its MVP role is limited to scheduled-market
-exceptions. The MVP does not scrape Facebook.
+bot membership or user session. Besides scheduled-market exceptions, one
+post-07:30 check recognizes only explicit red/prohibited or yellow/permitted
+bathing transitions. Known causes use a fixed Russian vocabulary; no AI
+inference is used. The MVP does not scrape Facebook.
 
 ## Selection criteria
 

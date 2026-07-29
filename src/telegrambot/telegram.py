@@ -69,7 +69,7 @@ def _post_message(
     chat_id: str,
     text: str,
     disable_notification: bool = False,
-) -> None:
+) -> int:
     if not 1 <= len(text) <= 4096:
         raise TelegramError(
             "Telegram message length is invalid", retryable=False
@@ -124,6 +124,49 @@ def _post_message(
         error_code = decoded.get("error_code")
         error_status = error_code if isinstance(error_code, int) else status
         raise _response_error(decoded, error_status)
+    result = decoded.get("result")
+    message_id = result.get("message_id") if isinstance(result, dict) else None
+    if not isinstance(message_id, int):
+        raise TelegramError(
+            "Telegram returned no message identifier", retryable=True
+        )
+    return message_id
+
+
+def _delete_message(
+    bot_token: str,
+    chat_id: str,
+    message_id: int,
+) -> None:
+    body = json.dumps(
+        {"chat_id": chat_id, "message_id": message_id}
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        f"https://api.telegram.org/bot{bot_token}/deleteMessage",
+        data=body,
+        headers={"Content-Type": "application/json; charset=utf-8"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(
+            request, timeout=REQUEST_TIMEOUT_SECONDS
+        ) as response:
+            payload = response.read(RESPONSE_LIMIT_BYTES + 1)
+            status = response.status
+    except urllib.error.HTTPError as exc:
+        payload = exc.read(RESPONSE_LIMIT_BYTES + 1)
+        try:
+            decoded = _decode_response(payload)
+        except TelegramError:
+            decoded = {}
+        raise _response_error(decoded, exc.code) from None
+    except (urllib.error.URLError, TimeoutError) as exc:
+        raise TelegramError(
+            "Telegram delete request failed", retryable=True
+        ) from exc
+    decoded = _decode_response(payload)
+    if status != 200 or decoded.get("ok") is not True:
+        raise _response_error(decoded, status)
 
 
 def _get_updates(
@@ -208,7 +251,7 @@ async def send_message(
     disable_notification: bool = False,
     max_attempts: int = MAX_SEND_ATTEMPTS,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
-) -> None:
+) -> int:
     """Send one message, retrying only transient failures."""
 
     if max_attempts < 1:
@@ -216,14 +259,13 @@ async def send_message(
 
     for attempt in range(1, max_attempts + 1):
         try:
-            await asyncio.to_thread(
+            return await asyncio.to_thread(
                 _post_message,
                 bot_token,
                 chat_id,
                 text,
                 disable_notification,
             )
-            return
         except TelegramError as exc:
             if not exc.retryable or attempt == max_attempts:
                 raise
@@ -234,3 +276,16 @@ async def send_message(
                 MAX_RETRY_DELAY_SECONDS,
             )
             await sleep(delay)
+    raise AssertionError("unreachable")
+
+
+async def delete_message(
+    bot_token: str,
+    chat_id: str,
+    message_id: int,
+) -> None:
+    """Delete one known message; caller decides whether to retry later."""
+
+    await asyncio.to_thread(
+        _delete_message, bot_token, chat_id, message_id
+    )

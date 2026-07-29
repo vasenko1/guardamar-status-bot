@@ -70,9 +70,12 @@ The project is successful when the digest is:
 
 ## Current phase
 
-The MVP performs one short morning execution: collect the currently approved
-official sources, build the digest, publish it to one configured Telegram
-destination, save the successful local date, and exit. It has no resident
-scheduler, background collector, or cache synchronization. A separate optional
+The MVP first publishes one short message at 07:30. During the SafeBeach
+season, short external invocations check for complete current beach data every
+five minutes from 10:10 through 10:40. A confirmed beach or new Mayor-channel
+update triggers one fresh full digest; Telegram receives the replacement
+before the earlier message is deleted. Otherwise the 07:30 message remains.
+There is no resident scheduler, sleeping retry process, background collector,
+or cache synchronization. A separate optional
 operator listener may use one idle Telegram long poll solely for allowlisted
 private `/preview`; it never publishes or changes publication state.

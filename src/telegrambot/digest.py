@@ -188,14 +188,43 @@ def build_message(digest: MorningDigest) -> str:
                 f"{FLAG_DOTS[color]} {', '.join(names)}"
             )
     if grouped_flags:
-        lines.append("🏖 Флаги на пляжах:")
-        lines.extend(f"   {group}" for group in grouped_flags)
+        update_suffix = ""
+        if digest.beach.updated_times:
+            latest = max(
+                updated for _, updated in digest.beach.updated_times
+            )
+            update_suffix = f" • {latest.strftime('%H:%M')}"
+        lines.append(f"🏖 Флаги на пляжах{update_suffix}:")
+        meanings = dict(digest.beach.flag_meanings)
+        for color in ("red", "yellow", "green"):
+            matching = [
+                name
+                for name, flag_color in nearby_flags
+                if flag_color == color
+            ]
+            if not matching:
+                continue
+            shared = {meanings.get(name) for name in matching}
+            suffix = ""
+            if len(shared) == 1 and None not in shared:
+                suffix = f" — {shared.pop()}"
+            lines.append(
+                f"   {FLAG_DOTS[color]} {', '.join(matching)}{suffix}"
+            )
 
     if digest.beach is not None and digest.beach.jellyfish_beaches:
         lines.append(
             "🪼 Медузы: "
             + ", ".join(digest.beach.jellyfish_beaches)
         )
+
+    if digest.beach_notice is not None:
+        heading = (
+            "⛔ Ограничение купания"
+            if digest.beach_notice.bathing_prohibited
+            else "🏖 Информация о купании"
+        )
+        lines.extend(["", heading, digest.beach_notice.text])
 
     if digest.warnings:
         lines.extend(["", "⚠️ Внимание"])
