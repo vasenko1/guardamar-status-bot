@@ -62,6 +62,11 @@ fallback may ask Gemini for structured translation of an unknown official
 notice, but application validation—not the model—decides whether it is safe to
 include.
 
+Traffic documents normalize into independent mobility measures rather than one
+document-wide type. A measure has an action, location and validity interval,
+plus only relevant hours, affected users, exceptions, alternative route and
+destinations.
+
 ### Telegram boundary
 
 Sends one outbound digest through the Telegram Bot API. The publication

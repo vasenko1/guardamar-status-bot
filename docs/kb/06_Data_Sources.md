@@ -17,7 +17,7 @@ official endpoints and lightweight access methods are validated.
 | Official marine service | Sea state and relevant marine warnings | High for its jurisdiction | API or published feed | Yes |
 | SafeBeach public Guardamar page | Active beach flags and sea temperature | High when municipal lifeguards actively maintain it | Small structured payload embedded in the public page | Yes |
 | Civil protection or emergency authority | Safety warnings | Highest priority | Alert feed or official publication | Yes |
-| Policía Local Guardamar | Explicit traffic restrictions | High for direct official notices; publication is irregular | One bounded official HTML page | Yes |
+| Policía Local Guardamar | Explicit mobility restrictions | High for direct official notices; publication is irregular | One bounded official HTML page and reviewed linked document | Yes |
 | Agenda Guardamar | Official ticketed events occurring today | High for listed Ayuntamiento events | Bounded HTML index plus Schema.org event details | Yes |
 | Turismo Guardamar municipal agenda | Broader cultural program from the linked monthly Ayuntamiento poster | High; official but image-based | Daily link check plus change-triggered Gemini Vision extraction | Yes |
 | Ayuntamiento Wednesday market page and official holiday calendar | Weekly market at parking La Redonda, including holiday moves | High; official recurring schedule and annual calendars | Small reviewed local calendar rule | Yes |
@@ -167,17 +167,18 @@ switches its poster link to August before the July exhibition ends.
 ## Approved Policía Local traffic data
 
 `https://policiaguardamar.com/cortecallefiestas.html` is an official Policía
-Local page with an explicit festival restriction: from 15 through 29 July the
-remaining approaches are closed and access to Centro de Salud and the bus
-terminal is via C/ San Francisco. During that calendar window, the adapter
-shows one fixed Russian traffic line only when all those facts are still
-present together on the freshly fetched page.
+Local page linking the reviewed festival traffic PDF. The supported 22–29 July
+measure closes Molivent, routes access to Centro de Salud and the bus terminal
+through La Redonda, and also permits light vehicles through San Francisco
+until 23:30.
 
-The source is optional and irregular, not a live traffic feed. Changed,
-ambiguous, missing, or out-of-window content omits the section. The linked
-historical PDF is not used as current data because it has no current year and
-describes different routing. No PDF processing, Facebook scraping, cache, or
-inference is used.
+The adapter downloads the small linked PDF and accepts this known rule only
+when its SHA-256 matches the reviewed document. It does not run PDF extraction
+or OCR. A changed document is omitted pending review. Unknown official HTML
+notices may use ADR 0011's fail-closed structured Gemini fallback. Documents
+normalize into independent active measures; at most two compact lines reach
+the digest. The source remains optional and irregular, not a live feed, and no
+traffic cache is kept.
 
 The Mayor channel uses Telegram's bounded public HTML preview and requires no
 bot membership or user session. Besides scheduled-market exceptions, one

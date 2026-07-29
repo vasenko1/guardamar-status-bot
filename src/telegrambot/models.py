@@ -50,8 +50,25 @@ class Event:
 
 
 @dataclass(frozen=True)
+class TrafficMeasure:
+    """One independently active mobility restriction from an official notice."""
+
+    action: str
+    location: str
+    valid_from: date
+    valid_until: date
+    daily_hours: Optional[str] = None
+    affected: Optional[str] = None
+    exceptions: Optional[str] = None
+    alternative: Optional[str] = None
+    destinations: Tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class TrafficNotice:
     text: str
+    measures: Tuple[TrafficMeasure, ...] = ()
+    source_url: Optional[str] = None
 
 
 @dataclass(frozen=True)

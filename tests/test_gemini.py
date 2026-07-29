@@ -16,13 +16,7 @@ class _GeminiResponse:
     def read(self, limit):
         result = {
             "publish": False,
-            "evidence_es": "",
-            "message_ru": "",
-            "streets": [],
-            "start_day": None,
-            "start_month": None,
-            "end_day": None,
-            "end_month": None,
+            "measures": [],
         }
         return json.dumps(
             {

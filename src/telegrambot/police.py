@@ -1,24 +1,32 @@
 """Fetch explicit traffic restrictions from Policía Local Guardamar."""
 
 import asyncio
+import hashlib
 import re
 import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime
+from datetime import date, datetime
 from html.parser import HTMLParser
 from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
-from .models import TrafficNotice
+from .models import TrafficMeasure, TrafficNotice
 from .gemini import GeminiError, translate_traffic_notice
 
 TRAFFIC_URL = "https://policiaguardamar.com/cortecallefiestas.html"
+FESTIVAL_PDF_URL = (
+    "https://policiaguardamar.com/pdf/cortecalle_fiestas13.pdf"
+)
+FESTIVAL_PDF_SHA256 = (
+    "267a199ec1bb83abfc47f618bd208496733a252659476d434ab30082a35ce38e"
+)
 ALLOWED_HOSTS = {"policiaguardamar.com", "www.policiaguardamar.com"}
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 REQUEST_TIMEOUT_SECONDS = 10
 PAGE_LIMIT_BYTES = 200_000
+PDF_LIMIT_BYTES = 100_000
 RUSSIAN_MONTHS = {
     1: "января",
     2: "февраля",
@@ -41,6 +49,11 @@ _NOTICE_PATTERN = re.compile(
     r"al\s+trafico.{0,200}?periodo\s+de\s+fiestas.{0,200}?desde\s+el\s+"
     r"(\d{1,2})\s+al\s+(\d{1,2})\s+de\s+julio",
     re.IGNORECASE | re.DOTALL,
+)
+_FESTIVAL_PDF_PATTERN = re.compile(
+    r"(?:https?://(?:www\.)?policiaguardamar\.com/)?"
+    r"pdf/cortecalle_fiestas13\.pdf",
+    re.IGNORECASE,
 )
 
 
@@ -103,14 +116,88 @@ def _read_page() -> bytes:
     return payload
 
 
+def _read_festival_pdf() -> bytes:
+    request = urllib.request.Request(
+        FESTIVAL_PDF_URL,
+        headers={"User-Agent": "GuardamarMorningDigest/0.10"},
+    )
+    try:
+        with urllib.request.urlopen(
+            request,
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        ) as response:
+            final = urllib.parse.urlparse(response.geturl())
+            if final.scheme != "https" or final.hostname not in ALLOWED_HOSTS:
+                raise PoliceTrafficError(
+                    "Policía Local PDF returned an unexpected redirect"
+                )
+            payload = response.read(PDF_LIMIT_BYTES + 1)
+    except (
+        urllib.error.HTTPError,
+        urllib.error.URLError,
+        TimeoutError,
+    ) as exc:
+        raise PoliceTrafficError(
+            "Policía Local traffic document request failed"
+        ) from exc
+    if len(payload) > PDF_LIMIT_BYTES:
+        raise PoliceTrafficError(
+            "Policía Local traffic document was too large"
+        )
+    return payload
+
+
+def _festival_notice(
+    now: datetime,
+    document_digest: str,
+) -> Tuple[TrafficNotice, ...]:
+    """Render only the active measure from the reviewed official PDF."""
+
+    if document_digest != FESTIVAL_PDF_SHA256:
+        return ()
+    local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
+    if local_day.month != 7 or not 22 <= local_day.day <= 29:
+        return ()
+    start = date(local_day.year, 7, 22)
+    end = date(local_day.year, 7, 29)
+    measure = TrafficMeasure(
+        action="road_closed",
+        location="Molivent",
+        valid_from=start,
+        valid_until=end,
+        daily_hours=None,
+        affected="all_traffic",
+        exceptions="light_vehicles_until_23:30",
+        alternative="La Redonda; San Francisco for light vehicles until 23:30",
+        destinations=("Centro de Salud", "Terminal de Autobuses"),
+    )
+    return (
+        TrafficNotice(
+            text=(
+                f"{_active_period_prefix(22, 29, 7, local_day.day)} "
+                "перекрыта улица Molivent. К поликлинике и автовокзалу — "
+                "через La Redonda; легковым авто также через San Francisco "
+                "до 23:30."
+            ),
+            measures=(measure,),
+            source_url=FESTIVAL_PDF_URL,
+        ),
+    )
+
+
 def normalize_traffic_page(
     payload: bytes,
     now: datetime,
+    document_digest: Optional[str] = None,
 ) -> Tuple[TrafficNotice, ...]:
-    """Return the explicit festival access notice only while active."""
+    """Return a reviewed known notice; unknown pages use the AI fallback."""
 
-    parser = _TextParser()
     decoded = payload.decode("utf-8", "replace")
+    if _FESTIVAL_PDF_PATTERN.search(decoded):
+        if document_digest is None:
+            return ()
+        return _festival_notice(now, document_digest)
+    parser = _TextParser()
     if "\ufffd" in decoded:
         decoded = payload.decode("iso-8859-1", "replace")
     parser.feed(decoded)
@@ -132,15 +219,9 @@ def normalize_traffic_page(
     if local_day.month != 7 or not start_day <= local_day.day <= end_day:
         return ()
 
-    return (
-        TrafficNotice(
-            text=(
-                f"{_active_period_prefix(start_day, end_day, 7, local_day.day)}"
-                ": проезд к поликлинике и "
-                "автовокзалу — только через C/ San Francisco."
-            ),
-        ),
-    )
+    # The old HTML summary omits Molivent and reverses the routing detail
+    # contained in the reviewed PDF. Never publish it by itself.
+    return ()
 
 
 def _plain_text(payload: bytes) -> str:
@@ -172,66 +253,133 @@ def validate_ai_notice(
 
     if candidate.get("publish") is not True:
         return ()
-    evidence = candidate.get("evidence_es")
-    message = candidate.get("message_ru")
-    streets = candidate.get("streets")
-    date_fields = (
-        candidate.get("start_day"),
-        candidate.get("start_month"),
-        candidate.get("end_day"),
-        candidate.get("end_month"),
-    )
-    if (
-        not isinstance(evidence, str)
-        or not isinstance(message, str)
-        or not isinstance(streets, list)
-        or not streets
-        or not all(
-            isinstance(street, str) and 1 <= len(street) <= 80
-            for street in streets
-        )
-        or not all(isinstance(value, int) for value in date_fields)
-        or not 1 <= len(message) <= 180
-        or len(evidence) > 1_500
-    ):
+    measures = candidate.get("measures")
+    if not isinstance(measures, list) or not 1 <= len(measures) <= 4:
         return ()
 
     normalized_source = _normalized(source_text)
-    normalized_evidence = _normalized(evidence)
-    if not normalized_evidence or normalized_evidence not in normalized_source:
-        return ()
-    if not any(
-        marker in normalized_evidence
-        for marker in ("corte", "cerrad", "restric", "trafico")
-    ):
-        return ()
-    if any(
-        _normalized(street) not in normalized_evidence
-        or street.casefold() not in message.casefold()
-        for street in streets
-    ):
-        return ()
-
-    start_day, start_month, end_day, end_month = date_fields
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
-    try:
-        start = local_day.replace(month=start_month, day=start_day)
-        end = local_day.replace(month=end_month, day=end_day)
-    except ValueError:
-        return ()
-    if end < start or not start <= local_day <= end:
-        return ()
-    if str(start_day) not in evidence or str(end_day) not in evidence:
-        return ()
-    message = " ".join(message.split())
-    if local_day > start:
-        message = re.sub(
-            r"^\d{1,2}\s*[–-]\s*\d{1,2}\s+[^:]{2,16}:",
-            f"До {end.day} {RUSSIAN_MONTHS[end.month]}:",
-            message,
-            count=1,
+    notices = []
+    allowed_actions = {
+        "road_closed",
+        "access_restricted",
+        "parking_prohibited",
+        "lane_occupied",
+        "direction_changed",
+        "speed_or_manoeuvre_restricted",
+        "transit_changed",
+        "avoid_area",
+    }
+    for item in measures:
+        if not isinstance(item, dict):
+            return ()
+        evidence = item.get("evidence_es")
+        message = item.get("message_ru")
+        streets = item.get("streets")
+        action = item.get("action")
+        location = item.get("location")
+        destinations = item.get("destinations")
+        optional_fields = (
+            item.get("daily_hours"),
+            item.get("affected"),
+            item.get("exceptions"),
+            item.get("alternative"),
         )
-    return (TrafficNotice(text=message),)
+        date_fields = (
+            item.get("start_day"),
+            item.get("start_month"),
+            item.get("end_day"),
+            item.get("end_month"),
+        )
+        if (
+            action not in allowed_actions
+            or not isinstance(evidence, str)
+            or not isinstance(message, str)
+            or not isinstance(location, str)
+            or not 1 <= len(location) <= 120
+            or not isinstance(streets, list)
+            or not streets
+            or not all(
+                isinstance(street, str) and 1 <= len(street) <= 80
+                for street in streets
+            )
+            or not isinstance(destinations, list)
+            or not all(
+                isinstance(value, str) and 1 <= len(value) <= 100
+                for value in destinations
+            )
+            or not all(
+                value is None
+                or isinstance(value, str) and len(value) <= 160
+                for value in optional_fields
+            )
+            or not all(isinstance(value, int) for value in date_fields)
+            or not 1 <= len(message) <= 180
+            or len(evidence) > 1_500
+        ):
+            return ()
+        normalized_evidence = _normalized(evidence)
+        if (
+            not normalized_evidence
+            or normalized_evidence not in normalized_source
+            or not any(
+                marker in normalized_evidence
+                for marker in (
+                    "corte",
+                    "cerrad",
+                    "restric",
+                    "trafico",
+                    "estacion",
+                    "desvio",
+                    "carril",
+                    "parada",
+                )
+            )
+        ):
+            return ()
+        if any(
+            _normalized(street) not in normalized_evidence
+            or street.casefold() not in message.casefold()
+            for street in streets
+        ):
+            return ()
+        start_day, start_month, end_day, end_month = date_fields
+        try:
+            start = local_day.replace(month=start_month, day=start_day)
+            end = local_day.replace(month=end_month, day=end_day)
+        except ValueError:
+            return ()
+        if end < start or not start <= local_day <= end:
+            return ()
+        if str(start_day) not in evidence or str(end_day) not in evidence:
+            return ()
+        message = " ".join(message.split())
+        if local_day > start:
+            message = re.sub(
+                r"^\d{1,2}\s*[–-]\s*\d{1,2}\s+[^:]{2,16}:",
+                f"До {end.day} {RUSSIAN_MONTHS[end.month]}:",
+                message,
+                count=1,
+            )
+        measure = TrafficMeasure(
+            action=action,
+            location=location,
+            valid_from=start,
+            valid_until=end,
+            daily_hours=item.get("daily_hours"),
+            affected=item.get("affected"),
+            exceptions=item.get("exceptions"),
+            alternative=item.get("alternative"),
+            destinations=tuple(destinations),
+        )
+        notices.append(
+            TrafficNotice(
+                text=message,
+                measures=(measure,),
+                source_url=TRAFFIC_URL,
+            )
+        )
+    return tuple(notices[:2])
 
 
 async def fetch_traffic_notices(
@@ -241,9 +389,16 @@ async def fetch_traffic_notices(
     """Fetch today's explicit official traffic restriction."""
 
     payload = await asyncio.to_thread(_read_page)
-    known_notice = normalize_traffic_page(payload, now)
+    decoded = payload.decode("utf-8", "replace")
+    document_digest = None
+    if _FESTIVAL_PDF_PATTERN.search(decoded):
+        document = await asyncio.to_thread(_read_festival_pdf)
+        document_digest = hashlib.sha256(document).hexdigest()
+    known_notice = normalize_traffic_page(payload, now, document_digest)
     if known_notice:
         return known_notice
+    if _FESTIVAL_PDF_PATTERN.search(decoded):
+        return ()
     source_text = _plain_text(payload)
     if _NOTICE_PATTERN.search(_normalized(source_text)):
         return ()

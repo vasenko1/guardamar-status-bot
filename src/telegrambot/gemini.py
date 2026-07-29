@@ -22,28 +22,68 @@ TRAFFIC_SCHEMA = {
     "additionalProperties": False,
     "properties": {
         "publish": {"type": "boolean"},
-        "evidence_es": {"type": "string"},
-        "message_ru": {"type": "string"},
-        "streets": {
+        "measures": {
             "type": "array",
-            "items": {"type": "string"},
-            "maxItems": 8,
+            "maxItems": 4,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": [
+                            "road_closed",
+                            "access_restricted",
+                            "parking_prohibited",
+                            "lane_occupied",
+                            "direction_changed",
+                            "speed_or_manoeuvre_restricted",
+                            "transit_changed",
+                            "avoid_area",
+                        ],
+                    },
+                    "evidence_es": {"type": "string"},
+                    "message_ru": {"type": "string"},
+                    "location": {"type": "string"},
+                    "streets": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "maxItems": 8,
+                    },
+                    "start_day": {"type": ["integer", "null"]},
+                    "start_month": {"type": ["integer", "null"]},
+                    "end_day": {"type": ["integer", "null"]},
+                    "end_month": {"type": ["integer", "null"]},
+                    "daily_hours": {"type": ["string", "null"]},
+                    "affected": {"type": ["string", "null"]},
+                    "exceptions": {"type": ["string", "null"]},
+                    "alternative": {"type": ["string", "null"]},
+                    "destinations": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "maxItems": 6,
+                    },
+                },
+                "required": [
+                    "action",
+                    "evidence_es",
+                    "message_ru",
+                    "location",
+                    "streets",
+                    "start_day",
+                    "start_month",
+                    "end_day",
+                    "end_month",
+                    "daily_hours",
+                    "affected",
+                    "exceptions",
+                    "alternative",
+                    "destinations",
+                ],
+            },
         },
-        "start_day": {"type": ["integer", "null"]},
-        "start_month": {"type": ["integer", "null"]},
-        "end_day": {"type": ["integer", "null"]},
-        "end_month": {"type": ["integer", "null"]},
     },
-    "required": [
-        "publish",
-        "evidence_es",
-        "message_ru",
-        "streets",
-        "start_day",
-        "start_month",
-        "end_day",
-        "end_month",
-    ],
+    "required": ["publish", "measures"],
 }
 EVENT_TRANSLATION_SCHEMA = {
     "type": "object",
@@ -145,15 +185,19 @@ def _request_translation(
     local_day: date,
 ) -> Dict[str, Any]:
     prompt = (
-        "You extract one currently active road closure or access restriction "
-        "from an official Policía Local Guardamar web page and translate it "
-        "concisely into Russian. Never infer missing facts. Set publish=false "
-        "unless the text explicitly includes a restriction, affected street "
-        "or named access route, and a start/end date covering CURRENT_DATE. "
-        "evidence_es must be one exact contiguous quotation from SOURCE. "
-        "Copy street names unchanged into streets and message_ru. Keep "
-        "message_ru factual and at most 180 characters. If unsafe, return "
-        "empty evidence_es, message_ru and streets with null dates.\n\n"
+        "Extract every independently active mobility measure from this "
+        "official Policía Local Guardamar page. A notice may combine closures, "
+        "access restrictions, parking bans, occupied lanes, direction or "
+        "manoeuvre changes, public-transport changes, and avoid-area advice. "
+        "Never infer missing facts. Split different date/time periods into "
+        "different measures. Include only measures active on CURRENT_DATE. "
+        "For each measure, evidence_es must be one exact contiguous quotation "
+        "from SOURCE that contains its restriction, location, dates, hours, "
+        "affected users, exceptions and alternative route when those details "
+        "are claimed. Copy street names unchanged into streets, location and "
+        "message_ru. Keep each Russian message factual and at most 180 "
+        "characters. Set publish=false and return an empty measures array when "
+        "nothing can be extracted safely.\n\n"
         f"CURRENT_DATE: {local_day.isoformat()}\n"
         f"SOURCE:\n{source_text[:MAX_SOURCE_CHARACTERS]}"
     )

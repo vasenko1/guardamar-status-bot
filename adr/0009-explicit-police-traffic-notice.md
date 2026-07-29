@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Superseded by ADR 0022
 
 ## Context
 
@@ -35,3 +35,6 @@ incorrect restriction.
 - General-purpose traffic scraper: the site has no consistent notice feed.
 - Historical PDF parsing: its freshness and routing cannot be trusted.
 - Keyword-based summaries: they could turn unrelated text into a restriction.
+
+ADR 0022 supersedes this interpretation after operator verification of the
+linked PDF and its current real-world restriction.

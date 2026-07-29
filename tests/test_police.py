@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 from telegrambot.models import MorningDigest, Weather
 from telegrambot.morning import produce_message
 from telegrambot.police import (
+    FESTIVAL_PDF_SHA256,
     PoliceTrafficError,
     normalize_traffic_page,
     validate_ai_notice,
@@ -14,12 +15,7 @@ from telegrambot.police import (
 MADRID = ZoneInfo("Europe/Madrid")
 NOTICE_PAGE = """
 <html><body>
-<p>
-TENGA EN CUENTA QUE PARA ACCEDER AL CENTRO DE SALUD Y TERMINAL DE
-AUTOBUSES DEBE ACCEDER DESDE LA C/SAN FRANCISCO, YA QUE EL RESTO DE
-ACCESOS ESTARÁN CERRADOS AL TRÁFICO, DURANTE EL PERÍODO DE FIESTAS,
-ESTO ES, DESDE EL 15 AL 29 DE JULIO.
-</p>
+<a href="pdf/cortecalle_fiestas13.pdf">Cortes de tráfico</a>
 </body></html>
 """.encode()
 
@@ -29,29 +25,44 @@ class PoliceTrafficNormalizationTests(unittest.TestCase):
         notices = normalize_traffic_page(
             NOTICE_PAGE,
             datetime(2026, 7, 27, 7, 30, tzinfo=MADRID),
+            FESTIVAL_PDF_SHA256,
         )
 
         self.assertEqual(len(notices), 1)
         self.assertEqual(
             notices[0].text,
             (
-                "До 29 июля: проезд к поликлинике и автовокзалу — "
-                "только через C/ San Francisco."
+                "До 29 июля перекрыта улица Molivent. К поликлинике и "
+                "автовокзалу — через La Redonda; легковым авто также "
+                "через San Francisco до 23:30."
             ),
         )
+        self.assertEqual(notices[0].measures[0].action, "road_closed")
+        self.assertEqual(notices[0].measures[0].location, "Molivent")
 
     def test_keeps_full_range_on_first_day(self):
         notices = normalize_traffic_page(
             NOTICE_PAGE,
-            datetime(2026, 7, 15, 7, 30, tzinfo=MADRID),
+            datetime(2026, 7, 22, 7, 30, tzinfo=MADRID),
+            FESTIVAL_PDF_SHA256,
         )
 
-        self.assertTrue(notices[0].text.startswith("15–29 июля:"))
+        self.assertTrue(notices[0].text.startswith("22–29 июля"))
 
     def test_omits_notice_outside_validity_window(self):
         notices = normalize_traffic_page(
             NOTICE_PAGE,
             datetime(2026, 7, 30, 7, 30, tzinfo=MADRID),
+            FESTIVAL_PDF_SHA256,
+        )
+
+        self.assertEqual(notices, ())
+
+    def test_rejects_changed_or_unreviewed_document(self):
+        notices = normalize_traffic_page(
+            NOTICE_PAGE,
+            datetime(2026, 7, 27, 7, 30, tzinfo=MADRID),
+            "changed",
         )
 
         self.assertEqual(notices, ())
@@ -63,15 +74,24 @@ class PoliceTrafficNormalizationTests(unittest.TestCase):
         )
         candidate = {
             "publish": True,
-            "evidence_es": source,
-            "message_ru": (
-                "5–7 августа: C/ Mayor перекрыта из-за дорожных работ."
-            ),
-            "streets": ["C/ Mayor"],
-            "start_day": 5,
-            "start_month": 8,
-            "end_day": 7,
-            "end_month": 8,
+            "measures": [{
+                "action": "road_closed",
+                "evidence_es": source,
+                "message_ru": (
+                    "5–7 августа: C/ Mayor перекрыта из-за дорожных работ."
+                ),
+                "location": "C/ Mayor",
+                "streets": ["C/ Mayor"],
+                "start_day": 5,
+                "start_month": 8,
+                "end_day": 7,
+                "end_month": 8,
+                "daily_hours": None,
+                "affected": None,
+                "exceptions": None,
+                "alternative": None,
+                "destinations": [],
+            }],
         }
 
         notices = validate_ai_notice(
@@ -93,13 +113,22 @@ class PoliceTrafficNormalizationTests(unittest.TestCase):
         )
         candidate = {
             "publish": True,
-            "evidence_es": source,
-            "message_ru": "5–7 августа: C/ Alicante перекрыта.",
-            "streets": ["C/ Alicante"],
-            "start_day": 5,
-            "start_month": 8,
-            "end_day": 7,
-            "end_month": 8,
+            "measures": [{
+                "action": "road_closed",
+                "evidence_es": source,
+                "message_ru": "5–7 августа: C/ Alicante перекрыта.",
+                "location": "C/ Alicante",
+                "streets": ["C/ Alicante"],
+                "start_day": 5,
+                "start_month": 8,
+                "end_day": 7,
+                "end_month": 8,
+                "daily_hours": None,
+                "affected": None,
+                "exceptions": None,
+                "alternative": None,
+                "destinations": [],
+            }],
         }
 
         self.assertEqual(
@@ -110,8 +139,11 @@ class PoliceTrafficNormalizationTests(unittest.TestCase):
             ),
             (),
         )
-        candidate["streets"] = ["C/ Mayor"]
-        candidate["message_ru"] = "5–7 августа: C/ Mayor перекрыта."
+        candidate["measures"][0]["streets"] = ["C/ Mayor"]
+        candidate["measures"][0]["location"] = "C/ Mayor"
+        candidate["measures"][0]["message_ru"] = (
+            "5–7 августа: C/ Mayor перекрыта."
+        )
         self.assertEqual(
             validate_ai_notice(
                 candidate,
@@ -136,6 +168,10 @@ class PoliceTrafficFailureTests(unittest.IsolatedAsyncioTestCase):
             patch(
                 "telegrambot.police._read_page",
                 return_value=NOTICE_PAGE,
+            ),
+            patch(
+                "telegrambot.police._read_festival_pdf",
+                return_value=b"changed",
             ),
             patch(
                 "telegrambot.police.translate_traffic_notice",

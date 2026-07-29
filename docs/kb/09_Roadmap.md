@@ -18,7 +18,7 @@
 - Implement Morning Digest collection and formatting. The AEMET weather and
   warning slice, Platja Centre SafeBeach status, and AEMET beach-temperature
   fallback are implemented. The optional Agenda Guardamar same-day event slice
-  and strict Policía Local festival traffic notice are implemented.
+  and structured Policía Local mobility measures are implemented.
 - Implement the approved canonical phone layout and inline wind comparison
   without changing source collection or message size. Complete.
 - Add two-stage Telegram delivery. Termux invokes the full briefing at 07:30
@@ -41,9 +41,9 @@
 ## Next steps
 
 - Improve source failure and stale-data handling.
-- Expand traffic notices only when Policía Local or the municipality exposes
-  another explicit, safely parseable official notice. Do not treat the current
-  festival page as a general traffic feed.
+- Review changed Policía Local PDFs before accepting a new checksum; unknown
+  HTML notices remain eligible for the fail-closed structured fallback. Do not
+  treat the source as a live traffic feed.
 - Tune relevance and message length from real usage.
 - Add basic operational visibility without heavy services.
 - Review sources and assumptions periodically.

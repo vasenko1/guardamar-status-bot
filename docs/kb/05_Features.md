@@ -175,25 +175,28 @@ and place. Russian translations are not stored. Poster and Agenda
 Guardamar records are merged and deduplicated; routine opening hours and
 municipal services such as the mobile ecopark are excluded from `📅 События`.
 
-The traffic slice reads the explicit festival access restriction on the
-official Policía Local Guardamar traffic page. It shows one compact
-`🚧 Движение ограничено` line only from 15 through 29 July, while the page explicitly
-states that the remaining approaches are closed and access to Centro de Salud
-and the bus terminal is via C/ San Francisco. Missing, changed, ambiguous, or
-out-of-window text omits the complete section. The linked historical PDF is
-not used as current data.
+The traffic slice reads explicit restrictions from the official Policía Local
+Guardamar page and its reviewed festival PDF. A document becomes independent
+active measures, preserving location, dates, hours, affected users, exceptions,
+alternative route and destinations only when stated. From 22 through 29 July,
+the verified measure is:
+
+`До 29 июля перекрыта улица Molivent. К поликлинике и автовокзалу — через La
+Redonda; легковым авто также через San Francisco до 23:30.`
+
+The PDF is accepted only while its SHA-256 matches the reviewed document.
+Missing, changed, ambiguous, or out-of-window content omits the section.
 
 An active multi-day traffic notice uses `До <end date>` after its first day.
 On the first day it retains the full start–end range.
 
-If the official traffic page changes to a previously unknown notice format,
-the optional Gemini fallback may extract one exact Spanish evidence quotation
-and propose one Russian line. Publication requires a current explicit date
-range, at least one unchanged street or access-route name, traffic-restriction
-language in the evidence, and a message no longer than 180 characters. All
-facts are checked against the freshly fetched page. Missing key, quota,
-request failure, invalid JSON, invented facts, or ambiguity omits the traffic
-section. Known notices never consume Gemini quota.
+If the official traffic page changes to a previously unknown HTML notice,
+the optional Gemini fallback may extract up to four independent measures with
+exact Spanish evidence. Publication requires supported actions, current
+explicit dates, unchanged street names, restriction language, and Russian
+lines no longer than 180 characters. The application validates all measures
+against the freshly fetched page and displays at most two. Any failure omits
+the traffic section. Known notices never consume Gemini quota.
 
 AEMET lists no observation station inside Guardamar, so the current observation
 comes from nearby Rojales. Its location is documented but omitted from the

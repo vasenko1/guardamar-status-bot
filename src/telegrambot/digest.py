@@ -258,7 +258,9 @@ def build_message(digest: MorningDigest) -> str:
 
     if digest.traffic_notices:
         lines.extend(["", "🚧 Движение ограничено"])
-        lines.append(digest.traffic_notices[0].text)
+        lines.extend(
+            notice.text for notice in digest.traffic_notices[:2]
+        )
 
     if digest.events:
         lines.extend(["", "📅 События"])

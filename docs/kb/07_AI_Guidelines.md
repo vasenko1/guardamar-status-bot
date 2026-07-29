@@ -34,10 +34,11 @@ unavailable. A shorter truthful digest is better than a complete-looking one.
 
 Only ADR 0011's Policía Local traffic fallback may call Gemini at runtime.
 Gemini receives bounded public text from the freshly fetched official page and
-must return the accepted JSON schema. Its evidence must be an exact source
-quotation; dates and unchanged street names must pass application validation;
-the restriction must be active today; and the Russian line is capped at 180
-characters. The application omits the entire traffic section on any failure.
+may return up to four independent mobility measures in the accepted JSON
+schema. Every measure needs an exact source quotation, supported action,
+active dates and unchanged street names; each Russian line is capped at 180
+characters and the digest displays at most two. The application omits the
+entire traffic section on any validation failure.
 
 Do not send secrets, personal data, unrelated private content, or another
 model's output. Do not use Gemini for AEMET, SafeBeach, Agenda, delivery,
