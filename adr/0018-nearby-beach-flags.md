@@ -14,8 +14,9 @@ published, while listing all six SafeBeach positions would add noise.
 
 - Show individual active flags for the three beaches closest to the urban
   centre: Centre / Babilònia, La Roqueta, and Vivers.
-- Group them by color in the fixed safety order red, yellow, green. Within a
-  color, use north-to-south order `Vivers`, `Centre`, `Roqueta`.
+- Group them by color in the fixed safety order red, yellow, green. Within any
+  beach-name list use `Centre`, `Roqueta`, `Vivers`, so the central beach is
+  always named first when it is represented.
 - Render each color group on its own indented line under
   `🏖 Флаги на пляжах:`.
 - Use SafeBeach update times only to validate freshness; do not display them.

@@ -105,9 +105,9 @@ class SafeBeachNormalizationTests(unittest.TestCase):
         self.assertEqual(
             status.nearby_flags,
             (
-                ("Vivers", "green"),
                 ("Centre", "green"),
                 ("Roqueta", "yellow"),
+                ("Vivers", "green"),
             ),
         )
         self.assertEqual(status.jellyfish_beaches, ("Roqueta",))

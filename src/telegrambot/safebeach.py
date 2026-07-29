@@ -242,7 +242,7 @@ def normalize_beach_status(payload: bytes) -> Optional[BeachStatus]:
         flag = sea_temperature = wind_direction = wind_speed = sea_state = None
     else:
         flag, sea_temperature, wind_direction, wind_speed, sea_state = centre
-    order = {"Vivers": 0, "Centre": 1, "Roqueta": 2}
+    order = {"Centre": 0, "Roqueta": 1, "Vivers": 2}
     nearby_flags.sort(key=lambda item: order[item[0]])
     jellyfish_beaches.sort(key=order.__getitem__)
     flag_meanings.sort(key=lambda item: order[item[0]])

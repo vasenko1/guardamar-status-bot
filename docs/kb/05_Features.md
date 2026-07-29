@@ -37,7 +37,7 @@ This exact visual structure is the product contract:
 💨 Ветер: СВ 5 → 7 м/с
 🏖 Флаги на пляжах:
    🟡 Roqueta — с осторожностью
-   🟢 Vivers, Centre — купание разрешено
+   🟢 Centre, Vivers — купание разрешено
 🪼 Медузы: Roqueta
 
 ⚠️ Внимание
@@ -78,8 +78,9 @@ operational rows are considered only from 20 June through 14 September,
 inclusive. The flag row is shown only
 when SafeBeach has at least one active nearby record. It names each available
 beach and never averages flags. Groups use the fixed safety order red, yellow,
-then green; beach names within each group use north-to-south order `Vivers`,
-`Centre`, `Roqueta`. Missing beaches are omitted rather than assigned a
+then green. Within every beach-name list use the product order `Centre`,
+`Roqueta`, `Vivers`, so Centre is first whenever represented. Missing beaches
+are omitted rather than assigned a
 reassuring default. The sea temperature and sea-state text use the AEMET
 Centro / La Roqueta forecast. Equal sea-state periods render once as
 `умеренные волны`; a change renders compactly as

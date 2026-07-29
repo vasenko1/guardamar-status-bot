@@ -33,6 +33,7 @@ FLAG_DOTS = {
     "yellow": "🟡",
     "red": "🔴",
 }
+BEACH_ORDER = {"Centre": 0, "Roqueta": 1, "Vivers": 2}
 SEA_STATES = {
     "calm": "спокойные",
     "slight": "слабые",
@@ -111,6 +112,9 @@ def _beach_operational_lines(
                 for name, flag_color in nearby_flags
                 if flag_color == color
             ]
+            matching.sort(
+                key=lambda name: BEACH_ORDER.get(name, len(BEACH_ORDER))
+            )
             if not matching:
                 continue
             shared = {meanings.get(name) for name in matching}
@@ -121,7 +125,11 @@ def _beach_operational_lines(
                 f"   {FLAG_DOTS[color]} {', '.join(matching)}{suffix}"
             )
     if beach is not None and beach.jellyfish_beaches:
-        lines.append("🪼 Медузы: " + ", ".join(beach.jellyfish_beaches))
+        jellyfish = sorted(
+            beach.jellyfish_beaches,
+            key=lambda name: BEACH_ORDER.get(name, len(BEACH_ORDER)),
+        )
+        lines.append("🪼 Медузы: " + ", ".join(jellyfish))
     if notice is not None:
         heading = (
             "⛔ Ограничение купания"

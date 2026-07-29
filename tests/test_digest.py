@@ -95,7 +95,7 @@ class DigestMessageTests(unittest.TestCase):
         self.assertIn(
             "🏖 Флаги на пляжах:\n"
             "   🟡 Roqueta\n"
-            "   🟢 Vivers, Centre",
+            "   🟢 Centre, Vivers",
             message,
         )
         self.assertIn("🪼 Медузы: Roqueta", message)
