@@ -46,6 +46,27 @@ def source_error(
     """Classify a source failure without exposing URLs or response bodies."""
 
     code_prefix = f"{prefix}-{stage}" if stage else prefix
+    current: Optional[BaseException] = exc
+    while current is not None:
+        diagnostic_code = vars(current).get("diagnostic_code")
+        description = vars(current).get("safe_description")
+        if (
+            isinstance(diagnostic_code, str)
+            and diagnostic_code
+            and (
+                diagnostic_code != "INVALID-RESPONSE"
+                or isinstance(description, str)
+            )
+        ):
+            return SourceDiagnostic(
+                f"{code_prefix}-{diagnostic_code}",
+                source,
+                description
+                if isinstance(description, str) and description
+                else "источник вернул ошибку",
+            )
+        current = current.__cause__
+
     api_status = _api_status(exc)
     if api_status is not None:
         return SourceDiagnostic(

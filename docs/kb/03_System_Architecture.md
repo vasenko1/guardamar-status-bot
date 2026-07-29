@@ -116,11 +116,12 @@ Every process holds the same local file lock. State is one small atomic JSON
 file. The replacement is sent and recorded before deletion of the morning
 message; a later invocation retries only failed cleanup.
 
-Every digest collection uses one mandatory AEMET policy: one initial attempt
-and two retries at two-minute intervals. If AEMET remains unavailable during
-replacement, the renderer preserves the published 07:30 copy and inserts only
-newly verified beach information. It does not substitute another location or
-reconstruct weather from a different product.
+The AEMET adapter retries only transient transport, rate-limit, server, or
+expired-link failures. It repeats the complete metadata-plus-product request,
+uses short exponential delays or the server's `Retry-After`, and never retries
+permanent or invalid-data failures. If the mandatory forecast remains
+unavailable during replacement, the renderer preserves the published 07:30
+copy and inserts only newly verified beach information.
 
 Termux invokes the morning command at 07:30 and the update command every five
 minutes from 10:10 through 10:40 in `Europe/Madrid`.

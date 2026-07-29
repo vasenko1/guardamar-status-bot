@@ -5,19 +5,21 @@ import io
 import json
 import logging
 import math
+import socket
 import tarfile
 import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
-from datetime import date, datetime, timezone
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from datetime import date, datetime, time, timedelta, timezone
+from email.utils import parsedate_to_datetime
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 from xml.etree import ElementTree
 from zoneinfo import ZoneInfo
 
-from .models import MorningDigest, Warning, Weather
 from .diagnostics import SourceDiagnostic, source_error
+from .models import MorningDigest, Warning, Weather
 
 AEMET_API_ROOT = "https://opendata.aemet.es/opendata/api"
 GUARDAMAR_MUNICIPALITY_CODE = "03076"
@@ -28,7 +30,11 @@ CENTRO_LA_ROQUETA_BEACH_CODE = "0307605"
 
 REQUEST_TIMEOUT_SECONDS = 15
 DAILY_FORECAST_ATTEMPTS = 3
-DAILY_FORECAST_RETRY_SECONDS = 120
+OPTIONAL_PRODUCT_ATTEMPTS = 2
+REQUIRED_RETRY_BASE_SECONDS = 30
+OPTIONAL_RETRY_BASE_SECONDS = 5
+REQUIRED_MAX_RETRY_DELAY_SECONDS = 120
+OPTIONAL_MAX_RETRY_DELAY_SECONDS = 15
 JSON_LIMIT_BYTES = 1_000_000
 WARNING_LIMIT_BYTES = 4_000_000
 WARNING_UNCOMPRESSED_LIMIT_BYTES = 8_000_000
@@ -38,8 +44,54 @@ GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 LOGGER = logging.getLogger(__name__)
 
 
+def _is_aemet_https_url(url: str) -> bool:
+    parsed = urllib.parse.urlparse(url)
+    return parsed.scheme == "https" and (
+        parsed.hostname == "aemet.es"
+        or (parsed.hostname or "").endswith(".aemet.es")
+    )
+
+
+class _AemetRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self,
+        request,
+        file_pointer,
+        code,
+        message,
+        headers,
+        new_url,
+    ):
+        if not _is_aemet_https_url(new_url):
+            raise AemetError(
+                "AEMET redirected to an unexpected URL",
+                code="REDIRECT",
+                description="сервер перенаправил запрос за пределы AEMET",
+            )
+        return super().redirect_request(
+            request, file_pointer, code, message, headers, new_url
+        )
+
+
 class AemetError(RuntimeError):
     """Raised when AEMET data cannot be safely retrieved or interpreted."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "INVALID-RESPONSE",
+        retryable: bool = False,
+        retry_after: Optional[float] = None,
+        status: Optional[int] = None,
+        description: Optional[str] = None,
+    ) -> None:
+        super().__init__(message)
+        self.diagnostic_code = code
+        self.retryable = retryable
+        self.retry_after = retry_after
+        self.server_status = status
+        self.safe_description = description
 
 
 def _decode_json(payload: bytes) -> Any:
@@ -48,54 +100,235 @@ def _decode_json(payload: bytes) -> Any:
             return json.loads(payload.decode(encoding))
         except (UnicodeDecodeError, json.JSONDecodeError):
             continue
-    raise AemetError("AEMET returned invalid JSON")
+    raise AemetError(
+        "AEMET returned invalid JSON",
+        code="INVALID-JSON",
+        description="ответ не является корректным JSON",
+    )
 
 
-def _read_url(url: str, api_key: str, limit: int) -> bytes:
-    parsed = urllib.parse.urlparse(url)
-    if parsed.scheme != "https" or not (
-        parsed.hostname == "aemet.es"
-        or (parsed.hostname or "").endswith(".aemet.es")
-    ):
-        raise AemetError("AEMET returned an unexpected download URL")
+def _retry_after_seconds(value: Optional[str]) -> Optional[float]:
+    if not value:
+        return None
+    value = value.strip()
+    if value.isdigit():
+        return float(value)
+    try:
+        moment = parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return max(
+        0.0,
+        (moment - datetime.now(timezone.utc)).total_seconds(),
+    )
 
+
+def _server_error(
+    status: int,
+    description: Optional[str] = None,
+    retry_after: Optional[float] = None,
+    *,
+    api_status: bool = False,
+) -> AemetError:
+    retryable = status == 429 or 500 <= status <= 599
+    kind = "API" if api_status else "HTTP"
+    safe_description = (
+        " ".join(description.split())[:160]
+        if isinstance(description, str) and description.strip()
+        else f"сервер вернул {kind} {status}"
+    )
+    return AemetError(
+        f"AEMET {kind} status {status}",
+        code=f"{kind}-{status}",
+        retryable=retryable,
+        retry_after=retry_after,
+        status=status,
+        description=safe_description,
+    )
+
+
+def _read_url(
+    url: str,
+    limit: int,
+    api_key: Optional[str] = None,
+) -> bytes:
+    if not _is_aemet_https_url(url):
+        raise AemetError(
+            "AEMET returned an unexpected download URL",
+            code="REDIRECT",
+            description="получен недопустимый адрес загрузки",
+        )
+
+    headers = {
+        "Accept": (
+            "application/json, application/xml, application/zip, "
+            "application/x-tar"
+        ),
+        "User-Agent": "GuardamarMorningDigest/0.11",
+    }
+    if api_key is not None:
+        headers["api_key"] = api_key
     request = urllib.request.Request(
         url,
-        headers={
-            "Accept": "application/json, application/xml, application/zip",
-            "User-Agent": "GuardamarMorningDigest/0.1",
-            "api_key": api_key,
-        },
+        headers=headers,
     )
     try:
-        with urllib.request.urlopen(
-            request, timeout=REQUEST_TIMEOUT_SECONDS
-        ) as response:
+        opener = urllib.request.build_opener(_AemetRedirectHandler())
+        with opener.open(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
             payload = response.read(limit + 1)
-    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
-        raise AemetError("AEMET request failed") from exc
+    except urllib.error.HTTPError as exc:
+        raise _server_error(
+            exc.code,
+            retry_after=_retry_after_seconds(
+                exc.headers.get("Retry-After")
+                if exc.headers is not None
+                else None
+            ),
+        ) from exc
+    except (TimeoutError, socket.timeout) as exc:
+        raise AemetError(
+            "AEMET request timed out",
+            code="TIMEOUT",
+            retryable=True,
+            description="сервер не ответил до истечения тайм-аута",
+        ) from exc
+    except urllib.error.URLError as exc:
+        raise AemetError(
+            "AEMET network request failed",
+            code="NETWORK",
+            retryable=True,
+            description="не удалось установить сетевое соединение",
+        ) from exc
 
     if len(payload) > limit:
-        raise AemetError("AEMET response exceeded the configured size limit")
+        raise AemetError(
+            "AEMET response exceeded the configured size limit",
+            code="TOO-LARGE",
+            description="ответ превысил допустимый размер",
+        )
     return payload
 
 
 async def _fetch_product(path: str, api_key: str, limit: int) -> bytes:
     metadata_bytes = await asyncio.to_thread(
-        _read_url, f"{AEMET_API_ROOT}/{path}", api_key, JSON_LIMIT_BYTES
+        _read_url,
+        f"{AEMET_API_ROOT}/{path}",
+        JSON_LIMIT_BYTES,
+        api_key,
     )
     metadata = _decode_json(metadata_bytes)
-    if not isinstance(metadata, dict) or metadata.get("estado") != 200:
-        error = AemetError("AEMET did not provide a product download")
-        if isinstance(metadata, dict):
-            error.api_status = metadata.get("estado")
-            error.api_description = metadata.get("descripcion")
-        raise error
+    if not isinstance(metadata, dict):
+        raise AemetError(
+            "AEMET metadata had an invalid structure",
+            code="INVALID-METADATA",
+            description="служебный ответ имеет некорректную структуру",
+        )
+    status = metadata.get("estado")
+    if status != 200:
+        try:
+            status_code = int(status)
+        except (TypeError, ValueError):
+            raise AemetError(
+                "AEMET metadata had no valid status",
+                code="INVALID-METADATA",
+                description="служебный ответ не содержит корректный статус",
+            )
+        raise _server_error(
+            status_code,
+            metadata.get("descripcion"),
+            api_status=True,
+        )
 
     download_url = metadata.get("datos")
     if not isinstance(download_url, str) or not download_url:
-        raise AemetError("AEMET response did not contain a download URL")
-    return await asyncio.to_thread(_read_url, download_url, api_key, limit)
+        raise AemetError(
+            "AEMET response did not contain a download URL",
+            code="NO-DOWNLOAD",
+            description="служебный ответ не содержит адрес данных",
+        )
+    payload = await asyncio.to_thread(_read_url, download_url, limit)
+    stripped = payload.lstrip()
+    if stripped.startswith(b"{"):
+        possible_error = _decode_json(payload)
+        if isinstance(possible_error, dict) and possible_error.get("estado") != 200:
+            try:
+                data_status = int(possible_error.get("estado"))
+            except (TypeError, ValueError):
+                raise AemetError(
+                    "AEMET data error had no valid status",
+                    code="INVALID-DATA-ERROR",
+                    description="ответ об ошибке не содержит корректный статус",
+                )
+            description = possible_error.get("descripcion")
+            expired = (
+                data_status == 404
+                and isinstance(description, str)
+                and "expir" in description.casefold()
+            )
+            if expired:
+                raise AemetError(
+                    "AEMET temporary data URL expired",
+                    code="DATA-EXPIRED",
+                    retryable=True,
+                    status=404,
+                    description="временная ссылка на данные истекла",
+                )
+            raise _server_error(
+                data_status,
+                description,
+                api_status=True,
+            )
+    return payload
+
+
+def _retry_delay(
+    error: AemetError,
+    attempt: int,
+    base_delay: float,
+    max_delay: float,
+) -> Optional[float]:
+    delay = (
+        error.retry_after
+        if error.retry_after is not None
+        else base_delay * (2 ** attempt)
+    )
+    if delay > max_delay:
+        return None
+    return max(0.0, delay)
+
+
+async def _fetch_normalized(
+    path: str,
+    api_key: str,
+    limit: int,
+    normalize: Callable[[bytes], Any],
+    *,
+    attempts: int,
+    retry_base_delay: float,
+    max_retry_delay: float,
+) -> Any:
+    last_error = None
+    for attempt in range(attempts):
+        try:
+            payload = await _fetch_product(path, api_key, limit)
+            return normalize(payload)
+        except AemetError as exc:
+            last_error = exc
+            exc.attempts_made = attempt + 1
+            if not exc.retryable or attempt + 1 == attempts:
+                raise
+            delay = _retry_delay(
+                exc,
+                attempt,
+                retry_base_delay,
+                max_retry_delay,
+            )
+            if delay is None:
+                raise
+            await asyncio.sleep(delay)
+    raise last_error or AemetError("AEMET product is unavailable")
 
 
 def _as_int(value: Any) -> Optional[int]:
@@ -234,6 +467,7 @@ def normalize_daily_forecast(
 
     rain_probability, rain_period = _remaining_rain_forecast(
         selected.get("probPrecipitacion"),
+        local_day,
         local_hour,
     )
     if wind_options:
@@ -260,10 +494,21 @@ def normalize_daily_forecast(
 
 def _remaining_rain_forecast(
     items: Any,
+    local_day: date,
     local_hour: int,
 ) -> Tuple[Optional[int], Optional[str]]:
     if not isinstance(items, list):
         return None, None
+    local_now = datetime.combine(
+        local_day,
+        time(hour=max(0, min(23, local_hour))),
+        tzinfo=GUARDAMAR_TIMEZONE,
+    )
+    utc_midnight = datetime.combine(
+        local_day,
+        time.min,
+        tzinfo=timezone.utc,
+    )
     future = []
     encompassing = []
     for item in items:
@@ -290,19 +535,33 @@ def _remaining_rain_forecast(
             or start >= end
         ):
             continue
-        candidate = (probability, start, end)
-        if start >= local_hour:
+        starts_at = (utc_midnight + timedelta(hours=start)).astimezone(
+            GUARDAMAR_TIMEZONE
+        )
+        ends_at = (utc_midnight + timedelta(hours=end)).astimezone(
+            GUARDAMAR_TIMEZONE
+        )
+        candidate = (probability, starts_at, ends_at, start, end)
+        if starts_at >= local_now:
             future.append(candidate)
-        elif end > local_hour:
+        elif ends_at > local_now:
             encompassing.append(candidate)
     candidates = future or encompassing
     if not candidates:
         return None, None
-    probability, start, end = max(
+    probability, starts_at, ends_at, start, end = max(
         candidates,
-        key=lambda item: (item[0], -(item[2] - item[1])),
+        key=lambda item: (
+            item[0],
+            -(item[2] - item[1]).total_seconds(),
+        ),
     )
-    return probability, f"{start:02d}:00–{end:02d}:00"
+    if start == 0 and end == 24:
+        return probability, "в течение дня"
+    return (
+        probability,
+        f"{starts_at:%H:%M}–{ends_at:%H:%M}",
+    )
 
 
 def normalize_beach_forecast(
@@ -590,104 +849,114 @@ async def fetch_morning_digest(
     api_key: str,
     now: datetime,
     *,
-    daily_attempts: int = DAILY_FORECAST_ATTEMPTS,
-    daily_retry_seconds: float = DAILY_FORECAST_RETRY_SECONDS,
     diagnostics: Optional[List[SourceDiagnostic]] = None,
 ) -> MorningDigest:
     """Fetch AEMET products sequentially and return one normalized model."""
 
-    if daily_attempts < 1:
-        raise ValueError("daily_attempts must be at least one")
-    daily_result = None
-    daily_error = None
-    for attempt in range(daily_attempts):
-        try:
-            daily_result = await _fetch_product(
-                f"prediccion/especifica/municipio/diaria/"
-                f"{GUARDAMAR_MUNICIPALITY_CODE}",
-                api_key,
-                JSON_LIMIT_BYTES,
-            )
-            break
-        except AemetError as exc:
-            daily_error = exc
-            if attempt + 1 < daily_attempts:
-                await asyncio.sleep(daily_retry_seconds)
-    if daily_result is None:
-        if diagnostics is not None and daily_error is not None:
-            diagnostics.append(
-                source_error(
-                    "AEMET",
-                    "AEMET OpenData",
-                    daily_error,
-                    stage="DAY",
-                )
-            )
-        raise AemetError(
-            "The daily Guardamar forecast is unavailable"
-        ) from daily_error
-
-    try:
-        observation_result = await _fetch_product(
-            f"observacion/convencional/datos/estacion/"
-            f"{ROJALES_STATION_CODE}",
-            api_key,
-            JSON_LIMIT_BYTES,
-        )
-    except AemetError as exc:
-        observation_result = None
-        LOGGER.warning("Current Rojales observation is unavailable")
-        if diagnostics is not None:
-            diagnostics.append(
-                source_error(
-                    "AEMET",
-                    "AEMET OpenData",
-                    exc,
-                    stage="OBS",
-                )
-            )
-
-    try:
-        warning_result = await _fetch_product(
-            f"avisos_cap/ultimoelaborado/area/"
-            f"{VALENCIAN_COMMUNITY_WARNING_AREA}",
-            api_key,
-            WARNING_LIMIT_BYTES,
-        )
-    except AemetError as exc:
-        warning_result = None
-        LOGGER.warning("AEMET warnings are unavailable")
-        if diagnostics is not None:
-            diagnostics.append(
-                source_error(
-                    "AEMET",
-                    "AEMET OpenData",
-                    exc,
-                    stage="WARN",
-                )
-            )
-
-    try:
-        beach_result = await _fetch_product(
-            f"prediccion/especifica/playa/"
-            f"{CENTRO_LA_ROQUETA_BEACH_CODE}",
-            api_key,
-            JSON_LIMIT_BYTES,
-        )
-    except AemetError as exc:
-        beach_result = None
-        LOGGER.warning("AEMET Centro / La Roqueta forecast is unavailable")
-        if diagnostics is not None:
-            diagnostics.append(
-                source_error(
-                    "AEMET",
-                    "AEMET OpenData",
-                    exc,
-                    stage="SEA",
-                )
-            )
-
     local_now = now.astimezone(GUARDAMAR_TIMEZONE)
+    try:
+        daily_values = await _fetch_normalized(
+            (
+                "prediccion/especifica/municipio/diaria/"
+                f"{GUARDAMAR_MUNICIPALITY_CODE}"
+            ),
+            api_key,
+            JSON_LIMIT_BYTES,
+            lambda payload: normalize_daily_forecast(
+                payload, local_now.date(), local_now.hour
+            ),
+            attempts=DAILY_FORECAST_ATTEMPTS,
+            retry_base_delay=REQUIRED_RETRY_BASE_SECONDS,
+            max_retry_delay=REQUIRED_MAX_RETRY_DELAY_SECONDS,
+        )
+    except AemetError as exc:
+        if exc.server_status is not None:
+            LOGGER.error(
+                "AEMET DAY returned %s",
+                exc.diagnostic_code,
+            )
+        if diagnostics is not None:
+            diagnostics.append(
+                source_error(
+                    "AEMET", "AEMET OpenData", exc, stage="DAY"
+                )
+            )
+        wrapped = AemetError(
+            "The daily Guardamar forecast is unavailable",
+            code=exc.diagnostic_code,
+            retryable=exc.retryable,
+            retry_after=exc.retry_after,
+            status=exc.server_status,
+            description=exc.safe_description,
+        )
+        wrapped.attempts_made = getattr(exc, "attempts_made", 1)
+        raise wrapped from exc
+
+    async def optional_product(
+        path: str,
+        limit: int,
+        normalize: Callable[[bytes], Any],
+        stage: str,
+    ) -> Any:
+        try:
+            return await _fetch_normalized(
+                path,
+                api_key,
+                limit,
+                normalize,
+                attempts=OPTIONAL_PRODUCT_ATTEMPTS,
+                retry_base_delay=OPTIONAL_RETRY_BASE_SECONDS,
+                max_retry_delay=OPTIONAL_MAX_RETRY_DELAY_SECONDS,
+            )
+        except AemetError as exc:
+            # Only server-returned failures belong in the runtime log.
+            if exc.server_status is not None:
+                LOGGER.warning(
+                    "AEMET %s returned %s",
+                    stage,
+                    exc.diagnostic_code,
+                )
+            if diagnostics is not None:
+                diagnostics.append(
+                    source_error(
+                        "AEMET",
+                        "AEMET OpenData",
+                        exc,
+                        stage=stage,
+                    )
+                )
+            return None
+
+    observation = await optional_product(
+        (
+            "observacion/convencional/datos/estacion/"
+            f"{ROJALES_STATION_CODE}"
+        ),
+        JSON_LIMIT_BYTES,
+        lambda payload: normalize_observation(payload, now),
+        "OBS",
+    )
+    warnings = await optional_product(
+        (
+            "avisos_cap/ultimoelaborado/area/"
+            f"{VALENCIAN_COMMUNITY_WARNING_AREA}"
+        ),
+        WARNING_LIMIT_BYTES,
+        lambda payload: normalize_warnings(payload, now),
+        "WARN",
+    )
+    beach = await optional_product(
+        (
+            "prediccion/especifica/playa/"
+            f"{CENTRO_LA_ROQUETA_BEACH_CODE}"
+        ),
+        JSON_LIMIT_BYTES,
+        lambda payload: normalize_beach_forecast(
+            payload, local_now.date()
+        ),
+        "SEA",
+    )
+
     (
         minimum,
         maximum,
@@ -696,74 +965,36 @@ async def fetch_morning_digest(
         sky_condition,
         rain_probability,
         rain_period,
-    ) = normalize_daily_forecast(
-        daily_result,
-        local_now.date(),
-        local_now.hour,
-    )
+    ) = daily_values
     wind_direction = forecast_direction
     wind_speed = forecast_speed
     forecast_comparison = forecast_speed
 
     current_temperature = None
     observed_at = None
-    if observation_result is not None:
-        observation = normalize_observation(observation_result, now)
-        if observation is not None:
-            (
-                current_temperature,
-                observed_direction,
-                observed_speed,
-                observed_at,
-            ) = observation
-            wind_direction = observed_direction or wind_direction
-            wind_speed = (
-                observed_speed if observed_speed is not None else wind_speed
-            )
-    warnings_available = warning_result is not None
-    warnings: Tuple[Warning, ...] = ()
-    if warning_result is not None:
-        try:
-            warnings = normalize_warnings(warning_result, now)
-        except AemetError as exc:
-            warnings_available = False
-            LOGGER.warning("AEMET warnings could not be interpreted")
-            if diagnostics is not None:
-                diagnostics.append(
-                    source_error(
-                        "AEMET",
-                        "AEMET OpenData",
-                        exc,
-                        stage="WARN",
-                    )
-                )
+    if observation is not None:
+        (
+            current_temperature,
+            observed_direction,
+            observed_speed,
+            observed_at,
+        ) = observation
+        wind_direction = observed_direction or wind_direction
+        wind_speed = (
+            observed_speed if observed_speed is not None else wind_speed
+        )
+    warnings_available = warnings is not None
+    warnings = warnings or ()
 
     forecast_sea_temperature = None
     forecast_sea_state = None
     forecast_later_sea_state = None
-    if beach_result is not None:
-        try:
-            (
-                forecast_sea_temperature,
-                forecast_sea_state,
-                forecast_later_sea_state,
-            ) = normalize_beach_forecast(
-                beach_result, now.astimezone(GUARDAMAR_TIMEZONE).date()
-            )
-        except AemetError as exc:
-            LOGGER.warning(
-                "AEMET Centro / La Roqueta forecast "
-                "could not be interpreted"
-            )
-            if diagnostics is not None:
-                diagnostics.append(
-                    source_error(
-                        "AEMET",
-                        "AEMET OpenData",
-                        exc,
-                        stage="SEA",
-                    )
-                )
+    if beach is not None:
+        (
+            forecast_sea_temperature,
+            forecast_sea_state,
+            forecast_later_sea_state,
+        ) = beach
     return MorningDigest(
         weather=Weather(
             current_temperature_c=current_temperature,

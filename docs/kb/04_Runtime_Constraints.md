@@ -62,9 +62,10 @@ deployment agent or self-hosted CI runner.
   authorized on-demand preview.
 - Reuse connections when simple and safe.
 - Never retry indefinitely.
-- Any digest collection may keep its process alive for two bounded two-minute
-  AEMET retry intervals. The retry policy lives in the AEMET adapter and is
-  not duplicated by publication or preview code.
+- AEMET recovery is bounded inside the adapter: three attempts for the
+  mandatory forecast and two for each optional product, with short exponential
+  delays or a server-provided `Retry-After` only when it fits the runtime
+  budget.
 - Do not make digest delivery depend on every source succeeding.
 
 ### Storage

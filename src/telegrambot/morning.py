@@ -14,11 +14,7 @@ from .agenda import (
     recurring_events,
     requires_market_exception_check,
 )
-from .aemet import (
-    DAILY_FORECAST_ATTEMPTS,
-    DAILY_FORECAST_RETRY_SECONDS,
-    fetch_morning_digest,
-)
+from .aemet import fetch_morning_digest
 from .digest import build_message
 from .diagnostics import SourceDiagnostic, source_error
 from .mayor import MayorChannelError, market_is_cancelled
@@ -68,8 +64,6 @@ async def produce_message(
     collect_beach: bool = True,
     beach_status: Optional[BeachStatus] = None,
     beach_notice: Optional[BeachNotice] = None,
-    aemet_daily_attempts: int = DAILY_FORECAST_ATTEMPTS,
-    aemet_retry_seconds: float = DAILY_FORECAST_RETRY_SECONDS,
     diagnostics: Optional[List[SourceDiagnostic]] = None,
 ) -> str:
     """Build a digest; SafeBeach failure must not block AEMET delivery."""
@@ -104,8 +98,6 @@ async def produce_message(
         digest = await fetch_morning_digest(
             api_key=api_key,
             now=now,
-            daily_attempts=aemet_daily_attempts,
-            daily_retry_seconds=aemet_retry_seconds,
             diagnostics=diagnostics,
         )
     except BaseException:

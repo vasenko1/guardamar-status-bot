@@ -27,9 +27,9 @@ independent messages leaves stale duplicate information in the group.
 - If either supplies an update, recollect the remaining sources once, send a
   full replacement with normal notification, store its Telegram message ID,
   and only then delete the morning message.
-- Use one AEMET policy for the 07:30 message, replacement, and private preview:
-  try the mandatory forecast once and retry it twice at two-minute intervals.
-  If all three replacement attempts fail, retain the exact
+- Use the shared AEMET adapter policy recorded in ADR 0023 for the 07:30
+  message, replacement, and private preview. If mandatory forecast recovery
+  fails, retain the exact
   published 07:30 copy for unchanged sections and add only the verified
   SafeBeach and/or Mayor update.
 - If deletion fails, a later invocation retries deletion without resending.

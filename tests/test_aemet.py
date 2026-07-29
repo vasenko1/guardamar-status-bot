@@ -4,16 +4,151 @@ import tarfile
 import unittest
 import zipfile
 from datetime import date, datetime, timezone
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, call, patch
 from zoneinfo import ZoneInfo
 
 from telegrambot.aemet import (
     AemetError,
+    JSON_LIMIT_BYTES,
+    _fetch_normalized,
+    _fetch_product,
     normalize_beach_forecast,
     normalize_daily_forecast,
     normalize_observation,
     normalize_warnings,
 )
+
+
+class AemetTransportTests(unittest.IsolatedAsyncioTestCase):
+    async def test_key_is_sent_only_for_metadata_request(self):
+        metadata = json.dumps(
+            {
+                "estado": 200,
+                "datos": "https://opendata.aemet.es/data/file",
+            }
+        ).encode()
+        with patch(
+            "telegrambot.aemet._read_url",
+            side_effect=[metadata, b"product"],
+        ) as read_mock:
+            result = await _fetch_product("product/path", "secret", 123)
+
+        self.assertEqual(result, b"product")
+        self.assertEqual(
+            read_mock.call_args_list,
+            [
+                call(
+                    "https://opendata.aemet.es/opendata/api/product/path",
+                    JSON_LIMIT_BYTES,
+                    "secret",
+                ),
+                call("https://opendata.aemet.es/data/file", 123),
+            ],
+        )
+
+    async def test_does_not_retry_permanent_server_error(self):
+        fetch = AsyncMock(
+            side_effect=AemetError(
+                "unauthorized",
+                code="API-401",
+                status=401,
+            )
+        )
+        with patch("telegrambot.aemet._fetch_product", new=fetch), patch(
+            "telegrambot.aemet.asyncio.sleep", new=AsyncMock()
+        ) as sleep:
+            with self.assertRaises(AemetError):
+                await _fetch_normalized(
+                    "path",
+                    "key",
+                    100,
+                    lambda payload: payload,
+                    attempts=3,
+                    retry_base_delay=5,
+                    max_retry_delay=120,
+                )
+
+        self.assertEqual(fetch.await_count, 1)
+        sleep.assert_not_awaited()
+
+    async def test_honors_retry_after_for_transient_error(self):
+        fetch = AsyncMock(
+            side_effect=[
+                AemetError(
+                    "limited",
+                    code="HTTP-429",
+                    retryable=True,
+                    retry_after=7,
+                    status=429,
+                ),
+                b"ok",
+            ]
+        )
+        with patch("telegrambot.aemet._fetch_product", new=fetch), patch(
+            "telegrambot.aemet.asyncio.sleep", new=AsyncMock()
+        ) as sleep:
+            result = await _fetch_normalized(
+                "path",
+                "key",
+                100,
+                lambda payload: payload,
+                attempts=3,
+                retry_base_delay=5,
+                max_retry_delay=15,
+            )
+
+        self.assertEqual(result, b"ok")
+        sleep.assert_awaited_once_with(7)
+
+    async def test_does_not_retry_before_long_retry_after(self):
+        fetch = AsyncMock(
+            side_effect=AemetError(
+                "limited",
+                code="HTTP-429",
+                retryable=True,
+                retry_after=300,
+                status=429,
+            )
+        )
+        with patch("telegrambot.aemet._fetch_product", new=fetch), patch(
+            "telegrambot.aemet.asyncio.sleep", new=AsyncMock()
+        ) as sleep:
+            with self.assertRaises(AemetError):
+                await _fetch_normalized(
+                    "path",
+                    "key",
+                    100,
+                    lambda payload: payload,
+                    attempts=3,
+                    retry_base_delay=5,
+                    max_retry_delay=15,
+                )
+
+        self.assertEqual(fetch.await_count, 1)
+        sleep.assert_not_awaited()
+
+    async def test_invalid_payload_is_not_retried(self):
+        fetch = AsyncMock(return_value=b"bad")
+
+        def invalid(_payload):
+            raise AemetError("invalid", code="INVALID-JSON")
+
+        with patch("telegrambot.aemet._fetch_product", new=fetch), patch(
+            "telegrambot.aemet.asyncio.sleep", new=AsyncMock()
+        ) as sleep:
+            with self.assertRaises(AemetError):
+                await _fetch_normalized(
+                    "path",
+                    "key",
+                    100,
+                    invalid,
+                    attempts=3,
+                    retry_base_delay=5,
+                    max_retry_delay=120,
+                )
+
+        self.assertEqual(fetch.await_count, 1)
+        sleep.assert_not_awaited()
 
 
 class BeachForecastTests(unittest.TestCase):
@@ -95,7 +230,7 @@ class DailyForecastTests(unittest.TestCase):
                 date(2026, 7, 26),
                 local_hour=10,
             ),
-            (23, 31, "SE", 20, "rain", 80, "12:00–18:00"),
+            (23, 31, "SE", 20, "rain", 80, "14:00–20:00"),
         )
 
     def test_uses_encompassing_rain_period_when_no_future_period_exists(self):
@@ -123,7 +258,7 @@ class DailyForecastTests(unittest.TestCase):
             local_hour=10,
         )
 
-        self.assertEqual(result[-2:], (76, "00:00–24:00"))
+        self.assertEqual(result[-2:], (76, "в течение дня"))
 
     def test_rejects_forecast_without_today(self):
         payload = json.dumps(
@@ -272,12 +407,19 @@ class WarningTests(unittest.TestCase):
 
 
 class AemetCollectionTests(unittest.IsolatedAsyncioTestCase):
-    async def test_shared_policy_retries_twice_after_two_minutes(self):
+    async def test_shared_policy_retries_transient_failure_with_backoff(self):
         from telegrambot.aemet import fetch_morning_digest
 
         with patch(
             "telegrambot.aemet._fetch_product",
-            new=AsyncMock(side_effect=AemetError("temporary")),
+            new=AsyncMock(
+                side_effect=AemetError(
+                    "temporary",
+                    code="HTTP-503",
+                    retryable=True,
+                    status=503,
+                )
+            ),
         ) as fetch_mock, patch(
             "telegrambot.aemet.asyncio.sleep",
             new=AsyncMock(),
@@ -298,7 +440,7 @@ class AemetCollectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(fetch_mock.await_count, 3)
         self.assertEqual(
             [call.args for call in sleep_mock.await_args_list],
-            [(120,), (120,)],
+            [(30,), (60,)],
         )
 
     async def test_retries_required_daily_forecast_once(self):
@@ -310,7 +452,11 @@ class AemetCollectionTests(unittest.IsolatedAsyncioTestCase):
             b'"viento":[{"direccion":"E","velocidad":15}]}]}}]'
         )
         products = [
-            AemetError("temporary"),
+            AemetError(
+                "temporary",
+                code="TIMEOUT",
+                retryable=True,
+            ),
             daily,
             b"[]",
             b"<alerts></alerts>",
@@ -348,7 +494,7 @@ class AemetCollectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(fetch_mock.await_count, 5)
         self.assertEqual(digest.forecast_sea_temperature_c, 29)
         self.assertIsNone(digest.forecast_sea_state)
-        sleep_mock.assert_awaited_once_with(120)
+        sleep_mock.assert_awaited_once_with(30)
 
     async def test_fetches_products_sequentially(self):
         from telegrambot.aemet import fetch_morning_digest

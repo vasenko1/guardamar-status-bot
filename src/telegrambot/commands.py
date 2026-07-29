@@ -87,7 +87,8 @@ def preview_failure_message(exc: Exception) -> str:
             f"{PREVIEW_FAILURE_PREFIX}\n"
             f"• {diagnostic.render()}\n"
             + (
-                "Дневной прогноз обязателен; выполнены 3 попытки."
+                "Дневной прогноз обязателен; "
+                f"попыток: {getattr(exc, 'attempts_made', 1)}."
                 if str(exc)
                 == "The daily Guardamar forecast is unavailable"
                 else "Полученный дневной прогноз не прошёл проверку."

@@ -34,15 +34,23 @@ official endpoints and lightweight access methods are validated.
 | CAP warnings | Comunitat Valenciana area `77`, filtered to `Litoral sur de Alicante` | Warnings active now or beginning later today |
 | Beach forecast | Centro / La Roqueta `0307605` | Today's representative water temperature and two sea-state periods |
 
-The AEMET API returns a metadata response containing a separate product
+The AEMET API returns a metadata response containing a temporary product
 download URL. Both requests are bounded by time and response size. The API key
-is supplied through `AEMET_API_KEY` and must not be committed.
+is sent only to the metadata endpoint through `AEMET_API_KEY`; it is never
+sent to the temporary product URL or committed.
 
 The four approved AEMET products are requested sequentially. This avoids a
 burst of concurrent metadata requests and respects the service's observed rate
-limits at negligible cost for one daily run. The mandatory daily forecast gets
-one delayed retry after a transient failure; optional products remain
-best-effort.
+limits at negligible cost for one daily run. A complete two-step request is
+repeated only for timeouts, network failures, HTTP/API `429`, `5xx`, or an
+expired temporary URL. The mandatory forecast has at most three attempts;
+optional products have at most two. `401`, ordinary `404`, schema, date,
+archive, size, and validation failures are not retried. `Retry-After` is
+honored only when it fits the bounded process budget.
+
+AEMET forecast periods of six hours or more are expressed in UTC. User-facing
+rain intervals are converted to `Europe/Madrid`, including daylight-saving
+time.
 
 The CAP warning download may be an XML document, ZIP archive, or TAR archive.
 All supported containers are parsed in memory with compressed and uncompressed

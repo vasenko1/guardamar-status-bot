@@ -5,10 +5,11 @@ Detailed decisions belong in `adr/`.
 
 | Date | Decision | Context and reason | Record |
 | --- | --- | --- | --- |
+| 2026-07-29 | Replace fixed AEMET delays with bounded protocol-aware recovery | Retry only transient failures, honor usable `Retry-After`, repeat the complete two-step request, keep the key off product URLs, and convert UTC forecast periods to Madrid time. | `adr/0023-aemet-client-reliability.md` |
 | 2026-07-29 | Add stable source diagnostics to private previews only | The operator needs a transferable code and concrete failure stage for every consulted source; group messages remain free of technical noise and secrets. | `adr/0010-private-preview-listener.md` |
 | 2026-07-29 | Publish available SafeBeach flags without waiting for all three selected beaches | One missing record must not hide current official flags for other beaches; absent beaches are omitted, Centre is labeled as the combined Centre / Babilònia zone, and generic flag meanings are omitted. | `adr/0018-nearby-beach-flags.md` |
 | 2026-07-29 | Publish at 07:30 and conditionally replace after bounded SafeBeach checks | City information arrives early; one later full replacement adds verified beach data without leaving two messages or keeping a process asleep. | `adr/0021-two-stage-daily-replacement.md` |
-| 2026-07-29 | Use one AEMET retry policy everywhere: two retries at two-minute intervals | A short overload may clear in two minutes; centralizing the rule prevents different behavior in the morning, replacement, and preview paths. Replacement still preserves the morning copy after final failure. | `adr/0021-two-stage-daily-replacement.md` |
+| 2026-07-29 | ~~Use one AEMET retry policy everywhere: two retries at two-minute intervals~~ | Superseded by protocol-aware recovery in ADR 0023. | `adr/0021-two-stage-daily-replacement.md` |
 | 2026-07-26 | Target Termux on a weak Android device | The bot must run cheaply on limited hardware and unstable mobile internet. | Project brief |
 | 2026-07-26 | ~~Use one lightweight Python process with Telegram long polling~~ | Superseded: the process is now one-shot and outbound-only. | `adr/0008-one-shot-morning-execution.md` |
 | 2026-07-26 | Keep persistent state local and small | Server databases are unnecessary for the planned scope. | Project brief |

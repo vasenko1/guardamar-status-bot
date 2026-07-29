@@ -139,10 +139,10 @@ to the configured group, and does not change publication state. The listener
 does not fetch any source until an authorized command arrives.
 
 State contains only the current local date, rendered morning copy, publication
-time, Telegram message IDs, and cleanup result. Every digest path gives the
-mandatory AEMET forecast two retries at two-minute intervals. The rendered
-copy is used only when a verified later update exists but AEMET remains
-unavailable after those retries. No raw source cache is implemented.
+time, Telegram message IDs, and cleanup result. AEMET recovery retries only
+bounded transient failures and repeats the complete two-step product request.
+The rendered copy is used only when a verified later update exists but AEMET
+remains unavailable after recovery. No raw source cache is implemented.
 
 Gemini is optional and is called only when the official Policía Local traffic
 page contains an unknown notice format. Known notices use deterministic rules

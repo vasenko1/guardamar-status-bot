@@ -76,20 +76,21 @@ class PreviewCommandTests(unittest.TestCase):
                     parse_allowed_user_ids(invalid)
 
     def test_preview_failure_explains_aemet_problem_in_russian(self):
-        root = AemetError("AEMET did not provide a product download")
-        root.api_status = 503
         error = AemetError(
-            "The daily Guardamar forecast is unavailable"
+            "The daily Guardamar forecast is unavailable",
+            code="API-503",
+            status=503,
+            description="сервер вернул API 503",
         )
-        error.__cause__ = root
+        error.attempts_made = 3
         message = preview_failure_message(error)
 
         self.assertEqual(
             message,
             "Не удалось сформировать предпросмотр.\n"
             "• [AEMET-DAY-API-503] AEMET OpenData: "
-            "API вернул служебный статус 503\n"
-            "Дневной прогноз обязателен; выполнены 3 попытки.",
+            "сервер вернул API 503\n"
+            "Дневной прогноз обязателен; попыток: 3.",
         )
 
     def test_preview_failure_distinguishes_invalid_daily_payload(self):
