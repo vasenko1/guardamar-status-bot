@@ -15,14 +15,16 @@ published, while listing all six SafeBeach positions would add noise.
 - Show individual active flags for the three beaches closest to the urban
   centre: Centre / Babilònia, La Roqueta, and Vivers.
 - Group them by color in the fixed safety order red, yellow, green. Within any
-  beach-name list use `Centre`, `Roqueta`, `Vivers`, so the central beach is
-  always named first when it is represented.
+  beach-name list use `Centre / Babilònia`, `Roqueta`, `Vivers`, so the
+  central combined zone is always named first when it is represented.
 - Render each color group on its own indented line under
   `🏖 Флаги на пляжах:`.
 - Use SafeBeach update times only to validate freshness; do not display them.
 - Never average flags or replace a missing beach with another beach's value.
-- Omit an unavailable individual flag; omit the complete flag row when none
-  are active.
+- Publish when at least one selected beach has a current flag. Name the other
+  selected beaches once as unavailable; omit the complete flag row when none
+  are current.
+- Render only color and beach names; omit SafeBeach's generic flag meaning.
 - Keep SafeBeach current beach wind tied to the Centre record. Sea temperature
   and state follow ADR 0019.
 - Show a separate jellyfish row only for selected beaches with an explicit

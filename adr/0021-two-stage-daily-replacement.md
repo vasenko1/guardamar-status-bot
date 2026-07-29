@@ -15,9 +15,11 @@ independent messages leaves stale duplicate information in the group.
 - Publish one complete briefing without operational SafeBeach rows at 07:30.
 - In the 20 June–14 September season, invoke a short update command at 10:10
   and every five minutes through 10:40.
-- Each invocation checks SafeBeach first. It is complete only when Centre,
-  Roqueta, and Vivers have active, non-ended flags and plausible update times.
-- Before completeness, exit immediately. At 10:40 the retry window expires.
+- Each invocation checks SafeBeach first. It is usable when at least one of
+  Centre / Babilònia, Roqueta, or Vivers has an active, non-ended flag and a
+  plausible update time. Missing selected beaches remain explicitly unknown.
+- Before any selected flag is usable, exit immediately. At 10:40 the retry
+  window expires.
 - After SafeBeach succeeds, or after the final attempt, check
   `@AlcaldeGuardamar` once for an explicit bathing-status transition published
   after the morning message.

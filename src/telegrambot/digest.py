@@ -34,6 +34,11 @@ FLAG_DOTS = {
     "red": "🔴",
 }
 BEACH_ORDER = {"Centre": 0, "Roqueta": 1, "Vivers": 2}
+BEACH_NAMES = {
+    "Centre": "Centre / Babilònia",
+    "Roqueta": "Roqueta",
+    "Vivers": "Vivers",
+}
 SEA_STATES = {
     "calm": "спокойные",
     "slight": "слабые",
@@ -105,7 +110,6 @@ def _beach_operational_lines(
         nearby_flags = (("Centre", beach.flag_color),)
     if nearby_flags:
         lines.append("🏖 Флаги на пляжах:")
-        meanings = dict(beach.flag_meanings)
         for color in ("red", "yellow", "green"):
             matching = [
                 name
@@ -117,19 +121,27 @@ def _beach_operational_lines(
             )
             if not matching:
                 continue
-            shared = {meanings.get(name) for name in matching}
-            suffix = ""
-            if len(shared) == 1 and None not in shared:
-                suffix = f" — {shared.pop()}"
             lines.append(
-                f"   {FLAG_DOTS[color]} {', '.join(matching)}{suffix}"
+                f"   {FLAG_DOTS[color]} "
+                f"{', '.join(BEACH_NAMES.get(name, name) for name in matching)}"
             )
+        available = {name for name, _ in nearby_flags}
+        missing = [
+            BEACH_NAMES[name]
+            for name in BEACH_ORDER
+            if name not in available
+        ]
+        if missing:
+            lines.append(f"   Нет данных: {', '.join(missing)}")
     if beach is not None and beach.jellyfish_beaches:
         jellyfish = sorted(
             beach.jellyfish_beaches,
             key=lambda name: BEACH_ORDER.get(name, len(BEACH_ORDER)),
         )
-        lines.append("🪼 Медузы: " + ", ".join(jellyfish))
+        lines.append(
+            "🪼 Медузы: "
+            + ", ".join(BEACH_NAMES.get(name, name) for name in jellyfish)
+        )
     if notice is not None:
         heading = (
             "⛔ Ограничение купания"

@@ -70,8 +70,9 @@ plus jellyfish presence, and Centre water temperature, sea state, wind speed,
 and wind direction.
 
 Only active, non-ended lifeguard records are eligible. A replacement requires
-all three selected flags and a plausible update time for each. Optional sea,
-wind, and jellyfish fields never block completeness. SafeBeach supplies
+at least one selected flag with a plausible update time. Missing selected
+beaches are named as unavailable; their colors are never inferred. Optional
+sea, wind, and jellyfish fields never block publication. SafeBeach supplies
 individual nearby flags and current beach wind when present. Its Centre water
 temperature and sea state are fallbacks when the AEMET beach forecast omits
 those values. Flags are never averaged or generalized; they are grouped by

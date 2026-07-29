@@ -5,6 +5,7 @@ Detailed decisions belong in `adr/`.
 
 | Date | Decision | Context and reason | Record |
 | --- | --- | --- | --- |
+| 2026-07-29 | Publish available SafeBeach flags without waiting for all three selected beaches | One missing record must not hide current official flags for other beaches; absent beaches are named as unavailable, Centre is labeled as the combined Centre / Babilònia zone, and generic flag meanings are omitted. | `adr/0018-nearby-beach-flags.md` |
 | 2026-07-29 | Publish at 07:30 and conditionally replace after bounded SafeBeach checks | City information arrives early; one later full replacement adds verified beach data without leaving two messages or keeping a process asleep. | `adr/0021-two-stage-daily-replacement.md` |
 | 2026-07-29 | Use one AEMET retry policy everywhere: two retries at two-minute intervals | A short overload may clear in two minutes; centralizing the rule prevents different behavior in the morning, replacement, and preview paths. Replacement still preserves the morning copy after final failure. | `adr/0021-two-stage-daily-replacement.md` |
 | 2026-07-26 | Target Termux on a weak Android device | The bot must run cheaply on limited hardware and unstable mobile internet. | Project brief |

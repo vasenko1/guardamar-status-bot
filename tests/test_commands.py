@@ -83,7 +83,8 @@ class PreviewCommandTests(unittest.TestCase):
         self.assertEqual(
             message,
             "Не удалось сформировать предпросмотр.\n"
-            "Причина: дневной прогноз для Гуардамара недоступен.",
+            "Причина: AEMET OpenData не предоставил дневной прогноз "
+            "для Гуардамара после 3 попыток.",
         )
 
     def test_preview_failure_does_not_expose_arbitrary_exception_text(self):

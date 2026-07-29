@@ -95,7 +95,7 @@ class DigestMessageTests(unittest.TestCase):
         self.assertIn(
             "🏖 Флаги на пляжах:\n"
             "   🟡 Roqueta\n"
-            "   🟢 Centre, Vivers",
+            "   🟢 Centre / Babilònia, Vivers",
             message,
         )
         self.assertIn("🪼 Медузы: Roqueta", message)
@@ -306,12 +306,38 @@ class DigestMessageTests(unittest.TestCase):
             "💨 Ветер: В 3 → 5 м/с\n"
             "🏖 Флаги на пляжах:\n"
             "   🔴 Roqueta\n"
-            "   🟡 Centre\n"
+            "   🟡 Centre / Babilònia\n"
             "   🟢 Vivers\n"
             "🪼 Медузы: Roqueta",
             updated,
         )
         self.assertTrue(updated.endswith("📅 События\n• Выставка"))
+
+    def test_lists_missing_beaches_without_flag_descriptions(self):
+        digest = MorningDigest(
+            weather=Weather(
+                current_temperature_c=None,
+                minimum_temperature_c=22,
+                maximum_temperature_c=30,
+                wind_direction="E",
+                wind_speed_kmh=11,
+                observed_at=None,
+            ),
+            warnings=(),
+            warnings_available=True,
+            beach=BeachStatus(
+                flag_color="red",
+                sea_temperature_c=27,
+                nearby_flags=(("Centre", "red"),),
+                flag_meanings=(("Centre", "купание запрещено"),),
+            ),
+        )
+
+        message = build_message(digest)
+
+        self.assertIn("   🔴 Centre / Babilònia", message)
+        self.assertIn("   Нет данных: Roqueta, Vivers", message)
+        self.assertNotIn("купание запрещено", message)
 
 
 if __name__ == "__main__":

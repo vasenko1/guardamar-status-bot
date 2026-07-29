@@ -79,7 +79,8 @@ def preview_failure_message(exc: Exception) -> str:
         reason = str(exc)
         translations = {
             "The daily Guardamar forecast is unavailable": (
-                "дневной прогноз для Гуардамара недоступен"
+                "AEMET OpenData не предоставил дневной прогноз "
+                "для Гуардамара после 3 попыток"
             ),
             "AEMET request failed": "запрос к AEMET не выполнен",
             "AEMET did not provide a product download": (

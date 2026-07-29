@@ -28,7 +28,6 @@ def _marker(
     sea_state="Moderado",
     jellyfish="No",
     updated="10:05",
-    meaning=None,
 ):
     return {
         "items": [
@@ -43,7 +42,6 @@ def _marker(
                 "oleaje": sea_state,
                 "medusas": jellyfish,
                 "hora": updated,
-                "texto": meaning,
             }
         ]
     }
@@ -112,7 +110,7 @@ class SafeBeachNormalizationTests(unittest.TestCase):
         )
         self.assertEqual(status.jellyfish_beaches, ("Roqueta",))
 
-    def test_requires_all_selected_flags_with_plausible_update_times(self):
+    def test_accepts_one_or_more_flags_with_plausible_update_times(self):
         status = normalize_beach_status(
             _page(
                 [
@@ -133,28 +131,27 @@ class SafeBeachNormalizationTests(unittest.TestCase):
         now = datetime(2026, 7, 29, 10, 10, tzinfo=MADRID)
 
         self.assertTrue(is_complete_current_status(status, now))
-        self.assertFalse(
+        self.assertTrue(
             is_complete_current_status(
                 normalize_beach_status(_page([_marker("verde")])),
                 now,
             )
         )
-
-    def test_normalizes_safe_text_meaning_without_generated_copy(self):
-        status = normalize_beach_status(
-            _page(
-                [
-                    _marker(
-                        "roja",
-                        meaning="Baño prohibido",
-                    )
-                ]
+        self.assertFalse(
+            is_complete_current_status(
+                normalize_beach_status(
+                    _page([_marker("verde", updated="")])
+                ),
+                now,
             )
         )
-
-        self.assertEqual(
-            status.flag_meanings,
-            (("Centre", "купание запрещено"),),
+        self.assertFalse(
+            is_complete_current_status(
+                normalize_beach_status(
+                    _page([_marker("verde", updated="10:16")])
+                ),
+                now,
+            )
         )
 
     def test_ignores_ended_service_and_allows_missing_temperature(self):
