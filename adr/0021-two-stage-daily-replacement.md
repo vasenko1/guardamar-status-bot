@@ -25,9 +25,13 @@ independent messages leaves stale duplicate information in the group.
 - If either supplies an update, recollect the remaining sources once, send a
   full replacement with normal notification, store its Telegram message ID,
   and only then delete the morning message.
+- During replacement, try the mandatory AEMET forecast once and retry it twice
+  at two-minute intervals. If all three attempts fail, retain the exact
+  published 07:30 copy for unchanged sections and add only the verified
+  SafeBeach and/or Mayor update.
 - If deletion fails, a later invocation retries deletion without resending.
 - Keep one atomic JSON state containing only the current date, morning
-  publication time, message IDs, and deletion result.
+  publication time and rendered copy, message IDs, and deletion result.
 - Use external cron invocations. Do not keep a process asleep between retries.
 
 ## Consequences

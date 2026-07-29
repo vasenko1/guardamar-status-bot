@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-from .models import MorningDigest
+from .models import BeachNotice, BeachStatus, MorningDigest
 
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 
@@ -90,6 +90,75 @@ def _wind_mps(value_kmh: int) -> int:
     return round(value_kmh / 3.6)
 
 
+def _beach_operational_lines(
+    beach: Optional[BeachStatus],
+    notice: Optional[BeachNotice],
+) -> list:
+    lines = []
+    nearby_flags = beach.nearby_flags if beach is not None else ()
+    if (
+        not nearby_flags
+        and beach is not None
+        and beach.flag_color in FLAG_DOTS
+    ):
+        nearby_flags = (("Centre", beach.flag_color),)
+    if nearby_flags:
+        update_suffix = ""
+        if beach.updated_times:
+            latest = max(updated for _, updated in beach.updated_times)
+            update_suffix = f" • {latest.strftime('%H:%M')}"
+        lines.append(f"🏖 Флаги на пляжах{update_suffix}:")
+        meanings = dict(beach.flag_meanings)
+        for color in ("red", "yellow", "green"):
+            matching = [
+                name
+                for name, flag_color in nearby_flags
+                if flag_color == color
+            ]
+            if not matching:
+                continue
+            shared = {meanings.get(name) for name in matching}
+            suffix = ""
+            if len(shared) == 1 and None not in shared:
+                suffix = f" — {shared.pop()}"
+            lines.append(
+                f"   {FLAG_DOTS[color]} {', '.join(matching)}{suffix}"
+            )
+    if beach is not None and beach.jellyfish_beaches:
+        lines.append("🪼 Медузы: " + ", ".join(beach.jellyfish_beaches))
+    if notice is not None:
+        heading = (
+            "⛔ Ограничение купания"
+            if notice.bathing_prohibited
+            else "🏖 Информация о купании"
+        )
+        lines.extend(["", heading, notice.text])
+    return lines
+
+
+def build_fallback_update(
+    morning_message: str,
+    beach: Optional[BeachStatus],
+    notice: Optional[BeachNotice],
+) -> str:
+    """Add verified beach updates to the already published morning copy."""
+
+    additions = _beach_operational_lines(beach, notice)
+    if not additions:
+        return morning_message
+    lines = morning_message.splitlines()
+    insert_at = next(
+        (
+            index + 1
+            for index, line in enumerate(lines)
+            if line.startswith("💨 Ветер:")
+        ),
+        len(lines),
+    )
+    lines[insert_at:insert_at] = additions
+    return "\n".join(lines)
+
+
 def build_message(digest: MorningDigest) -> str:
     """Format a Morning Digest without inference or generated prose."""
 
@@ -165,66 +234,9 @@ def build_message(digest: MorningDigest) -> str:
     else:
         lines.append("💨 Ветер: —")
 
-    nearby_flags = (
-        digest.beach.nearby_flags
-        if digest.beach is not None
-        else ()
+    lines.extend(
+        _beach_operational_lines(digest.beach, digest.beach_notice)
     )
-    if (
-        not nearby_flags
-        and digest.beach is not None
-        and digest.beach.flag_color in FLAG_DOTS
-    ):
-        nearby_flags = (("Centre", digest.beach.flag_color),)
-    grouped_flags = []
-    for color in ("red", "yellow", "green"):
-        names = [
-            name
-            for name, flag_color in nearby_flags
-            if flag_color == color
-        ]
-        if names:
-            grouped_flags.append(
-                f"{FLAG_DOTS[color]} {', '.join(names)}"
-            )
-    if grouped_flags:
-        update_suffix = ""
-        if digest.beach.updated_times:
-            latest = max(
-                updated for _, updated in digest.beach.updated_times
-            )
-            update_suffix = f" • {latest.strftime('%H:%M')}"
-        lines.append(f"🏖 Флаги на пляжах{update_suffix}:")
-        meanings = dict(digest.beach.flag_meanings)
-        for color in ("red", "yellow", "green"):
-            matching = [
-                name
-                for name, flag_color in nearby_flags
-                if flag_color == color
-            ]
-            if not matching:
-                continue
-            shared = {meanings.get(name) for name in matching}
-            suffix = ""
-            if len(shared) == 1 and None not in shared:
-                suffix = f" — {shared.pop()}"
-            lines.append(
-                f"   {FLAG_DOTS[color]} {', '.join(matching)}{suffix}"
-            )
-
-    if digest.beach is not None and digest.beach.jellyfish_beaches:
-        lines.append(
-            "🪼 Медузы: "
-            + ", ".join(digest.beach.jellyfish_beaches)
-        )
-
-    if digest.beach_notice is not None:
-        heading = (
-            "⛔ Ограничение купания"
-            if digest.beach_notice.bathing_prohibited
-            else "🏖 Информация о купании"
-        )
-        lines.extend(["", heading, digest.beach_notice.text])
 
     if digest.warnings:
         lines.extend(["", "⚠️ Внимание"])

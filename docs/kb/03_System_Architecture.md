@@ -26,8 +26,8 @@ schemas, and library choices belong in later design work or ADRs.
    succeeds or its retry window expires. A verified update permits one fresh
    full collection, delivery of the replacement, then deletion of the earlier
    message.
-9. **Minimal state** keeps the local date, both Telegram message IDs, morning
-   publication time, and cleanup result.
+9. **Minimal state** keeps the local date, rendered morning copy, both Telegram
+   message IDs, morning publication time, and cleanup result.
 10. **Exit** ends every process; no collector or watcher remains active.
 
 If nothing trustworthy and useful remains after filtering, the run may produce
@@ -110,6 +110,11 @@ speculatively. Its architecture is defined only after the feature is approved.
 Every process holds the same local file lock. State is one small atomic JSON
 file. The replacement is sent and recorded before deletion of the morning
 message; a later invocation retries only failed cleanup.
+
+Replacement collection gives mandatory AEMET data two retries at two-minute
+intervals. If AEMET remains unavailable, the renderer preserves the published
+07:30 copy and inserts only newly verified beach information. It does not
+substitute another location or reconstruct weather from a different product.
 
 Termux invokes the morning command at 07:30 and the update command every five
 minutes from 10:10 through 10:40 in `Europe/Madrid`.

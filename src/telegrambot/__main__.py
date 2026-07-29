@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 from .aemet import AemetError
 from .commands import listen_for_preview, parse_allowed_user_ids
 from .delivery import publish_morning, publish_update
+from .digest import build_fallback_update
 from .mayor import latest_beach_notice
 from .morning import _safebeach_is_in_season, produce_message
 from .safebeach import (
@@ -109,20 +110,36 @@ async def _run_command(command: str) -> int:
         return await latest_beach_notice(now, since)
 
     async def produce_update(status, notice):
-        return await produce_message(
-            api_key,
-            now,
-            os.environ.get("GEMINI_API_KEY", "").strip(),
-            Path(
-                os.environ.get(
-                    "MUNICIPAL_AGENDA_STATE_PATH",
-                    DEFAULT_MUNICIPAL_AGENDA_STATE_PATH,
-                )
-            ),
-            collect_beach=False,
-            beach_status=status,
-            beach_notice=notice,
-        )
+        try:
+            return await produce_message(
+                api_key,
+                now,
+                os.environ.get("GEMINI_API_KEY", "").strip(),
+                Path(
+                    os.environ.get(
+                        "MUNICIPAL_AGENDA_STATE_PATH",
+                        DEFAULT_MUNICIPAL_AGENDA_STATE_PATH,
+                    )
+                ),
+                collect_beach=False,
+                beach_status=status,
+                beach_notice=notice,
+                aemet_daily_attempts=3,
+                aemet_retry_seconds=120,
+            )
+        except AemetError:
+            morning_message = existing.get("morning_message")
+            if not isinstance(morning_message, str) or not morning_message:
+                raise
+            logging.warning(
+                "AEMET update failed after two retries; "
+                "using the published morning message"
+            )
+            return build_fallback_update(
+                morning_message,
+                status,
+                notice,
+            )
 
     async def deliver_update(message: str) -> int:
         return await send_message(

@@ -138,9 +138,10 @@ Send `/preview` to the bot in a private chat. Only IDs in
 to the configured group, and does not change publication state. The listener
 does not fetch any source until an authorized command arrives.
 
-State contains only the current local date, morning publication time, Telegram
-message IDs, and cleanup result. No source cache is implemented: source
-responses and normalized records live only for the current process.
+State contains only the current local date, rendered morning copy, publication
+time, Telegram message IDs, and cleanup result. The rendered copy is used only
+when a verified later update exists but AEMET remains unavailable after two
+two-minute retries. No raw source cache is implemented.
 
 Gemini is optional and is called only when the official Policía Local traffic
 page contains an unknown notice format. Known notices use deterministic rules

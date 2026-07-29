@@ -85,7 +85,7 @@ async def publish_morning(
             except Exception as exc:
                 LOGGER.error("FAILURE: morning publication failed: %s", exc)
                 return "failure"
-            state.mark_morning(local_day, message_id, now)
+            state.mark_morning(local_day, message_id, now, message)
             LOGGER.info("SUCCESS: morning message delivered for %s", local_day)
             return "success"
     except StateError as exc:

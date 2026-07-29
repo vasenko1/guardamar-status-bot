@@ -63,6 +63,8 @@ async def produce_message(
     collect_beach: bool = True,
     beach_status: Optional[BeachStatus] = None,
     beach_notice: Optional[BeachNotice] = None,
+    aemet_daily_attempts: int = 2,
+    aemet_retry_seconds: float = 2,
 ) -> str:
     """Build a digest; SafeBeach failure must not block AEMET delivery."""
 
@@ -91,7 +93,12 @@ async def produce_message(
         fetch_traffic_notices(now, gemini_api_key or None)
     )
     try:
-        digest = await fetch_morning_digest(api_key=api_key, now=now)
+        digest = await fetch_morning_digest(
+            api_key=api_key,
+            now=now,
+            daily_attempts=aemet_daily_attempts,
+            daily_retry_seconds=aemet_retry_seconds,
+        )
     except BaseException:
         if beach_task is not None:
             beach_task.cancel()

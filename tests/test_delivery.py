@@ -70,7 +70,7 @@ class DeliveryRunTests(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as directory:
             state = PublicationState(Path(directory) / "delivery.json")
             morning = datetime(2026, 7, 29, 7, 30, tzinfo=MADRID)
-            state.mark_morning(morning.date(), 10, morning)
+            state.mark_morning(morning.date(), 10, morning, "morning")
             mayor_calls = 0
 
             async def mayor(since):
@@ -95,7 +95,7 @@ class DeliveryRunTests(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as directory:
             state = PublicationState(Path(directory) / "delivery.json")
             morning = datetime(2026, 7, 29, 7, 30, tzinfo=MADRID)
-            state.mark_morning(morning.date(), 10, morning)
+            state.mark_morning(morning.date(), 10, morning, "morning")
             actions = []
             beach = BeachStatus(
                 flag_color="green",

@@ -272,6 +272,37 @@ class WarningTests(unittest.TestCase):
 
 
 class AemetCollectionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_update_policy_can_retry_twice_after_two_minutes(self):
+        from telegrambot.aemet import fetch_morning_digest
+
+        with patch(
+            "telegrambot.aemet._fetch_product",
+            new=AsyncMock(side_effect=AemetError("temporary")),
+        ) as fetch_mock, patch(
+            "telegrambot.aemet.asyncio.sleep",
+            new=AsyncMock(),
+        ) as sleep_mock:
+            with self.assertRaises(AemetError):
+                await fetch_morning_digest(
+                    "key",
+                    datetime(
+                        2026,
+                        7,
+                        29,
+                        10,
+                        10,
+                        tzinfo=ZoneInfo("Europe/Madrid"),
+                    ),
+                    daily_attempts=3,
+                    daily_retry_seconds=120,
+                )
+
+        self.assertEqual(fetch_mock.await_count, 3)
+        self.assertEqual(
+            [call.args for call in sleep_mock.await_args_list],
+            [(120,), (120,)],
+        )
+
     async def test_retries_required_daily_forecast_once(self):
         from telegrambot.aemet import fetch_morning_digest
 

@@ -62,11 +62,14 @@ deployment agent or self-hosted CI runner.
   authorized on-demand preview.
 - Reuse connections when simple and safe.
 - Never retry indefinitely.
+- A replacement may keep one process alive for two bounded two-minute AEMET
+  retry intervals; this occurs only after a verified beach update.
 - Do not make digest delivery depend on every source succeeding.
 
 ### Storage
 
-- Store configuration, minimal daily replacement state, and the bounded
+- Store configuration, the rendered morning copy needed for safe fallback,
+  minimal daily replacement state, and the bounded
   monthly event snapshot accepted in ADR 0012.
 - Keep logs rotated or otherwise bounded.
 - Do not archive raw responses by default.

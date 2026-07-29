@@ -579,12 +579,20 @@ def normalize_warnings(payload: bytes, now: datetime) -> Tuple[Warning, ...]:
     return tuple(warnings)
 
 
-async def fetch_morning_digest(api_key: str, now: datetime) -> MorningDigest:
+async def fetch_morning_digest(
+    api_key: str,
+    now: datetime,
+    *,
+    daily_attempts: int = 2,
+    daily_retry_seconds: float = 2,
+) -> MorningDigest:
     """Fetch AEMET products sequentially and return one normalized model."""
 
+    if daily_attempts < 1:
+        raise ValueError("daily_attempts must be at least one")
     daily_result = None
     daily_error = None
-    for attempt in range(2):
+    for attempt in range(daily_attempts):
         try:
             daily_result = await _fetch_product(
                 f"prediccion/especifica/municipio/diaria/"
@@ -595,8 +603,8 @@ async def fetch_morning_digest(api_key: str, now: datetime) -> MorningDigest:
             break
         except AemetError as exc:
             daily_error = exc
-            if attempt == 0:
-                await asyncio.sleep(2)
+            if attempt + 1 < daily_attempts:
+                await asyncio.sleep(daily_retry_seconds)
     if daily_result is None:
         raise AemetError(
             "The daily Guardamar forecast is unavailable"

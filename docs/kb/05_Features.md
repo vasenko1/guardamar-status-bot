@@ -211,9 +211,12 @@ presented as absence of warnings.
 - If neither source has an update, retain the 07:30 message and exit
 - If either has an update, recollect all other sources once, send one full
   replacement with a normal notification, then delete the 07:30 message
+- For that recollection, try AEMET once plus two retries two minutes apart
+- If all three AEMET attempts fail, preserve every unchanged line from the
+  published 07:30 message and add only verified SafeBeach/Mayor blocks
 - At most three bounded Telegram HTTP attempts within that run
-- One small atomic JSON state with the date, morning time, message IDs, and
-  deletion result
+- One small atomic JSON state with the date, rendered morning copy, morning
+  time, message IDs, and deletion result
 - Concise process output for success, duplicate, skip, and failure
 
 The replacement ID is stored before deleting the earlier message. If deletion

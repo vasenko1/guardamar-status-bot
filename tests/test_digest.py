@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime, timezone
 
-from telegrambot.digest import build_message
+from telegrambot.digest import build_fallback_update, build_message
 from telegrambot.models import (
     BeachStatus,
     Event,
@@ -272,6 +272,40 @@ class DigestMessageTests(unittest.TestCase):
             "• 09:00–15:30 — Рынок, парковка La Redonda",
             message,
         )
+
+    def test_fallback_preserves_morning_copy_and_adds_beach_update(self):
+        morning = (
+            "🌅 Доброе утро, Гуардамар!\n\n"
+            "🌤 Погода: 22° → 30°\n"
+            "🌊 Море: 27° • умеренные волны\n"
+            "💨 Ветер: В 3 → 5 м/с\n\n"
+            "📅 События\n• Выставка"
+        )
+        beach = BeachStatus(
+            flag_color="yellow",
+            sea_temperature_c=28,
+            nearby_flags=(
+                ("Vivers", "green"),
+                ("Centre", "yellow"),
+                ("Roqueta", "red"),
+            ),
+            jellyfish_beaches=("Roqueta",),
+        )
+
+        updated = build_fallback_update(morning, beach, None)
+
+        self.assertIn("🌤 Погода: 22° → 30°", updated)
+        self.assertIn("🌊 Море: 27° • умеренные волны", updated)
+        self.assertIn(
+            "💨 Ветер: В 3 → 5 м/с\n"
+            "🏖 Флаги на пляжах:\n"
+            "   🔴 Roqueta\n"
+            "   🟡 Centre\n"
+            "   🟢 Vivers\n"
+            "🪼 Медузы: Roqueta",
+            updated,
+        )
+        self.assertTrue(updated.endswith("📅 События\n• Выставка"))
 
 
 if __name__ == "__main__":

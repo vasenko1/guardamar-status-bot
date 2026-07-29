@@ -47,12 +47,13 @@ class PublicationStateTests(unittest.TestCase):
                 "2026-07-29T07:30:00+02:00"
             )
 
-            state.mark_morning(local_day, 101, sent_at)
+            state.mark_morning(local_day, 101, sent_at, "morning")
             state.mark_update_sent(local_day, 202)
             state.mark_morning_deleted(local_day)
 
             record = state.morning_record(local_day)
             self.assertEqual(record["morning_message_id"], 101)
+            self.assertEqual(record["morning_message"], "morning")
             self.assertEqual(record["update_message_id"], 202)
             self.assertTrue(record["morning_deleted"])
 

@@ -66,8 +66,12 @@ class PublicationState:
             return None
         message_id = value.get("morning_message_id")
         published_at = value.get("morning_published_at")
+        message = value.get("morning_message")
         if not isinstance(message_id, int) or not isinstance(
             published_at, str
+        ) or (
+            message is not None
+            and (not isinstance(message, str) or not message)
         ):
             raise StateError("publication state has an invalid morning record")
         try:
@@ -87,12 +91,14 @@ class PublicationState:
         local_day: date,
         message_id: int,
         published_at: datetime,
+        message: str,
     ) -> None:
         self._write({
             "last_successful_date": local_day.isoformat(),
             "local_date": local_day.isoformat(),
             "morning_message_id": message_id,
             "morning_published_at": published_at.isoformat(),
+            "morning_message": message,
             "update_message_id": None,
             "morning_deleted": False,
         })
