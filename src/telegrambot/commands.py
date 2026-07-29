@@ -15,6 +15,7 @@ GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 MAX_COMMAND_AGE_SECONDS = 120
 RETRY_DELAY_SECONDS = 5
 PREVIEW_AEMET_RETRY_SECONDS = 3
+PREVIEW_FAILURE_PREFIX = "Не удалось сформировать предпросмотр."
 
 
 def parse_allowed_user_ids(value: str) -> Set[int]:
@@ -77,6 +78,28 @@ async def _produce_preview(
         return await produce(datetime.now(GUARDAMAR_TIMEZONE))
 
 
+def preview_failure_message(exc: Exception) -> str:
+    """Return a concise operator-safe reason without raw transport details."""
+
+    if isinstance(exc, AemetError):
+        reason = str(exc)
+        translations = {
+            "The daily Guardamar forecast is unavailable": (
+                "дневной прогноз для Гуардамара недоступен"
+            ),
+            "AEMET request failed": "запрос к AEMET не выполнен",
+            "AEMET did not provide a product download": (
+                "AEMET не предоставил данные прогноза"
+            ),
+        }
+        detail = translations.get(reason, "AEMET вернул некорректные данные")
+        return f"{PREVIEW_FAILURE_PREFIX}\nПричина: {detail}."
+    return (
+        f"{PREVIEW_FAILURE_PREFIX}\n"
+        f"Причина: внутренняя ошибка ({type(exc).__name__})."
+    )
+
+
 async def listen_for_preview(
     bot_token: str,
     allowed_user_ids: Set[int],
@@ -120,7 +143,7 @@ async def listen_for_preview(
                     await send_message(
                         bot_token,
                         chat_id,
-                        "Не удалось сформировать предпросмотр.",
+                        preview_failure_message(exc),
                         disable_notification=True,
                     )
                 except TelegramError:

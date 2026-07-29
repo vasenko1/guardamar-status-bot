@@ -5,6 +5,7 @@ from telegrambot.aemet import AemetError
 from telegrambot.commands import (
     _produce_preview,
     parse_allowed_user_ids,
+    preview_failure_message,
     preview_destination,
 )
 
@@ -73,6 +74,25 @@ class PreviewCommandTests(unittest.TestCase):
             with self.subTest(invalid=invalid):
                 with self.assertRaises(ValueError):
                     parse_allowed_user_ids(invalid)
+
+    def test_preview_failure_explains_aemet_problem_in_russian(self):
+        message = preview_failure_message(
+            AemetError("The daily Guardamar forecast is unavailable")
+        )
+
+        self.assertEqual(
+            message,
+            "Не удалось сформировать предпросмотр.\n"
+            "Причина: дневной прогноз для Гуардамара недоступен.",
+        )
+
+    def test_preview_failure_does_not_expose_arbitrary_exception_text(self):
+        message = preview_failure_message(
+            RuntimeError("secret-token-and-private-url")
+        )
+
+        self.assertIn("внутренняя ошибка (RuntimeError)", message)
+        self.assertNotIn("secret-token", message)
 
 
 class PreviewRetryTests(unittest.IsolatedAsyncioTestCase):

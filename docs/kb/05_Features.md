@@ -223,7 +223,9 @@ The CLI `preview` command remains available for local inspection. An optional
 a user ID listed in `TELEGRAM_ALLOWED_USER_IDS`. It replies privately with
 freshly collected data. Group commands, unauthorized users, stale updates, and
 other commands are ignored. Neither preview path changes publication state or
-publishes to the configured group.
+publishes to the configured group. If preview generation fails, the private
+reply includes a short safe cause category; raw URLs, credentials, transport
+details, and tracebacks are never returned.
 
 ### Boundaries
 
