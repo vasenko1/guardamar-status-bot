@@ -18,6 +18,7 @@ published, while listing all six SafeBeach positions would add noise.
   color, use north-to-south order `Vivers`, `Centre`, `Roqueta`.
 - Render each color group on its own indented line under
   `🏖 Флаги на пляжах:`.
+- Use SafeBeach update times only to validate freshness; do not display them.
 - Never average flags or replace a missing beach with another beach's value.
 - Omit an unavailable individual flag; omit the complete flag row when none
   are active.

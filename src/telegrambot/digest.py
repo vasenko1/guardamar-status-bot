@@ -103,11 +103,7 @@ def _beach_operational_lines(
     ):
         nearby_flags = (("Centre", beach.flag_color),)
     if nearby_flags:
-        update_suffix = ""
-        if beach.updated_times:
-            latest = max(updated for _, updated in beach.updated_times)
-            update_suffix = f" • {latest.strftime('%H:%M')}"
-        lines.append(f"🏖 Флаги на пляжах{update_suffix}:")
+        lines.append("🏖 Флаги на пляжах:")
         meanings = dict(beach.flag_meanings)
         for color in ("red", "yellow", "green"):
             matching = [

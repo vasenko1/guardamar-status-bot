@@ -35,7 +35,7 @@ This exact visual structure is the product contract:
 🌧 Дождь: 80% • 12:00–18:00
 🌊 Море: 29° • слабые → умеренные
 💨 Ветер: СВ 5 → 7 м/с
-🏖 Флаги на пляжах • 10:05:
+🏖 Флаги на пляжах:
    🟡 Roqueta — с осторожностью
    🟢 Vivers, Centre — купание разрешено
 🪼 Медузы: Roqueta
@@ -91,8 +91,9 @@ forecast is appended to the wind row as `→ <speed>` and is omitted when
 unavailable. It never creates another row.
 
 SafeBeach flag lines may append only its exact generic operational meaning:
-`купание запрещено`, `с осторожностью`, or `купание разрешено`. The flag
-heading includes the latest selected-beach SafeBeach update time.
+`купание запрещено`, `с осторожностью`, or `купание разрешено`. SafeBeach
+update times are used only for internal freshness validation and are never
+shown in the user-facing digest.
 
 The weather icon is dynamic from the existing AEMET daily sky forecast:
 `☀️` clear, `🌤` partly cloudy, `☁️` cloudy, `🌫️` fog, `🌧️` rain,

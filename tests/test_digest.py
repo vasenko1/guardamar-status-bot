@@ -1,5 +1,5 @@
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 
 from telegrambot.digest import build_fallback_update, build_message
 from telegrambot.models import (
@@ -47,6 +47,11 @@ class DigestMessageTests(unittest.TestCase):
                     ("Roqueta", "yellow"),
                 ),
                 jellyfish_beaches=("Roqueta",),
+                updated_times=(
+                    ("Vivers", time(15, 54)),
+                    ("Centre", time(15, 56)),
+                    ("Roqueta", time(15, 55)),
+                ),
             ),
             forecast_sea_temperature_c=29,
             forecast_sea_state="slight",
@@ -94,6 +99,7 @@ class DigestMessageTests(unittest.TestCase):
             message,
         )
         self.assertIn("🪼 Медузы: Roqueta", message)
+        self.assertNotIn("15:56", message)
         self.assertIn("💨 Ветер: В 3 → 5 м/с", message)
         self.assertIn("\n\n⚠️ Внимание\n", message)
         self.assertIn(
