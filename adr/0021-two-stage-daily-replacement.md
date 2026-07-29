@@ -17,7 +17,7 @@ independent messages leaves stale duplicate information in the group.
   and every five minutes through 10:40.
 - Each invocation checks SafeBeach first. It is usable when at least one of
   Centre / Babilònia, Roqueta, or Vivers has an active, non-ended flag and a
-  plausible update time. Missing selected beaches remain explicitly unknown.
+  plausible update time. Missing selected beaches are omitted.
 - Before any selected flag is usable, exit immediately. At 10:40 the retry
   window expires.
 - After SafeBeach succeeds, or after the final attempt, check

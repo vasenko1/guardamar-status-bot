@@ -21,9 +21,8 @@ published, while listing all six SafeBeach positions would add noise.
   `🏖 Флаги на пляжах:`.
 - Use SafeBeach update times only to validate freshness; do not display them.
 - Never average flags or replace a missing beach with another beach's value.
-- Publish when at least one selected beach has a current flag. Name the other
-  selected beaches once as unavailable; omit the complete flag row when none
-  are current.
+- Publish when at least one selected beach has a current flag. Omit unavailable
+  selected beaches; omit the complete flag row when none are current.
 - Render only color and beach names; omit SafeBeach's generic flag meaning.
 - Keep SafeBeach current beach wind tied to the Centre record. Sea temperature
   and state follow ADR 0019.

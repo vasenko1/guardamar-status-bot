@@ -71,8 +71,8 @@ and wind direction.
 
 Only active, non-ended lifeguard records are eligible. A replacement requires
 at least one selected flag with a plausible update time. Missing selected
-beaches are named as unavailable; their colors are never inferred. Optional
-sea, wind, and jellyfish fields never block publication. SafeBeach supplies
+beaches are omitted; their colors are never inferred. Optional sea, wind, and
+jellyfish fields never block publication. SafeBeach supplies
 individual nearby flags and current beach wind when present. Its Centre water
 temperature and sea state are fallbacks when the AEMET beach forecast omits
 those values. Flags are never averaged or generalized; they are grouped by

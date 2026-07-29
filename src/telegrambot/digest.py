@@ -125,14 +125,6 @@ def _beach_operational_lines(
                 f"   {FLAG_DOTS[color]} "
                 f"{', '.join(BEACH_NAMES.get(name, name) for name in matching)}"
             )
-        available = {name for name, _ in nearby_flags}
-        missing = [
-            BEACH_NAMES[name]
-            for name in BEACH_ORDER
-            if name not in available
-        ]
-        if missing:
-            lines.append(f"   Нет данных: {', '.join(missing)}")
     if beach is not None and beach.jellyfish_beaches:
         jellyfish = sorted(
             beach.jellyfish_beaches,

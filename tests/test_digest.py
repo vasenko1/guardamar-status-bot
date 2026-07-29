@@ -313,7 +313,7 @@ class DigestMessageTests(unittest.TestCase):
         )
         self.assertTrue(updated.endswith("📅 События\n• Выставка"))
 
-    def test_lists_missing_beaches_without_flag_descriptions(self):
+    def test_omits_missing_beaches_and_flag_descriptions(self):
         digest = MorningDigest(
             weather=Weather(
                 current_temperature_c=None,
@@ -336,7 +336,9 @@ class DigestMessageTests(unittest.TestCase):
         message = build_message(digest)
 
         self.assertIn("   🔴 Centre / Babilònia", message)
-        self.assertIn("   Нет данных: Roqueta, Vivers", message)
+        self.assertNotIn("Нет данных", message)
+        self.assertNotIn("Roqueta", message)
+        self.assertNotIn("Vivers", message)
         self.assertNotIn("купание запрещено", message)
 
 

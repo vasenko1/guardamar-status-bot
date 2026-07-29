@@ -81,8 +81,8 @@ beach and never averages flags. Groups use the fixed safety order red, yellow,
 then green. Within every beach-name list use the product order `Centre /
 Babilònia`, `Roqueta`, `Vivers`, so the central zone is first whenever
 represented. When at least one selected flag is current, unavailable selected
-beaches are listed once as `Нет данных` rather than assigned a reassuring
-default. The sea temperature and sea-state text use the AEMET
+beaches are omitted rather than assigned a reassuring default. The sea
+temperature and sea-state text use the AEMET
 Centro / La Roqueta forecast. Equal sea-state periods render once as
 `умеренные волны`; a change renders compactly as
 `слабые → умеренные`, without repeating `волны`. SafeBeach Centre values are fallbacks when the
