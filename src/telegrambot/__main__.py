@@ -20,6 +20,7 @@ from .safebeach import (
     SafeBeachError,
     fetch_beach_status,
     is_complete_current_status,
+    is_current_status,
 )
 from .state import PublicationState, StateError
 from .telegram import TelegramError, delete_message, send_message
@@ -27,6 +28,12 @@ from .telegram import TelegramError, delete_message, send_message
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 DEFAULT_STATE_PATH = "state/delivery.json"
 DEFAULT_MUNICIPAL_AGENDA_STATE_PATH = "state/municipal_agenda.json"
+
+
+def _beach_ready_for_update(status, now: datetime, final_attempt: bool) -> bool:
+    return is_complete_current_status(status, now) or (
+        final_attempt and is_current_status(status, now)
+    )
 
 
 def _required_environment(name: str) -> str:
@@ -171,17 +178,17 @@ async def _run_command(command: str) -> int:
         )
         return 0 if result == "duplicate" else 1
 
+    final_attempt = (now.hour, now.minute) >= (10, 40)
     beach = None
     try:
         candidate = await fetch_beach_status()
-        if is_complete_current_status(candidate, now):
+        if _beach_ready_for_update(candidate, now, final_attempt):
             beach = candidate
     except SafeBeachError as exc:
         logging.warning(
             "SafeBeach update check failed: SB-%s",
             exc.diagnostic_code,
         )
-    final_attempt = (now.hour, now.minute) >= (10, 40)
     result = await publish_update(
         now,
         state,

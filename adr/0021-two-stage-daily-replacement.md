@@ -15,11 +15,13 @@ independent messages leaves stale duplicate information in the group.
 - Publish one complete briefing without operational SafeBeach rows at 07:30.
 - In the 20 June–14 September season, invoke a short update command at 10:10
   and every five minutes through 10:40.
-- Each invocation checks SafeBeach first. It is usable when at least one of
-  Centre / Babilònia, Roqueta, or Vivers has an active, non-ended flag and a
-  plausible update time. Missing selected beaches are omitted.
-- Before any selected flag is usable, exit immediately. At 10:40 the retry
-  window expires.
+- Each invocation checks SafeBeach first. Before 10:40, replacement requires
+  active, non-ended flags with plausible update times for Centre / Babilònia,
+  Roqueta, and Vivers together.
+- If that preferred set is incomplete, exit immediately and let the next
+  five-minute invocation retry. At 10:40, the retry window expires and any
+  non-empty valid selected Guardamar beach set is usable. Missing beaches are
+  omitted and their values are never inferred.
 - After SafeBeach succeeds, or after the final attempt, check
   `@AlcaldeGuardamar` once for an explicit bathing-status transition published
   after the morning message.
@@ -40,8 +42,10 @@ independent messages leaves stale duplicate information in the group.
 ## Consequences
 
 The group normally contains one current full message, city information arrives
-early, and beach information can appear when lifeguards publish it. Seasonal
-checks add at most seven small SafeBeach requests and no idle runtime.
+early, and the replacement normally contains all three preferred beaches.
+Persistently missing records still allow a truthful partial replacement at
+10:40. Seasonal checks add at most seven small SafeBeach requests and no idle
+runtime.
 Telegram still has an unavoidable edge when a successful send response is lost
 before its message ID can be stored.
 

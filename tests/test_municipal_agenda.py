@@ -9,8 +9,10 @@ from zoneinfo import ZoneInfo
 
 from telegrambot.municipal_agenda import (
     MunicipalAgendaError,
+    SourceEvent,
     _current_events,
     _apply_reviewed_corrections,
+    _apply_reviewed_daily_schedules,
     _load_snapshot,
     _merge_reviewed_text_agenda,
     _snapshot_data,
@@ -166,6 +168,71 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(entropia.end_date, datetime(2026, 7, 29).date())
         self.assertEqual(entropia.start_time, "08:00")
+
+    def test_applies_reviewed_mediterraneo_visiting_hours(self):
+        event = SourceEvent(
+            title_es=(
+                "EXPOSICIÓN DE PINTURA: "
+                "MEDITERRÁNEO, EL LENGUAJE DEL AGUA"
+            ),
+            start_date=datetime(2026, 6, 19).date(),
+            end_date=datetime(2026, 8, 14).date(),
+            start_time=None,
+            end_time=None,
+            place="Casa de Cultura",
+            category="exhibition",
+        )
+
+        weekday = _apply_reviewed_daily_schedules(
+            (event,), datetime(2026, 7, 30).date()
+        )
+        saturday = _apply_reviewed_daily_schedules(
+            (event,), datetime(2026, 8, 1).date()
+        )
+        sunday = _apply_reviewed_daily_schedules(
+            (event,), datetime(2026, 8, 2).date()
+        )
+
+        self.assertEqual(weekday[0].start_time, "09:00")
+        self.assertEqual(weekday[0].end_time, "20:00")
+        self.assertEqual(saturday[0].start_time, "10:00")
+        self.assertEqual(saturday[0].end_time, "14:00")
+        self.assertEqual(sunday, ())
+        self.assertEqual(
+            weekday[0].title_es,
+            (
+                "Exposición de pintura y escultura: "
+                "Mediterráneo, el lenguaje del agua"
+            ),
+        )
+
+    async def test_marks_only_last_day_of_multiday_event(self):
+        source = SourceEvent(
+            title_es="Exposición",
+            start_date=datetime(2026, 8, 1).date(),
+            end_date=datetime(2026, 8, 14).date(),
+            start_time="09:00",
+            end_time="20:00",
+            place="Casa de Cultura",
+            category="exhibition",
+        )
+        with (
+            patch(
+                "telegrambot.municipal_agenda._current_events",
+                new=AsyncMock(return_value=(source,)),
+            ),
+            patch(
+                "telegrambot.municipal_agenda.translate_event_titles",
+                new=AsyncMock(return_value=["Выставка"]),
+            ),
+        ):
+            events = await fetch_today_municipal_events(
+                datetime(2026, 8, 14, 8, 0, tzinfo=TZ),
+                "key",
+                Path("unused.json"),
+            )
+
+        self.assertTrue(events[0].is_final_day)
 
     async def test_unchanged_poster_uses_snapshot_without_ocr(self):
         events = normalize_extraction(extraction())

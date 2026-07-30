@@ -5,7 +5,7 @@
 
 ## Context
 
-The canonical digest reserves an optional `📅 События` section. The source
+The canonical digest reserves an optional `📅 События дня:` section. The source
 must be official, deterministic, lightweight, and usable without runtime AI,
 OCR, or a general news parser.
 

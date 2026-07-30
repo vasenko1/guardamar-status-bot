@@ -13,6 +13,7 @@ from telegrambot.safebeach import (
     _read_page,
     fetch_beach_status,
     is_complete_current_status,
+    is_current_status,
     normalize_beach_status,
 )
 
@@ -198,7 +199,7 @@ class SafeBeachNormalizationTests(unittest.TestCase):
 
         self.assertEqual(raised.exception.diagnostic_code, "NO-DATA")
 
-    def test_accepts_one_or_more_flags_with_plausible_update_times(self):
+    def test_completeness_requires_all_three_preferred_beaches(self):
         status = _normalize(
             [
                 _marker("verde", updated="10:05"),
@@ -217,12 +218,14 @@ class SafeBeachNormalizationTests(unittest.TestCase):
         now = datetime(2026, 7, 29, 10, 10, tzinfo=MADRID)
 
         self.assertTrue(is_complete_current_status(status, now))
-        self.assertTrue(
+        partial = _normalize([_marker("verde")])
+        self.assertFalse(
             is_complete_current_status(
-                _normalize([_marker("verde")]),
+                partial,
                 now,
             )
         )
+        self.assertTrue(is_current_status(partial, now))
         self.assertFalse(
             is_complete_current_status(
                 _normalize([_marker("verde", updated="")]),
@@ -401,8 +404,14 @@ class SafeBeachTransportTests(unittest.IsolatedAsyncioTestCase):
                 ("Montcaio", "red"),
             ),
         )
-        self.assertTrue(
+        self.assertFalse(
             is_complete_current_status(
+                status,
+                datetime(2026, 7, 29, 10, 10, tzinfo=MADRID),
+            )
+        )
+        self.assertTrue(
+            is_current_status(
                 status,
                 datetime(2026, 7, 29, 10, 10, tzinfo=MADRID),
             )

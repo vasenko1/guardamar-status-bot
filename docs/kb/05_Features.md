@@ -46,7 +46,7 @@ This exact visual structure is the product contract:
 🚧 Движение ограничено
 С 19:30 перекрыта Calle Mayor.
 
-📅 События
+📅 События дня:
 • 07:00–13:30 — рынок, парковка La Redonda
 • 21:00 — концерт в замке, Castillo
 ```
@@ -179,6 +179,13 @@ source outage. Extraction preserves explicit event type, medium, time range,
 and place. Russian translations are not stored. Poster and Agenda
 Guardamar records are merged and deduplicated; routine opening hours and
 municipal services such as the mobile ecopark are excluded from `📅 События`.
+The heading is rendered as `📅 События дня:` to make its daily scope explicit.
+When an official text agenda publishes event-specific visiting hours, those
+hours take precedence over missing poster OCR times. General venue opening
+hours are never substituted for an event schedule.
+On the confirmed end date of a multi-day event, prefix its title with
+`Последний день:`. Do not apply the marker to one-day events or records without
+an explicit end date.
 
 The traffic slice reads explicit restrictions from the official Policía Local
 Guardamar page and its reviewed festival PDF. A document becomes independent
@@ -214,9 +221,12 @@ presented as absence of warnings.
 - One configured Telegram chat or channel
 - Publish the full non-operational beach briefing at `07:30`
 - Check SafeBeach at `10:10`, then every five minutes through `10:40`
-- Accept one or more active, non-ended, timestamped Guardamar beach flags,
-  selecting at most three by the documented priority
-- Before completeness, exit without checking or collecting other sources
+- Before `10:40`, require active, non-ended, timestamped flags for all three
+  preferred beaches: Centre / Babilònia, Roqueta, and Vivers
+- Before that preferred set is complete, exit without checking or collecting
+  other sources
+- At `10:40`, accept any non-empty valid selected set, including named fallback
+  beaches, so one missing preferred record cannot suppress the whole update
 - After completeness, or after the final failed check, inspect the Mayor
   channel once for a new explicit bathing-status transition since 07:30
 - If neither source has an update, retain the 07:30 message and exit

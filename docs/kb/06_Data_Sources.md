@@ -81,9 +81,11 @@ activity state, service-ended state, update time, and flag color, plus
 jellyfish presence, and Centre water temperature, sea state, wind speed, and
 wind direction.
 
-Only active, non-ended lifeguard records are eligible. A replacement requires
-at least one flag with a plausible update time. A missing timestamp omits only
-that beach and does not block another valid one. Missing beaches are omitted;
+Only active, non-ended lifeguard records are eligible. Before the final 10:40
+attempt, a replacement requires plausible current flags for all three
+preferred beaches. At 10:40, one or more valid selected flags are sufficient.
+A missing timestamp omits only that beach; it delays early replacement but
+does not block the final partial replacement. Missing beaches are omitted;
 their colors are never inferred. Optional sea, wind, and jellyfish fields
 never block publication. SafeBeach supplies
 individual nearby flags and current beach wind when present. Its Centre water
@@ -202,6 +204,14 @@ small poster-specific correction repairs an incomplete or inaccurate stored
 OCR record at read time without repeating OCR or changing unrelated events.
 The same reviewed record remains eligible through 29 July if the agenda page
 switches its poster link to August before the July exhibition ends.
+
+For `Mediterráneo, el lenguaje del agua`, the August 2026 official text agenda
+is the reviewed authority: paintings and sculptures by Humberto Valencia
+Giraldo, 19 June–14 August, in Sala de exposiciones Casa de Cultura. Visits are
+`09:00–20:00` Monday through Friday and `10:00–14:00` Saturday; the event is
+omitted on Sunday because no Sunday visiting time is published. The comma in
+the official title is preserved. These are event-specific hours, not inferred
+Casa de Cultura opening hours.
 
 ## Approved Policía Local traffic data
 

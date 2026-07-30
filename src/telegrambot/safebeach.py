@@ -29,6 +29,7 @@ BEACH_ORDER = {
     name: index for index, name in enumerate(BEACH_PRIORITY.values())
 }
 MAX_DISPLAYED_BEACHES = 3
+PREFERRED_BEACHES = ("Centre", "Roqueta", "Vivers")
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 
 _MARKERS_ASSIGNMENT = re.compile(rb"\bwindow\.SB_MARKERS\s*=\s*")
@@ -439,11 +440,11 @@ def normalize_beach_status(
     )
 
 
-def is_complete_current_status(
+def is_current_status(
     status: Optional[BeachStatus],
     now: datetime,
 ) -> bool:
-    """Accept one or more current operational flags without inventing missing ones."""
+    """Validate one or more current operational flags."""
 
     if status is None:
         return False
@@ -471,6 +472,18 @@ def is_complete_current_status(
         updated.hour * 60 + updated.minute <= latest_allowed
         for updated in times.values()
     )
+
+
+def is_complete_current_status(
+    status: Optional[BeachStatus],
+    now: datetime,
+) -> bool:
+    """Require all three preferred beaches before the final attempt."""
+
+    if not is_current_status(status, now):
+        return False
+    flags = {name for name, _ in status.nearby_flags}
+    return set(PREFERRED_BEACHES) <= flags
 
 
 def _current_status(

@@ -36,9 +36,14 @@ the target Android device.
   replace good data with an empty or invalid OCR result.
 - Expire events after their end date and remove snapshots after their covered
   month and explicit preview period.
-- The `📅 События` section contains at most two events relevant today.
+- The `📅 События дня:` section contains at most two events relevant today.
   Routine opening hours and municipal services such as the mobile ecopark are
   not events and do not enter this section.
+- A reviewed official text-agenda schedule may correct missing poster OCR
+  hours for a specific event. Never infer event hours from general venue
+  opening hours.
+- On the explicit end date of a multi-day event, render the compact
+  `Последний день:` prefix. One-day events and unknown end dates are unchanged.
 
 ## Failure policy
 

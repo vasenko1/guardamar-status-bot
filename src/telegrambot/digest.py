@@ -277,7 +277,7 @@ def build_message(digest: MorningDigest) -> str:
         )
 
     if digest.events:
-        lines.extend(["", "📅 События"])
+        lines.extend(["", "📅 События дня:"])
         for event in digest.events[:2]:
             title = _event_title(event.title)
             if (
@@ -285,6 +285,8 @@ def build_message(digest: MorningDigest) -> str:
                 and "выстав" not in title.casefold()
             ):
                 title = f"Выставка «{title}»"
+            if event.is_final_day:
+                title = f"Последний день: {title}"
             time_prefix = ""
             if event.starts_at is not None:
                 start_time = event.starts_at.astimezone(

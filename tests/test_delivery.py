@@ -9,6 +9,7 @@ from telegrambot.delivery import (
     publish_morning,
     publish_update,
 )
+from telegrambot.__main__ import _beach_ready_for_update
 from telegrambot.models import BeachStatus
 from telegrambot.state import PublicationState
 
@@ -16,6 +17,48 @@ MADRID = ZoneInfo("Europe/Madrid")
 
 
 class DeliveryRunTests(unittest.IsolatedAsyncioTestCase):
+    def test_partial_beach_status_waits_until_final_attempt(self):
+        now = datetime(2026, 7, 29, 10, 20, tzinfo=MADRID)
+        partial = BeachStatus(
+            flag_color="yellow",
+            sea_temperature_c=27,
+            source_date=now.date(),
+            nearby_flags=(("Centre", "yellow"), ("Vivers", "yellow")),
+            updated_times=(
+                ("Centre", now.time().replace(second=0, microsecond=0)),
+                ("Vivers", now.time().replace(second=0, microsecond=0)),
+            ),
+        )
+
+        self.assertFalse(
+            _beach_ready_for_update(partial, now, final_attempt=False)
+        )
+        self.assertTrue(
+            _beach_ready_for_update(partial, now, final_attempt=True)
+        )
+
+    def test_three_preferred_beaches_publish_before_final_attempt(self):
+        now = datetime(2026, 7, 29, 10, 20, tzinfo=MADRID)
+        complete = BeachStatus(
+            flag_color="yellow",
+            sea_temperature_c=27,
+            source_date=now.date(),
+            nearby_flags=(
+                ("Centre", "yellow"),
+                ("Roqueta", "yellow"),
+                ("Vivers", "yellow"),
+            ),
+            updated_times=(
+                ("Centre", now.time().replace(second=0, microsecond=0)),
+                ("Roqueta", now.time().replace(second=0, microsecond=0)),
+                ("Vivers", now.time().replace(second=0, microsecond=0)),
+            ),
+        )
+
+        self.assertTrue(
+            _beach_ready_for_update(complete, now, final_attempt=False)
+        )
+
     async def test_success_is_persisted_and_duplicate_does_no_work(self):
         with tempfile.TemporaryDirectory() as directory:
             state = PublicationState(Path(directory) / "delivery.json")

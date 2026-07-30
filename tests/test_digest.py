@@ -120,7 +120,7 @@ class DigestMessageTests(unittest.TestCase):
             message,
         )
         self.assertIn(
-            "\n\n📅 События\n• 23:00 — Концерт в замке",
+            "\n\n📅 События дня:\n• 23:00 — Концерт в замке",
             message,
         )
         self.assertLess(len(message), 430)
@@ -246,6 +246,44 @@ class DigestMessageTests(unittest.TestCase):
         )
         self.assertNotIn("00:00", message)
 
+    def test_marks_confirmed_final_day(self):
+        digest = MorningDigest(
+            weather=Weather(
+                current_temperature_c=None,
+                minimum_temperature_c=22,
+                maximum_temperature_c=30,
+                wind_direction="E",
+                wind_speed_kmh=10,
+                observed_at=None,
+            ),
+            warnings=(),
+            warnings_available=True,
+            events=(
+                Event(
+                    title=(
+                        "Выставка «Средиземноморье, язык воды»"
+                    ),
+                    starts_at=datetime(
+                        2026, 8, 14, 7, 0, tzinfo=timezone.utc
+                    ),
+                    ends_at=datetime(
+                        2026, 8, 14, 18, 0, tzinfo=timezone.utc
+                    ),
+                    place="Casa de Cultura",
+                    category="exhibition",
+                    is_final_day=True,
+                ),
+            ),
+        )
+
+        message = build_message(digest)
+
+        self.assertIn(
+            "• 09:00–20:00 — Последний день: "
+            "Выставка «Средиземноморье, язык воды»",
+            message,
+        )
+
     def test_formats_market_time_range_and_place(self):
         digest = MorningDigest(
             weather=Weather(
@@ -285,7 +323,7 @@ class DigestMessageTests(unittest.TestCase):
             "🌤 Погода: 22° → 30°\n"
             "🌊 Море: 27° • умеренные волны\n"
             "💨 Ветер: В 3 → 5 м/с\n\n"
-            "📅 События\n• Выставка"
+            "📅 События дня:\n• Выставка"
         )
         beach = BeachStatus(
             flag_color="yellow",
@@ -311,7 +349,9 @@ class DigestMessageTests(unittest.TestCase):
             "🪼 Медузы: Roqueta",
             updated,
         )
-        self.assertTrue(updated.endswith("📅 События\n• Выставка"))
+        self.assertTrue(
+            updated.endswith("📅 События дня:\n• Выставка")
+        )
 
     def test_omits_missing_beaches_and_flag_descriptions(self):
         digest = MorningDigest(

@@ -502,6 +502,48 @@ def _merge_reviewed_text_agenda(
     )
 
 
+def _apply_reviewed_daily_schedules(
+    events: Tuple[SourceEvent, ...],
+    local_day: date,
+) -> Tuple[SourceEvent, ...]:
+    """Apply event-specific hours published in the official text agenda."""
+
+    scheduled = []
+    for event in events:
+        normalized = event.title_es.casefold()
+        is_mediterraneo = (
+            "mediterráneo" in normalized
+            and "lenguaje del agua" in normalized
+            and event.start_date == date(2026, 6, 19)
+            and event.end_date == date(2026, 8, 14)
+        )
+        if not is_mediterraneo:
+            scheduled.append(event)
+            continue
+        if local_day.weekday() == 6:
+            continue
+        start_time, end_time = (
+            ("10:00", "14:00")
+            if local_day.weekday() == 5
+            else ("09:00", "20:00")
+        )
+        scheduled.append(
+            SourceEvent(
+                title_es=(
+                    "Exposición de pintura y escultura: "
+                    "Mediterráneo, el lenguaje del agua"
+                ),
+                start_date=event.start_date,
+                end_date=event.end_date,
+                start_time=start_time,
+                end_time=end_time,
+                place="Sala de exposiciones Casa de Cultura",
+                category="exhibition",
+            )
+        )
+    return tuple(scheduled)
+
+
 async def _current_events(
     api_key: str,
     now: datetime,
@@ -621,6 +663,7 @@ async def _current_events(
     events = _apply_reviewed_corrections(poster_url, events)
     events = _merge_reviewed_text_agenda(events)
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
+    events = _apply_reviewed_daily_schedules(events, local_day)
     active = [event for event in events if event.start_date <= local_day <= event.end_date]
     active.sort(
         key=lambda event: (
@@ -699,6 +742,10 @@ async def fetch_today_municipal_events(
                 place=source.place,
                 active_until=source.end_date,
                 category=source.category,
+                is_final_day=(
+                    source.start_date != source.end_date
+                    and local_day == source.end_date
+                ),
             )
         )
     return tuple(result)

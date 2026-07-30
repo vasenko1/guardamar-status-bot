@@ -471,9 +471,11 @@ def _translate_event_titles(
 ) -> Dict[str, Any]:
     prompt = (
         "Translate these official Spanish event titles concisely into Russian. "
-        "Preserve proper names. Return exactly one title for each input in the "
-        "same order, without dates, places, bullets, explanations, or invented "
-        "details:\n" + json.dumps(list(titles), ensure_ascii=False)
+        "Use normal Russian sentence case even when the source is uppercase. "
+        "Preserve proper names and title punctuation exactly: a comma must not "
+        "be replaced by a dash or colon. Return exactly one title for each "
+        "input in the same order, without dates, places, bullets, explanations, "
+        "or invented details:\n" + json.dumps(list(titles), ensure_ascii=False)
     )
     return _request_json(
         api_key,

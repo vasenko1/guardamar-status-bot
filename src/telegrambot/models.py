@@ -48,6 +48,7 @@ class Event:
     place: Optional[str] = None
     active_until: Optional[date] = None
     category: str = "event"
+    is_final_day: bool = False
 
 
 @dataclass(frozen=True)

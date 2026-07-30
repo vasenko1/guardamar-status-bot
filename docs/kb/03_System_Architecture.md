@@ -132,7 +132,9 @@ provide recovery. It accepts only a page carrying today's local calendar date
 and independently valid, timestamped beach records. It returns at most three
 flags: Centre / Babilònia, Roqueta, and Vivers first, then other active
 Guardamar beaches as named fallbacks. Conflicting or malformed records are
-omitted.
+omitted. Update checks before 10:40 continue until all three preferred beaches
+are present. The 10:40 attempt may use any non-empty valid selected set so a
+persistently missing record does not suppress all beach information.
 
 Mayor, Policía Local, and municipal-agenda transports accept only their exact
 official HTTPS hosts, expected content types, and bounded responses. Gemini
