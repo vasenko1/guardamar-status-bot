@@ -284,6 +284,48 @@ class DigestMessageTests(unittest.TestCase):
             message,
         )
 
+    def test_quotes_explicit_exhibition_name_after_category(self):
+        digest = MorningDigest(
+            weather=Weather(
+                current_temperature_c=None,
+                minimum_temperature_c=22,
+                maximum_temperature_c=30,
+                wind_direction="E",
+                wind_speed_kmh=10,
+                observed_at=None,
+            ),
+            warnings=(),
+            warnings_available=True,
+            events=(
+                Event(
+                    title=(
+                        "Выставка живописи и скульптуры: "
+                        "Средиземноморье, язык воды"
+                    ),
+                    starts_at=datetime(
+                        2026, 7, 30, 7, 0, tzinfo=timezone.utc
+                    ),
+                    ends_at=datetime(
+                        2026, 7, 30, 18, 0, tzinfo=timezone.utc
+                    ),
+                    place="Sala de exposiciones Casa de Cultura",
+                    category="exhibition",
+                ),
+            ),
+        )
+
+        message = build_message(digest)
+
+        self.assertIn(
+            "Выставка живописи и скульптуры "
+            "«Средиземноморье, язык воды»",
+            message,
+        )
+        self.assertNotIn(
+            "скульптуры: Средиземноморье",
+            message,
+        )
+
     def test_formats_market_time_range_and_place(self):
         digest = MorningDigest(
             weather=Weather(

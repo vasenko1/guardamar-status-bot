@@ -102,6 +102,23 @@ def _event_title(value: str) -> str:
     return value if len(value) <= 64 else f"{value[:61].rstrip()}…"
 
 
+def _exhibition_title(value: str) -> str:
+    """Give an explicitly separated exhibition name Russian typography."""
+
+    if "выстав" not in value.casefold():
+        return f"Выставка «{value}»"
+    prefix, separator, name = value.partition(":")
+    if (
+        separator
+        and name.strip()
+        and "«" not in value
+        and '"' not in value
+        and "выстав" in prefix.casefold()
+    ):
+        return f"{prefix.strip()} «{name.strip()}»"
+    return value
+
+
 def _wind_mps(value_kmh: int) -> int:
     return round(value_kmh / 3.6)
 
@@ -280,11 +297,8 @@ def build_message(digest: MorningDigest) -> str:
         lines.extend(["", "📅 События дня:"])
         for event in digest.events[:2]:
             title = _event_title(event.title)
-            if (
-                event.category == "exhibition"
-                and "выстав" not in title.casefold()
-            ):
-                title = f"Выставка «{title}»"
+            if event.category == "exhibition":
+                title = _exhibition_title(title)
             if event.is_final_day:
                 title = f"Последний день: {title}"
             time_prefix = ""

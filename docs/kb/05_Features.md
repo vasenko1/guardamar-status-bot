@@ -186,6 +186,9 @@ hours are never substituted for an event schedule.
 On the confirmed end date of a multi-day event, prefix its title with
 `Последний день:`. Do not apply the marker to one-day events or records without
 an explicit end date.
+For exhibitions, keep the medium or category outside the title and place an
+explicit work name in Russian typographic quotes, for example:
+`Выставка живописи и скульптуры «Средиземноморье, язык воды»`.
 
 The traffic slice reads explicit restrictions from the official Policía Local
 Guardamar page and its reviewed festival PDF. A document becomes independent
