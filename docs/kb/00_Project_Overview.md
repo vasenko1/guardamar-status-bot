@@ -46,8 +46,8 @@ until a concrete user need is approved.
 - Continuous alerts or real-time emergency monitoring
 - Replacing official emergency or municipal channels
 - Conversational AI or generated advice
-- General AI summarization, classification, or ranking outside the strict
-  Policía Local traffic fallback
+- General AI summarization, classification, or ranking outside the approved
+  Policía Local, market-exception, and municipal-poster workflows
 - User-generated or unverified information
 - Web dashboards, webhooks, microservices, or server infrastructure
 - Continuous OCR, image analysis, or other heavy on-device processing

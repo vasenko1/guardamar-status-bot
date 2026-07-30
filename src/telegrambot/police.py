@@ -2,7 +2,9 @@
 
 import asyncio
 import hashlib
+import http.client
 import re
+import socket
 import unicodedata
 import urllib.error
 import urllib.parse
@@ -58,7 +60,20 @@ _FESTIVAL_PDF_PATTERN = re.compile(
 
 
 class PoliceTrafficError(RuntimeError):
-    """Raised when the official traffic page cannot be used safely."""
+    """An operator-safe Policía Local source failure."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "INVALID",
+        status: Optional[int] = None,
+        description: Optional[str] = None,
+    ) -> None:
+        super().__init__(message)
+        self.diagnostic_code = code
+        self.server_status = status
+        self.safe_description = description
 
 
 class _TextParser(HTMLParser):
@@ -82,69 +97,133 @@ def _active_period_prefix(
     return f"{start_day}–{end_day} {month_name}"
 
 
-def _read_page() -> bytes:
+def _is_police_url(url: str) -> bool:
+    parsed = urllib.parse.urlparse(url)
+    return parsed.scheme == "https" and parsed.hostname in ALLOWED_HOSTS
+
+
+class _PoliceRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self,
+        request,
+        file_pointer,
+        code,
+        message,
+        headers,
+        new_url,
+    ):
+        if not _is_police_url(new_url):
+            raise PoliceTrafficError(
+                "Policía Local redirected outside its official hosts",
+                code="REDIRECT",
+                description=(
+                    "сервер перенаправил запрос за пределы Policía Local"
+                ),
+            )
+        return super().redirect_request(
+            request,
+            file_pointer,
+            code,
+            message,
+            headers,
+            new_url,
+        )
+
+
+def _read_official(
+    url: str,
+    expected_type: str,
+    limit: int,
+    label: str,
+) -> bytes:
+    if not _is_police_url(url):
+        raise PoliceTrafficError(
+            f"Policía Local {label} URL is not allowed",
+            code="URL-POLICY",
+            description="адрес не принадлежит Policía Local",
+        )
     request = urllib.request.Request(
-        TRAFFIC_URL,
+        url,
         headers={
-            "Accept": "text/html",
-            "User-Agent": "GuardamarMorningDigest/0.5",
+            "Accept": expected_type,
+            "User-Agent": "GuardamarMorningDigest/0.12",
         },
     )
+    opener = urllib.request.build_opener(_PoliceRedirectHandler())
     try:
-        with urllib.request.urlopen(
+        with opener.open(
             request,
             timeout=REQUEST_TIMEOUT_SECONDS,
         ) as response:
-            final = urllib.parse.urlparse(response.geturl())
-            if final.scheme != "https" or final.hostname not in ALLOWED_HOSTS:
+            if not _is_police_url(response.geturl()):
                 raise PoliceTrafficError(
-                    "Policía Local returned an unexpected redirect"
+                    f"Policía Local {label} returned an unexpected redirect",
+                    code="REDIRECT",
+                    description=(
+                        "получен недопустимый адрес ответа Policía Local"
+                    ),
                 )
-            payload = response.read(PAGE_LIMIT_BYTES + 1)
+            if response.headers.get_content_type() != expected_type:
+                raise PoliceTrafficError(
+                    f"Policía Local {label} returned an unexpected type",
+                    code="CONTENT-TYPE",
+                    description=(
+                        f"сервер вернул {label} в неожиданном формате"
+                    ),
+                )
+            payload = response.read(limit + 1)
+    except urllib.error.HTTPError as exc:
+        raise PoliceTrafficError(
+            f"Policía Local {label} returned HTTP {exc.code}",
+            code=f"HTTP-{exc.code}",
+            status=exc.code,
+            description=f"сервер вернул HTTP {exc.code}",
+        ) from exc
     except (
-        urllib.error.HTTPError,
         urllib.error.URLError,
         TimeoutError,
+        socket.timeout,
+        OSError,
+        http.client.HTTPException,
     ) as exc:
+        timed_out = isinstance(exc, (TimeoutError, socket.timeout)) or (
+            isinstance(exc, urllib.error.URLError)
+            and isinstance(exc.reason, (TimeoutError, socket.timeout))
+        )
         raise PoliceTrafficError(
-            "Policía Local traffic request failed"
+            f"Policía Local {label} request failed",
+            code="TIMEOUT" if timed_out else "NETWORK",
+            description=(
+                "сервер не ответил до истечения тайм-аута"
+                if timed_out
+                else "не удалось установить сетевое соединение"
+            ),
         ) from exc
-    if len(payload) > PAGE_LIMIT_BYTES:
+    if len(payload) > limit:
         raise PoliceTrafficError(
-            "Policía Local traffic response was too large"
+            f"Policía Local {label} response was too large",
+            code="TOO-LARGE",
+            description="ответ превысил допустимый размер",
         )
     return payload
+
+
+def _read_page() -> bytes:
+    return _read_official(
+        TRAFFIC_URL,
+        "text/html",
+        PAGE_LIMIT_BYTES,
+        "page",
+    )
 
 
 def _read_festival_pdf() -> bytes:
-    request = urllib.request.Request(
+    return _read_official(
         FESTIVAL_PDF_URL,
-        headers={"User-Agent": "GuardamarMorningDigest/0.10"},
+        "application/pdf",
+        PDF_LIMIT_BYTES,
+        "PDF",
     )
-    try:
-        with urllib.request.urlopen(
-            request,
-            timeout=REQUEST_TIMEOUT_SECONDS,
-        ) as response:
-            final = urllib.parse.urlparse(response.geturl())
-            if final.scheme != "https" or final.hostname not in ALLOWED_HOSTS:
-                raise PoliceTrafficError(
-                    "Policía Local PDF returned an unexpected redirect"
-                )
-            payload = response.read(PDF_LIMIT_BYTES + 1)
-    except (
-        urllib.error.HTTPError,
-        urllib.error.URLError,
-        TimeoutError,
-    ) as exc:
-        raise PoliceTrafficError(
-            "Policía Local traffic document request failed"
-        ) from exc
-    if len(payload) > PDF_LIMIT_BYTES:
-        raise PoliceTrafficError(
-            "Policía Local traffic document was too large"
-        )
-    return payload
 
 
 def _festival_notice(
@@ -411,5 +490,10 @@ async def fetch_traffic_notices(
             now.astimezone(GUARDAMAR_TIMEZONE).date(),
         )
     except GeminiError as exc:
-        raise PoliceTrafficError("Gemini traffic translation failed") from exc
+        raise PoliceTrafficError(
+            "Gemini traffic translation failed",
+            code=exc.diagnostic_code,
+            status=exc.server_status,
+            description=exc.safe_description,
+        ) from exc
     return validate_ai_notice(candidate, source_text, now)

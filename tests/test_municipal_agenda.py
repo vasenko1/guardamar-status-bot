@@ -1,4 +1,5 @@
 import json
+import hashlib
 import tempfile
 import unittest
 from datetime import datetime
@@ -18,6 +19,7 @@ from telegrambot.municipal_agenda import (
     fetch_today_municipal_events,
     normalize_extraction,
 )
+from telegrambot.gemini import GeminiError
 
 TZ = ZoneInfo("Europe/Madrid")
 
@@ -71,6 +73,19 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             "Concierto en el castillo",
             "Entropía",
         ])
+
+    def test_rejects_ocr_month_different_from_poster(self):
+        with self.assertRaises(MunicipalAgendaError) as raised:
+            normalize_extraction(extraction(), "2026-08")
+        self.assertEqual(raised.exception.diagnostic_code, "MONTH")
+
+    def test_rejects_event_beyond_poster_and_next_month(self):
+        result = extraction()
+        result["events"][0]["start_date"] = "2026-09-01"
+        result["events"][0]["end_date"] = "2026-09-01"
+        with self.assertRaises(MunicipalAgendaError) as raised:
+            normalize_extraction(result, "2026-07")
+        self.assertEqual(raised.exception.diagnostic_code, "MONTH")
 
     def test_snapshot_contains_source_facts_not_translation(self):
         events = normalize_extraction(extraction())
@@ -219,6 +234,195 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             "MUNI-AGENDA-FALLBACK-INVALID",
         )
         self.assertIn("локальный снимок", diagnostics[0].description)
+
+    async def test_corrupt_snapshot_is_rebuilt_from_official_poster(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agenda.json"
+            path.write_text("{broken", encoding="utf-8")
+            poster_url = (
+                "https://www.guardamardelsegura.es/wp-content/uploads/"
+                "2026/08/MUPI-AGOSTO-2026.jpg"
+            )
+            page = f'<a href="{poster_url}">poster</a>'.encode()
+            diagnostics = []
+
+            def read_url(url, allowed_hosts, limit):
+                if "agenda-cultural" in url:
+                    return page, "text/html"
+                return b"poster", "image/jpeg"
+
+            with (
+                patch(
+                    "telegrambot.municipal_agenda._read_url",
+                    side_effect=read_url,
+                ),
+                patch(
+                    "telegrambot.municipal_agenda.extract_agenda_events",
+                    new=AsyncMock(
+                        return_value={
+                            "month": "2026-08",
+                            "events": [{
+                                "title_es": "Concierto",
+                                "start_date": "2026-08-01",
+                                "end_date": "2026-08-01",
+                                "start_time": "21:00",
+                                "end_time": None,
+                                "place": "Castillo",
+                                "category": "event",
+                            }]
+                        }
+                    ),
+                ),
+            ):
+                current = await _current_events(
+                    "key",
+                    datetime(2026, 8, 1, tzinfo=TZ),
+                    path,
+                    diagnostics,
+                )
+
+            self.assertEqual(current[0].title_es, "Concierto")
+            self.assertEqual(
+                diagnostics[0].code,
+                "MUNI-AGENDA-SNAPSHOT-CORRUPT",
+            )
+            self.assertEqual(json.loads(path.read_text())["version"], 1)
+
+    async def test_snapshot_write_failure_keeps_new_events(self):
+        poster_url = (
+            "https://www.guardamardelsegura.es/wp-content/uploads/"
+            "2026/08/MUPI-AGOSTO-2026.jpg"
+        )
+        page = f'<a href="{poster_url}">poster</a>'.encode()
+        diagnostics = []
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agenda.json"
+            with (
+                patch(
+                    "telegrambot.municipal_agenda._read_url",
+                    side_effect=(
+                        (page, "text/html"),
+                        (b"poster", "image/jpeg"),
+                    ),
+                ),
+                patch(
+                    "telegrambot.municipal_agenda.extract_agenda_events",
+                    new=AsyncMock(
+                        return_value={
+                            "month": "2026-08",
+                            "events": [{
+                                "title_es": "Concierto",
+                                "start_date": "2026-08-01",
+                                "end_date": "2026-08-01",
+                                "start_time": "21:00",
+                                "end_time": None,
+                                "place": "Castillo",
+                                "category": "event",
+                            }],
+                        }
+                    ),
+                ),
+                patch(
+                    "telegrambot.municipal_agenda._write_snapshot",
+                    side_effect=OSError("disk full"),
+                ),
+            ):
+                current = await _current_events(
+                    "key",
+                    datetime(2026, 8, 1, tzinfo=TZ),
+                    path,
+                    diagnostics,
+                )
+        self.assertEqual(current[0].title_es, "Concierto")
+        self.assertEqual(
+            diagnostics[0].code,
+            "MUNI-AGENDA-SNAPSHOT-WRITE",
+        )
+
+    async def test_same_poster_is_rechecked_when_local_month_changes(self):
+        events = normalize_extraction(extraction())
+        poster = b"same poster"
+        poster_hash = hashlib.sha256(poster).hexdigest()
+        poster_url = (
+            "https://www.guardamardelsegura.es/wp-content/uploads/"
+            "2026/08/MUPI-AGOSTO-2026.jpg"
+        )
+        page = f'<a href="{poster_url}">poster</a>'.encode()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agenda.json"
+            _write_snapshot(
+                path,
+                _snapshot_data(
+                    poster_url,
+                    poster_hash,
+                    datetime(2026, 7, 31, tzinfo=TZ),
+                    events,
+                ),
+            )
+            with (
+                patch(
+                    "telegrambot.municipal_agenda._read_url",
+                    side_effect=(
+                        (page, "text/html"),
+                        (poster, "image/jpeg"),
+                    ),
+                ) as read_url,
+                patch(
+                    "telegrambot.municipal_agenda.extract_agenda_events",
+                    new=AsyncMock(),
+                ) as ocr,
+            ):
+                await _current_events(
+                    "key",
+                    datetime(2026, 8, 1, tzinfo=TZ),
+                    path,
+                )
+
+            self.assertEqual(read_url.call_count, 2)
+            ocr.assert_not_awaited()
+            refreshed = json.loads(path.read_text())
+            self.assertTrue(
+                refreshed["fetched_at"].startswith("2026-08-01")
+            )
+
+    async def test_first_ocr_failure_remains_optional_source_error(self):
+        poster_url = (
+            "https://www.guardamardelsegura.es/wp-content/uploads/"
+            "2026/08/MUPI-AGOSTO-2026.jpg"
+        )
+        page = f'<a href="{poster_url}">poster</a>'.encode()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agenda.json"
+            with (
+                patch(
+                    "telegrambot.municipal_agenda._read_url",
+                    side_effect=(
+                        (page, "text/html"),
+                        (b"poster", "image/jpeg"),
+                    ),
+                ),
+                patch(
+                    "telegrambot.municipal_agenda.extract_agenda_events",
+                    new=AsyncMock(
+                        side_effect=GeminiError(
+                            "quota",
+                            code="API-RESOURCE_EXHAUSTED",
+                            description="Gemini исчерпал квоту",
+                        )
+                    ),
+                ),
+            ):
+                with self.assertRaises(MunicipalAgendaError) as raised:
+                    await _current_events(
+                        "key",
+                        datetime(2026, 8, 1, tzinfo=TZ),
+                        path,
+                    )
+
+            self.assertEqual(
+                raised.exception.diagnostic_code,
+                "API-RESOURCE_EXHAUSTED",
+            )
 
 
 if __name__ == "__main__":

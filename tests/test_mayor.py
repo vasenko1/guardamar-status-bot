@@ -1,11 +1,14 @@
 import unittest
 from datetime import date, datetime
+from email.message import Message
 from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
 from telegrambot.models import MorningDigest, Weather
 from telegrambot.morning import produce_message
 from telegrambot.mayor import (
+    MayorChannelError,
+    _read_page,
     extract_recent_posts,
     latest_beach_notice,
     market_is_cancelled,
@@ -13,6 +16,34 @@ from telegrambot.mayor import (
 )
 
 TZ = ZoneInfo("Europe/Madrid")
+
+
+class _Response:
+    status = 200
+
+    def __init__(self, content_type):
+        self.headers = Message()
+        self.headers["Content-Type"] = content_type
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return False
+
+    def read(self, limit):
+        return b"<html></html>"
+
+    def geturl(self):
+        return "https://t.me/s/AlcaldeGuardamar"
+
+
+class _Opener:
+    def __init__(self, response):
+        self.response = response
+
+    def open(self, request, timeout):
+        return self.response
 
 
 def page(text, timestamp="2026-07-28T18:00:00+00:00"):
@@ -27,6 +58,31 @@ def page(text, timestamp="2026-07-28T18:00:00+00:00"):
 
 
 class MayorChannelTests(unittest.IsolatedAsyncioTestCase):
+    def test_rejects_html_without_channel_message_structure(self):
+        with self.assertRaises(MayorChannelError) as raised:
+            extract_recent_posts(
+                b"<html><body>Temporary page</body></html>",
+                datetime(2026, 7, 29, 7, 30, tzinfo=TZ),
+            )
+
+        self.assertEqual(
+            raised.exception.diagnostic_code,
+            "INVALID-STRUCTURE",
+        )
+
+    def test_rejects_non_html_channel_response(self):
+        with patch(
+            "telegrambot.mayor.urllib.request.build_opener",
+            return_value=_Opener(_Response("application/json")),
+        ):
+            with self.assertRaises(MayorChannelError) as raised:
+                _read_page()
+
+        self.assertEqual(
+            raised.exception.diagnostic_code,
+            "CONTENT-TYPE",
+        )
+
     def test_extracts_only_recent_timestamped_text(self):
         now = datetime(2026, 7, 29, 7, 30, tzinfo=TZ)
 

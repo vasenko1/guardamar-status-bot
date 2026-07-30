@@ -61,12 +61,13 @@ The bot must not claim to replace official emergency communication.
 
 ## 7. AI is optional and fail-closed
 
-The core digest remains deterministic. ADR 0011 permits one narrow Gemini
-fallback for translating and compressing previously unknown official Policía
-Local traffic text. It must return structured data, preserve source evidence,
-pass deterministic date and street validation, and fail by omitting the
-traffic section. Do not add local models, embeddings, general generation, or
-AI dependencies to weather, warnings, beach, events, or delivery.
+The core digest policy remains deterministic. Gemini is limited to the
+accepted Policía Local traffic fallback, the exact-date Mayor-channel market
+exception, and municipal-poster OCR/title translation. Structured results,
+source evidence where applicable, deterministic validation, and snapshot
+rules decide publication. Do not add local models, embeddings, general
+generation, or AI dependencies to weather, warnings, beach status, formatting,
+or delivery.
 
 ## 8. Design for partial failure
 

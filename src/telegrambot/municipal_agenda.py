@@ -2,9 +2,11 @@
 
 import asyncio
 import hashlib
+import http.client
 import json
 import os
 import re
+import socket
 import tempfile
 import urllib.error
 import urllib.parse
@@ -32,7 +34,20 @@ _TIME_PATTERN = re.compile(r"^\d{2}:\d{2}$")
 
 
 class MunicipalAgendaError(RuntimeError):
-    """Raised when neither the current poster nor a snapshot is safe to use."""
+    """An operator-safe municipal agenda failure."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "INVALID",
+        status: Optional[int] = None,
+        description: Optional[str] = None,
+    ) -> None:
+        super().__init__(message)
+        self.diagnostic_code = code
+        self.server_status = status
+        self.safe_description = description
 
 
 @dataclass(frozen=True)
@@ -60,25 +75,130 @@ class _PosterParser(HTMLParser):
             self.urls.append(candidate)
 
 
-def _read_url(url: str, allowed_hosts: set[str], limit: int) -> Tuple[bytes, str]:
+def _is_allowed_url(url: str, allowed_hosts: set[str]) -> bool:
     parsed = urllib.parse.urlparse(url)
-    if parsed.scheme != "https" or parsed.hostname not in allowed_hosts:
-        raise MunicipalAgendaError("municipal agenda URL is not allowed")
+    return parsed.scheme == "https" and parsed.hostname in allowed_hosts
+
+
+class _MunicipalRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def __init__(self, allowed_hosts: set[str]) -> None:
+        super().__init__()
+        self.allowed_hosts = allowed_hosts
+
+    def redirect_request(
+        self,
+        request,
+        file_pointer,
+        code,
+        message,
+        headers,
+        new_url,
+    ):
+        if not _is_allowed_url(new_url, self.allowed_hosts):
+            raise MunicipalAgendaError(
+                "Municipal agenda redirected outside official hosts",
+                code="REDIRECT",
+                description=(
+                    "сервер перенаправил запрос за пределы официального сайта"
+                ),
+            )
+        return super().redirect_request(
+            request,
+            file_pointer,
+            code,
+            message,
+            headers,
+            new_url,
+        )
+
+
+def _read_url(
+    url: str,
+    allowed_hosts: set[str],
+    limit: int,
+) -> Tuple[bytes, str]:
+    if not _is_allowed_url(url, allowed_hosts):
+        raise MunicipalAgendaError(
+            "Municipal agenda URL is not allowed",
+            code="URL-POLICY",
+            description="адрес не принадлежит официальной афише",
+        )
+    page_request = allowed_hosts == PAGE_HOSTS
+    accepted_types = (
+        {"text/html"}
+        if page_request
+        else {"image/jpeg", "image/png", "image/webp"}
+    )
     request = urllib.request.Request(
         url,
-        headers={"User-Agent": "GuardamarMorningDigest/0.8"},
+        headers={
+            "Accept": (
+                "text/html"
+                if page_request
+                else "image/jpeg,image/png,image/webp"
+            ),
+            "User-Agent": "GuardamarMorningDigest/0.12",
+        },
+    )
+    opener = urllib.request.build_opener(
+        _MunicipalRedirectHandler(allowed_hosts)
     )
     try:
-        with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
-            final = urllib.parse.urlparse(response.geturl())
-            if final.scheme != "https" or final.hostname not in allowed_hosts:
-                raise MunicipalAgendaError("unexpected municipal agenda redirect")
-            payload = response.read(limit + 1)
+        with opener.open(
+            request,
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        ) as response:
+            if not _is_allowed_url(response.geturl(), allowed_hosts):
+                raise MunicipalAgendaError(
+                    "Unexpected municipal agenda redirect",
+                    code="REDIRECT",
+                    description=(
+                        "получен недопустимый адрес ответа официальной афиши"
+                    ),
+                )
             mime_type = response.headers.get_content_type()
-    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
-        raise MunicipalAgendaError("municipal agenda request failed") from exc
+            if mime_type not in accepted_types:
+                raise MunicipalAgendaError(
+                    "Municipal agenda returned an unexpected content type",
+                    code="CONTENT-TYPE",
+                    description=(
+                        "официальная афиша вернула неожиданный формат"
+                    ),
+                )
+            payload = response.read(limit + 1)
+    except urllib.error.HTTPError as exc:
+        raise MunicipalAgendaError(
+            f"Municipal agenda returned HTTP {exc.code}",
+            code=f"HTTP-{exc.code}",
+            status=exc.code,
+            description=f"сервер вернул HTTP {exc.code}",
+        ) from exc
+    except (
+        urllib.error.URLError,
+        TimeoutError,
+        socket.timeout,
+        OSError,
+        http.client.HTTPException,
+    ) as exc:
+        timed_out = isinstance(exc, (TimeoutError, socket.timeout)) or (
+            isinstance(exc, urllib.error.URLError)
+            and isinstance(exc.reason, (TimeoutError, socket.timeout))
+        )
+        raise MunicipalAgendaError(
+            "Municipal agenda request failed",
+            code="TIMEOUT" if timed_out else "NETWORK",
+            description=(
+                "сервер не ответил до истечения тайм-аута"
+                if timed_out
+                else "не удалось установить сетевое соединение"
+            ),
+        ) from exc
     if len(payload) > limit:
-        raise MunicipalAgendaError("municipal agenda response was too large")
+        raise MunicipalAgendaError(
+            "Municipal agenda response was too large",
+            code="TOO-LARGE",
+            description="ответ превысил допустимый размер",
+        )
     return payload, mime_type
 
 
@@ -99,7 +219,11 @@ def extract_poster_url(payload: bytes) -> str:
             and path.endswith((".jpg", ".jpeg", ".png", ".webp"))
         ):
             return url
-    raise MunicipalAgendaError("official monthly poster was not found")
+    raise MunicipalAgendaError(
+        "Official monthly poster was not found",
+        code="NO-POSTER",
+        description="на странице не найдена официальная месячная афиша",
+    )
 
 
 def _clean_text(value: Any, maximum: int) -> Optional[str]:
@@ -113,9 +237,57 @@ def _clean_text(value: Any, maximum: int) -> Optional[str]:
     return result
 
 
-def normalize_extraction(result: Dict[str, Any]) -> Tuple[SourceEvent, ...]:
+def _poster_month(poster_url: str) -> str:
+    match = re.search(r"/wp-content/uploads/(\d{4})/(\d{2})/", poster_url)
+    if match is None:
+        raise MunicipalAgendaError(
+            "Municipal poster URL has no month",
+            code="POSTER-MONTH",
+            description="в адресе официальной афиши не указан месяц",
+        )
+    year, month = (int(value) for value in match.groups())
+    try:
+        date(year, month, 1)
+    except ValueError as exc:
+        raise MunicipalAgendaError(
+            "Municipal poster URL has an invalid month",
+            code="POSTER-MONTH",
+            description="в адресе официальной афиши указан неверный месяц",
+        ) from exc
+    return f"{year:04d}-{month:02d}"
+
+
+def _month_window(month: str) -> Tuple[date, date]:
+    try:
+        first = date.fromisoformat(f"{month}-01")
+    except ValueError as exc:
+        raise MunicipalAgendaError(
+            "Municipal OCR returned an invalid month",
+            code="MONTH",
+            description="OCR вернул неверный месяц афиши",
+        ) from exc
+    next_month = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
+    month_after_next = (
+        next_month.replace(day=28) + timedelta(days=4)
+    ).replace(day=1)
+    return first, month_after_next - timedelta(days=1)
+
+
+def normalize_extraction(
+    result: Dict[str, Any],
+    expected_month: Optional[str] = None,
+) -> Tuple[SourceEvent, ...]:
     """Validate OCR output and discard routine non-event entries."""
 
+    allowed_dates = None
+    if expected_month is not None:
+        if result.get("month") != expected_month:
+            raise MunicipalAgendaError(
+                "Municipal OCR month does not match the poster",
+                code="MONTH",
+                description="месяц в OCR не совпадает с месяцем афиши",
+            )
+        allowed_dates = _month_window(expected_month)
     raw_events = result.get("events")
     if not isinstance(raw_events, list) or len(raw_events) > MAX_EVENTS:
         raise MunicipalAgendaError("invalid poster event list")
@@ -146,6 +318,17 @@ def normalize_extraction(result: Dict[str, Any]) -> Tuple[SourceEvent, ...]:
             raise MunicipalAgendaError("invalid poster event date") from exc
         if start_date > end_date or (end_date - start_date).days > 62:
             raise MunicipalAgendaError("invalid poster event range")
+        if allowed_dates is not None and (
+            start_date < allowed_dates[0] or end_date > allowed_dates[1]
+        ):
+            raise MunicipalAgendaError(
+                "Municipal OCR event is outside the poster window",
+                code="MONTH",
+                description=(
+                    "OCR вернул событие за пределами месяца афиши "
+                    "и следующего месяца"
+                ),
+            )
         times = []
         for field in ("start_time", "end_time"):
             value = raw.get(field)
@@ -229,10 +412,28 @@ def _load_snapshot(path: Path) -> Optional[Dict[str, Any]]:
         data = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(data, dict) or data.get("version") != 1:
             raise ValueError
+        fetched_at = datetime.fromisoformat(data["fetched_at"])
+        if fetched_at.tzinfo is None:
+            raise ValueError
         events = normalize_extraction({"events": data["events"]})
-        return {**data, "_events": events}
-    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError, MunicipalAgendaError) as exc:
-        raise MunicipalAgendaError("municipal agenda snapshot is invalid") from exc
+        return {
+            **data,
+            "_events": events,
+            "_fetched_at": fetched_at,
+        }
+    except (
+        OSError,
+        KeyError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+        MunicipalAgendaError,
+    ) as exc:
+        raise MunicipalAgendaError(
+            "Municipal agenda snapshot is invalid",
+            code="CORRUPT",
+            description="локальный снимок афиши повреждён",
+        ) from exc
 
 
 def _apply_reviewed_corrections(
@@ -307,7 +508,21 @@ async def _current_events(
     state_path: Path,
     diagnostics: Optional[List[SourceDiagnostic]] = None,
 ) -> Tuple[SourceEvent, ...]:
-    snapshot = await asyncio.to_thread(_load_snapshot, state_path)
+    snapshot_failure = None
+    try:
+        snapshot = await asyncio.to_thread(_load_snapshot, state_path)
+    except MunicipalAgendaError as exc:
+        snapshot = None
+        snapshot_failure = exc
+        if diagnostics is not None:
+            diagnostics.append(
+                source_error(
+                    "MUNI-AGENDA",
+                    "Agenda municipal",
+                    exc,
+                    stage="SNAPSHOT",
+                )
+            )
     poster_url = (
         str(snapshot.get("poster_url", ""))
         if snapshot is not None
@@ -318,7 +533,20 @@ async def _current_events(
             _read_url, AGENDA_PAGE_URL, PAGE_HOSTS, PAGE_LIMIT_BYTES
         )
         poster_url = extract_poster_url(page)
-        if snapshot is not None and snapshot.get("poster_url") == poster_url:
+        local_now = now.astimezone(GUARDAMAR_TIMEZONE)
+        snapshot_month = (
+            snapshot["_fetched_at"]
+            .astimezone(GUARDAMAR_TIMEZONE)
+            .strftime("%Y-%m")
+            if snapshot is not None
+            else None
+        )
+        current_month = local_now.strftime("%Y-%m")
+        if (
+            snapshot is not None
+            and snapshot.get("poster_url") == poster_url
+            and snapshot_month == current_month
+        ):
             events = snapshot["_events"]
         else:
             poster, mime_type = await asyncio.to_thread(
@@ -329,14 +557,51 @@ async def _current_events(
                 events = snapshot["_events"]
             else:
                 extracted = await extract_agenda_events(api_key, poster, mime_type)
-                events = normalize_extraction(extracted)
-            await asyncio.to_thread(
-                _write_snapshot,
-                state_path,
-                _snapshot_data(poster_url, poster_hash, now, events),
-            )
+                events = normalize_extraction(
+                    extracted,
+                    _poster_month(poster_url),
+                )
+            try:
+                await asyncio.to_thread(
+                    _write_snapshot,
+                    state_path,
+                    _snapshot_data(poster_url, poster_hash, now, events),
+                )
+            except OSError as exc:
+                if diagnostics is not None:
+                    diagnostics.append(
+                        source_error(
+                            "MUNI-AGENDA",
+                            "Agenda municipal",
+                            MunicipalAgendaError(
+                                "Municipal snapshot could not be written",
+                                code="WRITE",
+                                description=(
+                                    "не удалось сохранить локальный "
+                                    "снимок афиши"
+                                ),
+                            ),
+                            stage="SNAPSHOT",
+                        )
+                    )
     except (MunicipalAgendaError, GeminiError) as exc:
         if snapshot is None:
+            if snapshot_failure is not None:
+                raise MunicipalAgendaError(
+                    "Municipal agenda recovery failed",
+                    code="RECOVERY",
+                    description=(
+                        "локальный снимок повреждён, а официальный источник "
+                        "недоступен"
+                    ),
+                ) from exc
+            if isinstance(exc, GeminiError):
+                raise MunicipalAgendaError(
+                    "Municipal poster extraction failed",
+                    code=exc.diagnostic_code,
+                    status=exc.server_status,
+                    description=exc.safe_description,
+                ) from exc
             raise
         if diagnostics is not None:
             failure = source_error(
@@ -376,7 +641,11 @@ async def fetch_today_municipal_events(
     """Return up to two translated events, using the snapshot during outages."""
 
     if not api_key:
-        raise MunicipalAgendaError("Gemini key is required for municipal agenda")
+        raise MunicipalAgendaError(
+            "Gemini key is required for municipal agenda",
+            code="CONFIG",
+            description="не настроен ключ Gemini для муниципальной афиши",
+        )
     source_events = await _current_events(
         api_key,
         now,
@@ -390,7 +659,12 @@ async def fetch_today_municipal_events(
             api_key, [event.title_es for event in source_events]
         )
     except GeminiError as exc:
-        raise MunicipalAgendaError("event translation failed") from exc
+        raise MunicipalAgendaError(
+            "Event translation failed",
+            code=exc.diagnostic_code,
+            status=exc.server_status,
+            description=exc.safe_description,
+        ) from exc
     result = []
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
     for source, title in zip(source_events, titles):

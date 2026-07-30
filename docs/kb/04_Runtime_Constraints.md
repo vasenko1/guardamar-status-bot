@@ -69,6 +69,13 @@ deployment agent or self-hosted CI runner.
 - SafeBeach uses one bounded request per invocation. Do not add an inner retry,
   response cache, cookies, or browser execution; the external five-minute
   checks already provide seasonal recovery. Its bounded HTML limit is 512 KiB.
+- Agenda Guardamar may inspect at most twelve same-host detail links with no
+  more than three requests in flight; it stores no downloaded pages.
+- Telegram operations share one bounded JSON client restricted to the official
+  API host. Only sends retry, and only after transient failures.
+- Mayor, Policía Local, municipal-agenda, and Gemini requests enforce exact
+  HTTPS hosts, expected MIME types, and existing response-size limits. They do
+  not add internal retries.
 - Do not make digest delivery depend on every source succeeding.
 
 ### Storage

@@ -2,14 +2,15 @@
 
 import asyncio
 import html
+import http.client
 import json
-import re
+import socket
 import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import date, datetime
 from html.parser import HTMLParser
-from typing import List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from .holidays import is_market_day
@@ -23,26 +24,60 @@ AGENDA_HOSTS = {"agendaguardamar.com", "www.agendaguardamar.com"}
 REQUEST_TIMEOUT_SECONDS = 10
 PAGE_LIMIT_BYTES = 300_000
 MAX_EVENT_LINKS = 12
+MAX_EVENT_CONCURRENCY = 3
 MAX_DAILY_EVENTS = 2
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
-
-_NAME_PATTERN = re.compile(
-    r'"name"\s*:\s*"((?:\\.|[^"\\])*)"',
-)
-_START_PATTERN = re.compile(
-    r'"startDate"\s*:\s*"([^"]+)"',
-)
-_END_PATTERN = re.compile(
-    r'"endDate"\s*:\s*"([^"]+)"',
-)
-_LOCATION_PATTERN = re.compile(
-    r'"location"\s*:\s*\{.*?"name"\s*:\s*"((?:\\.|[^"\\])*)"',
-    re.DOTALL,
-)
+_IGNORED_PLACES = {"ayuntamientoguardamardelsegura"}
 
 
 class AgendaError(RuntimeError):
-    """Raised when official Agenda Guardamar data cannot be used safely."""
+    """An operator-safe Agenda Guardamar source failure."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "INVALID",
+        status: Optional[int] = None,
+        description: Optional[str] = None,
+    ) -> None:
+        super().__init__(message)
+        self.diagnostic_code = code
+        self.server_status = status
+        self.safe_description = description
+
+
+def _is_agenda_url(url: str) -> bool:
+    parsed = urllib.parse.urlparse(url)
+    return parsed.scheme == "https" and parsed.hostname in AGENDA_HOSTS
+
+
+class _AgendaRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self,
+        request,
+        file_pointer,
+        code,
+        message,
+        headers,
+        new_url,
+    ):
+        if not _is_agenda_url(new_url):
+            raise AgendaError(
+                "Agenda Guardamar redirected outside its official hosts",
+                code="REDIRECT",
+                description=(
+                    "сервер перенаправил запрос за пределы Agenda Guardamar"
+                ),
+            )
+        return super().redirect_request(
+            request,
+            file_pointer,
+            code,
+            message,
+            headers,
+            new_url,
+        )
 
 
 class _EventLinkParser(HTMLParser):
@@ -62,36 +97,186 @@ class _EventLinkParser(HTMLParser):
             self.links.append(href)
 
 
+class _JsonLdParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self._capturing = False
+        self._chunks: List[str] = []
+        self.documents: List[str] = []
+
+    def handle_starttag(
+        self,
+        tag: str,
+        attrs: List[Tuple[str, Optional[str]]],
+    ) -> None:
+        if tag.casefold() != "script":
+            return
+        content_type = (dict(attrs).get("type") or "").casefold()
+        if content_type == "application/ld+json":
+            self._capturing = True
+            self._chunks = []
+
+    def handle_data(self, data: str) -> None:
+        if self._capturing:
+            self._chunks.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.casefold() == "script" and self._capturing:
+            self.documents.append("".join(self._chunks))
+            self._capturing = False
+            self._chunks = []
+
+
+def _repair_known_property_quote(document: str) -> str:
+    """Remove only Agenda's observed quote after a closed object line."""
+
+    lines = document.splitlines(keepends=True)
+    for index in range(len(lines) - 1):
+        if (
+            lines[index].rstrip("\r\n").rstrip().endswith('},"')
+            and lines[index + 1].lstrip().startswith(
+                ('"startDate"', '"endDate"')
+            )
+        ):
+            newline = (
+                "\r\n"
+                if lines[index].endswith("\r\n")
+                else "\n" if lines[index].endswith("\n") else ""
+            )
+            content = lines[index][
+                : len(lines[index]) - len(newline)
+            ]
+            lines[index] = content[:-1] + newline
+    return "".join(lines)
+
+
+def _remove_trailing_json_commas(document: str) -> str:
+    """Remove commas before containers only when outside JSON strings."""
+
+    result: List[str] = []
+    in_string = False
+    escaped = False
+    index = 0
+    while index < len(document):
+        character = document[index]
+        if in_string:
+            result.append(character)
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+            index += 1
+            continue
+        if character == '"':
+            in_string = True
+            result.append(character)
+            index += 1
+            continue
+        if character == ",":
+            lookahead = index + 1
+            while (
+                lookahead < len(document)
+                and document[lookahead].isspace()
+            ):
+                lookahead += 1
+            if (
+                lookahead < len(document)
+                and document[lookahead] in "}]"
+            ):
+                index += 1
+                continue
+        result.append(character)
+        index += 1
+    return "".join(result)
+
+
+def _decode_json_ld(document: str) -> Optional[Any]:
+    try:
+        return json.loads(document)
+    except json.JSONDecodeError:
+        repaired = _repair_known_property_quote(document)
+        repaired = _remove_trailing_json_commas(repaired)
+        if repaired == document:
+            return None
+        try:
+            return json.loads(repaired)
+        except json.JSONDecodeError:
+            return None
+
+
 def _read_page(url: str) -> bytes:
-    parsed = urllib.parse.urlparse(url)
-    if parsed.scheme != "https" or parsed.hostname not in AGENDA_HOSTS:
-        raise AgendaError("Agenda Guardamar URL is not allowed")
+    if not _is_agenda_url(url):
+        raise AgendaError(
+            "Agenda Guardamar URL is not allowed",
+            code="URL-POLICY",
+            description="адрес не принадлежит Agenda Guardamar",
+        )
     request = urllib.request.Request(
         url,
         headers={
             "Accept": "text/html",
-            "User-Agent": "GuardamarMorningDigest/0.4",
+            "Accept-Language": "es",
+            "User-Agent": "GuardamarMorningDigest/0.12",
         },
     )
+    opener = urllib.request.build_opener(_AgendaRedirectHandler())
     try:
-        with urllib.request.urlopen(
+        with opener.open(
             request,
             timeout=REQUEST_TIMEOUT_SECONDS,
         ) as response:
-            final = urllib.parse.urlparse(response.geturl())
-            if final.scheme != "https" or final.hostname not in AGENDA_HOSTS:
+            if not _is_agenda_url(response.geturl()):
                 raise AgendaError(
-                    "Agenda Guardamar returned an unexpected redirect"
+                    "Agenda Guardamar returned an unexpected redirect",
+                    code="REDIRECT",
+                    description=(
+                        "получен недопустимый адрес ответа Agenda Guardamar"
+                    ),
+                )
+            if response.headers.get_content_type() != "text/html":
+                raise AgendaError(
+                    "Agenda Guardamar returned an unexpected content type",
+                    code="CONTENT-TYPE",
+                    description="сервер вернул содержимое не в формате HTML",
                 )
             payload = response.read(PAGE_LIMIT_BYTES + 1)
+    except urllib.error.HTTPError as exc:
+        raise AgendaError(
+            f"Agenda Guardamar HTTP status {exc.code}",
+            code=f"HTTP-{exc.code}",
+            status=exc.code,
+            description=f"сервер вернул HTTP {exc.code}",
+        ) from exc
     except (
-        urllib.error.HTTPError,
         urllib.error.URLError,
         TimeoutError,
+        socket.timeout,
+        OSError,
+        http.client.HTTPException,
     ) as exc:
-        raise AgendaError("Agenda Guardamar request failed") from exc
+        timed_out = isinstance(exc, (TimeoutError, socket.timeout)) or (
+            isinstance(exc, urllib.error.URLError)
+            and isinstance(exc.reason, (TimeoutError, socket.timeout))
+        )
+        raise AgendaError(
+            "Agenda Guardamar request timed out"
+            if timed_out
+            else "Agenda Guardamar network request failed",
+            code="TIMEOUT" if timed_out else "NETWORK",
+            description=(
+                "сервер не ответил до истечения тайм-аута"
+                if timed_out
+                else "не удалось установить сетевое соединение"
+            ),
+        ) from exc
     if len(payload) > PAGE_LIMIT_BYTES:
-        raise AgendaError("Agenda Guardamar response was too large")
+        raise AgendaError(
+            "Agenda Guardamar response was too large",
+            code="TOO-LARGE",
+            description="ответ превысил допустимый размер",
+        )
     return payload
 
 
@@ -104,12 +289,7 @@ def extract_event_links(payload: bytes) -> Tuple[str, ...]:
     seen = set()
     for href in parser.links:
         url = urllib.parse.urljoin(AGENDA_URL, href)
-        parsed = urllib.parse.urlparse(url)
-        if (
-            parsed.scheme == "https"
-            and parsed.hostname in AGENDA_HOSTS
-            and url not in seen
-        ):
+        if _is_agenda_url(url) and url not in seen:
             seen.add(url)
             result.append(url)
             if len(result) == MAX_EVENT_LINKS:
@@ -117,26 +297,42 @@ def extract_event_links(payload: bytes) -> Tuple[str, ...]:
     return tuple(result)
 
 
-def normalize_event_page(
-    payload: bytes,
+def _json_objects(value: Any) -> Iterable[Dict[str, Any]]:
+    if isinstance(value, dict):
+        yield value
+        for nested in value.values():
+            yield from _json_objects(nested)
+    elif isinstance(value, list):
+        for nested in value:
+            yield from _json_objects(nested)
+
+
+def _event_from_mapping(
+    candidate: Dict[str, Any],
     local_day: date,
 ) -> Optional[Event]:
-    """Return one event only when its official start is on local_day."""
-
-    page = payload.decode("iso-8859-1", "replace")
-    name_match = _NAME_PATTERN.search(page)
-    start_match = _START_PATTERN.search(page)
-    if name_match is None or start_match is None:
+    event_type = candidate.get("@type")
+    event_types = (
+        event_type
+        if isinstance(event_type, list)
+        else [event_type]
+    )
+    if not any(
+        isinstance(value, str)
+        and value.casefold().endswith("event")
+        for value in event_types
+    ):
         return None
-    try:
-        title = json.loads(f'"{name_match.group(1)}"')
-        starts_at = datetime.fromisoformat(start_match.group(1))
-    except (json.JSONDecodeError, ValueError):
-        return None
-    if not isinstance(title, str):
+    title = candidate.get("name")
+    start_value = candidate.get("startDate")
+    if not isinstance(title, str) or not isinstance(start_value, str):
         return None
     title = " ".join(html.unescape(title).split())
-    if not title or len(title) > 120:
+    if not 1 <= len(title) <= 120:
+        return None
+    try:
+        starts_at = datetime.fromisoformat(start_value)
+    except ValueError:
         return None
     if starts_at.tzinfo is None:
         starts_at = starts_at.replace(tzinfo=GUARDAMAR_TIMEZONE)
@@ -144,11 +340,12 @@ def normalize_event_page(
         starts_at = starts_at.astimezone(GUARDAMAR_TIMEZONE)
     if starts_at.date() != local_day:
         return None
+
     ends_at = None
-    end_match = _END_PATTERN.search(page)
-    if end_match is not None:
+    end_value = candidate.get("endDate")
+    if isinstance(end_value, str):
         try:
-            ends_at = datetime.fromisoformat(end_match.group(1))
+            ends_at = datetime.fromisoformat(end_value)
             if ends_at.tzinfo is None:
                 ends_at = ends_at.replace(tzinfo=GUARDAMAR_TIMEZONE)
             else:
@@ -157,17 +354,21 @@ def normalize_event_page(
                 ends_at = None
         except ValueError:
             ends_at = None
+
     place = None
-    location_match = _LOCATION_PATTERN.search(page)
-    if location_match is not None:
-        try:
-            decoded_place = json.loads(f'"{location_match.group(1)}"')
-        except json.JSONDecodeError:
-            decoded_place = None
-        if isinstance(decoded_place, str):
-            decoded_place = " ".join(html.unescape(decoded_place).split())
-            if 1 <= len(decoded_place) <= 120:
-                place = decoded_place
+    location = candidate.get("location")
+    raw_place = (
+        location.get("name")
+        if isinstance(location, dict)
+        else location
+    )
+    if isinstance(raw_place, str):
+        normalized_place = " ".join(html.unescape(raw_place).split())
+        if (
+            1 <= len(normalized_place) <= 120
+            and normalized_place.casefold() not in _IGNORED_PLACES
+        ):
+            place = normalized_place
     return Event(
         title=title,
         starts_at=starts_at,
@@ -176,19 +377,58 @@ def normalize_event_page(
     )
 
 
+def normalize_event_page(
+    payload: bytes,
+    local_day: date,
+) -> Optional[Event]:
+    """Return one event only from a valid JSON-LD object for local_day."""
+
+    parser = _JsonLdParser()
+    parser.feed(payload.decode("iso-8859-1", "replace"))
+    for document in parser.documents:
+        decoded = _decode_json_ld(document)
+        if decoded is None:
+            continue
+        for candidate in _json_objects(decoded):
+            event = _event_from_mapping(candidate, local_day)
+            if event is not None:
+                return event
+    return None
+
+
 async def fetch_today_events(now: datetime) -> Tuple[Event, ...]:
-    """Fetch at most two official events scheduled for today."""
+    """Fetch at most two official events with three bounded detail workers."""
 
     index = await asyncio.to_thread(_read_page, AGENDA_URL)
     links = extract_event_links(index)
+    if not links:
+        return ()
+    semaphore = asyncio.Semaphore(MAX_EVENT_CONCURRENCY)
+
+    async def read_detail(link: str) -> Optional[bytes]:
+        async with semaphore:
+            try:
+                return await asyncio.to_thread(_read_page, link)
+            except AgendaError:
+                return None
+
+    payloads = await asyncio.gather(
+        *(read_detail(link) for link in links)
+    )
+    successful_payloads = [
+        payload for payload in payloads if payload is not None
+    ]
+    if not successful_payloads:
+        raise AgendaError(
+            "Agenda Guardamar event details were unavailable",
+            code="DETAILS-UNAVAILABLE",
+            description="не удалось получить страницы мероприятий",
+        )
+
     events: List[Event] = []
     seen = set()
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
-    for link in links:
-        try:
-            payload = await asyncio.to_thread(_read_page, link)
-        except AgendaError:
-            continue
+    for payload in successful_payloads:
         event = normalize_event_page(payload, local_day)
         if event is None:
             continue

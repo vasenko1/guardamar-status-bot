@@ -1,12 +1,23 @@
 import json
 import unittest
 from datetime import date
+from email.message import Message
 from unittest.mock import patch
 
-from telegrambot.gemini import _request_translation
+from telegrambot.gemini import (
+    AGENDA_EXTRACTION_SCHEMA,
+    _extract_agenda_events,
+    _request_translation,
+)
 
 
 class _GeminiResponse:
+    status = 200
+
+    def __init__(self, content_type="application/json"):
+        self.headers = Message()
+        self.headers["Content-Type"] = content_type
+
     def __enter__(self):
         return self
 
@@ -32,20 +43,53 @@ class _GeminiResponse:
             }
         ).encode()
 
+    def geturl(self):
+        return (
+            "https://generativelanguage.googleapis.com/"
+            "v1beta/models/gemini-3.5-flash-lite:generateContent"
+        )
+
+
+class _Opener:
+    def __init__(self, response):
+        self.response = response
+        self.request = None
+
+    def open(self, request, timeout):
+        self.request = request
+        return self.response
+
 
 class GeminiRequestTests(unittest.TestCase):
-    def test_requests_pinned_model_and_structured_json(self):
+    def test_agenda_ocr_uses_fixed_response_schema(self):
         with patch(
-            "telegrambot.gemini.urllib.request.urlopen",
-            return_value=_GeminiResponse(),
-        ) as urlopen:
+            "telegrambot.gemini._request_json",
+            return_value={"month": "2026-08", "events": []},
+        ) as request_json:
+            _extract_agenda_events(
+                "secret-key",
+                b"image",
+                "image/jpeg",
+            )
+
+        self.assertIs(
+            request_json.call_args.args[2],
+            AGENDA_EXTRACTION_SCHEMA,
+        )
+
+    def test_requests_pinned_model_and_structured_json(self):
+        opener = _Opener(_GeminiResponse())
+        with patch(
+            "telegrambot.gemini.urllib.request.build_opener",
+            return_value=opener,
+        ):
             result = _request_translation(
                 "secret-key",
                 "Página oficial",
                 date(2026, 7, 27),
             )
 
-        request = urlopen.call_args.args[0]
+        request = opener.request
         body = json.loads(request.data.decode())
         self.assertIn("gemini-3.5-flash-lite", request.full_url)
         self.assertEqual(

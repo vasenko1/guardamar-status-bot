@@ -124,9 +124,14 @@ wave forecast remain available year-round.
 `https://www.agendaguardamar.com/` identifies the Ayuntamiento as the site
 operator and publishes event detail pages with Schema.org `name` and
 `startDate`, optional `endDate`, and `location`. The adapter reads a bounded
-programming page, follows at most twelve same-host event links, and returns at
-most two events whose local date is today. It performs no media processing and
-stores no event history.
+programming page, follows at most twelve same-host event links with three
+concurrent reads, parses only complete `application/ld+json` documents, and
+returns at most two events whose local date is today. It accepts only bounded
+HTML from the official HTTPS hosts, performs no media processing, and stores
+no event history. A narrow repair handles the site's observed extra property
+quote and trailing JSON commas; any other malformed structured data is omitted.
+Only Schema.org event types are accepted, and the site's technical publisher
+identifier is never rendered as a venue.
 
 Agenda failure or malformed event details omit the optional `📅 События`
 section. Cultura Guardamar is not used because its current site has a
@@ -171,14 +176,22 @@ Guardamar page. Its linked Ayuntamiento monthly poster can contain activities
 missing from the HTML text. ADR 0012 defines the implemented bounded poster
 snapshot.
 
-The morning run checks for a changed official poster URL. A new image is downloaded with
-strict size bounds, hashed, and processed once through Gemini Vision into
-structured source-language event facts. The bot stores a bounded snapshot for
-the current month and explicit next-month previews. It merges those events
-with the separate official Agenda Guardamar result and removes duplicates.
+The morning run checks for a changed official poster URL. A new URL downloads
+the image immediately. When the URL stays unchanged, the image is downloaded
+and hash-checked once when the local calendar month changes, not every day.
+A new image is processed once through Gemini Vision into structured
+source-language event facts. The OCR-declared month must match the month in
+the official poster URL. The bot stores a bounded snapshot containing only
+the poster month and explicit next-month previews. It merges those events with the
+separate official Agenda Guardamar result and removes duplicates.
 
 During a temporary source outage, the last valid snapshot remains eligible
 until its covered period ends. Generated Russian translations are not stored.
+If the snapshot is corrupt, it is never used; the bot rebuilds it from a valid
+official HTML page and JPEG, PNG, or WebP poster when possible.
+If a newly validated poster cannot be written to local storage, its events
+remain usable for the current run, the operator receives a diagnostic, and
+the next run retries the refresh.
 Routine facility hours and municipal services, including the mobile ecopark,
 are not eligible for the event section.
 
@@ -210,7 +223,10 @@ The Mayor channel uses Telegram's bounded public HTML preview and requires no
 bot membership or user session. Besides scheduled-market exceptions, one
 post-07:30 check recognizes only explicit red/prohibited or yellow/permitted
 bathing transitions. Known causes use a fixed Russian vocabulary; no AI
-inference is used. The MVP does not scrape Facebook.
+inference is used. The Mayor and Policía Local adapters accept only bounded
+HTML/PDF from their exact official HTTPS hosts. A valid HTML page without
+recognizable timestamped channel messages is a source failure, not proof that
+there are no updates. The MVP does not scrape Facebook.
 
 ## Selection criteria
 

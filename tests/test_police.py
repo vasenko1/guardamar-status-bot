@@ -1,5 +1,6 @@
 import unittest
 from datetime import datetime
+from email.message import Message
 from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
@@ -8,6 +9,7 @@ from telegrambot.morning import produce_message
 from telegrambot.police import (
     FESTIVAL_PDF_SHA256,
     PoliceTrafficError,
+    _read_official,
     normalize_traffic_page,
     validate_ai_notice,
 )
@@ -20,7 +22,53 @@ NOTICE_PAGE = """
 """.encode()
 
 
+class _Response:
+    status = 200
+
+    def __init__(self, content_type):
+        self.headers = Message()
+        self.headers["Content-Type"] = content_type
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return False
+
+    def read(self, limit):
+        return b"<html></html>"
+
+    def geturl(self):
+        return "https://policiaguardamar.com/page.html"
+
+
+class _Opener:
+    def __init__(self, response):
+        self.response = response
+
+    def open(self, request, timeout):
+        return self.response
+
+
 class PoliceTrafficNormalizationTests(unittest.TestCase):
+    def test_rejects_unexpected_official_content_type(self):
+        with patch(
+            "telegrambot.police.urllib.request.build_opener",
+            return_value=_Opener(_Response("text/html")),
+        ):
+            with self.assertRaises(PoliceTrafficError) as raised:
+                _read_official(
+                    "https://policiaguardamar.com/file.pdf",
+                    "application/pdf",
+                    100_000,
+                    "PDF",
+                )
+
+        self.assertEqual(
+            raised.exception.diagnostic_code,
+            "CONTENT-TYPE",
+        )
+
     def test_includes_explicit_notice_during_validity_window(self):
         notices = normalize_traffic_page(
             NOTICE_PAGE,

@@ -47,10 +47,12 @@ A good digest is calm and predictable:
 The MVP proves that a small deterministic system can collect, filter, and
 format useful official information reliably on the target device.
 
-The core MVP does not depend on AI. One narrow optional Gemini fallback may
-translate and compress a previously unknown official Policía Local traffic
-notice. Deterministic validation must prove its quotation, dates, streets, and
-current validity before publication; otherwise the traffic section is omitted.
+Weather, warnings, beach status, formatting, and delivery do not depend on AI.
+Gemini is restricted to three approved municipal tasks: fail-closed traffic
+translation, exact-date market cancellation extraction, and changed-poster
+OCR plus event-title translation. Deterministic validation or a valid snapshot
+must protect every result; otherwise only that optional contribution is
+omitted.
 
 ## Long-term direction
 

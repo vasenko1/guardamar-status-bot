@@ -5,6 +5,8 @@ Detailed decisions belong in `adr/`.
 
 | Date | Decision | Context and reason | Record |
 | --- | --- | --- | --- |
+| 2026-07-30 | Harden the remaining municipal and Gemini transports | Exact-host redirects, MIME/size validation, stable diagnostics, and corrupt-snapshot recovery improve reliability without new polling, retries, sources, or dependencies. | `adr/0026-harden-municipal-source-boundaries.md` |
+| 2026-07-30 | Share one strict Telegram client and bound Agenda detail reads | Exact-host redirects, type/size validation, and structured failures harden all Telegram operations; three concurrent Agenda reads avoid a long sequential optional-source delay without adding requests or dependencies. | `adr/0025-bounded-telegram-and-agenda-clients.md` |
 | 2026-07-30 | Fill up to three SafeBeach flag slots from named Guardamar beaches | Centre / Babilònia, Roqueta, and Vivers remain preferred, while Montcaio, Camp, and Ortigues prevent one unavailable preferred record from unnecessarily shrinking the useful beach status. Flags are never averaged or renamed. | `adr/0024-safebeach-public-client.md` |
 | 2026-07-30 | Harden the public SafeBeach adapter without history or caching | One bounded same-day HTML request, strict host/type/schema checks, and fail-closed conflict handling improve safety while external five-minute invocations remain the only retry mechanism. | `adr/0024-safebeach-public-client.md` |
 | 2026-07-29 | Replace fixed AEMET delays with bounded protocol-aware recovery | Retry only transient failures, honor usable `Retry-After`, repeat the complete two-step request, keep the key off product URLs, and convert UTC forecast periods to Madrid time. | `adr/0023-aemet-client-reliability.md` |

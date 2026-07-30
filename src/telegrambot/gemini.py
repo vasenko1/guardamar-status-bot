@@ -2,8 +2,11 @@
 
 import asyncio
 import base64
+import http.client
 import json
+import socket
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import date
 from typing import Any, Dict, List, Optional, Sequence
@@ -16,6 +19,8 @@ ENDPOINT = (
 REQUEST_TIMEOUT_SECONDS = 45
 RESPONSE_LIMIT_BYTES = 100_000
 MAX_SOURCE_CHARACTERS = 12_000
+API_HOST = "generativelanguage.googleapis.com"
+IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
 TRAFFIC_SCHEMA = {
     "type": "object",
@@ -107,10 +112,136 @@ MARKET_STATUS_SCHEMA = {
     },
     "required": ["cancelled", "evidence_es", "event_date"],
 }
+AGENDA_EXTRACTION_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "month": {"type": "string"},
+        "events": {
+            "type": "array",
+            "maxItems": 80,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "title_es": {"type": "string"},
+                    "start_date": {"type": "string"},
+                    "end_date": {"type": ["string", "null"]},
+                    "start_time": {"type": ["string", "null"]},
+                    "end_time": {"type": ["string", "null"]},
+                    "place": {"type": ["string", "null"]},
+                    "category": {
+                        "type": "string",
+                        "enum": [
+                            "event",
+                            "exhibition",
+                            "workshop",
+                            "municipal_service",
+                            "opening_hours",
+                        ],
+                    },
+                },
+                "required": [
+                    "title_es",
+                    "start_date",
+                    "end_date",
+                    "start_time",
+                    "end_time",
+                    "place",
+                    "category",
+                ],
+            },
+        },
+    },
+    "required": ["month", "events"],
+}
 
 
 class GeminiError(RuntimeError):
-    """Raised when Gemini cannot return a trustworthy structured response."""
+    """An operator-safe Gemini protocol or validation failure."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "INVALID",
+        status: Optional[int] = None,
+        description: Optional[str] = None,
+    ) -> None:
+        super().__init__(message)
+        self.diagnostic_code = code
+        self.server_status = status
+        self.safe_description = description
+
+
+def _is_gemini_url(url: str) -> bool:
+    parsed = urllib.parse.urlparse(url)
+    return parsed.scheme == "https" and parsed.hostname == API_HOST
+
+
+class _GeminiRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self,
+        request,
+        file_pointer,
+        code,
+        message,
+        headers,
+        new_url,
+    ):
+        if not _is_gemini_url(new_url):
+            raise GeminiError(
+                "Gemini redirected outside its API host",
+                code="REDIRECT",
+                description="Gemini перенаправил запрос на другой сайт",
+            )
+        return super().redirect_request(
+            request,
+            file_pointer,
+            code,
+            message,
+            headers,
+            new_url,
+        )
+
+
+def _http_error(exc: urllib.error.HTTPError) -> GeminiError:
+    provider_status = ""
+    try:
+        payload = exc.read(2_001)
+        if len(payload) <= 2_000:
+            decoded = json.loads(payload.decode("utf-8"))
+            raw_status = decoded.get("error", {}).get("status")
+            if (
+                isinstance(raw_status, str)
+                and raw_status.replace("_", "").isalnum()
+                and len(raw_status) <= 50
+            ):
+                provider_status = raw_status
+    except (
+        AttributeError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+    ):
+        pass
+    code = (
+        f"API-{provider_status}"
+        if provider_status
+        else f"HTTP-{exc.code}"
+    )
+    return GeminiError(
+        f"Gemini returned HTTP {exc.code}",
+        code=code,
+        status=exc.code,
+        description=(
+            f"Gemini вернул HTTP {exc.code}"
+            + (
+                f" ({provider_status})"
+                if provider_status
+                else ""
+            )
+        ),
+    )
 
 
 def _request_json(
@@ -119,6 +250,12 @@ def _request_json(
     schema: Optional[Dict[str, Any]],
     max_output_tokens: int,
 ) -> Dict[str, Any]:
+    if not api_key or any(character in api_key for character in "\r\n"):
+        raise GeminiError(
+            "Gemini configuration is invalid",
+            code="CONFIG",
+            description="ключ Gemini отсутствует или имеет неверный формат",
+        )
     generation_config: Dict[str, Any] = {
         "responseMimeType": "application/json",
         "maxOutputTokens": max_output_tokens,
@@ -136,31 +273,60 @@ def _request_json(
         ENDPOINT,
         data=body,
         headers={
+            "Accept": "application/json",
             "Content-Type": "application/json; charset=utf-8",
-            "User-Agent": "GuardamarMorningDigest/0.7",
+            "User-Agent": "GuardamarMorningDigest/0.12",
             "x-goog-api-key": api_key,
         },
         method="POST",
     )
+    opener = urllib.request.build_opener(_GeminiRedirectHandler())
     try:
-        with urllib.request.urlopen(
+        with opener.open(
             request,
             timeout=REQUEST_TIMEOUT_SECONDS,
         ) as response:
+            if not _is_gemini_url(response.geturl()):
+                raise GeminiError(
+                    "Gemini returned an unexpected response URL",
+                    code="REDIRECT",
+                    description="получен недопустимый адрес ответа Gemini",
+                )
+            if response.headers.get_content_type() != "application/json":
+                raise GeminiError(
+                    "Gemini returned an unexpected content type",
+                    code="CONTENT-TYPE",
+                    description="Gemini вернул ответ не в формате JSON",
+                )
             payload = response.read(RESPONSE_LIMIT_BYTES + 1)
     except urllib.error.HTTPError as exc:
-        try:
-            detail = exc.read(2_000).decode("utf-8", "replace")
-            parsed = json.loads(detail)
-            reason = str(parsed.get("error", {}).get("message", ""))[:300]
-        except (AttributeError, json.JSONDecodeError):
-            reason = ""
-        suffix = f": {reason}" if reason else ""
-        raise GeminiError(f"Gemini request failed{suffix}") from exc
-    except (urllib.error.URLError, TimeoutError) as exc:
-        raise GeminiError("Gemini request failed") from exc
+        raise _http_error(exc) from exc
+    except (
+        urllib.error.URLError,
+        TimeoutError,
+        socket.timeout,
+        OSError,
+        http.client.HTTPException,
+    ) as exc:
+        timed_out = isinstance(exc, (TimeoutError, socket.timeout)) or (
+            isinstance(exc, urllib.error.URLError)
+            and isinstance(exc.reason, (TimeoutError, socket.timeout))
+        )
+        raise GeminiError(
+            "Gemini request failed",
+            code="TIMEOUT" if timed_out else "NETWORK",
+            description=(
+                "Gemini не ответил до истечения тайм-аута"
+                if timed_out
+                else "не удалось установить соединение с Gemini"
+            ),
+        ) from exc
     if len(payload) > RESPONSE_LIMIT_BYTES:
-        raise GeminiError("Gemini response was too large")
+        raise GeminiError(
+            "Gemini response was too large",
+            code="TOO-LARGE",
+            description="ответ Gemini превысил допустимый размер",
+        )
     try:
         response_data = json.loads(payload.decode("utf-8"))
         candidates = response_data["candidates"]
@@ -173,9 +339,17 @@ def _request_json(
         IndexError,
         TypeError,
     ) as exc:
-        raise GeminiError("Gemini returned an invalid response") from exc
+        raise GeminiError(
+            "Gemini returned an invalid response",
+            code="INVALID-RESPONSE",
+            description="Gemini вернул некорректный JSON-ответ",
+        ) from exc
     if not isinstance(result, dict):
-        raise GeminiError("Gemini returned an invalid result")
+        raise GeminiError(
+            "Gemini returned an invalid result",
+            code="INVALID-STRUCTURE",
+            description="структура результата Gemini некорректна",
+        )
     return result
 
 
@@ -229,6 +403,12 @@ def _extract_agenda_events(
     image: bytes,
     mime_type: str,
 ) -> Dict[str, Any]:
+    if mime_type not in IMAGE_MIME_TYPES:
+        raise GeminiError(
+            "Unsupported municipal poster image type",
+            code="CONTENT-TYPE",
+            description="формат изображения афиши не поддерживается",
+        )
     prompt = (
         "Read this official monthly municipal agenda poster for Guardamar del "
         "Segura. Return every explicitly dated activity, exhibition, workshop, "
@@ -265,7 +445,7 @@ def _extract_agenda_events(
                 }
             },
         ],
-        None,
+        AGENDA_EXTRACTION_SCHEMA,
         8_000,
     )
 

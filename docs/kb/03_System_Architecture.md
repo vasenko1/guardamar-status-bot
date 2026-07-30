@@ -73,7 +73,9 @@ Sends one outbound digest through the Telegram Bot API. The publication
 runtime does not receive Telegram updates or expose a webhook. An optional
 separate listener receives only private message updates for the allowlisted
 `/preview` operator command. Telegram details remain separate from source and
-digest rules.
+digest rules. One shared standard-library client handles send, delete, and
+`getUpdates`; it accepts only HTTPS responses from `api.telegram.org`, requires
+bounded JSON, and retries only transient send failures.
 
 ### Shared runtime
 
@@ -119,7 +121,8 @@ message; a later invocation retries only failed cleanup.
 The AEMET adapter retries only transient transport, rate-limit, server, or
 expired-link failures. It repeats the complete metadata-plus-product request,
 uses short exponential delays or the server's `Retry-After`, and never retries
-permanent or invalid-data failures. If the mandatory forecast remains
+permanent or invalid-data failures. Agenda Guardamar reads event details with
+at most three concurrent same-host requests. If the mandatory forecast remains
 unavailable during replacement, the renderer preserves the published 07:30
 copy and inserts only newly verified beach information.
 
@@ -130,6 +133,12 @@ and independently valid, timestamped beach records. It returns at most three
 flags: Centre / Babilònia, Roqueta, and Vivers first, then other active
 Guardamar beaches as named fallbacks. Conflicting or malformed records are
 omitted.
+
+Mayor, Policía Local, and municipal-agenda transports accept only their exact
+official HTTPS hosts, expected content types, and bounded responses. Gemini
+uses the same fail-closed protocol checks and returns structured diagnostics;
+provider response text is never exposed. A corrupt municipal-agenda snapshot
+is ignored and rebuilt from the official poster when that source is available.
 
 Termux invokes the morning command at 07:30 and the update command every five
 minutes from 10:10 through 10:40 in `Europe/Madrid`.
