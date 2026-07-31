@@ -5,7 +5,7 @@ import asyncio
 import logging
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -14,6 +14,13 @@ from .commands import listen_for_preview, parse_allowed_user_ids
 from .delivery import publish_morning, publish_update
 from .digest import build_fallback_update
 from .diagnostics import render_diagnostics
+from .electricity import (
+    ElectricityError,
+    build_explanation_message,
+    build_price_message,
+    fetch_prices,
+    publish_prices,
+)
 from .mayor import latest_beach_notice
 from .morning import _safebeach_is_in_season, produce_message
 from .safebeach import (
@@ -28,6 +35,7 @@ from .telegram import TelegramError, delete_message, send_message
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 DEFAULT_STATE_PATH = "state/delivery.json"
 DEFAULT_MUNICIPAL_AGENDA_STATE_PATH = "state/municipal_agenda.json"
+DEFAULT_ELECTRICITY_STATE_PATH = "state/electricity.json"
 
 
 def _beach_ready_for_update(status, now: datetime, final_attempt: bool) -> bool:
@@ -61,6 +69,39 @@ async def _produce_message(api_key: str, now: datetime) -> str:
 
 
 async def _run_command(command: str) -> int:
+    if command in {"electricity", "electricity-preview"}:
+        now = datetime.now(GUARDAMAR_TIMEZONE)
+        target_date = (now + timedelta(days=1)).date()
+        esios_key = _required_environment("ESIOS_API_KEY")
+        data = await fetch_prices(esios_key, target_date)
+        if command == "electricity-preview":
+            print(build_price_message(data))
+            print("\n--- Ответ на сообщение ---\n")
+            print(build_explanation_message())
+            return 0
+        bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
+        chat_id = _required_environment("TELEGRAM_CHAT_ID")
+        state = PublicationState(Path(os.environ.get(
+            "ELECTRICITY_STATE_PATH", DEFAULT_ELECTRICITY_STATE_PATH
+        )))
+        result = await publish_prices(
+            target_date,
+            state,
+            lambda: fetch_prices(esios_key, target_date),
+            lambda message: send_message(
+                bot_token, chat_id, message, disable_notification=False
+            ),
+            lambda message, reply_id: send_message(
+                bot_token,
+                chat_id,
+                message,
+                disable_notification=False,
+                reply_to_message_id=reply_id,
+            ),
+        )
+        logging.info("Electricity publication: %s", result)
+        return 0
+
     api_key = _required_environment("AEMET_API_KEY")
     if command == "preview":
         print(
@@ -215,7 +256,10 @@ def main() -> None:
     parser.add_argument(
         "command",
         nargs="?",
-        choices=("run", "morning", "update", "preview", "status", "listen"),
+        choices=(
+            "run", "morning", "update", "preview", "status", "listen",
+            "electricity", "electricity-preview",
+        ),
         default="run",
     )
     arguments = parser.parse_args()
@@ -246,8 +290,16 @@ def main() -> None:
 
     try:
         exit_code = asyncio.run(_run_command(arguments.command))
-    except (AemetError, TelegramError, StateError, ValueError) as exc:
-        print(f"Morning Digest failed: {exc}", file=sys.stderr)
+    except ElectricityError as exc:
+        print(
+            f"Command failed [ESIOS-{exc.diagnostic_code}]: {exc}",
+            file=sys.stderr,
+        )
+        raise SystemExit(2) from exc
+    except (
+        AemetError, TelegramError, StateError, ValueError
+    ) as exc:
+        print(f"Command failed: {exc}", file=sys.stderr)
         raise SystemExit(2) from exc
     except KeyboardInterrupt:
         return

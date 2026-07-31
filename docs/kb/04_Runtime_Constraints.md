@@ -28,6 +28,10 @@ The publication process must:
 - keep persistent state small and local;
 - avoid duplicate digest delivery after uncertain failures where practical.
 
+The electricity process follows the same one-shot limits. It stores one date,
+requires a complete 24-hour response, and never waits in memory for ESIOS to
+publish later data.
+
 The optional operator listener may keep one bounded Telegram `getUpdates`
 long poll solely for allowlisted private `/preview`. It must not schedule
 publication, poll data sources until a command arrives, use a webhook, or

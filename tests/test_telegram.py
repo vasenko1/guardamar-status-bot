@@ -141,6 +141,21 @@ class TelegramDeliveryTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(request.full_url.endswith("/deleteMessage"))
 
+    async def test_reply_uses_telegram_reply_parameters(self):
+        opener = _Opener(_SuccessfulResponse())
+        with patch(
+            "telegrambot.telegram.urllib.request.build_opener",
+            return_value=opener,
+        ):
+            _post_message(
+                "secret-token", "@destination", "details", False, 42
+            )
+        body = json.loads(opener.request.data.decode("utf-8"))
+        self.assertEqual(
+            body["reply_parameters"],
+            {"message_id": 42, "allow_sending_without_reply": False},
+        )
+
     async def test_rejects_non_json_success_response(self):
         opener = _Opener(
             _SuccessfulResponse(content_type="text/html")

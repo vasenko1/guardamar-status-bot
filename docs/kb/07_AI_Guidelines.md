@@ -19,7 +19,8 @@ content processing.
 - Present inference as an official statement.
 - Hide source disagreement or meaningful uncertainty.
 - Turn stale data into a current claim.
-- Add unapproved product scope or the undefined future feature.
+- Add unapproved product scope or expand the electricity feature beyond its
+  deterministic official-source contract.
 - Introduce heavy dependencies or architecture that violates device limits.
 - Expose secrets, personal data, or private configuration.
 

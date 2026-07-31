@@ -43,6 +43,8 @@
 
 ## Next steps
 
+- Observe the new evening next-day PVPC table on narrow phones and tune only
+  verified display problems; do not add tariff comparison or billing advice.
 - Improve source failure and stale-data handling.
 - Review changed Policía Local PDFs before accepting a new checksum; unknown
   HTML notices remain eligible for the fail-closed structured fallback. Do not
@@ -57,7 +59,7 @@
 - Improve localization or personalization only if demand is clear.
 - Optimize measured bottlenecks rather than anticipated ones.
 
-## Future feature placeholder
+## Approved second feature
 
-Keep one feature slot open. Define its user need, inputs, output, boundaries,
-runtime cost, and decision record before adding it to the roadmap.
+The evening next-day PVPC table fills the former feature slot. Keep it isolated
+from the Morning Digest and do not create another feature slot speculatively.

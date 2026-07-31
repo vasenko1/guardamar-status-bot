@@ -237,6 +237,7 @@ def _post_message(
     chat_id: str,
     text: str,
     disable_notification: bool = False,
+    reply_to_message_id: Optional[int] = None,
 ) -> int:
     if not 1 <= len(text) <= 4096:
         raise TelegramError(
@@ -245,15 +246,21 @@ def _post_message(
             code="MESSAGE-LENGTH",
             description="длина сообщения выходит за пределы Telegram",
         )
+    body: Dict[str, Any] = {
+        "chat_id": chat_id,
+        "text": text,
+        "disable_notification": disable_notification,
+        "parse_mode": "HTML",
+    }
+    if reply_to_message_id is not None:
+        body["reply_parameters"] = {
+            "message_id": reply_to_message_id,
+            "allow_sending_without_reply": False,
+        }
     decoded = _call_api(
         bot_token,
         "sendMessage",
-        {
-            "chat_id": chat_id,
-            "text": text,
-            "disable_notification": disable_notification,
-            "parse_mode": "HTML",
-        },
+        body,
         REQUEST_TIMEOUT_SECONDS,
     )
     result = decoded.get("result")
@@ -332,6 +339,7 @@ async def send_message(
     text: str,
     *,
     disable_notification: bool = False,
+    reply_to_message_id: Optional[int] = None,
     max_attempts: int = MAX_SEND_ATTEMPTS,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> int:
@@ -341,13 +349,10 @@ async def send_message(
         raise ValueError("max_attempts must be at least one")
     for attempt in range(1, max_attempts + 1):
         try:
-            return await asyncio.to_thread(
-                _post_message,
-                bot_token,
-                chat_id,
-                text,
-                disable_notification,
-            )
+            arguments = (bot_token, chat_id, text, disable_notification)
+            if reply_to_message_id is not None:
+                arguments += (reply_to_message_id,)
+            return await asyncio.to_thread(_post_message, *arguments)
         except TelegramError as exc:
             if not exc.retryable or attempt == max_attempts:
                 raise

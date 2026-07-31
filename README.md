@@ -45,12 +45,14 @@ timezone database to Python.
 
 ## Configuration
 
-Request an API key from
-[AEMET OpenData](https://opendata.aemet.es/centrodedescargas/inicio) and create
-a bot with Telegram's BotFather.
+Request keys from
+[AEMET OpenData](https://opendata.aemet.es/centrodedescargas/inicio) and the
+[ESIOS API personal-token page](https://api.esios.ree.es/doc/index.html), then
+create a bot with Telegram's BotFather.
 
 ```sh
 export AEMET_API_KEY="your-key"
+export ESIOS_API_KEY="your-personal-esios-key"
 export TELEGRAM_BOT_TOKEN="your-bot-token"
 export TELEGRAM_CHAT_ID="@your-channel-or-chat-id"
 export TELEGRAM_ALLOWED_USER_IDS="your-private-telegram-user-id"
@@ -78,6 +80,8 @@ Use external Termux cron entries at `07:30` and every five minutes from
 CRON_TZ=Europe/Madrid
 30 7 * * * /path/to/TelegramBot/termux/run-daily.sh
 10-40/5 10 * * * /path/to/TelegramBot/termux/update-daily.sh
+30,35,45 20 * * * /path/to/TelegramBot/termux/run-electricity.sh
+0,20 21 * * * /path/to/TelegramBot/termux/run-electricity.sh
 ```
 
 Keep the Android device timezone set to `Europe/Madrid` as an additional
@@ -110,6 +114,8 @@ CRON_TZ=Europe/Madrid
 0 4 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/deploy.sh
 30 7 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-daily.sh
 10-40/5 10 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/update-daily.sh
+30,35,45 20 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity.sh
+0,20 21 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity.sh
 ```
 
 Install `cronie`, `termux-services`, and the Python `tzdata` dependency before
@@ -122,10 +128,13 @@ Local inspection remains available:
 ```sh
 PYTHONPATH=src python -m telegrambot preview
 PYTHONPATH=src python -m telegrambot status
+PYTHONPATH=src python -m telegrambot electricity-preview
 ```
 
 - `preview` collects and prints without Telegram or publication state.
 - `status` prints the last successfully published local date.
+- `electricity-preview` prints tomorrow's table and its explanatory reply
+  without publishing or changing state.
 
 To enable private Telegram previews, run the independent listener:
 

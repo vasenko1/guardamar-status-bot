@@ -14,6 +14,7 @@ official endpoints and lightweight access methods are validated.
 | Source category | Purpose | Expected reliability | Update style | MVP |
 | --- | --- | --- | --- | --- |
 | AEMET OpenData | Guardamar forecast, nearby observation, official weather warnings | High; responsible Spanish authority | Structured API; API key required | Yes, first slice |
+| ESIOS / Red Eléctrica | Next-day PVPC 2.0TD hourly active-energy term | High; official system operator publication | Indicator API `1001`; personal API key required | Yes, evening feature |
 | Official marine service | Sea state and relevant marine warnings | High for its jurisdiction | API or published feed | Yes |
 | SafeBeach public Guardamar page | Active beach flags and sea temperature | High when municipal lifeguards actively maintain it | Small structured payload embedded in the public page | Yes |
 | Civil protection or emergency authority | Safety warnings | Highest priority | Alert feed or official publication | Yes |
@@ -24,6 +25,26 @@ official endpoints and lightweight access methods are validated.
 | `@AlcaldeGuardamar` public channel | Explicit market exceptions, bathing-status transitions, and explicitly dated Fiestas de Barrio | Operational municipal channel; text must be mechanically grounded | One bounded morning event check, market check when relevant, or one check after SafeBeach retries | Yes, narrow role |
 | Campo de Guardamar market website | Sunday market at Camino del Raso, 15 | Operator-published schedule; no authoritative cancellation feed found | Local Sunday rule, `07:00–16:00` | Yes, explicit product exception |
 | Community or commercial sources | Gap filling only | Variable | Varies | No by default |
+
+## Approved ESIOS product
+
+Use official indicator `1001`, `Término de facturación de energía activa del
+PVPC 2.0TD`, and only values whose `geo_name` is `Península`. API values are
+€/MWh and are divided by 1000 for the user-facing €/kWh value. The request uses
+`ESIOS_API_KEY` only in the header.
+
+Red Eléctrica states that the next-day set is normally published around
+20:15–20:20. Independent attempts run at 20:30, 20:35, 20:45, 21:00 and 21:20.
+The same schedule covers an empty, incomplete or temporarily unavailable
+response; the client itself makes one bounded request and never sleeps between
+attempts. Exactly one value for every local hour 00–23 is required; incomplete,
+duplicate, malformed, wrong-date, or non-Península data causes that invocation
+to publish nothing. No price cache is kept.
+
+ESIOS defines green below 0.10 €/kWh, yellow from 0.10 through 0.15 €/kWh, and
+orange above 0.15 €/kWh. The product additionally marks prices at or above 90%
+of the daily maximum red as a deterministic attention aid; red is a
+presentation rule, not an ESIOS category.
 
 ## Approved AEMET products
 

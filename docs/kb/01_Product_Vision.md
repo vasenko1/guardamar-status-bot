@@ -60,8 +60,8 @@ Keep the product deliberately narrow:
 
 1. Make the Morning Digest dependable.
 2. Improve source quality and relevance using observed needs.
-3. Consider one additional feature only after its value and runtime cost are
-   clear.
+3. Validate the approved evening next-day PVPC table without expanding it into
+   general energy advice or tariff comparison.
 
 More messages, more sources, and more infrastructure are not signs of success
 unless they make the daily experience materially better.

@@ -87,15 +87,19 @@ Provides only genuine cross-cutting needs:
 - small persistent state;
 - startup and graceful shutdown.
 
-### Future Feature
+### Next-day electricity prices
 
-One isolated feature slot is reserved. It may reuse shared runtime facilities,
-but it must not depend on Morning Digest internals or expand shared components
-speculatively. Its architecture is defined only after the feature is approved.
+One independent evening command requests official ESIOS indicator `1001` for
+the next Madrid date, selects `Península`, requires all 24 hourly values,
+formats one two-column PVPC table, publishes it with a short explanatory reply,
+stores only the published target date, and exits. It reuses only Telegram and
+minimal file state; it does not depend on Morning Digest internals.
 
 ## Operating model
 
 - One 07:30 process plus up to seven short update checks in season
+- Up to five short evening electricity attempts; success-only state makes
+  later invocations no-ops after the first publication
 - Optional lightweight operator listener with one idle Telegram long poll
 - One event loop with bounded asynchronous I/O
 - One direct 07:30 collection; one later full collection only after an update
@@ -114,9 +118,10 @@ speculatively. Its architecture is defined only after the feature is approved.
 - **Telegram unavailable:** use bounded recovery and avoid duplicate delivery.
 - **Later invocation:** retry when no confirmed success was stored.
 
-Every process holds the same local file lock. State is one small atomic JSON
-file. The replacement is sent and recorded before deletion of the morning
-message; a later invocation retries only failed cleanup.
+Each publication workflow holds its own local file lock. Morning replacement
+state and electricity success state are separate small atomic JSON files. The
+replacement is sent and recorded before deletion of the morning message; a
+later invocation retries only failed cleanup.
 
 The AEMET adapter retries only transient transport, rate-limit, server, or
 expired-link failures. It repeats the complete metadata-plus-product request,
@@ -146,6 +151,8 @@ is ignored and rebuilt from the official poster when that source is available.
 
 Termux invokes the morning command at 07:30 and the update command every five
 minutes from 10:10 through 10:40 in `Europe/Madrid`.
+The electricity command runs at 20:30, then after 5, 15 and 30 minutes, with a
+final 21:20 attempt. It publishes at most once for the next local date.
 
 Deployment is also external to the application. GitHub Actions promotes a
 `main` commit to the `deploy` branch only after the complete test suite passes.

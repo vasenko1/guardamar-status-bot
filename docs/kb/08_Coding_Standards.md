@@ -13,7 +13,7 @@
 - Keep source collection separate from normalization.
 - Keep domain records separate from transport-specific payloads.
 - Keep digest selection and formatting separate from Telegram delivery.
-- Keep the future feature isolated from Morning Digest internals.
+- Keep the electricity feature isolated from Morning Digest internals.
 - Put shared code in shared modules only when it has multiple real consumers.
 
 ## Naming
@@ -45,4 +45,3 @@
 
 - Test normalization, prioritization, formatting, and failure behavior.
 - Use small fixtures; do not require live network access for routine tests.
-

@@ -1,5 +1,17 @@
 # Features
 
+## Next-day electricity prices
+
+An evening message shows tomorrow's official PVPC 2.0TD hourly energy term for
+Península in €/kWh. The fixed layout contains the cheapest and most expensive
+hour, a two-column monospace 24-hour table, and the continuous six-hour window
+with the lowest total price. A concise explanatory message is sent as a reply.
+
+The header must say `завтра` and include the target date. ESIOS green, yellow,
+and orange thresholds are preserved; hours at or above 90% of the daily
+maximum are highlighted red for scanning. The footer states that the table is
+relevant only to PVPC and indexed tariffs. Incomplete days are not published.
+
 ## Morning Digest
 
 ### Purpose
@@ -294,23 +306,8 @@ returned. Group publication never includes this diagnostics block.
 - No unsupported predictions or invented summaries
 - Missing low-value or optional-source sections may be omitted
 
-## Future Feature
+## Feature boundary
 
-### Purpose
-
-Reserve room for one later feature supported by a validated user need.
-
-### User value
-
-Unknown until the feature is defined.
-
-### Inputs and output
-
-Not defined.
-
-### Boundaries
-
-- Must not be implemented speculatively
-- Must remain compatible with the documented runtime constraints
-- Must not weaken the Morning Digest
-- Requires an explicit scope and decision record before implementation
+The approved electricity table fills the former future-feature slot. Do not
+add another product feature without a validated need and explicit decision.
+The electricity workflow must remain independent of Morning Digest collection.

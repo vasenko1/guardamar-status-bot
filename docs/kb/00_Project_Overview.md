@@ -34,11 +34,11 @@ bot does not need to fill every section every day.
 The first and primary feature. It collects a limited set of official city data,
 keeps only information relevant to the day, and sends one compact message.
 
-### Future Feature
+### Next-day electricity prices
 
-The architecture reserves one additional feature slot. Its purpose, inputs,
-and output are intentionally undefined. It must not be designed or implemented
-until a concrete user need is approved.
+The approved second feature publishes one evening PVPC price table for the
+next local day from ESIOS / Red Eléctrica. It is independent of the Morning
+Digest and runs as another short-lived Termux process.
 
 ## Out of scope
 
