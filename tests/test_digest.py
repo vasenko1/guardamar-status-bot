@@ -1,5 +1,5 @@
 import unittest
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timedelta, timezone
 
 from telegrambot.digest import build_fallback_update, build_message
 from telegrambot.models import (
@@ -231,6 +231,64 @@ class DigestMessageTests(unittest.TestCase):
             "• Изменён маршрут автобуса B.",
             message,
         )
+
+    def test_future_warning_shows_exact_start_and_end(self):
+        madrid = timezone(timedelta(hours=2))
+        digest = MorningDigest(
+            weather=Weather(
+                current_temperature_c=None,
+                minimum_temperature_c=23,
+                maximum_temperature_c=31,
+                wind_direction=None,
+                wind_speed_kmh=None,
+                observed_at=None,
+            ),
+            warnings=(
+                Warning(
+                    "Aviso de tormentas de nivel amarillo",
+                    "yellow",
+                    datetime(2026, 8, 1, 21, 59, 59, tzinfo=madrid),
+                    starts_at=datetime(2026, 8, 1, 16, 0, tzinfo=madrid),
+                    description=(
+                        "Posibles rachas muy fuertes de viento, granizo y "
+                        "chubascos localmente fuertes."
+                    ),
+                    probability="40–70%",
+                ),
+            ),
+            warnings_available=True,
+        )
+
+        message = build_message(digest)
+
+        self.assertIn(
+            "Жёлтое предупреждение: грозы — "
+            "с 1 августа, 16:00 до 21:59.",
+            message,
+        )
+        self.assertIn(
+            "Возможны очень сильные порывы ветра, град и местами сильные "
+            "ливни. Вероятность: 40–70%.",
+            message,
+        )
+
+    def test_does_not_limit_hazardous_warnings_to_two(self):
+        digest = MorningDigest(
+            weather=Weather(None, 20, 30, None, None, None),
+            warnings=(
+                Warning("Viento", "yellow", None),
+                Warning("Lluvias", "orange", None),
+                Warning("Tormentas", "red", None),
+            ),
+            warnings_available=True,
+        )
+
+        message = build_message(digest)
+
+        self.assertIn("сильный ветер", message)
+        self.assertIn("сильный дождь", message)
+        self.assertIn("грозы", message)
+        self.assertNotIn("Ещё предупреждений", message)
 
     def test_escapes_source_text_for_telegram_html(self):
         digest = MorningDigest(

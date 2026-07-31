@@ -159,12 +159,20 @@ The first MVP slice covers Guardamar weather and AEMET warnings:
   forecast;
 - the highest eligible remaining precipitation probability and its period
   when it is at least 75%;
-- active or upcoming-today CAP warnings for Guardamar's warning zone;
+- active and already published future CAP warnings for Guardamar's warning
+  zone, with exact start and end dates/times, probability, and a compact
+  deterministic Russian rendering of recognized official hazard details;
 - deterministic formatting with no runtime AI.
 
 The canonical visual layout and inline later-day wind comparison are
 implemented. ADR 0013 adds the dynamic AEMET weather icon without changing the
 row layout.
+
+All current or already published future yellow, orange, and red warnings for
+the Guardamar zone are shown; safety warnings are not capped by a message-item
+limit. Spanish/English CAP duplicates and green `Minor` records are omitted.
+Unknown description wording is never machine-translated or guessed: the
+warning, validity period, and validated probability still remain visible.
 
 The beach-status slice adds:
 

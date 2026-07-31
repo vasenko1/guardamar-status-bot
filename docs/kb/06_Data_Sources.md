@@ -54,7 +54,7 @@ price level is yellow.
 | --- | --- | --- |
 | Municipal daily forecast | Guardamar municipality `03076` | Today's temperature range, up to two remaining sky conditions, one later-day wind comparison, and high-probability remaining rain |
 | Conventional observation | Rojales station `7261X`, listed by AEMET as 5.3 km from Guardamar | Current temperature and wind, only when no more than three hours old |
-| CAP warnings | Comunitat Valenciana area `77`, filtered to `Litoral sur de Alicante` | Warnings active now or beginning later today |
+| CAP warnings | Comunitat Valenciana area `77`, filtered to `Litoral sur de Alicante` | All active and already published future hazardous warnings; render validity, probability, and recognized official hazard details |
 | Beach forecast | Centro / La Roqueta `0307605` | Today's representative water temperature and two sea-state periods |
 
 The AEMET API returns a metadata response containing a temporary product

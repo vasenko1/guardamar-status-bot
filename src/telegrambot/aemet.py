@@ -796,7 +796,7 @@ def _cap_documents(payload: bytes) -> Iterable[bytes]:
 
 
 def normalize_warnings(payload: bytes, now: datetime) -> Tuple[Warning, ...]:
-    """Return active CAP warnings for Guardamar's official warning zone."""
+    """Return current and already published future CAP warnings for Guardamar."""
 
     warnings: List[Warning] = []
     seen = set()
@@ -841,12 +841,6 @@ def normalize_warnings(payload: bytes, now: datetime) -> Tuple[Warning, ...]:
                 or _child_text(info, "effective")
             )
             ends_at = _parse_datetime(_child_text(info, "expires"))
-            if (
-                starts_at
-                and starts_at.astimezone(GUARDAMAR_TIMEZONE).date()
-                > now.astimezone(GUARDAMAR_TIMEZONE).date()
-            ):
-                continue
             if ends_at and ends_at.astimezone(timezone.utc) <= now_utc:
                 continue
 
@@ -855,11 +849,35 @@ def normalize_warnings(payload: bytes, now: datetime) -> Tuple[Warning, ...]:
                 "severe": "orange",
                 "extreme": "red",
             }.get(severity.casefold(), severity.casefold())
-            key = (event.casefold(), level, ends_at)
+            description = _child_text(info, "description")
+            probability = None
+            for parameter in _elements(info, "parameter"):
+                name = _child_text(parameter, "valueName")
+                value = _child_text(parameter, "value")
+                if (
+                    name
+                    and value
+                    and name.casefold() == "aemet-meteoalerta probabilidad"
+                    and re.fullmatch(r"\d{1,3}%\s*-\s*\d{1,3}%", value)
+                ):
+                    lower, upper = (
+                        int(part.strip().rstrip("%"))
+                        for part in value.split("-", 1)
+                    )
+                    if 0 <= lower <= upper <= 100:
+                        probability = f"{lower}–{upper}%"
+            key = (event.casefold(), level, starts_at, ends_at)
             if key not in seen:
                 seen.add(key)
                 warnings.append(
-                    Warning(event=event, level=level, ends_at=ends_at)
+                    Warning(
+                        event=event,
+                        level=level,
+                        ends_at=ends_at,
+                        starts_at=starts_at,
+                        description=description,
+                        probability=probability,
+                    )
                 )
 
     priority = {"red": 0, "orange": 1, "yellow": 2}

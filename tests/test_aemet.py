@@ -3,7 +3,7 @@ import json
 import tarfile
 import unittest
 import zipfile
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import AsyncMock, call, patch
 from zoneinfo import ZoneInfo
 
@@ -431,12 +431,14 @@ class WarningTests(unittest.TestCase):
 
         self.assertEqual(normalize_warnings(expired, now), ())
 
-    def test_includes_warning_starting_later_today(self):
+    def test_includes_already_published_warning_starting_tomorrow(self):
         upcoming = b"""<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
           <status>Actual</status><info><language>es-ES</language>
-          <event>Viento</event><severity>Moderate</severity>
-          <onset>2026-07-26T18:00:00+02:00</onset>
-          <expires>2026-07-26T23:00:00+02:00</expires>
+          <event>Tormentas</event><severity>Moderate</severity>
+          <onset>2026-07-27T16:00:00+02:00</onset>
+          <expires>2026-07-27T21:59:59+02:00</expires>
+          <description>Posibles rachas muy fuertes de viento, granizo y chubascos localmente fuertes.</description>
+          <parameter><valueName>AEMET-Meteoalerta probabilidad</valueName><value>40%-70%</value></parameter>
           <area><areaDesc>Litoral sur de Alicante</areaDesc></area>
           </info></alert>"""
         now = datetime(2026, 7, 26, 6, 0, tzinfo=timezone.utc)
@@ -444,7 +446,16 @@ class WarningTests(unittest.TestCase):
         warnings = normalize_warnings(upcoming, now)
 
         self.assertEqual(len(warnings), 1)
-        self.assertEqual(warnings[0].event, "Viento")
+        self.assertEqual(warnings[0].event, "Tormentas")
+        self.assertEqual(
+            warnings[0].starts_at,
+            datetime(2026, 7, 27, 16, 0, tzinfo=timezone(timedelta(hours=2))),
+        )
+        self.assertEqual(
+            warnings[0].description,
+            "Posibles rachas muy fuertes de viento, granizo y chubascos localmente fuertes.",
+        )
+        self.assertEqual(warnings[0].probability, "40–70%")
 
     def test_omits_minor_cap_status_because_aemet_defines_it_as_no_warning(self):
         no_warning = b"""<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">

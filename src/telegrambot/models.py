@@ -25,6 +25,9 @@ class Warning:
     event: str
     level: str
     ends_at: Optional[datetime]
+    starts_at: Optional[datetime] = None
+    description: Optional[str] = None
+    probability: Optional[str] = None
 
 
 @dataclass(frozen=True)

@@ -73,6 +73,15 @@ WARNING_EVENTS = {
     "niebla": "туман",
     "polvo en suspension": "пыль в воздухе",
 }
+WARNING_DESCRIPTIONS = {
+    (
+        "posibles rachas muy fuertes de viento, granizo y chubascos "
+        "localmente fuertes."
+    ): (
+        "Возможны очень сильные порывы ветра, град и местами сильные "
+        "ливни."
+    ),
+}
 WEATHER_ICONS = {
     "clear": "☀️",
     "partly_cloudy": "🌤",
@@ -93,10 +102,36 @@ SKY_LABELS = {
 }
 
 
-def _warning_end(value: Optional[datetime]) -> str:
-    if value is None:
+MONTHS_GENITIVE = (
+    "", "января", "февраля", "марта", "апреля", "мая", "июня",
+    "июля", "августа", "сентября", "октября", "ноября", "декабря",
+)
+
+
+def _warning_moment(value: datetime, *, include_date: bool) -> str:
+    local = value.astimezone(GUARDAMAR_TIMEZONE)
+    clock = local.strftime("%H:%M")
+    if not include_date:
+        return clock
+    return f"{local.day} {MONTHS_GENITIVE[local.month]}, {clock}"
+
+
+def _warning_period(
+    starts_at: Optional[datetime],
+    ends_at: Optional[datetime],
+) -> str:
+    if starts_at is None and ends_at is None:
         return "."
-    return f" до {value.astimezone(GUARDAMAR_TIMEZONE).strftime('%H:%M')}."
+    if starts_at is None:
+        return f" до {_warning_moment(ends_at, include_date=True)}."
+    if ends_at is None:
+        return f" — с {_warning_moment(starts_at, include_date=True)}."
+    local_start = starts_at.astimezone(GUARDAMAR_TIMEZONE)
+    local_end = ends_at.astimezone(GUARDAMAR_TIMEZONE)
+    return (
+        f" — с {_warning_moment(starts_at, include_date=True)}"
+        f" до {_warning_moment(ends_at, include_date=local_end.date() != local_start.date())}."
+    )
 
 
 def _warning_text(event: str) -> str:
@@ -106,7 +141,24 @@ def _warning_text(event: str) -> str:
         for character in normalized
         if not unicodedata.combining(character)
     )
-    return WARNING_EVENTS.get(key, "предупреждение AEMET")
+    exact = WARNING_EVENTS.get(key)
+    if exact is not None:
+        return exact
+    for event_name, label in WARNING_EVENTS.items():
+        if event_name in key:
+            return label
+    return "предупреждение AEMET"
+
+
+def _warning_details(warning: Warning) -> Optional[str]:
+    details = None
+    if warning.description:
+        source = " ".join(warning.description.split()).casefold()
+        details = WARNING_DESCRIPTIONS.get(source)
+    if warning.probability:
+        probability = f"Вероятность: {warning.probability}."
+        return f"{details} {probability}" if details else probability
+    return details
 
 
 def _event_title(value: str) -> str:
@@ -322,21 +374,20 @@ def build_message(digest: MorningDigest) -> str:
 
     if digest.warnings:
         lines.extend(["", "⚠️ <b>Предупреждения:</b>"])
-    visible_warnings = digest.warnings[:2]
-    for warning in visible_warnings:
+    for warning in digest.warnings:
         level = WARNING_LEVELS.get(
             warning.level, "Предупреждение"
         )
         warning_line = (
             f"{level}: {_warning_text(warning.event)}"
-            f"{_warning_end(warning.ends_at)}"
+            f"{_warning_period(warning.starts_at, warning.ends_at)}"
         )
-        if len(visible_warnings) > 1:
+        if len(digest.warnings) > 1:
             warning_line = f"• {warning_line}"
         lines.append(warning_line)
-    if len(digest.warnings) > 2:
-        additional = len(digest.warnings) - 2
-        lines.append(f"Ещё предупреждений: {additional}.")
+        details = _warning_details(warning)
+        if details:
+            lines.append(f"  {details}" if len(digest.warnings) > 1 else details)
 
     beach_lines = _beach_operational_lines(
         digest.beach,
