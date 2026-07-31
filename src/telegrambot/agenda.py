@@ -4,14 +4,17 @@ import asyncio
 import html
 import http.client
 import json
+import os
 import re
 import socket
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from html.parser import HTMLParser
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
@@ -315,7 +318,7 @@ def _json_objects(value: Any) -> Iterable[Dict[str, Any]]:
 
 def _event_from_mapping(
     candidate: Dict[str, Any],
-    local_day: date,
+    local_day: Optional[date],
 ) -> Optional[Event]:
     event_type = candidate.get("@type")
     event_types = (
@@ -344,7 +347,7 @@ def _event_from_mapping(
         starts_at = starts_at.replace(tzinfo=GUARDAMAR_TIMEZONE)
     else:
         starts_at = starts_at.astimezone(GUARDAMAR_TIMEZONE)
-    if starts_at.date() != local_day:
+    if local_day is not None and starts_at.date() != local_day:
         return None
 
     ends_at = None
@@ -426,7 +429,7 @@ def _calendar_place(payload: bytes) -> Optional[str]:
 
 def normalize_event_page(
     payload: bytes,
-    local_day: date,
+    local_day: Optional[date],
 ) -> Optional[Event]:
     """Return one event only from a valid JSON-LD object for local_day."""
 
@@ -455,12 +458,87 @@ def normalize_event_page(
     return None
 
 
-async def fetch_today_events(
-    now: datetime,
-    gemini_api_key: str = "",
-) -> Tuple[Event, ...]:
-    """Fetch today's official events with three bounded detail workers."""
+def _write_agenda_snapshot(path: Path, now: datetime, events: Tuple[Event, ...]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = {
+        "version": 1,
+        "fetched_at": now.isoformat(),
+        "events": [
+            {
+                "title": event.title,
+                "starts_at": event.starts_at.isoformat()
+                if event.starts_at else None,
+                "ends_at": event.ends_at.isoformat()
+                if event.ends_at else None,
+                "place": event.place,
+            }
+            for event in events
+        ],
+    }
+    descriptor, temporary = tempfile.mkstemp(
+        prefix=f".{path.name}.", dir=path.parent
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+            json.dump(data, output, ensure_ascii=False, separators=(",", ":"))
+            output.write("\n")
+            output.flush()
+            os.fsync(output.fileno())
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
 
+
+def _load_agenda_snapshot(path: Path) -> Tuple[Event, ...]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or data.get("version") != 1:
+            raise ValueError
+        raw_events = data.get("events")
+        if not isinstance(raw_events, list) or len(raw_events) > MAX_EVENT_LINKS:
+            raise ValueError
+        events = []
+        for raw in raw_events:
+            if not isinstance(raw, dict):
+                raise ValueError
+            title = raw.get("title")
+            starts_raw = raw.get("starts_at")
+            if not isinstance(title, str) or not isinstance(starts_raw, str):
+                raise ValueError
+            starts_at = datetime.fromisoformat(starts_raw)
+            ends_raw = raw.get("ends_at")
+            ends_at = (
+                datetime.fromisoformat(ends_raw)
+                if isinstance(ends_raw, str)
+                else None
+            )
+            if starts_at.tzinfo is None or (
+                ends_at is not None and ends_at.tzinfo is None
+            ):
+                raise ValueError
+            place = raw.get("place")
+            if place is not None and not isinstance(place, str):
+                raise ValueError
+            events.append(Event(
+                title=title,
+                starts_at=starts_at.astimezone(GUARDAMAR_TIMEZONE),
+                ends_at=ends_at.astimezone(GUARDAMAR_TIMEZONE)
+                if ends_at else None,
+                place=place,
+            ))
+        return tuple(events)
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        raise AgendaError(
+            "Agenda Guardamar snapshot is invalid",
+            code="SNAPSHOT",
+            description="локальный каталог Agenda Guardamar повреждён",
+        ) from exc
+async def _collect_agenda_catalog(now: datetime) -> Tuple[Event, ...]:
+    """Collect a bounded window of structured Agenda Guardamar events."""
     index = await asyncio.to_thread(_read_page, AGENDA_URL)
     links = extract_event_links(index)
     if not links:
@@ -490,15 +568,51 @@ async def fetch_today_events(
     events: List[Event] = []
     seen = set()
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
+    horizon = local_day + timedelta(days=45)
     for payload in successful_payloads:
-        event = normalize_event_page(payload, local_day)
+        event = normalize_event_page(payload, None)
         if event is None:
+            continue
+        if event.starts_at is None or not (
+            local_day <= event.starts_at.date() <= horizon
+        ):
             continue
         key = (event.title.casefold(), event.starts_at)
         if key not in seen:
             seen.add(key)
             events.append(event)
     events.sort(key=lambda item: (item.starts_at, item.title.casefold()))
+    return tuple(events)
+
+
+async def refresh_agenda_catalog(
+    now: datetime,
+    state_path: Path,
+) -> Tuple[Event, ...]:
+    """Refresh and atomically store the structured ticketed-event catalog."""
+
+    events = await _collect_agenda_catalog(now)
+    await asyncio.to_thread(_write_agenda_snapshot, state_path, now, events)
+    return events
+
+
+async def fetch_today_events(
+    now: datetime,
+    gemini_api_key: str = "",
+    state_path: Optional[Path] = None,
+) -> Tuple[Event, ...]:
+    """Read today's cached events, or use the legacy direct collection path."""
+
+    if state_path is None:
+        events = list(await _collect_agenda_catalog(now))
+    else:
+        catalog = await asyncio.to_thread(_load_agenda_snapshot, state_path)
+        local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
+        events = [
+            event for event in catalog
+            if event.starts_at is not None
+            and event.starts_at.date() == local_day
+        ]
     if gemini_api_key and events:
         try:
             titles = await translate_event_titles(

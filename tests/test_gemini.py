@@ -7,6 +7,7 @@ from unittest.mock import patch
 from telegrambot.gemini import (
     AGENDA_EXTRACTION_SCHEMA,
     _extract_agenda_events,
+    _extract_agenda_text_events,
     _request_translation,
 )
 
@@ -76,6 +77,34 @@ class GeminiRequestTests(unittest.TestCase):
             request_json.call_args.args[2],
             AGENDA_EXTRACTION_SCHEMA,
         )
+
+    def test_agenda_text_uses_schema_without_inline_media(self):
+        with patch(
+            "telegrambot.gemini._request_json",
+            return_value={"month": "2026-08", "events": []},
+        ) as request_json:
+            result = _extract_agenda_text_events(
+                "secret-key",
+                "AGENDA CULTURAL AGOSTO 2026. 6 de agosto concierto.",
+            )
+
+        self.assertEqual(result["month"], "2026-08")
+        self.assertIs(
+            request_json.call_args.args[2],
+            AGENDA_EXTRACTION_SCHEMA,
+        )
+        self.assertNotIn("inlineData", str(request_json.call_args.args[1]))
+
+    def test_agenda_pdf_is_an_accepted_document_format(self):
+        with patch(
+            "telegrambot.gemini._request_json",
+            return_value={"month": "2026-08", "events": []},
+        ):
+            result = _extract_agenda_events(
+                "secret-key", b"%PDF", "application/pdf"
+            )
+
+        self.assertEqual(result["month"], "2026-08")
 
     def test_requests_pinned_model_and_structured_json(self):
         opener = _Opener(_GeminiResponse())

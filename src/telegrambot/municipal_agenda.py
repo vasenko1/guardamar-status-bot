@@ -19,10 +19,15 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
-from .gemini import GeminiError, extract_agenda_events, translate_event_titles
+from .gemini import (
+    GeminiError,
+    extract_agenda_events,
+    extract_agenda_text_events,
+    translate_event_titles,
+    verify_agenda_poster_events,
+)
 from .models import Event
 from .diagnostics import SourceDiagnostic, source_error
-from .mayor import _fiestas_de_barrio_events
 
 AGENDA_PAGE_URL = "https://guardamarturismo.com/agenda-cultural/"
 PAGE_HOSTS = {"guardamarturismo.com", "www.guardamarturismo.com"}
@@ -62,6 +67,7 @@ class SourceEvent:
     end_time: Optional[str]
     place: Optional[str]
     category: str
+    sources: Tuple[str, ...] = ()
 
 
 class _PosterParser(HTMLParser):
@@ -229,6 +235,176 @@ def extract_poster_url(payload: bytes) -> str:
     )
 
 
+_SPANISH_MONTHS = {
+    "enero": 1, "febrero": 2, "marzo": 3, "abril": 4,
+    "mayo": 5, "junio": 6, "julio": 7, "agosto": 8,
+    "septiembre": 9, "setiembre": 9, "octubre": 10,
+    "noviembre": 11, "diciembre": 12,
+}
+
+
+def extract_official_agenda_text(payload: bytes) -> Tuple[str, str]:
+    """Return the bounded monthly programme section and its declared month."""
+
+    decoded = html.unescape(payload.decode("utf-8", "replace"))
+    plain = " ".join(re.sub(r"<[^>]+>", " ", decoded).split())
+    matches = list(re.finditer(
+        r"AGENDA\s+CULTURAL(?:\s+GUARDAMAR)?\s+"
+        r"(ENERO|FEBRERO|MARZO|ABRIL|MAYO|JUNIO|JULIO|AGOSTO|"
+        r"SEPTIEMBRE|SETIEMBRE|OCTUBRE|NOVIEMBRE|DICIEMBRE)\s+"
+        r"((?:19|20)\d{2})",
+        plain,
+        re.IGNORECASE,
+    ))
+    if not matches:
+        raise MunicipalAgendaError(
+            "Official text agenda month was not found",
+            code="NO-TEXT-MONTH",
+            description="в официальной текстовой программе не найден месяц",
+        )
+    match = matches[-1]
+    month_number = _SPANISH_MONTHS[match.group(1).casefold()]
+    month = f"{int(match.group(2)):04d}-{month_number:02d}"
+    section = plain[match.start():]
+    for marker in (" Ver Agenda ", " Guardamar del Segura Turisme Guardamar"):
+        marker_index = section.find(marker)
+        if marker_index >= 0:
+            section = section[:marker_index]
+    if not 100 <= len(section) <= 12_000:
+        raise MunicipalAgendaError(
+            "Official text agenda section has an invalid size",
+            code="TEXT-SIZE",
+            description="официальная текстовая программа пуста или слишком велика",
+        )
+    return section, month
+
+
+def _normalized_words(value: str) -> set[str]:
+    normalized = re.sub(r"[^\w]+", " ", value.casefold(), flags=re.UNICODE)
+    aliases = {
+        "plaça": "plaza",
+        "llauradors": "labradores",
+        "pescadors": "pescadores",
+        "castell": "castillo",
+    }
+    return {
+        aliases.get(word, word)
+        for word in normalized.split()
+        if len(word) > 2
+    }
+
+
+def _word_overlap(left: str, right: str) -> float:
+    left_words = _normalized_words(left)
+    right_words = _normalized_words(right)
+    if not left_words or not right_words:
+        return 0.0
+    return len(left_words & right_words) / min(
+        len(left_words), len(right_words)
+    )
+
+
+def _same_occurrence(left: SourceEvent, right: SourceEvent) -> bool:
+    if (
+        left.start_date != right.start_date
+        or left.end_date != right.end_date
+        or left.start_time != right.start_time
+    ):
+        return False
+    return _word_overlap(left.title_es, right.title_es) >= 0.5
+
+
+def _poster_conflicts_with_text(
+    text_event: SourceEvent,
+    poster_event: SourceEvent,
+) -> bool:
+    """Detect a less reliable poster rendering of a text occurrence."""
+
+    dates_overlap = not (
+        poster_event.end_date < text_event.start_date
+        or poster_event.start_date > text_event.end_date
+    )
+    if not dates_overlap:
+        return False
+    if _word_overlap(text_event.title_es, poster_event.title_es) >= 0.5:
+        return True
+    same_time = (
+        text_event.start_time is not None
+        and text_event.start_time == poster_event.start_time
+    )
+    same_place = (
+        text_event.place is not None
+        and poster_event.place is not None
+        and _word_overlap(text_event.place, poster_event.place) >= 0.5
+    )
+    return same_time and same_place
+
+
+def merge_text_and_poster_events(
+    text_events: Tuple[SourceEvent, ...],
+    poster_events: Tuple[SourceEvent, ...],
+) -> Tuple[SourceEvent, ...]:
+    """Prefer official text facts and add only distinct poster occurrences."""
+
+    merged = list(text_events)
+    for poster_event in poster_events:
+        duplicate_index = next(
+            (
+                index
+                for index, text_event in enumerate(merged)
+                if _same_occurrence(text_event, poster_event)
+                or _poster_conflicts_with_text(text_event, poster_event)
+            ),
+            None,
+        )
+        if duplicate_index is None:
+            merged.append(poster_event)
+            continue
+        current = merged[duplicate_index]
+        merged[duplicate_index] = SourceEvent(
+            **{
+                **current.__dict__,
+                "sources": tuple(dict.fromkeys(
+                    current.sources + poster_event.sources
+                )),
+            }
+        )
+    return tuple(merged[:MAX_EVENTS])
+
+
+def intersect_verified_poster_events(
+    first: Tuple[SourceEvent, ...],
+    verified: Tuple[SourceEvent, ...],
+) -> Tuple[SourceEvent, ...]:
+    """Keep only independently repeated MUPI facts with matching key fields."""
+
+    accepted = []
+    embedded_digit = re.compile(r"[A-Za-zÀ-ÿ]\d|\d[A-Za-zÀ-ÿ]")
+    for candidate in verified:
+        if embedded_digit.search(candidate.title_es):
+            continue
+        if any(
+            not embedded_digit.search(original.title_es)
+            and
+            original.start_date == candidate.start_date
+            and original.end_date == candidate.end_date
+            and original.start_time == candidate.start_time
+            and len(
+                _normalized_words(original.title_es)
+                & _normalized_words(candidate.title_es)
+            ) / max(
+                1,
+                min(
+                    len(_normalized_words(original.title_es)),
+                    len(_normalized_words(candidate.title_es)),
+                ),
+            ) >= 0.5
+            for original in first
+        ):
+            accepted.append(candidate)
+    return tuple(accepted)
+
+
 def _clean_text(value: Any, maximum: int) -> Optional[str]:
     if value is None:
         return None
@@ -241,6 +417,19 @@ def _clean_text(value: Any, maximum: int) -> Optional[str]:
 
 
 def _poster_month(poster_url: str) -> str:
+    filename = urllib.parse.unquote(
+        urllib.parse.urlparse(poster_url).path.rsplit("/", 1)[-1]
+    ).casefold()
+    month_names = {
+        "enero": 1, "febrero": 2, "marzo": 3, "abril": 4,
+        "mayo": 5, "junio": 6, "julio": 7, "agosto": 8,
+        "septiembre": 9, "setiembre": 9, "octubre": 10,
+        "noviembre": 11, "diciembre": 12,
+    }
+    year_match = re.search(r"(?:19|20)\d{2}", filename)
+    for name, month_number in month_names.items():
+        if name in filename and year_match is not None:
+            return f"{int(year_match.group()):04d}-{month_number:02d}"
     match = re.search(r"/wp-content/uploads/(\d{4})/(\d{2})/", poster_url)
     if match is None:
         raise MunicipalAgendaError(
@@ -279,6 +468,7 @@ def _month_window(month: str) -> Tuple[date, date]:
 def normalize_extraction(
     result: Dict[str, Any],
     expected_month: Optional[str] = None,
+    source: str = "mupi",
 ) -> Tuple[SourceEvent, ...]:
     """Validate OCR output and discard routine non-event entries."""
 
@@ -356,6 +546,7 @@ def normalize_extraction(
             end_time=end_time,
             place=_clean_text(raw.get("place"), 120),
             category="event" if category == "workshop" else category,
+            sources=(source,),
         )
         key = (event.title_es.casefold(), event.start_date, event.start_time)
         if key not in seen:
@@ -364,17 +555,54 @@ def normalize_extraction(
     return tuple(events)
 
 
+def normalize_extraction_candidates(
+    result: Dict[str, Any],
+    expected_month: str,
+    source: str,
+) -> Tuple[SourceEvent, ...]:
+    """Validate candidates independently so one bad card cannot erase a month."""
+
+    if result.get("month") != expected_month:
+        raise MunicipalAgendaError(
+            "Municipal extraction month does not match its source",
+            code="MONTH",
+            description="месяц результата не совпадает с официальным источником",
+        )
+    raw_events = result.get("events")
+    if not isinstance(raw_events, list) or len(raw_events) > MAX_EVENTS:
+        raise MunicipalAgendaError("invalid municipal event list")
+    accepted: List[SourceEvent] = []
+    for raw in raw_events:
+        try:
+            accepted.extend(normalize_extraction(
+                {"month": expected_month, "events": [raw]},
+                expected_month,
+                source,
+            ))
+        except MunicipalAgendaError:
+            continue
+    if raw_events and not accepted:
+        raise MunicipalAgendaError(
+            "Every municipal event candidate was invalid",
+            code="NO-VALID-EVENTS",
+            description="все извлечённые мероприятия не прошли проверку",
+        )
+    return tuple(accepted)
+
+
 def _snapshot_data(
     poster_url: str,
     poster_hash: str,
     fetched_at: datetime,
     events: Tuple[SourceEvent, ...],
+    sources: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     return {
-        "version": 1,
+        "version": 2,
         "poster_url": poster_url,
         "poster_sha256": poster_hash,
         "fetched_at": fetched_at.isoformat(),
+        "sources": sources or {},
         "events": [
             {
                 "title_es": event.title_es,
@@ -384,6 +612,7 @@ def _snapshot_data(
                 "end_time": event.end_time,
                 "place": event.place,
                 "category": event.category,
+                "sources": list(event.sources),
             }
             for event in events
         ],
@@ -410,6 +639,12 @@ def _merge_transition_events(
     seen = {_source_event_key(event) for event in merged}
     for event in prior_events:
         if event.end_date < local_day or event.start_date > horizon:
+            continue
+        if any(
+            _same_occurrence(current, event)
+            or _poster_conflicts_with_text(current, event)
+            for current in merged
+        ):
             continue
         key = _source_event_key(event)
         if key not in seen:
@@ -441,15 +676,39 @@ def _load_snapshot(path: Path) -> Optional[Dict[str, Any]]:
         return None
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict) or data.get("version") != 1:
+        if not isinstance(data, dict) or data.get("version") not in {1, 2}:
             raise ValueError
         fetched_at = datetime.fromisoformat(data["fetched_at"])
         if fetched_at.tzinfo is None:
             raise ValueError
-        events = normalize_extraction({"events": data["events"]})
+        events = []
+        for raw in data["events"]:
+            normalized = normalize_extraction(
+                {"events": [raw]},
+                source=(
+                    raw.get("sources", ["mupi"])[0]
+                    if isinstance(raw, dict)
+                    and isinstance(raw.get("sources", ["mupi"]), list)
+                    and raw.get("sources", ["mupi"])
+                    else "mupi"
+                ),
+            )[0]
+            raw_sources = raw.get("sources") if isinstance(raw, dict) else None
+            if (
+                isinstance(raw_sources, list)
+                and raw_sources
+                and all(isinstance(item, str) for item in raw_sources)
+            ):
+                normalized = SourceEvent(
+                    **{
+                        **normalized.__dict__,
+                        "sources": tuple(dict.fromkeys(raw_sources)),
+                    }
+                )
+            events.append(normalized)
         return {
             **data,
-            "_events": events,
+            "_events": tuple(events),
             "_fetched_at": fetched_at,
         }
     except (
@@ -503,6 +762,7 @@ def _apply_reviewed_corrections(
                     end_time="14:00",
                     place="Biblioteca Pública Municipal",
                     category="exhibition",
+                    sources=event.sources,
                 )
             )
             entropia_added = True
@@ -569,19 +829,21 @@ def _apply_reviewed_daily_schedules(
                 end_time=end_time,
                 place="Sala de exposiciones Casa de Cultura",
                 category="exhibition",
+                sources=event.sources,
             )
         )
     return tuple(scheduled)
 
 
-async def _current_events(
+async def refresh_municipal_catalog(
     api_key: str,
     now: datetime,
     state_path: Path,
     diagnostics: Optional[List[SourceDiagnostic]] = None,
 ) -> Tuple[SourceEvent, ...]:
+    """Refresh changed official text/poster inputs and atomically save facts."""
+
     snapshot_failure = None
-    page_events: Tuple[SourceEvent, ...] = ()
     try:
         snapshot = await asyncio.to_thread(_load_snapshot, state_path)
     except MunicipalAgendaError as exc:
@@ -596,97 +858,210 @@ async def _current_events(
                     stage="SNAPSHOT",
                 )
             )
-    poster_url = (
-        str(snapshot.get("poster_url", ""))
-        if snapshot is not None
-        else ""
-    )
     try:
         page, _ = await asyncio.to_thread(
             _read_url, AGENDA_PAGE_URL, PAGE_HOSTS, PAGE_LIMIT_BYTES
         )
         local_now = now.astimezone(GUARDAMAR_TIMEZONE)
-        page_text = " ".join(
-            html.unescape(
-                re.sub(
-                    rb"<[^>]+>",
-                    b" ",
-                    page,
-                ).decode("utf-8", "replace")
-            ).split()
+        try:
+            page_text, text_month = extract_official_agenda_text(page)
+        except MunicipalAgendaError as exc:
+            if exc.diagnostic_code != "NO-TEXT-MONTH":
+                raise
+            page_text = ""
+            text_month = ""
+        try:
+            poster_url = extract_poster_url(page)
+        except MunicipalAgendaError:
+            poster_url = ""
+        page_hash = (
+            hashlib.sha256(page_text.encode("utf-8")).hexdigest()
+            if page_text
+            else ""
         )
-        page_events = tuple(
-            SourceEvent(
-                title_es="FIESTA DE BARRIO",
-                start_date=event.starts_at.date(),
-                end_date=event.starts_at.date(),
-                start_time=event.starts_at.strftime("%H:%M"),
-                end_time=None,
-                place=event.place,
-                category="event",
-            )
-            for event in _fiestas_de_barrio_events(
-                page_text,
-                local_now.date(),
-            )
-            if event.starts_at is not None
-        )
-        poster_url = extract_poster_url(page)
-        snapshot_month = (
-            snapshot["_fetched_at"]
-            .astimezone(GUARDAMAR_TIMEZONE)
-            .strftime("%Y-%m")
+        old_sources = (
+            snapshot.get("sources", {})
             if snapshot is not None
-            else None
+            and isinstance(snapshot.get("sources", {}), dict)
+            else {}
         )
-        current_month = local_now.strftime("%Y-%m")
-        if (
-            snapshot is not None
-            and snapshot.get("poster_url") == poster_url
-            and snapshot_month == current_month
+        old_events = snapshot["_events"] if snapshot is not None else ()
+        old_text_events = tuple(
+            event for event in old_events if "turismo_html" in event.sources
+        )
+        old_poster_events = tuple(
+            event
+            for event in old_events
+            if "mupi" in event.sources
+            and "turismo_html" not in event.sources
+        )
+
+        text_source = old_sources.get("turismo_html", {})
+        if not page_text:
+            text_events = old_text_events
+        elif (
+            old_text_events
+            and isinstance(text_source, dict)
+            and text_source.get("sha256") == page_hash
         ):
-            events = snapshot["_events"]
+            text_events = old_text_events
         else:
-            poster, mime_type = await asyncio.to_thread(
-                _read_url, poster_url, POSTER_HOSTS, POSTER_LIMIT_BYTES
+            extracted_text = await extract_agenda_text_events(
+                api_key, page_text
             )
-            poster_hash = hashlib.sha256(poster).hexdigest()
-            if snapshot is not None and snapshot.get("poster_sha256") == poster_hash:
-                events = snapshot["_events"]
-            else:
-                extracted = await extract_agenda_events(api_key, poster, mime_type)
-                extracted_events = normalize_extraction(
+            extracted_text = {**extracted_text, "month": text_month}
+            text_events = normalize_extraction_candidates(
+                extracted_text,
+                text_month,
+                "turismo_html",
+            )
+            if not text_events:
+                raise MunicipalAgendaError(
+                    "Official text agenda extraction was empty",
+                    code="EMPTY-TEXT",
+                    description="официальная текстовая программа не дала событий",
+                )
+
+        poster_source = old_sources.get("mupi", {})
+        poster_events = old_poster_events
+        poster_hash = (
+            str(poster_source.get("sha256", ""))
+            if isinstance(poster_source, dict)
+            else ""
+        )
+        poster_checked = False
+        poster_failure: Optional[Exception] = None
+        try:
+            if not poster_url:
+                raise MunicipalAgendaError(
+                    "Official poster URL was not found",
+                    code="NO-POSTER",
+                    description="ссылка на официальную афишу не найдена",
+                )
+            if not (
+                old_poster_events
+                and isinstance(poster_source, dict)
+                and poster_source.get("url") == poster_url
+            ):
+                poster, mime_type = await asyncio.to_thread(
+                    _read_url, poster_url, POSTER_HOSTS, POSTER_LIMIT_BYTES
+                )
+                poster_hash = hashlib.sha256(poster).hexdigest()
+                extracted = await extract_agenda_events(
+                    api_key, poster, mime_type
+                )
+                first_poster_events = normalize_extraction_candidates(
                     extracted,
                     _poster_month(poster_url),
+                    "mupi",
                 )
-                events = _merge_transition_events(
-                    extracted_events,
-                    snapshot["_events"] if snapshot is not None else (),
-                    local_now.date(),
+                verified_result = await verify_agenda_poster_events(
+                    api_key,
+                    poster,
+                    mime_type,
+                    extracted.get("events", []),
                 )
-            try:
-                await asyncio.to_thread(
-                    _write_snapshot,
-                    state_path,
-                    _snapshot_data(poster_url, poster_hash, now, events),
+                verified_result = {
+                    **verified_result,
+                    "month": _poster_month(poster_url),
+                }
+                verified_events = normalize_extraction_candidates(
+                    verified_result,
+                    _poster_month(poster_url),
+                    "mupi",
                 )
-            except OSError as exc:
-                if diagnostics is not None:
-                    diagnostics.append(
-                        source_error(
-                            "MUNI-AGENDA",
-                            "Agenda municipal",
-                            MunicipalAgendaError(
-                                "Municipal snapshot could not be written",
-                                code="WRITE",
-                                description=(
-                                    "не удалось сохранить локальный "
-                                    "снимок афиши"
-                                ),
-                            ),
-                            stage="SNAPSHOT",
-                        )
+                poster_events = intersect_verified_poster_events(
+                    first_poster_events,
+                    verified_events,
+                )
+            poster_checked = True
+        except (MunicipalAgendaError, GeminiError) as exc:
+            poster_failure = exc
+            if diagnostics is not None:
+                failure = source_error(
+                    "MUNI-AGENDA-MUPI",
+                    "Муниципальная афиша MUPI",
+                    exc,
+                    stage="OPTIONAL",
+                )
+                diagnostics.append(
+                    SourceDiagnostic(
+                        failure.code,
+                        failure.source,
+                        (
+                            f"{failure.description}; использованы только "
+                            "проверенные текстовые данные"
+                        ),
                     )
+                )
+
+        events = merge_text_and_poster_events(text_events, poster_events)
+        if not events:
+            if isinstance(poster_failure, GeminiError):
+                raise MunicipalAgendaError(
+                    "Municipal poster extraction failed",
+                    code=poster_failure.diagnostic_code,
+                    status=poster_failure.server_status,
+                    description=poster_failure.safe_description,
+                ) from poster_failure
+            if isinstance(poster_failure, MunicipalAgendaError):
+                raise poster_failure
+            raise MunicipalAgendaError(
+                "Municipal agenda extraction was empty",
+                code="EMPTY",
+                description="официальные источники не дали мероприятий",
+            )
+        local_month = local_now.strftime("%Y-%m")
+        source_month = (
+            _poster_month(poster_url) if poster_url else text_month
+        )
+        if source_month > local_month:
+            events = _merge_transition_events(
+                events,
+                old_events,
+                local_now.date(),
+            )
+        source_state = {
+            "turismo_html": {
+                "url": AGENDA_PAGE_URL,
+                "sha256": page_hash,
+                "month": text_month or None,
+                "checked_at": now.isoformat(),
+            },
+        }
+        if poster_checked:
+            source_state["mupi"] = {
+                "url": poster_url,
+                "sha256": poster_hash,
+                "month": _poster_month(poster_url),
+                "checked_at": now.isoformat(),
+            }
+        elif isinstance(poster_source, dict) and poster_source:
+            source_state["mupi"] = poster_source
+        try:
+            await asyncio.to_thread(
+                _write_snapshot,
+                state_path,
+                _snapshot_data(
+                    poster_url,
+                    poster_hash,
+                    now,
+                    events,
+                    source_state,
+                ),
+            )
+        except OSError as exc:
+            if diagnostics is not None:
+                diagnostics.append(source_error(
+                    "MUNI-AGENDA",
+                    "Agenda municipal",
+                    MunicipalAgendaError(
+                        "Municipal snapshot could not be written",
+                        code="WRITE",
+                        description="не удалось сохранить локальный каталог",
+                    ),
+                    stage="SNAPSHOT",
+                ))
     except (MunicipalAgendaError, GeminiError) as exc:
         if snapshot is None:
             if snapshot_failure is not None:
@@ -721,15 +1096,29 @@ async def _current_events(
                 )
             )
         events = snapshot["_events"]
+        return tuple(events)
+    return tuple(events)
+
+
+async def _cached_current_events(
+    now: datetime,
+    state_path: Path,
+) -> Tuple[SourceEvent, ...]:
+    """Read current events from the last atomic catalog without network I/O."""
+
+    snapshot = await asyncio.to_thread(_load_snapshot, state_path)
+    if snapshot is None:
+        raise MunicipalAgendaError(
+            "Municipal agenda catalog does not exist",
+            code="NO-SNAPSHOT",
+            description="локальный каталог мероприятий ещё не создан",
+        )
+    events = snapshot["_events"]
+    poster_url = str(snapshot.get("poster_url", ""))
     events = _apply_reviewed_corrections(poster_url, events)
     events = _merge_reviewed_text_agenda(events)
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
     events = _apply_reviewed_daily_schedules(events, local_day)
-    events = _merge_transition_events(
-        tuple(events),
-        page_events,
-        local_day,
-    )
     active = [
         event
         for event in events
@@ -745,13 +1134,26 @@ async def _current_events(
     return tuple(active)
 
 
+async def _current_events(
+    api_key: str,
+    now: datetime,
+    state_path: Path,
+    diagnostics: Optional[List[SourceDiagnostic]] = None,
+) -> Tuple[SourceEvent, ...]:
+    """Compatibility wrapper for an explicit catalog refresh."""
+
+    return await refresh_municipal_catalog(
+        api_key, now, state_path, diagnostics
+    )
+
+
 async def fetch_today_municipal_events(
     now: datetime,
     api_key: str,
     state_path: Path,
     diagnostics: Optional[List[SourceDiagnostic]] = None,
 ) -> Tuple[Event, ...]:
-    """Return up to two translated events, using the snapshot during outages."""
+    """Return today's translated events from the local catalog."""
 
     if not api_key:
         raise MunicipalAgendaError(
@@ -759,12 +1161,7 @@ async def fetch_today_municipal_events(
             code="CONFIG",
             description="не настроен ключ Gemini для муниципальной афиши",
         )
-    source_events = await _current_events(
-        api_key,
-        now,
-        state_path,
-        diagnostics,
-    )
+    source_events = await _cached_current_events(now, state_path)
     if not source_events:
         return ()
     try:

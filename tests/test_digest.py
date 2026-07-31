@@ -13,6 +13,26 @@ from telegrambot.models import (
 
 
 class DigestMessageTests(unittest.TestCase):
+    def test_collapses_equal_rendered_sky_conditions(self):
+        digest = MorningDigest(
+            weather=Weather(
+                current_temperature_c=None,
+                minimum_temperature_c=24,
+                maximum_temperature_c=31,
+                wind_direction="E",
+                wind_speed_kmh=10,
+                observed_at=None,
+                sky_conditions=("partly_cloudy", "partly_cloudy"),
+            ),
+            warnings=(),
+            warnings_available=True,
+        )
+
+        message = build_message(digest)
+
+        self.assertIn("малооблачно", message)
+        self.assertNotIn("малооблачно → малооблачно", message)
+
     def test_builds_short_message_with_warning(self):
         digest = MorningDigest(
             weather=Weather(

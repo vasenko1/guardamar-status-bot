@@ -12,8 +12,8 @@ prematurely.
 
 The Morning Digest MVP can fetch official AEMET weather and warning data plus
 Guardamar's public SafeBeach status, format one short message, and deliver it
-to one configured Telegram chat or channel. It may also include up to
-two official Agenda Guardamar events occurring today and an explicit active
+to one configured Telegram chat or channel. It may also include all verified
+deduplicated Guardamar events occurring today and an explicit active
 festival traffic restriction from Policía Local Guardamar.
 
 ## Repository map
@@ -37,7 +37,8 @@ with [docs/kb/00_Project_Overview.md](docs/kb/00_Project_Overview.md).
 - optional isolated listener for allowlisted private `/preview`
 - one atomic JSON value for the last successful local date
 - no Docker, PostgreSQL, webhooks, or heavy background services
-- no internal scheduler, source polling, collectors, or cache layer
+- no internal scheduler, continuous polling, resident collectors, or generic
+  cache layer
 
 The Python `tzdata` package is the only runtime dependency. It supplies the
 `Europe/Madrid` timezone on Termux builds that do not expose Android's system
@@ -78,6 +79,8 @@ Use external Termux cron entries at `07:30` and every five minutes from
 
 ```cron
 CRON_TZ=Europe/Madrid
+10 5 * * * /path/to/TelegramBot/termux/sync-municipal-events.sh
+30 5 * * * /path/to/TelegramBot/termux/sync-agenda-events.sh
 30 7 * * * /path/to/TelegramBot/termux/run-daily.sh
 10-40/5 10 * * * /path/to/TelegramBot/termux/update-daily.sh
 30,35,45 20 * * * /path/to/TelegramBot/termux/run-electricity.sh
@@ -94,6 +97,9 @@ The validated Android deployment uses the scripts in `termux/`:
   resolves the real target path before loading the project `.env`;
 - `termux/run-daily.sh` at 07:30 and `termux/update-daily.sh` every five
   minutes from 10:10 through 10:40;
+- `termux/sync-municipal-events.sh` at 05:10 and
+  `termux/sync-agenda-events.sh` at 05:30 to atomically refresh small event
+  catalogs before publication;
 - `termux/deploy.sh` at `04:00` to apply only commits promoted to the
   GitHub `deploy` branch after successful CI;
 - `termux/start-services` copied to `~/.termux/boot/start-services` for the
@@ -112,6 +118,8 @@ Recommended crontab entries:
 ```cron
 CRON_TZ=Europe/Madrid
 0 4 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/deploy.sh
+10 5 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-municipal-events.sh
+30 5 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-agenda-events.sh
 30 7 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-daily.sh
 10-40/5 10 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/update-daily.sh
 30,35,45 20 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity.sh
@@ -158,16 +166,17 @@ page contains an unknown notice format. Known notices use deterministic rules
 and consume no model quota. Any Gemini error or failed source-fact validation
 silently omits the traffic section.
 
-ADR 0012 implements a bounded structured monthly-event snapshot populated by
-change-triggered Gemini Vision extraction of the official linked poster.
+ADRs 0012 and 0028 implement two bounded normalized event catalogs. Official
+monthly HTML is primary; a changed linked MUPI is supplementary and accepted
+only after two agreeing structured reads.
 
 The current temperature and wind come from AEMET's Rojales station, the
 nearest station listed by AEMET for Guardamar (5.3 km away). SafeBeach
 contributes the active Platja Centre flag and its sea temperature when
 available. Otherwise AEMET Centro / La Roqueta may supply today's forecast
 water temperature; it never supplies the flag. The two official agenda inputs
-may contribute up to two events relevant today. Optional-source failure does not block the
-weather digest.
+may contribute all verified deduplicated events relevant today.
+Optional-source failure does not block the weather digest.
 
 Run the standard-library test suite with:
 

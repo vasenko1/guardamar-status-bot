@@ -11,6 +11,7 @@ from telegrambot.municipal_agenda import (
     MunicipalAgendaError,
     SourceEvent,
     _current_events,
+    _cached_current_events,
     _apply_reviewed_corrections,
     _apply_reviewed_daily_schedules,
     _load_snapshot,
@@ -19,8 +20,13 @@ from telegrambot.municipal_agenda import (
     _snapshot_data,
     _write_snapshot,
     extract_poster_url,
+    extract_official_agenda_text,
+    intersect_verified_poster_events,
+    merge_text_and_poster_events,
+    _poster_month,
     fetch_today_municipal_events,
     normalize_extraction,
+    normalize_extraction_candidates,
 )
 from telegrambot.gemini import GeminiError
 
@@ -63,6 +69,170 @@ def extraction():
 
 
 class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
+    def test_extracts_declared_month_and_only_programme_section(self):
+        payload = b"""
+        <nav>irrelevant</nav>
+        <h2>AGENDA CULTURAL AGOSTO 2026</h2>
+        <p>Jueves 6 de agosto a las 19:30. Concierto municipal en la plaza.
+        Entrada libre. Actividad organizada por el Ayuntamiento.</p>
+        <p>Ver Agenda</p><footer>irrelevant footer</footer>
+        """
+
+        text, month = extract_official_agenda_text(payload)
+
+        self.assertEqual(month, "2026-08")
+        self.assertIn("Concierto", text)
+        self.assertNotIn("footer", text)
+
+    def test_poster_month_prefers_filename_over_upload_directory(self):
+        self.assertEqual(
+            _poster_month(
+                "https://www.guardamardelsegura.es/wp-content/uploads/"
+                "2026/07/MUPI-AGOSTO-2026-scaled.jpg"
+            ),
+            "2026-08",
+        )
+
+    def test_text_event_wins_and_records_poster_provenance(self):
+        text_event = SourceEvent(
+            "Música a les Places: Dixi Project",
+            date(2026, 8, 6),
+            date(2026, 8, 6),
+            "19:30",
+            None,
+            "Plaça dels Llauradors",
+            "event",
+            ("turismo_html",),
+        )
+        poster_event = SourceEvent(
+            "Dixi Project, música de los años 20",
+            date(2026, 8, 6),
+            date(2026, 8, 6),
+            "19:30",
+            None,
+            "Plaza Labradores",
+            "event",
+            ("mupi",),
+        )
+
+        merged = merge_text_and_poster_events((text_event,), (poster_event,))
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0].title_es, text_event.title_es)
+        self.assertEqual(merged[0].sources, ("turismo_html", "mupi"))
+
+    def test_text_event_suppresses_conflicting_poster_at_same_place_time(self):
+        text_event = SourceEvent(
+            "SPANISH BRASS",
+            date(2026, 8, 5),
+            date(2026, 8, 5),
+            "22:00",
+            None,
+            "Castell de Guardamar",
+            "event",
+            ("turismo_html",),
+        )
+        poster_event = SourceEvent(
+            "ESTIVAL CASTELL - TOP SECRET",
+            date(2026, 8, 5),
+            date(2026, 8, 5),
+            "22:00",
+            None,
+            "Castillo de Guardamar",
+            "event",
+            ("mupi",),
+        )
+
+        merged = merge_text_and_poster_events((text_event,), (poster_event,))
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0].title_es, "SPANISH BRASS")
+        self.assertEqual(merged[0].sources, ("turismo_html", "mupi"))
+
+    def test_poster_fact_requires_independent_agreement(self):
+        first = SourceEvent(
+            "Concierto M3SICA",
+            date(2026, 8, 8),
+            date(2026, 8, 8),
+            "22:00",
+            None,
+            "Plaza Porticada",
+            "event",
+            ("mupi",),
+        )
+        verified = SourceEvent(
+            "Concierto Música",
+            date(2026, 8, 8),
+            date(2026, 8, 8),
+            "22:00",
+            None,
+            "Plaza Porticada",
+            "event",
+            ("mupi",),
+        )
+
+        self.assertEqual(
+            intersect_verified_poster_events((first,), (verified,)),
+            (),
+        )
+
+    def test_poster_fact_uses_verified_spelling_after_agreement(self):
+        first = SourceEvent(
+            "Concierto de música en la plaza",
+            date(2026, 8, 8),
+            date(2026, 8, 8),
+            "22:00",
+            None,
+            "Plaza Porticada",
+            "event",
+            ("mupi",),
+        )
+        verified = SourceEvent(
+            "Concierto de música en Plaza Porticada",
+            date(2026, 8, 8),
+            date(2026, 8, 8),
+            "22:00",
+            None,
+            "Plaza Porticada",
+            "event",
+            ("mupi",),
+        )
+
+        accepted = intersect_verified_poster_events((first,), (verified,))
+
+        self.assertEqual(accepted, (verified,))
+
+    def test_candidate_normalization_keeps_valid_sibling(self):
+        result = {
+            "month": "2026-08",
+            "events": [
+                {
+                    "title_es": "Concierto confirmado",
+                    "start_date": "2026-08-08",
+                    "end_date": "2026-08-08",
+                    "start_time": "22:00",
+                    "end_time": None,
+                    "place": "Plaza Porticada",
+                    "category": "event",
+                },
+                {
+                    "title_es": "Fecha imposible",
+                    "start_date": "2026-10-08",
+                    "end_date": "2026-10-08",
+                    "start_time": None,
+                    "end_time": None,
+                    "place": None,
+                    "category": "event",
+                },
+            ],
+        }
+
+        events = normalize_extraction_candidates(result, "2026-08", "mupi")
+
+        self.assertEqual([event.title_es for event in events], [
+            "Concierto confirmado"
+        ])
+
     def test_finds_only_official_mupi_poster(self):
         page = b"""
         <a href="https://example.com/MUPI-JULIO.jpg">bad</a>
@@ -259,7 +429,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         )
         with (
             patch(
-                "telegrambot.municipal_agenda._current_events",
+                "telegrambot.municipal_agenda._cached_current_events",
                 new=AsyncMock(return_value=(source,)),
             ),
             patch(
@@ -286,7 +456,11 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             _write_snapshot(
                 path,
                 _snapshot_data(
-                    url, "abc", datetime(2026, 7, 26, tzinfo=TZ), events
+                    url,
+                    "abc",
+                    datetime(2026, 7, 26, tzinfo=TZ),
+                    events,
+                    {"mupi": {"url": url, "sha256": "abc"}},
                 ),
             )
             page = f'<a href="{url}">poster</a>'.encode()
@@ -337,11 +511,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(current[0].ends_at.hour, 23)
         self.assertEqual(current[1].place, "Biblioteca")
         self.assertEqual(current[1].category, "exhibition")
-        self.assertEqual(
-            diagnostics[0].code,
-            "MUNI-AGENDA-FALLBACK-INVALID",
-        )
-        self.assertIn("локальный снимок", diagnostics[0].description)
+        self.assertEqual(diagnostics, [])
 
     async def test_corrupt_snapshot_is_rebuilt_from_official_poster(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -381,6 +551,23 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                         }
                     ),
                 ),
+                patch(
+                    "telegrambot.municipal_agenda.verify_agenda_poster_events",
+                    new=AsyncMock(
+                        return_value={
+                            "month": "2026-08",
+                            "events": [{
+                                "title_es": "Concierto",
+                                "start_date": "2026-08-01",
+                                "end_date": "2026-08-01",
+                                "start_time": "21:00",
+                                "end_time": None,
+                                "place": "Castillo",
+                                "category": "event",
+                            }],
+                        }
+                    ),
+                ),
             ):
                 current = await _current_events(
                     "key",
@@ -394,7 +581,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                 diagnostics[0].code,
                 "MUNI-AGENDA-SNAPSHOT-CORRUPT",
             )
-            self.assertEqual(json.loads(path.read_text())["version"], 1)
+            self.assertEqual(json.loads(path.read_text())["version"], 2)
 
     async def test_snapshot_write_failure_keeps_new_events(self):
         poster_url = (
@@ -415,6 +602,23 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                 ),
                 patch(
                     "telegrambot.municipal_agenda.extract_agenda_events",
+                    new=AsyncMock(
+                        return_value={
+                            "month": "2026-08",
+                            "events": [{
+                                "title_es": "Concierto",
+                                "start_date": "2026-08-01",
+                                "end_date": "2026-08-01",
+                                "start_time": "21:00",
+                                "end_time": None,
+                                "place": "Castillo",
+                                "category": "event",
+                            }],
+                        }
+                    ),
+                ),
+                patch(
+                    "telegrambot.municipal_agenda.verify_agenda_poster_events",
                     new=AsyncMock(
                         return_value={
                             "month": "2026-08",
@@ -465,6 +669,10 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                     poster_hash,
                     datetime(2026, 7, 31, tzinfo=TZ),
                     events,
+                    {"mupi": {
+                        "url": poster_url,
+                        "sha256": poster_hash,
+                    }},
                 ),
             )
             with (
@@ -486,7 +694,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                     path,
                 )
 
-            self.assertEqual(read_url.call_count, 2)
+            self.assertEqual(read_url.call_count, 1)
             ocr.assert_not_awaited()
             refreshed = json.loads(path.read_text())
             self.assertTrue(

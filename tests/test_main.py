@@ -1,5 +1,6 @@
 import unittest
 from datetime import datetime
+from pathlib import Path
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
@@ -31,6 +32,37 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("готовый дайджест", message)
         self.assertIn("🔧 Диагностика источников", message)
         self.assertIn("[SB-NO-ACTIVE] SafeBeach", message)
+
+    async def test_preview_uses_both_configured_event_catalogs(self):
+        captured = {}
+
+        async def produce(*args, diagnostics=None, **kwargs):
+            captured["municipal"] = args[3]
+            captured["agenda"] = kwargs["agenda_state_path"]
+            return "готовый дайджест"
+
+        with (
+            patch("telegrambot.__main__.produce_message", new=produce),
+            patch.dict(
+                "os.environ",
+                {
+                    "MUNICIPAL_AGENDA_STATE_PATH": "state/municipal-test.json",
+                    "AGENDA_STATE_PATH": "state/agenda-test.json",
+                },
+            ),
+        ):
+            await _produce_message(
+                "key",
+                datetime(2026, 8, 1, 7, 30, tzinfo=MADRID),
+            )
+
+        self.assertEqual(
+            captured,
+            {
+                "municipal": Path("state/municipal-test.json"),
+                "agenda": Path("state/agenda-test.json"),
+            },
+        )
 
 
 if __name__ == "__main__":

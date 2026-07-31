@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted and implemented
+Accepted; collection timing and text-first precedence are refined by ADR 0028
 
 ## Context
 
@@ -16,11 +16,13 @@ the target Android device.
 
 - Treat the official Turismo Guardamar cultural-agenda HTML and its linked
   Ayuntamiento monthly poster as complementary official sources.
-- Check the agenda page during the morning run and process the poster only
-  when its official URL changes. Hash a newly downloaded image before
-  replacing the valid snapshot.
-- Use the bounded Gemini Vision API to extract a strict structured event list
-  from a new or changed poster. Do not run a local OCR model.
+- Check the agenda page in the scheduled pre-morning catalog refresh and
+  process the poster only when its official URL changes. Hash a newly
+  downloaded image before replacing the valid snapshot.
+- Prefer the official monthly HTML text. Use bounded Gemini structured text
+  extraction only when that text changes. Use Gemini Vision for supplementary
+  facts from a new poster, with a second independent reading and deterministic
+  agreement checks. Do not run a local OCR model.
 - Store only normalized event facts for the current month, any explicit
   next-month preview, and still-relevant prior-poster events through a
   seven-day transition horizon: title and explicit activity type in source
@@ -28,7 +30,7 @@ the target Android device.
   successful verification time.
 - Do not store generated Russian translations. Translate only events selected
   for today's digest.
-- Merge poster and HTML events, prefer the more explicit official record, and
+- Merge poster and HTML events, always prefer the official text record, and
   deduplicate by normalized date, time, place, and title.
 - On source failure, use the last successfully stored monthly snapshot until
   its covered period ends. This is an explicit exception to the general
@@ -51,7 +53,8 @@ the target Android device.
 
 - HTML unavailable, valid snapshot present: use the snapshot.
 - Poster unavailable, valid snapshot present: use the snapshot.
-- Gemini unavailable or OCR invalid: keep the prior valid snapshot.
+- Gemini unavailable or OCR invalid: keep the prior valid snapshot; valid
+  official text remains publishable without MUPI.
 - No valid snapshot: omit the event section.
 - Conflicting dates or unreadable poster content: omit the affected event.
 - A fact manually confirmed in the accompanying official text agenda may
@@ -67,8 +70,9 @@ the target Android device.
 
 The event section remains useful during short outages and covers more of the
 official municipal program. Persistent state expands beyond the publication
-date by one bounded agenda snapshot. One image download and one Gemini Vision
-request occur only when the monthly poster changes, not every morning.
+date by one bounded agenda snapshot. Two bounded image readings occur only
+when the monthly poster changes, not every morning. Unchanged official HTML
+text requires no Gemini call.
 
 The accepted tradeoff is that a cancellation published during a source outage
 may not be reflected until the next successful refresh.

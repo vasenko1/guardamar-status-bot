@@ -11,24 +11,27 @@ schemas, and library choices belong in later design work or ADRs.
 
 ## High-level flow
 
-1. **External 07:30 trigger** starts one short-lived digest process.
-2. **Source collection** requests current data from approved official sources.
-3. **Normalization** converts source-specific responses into small, consistent
+1. **Pre-morning event refreshes** update two small normalized catalogs at
+   05:10 and 05:30, then exit.
+2. **External 07:30 trigger** starts one short-lived digest process.
+3. **Source collection** requests current data from approved official sources
+   and reads event facts from the local catalogs.
+4. **Normalization** converts source-specific responses into small, consistent
    records while preserving source, place, and time.
-4. **Validation and relevance filtering** rejects stale, incomplete,
+5. **Validation and relevance filtering** rejects stale, incomplete,
    out-of-area, or low-value records using explicit rules.
-5. **Digest building** orders the remaining facts and formats one short
+6. **Digest building** orders the remaining facts and formats one short
    message.
-6. **Telegram delivery** sends the early message and stores its message ID.
-7. **External beach checks** run at 10:10–10:40 in five-minute steps. Each
+7. **Telegram delivery** sends the early message and stores its message ID.
+8. **External beach checks** run at 10:10–10:40 in five-minute steps. Each
    process checks SafeBeach first and normally exits immediately.
-8. **Conditional replacement** checks the Mayor channel once after SafeBeach
+9. **Conditional replacement** checks the Mayor channel once after SafeBeach
    succeeds or its retry window expires. A verified update permits one fresh
    full collection, delivery of the replacement, then deletion of the earlier
    message.
-9. **Minimal state** keeps the local date, rendered morning copy, both Telegram
+10. **Minimal state** keeps the local date, rendered morning copy, both Telegram
    message IDs, morning publication time, and cleanup result.
-10. **Exit** ends every process; no collector or watcher remains active.
+11. **Exit** ends every process; no collector or watcher remains active.
 
 If nothing trustworthy and useful remains after filtering, the run may produce
 no message.
@@ -104,7 +107,8 @@ minimal file state; it does not depend on Morning Digest internals.
 - One event loop with bounded asynchronous I/O
 - One direct 07:30 collection; one later full collection only after an update
 - No webhook or public server
-- No resident scheduler, source polling, watcher, or synchronization job
+- No resident scheduler, source polling, or watcher; only two bounded daily
+  event-catalog refresh commands
 - Small local state
 - No required database server, message broker, or worker service
 
@@ -126,10 +130,10 @@ later invocation retries only failed cleanup.
 The AEMET adapter retries only transient transport, rate-limit, server, or
 expired-link failures. It repeats the complete metadata-plus-product request,
 uses short exponential delays or the server's `Retry-After`, and never retries
-permanent or invalid-data failures. Agenda Guardamar reads event details with
-at most three concurrent same-host requests, recovers an official calendar
-venue when broken JSON-LD omits it, and translates the bounded selected titles
-to Russian. If the mandatory forecast remains
+permanent or invalid-data failures. The 05:30 Agenda Guardamar refresh reads
+event details with at most three concurrent same-host requests and saves a
+small atomic catalog. The morning run translates only today's bounded titles.
+If the mandatory forecast remains
 unavailable during replacement, the renderer preserves the published 07:30
 copy and inserts only newly verified beach information.
 
@@ -146,10 +150,12 @@ persistently missing record does not suppress all beach information.
 Mayor, Policía Local, and municipal-agenda transports accept only their exact
 official HTTPS hosts, expected content types, and bounded responses. Gemini
 uses the same fail-closed protocol checks and returns structured diagnostics;
-provider response text is never exposed. A corrupt municipal-agenda snapshot
-is ignored and rebuilt from the official poster when that source is available.
+provider response text is never exposed. A corrupt event catalog is ignored.
+The official municipal HTML text is primary; a changed MUPI is supplementary,
+requires two agreeing structured readings, and cannot erase valid text facts.
 
-Termux invokes the morning command at 07:30 and the update command every five
+Termux refreshes municipal and Agenda Guardamar catalogs at 05:10 and 05:30,
+invokes the morning command at 07:30, and runs the update command every five
 minutes from 10:10 through 10:40 in `Europe/Madrid`.
 The electricity command runs at 20:30, then after 5, 15 and 30 minutes, with a
 final 21:20 attempt. It publishes at most once for the next local date.
@@ -175,9 +181,9 @@ the message ID is stored remains an unavoidable duplicate edge.
 - Collect sources only in bounded scheduled runs; never continuously.
 - Bound network time, retries, response sizes, concurrency, and stored history.
 - Keep domain rules independent from transport and source formats.
-- Do not add a cache layer for municipal or event information.
-- ADR 0012 permits one bounded normalized municipal-agenda snapshot as the only
-  event-cache exception. When the official page advances early, a new poster
+- Do not add a generic cache layer for municipal or event information.
+- ADRs 0012 and 0028 permit two bounded normalized event catalogs. When the
+  official page advances early, a new poster
   is merged with still-relevant prior-poster events for a seven-day transition
   window; expired facts are not retained.
 - Add abstractions only for current, demonstrated needs.

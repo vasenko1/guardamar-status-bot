@@ -2,8 +2,9 @@
 
 The implemented providers are AEMET, Guardamar's public SafeBeach page,
 Agenda Guardamar, the official Policía Local traffic page, and the public
-`@AlcaldeGuardamar` channel. The 07:30 run requests current data directly. A
-later verified beach update permits one fresh complete collection; no
+`@AlcaldeGuardamar` channel. The 07:30 run requests current operational data
+directly and reads events from two pre-morning local catalogs. A later
+verified beach update permits one fresh complete collection; no raw
 source-response cache is used.
 
 The remaining municipal, police, and seasonal publisher roles are mapped in
@@ -19,8 +20,8 @@ official endpoints and lightweight access methods are validated.
 | SafeBeach public Guardamar page | Active beach flags and sea temperature | High when municipal lifeguards actively maintain it | Small structured payload embedded in the public page | Yes |
 | Civil protection or emergency authority | Safety warnings | Highest priority | Alert feed or official publication | Yes |
 | Policía Local Guardamar | Explicit mobility restrictions | High for direct official notices; publication is irregular | One bounded official HTML page and reviewed linked document | Yes |
-| Agenda Guardamar | Official ticketed events occurring today | High for listed Ayuntamiento events | Bounded HTML index plus Schema.org event details | Yes |
-| Turismo Guardamar municipal agenda | Broader cultural program from the linked monthly Ayuntamiento poster | High; official but image-based | Daily link check plus change-triggered Gemini Vision extraction | Yes |
+| Agenda Guardamar | Official ticketed events occurring today | High for listed Ayuntamiento events | 05:30 bounded HTML/Schema.org catalog refresh | Yes |
+| Turismo Guardamar municipal agenda | Broader official monthly cultural text plus supplementary MUPI | High for text; image facts require agreement | 05:10 text-first catalog refresh; MUPI only after URL change | Yes |
 | Ayuntamiento Wednesday market page and official holiday calendar | Weekly market at parking La Redonda, including holiday moves | High; official recurring schedule and annual calendars | Small reviewed local calendar rule | Yes |
 | `@AlcaldeGuardamar` public channel | Explicit market exceptions, bathing-status transitions, and explicitly dated Fiestas de Barrio | Operational municipal channel; text must be mechanically grounded | One bounded morning event check, market check when relevant, or one check after SafeBeach retries | Yes, narrow role |
 | Campo de Guardamar market website | Sunday market at Camino del Raso, 15 | Operator-published schedule; no authoritative cancellation feed found | Local Sunday rule, `07:00–16:00` | Yes, explicit product exception |
@@ -155,11 +156,13 @@ operator and publishes event detail pages with Schema.org `name` and
 `startDate`, optional `endDate`, and `location`. The adapter reads a bounded
 programming page, follows at most twelve same-host event links with three
 concurrent reads, parses only complete `application/ld+json` documents, and
-returns every event from those bounded pages whose local date is today. It
+stores every valid event in the next 45 days from those bounded pages. The
+morning run selects records whose local date is today. It
 recovers the venue from the page's official calendar link when broken JSON-LD
 contains only the publisher identifier, and translates the bounded daily title
 set into Russian. It accepts only bounded HTML from the official HTTPS hosts,
-performs no media processing, and stores no event history. A narrow repair
+performs no media processing, and stores one small atomic normalized catalog,
+not a history. A narrow repair
 handles the site's observed extra property
 quote and trailing JSON commas; any other malformed structured data is omitted.
 Only Schema.org event types are accepted, and the site's technical publisher
@@ -207,21 +210,22 @@ not apply the `@AlcaldeGuardamar` check to this market.
 ## Municipal monthly agenda
 
 `https://guardamarturismo.com/agenda-cultural/` is an official Turismo
-Guardamar page. Its linked Ayuntamiento monthly poster can contain activities
-missing from the HTML text. ADR 0012 defines the implemented bounded poster
-snapshot.
+Guardamar page. Its monthly HTML program is the primary record. The linked
+Ayuntamiento MUPI may contain additional activities. ADRs 0012 and 0028 define
+the bounded text-first municipal catalog.
 
-The morning run checks for a changed official poster URL. A new URL downloads
-the image immediately. When the URL stays unchanged, the image is downloaded
-and hash-checked once when the local calendar month changes, not every day.
-A new image is processed once through Gemini Vision into structured
-source-language event facts. The OCR-declared month must match the month in
-the official poster URL. The bot stores a bounded snapshot containing the
+At 05:10, one bounded request checks the official monthly text and poster URL.
+Changed text is converted once through Gemini into structured source-language
+facts; unchanged text uses the existing facts. A new poster URL downloads the
+image once and performs two independent structured Vision readings. Only
+facts agreeing on key fields survive, and HTML text wins any duplicate or
+conflict. The image is not downloaded daily. The poster-declared month must
+match the month in its official filename. The bot stores a bounded catalog containing the
 poster month, explicit next-month previews, and still-relevant facts from the
 previous snapshot whose dates fall within the current day plus seven days.
 This prevents an early next-month poster from erasing the final days of the
-current program. It merges those events with the separate official Agenda
-Guardamar result and removes duplicates.
+current program. The digest merges these facts with the separate local Agenda
+Guardamar catalog and removes duplicates.
 
 During a temporary source outage, the last valid snapshot remains eligible
 until its covered period ends. Generated Russian translations are not stored.

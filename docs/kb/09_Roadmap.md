@@ -31,8 +31,9 @@
   without publication state changes or source polling between commands.
 - Add a fail-closed Gemini fallback for previously unknown official Policía
   Local traffic text, with strict evidence, date, street, and length checks.
-- Done: implemented ADR 0012 with change-triggered Gemini Vision extraction
-  of the monthly Ayuntamiento poster and one bounded local event snapshot.
+- Done: refined ADR 0012 with ADR 0028: official HTML text is primary,
+  changed MUPI needs two agreeing reads, and two staggered pre-morning event
+  catalogs remove routine event-site work from the 07:30 run.
 - Add focused tests and recovery guidance.
 - Review and add the next official Guardamar holiday calendar before each
   supported year begins; an unsupported year deliberately omits the market.

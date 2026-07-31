@@ -62,8 +62,8 @@ deployment agent or self-hosted CI runner.
 ### Network
 
 - Assume requests can time out, disconnect, or return incomplete data.
-- Make only the bounded requests required by the morning collection or an
-  authorized on-demand preview.
+- Make only the bounded requests required by scheduled collection, the morning
+  collection, or an authorized on-demand preview.
 - Reuse connections when simple and safe.
 - Never retry indefinitely.
 - AEMET recovery is bounded inside the adapter: three attempts for the
@@ -73,9 +73,11 @@ deployment agent or self-hosted CI runner.
 - SafeBeach uses one bounded request per invocation. Do not add an inner retry,
   response cache, cookies, or browser execution; the external five-minute
   checks already provide seasonal recovery. Its bounded HTML limit is 512 KiB.
-- Agenda Guardamar may inspect at most twelve same-host detail links with no
-  more than three requests in flight; it stores no downloaded pages. Its
-  bounded set of today's titles may share one Gemini translation request.
+- The 05:30 Agenda Guardamar refresh may inspect at most twelve same-host
+  detail links with no more than three requests in flight. The 05:10 municipal
+  refresh makes one HTML request and downloads MUPI only after its official
+  URL changes. Neither stores downloaded pages or media. Today's bounded title
+  set may share one Gemini translation request during digest construction.
 - Telegram operations share one bounded JSON client restricted to the official
   API host. Only sends retry, and only after transient failures.
 - Mayor, Policía Local, municipal-agenda, and Gemini requests enforce exact
@@ -86,13 +88,14 @@ deployment agent or self-hosted CI runner.
 ### Storage
 
 - Store configuration, the rendered morning copy needed for safe fallback,
-  minimal daily replacement state, and the bounded normalized event snapshot
-  accepted in ADR 0012. That snapshot may retain unexpired prior-poster events
+  minimal daily replacement state, and the two bounded normalized event
+  catalogs accepted in ADRs 0012 and 0028. The municipal catalog may retain
+  unexpired prior-poster events
   for at most the next seven days during a month transition.
 - Keep logs rotated or otherwise bounded.
 - Do not archive raw responses by default.
-- Do not cache raw source responses or municipal information except the
-  normalized monthly event snapshot accepted in ADR 0012.
+- Do not cache raw source responses or municipal information. Only normalized
+  source-language event facts and provenance may enter the two event catalogs.
 - Use one small atomic JSON file; SQLite is unnecessary for the MVP.
 
 ## Preferred technology direction

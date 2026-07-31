@@ -45,32 +45,57 @@ def _safebeach_is_in_season(now: datetime) -> bool:
 
 def _merge_events(*groups):
     result = []
-    seen = set()
+
+    def normalize_title(value):
+        normalized = unicodedata.normalize("NFKD", value.strip().casefold())
+        normalized = "".join(
+            character
+            for character in normalized
+            if not unicodedata.combining(character)
+        )
+        if (
+            "fiestas de barrio" in normalized
+            or ("празд" in normalized and "район" in normalized)
+        ):
+            return "fiestas-de-barrio"
+        return normalized
+
+    def normalized_words(value):
+        normalized = normalize_title(value)
+        aliases = {"castell": "castillo"}
+        return {
+            aliases.get(word, word)
+            for word in normalized.replace("/", " ").split()
+            if len(word) > 2 and word != "guardamar"
+        }
+
+    def overlap(left, right):
+        left_words = normalized_words(left)
+        right_words = normalized_words(right)
+        if not left_words or not right_words:
+            return 0.0
+        return len(left_words & right_words) / min(
+            len(left_words), len(right_words)
+        )
+
     for group in groups:
         for event in group:
-            normalized_title = unicodedata.normalize(
-                "NFKD", event.title.strip().casefold()
-            )
-            normalized_title = "".join(
-                character
-                for character in normalized_title
-                if not unicodedata.combining(character)
-            )
-            if (
-                "fiestas de barrio" in normalized_title
-                or (
-                    "празд" in normalized_title
-                    and "район" in normalized_title
+            normalized_title = normalize_title(event.title)
+            duplicate = any(
+                current.starts_at == event.starts_at
+                and (
+                    normalized_title == normalize_title(current.title)
+                    or overlap(current.title, event.title) >= 0.5
+                    or (
+                        current.place is not None
+                        and event.place is not None
+                        and overlap(current.place, event.place) >= 0.5
+                    )
                 )
-            ):
-                normalized_title = "fiestas-de-barrio"
-            key = (
-                normalized_title,
-                event.starts_at,
+                for current in result
             )
-            if key in seen:
+            if duplicate:
                 continue
-            seen.add(key)
             result.append(event)
     result.sort(
         key=lambda event: (
@@ -92,6 +117,7 @@ async def produce_message(
         "state/municipal_agenda.json"
     ),
     *,
+    agenda_state_path: Path = Path("state/agenda_guardamar.json"),
     collect_beach: bool = True,
     beach_status: Optional[BeachStatus] = None,
     beach_notice: Optional[BeachNotice] = None,
@@ -105,7 +131,7 @@ async def produce_message(
         else None
     )
     agenda_task = asyncio.create_task(
-        fetch_today_events(now, gemini_api_key)
+        fetch_today_events(now, gemini_api_key, agenda_state_path)
     )
     mayor_events_task = asyncio.create_task(
         fetch_today_mayor_events(now)
@@ -284,8 +310,8 @@ async def produce_message(
             events=_merge_events(
                 weekly_events,
                 mayor_events,
-                events,
                 municipal_events,
+                events,
             ),
         )
     )

@@ -21,6 +21,7 @@ RESPONSE_LIMIT_BYTES = 100_000
 MAX_SOURCE_CHARACTERS = 12_000
 API_HOST = "generativelanguage.googleapis.com"
 IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/webp"}
+AGENDA_MEDIA_MIME_TYPES = IMAGE_MIME_TYPES | {"application/pdf"}
 
 TRAFFIC_SCHEMA = {
     "type": "object",
@@ -119,7 +120,6 @@ AGENDA_EXTRACTION_SCHEMA = {
         "month": {"type": "string"},
         "events": {
             "type": "array",
-            "maxItems": 80,
             "items": {
                 "type": "object",
                 "additionalProperties": False,
@@ -403,14 +403,14 @@ def _extract_agenda_events(
     image: bytes,
     mime_type: str,
 ) -> Dict[str, Any]:
-    if mime_type not in IMAGE_MIME_TYPES:
+    if mime_type not in AGENDA_MEDIA_MIME_TYPES:
         raise GeminiError(
             "Unsupported municipal poster image type",
             code="CONTENT-TYPE",
-            description="формат изображения афиши не поддерживается",
+            description="формат муниципальной программы не поддерживается",
         )
     prompt = (
-        "Read this official monthly municipal agenda poster for Guardamar del "
+        "Read this official monthly municipal agenda document for Guardamar del "
         "Segura. Return every explicitly dated activity, exhibition, workshop, "
         "concert, tour, festival act, or neighbourhood event. Expand repeated "
         "dates into separate records. Make title_es a concise user-facing "
@@ -462,6 +462,106 @@ async def extract_agenda_events(
         api_key,
         image,
         mime_type,
+    )
+
+
+def _verify_agenda_poster_events(
+    api_key: str,
+    image: bytes,
+    mime_type: str,
+    candidates: Sequence[Dict[str, Any]],
+) -> Dict[str, Any]:
+    if mime_type not in IMAGE_MIME_TYPES:
+        raise GeminiError(
+            "Poster verification requires an image",
+            code="CONTENT-TYPE",
+            description="проверка MUPI требует изображение",
+        )
+    bounded = list(candidates)[:80]
+    prompt = (
+        "Independently reread this official Guardamar monthly MUPI poster. "
+        "Verify the supplied candidate records against visible poster text. "
+        "Return only activities whose date, start time (including null), and "
+        "identifying title are explicitly supported by the image. Correct "
+        "obvious OCR characters only when clearly legible. Do not add events "
+        "that are absent from the candidate list. Use the fixed schema, ISO "
+        "dates and HH:MM times. Preserve the poster month as YYYY-MM.\n\n"
+        "CANDIDATES:\n" + json.dumps(bounded, ensure_ascii=False)
+    )
+    return _request_json(
+        api_key,
+        [
+            {"text": prompt},
+            {"inlineData": {
+                "mimeType": mime_type,
+                "data": base64.b64encode(image).decode("ascii"),
+            }},
+        ],
+        AGENDA_EXTRACTION_SCHEMA,
+        8_000,
+    )
+
+
+async def verify_agenda_poster_events(
+    api_key: str,
+    image: bytes,
+    mime_type: str,
+    candidates: Sequence[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Independently verify first-pass MUPI candidates."""
+
+    return await asyncio.to_thread(
+        _verify_agenda_poster_events,
+        api_key,
+        image,
+        mime_type,
+        candidates,
+    )
+
+
+def _extract_agenda_text_events(
+    api_key: str,
+    source_text: str,
+) -> Dict[str, Any]:
+    source_text = " ".join(source_text.split())
+    if not 1 <= len(source_text) <= MAX_SOURCE_CHARACTERS:
+        raise GeminiError(
+            "Municipal agenda text has an invalid size",
+            code="SOURCE-SIZE",
+            description="текст официальной программы имеет неверный размер",
+        )
+    prompt = (
+        "Convert this official Spanish municipal cultural programme for "
+        "Guardamar del Segura into structured event facts. Return every "
+        "explicitly dated activity, exhibition, workshop, concert, tour, "
+        "festival act, neighbourhood event, and repeated series date. Expand "
+        "each repeated date into its own event record. Preserve official "
+        "titles, activity types, dates, times and places; do not infer missing "
+        "facts. Exhibition visiting hours printed with the exhibition are its "
+        "start_time and end_time. Use ISO YYYY-MM-DD dates and HH:MM times. "
+        "Classify routine facility schedules as opening_hours and routine "
+        "administrative services as municipal_service. Return the fixed JSON "
+        "schema and use null for unknown optional fields.\n\nOFFICIAL TEXT:\n"
+        + source_text
+    )
+    return _request_json(
+        api_key,
+        [{"text": prompt}],
+        AGENDA_EXTRACTION_SCHEMA,
+        8_000,
+    )
+
+
+async def extract_agenda_text_events(
+    api_key: str,
+    source_text: str,
+) -> Dict[str, Any]:
+    """Structure bounded official agenda text without image recognition."""
+
+    return await asyncio.to_thread(
+        _extract_agenda_text_events,
+        api_key,
+        source_text,
     )
 
 

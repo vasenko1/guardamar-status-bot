@@ -10,6 +10,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from .aemet import AemetError
+from .agenda import AgendaError, refresh_agenda_catalog
 from .commands import listen_for_preview, parse_allowed_user_ids
 from .delivery import publish_morning, publish_update
 from .digest import build_fallback_update
@@ -22,6 +23,10 @@ from .electricity import (
     publish_prices,
 )
 from .mayor import latest_beach_notice
+from .municipal_agenda import (
+    MunicipalAgendaError,
+    refresh_municipal_catalog,
+)
 from .morning import _safebeach_is_in_season, produce_message
 from .safebeach import (
     SafeBeachError,
@@ -35,6 +40,7 @@ from .telegram import TelegramError, delete_message, send_message
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 DEFAULT_STATE_PATH = "state/delivery.json"
 DEFAULT_MUNICIPAL_AGENDA_STATE_PATH = "state/municipal_agenda.json"
+DEFAULT_AGENDA_STATE_PATH = "state/agenda_guardamar.json"
 DEFAULT_ELECTRICITY_STATE_PATH = "state/electricity.json"
 
 
@@ -63,12 +69,43 @@ async def _produce_message(api_key: str, now: datetime) -> str:
                 DEFAULT_MUNICIPAL_AGENDA_STATE_PATH,
             )
         ),
+        agenda_state_path=Path(os.environ.get(
+            "AGENDA_STATE_PATH", DEFAULT_AGENDA_STATE_PATH
+        )),
         diagnostics=diagnostics,
     )
     return message + render_diagnostics(diagnostics)
 
 
 async def _run_command(command: str) -> int:
+    if command == "sync-municipal-events":
+        gemini_key = _required_environment("GEMINI_API_KEY")
+        state_path = Path(os.environ.get(
+            "MUNICIPAL_AGENDA_STATE_PATH",
+            DEFAULT_MUNICIPAL_AGENDA_STATE_PATH,
+        ))
+        events = await refresh_municipal_catalog(
+            gemini_key,
+            datetime.now(GUARDAMAR_TIMEZONE),
+            state_path,
+        )
+        logging.info(
+            "Municipal event catalog synchronized: %d facts", len(events)
+        )
+        return 0
+
+    if command == "sync-agenda-events":
+        state_path = Path(os.environ.get(
+            "AGENDA_STATE_PATH", DEFAULT_AGENDA_STATE_PATH
+        ))
+        events = await refresh_agenda_catalog(
+            datetime.now(GUARDAMAR_TIMEZONE), state_path
+        )
+        logging.info(
+            "Agenda Guardamar catalog synchronized: %d facts", len(events)
+        )
+        return 0
+
     if command in {"electricity", "electricity-preview"}:
         now = datetime.now(GUARDAMAR_TIMEZONE)
         target_date = (now + timedelta(days=1)).date()
@@ -143,6 +180,9 @@ async def _run_command(command: str) -> int:
                         DEFAULT_MUNICIPAL_AGENDA_STATE_PATH,
                     )
                 ),
+                agenda_state_path=Path(os.environ.get(
+                    "AGENDA_STATE_PATH", DEFAULT_AGENDA_STATE_PATH
+                )),
                 collect_beach=False,
             ),
             lambda message: send_message(
@@ -173,6 +213,9 @@ async def _run_command(command: str) -> int:
                         DEFAULT_MUNICIPAL_AGENDA_STATE_PATH,
                     )
                 ),
+                agenda_state_path=Path(os.environ.get(
+                    "AGENDA_STATE_PATH", DEFAULT_AGENDA_STATE_PATH
+                )),
                 collect_beach=False,
                 beach_status=status,
                 beach_notice=notice,
@@ -259,6 +302,8 @@ def main() -> None:
         choices=(
             "run", "morning", "update", "preview", "status", "listen",
             "electricity", "electricity-preview",
+            "sync-municipal-events",
+            "sync-agenda-events",
         ),
         default="run",
     )
@@ -297,7 +342,8 @@ def main() -> None:
         )
         raise SystemExit(2) from exc
     except (
-        AemetError, TelegramError, StateError, ValueError
+        AemetError, AgendaError, MunicipalAgendaError, TelegramError,
+        StateError, ValueError
     ) as exc:
         print(f"Command failed: {exc}", file=sys.stderr)
         raise SystemExit(2) from exc

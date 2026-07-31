@@ -1,18 +1,26 @@
 import unittest
+import tempfile
 from datetime import date, datetime
 from email.message import Message
 from zoneinfo import ZoneInfo
 from unittest.mock import AsyncMock, patch
+from pathlib import Path
 
 from telegrambot.agenda import (
     AgendaError,
     _read_page,
     extract_event_links,
     fetch_today_events,
+    _load_agenda_snapshot,
+    _write_agenda_snapshot,
     normalize_event_page,
     recurring_events,
     requires_market_exception_check,
 )
+from telegrambot.models import Event
+from telegrambot.morning import _merge_events
+
+TZ = ZoneInfo("Europe/Madrid")
 
 
 class _Response:
@@ -51,6 +59,26 @@ class _Opener:
 
 
 class AgendaNormalizationTests(unittest.TestCase):
+    def test_cross_catalog_duplicate_prefers_richer_municipal_fact(self):
+        starts_at = datetime(2026, 8, 1, 10, 0, tzinfo=TZ)
+        municipal = Event(
+            title=(
+                "Экскурсии «Песчаная память», маршрут Замок – "
+                "Халифский рабат – Фонтета"
+            ),
+            starts_at=starts_at,
+            place="Castillo de Guardamar",
+        )
+        agenda = Event(
+            title="Экскурсия с гидом Память песка",
+            starts_at=starts_at,
+            place="Castell",
+        )
+
+        merged = _merge_events((municipal,), (agenda,))
+
+        self.assertEqual(merged, (municipal,))
+
     def test_extracts_unique_official_event_links(self):
         payload = b"""
         <a href="/espectaculo/48/concierto.html">One</a>
@@ -295,6 +323,47 @@ class AgendaNormalizationTests(unittest.TestCase):
 
 
 class AgendaCollectionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_cached_daily_read_performs_no_network_requests(self):
+        event = Event(
+            title="Concierto",
+            starts_at=datetime(2026, 8, 1, 20, 0, tzinfo=TZ),
+            ends_at=None,
+            place="Casa de Cultura",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agenda.json"
+            _write_agenda_snapshot(
+                path,
+                datetime(2026, 8, 1, 5, 30, tzinfo=TZ),
+                (event,),
+            )
+            with patch("telegrambot.agenda._read_page") as read_page:
+                result = await fetch_today_events(
+                    datetime(2026, 8, 1, 7, 30, tzinfo=TZ),
+                    state_path=path,
+                )
+
+        self.assertEqual(result, (event,))
+        read_page.assert_not_called()
+
+    def test_agenda_snapshot_round_trip_is_bounded_and_atomic(self):
+        event = Event(
+            title="Visita guiada",
+            starts_at=datetime(2026, 8, 2, 10, 0, tzinfo=TZ),
+            ends_at=datetime(2026, 8, 2, 12, 0, tzinfo=TZ),
+            place="Castillo de Guardamar",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agenda.json"
+            _write_agenda_snapshot(
+                path,
+                datetime(2026, 8, 1, 5, 30, tzinfo=TZ),
+                (event,),
+            )
+            loaded = _load_agenda_snapshot(path)
+
+        self.assertEqual(loaded, (event,))
+
     async def test_reports_when_all_event_pages_fail(self):
         index = (
             b'<a href="/espectaculo/1/a.html">A</a>'

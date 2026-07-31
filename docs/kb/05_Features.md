@@ -187,8 +187,9 @@ The beach-status slice adds:
 
 Neither AEMET nor fallback logic supplies or infers a beach flag.
 
-The event slice adds today's official ticketed Agenda Guardamar events. It
-reads the title, local time range, and place, recovers the official calendar
+The event slice adds today's official ticketed Agenda Guardamar events from a
+small catalog refreshed before the morning run. The refresh reads the title,
+local time range, and place, recovers the official calendar
 venue when the site's JSON-LD contains only its publisher identifier,
 translates titles to Russian, sorts chronologically, and removes duplicates.
 Source failure or no event today omits that source's contribution.
@@ -208,10 +209,12 @@ based on the market operator's published schedule. It is not passed through
 the municipal Wednesday-market holiday calendar or Mayor-channel exception
 check because no equivalent authoritative cancellation feed is available.
 
-ADR 0012 implements an expansion using the Ayuntamiento monthly poster linked
-from the official Turismo Guardamar agenda page. A poster with a new URL is
-processed once with Gemini Vision and stored as a bounded structured monthly
-event snapshot. When the page publishes the next poster early, still-relevant
+ADRs 0012 and 0028 implement a text-first expansion from the official Turismo
+Guardamar agenda page. Changed official monthly HTML is the primary record and
+is converted into source-language facts before the morning run. A poster with
+a new URL is processed as a supplement using two agreeing Gemini Vision reads
+and stored in the same bounded municipal catalog. When the page publishes the
+next poster early, still-relevant
 facts from the prior snapshot remain available for the current day and the
 following seven days. The snapshot may also supply today's events during a
 temporary source outage. Extraction preserves explicit event type, medium,

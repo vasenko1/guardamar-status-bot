@@ -287,11 +287,11 @@ def build_message(digest: MorningDigest) -> str:
     displayed_conditions = weather.sky_conditions
     if not displayed_conditions and weather.sky_condition:
         displayed_conditions = (weather.sky_condition,)
-    sky_labels = [
-        SKY_LABELS[condition]
-        for condition in displayed_conditions
-        if condition in SKY_LABELS
-    ]
+    sky_labels = []
+    for condition in displayed_conditions:
+        label = SKY_LABELS.get(condition)
+        if label is not None and label not in sky_labels:
+            sky_labels.append(label)
     sky_suffix = f" • {' → '.join(sky_labels)}" if sky_labels else ""
     weather_icon = (
         "🌤"

@@ -52,10 +52,12 @@ or the fixed known traffic rule. Agenda Guardamar title translation is the
 narrow exception described below; dates, times, places, selection, and
 relevance remain deterministic.
 
-ADR 0012 additionally permits Gemini Vision only when a new or changed
-official monthly municipal-agenda poster must be converted into structured
-event facts. The result must use a fixed schema and pass date, month, field
-length, and duplicate validation before replacing the previous snapshot.
+ADRs 0012 and 0028 additionally permit Gemini structured extraction when the
+official monthly municipal text changes and Gemini Vision only for a new MUPI
+URL. MUPI facts require two independent structured readings and deterministic
+agreement on key fields; official HTML text always wins conflicts. Every
+result must use a fixed schema and pass date, month, field-length, provenance,
+and duplicate validation before replacing the previous catalog.
 Russian translations must not be stored. Invalid OCR keeps the prior valid
 snapshot and cannot erase it. Without a prior snapshot, OCR failure remains an
 optional municipal-agenda failure and cannot stop the rest of the digest.
