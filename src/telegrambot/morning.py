@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import unicodedata
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -17,7 +18,11 @@ from .agenda import (
 from .aemet import fetch_morning_digest
 from .digest import build_message
 from .diagnostics import SourceDiagnostic, source_error
-from .mayor import MayorChannelError, market_is_cancelled
+from .mayor import (
+    MayorChannelError,
+    fetch_today_mayor_events,
+    market_is_cancelled,
+)
 from .municipal_agenda import (
     MunicipalAgendaError,
     fetch_today_municipal_events,
@@ -43,13 +48,39 @@ def _merge_events(*groups):
     seen = set()
     for group in groups:
         for event in group:
-            key = (event.title.strip().casefold(), event.starts_at)
+            normalized_title = unicodedata.normalize(
+                "NFKD", event.title.strip().casefold()
+            )
+            normalized_title = "".join(
+                character
+                for character in normalized_title
+                if not unicodedata.combining(character)
+            )
+            if (
+                "fiestas de barrio" in normalized_title
+                or (
+                    "празд" in normalized_title
+                    and "район" in normalized_title
+                )
+            ):
+                normalized_title = "fiestas-de-barrio"
+            key = (
+                normalized_title,
+                event.starts_at,
+            )
             if key in seen:
                 continue
             seen.add(key)
             result.append(event)
-            if len(result) == 2:
-                return tuple(result)
+    result.sort(
+        key=lambda event: (
+            event.starts_at is None,
+            event.starts_at or datetime.max.replace(
+                tzinfo=GUARDAMAR_TIMEZONE
+            ),
+            event.title.casefold(),
+        )
+    )
     return tuple(result)
 
 
@@ -73,7 +104,12 @@ async def produce_message(
         if collect_beach and _safebeach_is_in_season(now)
         else None
     )
-    agenda_task = asyncio.create_task(fetch_today_events(now))
+    agenda_task = asyncio.create_task(
+        fetch_today_events(now, gemini_api_key)
+    )
+    mayor_events_task = asyncio.create_task(
+        fetch_today_mayor_events(now)
+    )
     weekly_events = recurring_events(now)
     market_status_task = (
         asyncio.create_task(
@@ -104,6 +140,7 @@ async def produce_message(
         if beach_task is not None:
             beach_task.cancel()
         agenda_task.cancel()
+        mayor_events_task.cancel()
         municipal_agenda_task.cancel()
         traffic_task.cancel()
         if market_status_task is not None:
@@ -167,6 +204,23 @@ async def produce_message(
                 source_error("AGENDA", "Agenda Guardamar", exc)
             )
         events = ()
+    try:
+        mayor_events = await mayor_events_task
+    except MayorChannelError as exc:
+        LOGGER.warning(
+            "Mayor events unavailable; omitting events: %s",
+            exc,
+        )
+        if diagnostics is not None:
+            diagnostics.append(
+                source_error(
+                    "MAYOR",
+                    "@AlcaldeGuardamar",
+                    exc,
+                    stage="EVENTS",
+                )
+            )
+        mayor_events = ()
 
     try:
         municipal_events = await municipal_agenda_task
@@ -229,6 +283,7 @@ async def produce_message(
             traffic_notices=traffic_notices,
             events=_merge_events(
                 weekly_events,
+                mayor_events,
                 events,
                 municipal_events,
             ),

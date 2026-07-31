@@ -467,6 +467,10 @@ class SafeBeachFailureTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value=()),
             ),
             patch(
+                "telegrambot.morning.fetch_today_mayor_events",
+                new=AsyncMock(return_value=()),
+            ),
+            patch(
                 "telegrambot.morning.fetch_today_municipal_events",
                 new=AsyncMock(return_value=()),
             ),
@@ -517,6 +521,10 @@ class SafeBeachFailureTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value=()),
             ),
             patch(
+                "telegrambot.morning.fetch_today_mayor_events",
+                new=AsyncMock(return_value=()),
+            ),
+            patch(
                 "telegrambot.morning.fetch_today_municipal_events",
                 new=AsyncMock(return_value=()),
             ),
@@ -558,6 +566,10 @@ class SafeBeachFailureTests(unittest.IsolatedAsyncioTestCase):
             ),
             patch(
                 "telegrambot.morning.fetch_today_events",
+                new=AsyncMock(return_value=()),
+            ),
+            patch(
+                "telegrambot.morning.fetch_today_mayor_events",
                 new=AsyncMock(return_value=()),
             ),
             patch(

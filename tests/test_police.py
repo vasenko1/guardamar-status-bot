@@ -265,6 +265,10 @@ class PoliceTrafficFailureTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value=()),
             ),
             patch(
+                "telegrambot.morning.fetch_today_mayor_events",
+                new=AsyncMock(return_value=()),
+            ),
+            patch(
                 "telegrambot.morning.fetch_traffic_notices",
                 new=AsyncMock(
                     side_effect=PoliceTrafficError("temporarily unavailable")

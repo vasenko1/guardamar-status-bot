@@ -70,7 +70,8 @@ deployment agent or self-hosted CI runner.
   response cache, cookies, or browser execution; the external five-minute
   checks already provide seasonal recovery. Its bounded HTML limit is 512 KiB.
 - Agenda Guardamar may inspect at most twelve same-host detail links with no
-  more than three requests in flight; it stores no downloaded pages.
+  more than three requests in flight; it stores no downloaded pages. Its
+  bounded set of today's titles may share one Gemini translation request.
 - Telegram operations share one bounded JSON client restricted to the official
   API host. Only sends retry, and only after transient failures.
 - Mayor, Policía Local, municipal-agenda, and Gemini requests enforce exact
@@ -81,8 +82,9 @@ deployment agent or self-hosted CI runner.
 ### Storage
 
 - Store configuration, the rendered morning copy needed for safe fallback,
-  minimal daily replacement state, and the bounded
-  monthly event snapshot accepted in ADR 0012.
+  minimal daily replacement state, and the bounded normalized event snapshot
+  accepted in ADR 0012. That snapshot may retain unexpired prior-poster events
+  for at most the next seven days during a month transition.
 - Keep logs rotated or otherwise bounded.
 - Do not archive raw responses by default.
 - Do not cache raw source responses or municipal information except the

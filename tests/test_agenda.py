@@ -2,7 +2,7 @@ import unittest
 from datetime import date, datetime
 from email.message import Message
 from zoneinfo import ZoneInfo
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from telegrambot.agenda import (
     AgendaError,
@@ -136,6 +136,21 @@ class AgendaNormalizationTests(unittest.TestCase):
         normalized = normalize_event_page(event, date(2026, 8, 5))
         self.assertIsNotNone(normalized)
         self.assertIsNone(normalized.place)
+
+    def test_recovers_official_calendar_place_when_json_ld_omits_it(self):
+        payload = b"""
+        <script type="application/ld+json">
+        {"@type":"Event","name":"SAND MEMORIES GUIDED TOUR",
+         "startDate":"2026-07-31T10:00",
+         "location":{"name":"ayuntamientoguardamardelsegura"}}
+        </script>
+        <a href="https://www.google.com/calendar/render?action=TEMPLATE&amp;location=CASTELL+VISITA+GUIADA%2C+CASTELL%2C+03140%2C+GUARDAMAR+DEL+SEGURA">calendar</a>
+        """
+
+        event = normalize_event_page(payload, date(2026, 7, 31))
+
+        self.assertIsNotNone(event)
+        self.assertEqual(event.place, "Castell")
 
     def test_repairs_only_known_official_json_ld_punctuation(self):
         payload = b"""
@@ -306,6 +321,48 @@ class AgendaCollectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             raised.exception.diagnostic_code,
             "DETAILS-UNAVAILABLE",
+        )
+
+    async def test_translates_all_today_events_without_product_limit(self):
+        index = b"".join(
+            f'<a href="/espectaculo/{number}/event.html">E</a>'.encode()
+            for number in range(1, 4)
+        )
+
+        def read_page(url):
+            if url.endswith("PROGRAMACION-ESPECTACULOS.html"):
+                return index
+            number = url.split("/espectaculo/", 1)[1].split("/", 1)[0]
+            return f"""
+            <script type="application/ld+json">
+            {{"@type":"Event","name":"EVENT {number}",
+              "startDate":"2026-08-05T1{number}:00"}}
+            </script>
+            """.encode()
+
+        with (
+            patch("telegrambot.agenda._read_page", side_effect=read_page),
+            patch(
+                "telegrambot.agenda.translate_event_titles",
+                new=AsyncMock(
+                    return_value=["Событие 1", "Событие 2", "Событие 3"]
+                ),
+            ),
+        ):
+            events = await fetch_today_events(
+                datetime(
+                    2026,
+                    8,
+                    5,
+                    7,
+                    tzinfo=ZoneInfo("Europe/Madrid"),
+                ),
+                "key",
+            )
+
+        self.assertEqual(
+            [event.title for event in events],
+            ["Событие 1", "Событие 2", "Событие 3"],
         )
 
 

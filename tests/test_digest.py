@@ -447,6 +447,79 @@ class DigestMessageTests(unittest.TestCase):
         self.assertIn("   🟢 Vivers", updated)
         self.assertNotIn("Centre / Babilònia", updated)
 
+    def test_renders_all_events_and_expands_street_abbreviation(self):
+        digest = MorningDigest(
+            weather=Weather(
+                current_temperature_c=None,
+                minimum_temperature_c=23,
+                maximum_temperature_c=31,
+                wind_direction="E",
+                wind_speed_kmh=11,
+                observed_at=None,
+            ),
+            warnings=(),
+            warnings_available=True,
+            events=tuple(
+                Event(
+                    title=f"Событие {number}",
+                    starts_at=datetime(
+                        2026,
+                        7,
+                        31,
+                        18 + number,
+                        tzinfo=timezone.utc,
+                    ),
+                    place=(
+                        "parque C/ Berlín"
+                        if number == 1
+                        else "Castell"
+                    ),
+                )
+                for number in range(1, 4)
+            ),
+        )
+
+        message = build_message(digest)
+
+        self.assertEqual(message.count("\n• "), 3)
+        self.assertIn("парк на улице Berlín", message)
+
+    def test_removes_duplicate_exhibition_type_and_keeps_author(self):
+        digest = MorningDigest(
+            weather=Weather(
+                current_temperature_c=None,
+                minimum_temperature_c=23,
+                maximum_temperature_c=31,
+                wind_direction="E",
+                wind_speed_kmh=11,
+                observed_at=None,
+            ),
+            warnings=(),
+            warnings_available=True,
+            events=(
+                Event(
+                    title=(
+                        'Выставка живописи: Выставка живописи '
+                        '"Свет вопреки боли" — Вира Дегляренко'
+                    ),
+                    starts_at=None,
+                    place="BIBLIOTECA MUNICIPAL GUARDAMAR DEL SEGURA",
+                    category="exhibition",
+                ),
+            ),
+        )
+
+        message = build_message(digest)
+
+        self.assertIn(
+            "Выставка живописи «Свет вопреки боли» — Вира Дегляренко",
+            message,
+        )
+        self.assertNotIn(
+            "Выставка живописи: Выставка живописи",
+            message,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

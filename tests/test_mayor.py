@@ -8,6 +8,7 @@ from telegrambot.models import MorningDigest, Weather
 from telegrambot.morning import produce_message
 from telegrambot.mayor import (
     MayorChannelError,
+    _fiestas_de_barrio_events,
     _read_page,
     extract_recent_posts,
     latest_beach_notice,
@@ -117,6 +118,42 @@ class MayorChannelTests(unittest.IsolatedAsyncioTestCase):
             validate_market_status(candidate, source, date(2026, 7, 29))
         )
 
+    def test_extracts_today_fiestas_de_barrio_with_full_location(self):
+        text = (
+            "Este fin de semana llegan las FIESTAS DE BARRIO. "
+            "Viernes 31 de julio, desde las 19:00 h., Urbanizaciones "
+            "Moncayo, Pórtico Mediterráneo, Larrosa y La Laguna. "
+            "Ubicación parque C/ Berlín. "
+            "Sábado 1 de agosto, desde de las 18:00 h., Urbanización "
+            "Pinomar Lomas del Polo. Ubicación: Frente piscina."
+        )
+
+        events = _fiestas_de_barrio_events(
+            text,
+            date(2026, 7, 31),
+        )
+
+        self.assertEqual(len(events), 1)
+        self.assertEqual(
+            events[0].title,
+            "Праздник районов Moncayo, Pórtico Mediterráneo, "
+            "Larrosa и La Laguna",
+        )
+        self.assertEqual(events[0].starts_at.hour, 19)
+        self.assertEqual(events[0].place, "parque C/ Berlín")
+
+    def test_extracts_singular_tourism_agenda_wording(self):
+        events = _fiestas_de_barrio_events(
+            (
+                "FIESTA DE BARRIO Viernes 31 de julio, a partir de "
+                "las 19:00 h. Parque C/ Berlín. URBANIZACIONES MONCAYO."
+            ),
+            date(2026, 7, 31),
+        )
+
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].place, "Parque C/ Berlín")
+
     async def test_skips_gemini_when_no_market_post_exists(self):
         now = datetime(2026, 7, 29, 7, 30, tzinfo=TZ)
         with (
@@ -206,6 +243,10 @@ class MayorChannelTests(unittest.IsolatedAsyncioTestCase):
             ),
             patch(
                 "telegrambot.morning.fetch_today_events",
+                new=AsyncMock(return_value=()),
+            ),
+            patch(
+                "telegrambot.morning.fetch_today_mayor_events",
                 new=AsyncMock(return_value=()),
             ),
             patch(

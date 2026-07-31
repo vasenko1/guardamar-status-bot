@@ -9,12 +9,12 @@ import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from .gemini import GeminiError, extract_market_status
-from .models import BeachNotice
+from .models import BeachNotice, Event
 
 CHANNEL_URL = "https://t.me/s/AlcaldeGuardamar"
 ALLOWED_HOST = "t.me"
@@ -32,6 +32,35 @@ _TEXT_PATTERN = re.compile(
     re.DOTALL,
 )
 _DATE_PATTERN = re.compile(rb'<time datetime="([^"]+)"')
+_FIESTAS_DATE_PATTERN = re.compile(
+    r"(?:lunes|martes|mi[eé]rcoles|jueves|viernes|"
+    r"s[aá]bado|domingo)\s+(\d{1,2})\s+de\s+"
+    r"(enero|febrero|marzo|abril|mayo|junio|julio|agosto|"
+    r"septiembre|octubre|noviembre|diciembre)\s*,?\s*"
+    r"(?:desde(?:\s+de)?\s+las|a\s+partir\s+de\s+las)\s+"
+    r"(\d{1,2}):(\d{2})\s*h",
+    re.IGNORECASE,
+)
+_MONTHS = {
+    name: index
+    for index, name in enumerate(
+        (
+            "enero",
+            "febrero",
+            "marzo",
+            "abril",
+            "mayo",
+            "junio",
+            "julio",
+            "agosto",
+            "septiembre",
+            "octubre",
+            "noviembre",
+            "diciembre",
+        ),
+        start=1,
+    )
+}
 
 
 class MayorChannelError(RuntimeError):
@@ -272,6 +301,107 @@ async def latest_beach_notice(
         key=lambda notice: notice.published_at,
         default=None,
     )
+
+
+def _fiestas_de_barrio_events(
+    text: str,
+    local_day: date,
+) -> Tuple[Event, ...]:
+    """Extract only explicitly dated Fiestas de Barrio entries."""
+
+    if re.search(
+        r"\bfiesta(?:s)?\s+de\s+barrio\b",
+        _normalized(text),
+    ) is None:
+        return ()
+    matches = list(_FIESTAS_DATE_PATTERN.finditer(text))
+    events = []
+    for index, match in enumerate(matches):
+        day, month_name, hour, minute = match.groups()
+        try:
+            event_day = date(
+                local_day.year,
+                _MONTHS[_normalized(month_name)],
+                int(day),
+            )
+        except (KeyError, ValueError):
+            continue
+        if event_day != local_day:
+            continue
+        end = (
+            matches[index + 1].start()
+            if index + 1 < len(matches)
+            else len(text)
+        )
+        segment = text[match.end():end]
+        districts_match = re.search(
+            r"\burbanizaciones?\s+(.+?)(?:\.\s*ubicaci[oó]n|"
+            r"\s+ubicaci[oó]n|\.|$)",
+            segment,
+            re.IGNORECASE,
+        )
+        districts = (
+            " ".join(districts_match.group(1).split())
+            if districts_match is not None
+            else ""
+        )
+        districts = re.sub(
+            r"\s+y\s+([^,]+)$",
+            r" и \1",
+            districts,
+            flags=re.IGNORECASE,
+        )
+        place_match = re.search(
+            r"ubicaci[oó]n\s*:?\s*(.+?)(?:\.\s|#|$)",
+            segment,
+            re.IGNORECASE,
+        )
+        if place_match is None:
+            place_match = re.search(
+                r"\b(parque\s+C/\s*[^.]+|"
+                r"urb\.\s*[^.]*?frente(?:\s+a)?(?:\s+la)?\s+piscina)"
+                r"(?:\.|#|$)",
+                segment,
+                re.IGNORECASE,
+            )
+        place = (
+            " ".join(place_match.group(1).split())
+            if place_match is not None
+            else None
+        )
+        events.append(
+            Event(
+                title=(
+                    f"Праздник районов {districts}"
+                    if districts
+                    else "Праздник районов"
+                ),
+                starts_at=datetime(
+                    event_day.year,
+                    event_day.month,
+                    event_day.day,
+                    int(hour),
+                    int(minute),
+                    tzinfo=GUARDAMAR_TIMEZONE,
+                ),
+                place=place,
+            )
+        )
+    return tuple(events)
+
+
+async def fetch_today_mayor_events(now: datetime) -> Tuple[Event, ...]:
+    """Return explicitly dated supported events from the official channel."""
+
+    payload = await asyncio.to_thread(_read_page)
+    local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
+    events = [
+        event
+        for _, text in extract_recent_posts(payload, now)
+        for event in _fiestas_de_barrio_events(text, local_day)
+    ]
+    events.sort(key=lambda event: event.starts_at or now)
+    return tuple(events)
 
 
 def validate_market_status(

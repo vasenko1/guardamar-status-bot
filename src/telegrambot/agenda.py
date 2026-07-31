@@ -4,15 +4,18 @@ import asyncio
 import html
 import http.client
 import json
+import re
 import socket
 import urllib.error
 import urllib.parse
 import urllib.request
+from dataclasses import replace
 from datetime import date, datetime
 from html.parser import HTMLParser
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
+from .gemini import GeminiError, translate_event_titles
 from .holidays import is_market_day
 from .models import Event
 
@@ -25,9 +28,12 @@ REQUEST_TIMEOUT_SECONDS = 10
 PAGE_LIMIT_BYTES = 300_000
 MAX_EVENT_LINKS = 12
 MAX_EVENT_CONCURRENCY = 3
-MAX_DAILY_EVENTS = 2
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 _IGNORED_PLACES = {"ayuntamientoguardamardelsegura"}
+_CALENDAR_LINK_PATTERN = re.compile(
+    rb'href="([^"]*google\.com/calendar/render[^"]*)"',
+    re.IGNORECASE,
+)
 
 
 class AgendaError(RuntimeError):
@@ -377,6 +383,47 @@ def _event_from_mapping(
     )
 
 
+def _calendar_place(payload: bytes) -> Optional[str]:
+    """Recover the official venue when the page's JSON-LD omits it."""
+
+    match = _CALENDAR_LINK_PATTERN.search(payload)
+    if match is None:
+        return None
+    raw_url = html.unescape(
+        match.group(1).decode("utf-8", "replace")
+    )
+    values = urllib.parse.parse_qs(
+        urllib.parse.urlparse(raw_url).query
+    ).get("location")
+    if not values:
+        return None
+    parts = [
+        " ".join(part.split())
+        for part in values[0].split(",")
+        if " ".join(part.split())
+    ]
+    parts = [
+        part
+        for part in parts
+        if not re.fullmatch(r"\d{5}", part)
+        and part.casefold() != "guardamar del segura"
+    ]
+    if not parts:
+        return None
+    if (
+        len(parts) > 1
+        and parts[1].casefold() in parts[0].casefold()
+    ):
+        place = parts[1]
+    else:
+        place = parts[0]
+    if not 1 <= len(place) <= 120:
+        return None
+    if place.isupper():
+        place = place.title().replace(" De ", " de ")
+    return place
+
+
 def normalize_event_page(
     payload: bytes,
     local_day: date,
@@ -392,12 +439,19 @@ def normalize_event_page(
         for candidate in _json_objects(decoded):
             event = _event_from_mapping(candidate, local_day)
             if event is not None:
+                if event.place is None:
+                    place = _calendar_place(payload)
+                    if place is not None:
+                        event = replace(event, place=place)
                 return event
     return None
 
 
-async def fetch_today_events(now: datetime) -> Tuple[Event, ...]:
-    """Fetch at most two official events with three bounded detail workers."""
+async def fetch_today_events(
+    now: datetime,
+    gemini_api_key: str = "",
+) -> Tuple[Event, ...]:
+    """Fetch today's official events with three bounded detail workers."""
 
     index = await asyncio.to_thread(_read_page, AGENDA_URL)
     links = extract_event_links(index)
@@ -437,7 +491,24 @@ async def fetch_today_events(now: datetime) -> Tuple[Event, ...]:
             seen.add(key)
             events.append(event)
     events.sort(key=lambda item: (item.starts_at, item.title.casefold()))
-    return tuple(events[:MAX_DAILY_EVENTS])
+    if gemini_api_key and events:
+        try:
+            titles = await translate_event_titles(
+                gemini_api_key,
+                [event.title for event in events],
+            )
+        except GeminiError as exc:
+            raise AgendaError(
+                "Agenda Guardamar event translation failed",
+                code=exc.diagnostic_code,
+                status=exc.server_status,
+                description=exc.safe_description,
+            ) from exc
+        events = [
+            replace(event, title=title)
+            for event, title in zip(events, titles)
+        ]
+    return tuple(events)
 
 
 def recurring_events(now: datetime) -> Tuple[Event, ...]:

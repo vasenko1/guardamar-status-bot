@@ -63,11 +63,11 @@ The bot must not claim to replace official emergency communication.
 
 The core digest policy remains deterministic. Gemini is limited to the
 accepted Policía Local traffic fallback, the exact-date Mayor-channel market
-exception, and municipal-poster OCR/title translation. Structured results,
-source evidence where applicable, deterministic validation, and snapshot
-rules decide publication. Do not add local models, embeddings, general
-generation, or AI dependencies to weather, warnings, beach status, formatting,
-or delivery.
+exception, municipal-poster OCR/title translation, and title-only translation
+of already structured Agenda Guardamar events. Structured results, source
+evidence where applicable, deterministic validation, and snapshot rules decide
+publication. Do not add local models, embeddings, general generation, or AI
+dependencies to weather, warnings, beach status, formatting, or delivery.
 
 ## 8. Design for partial failure
 

@@ -46,8 +46,10 @@ validation requires an exact quotation, cancellation wording, and the target
 local date; otherwise the recurring market is omitted rather than guessed.
 
 Do not send secrets, personal data, unrelated private content, or another
-model's output. Do not use Gemini for AEMET, SafeBeach, Agenda, delivery,
-scheduling, or the fixed known traffic rule.
+model's output. Do not use Gemini for AEMET, SafeBeach, delivery, scheduling,
+or the fixed known traffic rule. Agenda Guardamar title translation is the
+narrow exception described below; dates, times, places, selection, and
+relevance remain deterministic.
 
 ADR 0012 additionally permits Gemini Vision only when a new or changed
 official monthly municipal-agenda poster must be converted into structured
@@ -56,6 +58,11 @@ length, and duplicate validation before replacing the previous snapshot.
 Russian translations must not be stored. Invalid OCR keeps the prior valid
 snapshot and cannot erase it. Without a prior snapshot, OCR failure remains an
 optional municipal-agenda failure and cannot stop the rest of the digest.
+
+The same bounded title-only translation contract applies to today's structured
+Agenda Guardamar events. Gemini receives only the official titles and returns
+the same number in the same order. It may not add dates, places, explanations,
+or event facts. Failure omits only the Agenda Guardamar contribution.
 
 The Gemini client sends the key only in the API header, accepts bounded JSON
 only from the exact official HTTPS API host, and exposes stable status codes

@@ -1,5 +1,6 @@
 """Deterministic formatting for one concise Telegram message."""
 
+import re
 import unicodedata
 from datetime import datetime
 from typing import Optional
@@ -99,7 +100,29 @@ def _warning_text(event: str) -> str:
 
 
 def _event_title(value: str) -> str:
-    return value if len(value) <= 64 else f"{value[:61].rstrip()}…"
+    return value if len(value) <= 120 else f"{value[:117].rstrip()}…"
+
+
+def _event_place(value: str) -> str:
+    value = " ".join(value.split())
+    value = re.sub(r"\bC/\s*", "улица ", value, flags=re.IGNORECASE)
+    value = re.sub(
+        r"^parque\s+улица\s+",
+        "парк на улице ",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(
+        r"^frente(?:\s+a)?(?:\s+la)?\s+piscina,?\s*",
+        "у бассейна, ",
+        value,
+        flags=re.IGNORECASE,
+    )
+    if value.isupper():
+        value = value.title().replace(" Del ", " del ").replace(
+            " De ", " de "
+        )
+    return _event_title(value)
 
 
 def _exhibition_title(value: str) -> str:
@@ -108,14 +131,15 @@ def _exhibition_title(value: str) -> str:
     if "выстав" not in value.casefold():
         return f"Выставка «{value}»"
     prefix, separator, name = value.partition(":")
-    if (
-        separator
-        and name.strip()
-        and "«" not in value
-        and '"' not in value
-        and "выстав" in prefix.casefold()
-    ):
-        return f"{prefix.strip()} «{name.strip()}»"
+    if separator and name.strip() and "выстав" in prefix.casefold():
+        prefix = prefix.strip()
+        name = name.strip()
+        if name.casefold().startswith(prefix.casefold()):
+            name = name[len(prefix):].lstrip(" :-—")
+        name = re.sub(r'"([^"]+)"', r"«\1»", name)
+        if "«" in name:
+            return f"{prefix} {name}"
+        return f"{prefix} «{name}»"
     return value
 
 
@@ -295,10 +319,11 @@ def build_message(digest: MorningDigest) -> str:
 
     if digest.events:
         lines.extend(["", "📅 События дня:"])
-        for event in digest.events[:2]:
-            title = _event_title(event.title)
+        for event in digest.events:
+            title = event.title
             if event.category == "exhibition":
                 title = _exhibition_title(title)
+            title = _event_title(title)
             if event.is_final_day:
                 title = f"Последний день: {title}"
             time_prefix = ""
@@ -315,7 +340,7 @@ def build_message(digest: MorningDigest) -> str:
                 time_prefix += " — "
             place_separator = ", " if time_prefix else " — "
             place = (
-                f"{place_separator}{_event_title(event.place)}"
+                f"{place_separator}{_event_place(event.place)}"
                 if event.place
                 else ""
             )

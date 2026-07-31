@@ -18,7 +18,10 @@
 - Implement Morning Digest collection and formatting. The AEMET weather and
   warning slice, Platja Centre SafeBeach status, and AEMET beach-temperature
   fallback are implemented. The optional Agenda Guardamar same-day event slice
-  and structured Policía Local mobility measures are implemented.
+  and structured Policía Local mobility measures are implemented. Event
+  completeness now includes Russian Agenda titles, same-page venue recovery,
+  all verified same-day items, a seven-day poster transition, and narrowly
+  parsed Fiestas de Barrio from the Mayor channel.
 - Implement the approved canonical phone layout and inline wind comparison
   without changing source collection or message size. Complete.
 - Add two-stage Telegram delivery. Termux invokes the full briefing at 07:30

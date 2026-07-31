@@ -96,7 +96,7 @@ EVENT_TRANSLATION_SCHEMA = {
     "properties": {
         "titles_ru": {
             "type": "array",
-            "maxItems": 2,
+            "maxItems": 80,
             "items": {"type": "string"},
         }
     },
@@ -489,10 +489,10 @@ async def translate_event_titles(
     api_key: str,
     titles: Sequence[str],
 ) -> List[str]:
-    """Translate at most two selected titles without persisting the result."""
+    """Translate one bounded set of selected titles without persisting it."""
 
-    if not 1 <= len(titles) <= 2:
-        raise ValueError("one or two event titles are required")
+    if not 1 <= len(titles) <= 80:
+        raise ValueError("between one and 80 event titles are required")
     result = await asyncio.to_thread(
         _translate_event_titles,
         api_key,

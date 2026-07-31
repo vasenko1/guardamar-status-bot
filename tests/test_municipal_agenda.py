@@ -2,7 +2,7 @@ import json
 import hashlib
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
@@ -15,6 +15,7 @@ from telegrambot.municipal_agenda import (
     _apply_reviewed_daily_schedules,
     _load_snapshot,
     _merge_reviewed_text_agenda,
+    _merge_transition_events,
     _snapshot_data,
     _write_snapshot,
     extract_poster_url,
@@ -204,6 +205,46 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                 "Exposición de pintura y escultura: "
                 "Mediterráneo, el lenguaje del agua"
             ),
+        )
+
+    def test_keeps_prior_month_events_for_seven_day_transition(self):
+        new = SourceEvent(
+            title_es="Evento de agosto",
+            start_date=date(2026, 8, 2),
+            end_date=date(2026, 8, 2),
+            start_time="20:00",
+            end_time=None,
+            place="Casa de Cultura",
+            category="event",
+        )
+        prior_today = SourceEvent(
+            title_es="Fiestas de Barrio",
+            start_date=date(2026, 7, 31),
+            end_date=date(2026, 7, 31),
+            start_time="19:00",
+            end_time=None,
+            place="parque C/ Berlín",
+            category="event",
+        )
+        prior_too_far = SourceEvent(
+            title_es="Evento lejano",
+            start_date=date(2026, 8, 20),
+            end_date=date(2026, 8, 20),
+            start_time="19:00",
+            end_time=None,
+            place=None,
+            category="event",
+        )
+
+        merged = _merge_transition_events(
+            (new,),
+            (prior_today, prior_too_far),
+            date(2026, 7, 31),
+        )
+
+        self.assertEqual(
+            [event.title_es for event in merged],
+            ["Evento de agosto", "Fiestas de Barrio"],
         )
 
     async def test_marks_only_last_day_of_multiday_event(self):

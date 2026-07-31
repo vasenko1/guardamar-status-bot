@@ -22,8 +22,8 @@ medium such as painting or sculpture.
 
 ## Consequences
 
-The two-line event section remains compact but carries the actionable facts
-available in the source. An unchanged existing poster keeps its prior valid
-snapshot; the richer extraction contract applies when the official poster
-changes. Events without a published time remain eligible and are not falsely
-labelled as all-day.
+The event section remains compact but carries the actionable facts available
+in the source. It is not limited to two lines. An unchanged existing poster
+keeps its prior valid snapshot; the richer extraction contract applies when
+the official poster changes. Events without a published time remain eligible
+and are not falsely labelled as all-day.

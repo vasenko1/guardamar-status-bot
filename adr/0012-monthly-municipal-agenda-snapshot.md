@@ -21,10 +21,11 @@ the target Android device.
   replacing the valid snapshot.
 - Use the bounded Gemini Vision API to extract a strict structured event list
   from a new or changed poster. Do not run a local OCR model.
-- Store only normalized event facts for the current month and any explicit
-  next-month preview: title and explicit activity type in source language,
-  date, time range, place, source URL, poster hash, and last successful
-  verification time.
+- Store only normalized event facts for the current month, any explicit
+  next-month preview, and still-relevant prior-poster events through a
+  seven-day transition horizon: title and explicit activity type in source
+  language, date, time range, place, source URL, poster hash, and last
+  successful verification time.
 - Do not store generated Russian translations. Translate only events selected
   for today's digest.
 - Merge poster and HTML events, prefer the more explicit official record, and
@@ -36,9 +37,10 @@ the target Android device.
   replace good data with an empty or invalid OCR result.
 - Expire events after their end date and remove snapshots after their covered
   month and explicit preview period.
-- The `📅 События дня:` section contains at most two events relevant today.
-  Routine opening hours and municipal services such as the mobile ecopark are
-  not events and do not enter this section.
+- The `📅 События дня:` section contains every deduplicated verified event
+  relevant today; the former product limit of two is superseded. Routine
+  opening hours and municipal services such as the mobile ecopark are not
+  events and do not enter this section.
 - A reviewed official text-agenda schedule may correct missing poster OCR
   hours for a specific event. Never infer event hours from general venue
   opening hours.
@@ -58,6 +60,8 @@ the target Android device.
   test, and must not trigger repeat OCR.
 - A reviewed current-month text-agenda record may remain eligible through its
   explicit end date when the page advances to next month's poster early.
+- A successful next-poster extraction merges, rather than replaces,
+  unexpired prior-poster facts occurring within the next seven days.
 
 ## Consequences
 

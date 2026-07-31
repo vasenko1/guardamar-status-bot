@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+import html
 import http.client
 import json
 import os
@@ -21,6 +22,7 @@ from zoneinfo import ZoneInfo
 from .gemini import GeminiError, extract_agenda_events, translate_event_titles
 from .models import Event
 from .diagnostics import SourceDiagnostic, source_error
+from .mayor import _fiestas_de_barrio_events
 
 AGENDA_PAGE_URL = "https://guardamarturismo.com/agenda-cultural/"
 PAGE_HOSTS = {"guardamarturismo.com", "www.guardamarturismo.com"}
@@ -28,7 +30,8 @@ POSTER_HOSTS = {"guardamardelsegura.es", "www.guardamardelsegura.es"}
 PAGE_LIMIT_BYTES = 500_000
 POSTER_LIMIT_BYTES = 4_000_000
 REQUEST_TIMEOUT_SECONDS = 15
-MAX_EVENTS = 80
+MAX_EVENTS = 100
+TRANSITION_HORIZON_DAYS = 7
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 _TIME_PATTERN = re.compile(r"^\d{2}:\d{2}$")
 
@@ -387,6 +390,34 @@ def _snapshot_data(
     }
 
 
+def _source_event_key(event: SourceEvent) -> Tuple[Any, ...]:
+    return (
+        event.title_es.casefold(),
+        event.start_date,
+        event.start_time,
+    )
+
+
+def _merge_transition_events(
+    new_events: Tuple[SourceEvent, ...],
+    prior_events: Tuple[SourceEvent, ...],
+    local_day: date,
+) -> Tuple[SourceEvent, ...]:
+    """Retain the prior poster's still-relevant one-week transition facts."""
+
+    horizon = local_day + timedelta(days=TRANSITION_HORIZON_DAYS)
+    merged = list(new_events)
+    seen = {_source_event_key(event) for event in merged}
+    for event in prior_events:
+        if event.end_date < local_day or event.start_date > horizon:
+            continue
+        key = _source_event_key(event)
+        if key not in seen:
+            seen.add(key)
+            merged.append(event)
+    return tuple(merged[:MAX_EVENTS])
+
+
 def _write_snapshot(path: Path, data: Dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
@@ -483,14 +514,13 @@ def _merge_reviewed_text_agenda(
 ) -> Tuple[SourceEvent, ...]:
     """Keep verified current-month facts when the poster advances early."""
 
-    if any(
+    additions = []
+    if not any(
         "conchi montes" in event.title_es.casefold()
         or "entrop" in event.title_es.casefold()
         for event in events
     ):
-        return events
-    return events + (
-        SourceEvent(
+        additions.append(SourceEvent(
             title_es="Exposición de pintura «Entropía» de Conchi Montes",
             start_date=date(2026, 7, 3),
             end_date=date(2026, 7, 29),
@@ -498,8 +528,8 @@ def _merge_reviewed_text_agenda(
             end_time="14:00",
             place="Biblioteca Pública Municipal",
             category="exhibition",
-        ),
-    )
+        ))
+    return events + tuple(additions)
 
 
 def _apply_reviewed_daily_schedules(
@@ -551,6 +581,7 @@ async def _current_events(
     diagnostics: Optional[List[SourceDiagnostic]] = None,
 ) -> Tuple[SourceEvent, ...]:
     snapshot_failure = None
+    page_events: Tuple[SourceEvent, ...] = ()
     try:
         snapshot = await asyncio.to_thread(_load_snapshot, state_path)
     except MunicipalAgendaError as exc:
@@ -574,8 +605,33 @@ async def _current_events(
         page, _ = await asyncio.to_thread(
             _read_url, AGENDA_PAGE_URL, PAGE_HOSTS, PAGE_LIMIT_BYTES
         )
-        poster_url = extract_poster_url(page)
         local_now = now.astimezone(GUARDAMAR_TIMEZONE)
+        page_text = " ".join(
+            html.unescape(
+                re.sub(
+                    rb"<[^>]+>",
+                    b" ",
+                    page,
+                ).decode("utf-8", "replace")
+            ).split()
+        )
+        page_events = tuple(
+            SourceEvent(
+                title_es="FIESTA DE BARRIO",
+                start_date=event.starts_at.date(),
+                end_date=event.starts_at.date(),
+                start_time=event.starts_at.strftime("%H:%M"),
+                end_time=None,
+                place=event.place,
+                category="event",
+            )
+            for event in _fiestas_de_barrio_events(
+                page_text,
+                local_now.date(),
+            )
+            if event.starts_at is not None
+        )
+        poster_url = extract_poster_url(page)
         snapshot_month = (
             snapshot["_fetched_at"]
             .astimezone(GUARDAMAR_TIMEZONE)
@@ -599,9 +655,14 @@ async def _current_events(
                 events = snapshot["_events"]
             else:
                 extracted = await extract_agenda_events(api_key, poster, mime_type)
-                events = normalize_extraction(
+                extracted_events = normalize_extraction(
                     extracted,
                     _poster_month(poster_url),
+                )
+                events = _merge_transition_events(
+                    extracted_events,
+                    snapshot["_events"] if snapshot is not None else (),
+                    local_now.date(),
                 )
             try:
                 await asyncio.to_thread(
@@ -664,7 +725,16 @@ async def _current_events(
     events = _merge_reviewed_text_agenda(events)
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
     events = _apply_reviewed_daily_schedules(events, local_day)
-    active = [event for event in events if event.start_date <= local_day <= event.end_date]
+    events = _merge_transition_events(
+        tuple(events),
+        page_events,
+        local_day,
+    )
+    active = [
+        event
+        for event in events
+        if event.start_date <= local_day <= event.end_date
+    ]
     active.sort(
         key=lambda event: (
             event.start_date != event.end_date,
@@ -672,7 +742,7 @@ async def _current_events(
             event.title_es.casefold(),
         )
     )
-    return tuple(active[:2])
+    return tuple(active)
 
 
 async def fetch_today_municipal_events(

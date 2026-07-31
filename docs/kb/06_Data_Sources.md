@@ -21,7 +21,7 @@ official endpoints and lightweight access methods are validated.
 | Agenda Guardamar | Official ticketed events occurring today | High for listed Ayuntamiento events | Bounded HTML index plus Schema.org event details | Yes |
 | Turismo Guardamar municipal agenda | Broader cultural program from the linked monthly Ayuntamiento poster | High; official but image-based | Daily link check plus change-triggered Gemini Vision extraction | Yes |
 | Ayuntamiento Wednesday market page and official holiday calendar | Weekly market at parking La Redonda, including holiday moves | High; official recurring schedule and annual calendars | Small reviewed local calendar rule | Yes |
-| `@AlcaldeGuardamar` public channel | Explicit market exceptions and bathing-status transitions | Operational municipal channel; text must be mechanically grounded | Bounded market check or one check after SafeBeach retries | Yes, narrow role |
+| `@AlcaldeGuardamar` public channel | Explicit market exceptions, bathing-status transitions, and explicitly dated Fiestas de Barrio | Operational municipal channel; text must be mechanically grounded | One bounded morning event check, market check when relevant, or one check after SafeBeach retries | Yes, narrow role |
 | Campo de Guardamar market website | Sunday market at Camino del Raso, 15 | Operator-published schedule; no authoritative cancellation feed found | Local Sunday rule, `07:00–16:00` | Yes, explicit product exception |
 | Community or commercial sources | Gap filling only | Variable | Varies | No by default |
 
@@ -128,9 +128,12 @@ operator and publishes event detail pages with Schema.org `name` and
 `startDate`, optional `endDate`, and `location`. The adapter reads a bounded
 programming page, follows at most twelve same-host event links with three
 concurrent reads, parses only complete `application/ld+json` documents, and
-returns at most two events whose local date is today. It accepts only bounded
-HTML from the official HTTPS hosts, performs no media processing, and stores
-no event history. A narrow repair handles the site's observed extra property
+returns every event from those bounded pages whose local date is today. It
+recovers the venue from the page's official calendar link when broken JSON-LD
+contains only the publisher identifier, and translates the bounded daily title
+set into Russian. It accepts only bounded HTML from the official HTTPS hosts,
+performs no media processing, and stores no event history. A narrow repair
+handles the site's observed extra property
 quote and trailing JSON commas; any other malformed structured data is omitted.
 Only Schema.org event types are accepted, and the site's technical publisher
 identifier is never rendered as a venue.
@@ -183,9 +186,12 @@ the image immediately. When the URL stays unchanged, the image is downloaded
 and hash-checked once when the local calendar month changes, not every day.
 A new image is processed once through Gemini Vision into structured
 source-language event facts. The OCR-declared month must match the month in
-the official poster URL. The bot stores a bounded snapshot containing only
-the poster month and explicit next-month previews. It merges those events with the
-separate official Agenda Guardamar result and removes duplicates.
+the official poster URL. The bot stores a bounded snapshot containing the
+poster month, explicit next-month previews, and still-relevant facts from the
+previous snapshot whose dates fall within the current day plus seven days.
+This prevents an early next-month poster from erasing the final days of the
+current program. It merges those events with the separate official Agenda
+Guardamar result and removes duplicates.
 
 During a temporary source outage, the last valid snapshot remains eligible
 until its covered period ends. Generated Russian translations are not stored.
@@ -232,8 +238,15 @@ traffic cache is kept.
 The Mayor channel uses Telegram's bounded public HTML preview and requires no
 bot membership or user session. Besides scheduled-market exceptions, one
 post-07:30 check recognizes only explicit red/prohibited or yellow/permitted
-bathing transitions. Known causes use a fixed Russian vocabulary; no AI
-inference is used. The Mayor and Policía Local adapters accept only bounded
+bathing transitions. A morning check also recognizes explicitly dated
+`Fiestas de Barrio` clauses with a published time, named participating
+urbanizations and `Ubicación`, including the 31 July 2026 event at
+`parque C/ Berlín`, independently confirmed by the municipal poster and the
+official Turismo Guardamar text agenda. The user-facing location expands `C/`
+to `улица` and retains `парк`. Other Mayor posts are not treated as events.
+Known causes use a fixed
+Russian vocabulary; no AI inference is used. The Mayor and Policía Local
+adapters accept only bounded
 HTML/PDF from their exact official HTTPS hosts. A valid HTML page without
 recognizable timestamped channel messages is a source failure, not proof that
 there are no updates. The MVP does not scrape Facebook.

@@ -108,8 +108,9 @@ The icon adds no text, AI, or new source.
 
 Warning, traffic, and event sections are optional. Omit an entire optional
 section when it has no verified, useful items. Do not render empty headings.
-The event section contains at most two official Agenda Guardamar events whose
-structured start date is today.
+The event section contains every deduplicated, verified official event relevant
+today. There is no product count limit; bounded source reads and Telegram's
+message limit remain technical safety boundaries.
 
 Each event uses the compact order `{time or range} — {type and title}, {place}`.
 When the official source has no time, omit only the time prefix and keep the
@@ -118,8 +119,9 @@ sculpture, concert, workshop, guided tour, or night route. Include the
 official place when available. Never invent missing time, type, or place.
 
 The message has no source footer, links, report-style title, explanatory prose,
-or separate weather section. It must fit on one phone screen and be scannable
-in under five seconds.
+or separate weather section. A routine day should fit on one phone screen and
+be scannable in seconds. On an unusually busy day, verified events are not
+discarded solely to preserve that visual limit.
 
 ### Implemented vertical slice
 
@@ -152,9 +154,10 @@ The beach-status slice adds:
 Neither AEMET nor fallback logic supplies or infers a beach flag.
 
 The event slice adds today's official ticketed Agenda Guardamar events. It
-reads the title, local time range, and place, sorts chronologically, removes
-duplicates, and shows at most two items. Source failure or no event today
-omits the complete section.
+reads the title, local time range, and place, recovers the official calendar
+venue when the site's JSON-LD contains only its publisher identifier,
+translates titles to Russian, sorts chronologically, and removes duplicates.
+Source failure or no event today omits that source's contribution.
 
 The event section includes the recurring official Wednesday market.
 Its official customer hours are `07:00–13:30` from June through September and
@@ -174,9 +177,11 @@ check because no equivalent authoritative cancellation feed is available.
 ADR 0012 implements an expansion using the Ayuntamiento monthly poster linked
 from the official Turismo Guardamar agenda page. A poster with a new URL is
 processed once with Gemini Vision and stored as a bounded structured monthly
-event snapshot. The snapshot may supply today's events during a temporary
-source outage. Extraction preserves explicit event type, medium, time range,
-and place. Russian translations are not stored. Poster and Agenda
+event snapshot. When the page publishes the next poster early, still-relevant
+facts from the prior snapshot remain available for the current day and the
+following seven days. The snapshot may also supply today's events during a
+temporary source outage. Extraction preserves explicit event type, medium,
+time range, and place. Russian translations are not stored. Poster and Agenda
 Guardamar records are merged and deduplicated; routine opening hours and
 municipal services such as the mobile ecopark are excluded from `📅 События`.
 The heading is rendered as `📅 События дня:` to make its daily scope explicit.
@@ -189,6 +194,12 @@ an explicit end date.
 For exhibitions, keep the medium or category outside the title and place an
 explicit work name in Russian typographic quotes, for example:
 `Выставка живописи и скульптуры «Средиземноморье, язык воды»`.
+
+The official `@AlcaldeGuardamar` channel additionally supplies explicitly
+dated `Fiestas de Barrio` entries through a narrow deterministic parser. It
+does not turn the channel into a general news source. Preserve named
+participating urbanizations and the complete published venue:
+`Ubicación parque C/ Berlín` renders as `парк на улице Berlín`.
 
 The traffic slice reads explicit restrictions from the official Policía Local
 Guardamar page and its reviewed festival PDF. A document becomes independent

@@ -122,7 +122,9 @@ The AEMET adapter retries only transient transport, rate-limit, server, or
 expired-link failures. It repeats the complete metadata-plus-product request,
 uses short exponential delays or the server's `Retry-After`, and never retries
 permanent or invalid-data failures. Agenda Guardamar reads event details with
-at most three concurrent same-host requests. If the mandatory forecast remains
+at most three concurrent same-host requests, recovers an official calendar
+venue when broken JSON-LD omits it, and translates the bounded selected titles
+to Russian. If the mandatory forecast remains
 unavailable during replacement, the renderer preserves the published 07:30
 copy and inserts only newly verified beach information.
 
@@ -167,9 +169,11 @@ the message ID is stored remains an unavoidable duplicate edge.
 - Bound network time, retries, response sizes, concurrency, and stored history.
 - Keep domain rules independent from transport and source formats.
 - Do not add a cache layer for municipal or event information.
-- ADR 0012 permits one bounded monthly municipal-agenda snapshot as the only
-  event-cache exception. It is refreshed atomically and expires with its
-  covered period.
+- ADR 0012 permits one bounded normalized municipal-agenda snapshot as the only
+  event-cache exception. When the official page advances early, a new poster
+  is merged with still-relevant prior-poster events for a seven-day transition
+  window; expired facts are not retained.
 - Add abstractions only for current, demonstrated needs.
-- Keep Gemini isolated to the accepted traffic fallback; do not add general AI,
-  microservices, webhooks, or heavy background infrastructure.
+- Keep Gemini isolated to accepted bounded municipal extraction and title-only
+  translation; do not add general AI, microservices, webhooks, or heavy
+  background infrastructure.

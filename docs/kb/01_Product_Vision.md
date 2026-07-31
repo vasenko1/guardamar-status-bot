@@ -48,11 +48,11 @@ The MVP proves that a small deterministic system can collect, filter, and
 format useful official information reliably on the target device.
 
 Weather, warnings, beach status, formatting, and delivery do not depend on AI.
-Gemini is restricted to three approved municipal tasks: fail-closed traffic
-translation, exact-date market cancellation extraction, and changed-poster
-OCR plus event-title translation. Deterministic validation or a valid snapshot
-must protect every result; otherwise only that optional contribution is
-omitted.
+Gemini is restricted to bounded municipal tasks: fail-closed traffic
+translation, exact-date market cancellation extraction, changed-poster OCR,
+and title-only translation of already structured official events.
+Deterministic validation or a valid snapshot must protect every result;
+otherwise only that optional contribution is omitted.
 
 ## Long-term direction
 
