@@ -22,9 +22,11 @@ the same external schedule retries empty, incomplete and unavailable results.
 Require all 24 hourly values, convert €/MWh to €/kWh, and keep no cache. Render
 the two-column table inside Telegram HTML `<pre>` so its columns use a
 monospace font. The heading explicitly says `завтра` and includes the date.
-Send a small explanation as a reply to the price table. ESIOS thresholds keep
-their official three colors; values at or above 90% of the daily maximum are
-additionally red as a documented presentation rule.
+Send a small explanation as a reply to the price table. Colors compare hours
+within the published local day: the cheapest third is green, the middle third
+yellow, and the most expensive third red. Equal prices are not split across a
+boundary; when both boundaries are the same, that shared level is yellow.
+These colors are presentation metadata and are not attributed to ESIOS.
 
 The recommendation uses the continuous six-hour window with the lowest total
 price, with the earlier window winning an exact tie.

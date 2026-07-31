@@ -7,9 +7,10 @@ Península in €/kWh. The fixed layout contains the cheapest and most expensive
 hour, a two-column monospace 24-hour table, and the continuous six-hour window
 with the lowest total price. A concise explanatory message is sent as a reply.
 
-The header must say `завтра` and include the target date. ESIOS green, yellow,
-and orange thresholds are preserved; hours at or above 90% of the daily
-maximum are highlighted red for scanning. The footer states that the table is
+The header must say `завтра` and include the target date. The 24 prices are
+ranked within that local day: the cheapest third is green, the middle third is
+yellow, and the most expensive third is red. Equal boundary prices keep one
+color rather than being split by hour. The footer states that the table is
 exact for PVPC and only an orientation for other indexed tariffs, then names
 `ESIOS / Red Eléctrica` as the source. Incomplete days are not published.
 

@@ -41,10 +41,12 @@ attempts. Exactly one value for every local hour 00–23 is required; incomplete
 duplicate, malformed, wrong-date, or non-Península data causes that invocation
 to publish nothing. No price cache is kept.
 
-ESIOS defines green below 0.10 €/kWh, yellow from 0.10 through 0.15 €/kWh, and
-orange above 0.15 €/kWh. The product additionally marks prices at or above 90%
-of the daily maximum red as a deterministic attention aid; red is a
-presentation rule, not an ESIOS category.
+Color is presentation metadata, not source data from ESIOS. Rank the complete
+24-hour local day by price: the cheapest eight hours are green, the middle
+eight yellow, and the most expensive eight red. A price level tied across a
+third boundary is never split between colors, so tie-heavy days may contain
+unequal group sizes. If both boundaries collapse to one value, that shared
+price level is yellow.
 
 ## Approved AEMET products
 

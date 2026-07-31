@@ -10,6 +10,7 @@ from telegrambot.electricity import (
     DailyPrices,
     ElectricityError,
     HourlyPrice,
+    _colors,
     build_explanation_message,
     build_price_message,
     fetch_prices,
@@ -94,18 +95,43 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
         message = build_price_message(_daily())
         self.assertIn("Цены на электричество завтра", message)
         self.assertIn("Суббота, 1 августа", message)
-        self.assertIn("<pre>00  🟠 0,185 │ 12  🟡 0,115", message)
+        self.assertIn("<pre>00  🟡 0,185 │ 12  🟢 0,115", message)
         self.assertIn("20  🔴 0,292", message)
-        self.assertIn("19  🟠 0,272", message)
+        self.assertIn("19  🔴 0,272", message)
         self.assertIn("21:00–22:00 · 0,322 €/кВт·ч", message)
         self.assertIn("период с 11:00 до 17:00", message)
         self.assertNotIn("запланировать\nна период", message)
         self.assertTrue(message.endswith("Источник: ESIOS / Red Eléctrica"))
         self.assertNotIn("сегодня", message.casefold())
 
-    def test_explanation_documents_official_and_highlight_colors(self):
+    def test_colors_use_daily_price_thirds(self):
+        colors = _colors(_daily().hours)
+        self.assertEqual(sum(color == "🟢" for color in colors.values()), 8)
+        self.assertEqual(sum(color == "🟡" for color in colors.values()), 8)
+        self.assertEqual(sum(color == "🔴" for color in colors.values()), 8)
+        self.assertEqual(colors[14], "🟢")
+        self.assertEqual(colors[0], "🟡")
+        self.assertEqual(colors[21], "🔴")
+
+    def test_equal_boundary_prices_are_not_split_between_colors(self):
+        prices = tuple(
+            HourlyPrice(hour, Decimal("0.100") if 6 <= hour < 18 else (
+                Decimal("0.050") if hour < 6 else Decimal("0.200")
+            ))
+            for hour in range(24)
+        )
+        colors = _colors(prices)
+        self.assertEqual({colors[hour] for hour in range(6, 18)}, {"🟡"})
+
+    def test_explanation_documents_relative_daily_colors(self):
         message = build_explanation_message()
-        self.assertIn("самый дорогой диапазон", message)
+        self.assertIn("Самые дешёвые часы этого дня", message)
+        self.assertIn("Средние по цене часы", message)
+        self.assertIn("Самые дорогие часы этого дня", message)
+        self.assertIn("сравнивают часы только между собой", message)
+        self.assertIn("фиксированном тарифе", message)
+        self.assertIn("не полный итог счёта", message)
+        self.assertNotIn("0,10", message)
         self.assertIn("ESIOS / Red Eléctrica", message)
 
     async def test_publishes_main_and_reply_once(self):

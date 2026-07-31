@@ -177,17 +177,35 @@ def _price(value: Decimal) -> str:
 
 
 def _colors(prices: Sequence[HourlyPrice]) -> Dict[int, str]:
-    red_threshold = max(item.eur_kwh for item in prices) * Decimal("0.90")
-    colors = {}
+    """Split the local day into cheap, middle, and expensive price thirds.
+
+    Boundary ties keep one color. If both boundaries collapse onto the same
+    value, that shared level is neutral yellow rather than being split by hour.
+    """
+
+    ordered = sorted(item.eur_kwh for item in prices)
+    if not ordered:
+        return {}
+    third = len(ordered) // 3
+    if third == 0:
+        return {item.hour: "🟡" for item in prices}
+    cheap_boundary = ordered[third - 1]
+    expensive_boundary = ordered[-third]
+    colors: Dict[int, str] = {}
     for item in prices:
-        if item.eur_kwh > Decimal("0.15") and item.eur_kwh >= red_threshold:
-            colors[item.hour] = "🔴"
-        elif item.eur_kwh < Decimal("0.10"):
+        if cheap_boundary == expensive_boundary:
+            if item.eur_kwh < cheap_boundary:
+                colors[item.hour] = "🟢"
+            elif item.eur_kwh > expensive_boundary:
+                colors[item.hour] = "🔴"
+            else:
+                colors[item.hour] = "🟡"
+        elif item.eur_kwh <= cheap_boundary:
             colors[item.hour] = "🟢"
-        elif item.eur_kwh <= Decimal("0.15"):
-            colors[item.hour] = "🟡"
+        elif item.eur_kwh >= expensive_boundary:
+            colors[item.hour] = "🔴"
         else:
-            colors[item.hour] = "🟠"
+            colors[item.hour] = "🟡"
     return colors
 
 
@@ -241,12 +259,22 @@ def build_price_message(data: DailyPrices) -> str:
 def build_explanation_message() -> str:
     return (
         "💡 <b>Как читать таблицу</b>\n\n"
-        "Цена указана за 1 кВт·ч без учёта вашего фиксированного тарифа и индивидуальных условий договора.\n\n"
-        "🟢 дешевле 0,10 €\n"
-        "🟡 от 0,10 до 0,15 €\n"
-        "🟠 дороже 0,15 €\n"
-        "🔴 самый дорогой диапазон дня\n\n"
-        "Данные: официальный показатель PVPC 2.0TD для Península от ESIOS / Red Eléctrica."
+        "Это почасовая цена электроэнергии на конкретную дату. "
+        "Она помогает выбрать время для стирки, нагрева воды, зарядки "
+        "автомобиля и других энергоёмких дел.\n\n"
+        "🟢 Самые дешёвые часы этого дня\n"
+        "🟡 Средние по цене часы\n"
+        "🔴 Самые дорогие часы этого дня\n\n"
+        "Цвета сравнивают часы только между собой в пределах одного дня. "
+        "🟢 не означает, что электричество дешёвое вообще, а 🔴 — что цена "
+        "необычно высокая по сравнению с другими днями.\n\n"
+        "Таблица полезна прежде всего для тарифа PVPC. При индексированном "
+        "тарифе она служит ориентиром. При фиксированном тарифе почасовая "
+        "цена обычно не меняет стоимость вашего потребления.\n\n"
+        "Это цена электрической энергии, а не полный итог счёта: отдельно "
+        "могут начисляться плата за мощность, налоги и другие предусмотренные "
+        "договором платежи.\n\n"
+        "Источник: ESIOS / Red Eléctrica"
     )
 
 
