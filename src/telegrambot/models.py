@@ -15,6 +15,7 @@ class Weather:
     observed_at: Optional[datetime]
     forecast_wind_speed_kmh: Optional[int] = None
     sky_condition: Optional[str] = None
+    sky_conditions: Tuple[str, ...] = ()
     rain_probability_percent: Optional[int] = None
     rain_period: Optional[str] = None
 

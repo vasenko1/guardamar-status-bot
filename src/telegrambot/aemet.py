@@ -5,6 +5,7 @@ import io
 import json
 import logging
 import math
+import re
 import socket
 import tarfile
 import unicodedata
@@ -361,6 +362,7 @@ def normalize_daily_forecast(
     Optional[str],
     Optional[int],
     Optional[str],
+    Tuple[str, ...],
     Optional[int],
     Optional[str],
 ]:
@@ -410,6 +412,7 @@ def normalize_daily_forecast(
         "storm": 6,
     }
     sky_condition = None
+    sky_conditions: List[str] = []
     sky_items = selected.get("estadoCielo", [])
     if not isinstance(sky_items, list):
         sky_items = []
@@ -452,6 +455,23 @@ def normalize_daily_forecast(
             > condition_priority[sky_condition]
         ):
             sky_condition = candidate
+        period = item.get("periodo")
+        period_end = None
+        if isinstance(period, str):
+            match = re.fullmatch(r"\d{2}-(\d{2})", period)
+            if match is not None:
+                period_end = int(match.group(1))
+        if (
+            candidate is not None
+            and (period_end is None or period_end > local_hour)
+            and (
+                not sky_conditions
+                or sky_conditions[-1] != candidate
+            )
+        ):
+            sky_conditions.append(candidate)
+    if len(sky_conditions) > 2:
+        sky_conditions = [sky_conditions[0], sky_conditions[-1]]
 
     wind_options: List[Tuple[int, str]] = []
     winds = selected.get("viento", [])
@@ -478,6 +498,7 @@ def normalize_daily_forecast(
             wind_direction,
             wind_speed,
             sky_condition,
+            tuple(sky_conditions),
             rain_probability,
             rain_period,
         )
@@ -487,6 +508,7 @@ def normalize_daily_forecast(
         None,
         None,
         sky_condition,
+        tuple(sky_conditions),
         rain_probability,
         rain_period,
     )
@@ -963,6 +985,7 @@ async def fetch_morning_digest(
         forecast_direction,
         forecast_speed,
         sky_condition,
+        sky_conditions,
         rain_probability,
         rain_period,
     ) = daily_values
@@ -1005,6 +1028,7 @@ async def fetch_morning_digest(
             observed_at=observed_at,
             forecast_wind_speed_kmh=forecast_comparison,
             sky_condition=sky_condition,
+            sky_conditions=sky_conditions,
             rain_probability_percent=rain_probability,
             rain_period=rain_period,
         ),

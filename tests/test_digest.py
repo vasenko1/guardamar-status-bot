@@ -86,14 +86,15 @@ class DigestMessageTests(unittest.TestCase):
         )
         self.assertNotIn("Rojales", message)
         self.assertNotIn("дайджест", message.casefold())
-        self.assertIn("⛈️ Погода: 21° → 30°", message)
+        self.assertIn("☀️ <b>Погода от AEMET:</b>", message)
+        self.assertIn("⛈️ Небо: 21° → 30° • гроза", message)
         self.assertIn("🌧 Дождь: 80% • 12:00–18:00", message)
         self.assertIn(
             "🌊 Море: 29° • слабые → умеренные",
             message,
         )
         self.assertIn(
-            "🏖 Флаги на пляжах:\n"
+            "🏖 <b>Флаги на пляжах:</b>\n"
             "   🟡 Roqueta\n"
             "   🟢 Centre / Babilònia, Vivers",
             message,
@@ -101,7 +102,7 @@ class DigestMessageTests(unittest.TestCase):
         self.assertIn("🪼 Медузы: Roqueta", message)
         self.assertNotIn("15:56", message)
         self.assertIn("💨 Ветер: В 3 → 5 м/с", message)
-        self.assertIn("\n\n⚠️ Внимание\n", message)
+        self.assertIn("\n\n⚠️ <b>Предупреждения:</b>\n", message)
         self.assertIn(
             (
                 "Оранжевое предупреждение: "
@@ -109,21 +110,22 @@ class DigestMessageTests(unittest.TestCase):
             ),
             message,
         )
-        self.assertNotIn("AEMET", message)
-        self.assertNotIn("Источник", message)
+        self.assertIn("AEMET", message)
         self.assertIn(
             (
-                "\n\n🚧 Движение ограничено\n15–29 июля: проезд к "
+                "\n\n🚧 <b>Движение:</b>\n15–29 июля: проезд к "
                 "поликлинике и автовокзалу — только через "
                 "C/ San Francisco."
             ),
             message,
         )
         self.assertIn(
-            "\n\n📅 События дня:\n• 23:00 — Концерт в замке",
+            "\n\n📅 <b>События дня:</b>\n"
+            "• <b>23:00</b> — Концерт в замке",
             message,
         )
-        self.assertLess(len(message), 430)
+        rendered = message.replace("<b>", "").replace("</b>", "")
+        self.assertLess(len(rendered), 450)
 
     def test_omits_rain_below_threshold(self):
         digest = MorningDigest(
@@ -181,13 +183,82 @@ class DigestMessageTests(unittest.TestCase):
 
         message = build_message(digest)
 
-        self.assertIn("🌤 Погода: 21° → 30°", message)
+        self.assertIn("🌤 Небо: 21° → 30°", message)
         self.assertIn("🌊 Море: 28°", message)
         self.assertNotIn("🏖 Флаги", message)
         self.assertNotIn("🪼 Медузы", message)
         self.assertIn("💨 Ветер: —", message)
-        self.assertNotIn("⚠️ Внимание", message)
+        self.assertNotIn("⚠️ <b>Предупреждения:</b>", message)
         self.assertNotIn("Предупреждений нет", message)
+
+    def test_marks_multiple_warnings_and_traffic_items(self):
+        digest = MorningDigest(
+            weather=Weather(
+                current_temperature_c=None,
+                minimum_temperature_c=21,
+                maximum_temperature_c=30,
+                wind_direction="E",
+                wind_speed_kmh=12,
+                observed_at=None,
+                sky_conditions=("clear", "cloudy"),
+            ),
+            warnings=(
+                Warning("Viento", "yellow", None),
+                Warning("Lluvias", "orange", None),
+            ),
+            warnings_available=True,
+            traffic_notices=(
+                TrafficNotice(text="Перекрыта улица A."),
+                TrafficNotice(text="Изменён маршрут автобуса B."),
+            ),
+        )
+
+        message = build_message(digest)
+
+        self.assertIn(
+            "🌤 Небо: 21° → 30° • ясно → облачно",
+            message,
+        )
+        self.assertIn(
+            "⚠️ <b>Предупреждения:</b>\n"
+            "• Жёлтое предупреждение: сильный ветер.\n"
+            "• Оранжевое предупреждение: сильный дождь.",
+            message,
+        )
+        self.assertIn(
+            "🚧 <b>Движение:</b>\n"
+            "• Перекрыта улица A.\n"
+            "• Изменён маршрут автобуса B.",
+            message,
+        )
+
+    def test_escapes_source_text_for_telegram_html(self):
+        digest = MorningDigest(
+            weather=Weather(
+                current_temperature_c=None,
+                minimum_temperature_c=21,
+                maximum_temperature_c=30,
+                wind_direction=None,
+                wind_speed_kmh=None,
+                observed_at=None,
+            ),
+            warnings=(),
+            warnings_available=True,
+            events=(
+                Event(
+                    title="Музыка <джаз> & танцы",
+                    starts_at=None,
+                    place="Sala <A>",
+                ),
+            ),
+        )
+
+        message = build_message(digest)
+
+        self.assertIn(
+            "Музыка &lt;джаз&gt; &amp; танцы — Sala &lt;A&gt;",
+            message,
+        )
 
     def test_uses_one_label_when_sea_state_does_not_change(self):
         digest = MorningDigest(
@@ -279,7 +350,7 @@ class DigestMessageTests(unittest.TestCase):
         message = build_message(digest)
 
         self.assertIn(
-            "• 09:00–20:00 — Последний день: "
+            "• <b>09:00–20:00</b> — Последний день: "
             "Выставка «Средиземноморье, язык воды»",
             message,
         )
@@ -355,17 +426,18 @@ class DigestMessageTests(unittest.TestCase):
         message = build_message(digest)
 
         self.assertIn(
-            "• 09:00–15:30 — Рынок, парковка La Redonda",
+            "• <b>09:00–15:30</b> — Рынок, парковка La Redonda",
             message,
         )
 
     def test_fallback_preserves_morning_copy_and_adds_beach_update(self):
         morning = (
             "🌅 Доброе утро, Гуардамар!\n\n"
-            "🌤 Погода: 22° → 30°\n"
+            "☀️ <b>Погода от AEMET:</b>\n"
+            "🌤 Небо: 22° → 30°\n"
             "🌊 Море: 27° • умеренные волны\n"
             "💨 Ветер: В 3 → 5 м/с\n\n"
-            "📅 События дня:\n• Выставка"
+            "📅 <b>События дня:</b>\n• Выставка"
         )
         beach = BeachStatus(
             flag_color="yellow",
@@ -380,11 +452,11 @@ class DigestMessageTests(unittest.TestCase):
 
         updated = build_fallback_update(morning, beach, None)
 
-        self.assertIn("🌤 Погода: 22° → 30°", updated)
+        self.assertIn("🌤 Небо: 22° → 30°", updated)
         self.assertIn("🌊 Море: 27° • умеренные волны", updated)
         self.assertIn(
-            "💨 Ветер: В 3 → 5 м/с\n"
-            "🏖 Флаги на пляжах:\n"
+            "💨 Ветер: В 3 → 5 м/с\n\n"
+            "🏖 <b>Флаги на пляжах:</b>\n"
             "   🔴 Roqueta\n"
             "   🟡 Centre / Babilònia\n"
             "   🟢 Vivers\n"
@@ -392,7 +464,7 @@ class DigestMessageTests(unittest.TestCase):
             updated,
         )
         self.assertTrue(
-            updated.endswith("📅 События дня:\n• Выставка")
+            updated.endswith("📅 <b>События дня:</b>\n• Выставка")
         )
 
     def test_omits_missing_beaches_and_flag_descriptions(self):
@@ -426,7 +498,8 @@ class DigestMessageTests(unittest.TestCase):
     def test_renders_named_fallback_beaches_without_renaming(self):
         morning = (
             "🌅 Доброе утро, Гуардамар!\n\n"
-            "🌤 Погода: 22° → 30°\n"
+            "☀️ <b>Погода от AEMET:</b>\n"
+            "🌤 Небо: 22° → 30°\n"
             "🌊 Море: 27° • умеренные волны\n"
             "💨 Ветер: В 3 → 5 м/с"
         )

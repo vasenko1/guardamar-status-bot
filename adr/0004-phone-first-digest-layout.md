@@ -13,8 +13,14 @@ formatting flexibility.
 
 - Use the exact canonical layout in `docs/kb/05_Features.md`.
 - Start with `🌅 Доброе утро, Гуардамар!`; never show the word `дайджест`.
-- Keep weather, sea, and wind as three compact mandatory rows.
+- Attribute the weather block as `Погода от AEMET`.
+- Combine temperature and at most two remaining sky states in the `Небо` row.
+- Keep sea and wind as compact mandatory rows in the weather block.
 - Append forecast wind speed inline to the current wind row.
+- Render section headings and event times in bold Telegram HTML.
+- Separate sections with one empty line and use bullets for multiple warning
+  or traffic items.
+- Place warnings immediately after weather and before beach flags.
 - Keep warnings, traffic, and events optional and omit empty sections.
 - Never change section order.
 - Show no user-facing source footer or explanatory text.

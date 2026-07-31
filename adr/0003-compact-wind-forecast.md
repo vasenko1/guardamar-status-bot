@@ -25,7 +25,8 @@ this value without another source or architectural change.
 - Omit the inline continuation unless current wind and a comparable AEMET
   daily forecast are both available or both speeds are equal.
 - Keep the canonical section order defined in `docs/kb/05_Features.md`.
-- Do not show source labels in the user-facing digest.
+- Do not add per-row source labels or a source footer; the weather block's
+  required `Погода от AEMET` attribution is defined by ADR 0004.
 
 ## Consequences
 

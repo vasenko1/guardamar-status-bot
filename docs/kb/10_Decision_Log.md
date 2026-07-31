@@ -5,6 +5,7 @@ Detailed decisions belong in `adr/`.
 
 | Date | Decision | Context and reason | Record |
 | --- | --- | --- | --- |
+| 2026-07-31 | Standardize the phone layout with bold HTML headings and times, explicit `Погода от AEMET`, a combined temperature/sky row, and bullets for multiple warnings or traffic items | Improve scanning on narrow phones while satisfying AEMET attribution and preserving one deterministic message | `adr/0004-phone-first-digest-layout.md` |
 | 2026-07-31 | Remove the two-event limit and preserve events across an early month change | Bounded official sources produced four useful events on one day, while replacing July with the August poster hid a confirmed Fiestas de Barrio; show all verified deduplicated events and retain prior-poster facts through a seven-day transition. | `adr/0007-agenda-guardamar-events.md`, `adr/0012-monthly-municipal-agenda-snapshot.md` |
 | 2026-07-31 | Add narrowly parsed Fiestas de Barrio from the Mayor channel | The 31 July event is independently present in the municipal poster and an explicitly dated Mayor post; preserve its time and full `parque C/ Berlín` location without treating other Mayor news as events. | `docs/kb/06_Data_Sources.md` |
 | 2026-07-30 | Use event-specific hours, `События дня:`, and a final-day marker | The official August agenda gives weekday and Saturday visiting hours for `Mediterráneo, el lenguaje del agua`; preserve its comma, never infer venue hours, and mark the explicit end date of multi-day events with `Последний день:`. | `adr/0012-monthly-municipal-agenda-snapshot.md` |

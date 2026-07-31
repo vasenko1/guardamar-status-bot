@@ -252,6 +252,7 @@ def _post_message(
             "chat_id": chat_id,
             "text": text,
             "disable_notification": disable_notification,
+            "parse_mode": "HTML",
         },
         REQUEST_TIMEOUT_SECONDS,
     )

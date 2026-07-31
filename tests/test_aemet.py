@@ -195,6 +195,48 @@ class BeachForecastTests(unittest.TestCase):
 
 
 class DailyForecastTests(unittest.TestCase):
+    def test_keeps_two_remaining_sky_states_and_ignores_past_periods(self):
+        payload = json.dumps(
+            [
+                {
+                    "prediccion": {
+                        "dia": [
+                            {
+                                "fecha": "2026-07-26T00:00:00",
+                                "temperatura": {"minima": 23, "maxima": 31},
+                                "estadoCielo": [
+                                    {
+                                        "descripcion": "Cubierto",
+                                        "periodo": "00-06",
+                                    },
+                                    {
+                                        "descripcion": "Despejado",
+                                        "periodo": "06-12",
+                                    },
+                                    {
+                                        "descripcion": "Poco nuboso",
+                                        "periodo": "12-18",
+                                    },
+                                    {
+                                        "descripcion": "Nuboso",
+                                        "periodo": "18-24",
+                                    },
+                                ],
+                            }
+                        ]
+                    }
+                }
+            ]
+        ).encode()
+
+        result = normalize_daily_forecast(
+            payload,
+            date(2026, 7, 26),
+            local_hour=7,
+        )
+
+        self.assertEqual(result[5], ("clear", "cloudy"))
+
     def test_normalizes_temperature_range_and_strongest_wind(self):
         payload = json.dumps(
             [
@@ -230,7 +272,16 @@ class DailyForecastTests(unittest.TestCase):
                 date(2026, 7, 26),
                 local_hour=10,
             ),
-            (23, 31, "SE", 20, "rain", 80, "14:00–20:00"),
+            (
+                23,
+                31,
+                "SE",
+                20,
+                "rain",
+                ("partly_cloudy", "rain"),
+                80,
+                "14:00–20:00",
+            ),
         )
 
     def test_uses_encompassing_rain_period_when_no_future_period_exists(self):

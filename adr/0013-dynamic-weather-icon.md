@@ -16,17 +16,18 @@ the most relevant forecast condition without adding text or another source.
   clear, partly cloudy, cloudy, fog, rain, snow, and storm.
 - Render them respectively as `☀️`, `🌤`, `☁️`, `🌫️`, `🌧️`, `🌨️`, and
   `⛈️`.
-- When AEMET supplies several periods, select the most significant condition
-  using this order: storm, snow, rain, fog, cloudy, partly cloudy, clear.
+- Ignore periods that have ended, collapse adjacent duplicates, and retain at
+  most the first and last distinct remaining conditions. Use the matching icon
+  for one state and `🌤` for a transition.
 - Use neutral `🌤` when no known condition is available.
-- Keep the rest of the weather row and section order unchanged.
+- Combine the temperature range and compact state transition in the `Небо`
+  row defined by ADR 0004.
 - Use no AI and no source other than the existing AEMET daily forecast.
 
 ## Consequences
 
-The row remains the same length while conveying more useful daily context.
-The icon represents the most significant forecast period, not necessarily the
-condition at the exact moment the digest is sent.
+The row conveys the expected remaining evolution without becoming an hourly
+forecast.
 
 ## Alternatives rejected
 

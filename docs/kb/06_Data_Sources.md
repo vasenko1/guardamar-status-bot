@@ -29,7 +29,7 @@ official endpoints and lightweight access methods are validated.
 
 | Product | Selection | MVP use |
 | --- | --- | --- |
-| Municipal daily forecast | Guardamar municipality `03076` | Today's temperature range, most significant sky condition, one later-day wind comparison, and high-probability remaining rain |
+| Municipal daily forecast | Guardamar municipality `03076` | Today's temperature range, up to two remaining sky conditions, one later-day wind comparison, and high-probability remaining rain |
 | Conventional observation | Rojales station `7261X`, listed by AEMET as 5.3 km from Guardamar | Current temperature and wind, only when no more than three hours old |
 | CAP warnings | Comunitat Valenciana area `77`, filtered to `Litoral sur de Alicante` | Warnings active now or beginning later today |
 | Beach forecast | Centro / La Roqueta `0307605` | Today's representative water temperature and two sea-state periods |
@@ -51,6 +51,9 @@ honored only when it fits the bounded process budget.
 AEMET forecast periods of six hours or more are expressed in UTC. User-facing
 rain intervals are converted to `Europe/Madrid`, including daylight-saving
 time.
+For sky conditions, periods that have already ended are ignored. Equal
+adjacent states are collapsed and at most the first and last distinct
+remaining states are retained for one compact transition.
 
 The CAP warning download may be an XML document, ZIP archive, or TAR archive.
 All supported containers are parsed in memory with compressed and uncompressed
@@ -58,8 +61,9 @@ size bounds.
 
 The nearby Rojales origin remains explicit in project documentation, but its
 location label is omitted from the compact message. AEMET forecast wind may
-provide one later-day comparison with current wind. No source footer or source
-label is shown in the user-facing digest.
+provide one later-day comparison with current wind. The user-facing weather
+heading attributes the data as `Погода от AEMET`; no separate source footer is
+shown.
 
 The municipality forecast supplies precipitation probabilities by period. At
 collection time the adapter considers future periods, falling back to one that

@@ -113,6 +113,7 @@ class TelegramDeliveryTests(unittest.IsolatedAsyncioTestCase):
                 "chat_id": "@destination",
                 "text": "Buenos días",
                 "disable_notification": True,
+                "parse_mode": "HTML",
             },
         )
         self.assertTrue(request.full_url.endswith("/sendMessage"))

@@ -1,5 +1,6 @@
 """Deterministic formatting for one concise Telegram message."""
 
+import html
 import re
 import unicodedata
 from datetime import datetime
@@ -81,6 +82,15 @@ WEATHER_ICONS = {
     "snow": "🌨️",
     "storm": "⛈️",
 }
+SKY_LABELS = {
+    "clear": "ясно",
+    "partly_cloudy": "малооблачно",
+    "cloudy": "облачно",
+    "fog": "туман",
+    "rain": "дождь",
+    "snow": "снег",
+    "storm": "гроза",
+}
 
 
 def _warning_end(value: Optional[datetime]) -> str:
@@ -160,7 +170,7 @@ def _beach_operational_lines(
     ):
         nearby_flags = (("Centre", beach.flag_color),)
     if nearby_flags:
-        lines.append("🏖 Флаги на пляжах:")
+        lines.append("🏖 <b>Флаги на пляжах:</b>")
         for color in ("red", "yellow", "green"):
             matching = [
                 name
@@ -191,7 +201,7 @@ def _beach_operational_lines(
             if notice.bathing_prohibited
             else "🏖 Информация о купании"
         )
-        lines.extend(["", heading, notice.text])
+        lines.extend(["", f"<b>{heading}:</b>", html.escape(notice.text)])
     return lines
 
 
@@ -214,7 +224,7 @@ def build_fallback_update(
         ),
         len(lines),
     )
-    lines[insert_at:insert_at] = additions
+    lines[insert_at:insert_at] = ["", *additions]
     return "\n".join(lines)
 
 
@@ -222,13 +232,30 @@ def build_message(digest: MorningDigest) -> str:
     """Format a Morning Digest without inference or generated prose."""
 
     weather = digest.weather
-    weather_icon = WEATHER_ICONS.get(weather.sky_condition, "🌤")
+    displayed_conditions = weather.sky_conditions
+    if not displayed_conditions and weather.sky_condition:
+        displayed_conditions = (weather.sky_condition,)
+    sky_labels = [
+        SKY_LABELS[condition]
+        for condition in displayed_conditions
+        if condition in SKY_LABELS
+    ]
+    sky_suffix = f" • {' → '.join(sky_labels)}" if sky_labels else ""
+    weather_icon = (
+        "🌤"
+        if len(displayed_conditions) > 1
+        else WEATHER_ICONS.get(
+            displayed_conditions[0] if displayed_conditions else None,
+            WEATHER_ICONS.get(weather.sky_condition, "🌤"),
+        )
+    )
     lines = [
         "🌅 Доброе утро, Гуардамар!",
         "",
+        "☀️ <b>Погода от AEMET:</b>",
         (
-            f"{weather_icon} Погода: {weather.minimum_temperature_c}°"
-            f" → {weather.maximum_temperature_c}°"
+            f"{weather_icon} Небо: {weather.minimum_temperature_c}°"
+            f" → {weather.maximum_temperature_c}°{sky_suffix}"
         ),
     ]
     if (
@@ -293,37 +320,45 @@ def build_message(digest: MorningDigest) -> str:
     else:
         lines.append("💨 Ветер: —")
 
-    lines.extend(
-        _beach_operational_lines(digest.beach, digest.beach_notice)
-    )
-
     if digest.warnings:
-        lines.extend(["", "⚠️ Внимание"])
-    for warning in digest.warnings[:2]:
+        lines.extend(["", "⚠️ <b>Предупреждения:</b>"])
+    visible_warnings = digest.warnings[:2]
+    for warning in visible_warnings:
         level = WARNING_LEVELS.get(
             warning.level, "Предупреждение"
         )
-        lines.append(
+        warning_line = (
             f"{level}: {_warning_text(warning.event)}"
             f"{_warning_end(warning.ends_at)}"
         )
+        if len(visible_warnings) > 1:
+            warning_line = f"• {warning_line}"
+        lines.append(warning_line)
     if len(digest.warnings) > 2:
         additional = len(digest.warnings) - 2
         lines.append(f"Ещё предупреждений: {additional}.")
 
+    beach_lines = _beach_operational_lines(
+        digest.beach,
+        digest.beach_notice,
+    )
+    if beach_lines:
+        lines.extend(["", *beach_lines])
+
     if digest.traffic_notices:
-        lines.extend(["", "🚧 Движение ограничено"])
-        lines.extend(
-            notice.text for notice in digest.traffic_notices[:2]
-        )
+        lines.extend(["", "🚧 <b>Движение:</b>"])
+        visible_traffic = digest.traffic_notices[:2]
+        for notice in visible_traffic:
+            prefix = "• " if len(visible_traffic) > 1 else ""
+            lines.append(prefix + html.escape(notice.text))
 
     if digest.events:
-        lines.extend(["", "📅 События дня:"])
+        lines.extend(["", "📅 <b>События дня:</b>"])
         for event in digest.events:
             title = event.title
             if event.category == "exhibition":
                 title = _exhibition_title(title)
-            title = _event_title(title)
+            title = html.escape(_event_title(title))
             if event.is_final_day:
                 title = f"Последний день: {title}"
             time_prefix = ""
@@ -331,16 +366,16 @@ def build_message(digest: MorningDigest) -> str:
                 start_time = event.starts_at.astimezone(
                     GUARDAMAR_TIMEZONE
                 ).strftime("%H:%M")
-                time_prefix = start_time
+                time_prefix = f"<b>{start_time}"
                 if event.ends_at is not None:
                     end_time = event.ends_at.astimezone(
                         GUARDAMAR_TIMEZONE
                     ).strftime("%H:%M")
                     time_prefix += f"–{end_time}"
-                time_prefix += " — "
+                time_prefix += "</b> — "
             place_separator = ", " if time_prefix else " — "
             place = (
-                f"{place_separator}{_event_place(event.place)}"
+                f"{place_separator}{html.escape(_event_place(event.place))}"
                 if event.place
                 else ""
             )

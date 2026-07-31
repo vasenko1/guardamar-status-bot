@@ -22,7 +22,8 @@ Reduce the effort needed to plan the day and notice important changes.
 ### Output
 
 One compact Telegram message containing only current, reliable, useful items.
-The user-facing message is fully Russian and contains no source footer.
+The user-facing message is fully Russian. AEMET attribution appears in the
+weather heading rather than as a source footer.
 
 ### Canonical layout
 
@@ -31,36 +32,40 @@ This exact visual structure is the product contract:
 ```text
 🌅 Доброе утро, Гуардамар!
 
-{значок} Погода: 24° → 31°
+☀️ **Погода от AEMET:**
+🌤 Небо: 24° → 31° • ясно → облачно
 🌧 Дождь: 80% • 12:00–18:00
 🌊 Море: 29° • слабые → умеренные
 💨 Ветер: СВ 5 → 7 м/с
-🏖 Флаги на пляжах:
+
+⚠️ **Предупреждения:**
+• Жёлтое предупреждение о жаре до 20:00.
+• На побережье ожидаются сильные порывы ветра.
+
+🏖 **Флаги на пляжах:**
    🟡 Roqueta
    🟢 Centre / Babilònia, Vivers
 🪼 Медузы: Roqueta
 
-⚠️ Внимание
-Жёлтое предупреждение о жаре до 20:00.
+🚧 **Движение:**
+• С 19:30 перекрыта Calle Mayor.
+• Автобусы следуют по временному маршруту.
 
-🚧 Движение ограничено
-С 19:30 перекрыта Calle Mayor.
-
-📅 События дня:
-• 07:00–13:30 — рынок, парковка La Redonda
-• 21:00 — концерт в замке, Castillo
+📅 **События дня:**
+• **07:00–13:30** — рынок, парковка La Redonda
+• **21:00** — концерт в замке, Castillo
 ```
 
 The order never changes:
 
 1. Greeting
-2. Weather
+2. Weather heading with AEMET attribution, then sky and temperature
 3. Rain probability and period, only at 75% or above
 4. AEMET sea temperature and optional sea-state forecast
 5. Current wind with optional inline forecast
-6. Up to three available Guardamar beach flags, grouped by color
-7. Jellyfish beaches, only when explicitly reported
-8. Warning
+6. Warning
+7. Up to three available Guardamar beach flags, grouped by color
+8. Jellyfish beaches, only when explicitly reported
 9. Traffic or closure
 10. Today's events
 
@@ -71,8 +76,11 @@ Compact condition labels end with `:` and use one following space. Do not
 align columns with runs of spaces. The sea row keeps the user-facing label
 `Море`.
 
-Weather, sea, and wind are mandatory compact rows. Rain is one optional compact
-row. It uses the highest AEMET probability for an eligible remaining period
+The weather heading is `☀️ Погода от AEMET:`. Its mandatory sky row combines
+the temperature range and at most two remaining AEMET sky states. Equal
+adjacent states are collapsed; a change renders as `ясно → облачно`.
+Sea and wind remain mandatory compact rows inside the same weather block.
+Rain is one optional compact row. It uses the highest AEMET probability for an eligible remaining period
 and appears only at `75%` or above; otherwise it is omitted. SafeBeach
 operational rows are considered only from 20 June through 14 September,
 inclusive. The flag row is shown only
@@ -100,14 +108,18 @@ SafeBeach flag lines contain only the color and beach names. The generic
 SafeBeach flag description is not repeated. Update times are used only for
 internal freshness validation and are never shown in the user-facing digest.
 
-The weather icon is dynamic from the existing AEMET daily sky forecast:
+The sky-row icon is dynamic from the existing AEMET daily sky forecast:
 `☀️` clear, `🌤` partly cloudy, `☁️` cloudy, `🌫️` fog, `🌧️` rain,
-`🌨️` snow, and `⛈️` storm. When several periods differ, use the most
-significant condition for the day. Unknown or missing conditions use `🌤`.
+`🌨️` snow, and `⛈️` storm. Keep at most the first and last distinct remaining
+conditions, with one arrow. A transition uses `🌤`; a single state uses its
+matching icon. Unknown or missing conditions use `🌤`.
 The icon adds no text, AI, or new source.
 
 Warning, traffic, and event sections are optional. Omit an entire optional
 section when it has no verified, useful items. Do not render empty headings.
+Every displayed section heading and every event time is bold through Telegram
+HTML. Sections are separated by exactly one empty line. Warning and traffic
+items use `•` when a section contains more than one displayed item.
 The event section contains every deduplicated, verified official event relevant
 today. There is no product count limit; bounded source reads and Telegram's
 message limit remain technical safety boundaries.
