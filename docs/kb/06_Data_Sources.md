@@ -137,6 +137,9 @@ handles the site's observed extra property
 quote and trailing JSON commas; any other malformed structured data is omitted.
 Only Schema.org event types are accepted, and the site's technical publisher
 identifier is never rendered as a venue.
+For `Sand Memories`, the recovered `Castell` venue is rendered as the
+confirmed meeting point `Castillo de Guardamar`; the organizer contact address
+is not treated as the event venue.
 
 Agenda failure or malformed event details omit the optional `📅 События`
 section. Cultura Guardamar is not used because its current site has a

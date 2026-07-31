@@ -150,7 +150,10 @@ class AgendaNormalizationTests(unittest.TestCase):
         event = normalize_event_page(payload, date(2026, 7, 31))
 
         self.assertIsNotNone(event)
-        self.assertEqual(event.place, "Castell")
+        self.assertEqual(
+            event.place,
+            "место встречи — Castillo de Guardamar",
+        )
 
     def test_repairs_only_known_official_json_ld_punctuation(self):
         payload = b"""

@@ -188,6 +188,9 @@ The heading is rendered as `📅 События дня:` to make its daily scope
 When an official text agenda publishes event-specific visiting hours, those
 hours take precedence over missing poster OCR times. General venue opening
 hours are never substituted for an event schedule.
+For the verified `Sand Memories` guided tour, show the official meeting point
+as `место встречи — Castillo de Guardamar`; do not substitute the organizer's
+contact address.
 On the confirmed end date of a multi-day event, prefix its title with
 `Последний день:`. Do not apply the marker to one-day events or records without
 an explicit end date.

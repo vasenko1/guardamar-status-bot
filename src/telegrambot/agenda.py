@@ -442,6 +442,14 @@ def normalize_event_page(
                 if event.place is None:
                     place = _calendar_place(payload)
                     if place is not None:
+                        if (
+                            "sand memories" in event.title.casefold()
+                            and place.casefold() == "castell"
+                        ):
+                            place = (
+                                "место встречи — "
+                                "Castillo de Guardamar"
+                            )
                         event = replace(event, place=place)
                 return event
     return None
