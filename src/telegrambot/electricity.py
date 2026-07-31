@@ -231,9 +231,10 @@ def build_price_message(data: DailyPrices) -> str:
         f"{expensive.hour:02d}:00–{expensive.hour + 1:02d}:00 · {_price(expensive.eur_kwh)} €/кВт·ч\n\n"
         "🕐 <b>По часам</b>\n"
         f"<pre>{table}</pre>\n"
-        "💡 Энергоёмкие дела лучше запланировать\n"
+        "💡 Энергоёмкие дела лучше запланировать "
         f"на период с {best_start:02d}:00 до {best_end:02d}:00.\n\n"
-        "Только для PVPC и индексированных тарифов."
+        "Для PVPC; для индексированных тарифов — ориентир.\n"
+        "Источник: ESIOS / Red Eléctrica"
     )
 
 

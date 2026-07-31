@@ -29,6 +29,10 @@ additionally red as a documented presentation rule.
 The recommendation uses the continuous six-hour window with the lowest total
 price, with the earlier window winning an exact tie.
 
+The main message names `ESIOS / Red Eléctrica` and distinguishes exact PVPC
+use from indicative use for other indexed contracts. The recommendation is
+one logical line; Telegram may wrap it naturally for the device width.
+
 Store only the last published target date. If the explanation fails after the
 main table succeeds, keep the success marker so the main table is not sent
 again.

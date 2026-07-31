@@ -99,6 +99,8 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("19  🟠 0,272", message)
         self.assertIn("21:00–22:00 · 0,322 €/кВт·ч", message)
         self.assertIn("период с 11:00 до 17:00", message)
+        self.assertNotIn("запланировать\nна период", message)
+        self.assertTrue(message.endswith("Источник: ESIOS / Red Eléctrica"))
         self.assertNotIn("сегодня", message.casefold())
 
     def test_explanation_documents_official_and_highlight_colors(self):

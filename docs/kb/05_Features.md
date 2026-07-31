@@ -10,7 +10,8 @@ with the lowest total price. A concise explanatory message is sent as a reply.
 The header must say `завтра` and include the target date. ESIOS green, yellow,
 and orange thresholds are preserved; hours at or above 90% of the daily
 maximum are highlighted red for scanning. The footer states that the table is
-relevant only to PVPC and indexed tariffs. Incomplete days are not published.
+exact for PVPC and only an orientation for other indexed tariffs, then names
+`ESIOS / Red Eléctrica` as the source. Incomplete days are not published.
 
 ## Morning Digest
 
