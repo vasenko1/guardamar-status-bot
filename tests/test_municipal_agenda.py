@@ -315,6 +315,83 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             "Biblioteca Pública Municipal",
         )
 
+    def test_repairs_reviewed_august_poster_facts(self):
+        incorrect = (
+            SourceEvent(
+                "Exposición del 24 Open de ajedrez Villa de Guardamar",
+                date(2026, 8, 1),
+                date(2026, 8, 8),
+                None,
+                None,
+                "Polideportivo Municipal Guardamar",
+                "exhibition",
+                ("mupi",),
+            ),
+            SourceEvent(
+                "Rutas nocturnas y dinámica grupal",
+                date(2026, 8, 1),
+                date(2026, 8, 1),
+                None,
+                None,
+                "Guardamar del Segura",
+                "event",
+                ("mupi",),
+            ),
+        )
+
+        corrected = _apply_reviewed_corrections(
+            (
+                "https://www.guardamardelsegura.es/wp-content/uploads/"
+                "2026/07/MUPI-AGOSTO-2026-scaled.jpg"
+            ),
+            incorrect,
+        )
+
+        tennis = next(
+            event for event in corrected if "Torneo de tenis" in event.title_es
+        )
+        routes = [
+            event for event in corrected if "Rutas nocturnas" in event.title_es
+        ]
+        self.assertEqual(tennis.start_date, date(2026, 8, 1))
+        self.assertIsNone(tennis.start_time)
+        self.assertEqual(
+            [(event.start_date.day, event.start_time) for event in routes],
+            [(7, "22:15"), (14, "22:15"), (21, "22:15"), (28, "22:15")],
+        )
+        self.assertFalse(any(
+            "ajedrez" in event.title_es.casefold() for event in corrected
+        ))
+
+    def test_august_first_day_keeps_only_reviewed_active_events(self):
+        corrected = _apply_reviewed_corrections(
+            (
+                "https://www.guardamardelsegura.es/wp-content/uploads/"
+                "2026/07/MUPI-AGOSTO-2026-scaled.jpg"
+            ),
+            (),
+        )
+        scheduled = _apply_reviewed_daily_schedules(
+            corrected,
+            date(2026, 8, 1),
+        )
+        active = [
+            event for event in scheduled
+            if event.start_date <= date(2026, 8, 1) <= event.end_date
+        ]
+
+        self.assertEqual(
+            [event.title_es for event in active],
+            [
+                "Torneo de tenis 24.º Open Real Villa de Guardamar, "
+                "Memorial Pepe y Juan Tendero 2026",
+                "Exposición de pintura y escultura: "
+                "Mediterráneo, el lenguaje del agua",
+            ],
+        )
+        self.assertEqual(active[1].start_time, "10:00")
+        self.assertEqual(active[1].end_time, "14:00")
+
     def test_keeps_entropia_when_site_advances_to_august_poster(self):
         august_events = normalize_extraction(
             {
@@ -376,6 +453,24 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                 "Mediterráneo, el lenguaje del agua"
             ),
         )
+
+    def test_vira_exhibition_uses_only_published_weekday_hours(self):
+        event = SourceEvent(
+            title_es="Exposición de pintura Luz a pesar del dolor - Vira Degliarenko",
+            start_date=date(2026, 7, 31),
+            end_date=date(2026, 8, 21),
+            start_time="08:00",
+            end_time="14:00",
+            place="Biblioteca Municipal",
+            category="exhibition",
+        )
+
+        weekday = _apply_reviewed_daily_schedules((event,), date(2026, 8, 3))
+        saturday = _apply_reviewed_daily_schedules((event,), date(2026, 8, 1))
+
+        self.assertEqual(weekday[0].start_time, "08:00")
+        self.assertEqual(weekday[0].end_time, "14:00")
+        self.assertEqual(saturday, ())
 
     def test_keeps_prior_month_events_for_seven_day_transition(self):
         new = SourceEvent(

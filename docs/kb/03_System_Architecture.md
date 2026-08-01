@@ -151,8 +151,11 @@ Mayor, Policía Local, and municipal-agenda transports accept only their exact
 official HTTPS hosts, expected content types, and bounded responses. Gemini
 uses the same fail-closed protocol checks and returns structured diagnostics;
 provider response text is never exposed. A corrupt event catalog is ignored.
-The official municipal HTML text is primary; a changed MUPI is supplementary,
-requires two agreeing structured readings, and cannot erase valid text facts.
+The official municipal HTML text is primary; a changed MUPI is supplementary.
+Its second structured reading receives only the image, never the first result,
+and deterministic intersection keeps agreeing facts. A MUPI failure cannot
+erase valid text facts. Narrow corrections may be pinned to one reviewed
+official poster when a documented OCR error is discovered.
 
 Termux refreshes municipal and Agenda Guardamar catalogs at 05:10 and 05:30,
 invokes the morning command at 07:30, and runs the update command every five

@@ -212,8 +212,11 @@ check because no equivalent authoritative cancellation feed is available.
 ADRs 0012 and 0028 implement a text-first expansion from the official Turismo
 Guardamar agenda page. Changed official monthly HTML is the primary record and
 is converted into source-language facts before the morning run. A poster with
-a new URL is processed as a supplement using two agreeing Gemini Vision reads
-and stored in the same bounded municipal catalog. When the page publishes the
+a new URL is processed as a supplement using two blind Gemini Vision reads;
+the second receives no first-pass candidates. Only their agreeing facts are
+stored in the same bounded municipal catalog. A discovered OCR error may be
+repaired only by a narrow correction tied to that exact reviewed official
+poster. When the page publishes the
 next poster early, still-relevant
 facts from the prior snapshot remain available for the current day and the
 following seven days. The snapshot may also supply today's events during a

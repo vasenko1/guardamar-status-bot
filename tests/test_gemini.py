@@ -9,6 +9,7 @@ from telegrambot.gemini import (
     AGENDA_EXTRACTION_SCHEMA,
     _extract_agenda_events,
     _extract_agenda_text_events,
+    _verify_agenda_poster_events,
     _request_translation,
     translate_event_titles,
 )
@@ -106,6 +107,22 @@ class GeminiRequestTests(unittest.TestCase):
             AGENDA_EXTRACTION_SCHEMA,
         )
         self.assertNotIn("inlineData", str(request_json.call_args.args[1]))
+
+    def test_poster_verification_is_a_blind_second_reading(self):
+        with patch(
+            "telegrambot.gemini._request_json",
+            return_value={"month": "2026-08", "events": []},
+        ) as request_json:
+            _verify_agenda_poster_events(
+                "secret-key",
+                b"image",
+                "image/jpeg",
+            )
+
+        prompt = request_json.call_args.args[1][0]["text"]
+        self.assertIn("from scratch", prompt)
+        self.assertNotIn("CANDIDATES", prompt)
+        self.assertNotIn("supplied candidate", prompt)
 
     def test_agenda_pdf_is_an_accepted_document_format(self):
         with patch(

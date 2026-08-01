@@ -731,18 +731,81 @@ def _apply_reviewed_corrections(
     poster_url: str,
     events: Tuple[SourceEvent, ...],
 ) -> Tuple[SourceEvent, ...]:
-    """Repair facts manually verified in the official text agenda."""
+    """Repair facts manually verified against a specific official poster."""
 
     parsed = urllib.parse.urlparse(poster_url)
     poster_name = parsed.path.rsplit("/", 1)[-1].casefold()
-    if (
-        parsed.scheme != "https"
-        or parsed.hostname not in POSTER_HOSTS
-        or "/wp-content/uploads/2026/07/" not in parsed.path.casefold()
-        or not poster_name.startswith("mupi-julio-2026")
-        or not poster_name.endswith((".jpg", ".jpeg", ".png", ".webp"))
-    ):
+    is_july_2026 = (
+        parsed.scheme == "https"
+        and parsed.hostname in POSTER_HOSTS
+        and "/wp-content/uploads/2026/07/" in parsed.path.casefold()
+        and poster_name.startswith("mupi-julio-2026")
+        and poster_name.endswith((".jpg", ".jpeg", ".png", ".webp"))
+    )
+    is_august_2026 = (
+        parsed.scheme == "https"
+        and parsed.hostname in POSTER_HOSTS
+        and "/wp-content/uploads/2026/07/" in parsed.path.casefold()
+        and poster_name == "mupi-agosto-2026-scaled.jpg"
+    )
+    if not is_july_2026 and not is_august_2026:
         return events
+    if is_august_2026:
+        reviewed = (
+            SourceEvent(
+                title_es=(
+                    "Torneo de tenis 24.º Open Real Villa de Guardamar, "
+                    "Memorial Pepe y Juan Tendero 2026"
+                ),
+                start_date=date(2026, 8, 1),
+                end_date=date(2026, 8, 8),
+                start_time=None,
+                end_time=None,
+                place="Polideportivo Municipal Guardamar",
+                category="event",
+                sources=("mupi_reviewed",),
+            ),
+            SourceEvent(
+                title_es=(
+                    "Exposición de pintura y escultura: "
+                    "Mediterráneo, el lenguaje del agua"
+                ),
+                start_date=date(2026, 6, 19),
+                end_date=date(2026, 8, 14),
+                start_time=None,
+                end_time=None,
+                place="Sala de exposiciones Casa de Cultura",
+                category="exhibition",
+                sources=("mupi_reviewed",),
+            ),
+            *tuple(
+                SourceEvent(
+                    title_es="Rutas nocturnas: senderismo y dinámica grupal",
+                    start_date=date(2026, 8, day),
+                    end_date=date(2026, 8, day),
+                    start_time="22:15",
+                    end_time="00:15",
+                    place=None,
+                    category="event",
+                    sources=("mupi_reviewed",),
+                )
+                for day in (7, 14, 21, 28)
+            ),
+        )
+        filtered = []
+        for event in events:
+            title = event.title_es.casefold()
+            if (
+                "rutas nocturnas" in title
+                or "senderismo" in title and "dinámica" in title
+                or "mediterráneo" in title and "lenguaje del agua" in title
+                or "tendero" in title
+                or "open real villa" in title
+                or "open" in title and "villa de guardamar" in title
+            ):
+                continue
+            filtered.append(event)
+        return tuple(filtered) + reviewed
     corrected = []
     entropia_added = False
     for event in events:
@@ -808,6 +871,25 @@ def _apply_reviewed_daily_schedules(
             and event.start_date == date(2026, 6, 19)
             and event.end_date == date(2026, 8, 14)
         )
+        is_vira_degliarenko = (
+            "vira deg" in normalized
+            and event.start_date == date(2026, 7, 31)
+            and event.end_date == date(2026, 8, 21)
+        )
+        if is_vira_degliarenko:
+            if local_day.weekday() >= 5:
+                continue
+            scheduled.append(SourceEvent(
+                title_es="Exposición de pintura «Luz a pesar del dolor» de Vira Degliarenko",
+                start_date=event.start_date,
+                end_date=event.end_date,
+                start_time="08:00",
+                end_time="14:00",
+                place="Biblioteca Municipal Guardamar del Segura",
+                category="exhibition",
+                sources=event.sources,
+            ))
+            continue
         if not is_mediterraneo:
             scheduled.append(event)
             continue
@@ -960,7 +1042,6 @@ async def refresh_municipal_catalog(
                     api_key,
                     poster,
                     mime_type,
-                    extracted.get("events", []),
                 )
                 verified_result = {
                     **verified_result,

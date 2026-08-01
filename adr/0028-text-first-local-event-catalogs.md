@@ -23,9 +23,12 @@ bounded detail-page reads.
   event record. Call Gemini text extraction only when its bounded monthly text
   changes.
 - Treat the linked MUPI image as supplementary. Download and process it only
-  for a new official URL. Require two independent structured readings and keep
-  only facts whose date, time, and title agree. Official text wins on a
-  duplicate or conflict.
+  for a new official URL. Require two blind structured readings: the second
+  call receives the image but no first-pass candidates. Keep only facts whose
+  date, time, and title agree. Official text wins on a duplicate or conflict.
+- Permit a narrow correction tied to one exact official poster after a human
+  review proves a material OCR error. Such a correction may repair only facts
+  visible in that poster and does not become a general recurring-event rule.
 - Store source-language facts and provenance, never generated Russian copy or
   raw pages/images. Replace each JSON catalog atomically.
 - Retain only the existing seven-day month-transition window. Do not build an
@@ -44,6 +47,11 @@ Event state expands to two small JSON files and two short cron invocations.
 The catalogs may lag a same-morning edit made after their refresh. This is
 accepted for ordinary events; urgent notices remain the responsibility of
 their dedicated current sources, not the event catalog.
+
+Independent readings can disagree and omit a real poster-only event. This is
+the intended fail-closed tradeoff. Passing first-pass candidates into the
+second reading is prohibited because it creates confirmation bias without
+adding independent evidence.
 
 ## Alternatives rejected
 

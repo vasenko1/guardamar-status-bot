@@ -54,8 +54,9 @@ relevance remain deterministic.
 
 ADRs 0012 and 0028 additionally permit Gemini structured extraction when the
 official monthly municipal text changes and Gemini Vision only for a new MUPI
-URL. MUPI facts require two independent structured readings and deterministic
-agreement on key fields; official HTML text always wins conflicts. Every
+URL. MUPI facts require two blind structured readings: the second call must
+not receive the first call's candidates. Deterministic agreement on key fields
+is required, and official HTML text always wins conflicts. Every
 result must use a fixed schema and pass date, month, field-length, provenance,
 and duplicate validation before replacing the previous catalog.
 Russian translations must not be stored. Invalid OCR keeps the prior valid

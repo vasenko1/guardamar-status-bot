@@ -469,7 +469,6 @@ def _verify_agenda_poster_events(
     api_key: str,
     image: bytes,
     mime_type: str,
-    candidates: Sequence[Dict[str, Any]],
 ) -> Dict[str, Any]:
     if mime_type not in IMAGE_MIME_TYPES:
         raise GeminiError(
@@ -477,16 +476,18 @@ def _verify_agenda_poster_events(
             code="CONTENT-TYPE",
             description="проверка MUPI требует изображение",
         )
-    bounded = list(candidates)[:80]
     prompt = (
-        "Independently reread this official Guardamar monthly MUPI poster. "
-        "Verify the supplied candidate records against visible poster text. "
-        "Return only activities whose date, start time (including null), and "
-        "identifying title are explicitly supported by the image. Correct "
-        "obvious OCR characters only when clearly legible. Do not add events "
-        "that are absent from the candidate list. Use the fixed schema, ISO "
-        "dates and HH:MM times. Preserve the poster month as YYYY-MM.\n\n"
-        "CANDIDATES:\n" + json.dumps(bounded, ensure_ascii=False)
+        "Independently read this official Guardamar monthly MUPI poster from "
+        "scratch. You have not seen another extraction. Return every explicitly "
+        "dated public activity, exhibition, workshop, concert, tour, festival "
+        "act, or neighbourhood event. Expand repeated dates into separate "
+        "records. Preserve every explicit activity type, date, time range and "
+        "place. Transcribe visible digits exactly and use null for an absent or "
+        "illegible time or place; never infer one from a facility schedule. "
+        "Treat hours printed inside a specific exhibition card as that "
+        "exhibition's hours. Exclude routine facility opening hours and "
+        "municipal services using their schema categories. Use ISO dates, "
+        "HH:MM times, and the poster month as YYYY-MM."
     )
     return _request_json(
         api_key,
@@ -506,16 +507,14 @@ async def verify_agenda_poster_events(
     api_key: str,
     image: bytes,
     mime_type: str,
-    candidates: Sequence[Dict[str, Any]],
 ) -> Dict[str, Any]:
-    """Independently verify first-pass MUPI candidates."""
+    """Extract a second MUPI reading without first-pass anchoring."""
 
     return await asyncio.to_thread(
         _verify_agenda_poster_events,
         api_key,
         image,
         mime_type,
-        candidates,
     )
 
 
