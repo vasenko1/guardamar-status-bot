@@ -77,7 +77,9 @@ deployment agent or self-hosted CI runner.
   detail links with no more than three requests in flight. The 05:10 municipal
   refresh makes one HTML request and downloads MUPI only after its official
   URL changes. Neither stores downloaded pages or media. Today's bounded title
-  set may share one Gemini translation request during digest construction.
+  set may share one Gemini translation request during digest construction. An
+  invalid municipal batch may fall back to at most twelve single-title calls;
+  it never repeats event-source collection or OCR.
 - Telegram operations share one bounded JSON client restricted to the official
   API host. Only sends retry, and only after transient failures.
 - Mayor, Policía Local, municipal-agenda, and Gemini requests enforce exact

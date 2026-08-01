@@ -1,3 +1,4 @@
+import asyncio
 import json
 import unittest
 from datetime import date
@@ -9,6 +10,7 @@ from telegrambot.gemini import (
     _extract_agenda_events,
     _extract_agenda_text_events,
     _request_translation,
+    translate_event_titles,
 )
 
 
@@ -62,6 +64,16 @@ class _Opener:
 
 
 class GeminiRequestTests(unittest.TestCase):
+    def test_event_translation_accepts_full_valid_event_length(self):
+        translated = "Д" * 100
+        with patch(
+            "telegrambot.gemini._translate_event_titles",
+            return_value={"titles_ru": [translated]},
+        ):
+            result = asyncio.run(translate_event_titles("key", ["Título"]))
+
+        self.assertEqual(result, [translated])
+
     def test_agenda_ocr_uses_fixed_response_schema(self):
         with patch(
             "telegrambot.gemini._request_json",

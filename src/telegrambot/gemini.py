@@ -603,7 +603,7 @@ async def translate_event_titles(
         not isinstance(translated, list)
         or len(translated) != len(titles)
         or not all(
-            isinstance(title, str) and 1 <= len(title.strip()) <= 80
+            isinstance(title, str) and 1 <= len(title.strip()) <= 120
             for title in translated
         )
     ):

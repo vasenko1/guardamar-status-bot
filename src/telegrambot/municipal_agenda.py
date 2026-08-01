@@ -36,6 +36,7 @@ PAGE_LIMIT_BYTES = 500_000
 POSTER_LIMIT_BYTES = 4_000_000
 REQUEST_TIMEOUT_SECONDS = 15
 MAX_EVENTS = 100
+MAX_INDIVIDUAL_TRANSLATION_RECOVERY = 12
 TRANSITION_HORIZON_DAYS = 7
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 _TIME_PATTERN = re.compile(r"^\d{2}:\d{2}$")
@@ -1164,20 +1165,46 @@ async def fetch_today_municipal_events(
     source_events = await _cached_current_events(now, state_path)
     if not source_events:
         return ()
+    translated_events = []
     try:
         titles = await translate_event_titles(
             api_key, [event.title_es for event in source_events]
         )
-    except GeminiError as exc:
-        raise MunicipalAgendaError(
-            "Event translation failed",
-            code=exc.diagnostic_code,
-            status=exc.server_status,
-            description=exc.safe_description,
-        ) from exc
+        translated_events = list(zip(source_events, titles))
+    except GeminiError as batch_error:
+        failed_translations = 0
+        for source in source_events[:MAX_INDIVIDUAL_TRANSLATION_RECOVERY]:
+            try:
+                title = (await translate_event_titles(
+                    api_key, [source.title_es]
+                ))[0]
+            except GeminiError:
+                failed_translations += 1
+                continue
+            translated_events.append((source, title))
+        failed_translations += max(
+            0,
+            len(source_events) - MAX_INDIVIDUAL_TRANSLATION_RECOVERY,
+        )
+        if failed_translations and diagnostics is not None:
+            diagnostics.append(SourceDiagnostic(
+                "MUNI-AGENDA-TRANSLATION-PARTIAL",
+                "Agenda municipal",
+                (
+                    f"не удалось перевести событий: {failed_translations}; "
+                    "они исключены из предпросмотра"
+                ),
+            ))
+        if not translated_events:
+            raise MunicipalAgendaError(
+                "Event translation failed",
+                code=batch_error.diagnostic_code,
+                status=batch_error.server_status,
+                description=batch_error.safe_description,
+            ) from batch_error
     result = []
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
-    for source, title in zip(source_events, titles):
+    for source, title in translated_events:
         starts_at = None
         ends_at = None
         if source.start_time:

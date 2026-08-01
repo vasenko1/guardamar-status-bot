@@ -445,6 +445,55 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(events[0].is_final_day)
 
+    async def test_batch_translation_failure_recovers_titles_individually(self):
+        first = SourceEvent(
+            title_es="Primera actividad",
+            start_date=date(2026, 8, 1),
+            end_date=date(2026, 8, 1),
+            start_time="10:00",
+            end_time=None,
+            place="Castillo",
+            category="event",
+        )
+        second = SourceEvent(
+            title_es="Segunda actividad",
+            start_date=date(2026, 8, 1),
+            end_date=date(2026, 8, 1),
+            start_time="21:00",
+            end_time=None,
+            place="Plaza",
+            category="event",
+        )
+        diagnostics = []
+        translate = AsyncMock(side_effect=[
+            GeminiError("invalid translations"),
+            ["Первое мероприятие"],
+            ["Второе мероприятие"],
+        ])
+        with (
+            patch(
+                "telegrambot.municipal_agenda._cached_current_events",
+                new=AsyncMock(return_value=(first, second)),
+            ),
+            patch(
+                "telegrambot.municipal_agenda.translate_event_titles",
+                new=translate,
+            ),
+        ):
+            events = await fetch_today_municipal_events(
+                datetime(2026, 8, 1, 7, 30, tzinfo=TZ),
+                "key",
+                Path("unused.json"),
+                diagnostics,
+            )
+
+        self.assertEqual(
+            [event.title for event in events],
+            ["Первое мероприятие", "Второе мероприятие"],
+        )
+        self.assertEqual(translate.await_count, 3)
+        self.assertEqual(diagnostics, [])
+
     async def test_unchanged_poster_uses_snapshot_without_ocr(self):
         events = normalize_extraction(extraction())
         with tempfile.TemporaryDirectory() as directory:

@@ -65,9 +65,14 @@ optional municipal-agenda failure and cannot stop the rest of the digest.
 The same bounded title-only translation contract applies to today's structured
 Agenda Guardamar events. Gemini receives only the official titles and returns
 the same number in the same order. It may not add dates, places, explanations,
-or event facts. Failure omits only the Agenda Guardamar contribution.
+or event facts. If a municipal batch has an invalid response shape, the bot
+may recover at most twelve selected titles through individual schema-checked
+calls; an individually invalid title alone is omitted. This recovery never
+repeats OCR or source collection. Failure omits only the affected event-source
+contribution.
 
 The Gemini client sends the key only in the API header, accepts bounded JSON
 only from the exact official HTTPS API host, and exposes stable status codes
-instead of provider response text. It performs no internal retry; a failed AI
-call omits the affected optional result or preserves an already valid snapshot.
+instead of provider response text. Apart from the bounded title recovery
+above, it performs no internal retry; a failed AI call omits the affected
+optional result or preserves an already valid snapshot.
