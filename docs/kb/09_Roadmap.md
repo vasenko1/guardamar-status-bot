@@ -36,7 +36,11 @@
   catalogs remove routine event-site work from the 07:30 run.
 - Add focused tests and recovery guidance.
 - Review and add the next official Guardamar holiday calendar before each
-  supported year begins; an unsupported year deliberately omits the market.
+  supported year begins; an unsupported year deliberately omits both the
+  holiday block and the holiday-dependent Wednesday market.
+- Done: show an official holiday block immediately before today's events,
+  using the same reviewed calendar without runtime requests or inferred
+  transfers.
 - Review the Campo de Guardamar operator schedule periodically and replace its
   local Sunday rule if an authoritative cancellation feed becomes available.
 - Done: validated Python 3.12 operation, resource use, `termux-services`,

@@ -54,8 +54,9 @@ sections by practical importance:
 
 1. official warnings and urgent restrictions;
 2. material disruptions or closures;
-3. relevant events;
-4. routine context, only when useful.
+3. an official holiday applicable in Guardamar today;
+4. relevant events;
+5. routine context, only when useful.
 
 The bot must not claim to replace official emergency communication.
 

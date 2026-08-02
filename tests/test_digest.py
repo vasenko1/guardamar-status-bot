@@ -1,10 +1,11 @@
 import unittest
-from datetime import datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 from telegrambot.digest import build_fallback_update, build_message
 from telegrambot.models import (
     BeachStatus,
     Event,
+    Holiday,
     MorningDigest,
     TrafficNotice,
     Warning,
@@ -13,6 +14,107 @@ from telegrambot.models import (
 
 
 class DigestMessageTests(unittest.TestCase):
+    @staticmethod
+    def _routine_digest(**changes):
+        values = {
+            "weather": Weather(
+                current_temperature_c=None,
+                minimum_temperature_c=22,
+                maximum_temperature_c=30,
+                wind_direction="E",
+                wind_speed_kmh=10,
+                observed_at=None,
+            ),
+            "warnings": (),
+            "warnings_available": True,
+        }
+        values.update(changes)
+        return MorningDigest(**values)
+
+    def test_renders_weekday_holiday_before_events(self):
+        digest = self._routine_digest(
+            holidays=(
+                Holiday(
+                    date(2026, 7, 24),
+                    "Канун Дня святого Иакова",
+                    "local",
+                ),
+            ),
+            events=(
+                Event(
+                    title="Концерт",
+                    starts_at=None,
+                    place="Castillo",
+                ),
+            ),
+        )
+
+        message = build_message(digest)
+
+        self.assertIn(
+            "🎉 <b>Праздник сегодня:</b>\n"
+            "• Канун Дня святого Иакова — "
+            "официальный городской праздник\n\n"
+            "🔴 Официальный праздничный выходной.",
+            message,
+        )
+        self.assertLess(
+            message.index("🎉 <b>Праздник сегодня:</b>"),
+            message.index("📅 <b>События дня:</b>"),
+        )
+
+    def test_weekend_holiday_omits_extra_day_off_line(self):
+        digest = self._routine_digest(
+            holidays=(
+                Holiday(
+                    date(2026, 8, 15),
+                    "Успение Богородицы",
+                    "national",
+                ),
+            ),
+        )
+
+        message = build_message(digest)
+
+        self.assertIn(
+            "• Успение Богородицы — национальный праздник",
+            message,
+        )
+        self.assertNotIn("Официальный праздничный выходной", message)
+
+    def test_orders_coincident_holidays_by_scope(self):
+        holiday_date = date(2026, 10, 12)
+        digest = self._routine_digest(
+            holidays=(
+                Holiday(holiday_date, "Местный день", "local"),
+                Holiday(holiday_date, "Региональный день", "regional"),
+                Holiday(holiday_date, "Национальный день", "national"),
+            ),
+        )
+
+        message = build_message(digest)
+
+        self.assertIn("🎉 <b>Праздники сегодня:</b>", message)
+        self.assertLess(
+            message.index("Национальный день"),
+            message.index("Региональный день"),
+        )
+        self.assertLess(
+            message.index("Региональный день"),
+            message.index("Местный день"),
+        )
+
+    def test_unknown_holiday_scope_does_not_render_empty_section(self):
+        digest = self._routine_digest(
+            holidays=(
+                Holiday(date(2026, 1, 1), "Неизвестный", "province"),
+            ),
+        )
+
+        message = build_message(digest)
+
+        self.assertNotIn("🎉", message)
+
     def test_collapses_equal_rendered_sky_conditions(self):
         digest = MorningDigest(
             weather=Weather(

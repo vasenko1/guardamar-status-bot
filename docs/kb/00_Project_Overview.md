@@ -13,6 +13,7 @@ The digest may cover:
 - beach flag status;
 - official warnings;
 - important municipal updates;
+- official national, regional, and Guardamar holiday days off;
 - events relevant today.
 
 Sections are included only when current, useful information is available. The

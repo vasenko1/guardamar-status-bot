@@ -56,6 +56,15 @@ class Event:
 
 
 @dataclass(frozen=True)
+class Holiday:
+    """One reviewed official non-working holiday applicable in Guardamar."""
+
+    date: date
+    name: str
+    scope: str
+
+
+@dataclass(frozen=True)
 class TrafficMeasure:
     """One independently active mobility restriction from an official notice."""
 
@@ -94,5 +103,6 @@ class MorningDigest:
     forecast_sea_state: Optional[str] = None
     forecast_later_sea_state: Optional[str] = None
     traffic_notices: Tuple[TrafficNotice, ...] = ()
+    holidays: Tuple[Holiday, ...] = ()
     events: Tuple[Event, ...] = ()
     beach_notice: Optional[BeachNotice] = None

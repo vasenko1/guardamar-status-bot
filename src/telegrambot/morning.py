@@ -18,6 +18,7 @@ from .agenda import (
 from .aemet import fetch_morning_digest
 from .digest import build_message
 from .diagnostics import SourceDiagnostic, source_error
+from .holidays import official_holidays_on
 from .mayor import (
     MayorChannelError,
     fetch_today_mayor_events,
@@ -307,6 +308,9 @@ async def produce_message(
             beach=beach,
             beach_notice=beach_notice,
             traffic_notices=traffic_notices,
+            holidays=official_holidays_on(
+                now.astimezone(GUARDAMAR_TIMEZONE).date()
+            ),
             events=_merge_events(
                 weekly_events,
                 mayor_events,

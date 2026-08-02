@@ -400,6 +400,44 @@ def build_message(digest: MorningDigest) -> str:
             prefix = "• " if len(visible_traffic) > 1 else ""
             lines.append(prefix + html.escape(notice.text))
 
+    if digest.holidays:
+        scope_labels = {
+            "national": "национальный праздник",
+            "regional": "региональный праздник",
+            "local": "официальный городской праздник",
+        }
+        ordered_holidays = sorted(
+            (
+                holiday
+                for holiday in digest.holidays
+                if holiday.scope in scope_labels
+            ),
+            key=lambda holiday: {
+                "national": 0,
+                "regional": 1,
+                "local": 2,
+            }.get(holiday.scope, 3),
+        )
+    else:
+        ordered_holidays = []
+
+    if ordered_holidays:
+        heading = (
+            "🎉 <b>Праздник сегодня:</b>"
+            if len(ordered_holidays) == 1
+            else "🎉 <b>Праздники сегодня:</b>"
+        )
+        lines.extend(["", heading])
+        for holiday in ordered_holidays:
+            label = scope_labels.get(holiday.scope)
+            if label is None:
+                continue
+            lines.append(
+                f"• {html.escape(holiday.name)} — {label}"
+            )
+        if ordered_holidays[0].date.weekday() < 5:
+            lines.extend(["", "🔴 Официальный праздничный выходной."])
+
     if digest.events:
         lines.extend(["", "📅 <b>События дня:</b>"])
         for index, event in enumerate(digest.events):

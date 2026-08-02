@@ -65,6 +65,11 @@ This exact visual structure is the product contract:
 • С 19:30 перекрыта Calle Mayor.
 • Автобусы следуют по временному маршруту.
 
+🎉 **Праздник сегодня:**
+• Канун Дня святого Иакова — официальный городской праздник
+
+🔴 Официальный праздничный выходной.
+
 📅 **События дня:**
 • **07:00–13:30** — рынок
   📍 парковка La Redonda
@@ -84,7 +89,8 @@ The order never changes:
 7. Up to three available Guardamar beach flags, grouped by color
 8. Jellyfish beaches, only when explicitly reported
 9. Traffic or closure
-10. Today's events
+10. Official holiday applicable in Guardamar today
+11. Today's events
 
 Each event is one bullet. Its official place, when available, is rendered on
 the following indented `📍` line. Events are separated by one blank line;
@@ -144,6 +150,19 @@ items use `•` when a section contains more than one displayed item.
 The event section contains every deduplicated, verified official event relevant
 today. There is no product count limit; bounded source reads and Telegram's
 message limit remain technical safety boundaries.
+
+The holiday section appears immediately before `📅 События дня:` and only on
+an official paid, non-recoverable holiday applicable in Guardamar on that
+Madrid local date. It uses the reviewed annual BOE/DOGV calendar already used
+by the Wednesday-market rule; the bot never calculates transfers or carries
+local dates into an unreviewed year. Entries use the fixed order national,
+regional, then local. Labels are `национальный праздник`, `региональный
+праздник`, and `официальный городской праздник`. The heading is singular or
+plural according to the number of distinct holidays. On Monday through Friday
+append `🔴 Официальный праздничный выходной.`; omit that explanatory line on
+Saturday and Sunday. Never render `Сегодня рабочий день`. Ordinary festivals
+and multi-day programmes remain events and do not enter this section merely
+because they are celebrations.
 
 Each event uses the compact order `{time or range} — {type and title}, {place}`.
 When the official source has no time, omit only the time prefix and keep the

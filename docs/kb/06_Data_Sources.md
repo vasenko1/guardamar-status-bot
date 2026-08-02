@@ -22,7 +22,7 @@ official endpoints and lightweight access methods are validated.
 | Policía Local Guardamar | Explicit mobility restrictions | High for direct official notices; publication is irregular | One bounded official HTML page and reviewed linked document | Yes |
 | Agenda Guardamar | Official ticketed events occurring today | High for listed Ayuntamiento events | 05:30 bounded HTML/Schema.org catalog refresh | Yes |
 | Turismo Guardamar municipal agenda | Broader official monthly cultural text plus supplementary MUPI | High for text; image facts require agreement | 05:10 text-first catalog refresh; MUPI only after URL change | Yes |
-| Ayuntamiento Wednesday market page and official holiday calendar | Weekly market at parking La Redonda, including holiday moves | High; official recurring schedule and annual calendars | Small reviewed local calendar rule | Yes |
+| BOE, DOGV, and official Guardamar holiday calendar | Official national, regional, and local days off applicable in Guardamar; Wednesday-market holiday moves | High; legally authoritative annual publications | Small reviewed annual in-code calendar; no morning request | Yes |
 | `@AlcaldeGuardamar` public channel | Explicit market exceptions, bathing-status transitions, and explicitly dated Fiestas de Barrio | Operational municipal channel; text must be mechanically grounded | One bounded morning event check, market check when relevant, or one check after SafeBeach retries | Yes, narrow role |
 | Campo de Guardamar market website | Sunday market at Camino del Raso, 15 | Operator-published schedule; no authoritative cancellation feed found | Local Sunday rule, `07:00–16:00` | Yes, explicit product exception |
 | Community or commercial sources | Gap filling only | Variable | Varies | No by default |
@@ -179,6 +179,17 @@ The official monthly municipal poster may additionally supply explicit event
 type or medium, time range, and place through the bounded snapshot defined in
 ADR 0012. Missing time does not exclude an otherwise valid event; it is simply
 not rendered. Missing facts are never inferred.
+
+## Approved official holiday calendar
+
+BOE supplies the annual national and autonomous-community classification;
+DOGV supplies the final Comunitat Valenciana calendar and the two Guardamar
+local holidays proposed by the municipality. The bot stores only the final
+published dates, concise reviewed Russian names, and legal scope. It does not
+derive transfers, use commercial calendar sites, or carry local dates into an
+unreviewed year. The same calendar powers both the holiday section and the
+Wednesday-market move. No runtime request, cache, or recurring synchronization
+is needed.
 
 ## Approved Wednesday market
 
