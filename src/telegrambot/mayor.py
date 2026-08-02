@@ -163,7 +163,8 @@ def _read_page() -> bytes:
             else "Mayor channel network request failed",
             code="TIMEOUT" if timed_out else "NETWORK",
             description=(
-                "Telegram не ответил до истечения тайм-аута"
+                "сетевой тайм-аут при загрузке публичной страницы "
+                "канала t.me (лимит сетевой операции — 10 с)"
                 if timed_out
                 else "не удалось установить соединение с Telegram"
             ),

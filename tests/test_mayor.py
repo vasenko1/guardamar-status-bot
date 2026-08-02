@@ -47,6 +47,11 @@ class _Opener:
         return self.response
 
 
+class _TimeoutOpener:
+    def open(self, request, timeout):
+        raise TimeoutError("timed out")
+
+
 def page(text, timestamp="2026-07-28T18:00:00+00:00"):
     return f"""
     <div class="tgme_widget_message_wrap js-widget_message_wrap">
@@ -82,6 +87,21 @@ class MayorChannelTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             raised.exception.diagnostic_code,
             "CONTENT-TYPE",
+        )
+
+    def test_describes_public_page_network_timeout_precisely(self):
+        with patch(
+            "telegrambot.mayor.urllib.request.build_opener",
+            return_value=_TimeoutOpener(),
+        ):
+            with self.assertRaises(MayorChannelError) as raised:
+                _read_page()
+
+        self.assertEqual(raised.exception.diagnostic_code, "TIMEOUT")
+        self.assertEqual(
+            raised.exception.safe_description,
+            "сетевой тайм-аут при загрузке публичной страницы "
+            "канала t.me (лимит сетевой операции — 10 с)",
         )
 
     def test_extracts_only_recent_timestamped_text(self):
