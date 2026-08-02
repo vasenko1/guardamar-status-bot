@@ -389,8 +389,8 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                 "Mediterráneo, el lenguaje del agua",
             ],
         )
-        self.assertEqual(active[1].start_time, "10:00")
-        self.assertEqual(active[1].end_time, "14:00")
+        self.assertIsNone(active[1].start_time)
+        self.assertIsNone(active[1].end_time)
 
     def test_keeps_entropia_when_site_advances_to_august_poster(self):
         august_events = normalize_extraction(
@@ -417,7 +417,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(entropia.end_date, datetime(2026, 7, 29).date())
         self.assertEqual(entropia.start_time, "08:00")
 
-    def test_applies_reviewed_mediterraneo_visiting_hours(self):
+    def test_does_not_infer_mediterraneo_hours_from_venue(self):
         event = SourceEvent(
             title_es=(
                 "EXPOSICIÓN DE PINTURA: "
@@ -441,11 +441,12 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             (event,), datetime(2026, 8, 2).date()
         )
 
-        self.assertEqual(weekday[0].start_time, "09:00")
-        self.assertEqual(weekday[0].end_time, "20:00")
-        self.assertEqual(saturday[0].start_time, "10:00")
-        self.assertEqual(saturday[0].end_time, "14:00")
-        self.assertEqual(sunday, ())
+        self.assertIsNone(weekday[0].start_time)
+        self.assertIsNone(weekday[0].end_time)
+        self.assertIsNone(saturday[0].start_time)
+        self.assertIsNone(saturday[0].end_time)
+        self.assertIsNone(sunday[0].start_time)
+        self.assertIsNone(sunday[0].end_time)
         self.assertEqual(
             weekday[0].title_es,
             (

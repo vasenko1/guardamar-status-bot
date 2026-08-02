@@ -893,13 +893,6 @@ def _apply_reviewed_daily_schedules(
         if not is_mediterraneo:
             scheduled.append(event)
             continue
-        if local_day.weekday() == 6:
-            continue
-        start_time, end_time = (
-            ("10:00", "14:00")
-            if local_day.weekday() == 5
-            else ("09:00", "20:00")
-        )
         scheduled.append(
             SourceEvent(
                 title_es=(
@@ -908,8 +901,8 @@ def _apply_reviewed_daily_schedules(
                 ),
                 start_date=event.start_date,
                 end_date=event.end_date,
-                start_time=start_time,
-                end_time=end_time,
+                start_time=None,
+                end_time=None,
                 place="Sala de exposiciones Casa de Cultura",
                 category="exhibition",
                 sources=event.sources,

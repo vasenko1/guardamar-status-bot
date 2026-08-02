@@ -268,14 +268,12 @@ def build_fallback_update(
     if not additions:
         return morning_message
     lines = morning_message.splitlines()
-    insert_at = next(
-        (
-            index + 1
-            for index, line in enumerate(lines)
-            if line.startswith("💨 Ветер:")
-        ),
-        len(lines),
-    )
+    weather_rows = [
+        index
+        for index, line in enumerate(lines)
+        if line.startswith(("💨 Ветер:", "🌊 Море:"))
+    ]
+    insert_at = max(weather_rows) + 1 if weather_rows else len(lines)
     lines[insert_at:insert_at] = ["", *additions]
     return "\n".join(lines)
 
@@ -306,7 +304,7 @@ def build_message(digest: MorningDigest) -> str:
         "",
         "☀️ <b>Погода от AEMET:</b>",
         (
-            f"{weather_icon} Небо: {weather.minimum_temperature_c}°"
+            f"{weather_icon} Воздух: {weather.minimum_temperature_c}°"
             f" → {weather.maximum_temperature_c}°{sky_suffix}"
         ),
     ]
@@ -350,8 +348,6 @@ def build_message(digest: MorningDigest) -> str:
         sea_label = first_sea_label or later_sea_label
         sea_state = f"{sea_label} волны" if sea_label else None
     sea_suffix = f" • {sea_state}" if sea_state else ""
-    lines.append(f"🌊 Море: {sea_temperature}{sea_suffix}")
-
     if weather.wind_direction and weather.wind_speed_kmh is not None:
         direction = WIND_DIRECTIONS.get(
             weather.wind_direction,
@@ -371,6 +367,7 @@ def build_message(digest: MorningDigest) -> str:
         lines.append(wind_line)
     else:
         lines.append("💨 Ветер: —")
+    lines.append(f"🌊 Море: {sea_temperature}{sea_suffix}")
 
     if digest.warnings:
         lines.extend(["", "⚠️ <b>Предупреждения:</b>"])
@@ -405,7 +402,9 @@ def build_message(digest: MorningDigest) -> str:
 
     if digest.events:
         lines.extend(["", "📅 <b>События дня:</b>"])
-        for event in digest.events:
+        for index, event in enumerate(digest.events):
+            if index:
+                lines.append("")
             title = event.title
             if event.category == "exhibition":
                 title = _exhibition_title(title)
@@ -424,11 +423,9 @@ def build_message(digest: MorningDigest) -> str:
                     ).strftime("%H:%M")
                     time_prefix += f"–{end_time}"
                 time_prefix += "</b> — "
-            place_separator = ", " if time_prefix else " — "
-            place = (
-                f"{place_separator}{html.escape(_event_place(event.place))}"
-                if event.place
-                else ""
-            )
-            lines.append(f"• {time_prefix}{title}{place}")
+            lines.append(f"• {time_prefix}{title}")
+            if event.place:
+                lines.append(
+                    f"  📍 {html.escape(_event_place(event.place))}"
+                )
     return "\n".join(lines)

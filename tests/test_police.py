@@ -278,7 +278,7 @@ class PoliceTrafficFailureTests(unittest.IsolatedAsyncioTestCase):
             message = await produce_message("api-key", now)
 
         self.assertNotIn("🚧 <b>Движение:</b>", message)
-        self.assertIn("🌤 Небо", message)
+        self.assertIn("🌤 Воздух", message)
 
 
 if __name__ == "__main__":

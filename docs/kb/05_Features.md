@@ -47,10 +47,10 @@ This exact visual structure is the product contract:
 🌅 Доброе утро, Гуардамар!
 
 ☀️ **Погода от AEMET:**
-🌤 Небо: 24° → 31° • ясно → облачно
+🌤 Воздух: 24° → 31° • ясно → облачно
 🌧 Дождь: 80% • 12:00–18:00
-🌊 Море: 29° • слабые → умеренные
 💨 Ветер: СВ 5 → 7 м/с
+🌊 Море: 29° • слабые → умеренные
 
 ⚠️ **Предупреждения:**
 • Жёлтое предупреждение о жаре до 20:00.
@@ -66,22 +66,29 @@ This exact visual structure is the product contract:
 • Автобусы следуют по временному маршруту.
 
 📅 **События дня:**
-• **07:00–13:30** — рынок, парковка La Redonda
-• **21:00** — концерт в замке, Castillo
+• **07:00–13:30** — рынок
+  📍 парковка La Redonda
+
+• **21:00** — концерт в замке
+  📍 Castillo
 ```
 
 The order never changes:
 
 1. Greeting
-2. Weather heading with AEMET attribution, then sky and temperature
+2. Weather heading with AEMET attribution, then air temperature and sky
 3. Rain probability and period, only at 75% or above
-4. AEMET sea temperature and optional sea-state forecast
-5. Current wind with optional inline forecast
+4. Current wind with optional inline forecast
+5. AEMET sea temperature and optional sea-state forecast
 6. Warning
 7. Up to three available Guardamar beach flags, grouped by color
 8. Jellyfish beaches, only when explicitly reported
 9. Traffic or closure
 10. Today's events
+
+Each event is one bullet. Its official place, when available, is rendered on
+the following indented `📍` line. Events are separated by one blank line;
+unknown places do not create an empty location row.
 
 The greeting must be exactly `🌅 Доброе утро, Гуардамар!`. The word
 `дайджест` must not appear in the user-facing message.
