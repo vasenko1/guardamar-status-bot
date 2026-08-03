@@ -37,6 +37,8 @@ class PublicationState:
             return None
         raw_date = value.get("last_successful_date")
         if raw_date is None:
+            if set(value) == {"electricity_explanation_message_id"}:
+                return None
             # Read the previous schema once so an existing confirmed success
             # does not cause a duplicate after this upgrade.
             if value.get("status") == "success":
@@ -59,6 +61,33 @@ class PublicationState:
         self._write({
             "last_successful_date": local_day.isoformat(),
         })
+
+    def electricity_explanation_message_id(self) -> Optional[int]:
+        value = self._read()
+        message_id = value.get("electricity_explanation_message_id")
+        if message_id is None:
+            return None
+        if not isinstance(message_id, int) or message_id <= 0:
+            raise StateError(
+                "publication state has an invalid electricity anchor"
+            )
+        return message_id
+
+    def mark_electricity_published(self, local_day: date) -> None:
+        value = {
+            "last_successful_date": local_day.isoformat(),
+        }
+        anchor_id = self.electricity_explanation_message_id()
+        if anchor_id is not None:
+            value["electricity_explanation_message_id"] = anchor_id
+        self._write(value)
+
+    def mark_electricity_explanation(self, message_id: int) -> None:
+        if not isinstance(message_id, int) or message_id <= 0:
+            raise StateError("electricity anchor message ID is invalid")
+        value = self._read()
+        value["electricity_explanation_message_id"] = message_id
+        self._write(value)
 
     def morning_record(self, local_day: date) -> Optional[dict]:
         value = self._read()

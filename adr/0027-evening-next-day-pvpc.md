@@ -28,7 +28,9 @@ and publish only from that verified local snapshot. The snapshot contains no
 token or raw API response and is replaced when the target date changes. Render
 the two-column table inside Telegram HTML `<pre>` so its columns use a
 monospace font. The heading explicitly says `завтра` and includes the date.
-Send a small explanation as a reply to the price table. Colors compare hours
+On the first successful publication, send a small explanation, persist its
+message ID, and send the price table as its reply. On later days, send only the
+new table as a reply to the same explanation. Colors compare hours
 within the published local day: the cheapest third is green, the middle third
 yellow, and the most expensive third red. Equal prices are not split across a
 boundary; when both boundaries are the same, that shared level is yellow.
@@ -37,19 +39,21 @@ These colors are presentation metadata and are not attributed to ESIOS.
 The recommendation uses the continuous six-hour window with the lowest total
 price, with the earlier window winning an exact tie.
 
-The main message names `ESIOS / Red Eléctrica` and distinguishes exact PVPC
-use from indicative use for other indexed contracts. The recommendation is
-one logical line; Telegram may wrap it naturally for the device width.
+The persistent explanation defines PVPC, tells readers how to identify it on
+their bill, states that the table is not the whole bill, excludes fixed
+tariffs, and names `ESIOS / Red Eléctrica`. The recommendation is one logical
+line; Telegram may wrap it naturally for the device width.
 
-Store the last published target date separately from the one-day normalized
-price snapshot. Check the success marker before reading the snapshot or
+Store the last published target date and the persistent explanation message ID
+separately from the one-day normalized price snapshot. Check the success marker before reading the snapshot or
 contacting ESIOS. A missing, wrong-date, or corrupt snapshot may be replaced
 only after one new complete API response; a write failure prevents public
 delivery. Publication and authorized preview share the same non-blocking local
-lock so they cannot make concurrent duplicate requests. If the explanation
-fails after the main table succeeds, keep the success marker so the main table
-is not sent again. Refuse configuration that points the snapshot and
-publication marker to the same file.
+lock so they cannot make concurrent duplicate requests. The explanation must
+succeed and be persisted before the first table is sent; if the table then
+fails, the next invocation reuses the same explanation rather than duplicating
+it. Refuse configuration that points the snapshot and publication marker to
+the same file.
 
 ## Consequences
 
@@ -61,5 +65,5 @@ publication marker to the same file.
 - No resident process, database, AI, scraper, or dependency is added.
 - A DST transition day without exactly 24 local hours is omitted rather than
   forced into a misleading 24-row layout.
-- The feature is relevant only to PVPC and indexed tariffs, which the message
-  states explicitly.
+- The feature is exact only for PVPC; the persistent explanation states this
+  explicitly and avoids repeating the same education every day.

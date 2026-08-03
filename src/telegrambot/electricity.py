@@ -18,8 +18,6 @@ from pathlib import Path
 from typing import Awaitable, Callable, Dict, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
-from .telegram import TelegramError
-
 ESIOS_HOST = "api.esios.ree.es"
 INDICATOR_ID = 1001
 PENINSULA_GEO_NAME = "península"
@@ -450,9 +448,7 @@ def build_price_message(data: DailyPrices) -> str:
         "🕐 <b>По часам</b>\n"
         f"<pre>{table}</pre>\n"
         "💡 Энергоёмкие дела лучше запланировать "
-        f"на период с {best_start:02d}:00 до {best_end:02d}:00.\n\n"
-        "Для PVPC; для индексированных тарифов — ориентир.\n"
-        "Источник: ESIOS / Red Eléctrica"
+        f"на период с {best_start:02d}:00 до {best_end:02d}:00."
     )
 
 
@@ -468,12 +464,14 @@ def build_explanation_message() -> str:
         "Цвета сравнивают часы только между собой в пределах одного дня. "
         "🟢 не означает, что электричество дешёвое вообще, а 🔴 — что цена "
         "необычно высокая по сравнению с другими днями.\n\n"
-        "Таблица полезна прежде всего для тарифа PVPC. При индексированном "
-        "тарифе она служит ориентиром. При фиксированном тарифе почасовая "
-        "цена обычно не меняет стоимость вашего потребления.\n\n"
-        "Это цена электрической энергии, а не полный итог счёта: отдельно "
-        "могут начисляться плата за мощность, налоги и другие предусмотренные "
-        "договором платежи.\n\n"
+        "PVPC — регулируемый тариф на электричество в Испании. Проверить "
+        "свой тариф можно в счёте: в типе договора должно быть указано "
+        "PVPC.\n\n"
+        "Таблица показывает почасовую стоимость потреблённой энергии для "
+        "тарифа PVPC 2.0TD. Это не весь счёт: отдельно учитываются "
+        "мощность, налоги и другие платежи.\n\n"
+        "Если у вас фиксированный тариф, эти почасовые цены не "
+        "применяются.\n\n"
         "Источник: ESIOS / Red Eléctrica"
     )
 
@@ -482,10 +480,10 @@ async def publish_prices(
     target_date: date,
     state,
     collect: Callable[[], Awaitable[DailyPrices]],
-    send_main: Callable[[str], Awaitable[int]],
-    send_explanation: Callable[[str, int], Awaitable[int]],
+    send_main: Callable[[str, Optional[int]], Awaitable[int]],
+    send_explanation: Callable[[str], Awaitable[int]],
 ) -> str:
-    """Publish at most one main price table for a target local date."""
+    """Publish one daily table under one persistent explanation anchor."""
 
     with state.exclusive_run():
         if state.is_published(target_date):
@@ -497,15 +495,14 @@ async def publish_prices(
                 code="WRONG-DATE",
                 retryable=True,
             )
-        message_id = await send_main(build_price_message(data))
-        state.mark_published(target_date)
-        try:
-            await send_explanation(build_explanation_message(), message_id)
-        except TelegramError:
-            # The price table is the product. A failed optional explanation
-            # must not cause a duplicate table on the next invocation.
-            logging.warning(
-                "Electricity explanation reply failed after main publication"
+        explanation_id = state.electricity_explanation_message_id()
+        if explanation_id is None:
+            explanation_id = await send_explanation(
+                build_explanation_message()
             )
-            return "success-without-explanation"
+            state.mark_electricity_explanation(explanation_id)
+        await send_main(
+            build_price_message(data), explanation_id
+        )
+        state.mark_electricity_published(target_date)
         return "success"

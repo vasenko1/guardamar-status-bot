@@ -21,6 +21,32 @@ class PublicationStateTests(unittest.TestCase):
             )
             self.assertTrue(state.is_published(date(2026, 7, 26)))
 
+    def test_keeps_electricity_explanation_across_publication_dates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "electricity.json"
+            state = PublicationState(path)
+
+            state.mark_electricity_published(date(2026, 8, 3))
+            state.mark_electricity_explanation(321)
+            state.mark_electricity_published(date(2026, 8, 4))
+
+            self.assertTrue(state.is_published(date(2026, 8, 4)))
+            self.assertEqual(
+                state.electricity_explanation_message_id(), 321
+            )
+
+    def test_anchor_can_exist_before_first_table_is_published(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "electricity.json"
+            state = PublicationState(path)
+
+            state.mark_electricity_explanation(321)
+
+            self.assertIsNone(state.last_successful_date())
+            self.assertEqual(
+                state.electricity_explanation_message_id(), 321
+            )
+
     def test_reads_confirmed_success_from_previous_schema(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "delivery.json"

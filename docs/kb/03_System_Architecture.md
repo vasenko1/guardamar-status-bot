@@ -94,9 +94,13 @@ Provides only genuine cross-cutting needs:
 
 One independent evening command requests official ESIOS indicator `1001` for
 the next Madrid date, selects `Península`, requires all 24 hourly values,
-formats one two-column PVPC table, publishes it with a short explanatory reply,
-atomically stores one complete normalized target-day price snapshot plus the
-published target date, and exits. Public output is built from that snapshot;
+formats one two-column PVPC table, and exits. On the first publication it sends
+a short explanation, stores its Telegram message ID, and sends the table as a
+reply; later daily tables reply to the same explanation without repeating it.
+It atomically
+stores one complete normalized target-day price snapshot plus the published
+target date and persistent explanation ID. Public output is built from that
+snapshot;
 the personal ESIOS token and raw response are never stored. It reuses only
 Telegram and minimal file state; it does not depend on Morning Digest internals.
 

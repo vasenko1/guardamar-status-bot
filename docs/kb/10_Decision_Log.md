@@ -5,6 +5,7 @@ Detailed decisions belong in `adr/`.
 
 | Date | Decision | Context and reason | Record |
 | --- | --- | --- | --- |
+| 2026-08-03 | Keep one persistent PVPC explanation thread | The educational text is stable and need not be repeated daily. One explanation is stored as the thread anchor; the first and all later tables reply to it. | `adr/0027-evening-next-day-pvpc.md` |
 | 2026-08-03 | Show scan-friendly AEMET warnings for today and tomorrow | Name the fixed Guardamar warning zone once, lead each hazard with a severity dot and bold name, combine only identical today/tomorrow records, preserve differing intervals and facts, and defer warnings starting later than tomorrow. | `docs/kb/05_Features.md`, `docs/kb/06_Data_Sources.md` |
 | 2026-08-03 | Publish ESIOS data from one private normalized target-day snapshot | The personal-token terms require responsible, non-redundant access. Check publication state before source access, atomically store only indicator `1001` / `Península` and 24 normalized values, serialize preview/publication, and reuse a complete stored day after Telegram failures or in previews. | `adr/0027-evening-next-day-pvpc.md` |
 | 2026-08-02 | Show official holidays before today's events | Reuse the annually reviewed BOE/DOGV calendar; show only paid non-recoverable dates applicable in Guardamar, never infer transfers, omit unsupported years, and add the explicit day-off line only on weekdays. | `adr/0014-reviewed-holiday-calendar.md` |

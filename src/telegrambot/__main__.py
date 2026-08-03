@@ -151,7 +151,10 @@ async def _run_command(command: str) -> int:
                 esios_key, target_date, snapshot_path
             ),
             lambda message: send_message(
-                bot_token, chat_id, message, disable_notification=False
+                bot_token,
+                chat_id,
+                message,
+                disable_notification=False,
             ),
             lambda message, reply_id: send_message(
                 bot_token,

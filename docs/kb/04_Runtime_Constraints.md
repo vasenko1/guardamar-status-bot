@@ -87,7 +87,8 @@ deployment agent or self-hosted CI runner.
   complete ESIOS response for a target date is atomically normalized to one
   private local snapshot; later invocations reuse it instead of repeating the
   API request. Preview and publication share one non-blocking local lock. No
-  raw response or token is stored.
+  raw response or token is stored. The publication marker also retains one
+  Telegram message ID for the persistent PVPC explanation anchor.
 - Mayor, Policía Local, municipal-agenda, and Gemini requests enforce exact
   HTTPS hosts, expected MIME types, and existing response-size limits. They do
   not add internal retries.

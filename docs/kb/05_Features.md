@@ -5,18 +5,24 @@
 An evening message shows tomorrow's official PVPC 2.0TD hourly energy term for
 Península in €/kWh. The fixed layout contains the cheapest and most expensive
 hour, a two-column monospace 24-hour table, and the continuous six-hour window
-with the lowest total price. A concise explanatory message is sent as a reply.
+with the lowest total price. A concise persistent explanation defines PVPC as a
+regulated Spanish tariff, tells readers to check `PVPC` in the contract type
+on their bill, says the table covers the hourly consumed-energy component
+rather than the whole bill, and makes clear that the prices do not apply to a
+fixed tariff.
 
 The header must say `завтра` and include the target date. The 24 prices are
 ranked within that local day: the cheapest third is green, the middle third is
 yellow, and the most expensive third is red. Equal boundary prices keep one
-color rather than being split by hour. The footer states that the table is
-exact for PVPC and only an orientation for other indexed tariffs, then names
-`ESIOS / Red Eléctrica` as the source. Incomplete days are not published.
+color rather than being split by hour. The main message ends with the cheapest
+continuous planning window; the separate explanation carries the PVPC
+scope, fixed-tariff limitation, and `ESIOS / Red Eléctrica` attribution.
+Incomplete days are not published.
 
 Before public delivery, one complete response is normalized into a private
-local snapshot for the target date. The table and optional explanation use
-that stored snapshot. Later attempts do not repeat the ESIOS request; a
+local snapshot for the target date. After that snapshot exists, the first
+publication creates one explanation anchor and sends the table as its reply.
+Later attempts do not repeat the ESIOS request; a
 confirmed publication exits before any source access.
 
 ## Morning Digest

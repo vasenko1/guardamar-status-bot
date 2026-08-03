@@ -307,7 +307,9 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("21:00–22:00 · 0,322 €/кВт·ч", message)
         self.assertIn("период с 11:00 до 17:00", message)
         self.assertNotIn("запланировать\nна период", message)
-        self.assertTrue(message.endswith("Источник: ESIOS / Red Eléctrica"))
+        self.assertTrue(message.endswith("период с 11:00 до 17:00."))
+        self.assertNotIn("Для PVPC", message)
+        self.assertNotIn("Источник:", message)
         self.assertNotIn("сегодня", message.casefold())
 
     def test_colors_use_daily_price_thirds(self):
@@ -335,8 +337,12 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Средние по цене часы", message)
         self.assertIn("Самые дорогие часы этого дня", message)
         self.assertIn("сравнивают часы только между собой", message)
-        self.assertIn("фиксированном тарифе", message)
-        self.assertIn("не полный итог счёта", message)
+        self.assertIn("PVPC — регулируемый тариф", message)
+        self.assertIn("в типе договора должно быть указано PVPC", message)
+        self.assertIn("Это не весь счёт", message)
+        self.assertIn("фиксированный тариф", message)
+        self.assertIn("почасовые цены не применяются", message)
+        self.assertNotIn("индексированном тарифе", message)
         self.assertNotIn("0,10", message)
         self.assertIn("ESIOS / Red Eléctrica", message)
 
@@ -349,42 +355,95 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
             collections += 1
             return _daily()
 
-        async def send_main(message):
-            sent.append((message, None))
+        async def send_main(message, reply_id):
+            sent.append((message, reply_id))
             return 42
 
-        async def send_reply(message, reply_id):
-            sent.append((message, reply_id))
+        async def send_explanation(message):
+            sent.append((message, None))
             return 43
+
+        async def collect_next():
+            return DailyPrices(TARGET + timedelta(days=1), _daily().hours)
 
         with tempfile.TemporaryDirectory() as directory:
             state = PublicationState(Path(directory) / "electricity.json")
             result = await publish_prices(
-                TARGET, state, collect, send_main, send_reply
+                TARGET, state, collect, send_main, send_explanation
             )
             duplicate = await publish_prices(
-                TARGET, state, collect, send_main, send_reply
+                TARGET, state, collect, send_main, send_explanation
+            )
+            next_day = TARGET + timedelta(days=1)
+            result_next = await publish_prices(
+                next_day,
+                state,
+                collect_next,
+                send_main,
+                send_explanation,
             )
         self.assertEqual(result, "success")
         self.assertEqual(duplicate, "duplicate")
+        self.assertEqual(result_next, "success")
         self.assertEqual(collections, 1)
-        self.assertEqual(len(sent), 2)
-        self.assertEqual(sent[1][1], 42)
+        self.assertEqual(len(sent), 3)
+        self.assertIn("Как читать таблицу", sent[0][0])
+        self.assertIn("Цены на электричество завтра", sent[1][0])
+        self.assertIsNone(sent[0][1])
+        self.assertEqual(sent[1][1], 43)
+        self.assertEqual(sent[2][1], 43)
 
-    async def test_reply_failure_does_not_duplicate_main(self):
+    async def test_explanation_failure_does_not_publish_table(self):
         async def collect():
             return _daily()
 
-        async def send_main(message):
-            return 42
+        async def send_main(message, reply_id):
+            self.fail("table sent without a persistent explanation")
 
-        async def fail_reply(message, reply_id):
+        async def fail_explanation(message):
             raise TelegramError("failed", retryable=True)
 
         with tempfile.TemporaryDirectory() as directory:
             state = PublicationState(Path(directory) / "electricity.json")
-            result = await publish_prices(
-                TARGET, state, collect, send_main, fail_reply
+            with self.assertRaises(TelegramError):
+                await publish_prices(
+                    TARGET, state, collect, send_main, fail_explanation
+                )
+            self.assertFalse(state.is_published(TARGET))
+            self.assertIsNone(
+                state.electricity_explanation_message_id()
             )
-            self.assertTrue(state.is_published(TARGET))
-        self.assertEqual(result, "success-without-explanation")
+
+    async def test_table_failure_reuses_created_explanation_on_retry(self):
+        sent_explanations = 0
+        table_attempts = 0
+
+        async def collect():
+            return _daily()
+
+        async def send_explanation(message):
+            nonlocal sent_explanations
+            sent_explanations += 1
+            return 43
+
+        async def send_main(message, reply_id):
+            nonlocal table_attempts
+            table_attempts += 1
+            self.assertEqual(reply_id, 43)
+            if table_attempts == 1:
+                raise TelegramError("failed", retryable=True)
+            return 44
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = PublicationState(Path(directory) / "electricity.json")
+            with self.assertRaises(TelegramError):
+                await publish_prices(
+                    TARGET, state, collect, send_main, send_explanation
+                )
+            result = await publish_prices(
+                TARGET, state, collect, send_main, send_explanation
+            )
+
+        self.assertEqual(result, "success")
+        self.assertEqual(sent_explanations, 1)
+        self.assertEqual(table_attempts, 2)
