@@ -12,6 +12,7 @@ from telegrambot.electricity import (
     DailyPrices,
     ElectricityError,
     HourlyPrice,
+    _best_green_window,
     _colors,
     _load_price_snapshot,
     _RejectRedirects,
@@ -341,9 +342,12 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("20  🔴 0,292", message)
         self.assertIn("19  🔴 0,272", message)
         self.assertIn("21:00–22:00 · 0,322 €/кВт·ч", message)
-        self.assertIn("период с 11:00 до 17:00", message)
+        self.assertIn("период с 11:00 до 18:00", message)
         self.assertNotIn("запланировать\nна период", message)
-        self.assertTrue(message.endswith("период с 11:00 до 17:00."))
+        self.assertTrue(message.endswith("период с 11:00 до 18:00."))
+        self.assertLess(message.index("По часам"), message.index("Выгоднее"))
+        self.assertLess(message.index("Выгоднее"), message.index("Дороже"))
+        self.assertLess(message.index("Дороже"), message.index("Энергоёмкие"))
         self.assertNotIn("Для PVPC", message)
         self.assertNotIn("Источник:", message)
         self.assertNotIn("сегодня", message.casefold())
@@ -366,6 +370,31 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
         )
         colors = _colors(prices)
         self.assertEqual({colors[hour] for hour in range(6, 18)}, {"🟡"})
+
+    def test_recommendation_uses_continuous_green_hours(self):
+        values = (
+            "0.189", "0.188", "0.184", "0.167", "0.166", "0.175",
+            "0.191", "0.195", "0.208", "0.174", "0.202", "0.194",
+            "0.182", "0.170", "0.108", "0.108", "0.102", "0.126",
+            "0.220", "0.260", "0.296", "0.316", "0.234", "0.224",
+        )
+        prices = tuple(
+            HourlyPrice(hour, Decimal(value))
+            for hour, value in enumerate(values)
+        )
+        colors = _colors(prices)
+
+        self.assertEqual(colors[12], "🟡")
+        self.assertEqual(_best_green_window(prices, colors), (13, 18))
+
+    def test_recommendation_is_omitted_without_green_hours(self):
+        prices = tuple(
+            HourlyPrice(hour, Decimal("0.100"))
+            for hour in range(24)
+        )
+        data = DailyPrices(TARGET, prices)
+
+        self.assertNotIn("Энергоёмкие дела", build_price_message(data))
 
     def test_explanation_documents_relative_daily_colors(self):
         message = build_explanation_message()

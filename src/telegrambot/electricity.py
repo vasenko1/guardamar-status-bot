@@ -407,25 +407,45 @@ def _colors(prices: Sequence[HourlyPrice]) -> Dict[int, str]:
     return colors
 
 
-def _best_window(prices: Sequence[HourlyPrice]) -> Tuple[int, int]:
-    """Choose the cheapest continuous six-hour planning window."""
+def _best_green_window(
+    prices: Sequence[HourlyPrice],
+    colors: Dict[int, str],
+) -> Optional[Tuple[int, int]]:
+    """Choose the longest continuous run of the day's green hours."""
 
-    duration = 6
-    start = min(
-        range(0, 24 - duration + 1),
-        key=lambda first: (
-            sum(item.eur_kwh for item in prices[first:first + duration]),
-            first,
+    windows = []
+    start = None
+    for index, item in enumerate(prices):
+        if colors.get(item.hour) == "🟢":
+            if start is None:
+                start = index
+            continue
+        if start is not None:
+            windows.append((start, index))
+            start = None
+    if start is not None:
+        windows.append((start, len(prices)))
+    if not windows:
+        return None
+    first, last = min(
+        windows,
+        key=lambda window: (
+            -(window[1] - window[0]),
+            sum(
+                item.eur_kwh
+                for item in prices[window[0]:window[1]]
+            ),
+            prices[window[0]].hour,
         ),
     )
-    return start, start + duration
+    return prices[first].hour, prices[last - 1].hour + 1
 
 
 def build_price_message(data: DailyPrices) -> str:
     colors = _colors(data.hours)
     cheapest = min(data.hours, key=lambda item: (item.eur_kwh, item.hour))
     expensive = max(data.hours, key=lambda item: (item.eur_kwh, -item.hour))
-    best_start, best_end = _best_window(data.hours)
+    best_window = _best_green_window(data.hours, colors)
     rows = []
     for left, right in zip(data.hours[:12], data.hours[12:]):
         rows.append(
@@ -438,17 +458,23 @@ def build_price_message(data: DailyPrices) -> str:
     )[data.local_date.weekday()]
     months = ("", "января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря")
     table = html.escape("\n".join(rows))
+    recommendation = ""
+    if best_window is not None:
+        best_start, best_end = best_window
+        recommendation = (
+            "\n\n💡 Энергоёмкие дела лучше запланировать "
+            f"на период с {best_start:02d}:00 до {best_end:02d}:00."
+        )
     return (
         "⚡ <b>Цены на электричество завтра</b>\n"
         f"{weekday.capitalize()}, {data.local_date.day} {months[data.local_date.month]}\n\n"
+        "🕐 <b>По часам</b>\n"
+        f"<pre>{table}</pre>\n\n"
         "🟢 <b>Выгоднее всего</b>\n"
         f"{cheapest.hour:02d}:00–{cheapest.hour + 1:02d}:00 · {_price(cheapest.eur_kwh)} €/кВт·ч\n\n"
         "🔴 <b>Дороже всего</b>\n"
-        f"{expensive.hour:02d}:00–{expensive.hour + 1:02d}:00 · {_price(expensive.eur_kwh)} €/кВт·ч\n\n"
-        "🕐 <b>По часам</b>\n"
-        f"<pre>{table}</pre>\n"
-        "💡 Энергоёмкие дела лучше запланировать "
-        f"на период с {best_start:02d}:00 до {best_end:02d}:00."
+        f"{expensive.hour:02d}:00–{expensive.hour + 1:02d}:00 · {_price(expensive.eur_kwh)} €/кВт·ч"
+        f"{recommendation}"
     )
 
 

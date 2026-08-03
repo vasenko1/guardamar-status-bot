@@ -36,8 +36,10 @@ yellow, and the most expensive third red. Equal prices are not split across a
 boundary; when both boundaries are the same, that shared level is yellow.
 These colors are presentation metadata and are not attributed to ESIOS.
 
-The recommendation uses the continuous six-hour window with the lowest total
-price, with the earlier window winning an exact tie.
+The recommendation uses the longest continuous run of green hours, so its
+wording cannot contradict the table colors. Equal-length runs are ordered by
+their total price and then by the earlier start. When tie-heavy prices produce
+no green hours, omit the recommendation.
 
 The persistent explanation defines PVPC, tells readers how to identify it on
 their bill, states that the table is not the whole bill, excludes fixed
