@@ -61,10 +61,9 @@ This exact visual structure is the product contract:
 Зона: южное побережье Аликанте
 
 🟠 **Опасные прибрежные явления**
-Завтра · 08:00–18:00 · вероятность 40–70%
-
+   Завтра · 08:00–18:00 · вероятность 40–70%
 🟡 **Высокая температура**
-Сегодня и завтра · 13:00–20:59 · вероятность 40–70%
+   Сегодня и завтра · 13:00–20:59 · вероятность 40–70%
 
 🏖 **Флаги на пляжах:**
    🟡 Roqueta
@@ -77,8 +76,7 @@ This exact visual structure is the product contract:
 
 🎉 **Праздник сегодня:**
 • Канун Дня святого Иакова — официальный городской праздник
-
-🔴 Официальный праздничный выходной.
+  🗓️ Официальный праздничный выходной.
 
 📅 **События дня:**
 • **07:00–13:30** — рынок
@@ -170,7 +168,8 @@ local dates into an unreviewed year. Entries use the fixed order national,
 regional, then local. Labels are `национальный праздник`, `региональный
 праздник`, and `официальный городской праздник`. The heading is singular or
 plural according to the number of distinct holidays. On Monday through Friday
-append `🔴 Официальный праздничный выходной.`; omit that explanatory line on
+append `🗓️ Официальный праздничный выходной.` directly below the holiday;
+omit that explanatory line on
 Saturday and Sunday. Never render `Сегодня рабочий день`. Ordinary festivals
 and multi-day programmes remain events and do not enter this section merely
 because they are celebrations.
@@ -212,6 +211,8 @@ warnings are not capped by a message-item limit. Matching level, hazard,
 probability, and description may share one block; equal today/tomorrow hours
 render as `Сегодня и завтра`. Different facts remain separate. The fixed zone
 is named once, hazards are ordered red, orange, yellow, and each name is bold.
+Hazards have no empty lines between them; their time and recognized detail
+lines use one consistent indentation so the section reads as one list.
 Spanish/English CAP duplicates and green `Minor` records are omitted. Unknown
 description wording is never machine-translated or guessed: the warning,
 validity period, and validated probability still remain visible.

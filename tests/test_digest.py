@@ -54,8 +54,8 @@ class DigestMessageTests(unittest.TestCase):
         self.assertIn(
             "🎉 <b>Праздник сегодня:</b>\n"
             "• Канун Дня святого Иакова — "
-            "официальный городской праздник\n\n"
-            "🔴 Официальный праздничный выходной.",
+            "официальный городской праздник\n"
+            "  🗓️ Официальный праздничный выходной.",
             message,
         )
         self.assertLess(
@@ -347,7 +347,7 @@ class DigestMessageTests(unittest.TestCase):
         self.assertIn(
             "⚠️ <b>Предупреждения AEMET:</b>\n"
             "Зона: южное побережье Аликанте\n\n"
-            "🟠 <b>Сильный дождь</b>\n\n"
+            "🟠 <b>Сильный дождь</b>\n"
             "🟡 <b>Сильный ветер</b>",
             message,
         )
@@ -392,7 +392,7 @@ class DigestMessageTests(unittest.TestCase):
 
         self.assertIn(
             "🟡 <b>Грозы</b>\n"
-            "Сегодня · 16:00–21:59 · вероятность 40–70%",
+            "   Сегодня · 16:00–21:59 · вероятность 40–70%",
             message,
         )
         self.assertIn(
@@ -426,7 +426,7 @@ class DigestMessageTests(unittest.TestCase):
 
         self.assertEqual(message.count("<b>Высокая температура</b>"), 1)
         self.assertIn(
-            "Сегодня и завтра · 13:00–20:59 · вероятность 40–70%",
+            "   Сегодня и завтра · 13:00–20:59 · вероятность 40–70%",
             message,
         )
 
@@ -459,8 +459,8 @@ class DigestMessageTests(unittest.TestCase):
         )
 
         self.assertIn(
-            "Сегодня · 13:00–20:59 · вероятность 40–70%\n"
-            "Завтра · 14:00–20:59 · вероятность 40–70%",
+            "   Сегодня · 13:00–20:59 · вероятность 40–70%\n"
+            "   Завтра · 14:00–20:59 · вероятность 40–70%",
             message,
         )
         self.assertNotIn("Сегодня и завтра", message)

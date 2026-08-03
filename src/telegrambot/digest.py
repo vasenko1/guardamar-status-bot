@@ -267,12 +267,9 @@ def _warning_blocks(
                 ]
             else:
                 intervals.append(f"Вероятность: {probability}")
-        blocks.extend(intervals)
+        blocks.extend(f"   {interval}" for interval in intervals)
         if description:
-            blocks.append(description)
-        blocks.append("")
-    if blocks and not blocks[-1]:
-        blocks.pop()
+            blocks.append(f"   {description}")
     return blocks
 
 
@@ -547,7 +544,7 @@ def build_message(
                 f"• {html.escape(holiday.name)} — {label}"
             )
         if ordered_holidays[0].date.weekday() < 5:
-            lines.extend(["", "🔴 Официальный праздничный выходной."])
+            lines.append("  🗓️ Официальный праздничный выходной.")
 
     if digest.events:
         lines.extend(["", "📅 <b>События дня:</b>"])
