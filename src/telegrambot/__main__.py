@@ -19,7 +19,7 @@ from .electricity import (
     ElectricityError,
     build_explanation_message,
     build_price_message,
-    fetch_prices,
+    load_or_fetch_prices,
     publish_prices,
 )
 from .mayor import latest_beach_notice
@@ -42,6 +42,7 @@ DEFAULT_STATE_PATH = "state/delivery.json"
 DEFAULT_MUNICIPAL_AGENDA_STATE_PATH = "state/municipal_agenda.json"
 DEFAULT_AGENDA_STATE_PATH = "state/agenda_guardamar.json"
 DEFAULT_ELECTRICITY_STATE_PATH = "state/electricity.json"
+DEFAULT_ELECTRICITY_SNAPSHOT_PATH = "state/electricity_prices.json"
 
 
 def _beach_ready_for_update(status, now: datetime, final_attempt: bool) -> bool:
@@ -109,22 +110,46 @@ async def _run_command(command: str) -> int:
     if command in {"electricity", "electricity-preview"}:
         now = datetime.now(GUARDAMAR_TIMEZONE)
         target_date = (now + timedelta(days=1)).date()
-        esios_key = _required_environment("ESIOS_API_KEY")
-        data = await fetch_prices(esios_key, target_date)
+        esios_key = os.environ.get("ESIOS_API_KEY", "").strip()
+        snapshot_path = Path(
+            os.environ.get("ELECTRICITY_SNAPSHOT_PATH", "").strip()
+            or DEFAULT_ELECTRICITY_SNAPSHOT_PATH
+        )
+        state_path = Path(
+            os.environ.get("ELECTRICITY_STATE_PATH", "").strip()
+            or DEFAULT_ELECTRICITY_STATE_PATH
+        )
+        try:
+            paths_conflict = (
+                snapshot_path.resolve() == state_path.resolve()
+            )
+        except (OSError, RuntimeError) as exc:
+            raise ValueError(
+                "electricity state paths could not be resolved"
+            ) from exc
+        if paths_conflict:
+            raise ValueError(
+                "ELECTRICITY_SNAPSHOT_PATH must differ from "
+                "ELECTRICITY_STATE_PATH"
+            )
+        state = PublicationState(state_path)
         if command == "electricity-preview":
+            with state.exclusive_run():
+                data = await load_or_fetch_prices(
+                    esios_key, target_date, snapshot_path
+                )
             print(build_price_message(data))
             print("\n--- Ответ на сообщение ---\n")
             print(build_explanation_message())
             return 0
         bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
         chat_id = _required_environment("TELEGRAM_CHAT_ID")
-        state = PublicationState(Path(os.environ.get(
-            "ELECTRICITY_STATE_PATH", DEFAULT_ELECTRICITY_STATE_PATH
-        )))
         result = await publish_prices(
             target_date,
             state,
-            lambda: fetch_prices(esios_key, target_date),
+            lambda: load_or_fetch_prices(
+                esios_key, target_date, snapshot_path
+            ),
             lambda message: send_message(
                 bot_token, chat_id, message, disable_notification=False
             ),

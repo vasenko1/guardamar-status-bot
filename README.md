@@ -60,8 +60,12 @@ export TELEGRAM_ALLOWED_USER_IDS="your-private-telegram-user-id"
 export GEMINI_API_KEY="your-optional-gemini-key"
 ```
 
-State defaults to `state/delivery.json`; override it with
-`MORNING_DIGEST_STATE_PATH` if needed. Secrets must not be committed.
+Morning state defaults to `state/delivery.json`; override it with
+`MORNING_DIGEST_STATE_PATH` if needed. Electricity publication state defaults
+to `state/electricity.json`, and its private normalized target-day data defaults
+to `state/electricity_prices.json`; override the latter with
+`ELECTRICITY_SNAPSHOT_PATH` if needed. The state and snapshot paths must remain
+different. Secrets must not be committed.
 
 ## Run
 
@@ -142,7 +146,10 @@ PYTHONPATH=src python -m telegrambot electricity-preview
 - `preview` collects and prints without Telegram or publication state.
 - `status` prints the last successfully published local date.
 - `electricity-preview` prints tomorrow's table and its explanatory reply
-  without publishing or changing state.
+  without publishing or changing publication state. It reuses, or creates
+  after one complete ESIOS response, the same private normalized target-day
+  snapshot used by publication. It shares the electricity publication lock,
+  so a simultaneous cron run exits safely instead of duplicating the request.
 
 To enable private Telegram previews, run the independent listener:
 
@@ -156,7 +163,8 @@ to the configured group, and does not change publication state. The listener
 does not fetch any source until an authorized command arrives.
 
 State contains only the current local date, rendered morning copy, publication
-time, Telegram message IDs, and cleanup result. AEMET recovery retries only
+time, Telegram message IDs, cleanup result, and the isolated electricity
+publication marker plus one normalized 24-hour target-day snapshot. AEMET recovery retries only
 bounded transient failures and repeats the complete two-step product request.
 The rendered copy is used only when a verified later update exists but AEMET
 remains unavailable after recovery. No raw source cache is implemented.

@@ -50,6 +50,9 @@
 
 - Observe the new evening next-day PVPC table on narrow phones and tune only
   verified display problems; do not add tariff comparison or billing advice.
+- Done: persist one complete normalized ESIOS target day before public delivery
+  and check confirmed publication before source access, eliminating redundant
+  personal-token requests across scheduled attempts and previews.
 - Improve source failure and stale-data handling.
 - Review changed Policía Local PDFs before accepting a new checksum; unknown
   HTML notices remain eligible for the fail-closed structured fallback. Do not

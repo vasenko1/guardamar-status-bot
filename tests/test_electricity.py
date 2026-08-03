@@ -1,23 +1,32 @@
 import json
+import os
+import stat
 import tempfile
 import unittest
-from datetime import date
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from telegrambot.electricity import (
     DailyPrices,
     ElectricityError,
     HourlyPrice,
     _colors,
+    _load_price_snapshot,
+    _RejectRedirects,
+    _write_price_snapshot,
     build_explanation_message,
     build_price_message,
     fetch_prices,
+    load_or_fetch_prices,
     normalize_prices,
     publish_prices,
+    TIMEZONE,
 )
+from telegrambot.__main__ import _run_command
 from telegrambot.state import PublicationState
+from telegrambot.state import StateError
 from telegrambot.telegram import TelegramError
 
 
@@ -66,6 +75,203 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ElectricityError) as raised:
             normalize_prices(_payload(missing=7), TARGET)
         self.assertEqual(raised.exception.diagnostic_code, "INCOMPLETE")
+
+    def test_non_finite_price_is_rejected_without_decimal_crash(self):
+        payload = json.loads(_payload())
+        payload["indicator"]["values"][0]["value"] = "NaN"
+        with self.assertRaises(ElectricityError) as raised:
+            normalize_prices(json.dumps(payload).encode(), TARGET)
+        self.assertEqual(raised.exception.diagnostic_code, "INCOMPLETE")
+
+    def test_normalized_snapshot_round_trip_is_private_and_complete(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "electricity_prices.json"
+            _write_price_snapshot(path, _daily())
+            loaded = _load_price_snapshot(path, TARGET)
+            mode = stat.S_IMODE(os.stat(path).st_mode)
+
+        self.assertEqual(loaded, _daily())
+        self.assertEqual(mode, 0o600)
+
+    def test_snapshot_decimal_serialization_stays_bounded(self):
+        unusual = DailyPrices(
+            TARGET,
+            tuple(
+                HourlyPrice(hour, Decimal("0E-100000"))
+                for hour in range(24)
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "electricity_prices.json"
+            _write_price_snapshot(path, unusual)
+            size = path.stat().st_size
+            loaded = _load_price_snapshot(path, TARGET)
+
+        self.assertLess(size, 16_384)
+        self.assertEqual(loaded, unusual)
+
+    def test_esios_redirects_are_rejected_before_following(self):
+        handler = _RejectRedirects()
+
+        with self.assertRaises(ElectricityError) as raised:
+            handler.redirect_request(
+                None,
+                None,
+                302,
+                "Found",
+                {},
+                "https://example.com/collect",
+            )
+
+        self.assertEqual(raised.exception.diagnostic_code, "REDIRECT")
+        self.assertFalse(raised.exception.retryable)
+
+    def test_snapshot_for_another_date_is_not_reused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "electricity_prices.json"
+            _write_price_snapshot(path, _daily())
+            loaded = _load_price_snapshot(path, date(2026, 8, 2))
+
+        self.assertIsNone(loaded)
+
+    def test_rejects_corrupt_or_oversized_snapshot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "electricity_prices.json"
+            path.write_text("not-json", encoding="utf-8")
+            with self.assertRaises(ElectricityError) as corrupt:
+                _load_price_snapshot(path, TARGET)
+            path.write_bytes(b"x" * 16_385)
+            with self.assertRaises(ElectricityError) as oversized:
+                _load_price_snapshot(path, TARGET)
+
+        self.assertEqual(
+            corrupt.exception.diagnostic_code, "SNAPSHOT-INVALID"
+        )
+        self.assertEqual(
+            oversized.exception.diagnostic_code, "SNAPSHOT-INVALID"
+        )
+
+    async def test_complete_snapshot_avoids_api_even_without_key(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "electricity_prices.json"
+            _write_price_snapshot(path, _daily())
+            with patch(
+                "telegrambot.electricity.fetch_prices"
+            ) as fetch:
+                loaded = await load_or_fetch_prices("", TARGET, path)
+
+        self.assertEqual(loaded, _daily())
+        fetch.assert_not_called()
+
+    async def test_fetches_once_then_reuses_verified_snapshot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "electricity_prices.json"
+            with patch(
+                "telegrambot.electricity.fetch_prices",
+                new_callable=AsyncMock,
+                return_value=_daily(),
+            ) as fetch:
+                first = await load_or_fetch_prices("key", TARGET, path)
+                second = await load_or_fetch_prices("key", TARGET, path)
+
+        self.assertEqual(first, _daily())
+        self.assertEqual(second, _daily())
+        self.assertEqual(fetch.await_count, 1)
+
+    async def test_corrupt_snapshot_is_replaced_after_complete_fetch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "electricity_prices.json"
+            path.write_text("not-json", encoding="utf-8")
+            with patch(
+                "telegrambot.electricity.fetch_prices",
+                new_callable=AsyncMock,
+                return_value=_daily(),
+            ) as fetch:
+                loaded = await load_or_fetch_prices("key", TARGET, path)
+            stored = _load_price_snapshot(path, TARGET)
+
+        self.assertEqual(loaded, _daily())
+        self.assertEqual(stored, _daily())
+        self.assertEqual(fetch.await_count, 1)
+
+    async def test_snapshot_write_failure_prevents_unstored_publication(self):
+        failure = ElectricityError(
+            "write failed", code="SNAPSHOT-WRITE", retryable=True
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "electricity_prices.json"
+            with patch(
+                "telegrambot.electricity.fetch_prices",
+                new_callable=AsyncMock,
+                return_value=_daily(),
+            ), patch(
+                "telegrambot.electricity._write_price_snapshot",
+                side_effect=failure,
+            ):
+                with self.assertRaises(ElectricityError) as raised:
+                    await load_or_fetch_prices("key", TARGET, path)
+
+        self.assertEqual(
+            raised.exception.diagnostic_code, "SNAPSHOT-WRITE"
+        )
+
+    async def test_published_cli_invocation_does_not_touch_esios(self):
+        target = (datetime.now(TIMEZONE) + timedelta(days=1)).date()
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "electricity.json"
+            PublicationState(state_path).mark_published(target)
+            environment = {
+                "ELECTRICITY_STATE_PATH": str(state_path),
+                "ELECTRICITY_SNAPSHOT_PATH": str(
+                    Path(directory) / "electricity_prices.json"
+                ),
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_CHAT_ID": "chat",
+            }
+            with patch.dict(os.environ, environment, clear=False), patch(
+                "telegrambot.__main__.load_or_fetch_prices",
+                new_callable=AsyncMock,
+            ) as collect:
+                result = await _run_command("electricity")
+
+        self.assertEqual(result, 0)
+        collect.assert_not_awaited()
+
+    async def test_preview_shares_publication_lock(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "electricity.json"
+            environment = {
+                "ELECTRICITY_STATE_PATH": str(state_path),
+                "ELECTRICITY_SNAPSHOT_PATH": str(
+                    Path(directory) / "electricity_prices.json"
+                ),
+            }
+            with PublicationState(state_path).exclusive_run(), patch.dict(
+                os.environ, environment, clear=False
+            ), patch(
+                "telegrambot.__main__.load_or_fetch_prices",
+                new_callable=AsyncMock,
+            ) as collect:
+                with self.assertRaises(StateError):
+                    await _run_command("electricity-preview")
+
+        collect.assert_not_awaited()
+
+    async def test_snapshot_and_publication_paths_must_differ(self):
+        with tempfile.TemporaryDirectory() as directory:
+            shared_path = str(Path(directory) / "electricity.json")
+            environment = {
+                "ELECTRICITY_STATE_PATH": shared_path,
+                "ELECTRICITY_SNAPSHOT_PATH": shared_path,
+            }
+            with patch.dict(os.environ, environment, clear=False), patch(
+                "telegrambot.__main__.load_or_fetch_prices",
+                new_callable=AsyncMock,
+            ) as collect:
+                with self.assertRaises(ValueError):
+                    await _run_command("electricity-preview")
+
+        collect.assert_not_awaited()
 
     async def test_transient_collection_failure_is_left_to_scheduler(self):
         transient = ElectricityError(
@@ -136,8 +342,11 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_publishes_main_and_reply_once(self):
         sent = []
+        collections = 0
 
         async def collect():
+            nonlocal collections
+            collections += 1
             return _daily()
 
         async def send_main(message):
@@ -158,6 +367,7 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual(result, "success")
         self.assertEqual(duplicate, "duplicate")
+        self.assertEqual(collections, 1)
         self.assertEqual(len(sent), 2)
         self.assertEqual(sent[1][1], 42)
 

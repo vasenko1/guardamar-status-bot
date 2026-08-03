@@ -95,8 +95,10 @@ Provides only genuine cross-cutting needs:
 One independent evening command requests official ESIOS indicator `1001` for
 the next Madrid date, selects `Península`, requires all 24 hourly values,
 formats one two-column PVPC table, publishes it with a short explanatory reply,
-stores only the published target date, and exits. It reuses only Telegram and
-minimal file state; it does not depend on Morning Digest internals.
+atomically stores one complete normalized target-day price snapshot plus the
+published target date, and exits. Public output is built from that snapshot;
+the personal ESIOS token and raw response are never stored. It reuses only
+Telegram and minimal file state; it does not depend on Morning Digest internals.
 
 ## Operating model
 
@@ -126,6 +128,13 @@ Each publication workflow holds its own local file lock. Morning replacement
 state and electricity success state are separate small atomic JSON files. The
 replacement is sent and recorded before deletion of the morning message; a
 later invocation retries only failed cleanup.
+
+The electricity workflow checks its success state before any ESIOS work. A
+complete normalized target-day snapshot is reused by later attempts, including
+recovery after Telegram delivery failure. A missing, wrong-date, or invalid
+snapshot is never published and is replaced only after one complete validated
+API response. Electricity preview and publication share the same non-blocking
+local lock, preventing concurrent duplicate source requests.
 
 The AEMET adapter retries only transient transport, rate-limit, server, or
 expired-link failures. It repeats the complete metadata-plus-product request,

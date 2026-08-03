@@ -14,6 +14,11 @@ color rather than being split by hour. The footer states that the table is
 exact for PVPC and only an orientation for other indexed tariffs, then names
 `ESIOS / Red Eléctrica` as the source. Incomplete days are not published.
 
+Before public delivery, one complete response is normalized into a private
+local snapshot for the target date. The table and optional explanation use
+that stored snapshot. Later attempts do not repeat the ESIOS request; a
+confirmed publication exits before any source access.
+
 ## Morning Digest
 
 ### Purpose

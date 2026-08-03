@@ -5,14 +5,17 @@ import html
 import http.client
 import json
 import logging
+import os
 import socket
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from typing import Awaitable, Callable, Dict, Sequence, Tuple
+from pathlib import Path
+from typing import Awaitable, Callable, Dict, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
 from .telegram import TelegramError
@@ -23,6 +26,8 @@ PENINSULA_GEO_NAME = "península"
 TIMEZONE = ZoneInfo("Europe/Madrid")
 TIMEOUT_SECONDS = 15
 RESPONSE_LIMIT_BYTES = 1_000_000
+SNAPSHOT_LIMIT_BYTES = 16_384
+SNAPSHOT_VERSION = 1
 USER_AGENT = "GuardamarMorningDigest/0.13"
 
 
@@ -33,6 +38,17 @@ class ElectricityError(RuntimeError):
         super().__init__(message)
         self.diagnostic_code = code
         self.retryable = retryable
+
+
+class _RejectRedirects(urllib.request.HTTPRedirectHandler):
+    """Keep the personal ESIOS token on the configured API request."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise ElectricityError(
+            "ESIOS returned an unexpected redirect",
+            code="REDIRECT",
+            retryable=False,
+        )
 
 
 @dataclass(frozen=True)
@@ -68,8 +84,9 @@ def _request_payload(api_key: str, target_date: date) -> bytes:
             "User-Agent": USER_AGENT,
         },
     )
+    opener = urllib.request.build_opener(_RejectRedirects())
     try:
-        with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
+        with opener.open(request, timeout=TIMEOUT_SECONDS) as response:
             if urllib.parse.urlparse(response.geturl()).hostname != ESIOS_HOST:
                 raise ElectricityError(
                     "ESIOS redirected outside its API host",
@@ -138,7 +155,11 @@ def normalize_prices(payload: bytes, target_date: date) -> DailyPrices:
             price = Decimal(str(item.get("value"))) / Decimal("1000")
         except (TypeError, ValueError, InvalidOperation):
             continue
-        if moment.date() != target_date or not Decimal("-1") <= price <= Decimal("5"):
+        if (
+            moment.date() != target_date
+            or not price.is_finite()
+            or not Decimal("-1") <= price <= Decimal("5")
+        ):
             continue
         if moment.minute or moment.second or moment.hour in by_hour:
             raise ElectricityError(
@@ -170,6 +191,185 @@ async def fetch_prices(
         _request_payload, api_key, target_date
     )
     return normalize_prices(payload, target_date)
+
+
+def _validate_daily_prices(data: DailyPrices) -> None:
+    if len(data.hours) != 24:
+        raise ElectricityError(
+            "price snapshot does not contain 24 hours",
+            code="SNAPSHOT-INVALID",
+            retryable=True,
+        )
+    expected_hours = tuple(range(24))
+    actual_hours = tuple(item.hour for item in data.hours)
+    if actual_hours != expected_hours or any(
+        not item.eur_kwh.is_finite()
+        or not Decimal("-1") <= item.eur_kwh <= Decimal("5")
+        for item in data.hours
+    ):
+        raise ElectricityError(
+            "price snapshot contains invalid hourly values",
+            code="SNAPSHOT-INVALID",
+            retryable=True,
+        )
+
+
+def _write_price_snapshot(path: Path, data: DailyPrices) -> None:
+    """Atomically store one complete normalized ESIOS day."""
+
+    _validate_daily_prices(data)
+    document = {
+        "version": SNAPSHOT_VERSION,
+        "source": "ESIOS / Red Eléctrica",
+        "indicator_id": INDICATOR_ID,
+        "geo_name": "Península",
+        "local_date": data.local_date.isoformat(),
+        "hours": [
+            {
+                "hour": item.hour,
+                "eur_kwh": str(item.eur_kwh),
+            }
+            for item in data.hours
+        ],
+    }
+    temporary = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary = tempfile.mkstemp(
+            prefix=f".{path.name}.", dir=path.parent
+        )
+        with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+            json.dump(
+                document,
+                output,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+            output.write("\n")
+            output.flush()
+            os.fsync(output.fileno())
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+    except OSError as exc:
+        raise ElectricityError(
+            "normalized ESIOS snapshot could not be saved",
+            code="SNAPSHOT-WRITE",
+            retryable=True,
+        ) from exc
+    finally:
+        if temporary is not None:
+            try:
+                os.unlink(temporary)
+            except OSError:
+                pass
+
+
+def _load_price_snapshot(
+    path: Path,
+    target_date: date,
+) -> Optional[DailyPrices]:
+    """Load only a complete normalized snapshot for the requested date."""
+
+    if not path.exists():
+        return None
+    try:
+        with path.open("rb") as source:
+            payload = source.read(SNAPSHOT_LIMIT_BYTES + 1)
+    except OSError as exc:
+        raise ElectricityError(
+            "normalized ESIOS snapshot could not be read",
+            code="SNAPSHOT-READ",
+            retryable=True,
+        ) from exc
+    if len(payload) > SNAPSHOT_LIMIT_BYTES:
+        raise ElectricityError(
+            "normalized ESIOS snapshot is too large",
+            code="SNAPSHOT-INVALID",
+            retryable=True,
+        )
+    try:
+        document = json.loads(payload.decode("utf-8"))
+        if (
+            not isinstance(document, dict)
+            or document.get("version") != SNAPSHOT_VERSION
+            or document.get("source") != "ESIOS / Red Eléctrica"
+            or document.get("indicator_id") != INDICATOR_ID
+            or document.get("geo_name") != "Península"
+        ):
+            raise ValueError
+        snapshot_date = date.fromisoformat(document["local_date"])
+        raw_hours = document["hours"]
+        if not isinstance(raw_hours, list) or len(raw_hours) != 24:
+            raise ValueError
+        hours = []
+        for expected_hour, raw in enumerate(raw_hours):
+            if (
+                not isinstance(raw, dict)
+                or raw.get("hour") != expected_hour
+                or not isinstance(raw.get("eur_kwh"), str)
+                or len(raw["eur_kwh"]) > 32
+            ):
+                raise ValueError
+            hours.append(
+                HourlyPrice(
+                    expected_hour,
+                    Decimal(raw["eur_kwh"]),
+                )
+            )
+        data = DailyPrices(snapshot_date, tuple(hours))
+        _validate_daily_prices(data)
+    except (
+        KeyError,
+        TypeError,
+        ValueError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        InvalidOperation,
+    ) as exc:
+        raise ElectricityError(
+            "normalized ESIOS snapshot is invalid",
+            code="SNAPSHOT-INVALID",
+            retryable=True,
+        ) from exc
+    if snapshot_date != target_date:
+        return None
+    return data
+
+
+async def load_or_fetch_prices(
+    api_key: str,
+    target_date: date,
+    snapshot_path: Path,
+) -> DailyPrices:
+    """Use the stored target day, or fetch, persist, and verify it once."""
+
+    try:
+        stored = await asyncio.to_thread(
+            _load_price_snapshot, snapshot_path, target_date
+        )
+    except ElectricityError as exc:
+        logging.warning(
+            "Ignoring unusable normalized ESIOS snapshot [%s]",
+            exc.diagnostic_code,
+        )
+        stored = None
+    if stored is not None:
+        return stored
+
+    collected = await fetch_prices(api_key, target_date)
+    await asyncio.to_thread(
+        _write_price_snapshot, snapshot_path, collected
+    )
+    verified = await asyncio.to_thread(
+        _load_price_snapshot, snapshot_path, target_date
+    )
+    if verified is None:
+        raise ElectricityError(
+            "normalized ESIOS snapshot has the wrong date",
+            code="SNAPSHOT-INVALID",
+            retryable=True,
+        )
+    return verified
 
 
 def _price(value: Decimal) -> str:

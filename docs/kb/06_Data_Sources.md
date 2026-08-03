@@ -40,7 +40,12 @@ The same schedule covers an empty, incomplete or temporarily unavailable
 response; the client itself makes one bounded request and never sleeps between
 attempts. Exactly one value for every local hour 00–23 is required; incomplete,
 duplicate, malformed, wrong-date, or non-Península data causes that invocation
-to publish nothing. No price cache is kept.
+to publish nothing. The first complete response is atomically stored as one
+private normalized target-day snapshot containing indicator `1001`,
+`Península`, the date, and 24 €/kWh values. Public output is built from this
+snapshot. It contains neither the personal token nor the raw API response and
+is replaced for the next target date. Confirmed publication is checked before
+source access, so later scheduled attempts make no ESIOS request.
 
 Color is presentation metadata, not source data from ESIOS. Rank the complete
 24-hour local day by price: the cheapest eight hours are green, the middle

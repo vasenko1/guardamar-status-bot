@@ -28,9 +28,10 @@ The publication process must:
 - keep persistent state small and local;
 - avoid duplicate digest delivery after uncertain failures where practical.
 
-The electricity process follows the same one-shot limits. It stores one date,
-requires a complete 24-hour response, and never waits in memory for ESIOS to
-publish later data.
+The electricity process follows the same one-shot limits. It stores one
+published date and one bounded normalized target-day snapshot, requires a
+complete 24-hour response, and never waits in memory for ESIOS to publish later
+data.
 
 The optional operator listener may keep one bounded Telegram `getUpdates`
 long poll solely for allowlisted private `/preview`. It must not schedule
@@ -82,6 +83,11 @@ deployment agent or self-hosted CI runner.
   it never repeats event-source collection or OCR.
 - Telegram operations share one bounded JSON client restricted to the official
   API host. Only sends retry, and only after transient failures.
+- Electricity checks confirmed publication before any source access. The first
+  complete ESIOS response for a target date is atomically normalized to one
+  private local snapshot; later invocations reuse it instead of repeating the
+  API request. Preview and publication share one non-blocking local lock. No
+  raw response or token is stored.
 - Mayor, Policía Local, municipal-agenda, and Gemini requests enforce exact
   HTTPS hosts, expected MIME types, and existing response-size limits. They do
   not add internal retries.
@@ -94,6 +100,9 @@ deployment agent or self-hosted CI runner.
   catalogs accepted in ADRs 0012 and 0028. The municipal catalog may retain
   unexpired prior-poster events
   for at most the next seven days during a month transition.
+- Store at most one complete normalized ESIOS target day with its official
+  indicator and geographic scope, separately from the electricity publication
+  marker. Replace it only after a complete validated response for another day.
 - Keep logs rotated or otherwise bounded.
 - Do not archive raw responses by default.
 - Do not cache raw source responses or municipal information. Only normalized
