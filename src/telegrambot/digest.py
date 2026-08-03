@@ -490,7 +490,6 @@ def build_message(
             "",
             "⚠️ <b>Предупреждения AEMET:</b>",
             "Зона: южное побережье Аликанте",
-            "",
             *_warning_blocks(digest.warnings, warning_now),
         ])
 
@@ -544,7 +543,7 @@ def build_message(
                 f"• {html.escape(holiday.name)} — {label}"
             )
         if ordered_holidays[0].date.weekday() < 5:
-            lines.append("  🗓️ Официальный праздничный выходной.")
+            lines.append("  🏛️ Официальный праздничный выходной.")
 
     if digest.events:
         lines.extend(["", "📅 <b>События дня:</b>"])
