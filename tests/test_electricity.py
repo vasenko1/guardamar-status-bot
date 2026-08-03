@@ -402,6 +402,8 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Средние по цене часы", message)
         self.assertIn("Самые дорогие часы этого дня", message)
         self.assertIn("сравнивают часы только между собой", message)
+        self.assertIn("Цена PVPC меняется каждый час", message)
+        self.assertIn("солнечной и ветровой энергии", message)
         self.assertIn("PVPC — регулируемый тариф", message)
         self.assertIn("в типе договора должно быть указано PVPC", message)
         self.assertIn("Это не весь счёт", message)
