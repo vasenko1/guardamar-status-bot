@@ -237,6 +237,42 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, 0)
         collect.assert_not_awaited()
 
+    async def test_cli_creates_explanation_then_replies_with_table(self):
+        target = (datetime.now(TIMEZONE) + timedelta(days=1)).date()
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "electricity.json"
+            environment = {
+                "ELECTRICITY_STATE_PATH": str(state_path),
+                "ELECTRICITY_SNAPSHOT_PATH": str(
+                    Path(directory) / "electricity_prices.json"
+                ),
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_CHAT_ID": "chat",
+            }
+            with patch.dict(os.environ, environment, clear=False), patch(
+                "telegrambot.__main__.load_or_fetch_prices",
+                new_callable=AsyncMock,
+                return_value=DailyPrices(target, _daily().hours),
+            ), patch(
+                "telegrambot.__main__.send_message",
+                new_callable=AsyncMock,
+                side_effect=(101, 102),
+            ) as send:
+                result = await _run_command("electricity")
+
+            state = PublicationState(state_path)
+            published = state.is_published(target)
+            anchor_id = state.electricity_explanation_message_id()
+
+        self.assertEqual(result, 0)
+        self.assertEqual(send.await_count, 2)
+        self.assertNotIn("reply_to_message_id", send.await_args_list[0].kwargs)
+        self.assertEqual(
+            send.await_args_list[1].kwargs["reply_to_message_id"], 101
+        )
+        self.assertTrue(published)
+        self.assertEqual(anchor_id, 101)
+
     async def test_preview_shares_publication_lock(self):
         with tempfile.TemporaryDirectory() as directory:
             state_path = Path(directory) / "electricity.json"

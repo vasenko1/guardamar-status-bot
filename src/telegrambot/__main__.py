@@ -150,18 +150,18 @@ async def _run_command(command: str) -> int:
             lambda: load_or_fetch_prices(
                 esios_key, target_date, snapshot_path
             ),
-            lambda message: send_message(
-                bot_token,
-                chat_id,
-                message,
-                disable_notification=False,
-            ),
             lambda message, reply_id: send_message(
                 bot_token,
                 chat_id,
                 message,
                 disable_notification=False,
                 reply_to_message_id=reply_id,
+            ),
+            lambda message: send_message(
+                bot_token,
+                chat_id,
+                message,
+                disable_notification=False,
             ),
         )
         logging.info("Electricity publication: %s", result)
