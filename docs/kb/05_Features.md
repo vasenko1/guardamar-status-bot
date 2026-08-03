@@ -75,7 +75,7 @@ This exact visual structure is the product contract:
 
 🎉 **Праздник сегодня:**
 • Канун Дня святого Иакова — официальный городской праздник
-  🏛️ Официальный праздничный выходной.
+  🏛️ Официальный выходной день.
 
 📅 **События дня:**
 • **07:00–13:30** — рынок
@@ -167,7 +167,7 @@ local dates into an unreviewed year. Entries use the fixed order national,
 regional, then local. Labels are `национальный праздник`, `региональный
 праздник`, and `официальный городской праздник`. The heading is singular or
 plural according to the number of distinct holidays. On Monday through Friday
-append `🏛️ Официальный праздничный выходной.` directly below the holiday;
+append `🏛️ Официальный выходной день.` directly below the holiday;
 omit that explanatory line on
 Saturday and Sunday. Never render `Сегодня рабочий день`. Ordinary festivals
 and multi-day programmes remain events and do not enter this section merely

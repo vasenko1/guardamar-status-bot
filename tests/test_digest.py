@@ -55,7 +55,7 @@ class DigestMessageTests(unittest.TestCase):
             "🎉 <b>Праздник сегодня:</b>\n"
             "• Канун Дня святого Иакова — "
             "официальный городской праздник\n"
-            "  🏛️ Официальный праздничный выходной.",
+            "  🏛️ Официальный выходной день.",
             message,
         )
         self.assertLess(
@@ -80,7 +80,7 @@ class DigestMessageTests(unittest.TestCase):
             "• Успение Богородицы — национальный праздник",
             message,
         )
-        self.assertNotIn("Официальный праздничный выходной", message)
+        self.assertNotIn("Официальный выходной", message)
 
     def test_orders_coincident_holidays_by_scope(self):
         holiday_date = date(2026, 10, 12)

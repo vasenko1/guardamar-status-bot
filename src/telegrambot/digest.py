@@ -543,7 +543,7 @@ def build_message(
                 f"• {html.escape(holiday.name)} — {label}"
             )
         if ordered_holidays[0].date.weekday() < 5:
-            lines.append("  🏛️ Официальный праздничный выходной.")
+            lines.append("  🏛️ Официальный выходной день.")
 
     if digest.events:
         lines.extend(["", "📅 <b>События дня:</b>"])
