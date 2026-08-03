@@ -226,12 +226,13 @@ class DigestMessageTests(unittest.TestCase):
         self.assertIn("💨 Ветер: В 3 → 5 м/с", message)
         self.assertLess(message.index("⛈️ Воздух:"), message.index("💨 Ветер:"))
         self.assertLess(message.index("💨 Ветер:"), message.index("🌊 Море:"))
-        self.assertIn("\n\n⚠️ <b>Предупреждения:</b>\n", message)
         self.assertIn(
-            (
-                "Оранжевое предупреждение: "
-                "высокая температура."
-            ),
+            "\n\n⚠️ <b>Предупреждения AEMET:</b>\n"
+            "Зона: южное побережье Аликанте\n",
+            message,
+        )
+        self.assertIn(
+            "🟠 <b>Высокая температура</b>",
             message,
         )
         self.assertIn("AEMET", message)
@@ -249,7 +250,7 @@ class DigestMessageTests(unittest.TestCase):
             message,
         )
         rendered = message.replace("<b>", "").replace("</b>", "")
-        self.assertLess(len(rendered), 450)
+        self.assertLess(len(rendered), 500)
 
     def test_omits_rain_below_threshold(self):
         digest = MorningDigest(
@@ -312,7 +313,7 @@ class DigestMessageTests(unittest.TestCase):
         self.assertNotIn("🏖 Флаги", message)
         self.assertNotIn("🪼 Медузы", message)
         self.assertIn("💨 Ветер: —", message)
-        self.assertNotIn("⚠️ <b>Предупреждения:</b>", message)
+        self.assertNotIn("⚠️ <b>Предупреждения AEMET:</b>", message)
         self.assertNotIn("Предупреждений нет", message)
 
     def test_marks_multiple_warnings_and_traffic_items(self):
@@ -344,9 +345,10 @@ class DigestMessageTests(unittest.TestCase):
             message,
         )
         self.assertIn(
-            "⚠️ <b>Предупреждения:</b>\n"
-            "• Жёлтое предупреждение: сильный ветер.\n"
-            "• Оранжевое предупреждение: сильный дождь.",
+            "⚠️ <b>Предупреждения AEMET:</b>\n"
+            "Зона: южное побережье Аликанте\n\n"
+            "🟠 <b>Сильный дождь</b>\n\n"
+            "🟡 <b>Сильный ветер</b>",
             message,
         )
         self.assertIn(
@@ -383,18 +385,85 @@ class DigestMessageTests(unittest.TestCase):
             warnings_available=True,
         )
 
-        message = build_message(digest)
+        message = build_message(
+            digest,
+            now=datetime(2026, 8, 1, 7, 30, tzinfo=madrid),
+        )
 
         self.assertIn(
-            "Жёлтое предупреждение: грозы — "
-            "с 1 августа, 16:00 до 21:59.",
+            "🟡 <b>Грозы</b>\n"
+            "Сегодня · 16:00–21:59 · вероятность 40–70%",
             message,
         )
         self.assertIn(
             "Возможны очень сильные порывы ветра, град и местами сильные "
-            "ливни. Вероятность: 40–70%.",
+            "ливни.",
             message,
         )
+
+    def test_groups_identical_warning_for_today_and_tomorrow(self):
+        madrid = timezone(timedelta(hours=2))
+        warnings = tuple(
+            Warning(
+                "Temperaturas maximas",
+                "yellow",
+                datetime(2026, 8, day, 20, 59, tzinfo=madrid),
+                starts_at=datetime(2026, 8, day, 13, 0, tzinfo=madrid),
+                probability="40–70%",
+            )
+            for day in (3, 4)
+        )
+        digest = MorningDigest(
+            weather=Weather(None, 24, 32, None, None, None),
+            warnings=warnings,
+            warnings_available=True,
+        )
+
+        message = build_message(
+            digest,
+            now=datetime(2026, 8, 3, 7, 30, tzinfo=madrid),
+        )
+
+        self.assertEqual(message.count("<b>Высокая температура</b>"), 1)
+        self.assertIn(
+            "Сегодня и завтра · 13:00–20:59 · вероятность 40–70%",
+            message,
+        )
+
+    def test_keeps_different_warning_intervals_separate(self):
+        madrid = timezone(timedelta(hours=2))
+        digest = MorningDigest(
+            weather=Weather(None, 24, 32, None, None, None),
+            warnings=(
+                Warning(
+                    "Temperaturas maximas",
+                    "yellow",
+                    datetime(2026, 8, 3, 20, 59, tzinfo=madrid),
+                    starts_at=datetime(2026, 8, 3, 13, 0, tzinfo=madrid),
+                    probability="40–70%",
+                ),
+                Warning(
+                    "Temperaturas maximas",
+                    "yellow",
+                    datetime(2026, 8, 4, 20, 59, tzinfo=madrid),
+                    starts_at=datetime(2026, 8, 4, 14, 0, tzinfo=madrid),
+                    probability="40–70%",
+                ),
+            ),
+            warnings_available=True,
+        )
+
+        message = build_message(
+            digest,
+            now=datetime(2026, 8, 3, 7, 30, tzinfo=madrid),
+        )
+
+        self.assertIn(
+            "Сегодня · 13:00–20:59 · вероятность 40–70%\n"
+            "Завтра · 14:00–20:59 · вероятность 40–70%",
+            message,
+        )
+        self.assertNotIn("Сегодня и завтра", message)
 
     def test_does_not_limit_hazardous_warnings_to_two(self):
         digest = MorningDigest(
@@ -409,9 +478,9 @@ class DigestMessageTests(unittest.TestCase):
 
         message = build_message(digest)
 
-        self.assertIn("сильный ветер", message)
-        self.assertIn("сильный дождь", message)
-        self.assertIn("грозы", message)
+        self.assertIn("<b>Сильный ветер</b>", message)
+        self.assertIn("<b>Сильный дождь</b>", message)
+        self.assertIn("<b>Грозы</b>", message)
         self.assertNotIn("Ещё предупреждений", message)
 
     def test_escapes_source_text_for_telegram_html(self):

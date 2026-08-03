@@ -457,6 +457,18 @@ class WarningTests(unittest.TestCase):
         )
         self.assertEqual(warnings[0].probability, "40–70%")
 
+    def test_omits_warning_starting_after_tomorrow(self):
+        future = b"""<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+          <status>Actual</status><info><language>es-ES</language>
+          <event>Tormentas</event><severity>Moderate</severity>
+          <onset>2026-07-28T16:00:00+02:00</onset>
+          <expires>2026-07-28T21:59:59+02:00</expires>
+          <area><areaDesc>Litoral sur de Alicante</areaDesc></area>
+          </info></alert>"""
+        now = datetime(2026, 7, 26, 6, 0, tzinfo=timezone.utc)
+
+        self.assertEqual(normalize_warnings(future, now), ())
+
     def test_omits_minor_cap_status_because_aemet_defines_it_as_no_warning(self):
         no_warning = b"""<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
           <status>Actual</status><info><language>es-ES</language>

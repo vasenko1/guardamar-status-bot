@@ -3,8 +3,8 @@
 import html
 import re
 import unicodedata
-from datetime import datetime
-from typing import Optional
+from datetime import date, datetime, timedelta
+from typing import Optional, Sequence
 from zoneinfo import ZoneInfo
 
 from .models import BeachNotice, BeachStatus, MorningDigest
@@ -58,10 +58,10 @@ SEA_STATES = {
     "rough": "сильные",
     "very_rough": "очень сильные",
 }
-WARNING_LEVELS = {
-    "yellow": "Жёлтое предупреждение",
-    "orange": "Оранжевое предупреждение",
-    "red": "Красное предупреждение",
+WARNING_DOTS = {
+    "yellow": "🟡",
+    "orange": "🟠",
+    "red": "🔴",
 }
 WARNING_EVENTS = {
     "temperaturas maximas": "высокая температура",
@@ -108,32 +108,6 @@ MONTHS_GENITIVE = (
 )
 
 
-def _warning_moment(value: datetime, *, include_date: bool) -> str:
-    local = value.astimezone(GUARDAMAR_TIMEZONE)
-    clock = local.strftime("%H:%M")
-    if not include_date:
-        return clock
-    return f"{local.day} {MONTHS_GENITIVE[local.month]}, {clock}"
-
-
-def _warning_period(
-    starts_at: Optional[datetime],
-    ends_at: Optional[datetime],
-) -> str:
-    if starts_at is None and ends_at is None:
-        return "."
-    if starts_at is None:
-        return f" до {_warning_moment(ends_at, include_date=True)}."
-    if ends_at is None:
-        return f" — с {_warning_moment(starts_at, include_date=True)}."
-    local_start = starts_at.astimezone(GUARDAMAR_TIMEZONE)
-    local_end = ends_at.astimezone(GUARDAMAR_TIMEZONE)
-    return (
-        f" — с {_warning_moment(starts_at, include_date=True)}"
-        f" до {_warning_moment(ends_at, include_date=local_end.date() != local_start.date())}."
-    )
-
-
 def _warning_text(event: str) -> str:
     normalized = unicodedata.normalize("NFKD", event.strip().casefold())
     key = "".join(
@@ -150,15 +124,156 @@ def _warning_text(event: str) -> str:
     return "предупреждение AEMET"
 
 
-def _warning_details(warning: Warning) -> Optional[str]:
-    details = None
+def _warning_description(warning: Warning) -> Optional[str]:
     if warning.description:
         source = " ".join(warning.description.split()).casefold()
-        details = WARNING_DESCRIPTIONS.get(source)
-    if warning.probability:
-        probability = f"Вероятность: {warning.probability}."
-        return f"{details} {probability}" if details else probability
-    return details
+        return WARNING_DESCRIPTIONS.get(source)
+    return None
+
+
+def _warning_clock(value: datetime) -> str:
+    return value.astimezone(GUARDAMAR_TIMEZONE).strftime("%H:%M")
+
+
+def _warning_day_label(value: date, today: date) -> str:
+    if value == today:
+        return "Сегодня"
+    if value == today + timedelta(days=1):
+        return "Завтра"
+    return f"{value.day} {MONTHS_GENITIVE[value.month]}"
+
+
+def _warning_interval(warning: Warning, today: date) -> str:
+    start = (
+        warning.starts_at.astimezone(GUARDAMAR_TIMEZONE)
+        if warning.starts_at
+        else None
+    )
+    end = (
+        warning.ends_at.astimezone(GUARDAMAR_TIMEZONE)
+        if warning.ends_at
+        else None
+    )
+    if start is None and end is None:
+        return ""
+    if start is None:
+        return (
+            f"{_warning_day_label(end.date(), today)} · "
+            f"до {_warning_clock(end)}"
+        )
+    if end is None:
+        return (
+            f"{_warning_day_label(start.date(), today)} · "
+            f"с {_warning_clock(start)}"
+        )
+    if start.date() == end.date():
+        return (
+            f"{_warning_day_label(start.date(), today)} · "
+            f"{_warning_clock(start)}–{_warning_clock(end)}"
+        )
+    return (
+        f"{_warning_day_label(start.date(), today)}, с "
+        f"{_warning_clock(start)} — "
+        f"{_warning_day_label(end.date(), today).casefold()}, до "
+        f"{_warning_clock(end)}"
+    )
+
+
+def _warning_blocks(
+    warnings: Sequence[Warning],
+    now: datetime,
+) -> list[str]:
+    """Render scan-friendly AEMET warnings without merging unlike facts."""
+
+    today = now.astimezone(GUARDAMAR_TIMEZONE).date()
+    priority = {"red": 0, "orange": 1, "yellow": 2}
+    ordered = sorted(
+        warnings,
+        key=lambda warning: (
+            priority.get(warning.level, 3),
+            warning.starts_at or datetime.min.replace(
+                tzinfo=GUARDAMAR_TIMEZONE
+            ),
+            _warning_text(warning.event),
+        ),
+    )
+    grouped = []
+    positions = {}
+    for warning in ordered:
+        description = _warning_description(warning)
+        description_identity = (
+            " ".join(warning.description.split()).casefold()
+            if warning.description
+            else None
+        )
+        key = (
+            warning.level,
+            _warning_text(warning.event),
+            description_identity,
+            description,
+            warning.probability,
+        )
+        if key not in positions:
+            positions[key] = len(grouped)
+            grouped.append([key, []])
+        grouped[positions[key]][1].append(warning)
+
+    blocks = []
+    for (
+        level,
+        event,
+        _description_identity,
+        description,
+        probability,
+    ), items in grouped:
+        dot = WARNING_DOTS.get(level, "⚠️")
+        blocks.append(f"{dot} <b>{html.escape(event.capitalize())}</b>")
+        intervals = []
+        if (
+            len(items) == 2
+            and items[0].starts_at
+            and items[0].ends_at
+            and items[1].starts_at
+            and items[1].ends_at
+        ):
+            first_start = items[0].starts_at.astimezone(GUARDAMAR_TIMEZONE)
+            first_end = items[0].ends_at.astimezone(GUARDAMAR_TIMEZONE)
+            second_start = items[1].starts_at.astimezone(GUARDAMAR_TIMEZONE)
+            second_end = items[1].ends_at.astimezone(GUARDAMAR_TIMEZONE)
+            if (
+                first_start.date() == today
+                and second_start.date() == today + timedelta(days=1)
+                and first_start.time() == second_start.time()
+                and first_end.time() == second_end.time()
+                and first_start.date() == first_end.date()
+                and second_start.date() == second_end.date()
+            ):
+                intervals.append(
+                    "Сегодня и завтра · "
+                    f"{_warning_clock(first_start)}–"
+                    f"{_warning_clock(first_end)}"
+                )
+        if not intervals:
+            intervals = [
+                interval
+                for item in items
+                if (interval := _warning_interval(item, today))
+            ]
+        if probability:
+            if intervals:
+                intervals = [
+                    f"{interval} · вероятность {probability}"
+                    for interval in intervals
+                ]
+            else:
+                intervals.append(f"Вероятность: {probability}")
+        blocks.extend(intervals)
+        if description:
+            blocks.append(description)
+        blocks.append("")
+    if blocks and not blocks[-1]:
+        blocks.pop()
+    return blocks
 
 
 def _event_title(value: str) -> str:
@@ -278,7 +393,10 @@ def build_fallback_update(
     return "\n".join(lines)
 
 
-def build_message(digest: MorningDigest) -> str:
+def build_message(
+    digest: MorningDigest,
+    now: Optional[datetime] = None,
+) -> str:
     """Format a Morning Digest without inference or generated prose."""
 
     weather = digest.weather
@@ -370,21 +488,14 @@ def build_message(digest: MorningDigest) -> str:
     lines.append(f"🌊 Море: {sea_temperature}{sea_suffix}")
 
     if digest.warnings:
-        lines.extend(["", "⚠️ <b>Предупреждения:</b>"])
-    for warning in digest.warnings:
-        level = WARNING_LEVELS.get(
-            warning.level, "Предупреждение"
-        )
-        warning_line = (
-            f"{level}: {_warning_text(warning.event)}"
-            f"{_warning_period(warning.starts_at, warning.ends_at)}"
-        )
-        if len(digest.warnings) > 1:
-            warning_line = f"• {warning_line}"
-        lines.append(warning_line)
-        details = _warning_details(warning)
-        if details:
-            lines.append(f"  {details}" if len(digest.warnings) > 1 else details)
+        warning_now = now or datetime.now(GUARDAMAR_TIMEZONE)
+        lines.extend([
+            "",
+            "⚠️ <b>Предупреждения AEMET:</b>",
+            "Зона: южное побережье Аликанте",
+            "",
+            *_warning_blocks(digest.warnings, warning_now),
+        ])
 
     beach_lines = _beach_operational_lines(
         digest.beach,

@@ -317,5 +317,6 @@ async def produce_message(
                 municipal_events,
                 events,
             ),
-        )
+        ),
+        now=now,
     )

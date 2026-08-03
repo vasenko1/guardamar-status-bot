@@ -796,11 +796,14 @@ def _cap_documents(payload: bytes) -> Iterable[bytes]:
 
 
 def normalize_warnings(payload: bytes, now: datetime) -> Tuple[Warning, ...]:
-    """Return current and already published future CAP warnings for Guardamar."""
+    """Return current, today, and tomorrow CAP warnings for Guardamar."""
 
     warnings: List[Warning] = []
     seen = set()
     now_utc = now.astimezone(timezone.utc)
+    local_tomorrow = now.astimezone(GUARDAMAR_TIMEZONE).date() + timedelta(
+        days=1
+    )
 
     for document in _cap_documents(payload):
         try:
@@ -842,6 +845,12 @@ def normalize_warnings(payload: bytes, now: datetime) -> Tuple[Warning, ...]:
             )
             ends_at = _parse_datetime(_child_text(info, "expires"))
             if ends_at and ends_at.astimezone(timezone.utc) <= now_utc:
+                continue
+            if (
+                starts_at
+                and starts_at.astimezone(GUARDAMAR_TIMEZONE).date()
+                > local_tomorrow
+            ):
                 continue
 
             level = {

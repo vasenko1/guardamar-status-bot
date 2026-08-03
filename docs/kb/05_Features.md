@@ -57,9 +57,14 @@ This exact visual structure is the product contract:
 💨 Ветер: СВ 5 → 7 м/с
 🌊 Море: 29° • слабые → умеренные
 
-⚠️ **Предупреждения:**
-• Жёлтое предупреждение о жаре до 20:00.
-• На побережье ожидаются сильные порывы ветра.
+⚠️ **Предупреждения AEMET:**
+Зона: южное побережье Аликанте
+
+🟠 **Опасные прибрежные явления**
+Завтра · 08:00–18:00 · вероятность 40–70%
+
+🟡 **Высокая температура**
+Сегодня и завтра · 13:00–20:59 · вероятность 40–70%
 
 🏖 **Флаги на пляжах:**
    🟡 Roqueta
@@ -150,8 +155,9 @@ The icon adds no text, AI, or new source.
 Warning, traffic, and event sections are optional. Omit an entire optional
 section when it has no verified, useful items. Do not render empty headings.
 Every displayed section heading and every event time is bold through Telegram
-HTML. Sections are separated by exactly one empty line. Warning and traffic
-items use `•` when a section contains more than one displayed item.
+HTML. Sections are separated by exactly one empty line. Warning hazards use
+their severity dot and a bold Russian name; traffic items use `•` when more
+than one is displayed.
 The event section contains every deduplicated, verified official event relevant
 today. There is no product count limit; bounded source reads and Telegram's
 message limit remain technical safety boundaries.
@@ -190,8 +196,9 @@ The first MVP slice covers Guardamar weather and AEMET warnings:
   forecast;
 - the highest eligible remaining precipitation probability and its period
   when it is at least 75%;
-- active and already published future CAP warnings for Guardamar's warning
-  zone, with exact start and end dates/times, probability, and a compact
+- active and already published CAP warnings starting no later than tomorrow
+  for Guardamar's warning zone, with exact start and end dates/times,
+  probability, and a compact
   deterministic Russian rendering of recognized official hazard details;
 - deterministic formatting with no runtime AI.
 
@@ -199,11 +206,15 @@ The canonical visual layout and inline later-day wind comparison are
 implemented. ADR 0013 adds the dynamic AEMET weather icon without changing the
 row layout.
 
-All current or already published future yellow, orange, and red warnings for
-the Guardamar zone are shown; safety warnings are not capped by a message-item
-limit. Spanish/English CAP duplicates and green `Minor` records are omitted.
-Unknown description wording is never machine-translated or guessed: the
-warning, validity period, and validated probability still remain visible.
+All current, today, and tomorrow yellow, orange, and red warnings for the
+Guardamar zone are shown; later warnings wait for a subsequent digest. Safety
+warnings are not capped by a message-item limit. Matching level, hazard,
+probability, and description may share one block; equal today/tomorrow hours
+render as `Сегодня и завтра`. Different facts remain separate. The fixed zone
+is named once, hazards are ordered red, orange, yellow, and each name is bold.
+Spanish/English CAP duplicates and green `Minor` records are omitted. Unknown
+description wording is never machine-translated or guessed: the warning,
+validity period, and validated probability still remain visible.
 
 The beach-status slice adds:
 
