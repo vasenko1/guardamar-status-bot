@@ -290,6 +290,11 @@ For exhibitions, keep the medium or category outside the title and place an
 explicit work name in Russian typographic quotes, for example:
 `Выставка живописи и скульптуры «Средиземноморье, язык воды»`.
 
+Every public digest and electricity message ends with one compact linked
+signature, `📣 обЪявления Гуардамар`. It is part of the message so forwarded
+copies lead to the public group instead of only identifying the bot. Telegram
+link previews are disabled globally to keep the footer to one phone-width row.
+
 The official `@AlcaldeGuardamar` channel additionally supplies explicitly
 dated `Fiestas de Barrio` entries through a narrow deterministic parser. It
 does not turn the channel into a general news source. Preserve named

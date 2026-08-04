@@ -251,6 +251,7 @@ def _post_message(
         "text": text,
         "disable_notification": disable_notification,
         "parse_mode": "HTML",
+        "link_preview_options": {"is_disabled": True},
     }
     if reply_to_message_id is not None:
         body["reply_parameters"] = {

@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta
 from typing import Optional, Sequence
 from zoneinfo import ZoneInfo
 
+from .branding import with_footer
 from .models import BeachNotice, BeachStatus, MorningDigest, Warning
 
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
@@ -383,7 +384,7 @@ def build_fallback_update(
 
     additions = _beach_operational_lines(beach, notice)
     if not additions:
-        return morning_message
+        return with_footer(morning_message)
     lines = morning_message.splitlines()
     weather_rows = [
         index
@@ -392,7 +393,7 @@ def build_fallback_update(
     ]
     insert_at = max(weather_rows) + 1 if weather_rows else len(lines)
     lines[insert_at:insert_at] = ["", *additions]
-    return "\n".join(lines)
+    return with_footer("\n".join(lines))
 
 
 def build_message(
@@ -589,4 +590,4 @@ def build_message(
             lines.extend(event_lines)
     if len(lines) == 1:
         raise ValueError("No verified digest content is available")
-    return "\n".join(lines)
+    return with_footer("\n".join(lines))

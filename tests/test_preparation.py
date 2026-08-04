@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
 from telegrambot.aemet_snapshot import load_snapshot, write_snapshot
+from telegrambot.branding import FOOTER, with_footer
 from telegrambot.digest import build_message
 from telegrambot.event_translations import (
     cached_title,
@@ -110,8 +111,13 @@ class PreparationTests(unittest.IsolatedAsyncioTestCase):
             warnings_available=False,
             events=events,
         ), now=self.now)
-        self.assertLessEqual(len(message), 3900)
+        self.assertLessEqual(len(message), 4096)
         self.assertEqual(message.count("📍"), message.count("• "))
+
+    def test_brand_footer_is_appended_exactly_once(self):
+        message = with_footer(with_footer("Текст"))
+        self.assertEqual(message.count(FOOTER), 1)
+        self.assertTrue(message.endswith(FOOTER))
 
 
 if __name__ == "__main__":

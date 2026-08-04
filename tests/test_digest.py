@@ -250,7 +250,7 @@ class DigestMessageTests(unittest.TestCase):
             message,
         )
         rendered = message.replace("<b>", "").replace("</b>", "")
-        self.assertLess(len(rendered), 500)
+        self.assertLess(len(rendered), 600)
 
     def test_omits_rain_below_threshold(self):
         digest = MorningDigest(
@@ -716,9 +716,8 @@ class DigestMessageTests(unittest.TestCase):
             "🪼 Медузы: Roqueta",
             updated,
         )
-        self.assertTrue(
-            updated.endswith("📅 <b>События дня:</b>\n• Выставка")
-        )
+        self.assertIn("📅 <b>События дня:</b>\n• Выставка", updated)
+        self.assertTrue(updated.endswith("обЪявления Гуардамар</b></a>"))
 
     def test_omits_missing_beaches_and_flag_descriptions(self):
         digest = MorningDigest(

@@ -114,6 +114,7 @@ class TelegramDeliveryTests(unittest.IsolatedAsyncioTestCase):
                 "text": "Buenos días",
                 "disable_notification": True,
                 "parse_mode": "HTML",
+                "link_preview_options": {"is_disabled": True},
             },
         )
         self.assertTrue(request.full_url.endswith("/sendMessage"))

@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Awaitable, Callable, Dict, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
+from .branding import with_footer
+
 ESIOS_HOST = "api.esios.ree.es"
 INDICATOR_ID = 1001
 PENINSULA_GEO_NAME = "península"
@@ -465,7 +467,7 @@ def build_price_message(data: DailyPrices) -> str:
             "\n\n💡 Энергоёмкие дела лучше запланировать "
             f"на период с {best_start:02d}:00 до {best_end:02d}:00."
         )
-    return (
+    return with_footer(
         "⚡ <b>Цены на электричество завтра</b>\n"
         f"{weekday.capitalize()}, {data.local_date.day} {months[data.local_date.month]}\n\n"
         "🕐 <b>По часам</b>\n"
@@ -479,7 +481,7 @@ def build_price_message(data: DailyPrices) -> str:
 
 
 def build_explanation_message() -> str:
-    return (
+    return with_footer(
         "💡 <b>Как читать таблицу</b>\n\n"
         "Это почасовая цена электроэнергии на конкретную дату. "
         "Она помогает выбрать время для стирки, нагрева воды, зарядки "
