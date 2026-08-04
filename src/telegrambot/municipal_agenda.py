@@ -26,6 +26,7 @@ from .gemini import (
     translate_event_titles,
     verify_agenda_poster_events,
 )
+from .event_translations import cached_title
 from .models import Event
 from .diagnostics import SourceDiagnostic, source_error
 
@@ -1227,10 +1228,11 @@ async def fetch_today_municipal_events(
     api_key: str,
     state_path: Path,
     diagnostics: Optional[List[SourceDiagnostic]] = None,
+    translation_cache_path: Optional[Path] = None,
 ) -> Tuple[Event, ...]:
     """Return today's translated events from the local catalog."""
 
-    if not api_key:
+    if not api_key and translation_cache_path is None:
         raise MunicipalAgendaError(
             "Gemini key is required for municipal agenda",
             code="CONFIG",
@@ -1240,42 +1242,58 @@ async def fetch_today_municipal_events(
     if not source_events:
         return ()
     translated_events = []
-    try:
-        titles = await translate_event_titles(
-            api_key, [event.title_es for event in source_events]
-        )
-        translated_events = list(zip(source_events, titles))
-    except GeminiError as batch_error:
-        failed_translations = 0
-        for source in source_events[:MAX_INDIVIDUAL_TRANSLATION_RECOVERY]:
-            try:
-                title = (await translate_event_titles(
-                    api_key, [source.title_es]
-                ))[0]
-            except GeminiError:
-                failed_translations += 1
-                continue
-            translated_events.append((source, title))
-        failed_translations += max(
-            0,
-            len(source_events) - MAX_INDIVIDUAL_TRANSLATION_RECOVERY,
-        )
-        if failed_translations and diagnostics is not None:
-            diagnostics.append(SourceDiagnostic(
-                "MUNI-AGENDA-TRANSLATION-PARTIAL",
-                "Agenda municipal",
-                (
-                    f"не удалось перевести событий: {failed_translations}; "
-                    "они исключены из предпросмотра"
+    if translation_cache_path is not None:
+        translated_events = [
+            (
+                source,
+                cached_title(
+                    translation_cache_path,
+                    "municipal_agenda",
+                    source.title_es,
                 ),
-            ))
-        if not translated_events:
-            raise MunicipalAgendaError(
-                "Event translation failed",
-                code=batch_error.diagnostic_code,
-                status=batch_error.server_status,
-                description=batch_error.safe_description,
-            ) from batch_error
+            )
+            for source in source_events
+        ]
+    else:
+        try:
+            titles = await translate_event_titles(
+                api_key, [event.title_es for event in source_events]
+            )
+            translated_events = list(zip(source_events, titles))
+        except GeminiError as batch_error:
+            failed_translations = 0
+            for source in source_events[
+                :MAX_INDIVIDUAL_TRANSLATION_RECOVERY
+            ]:
+                try:
+                    title = (await translate_event_titles(
+                        api_key, [source.title_es]
+                    ))[0]
+                except GeminiError:
+                    failed_translations += 1
+                    continue
+                translated_events.append((source, title))
+            failed_translations += max(
+                0,
+                len(source_events) - MAX_INDIVIDUAL_TRANSLATION_RECOVERY,
+            )
+            if failed_translations and diagnostics is not None:
+                diagnostics.append(SourceDiagnostic(
+                    "MUNI-AGENDA-TRANSLATION-PARTIAL",
+                    "Agenda municipal",
+                    (
+                        "не удалось перевести событий: "
+                        f"{failed_translations}; они исключены из "
+                        "предпросмотра"
+                    ),
+                ))
+            if not translated_events:
+                raise MunicipalAgendaError(
+                    "Event translation failed",
+                    code=batch_error.diagnostic_code,
+                    status=batch_error.server_status,
+                    description=batch_error.safe_description,
+                ) from batch_error
     result = []
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
     for source, title in translated_events:
@@ -1317,3 +1335,13 @@ async def fetch_today_municipal_events(
             )
         )
     return tuple(result)
+
+
+async def municipal_translation_items(
+    now: datetime,
+    state_path: Path,
+) -> Tuple[Tuple[str, str], ...]:
+    """Return source identities and exact titles from the local catalog."""
+
+    events = await _cached_current_events(now, state_path)
+    return tuple(("municipal_agenda", event.title_es) for event in events)

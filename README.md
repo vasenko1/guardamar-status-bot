@@ -85,6 +85,9 @@ Use external Termux cron entries at `07:30` and every five minutes from
 CRON_TZ=Europe/Madrid
 10 5 * * * /path/to/TelegramBot/termux/sync-municipal-events.sh
 30 5 * * * /path/to/TelegramBot/termux/sync-agenda-events.sh
+0,30 6 * * * /path/to/TelegramBot/termux/prepare-events.sh
+0 7 * * * /path/to/TelegramBot/termux/prepare-events.sh
+15 7 * * * /path/to/TelegramBot/termux/prepare-aemet.sh
 30 7 * * * /path/to/TelegramBot/termux/run-daily.sh
 10-40/5 10 * * * /path/to/TelegramBot/termux/update-daily.sh
 30,35,45 20 * * * /path/to/TelegramBot/termux/run-electricity.sh
@@ -104,6 +107,9 @@ The validated Android deployment uses the scripts in `termux/`:
 - `termux/sync-municipal-events.sh` at 05:10 and
   `termux/sync-agenda-events.sh` at 05:30 to atomically refresh small event
   catalogs before publication;
+- `termux/prepare-events.sh` at 06:00, 06:30, and 07:00 to fill only missing
+  title translations, and `termux/prepare-aemet.sh` at 07:15 to store one
+  normalized same-day weather snapshot;
 - `termux/deploy.sh` at `04:00` to apply only commits promoted to the
   GitHub `deploy` branch after successful CI;
 - `termux/start-services` copied to `~/.termux/boot/start-services` for the
@@ -124,6 +130,9 @@ CRON_TZ=Europe/Madrid
 0 4 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/deploy.sh
 10 5 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-municipal-events.sh
 30 5 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-agenda-events.sh
+0,30 6 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/prepare-events.sh
+0 7 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/prepare-events.sh
+15 7 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/prepare-aemet.sh
 30 7 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-daily.sh
 10-40/5 10 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/update-daily.sh
 30,35,45 20 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity.sh

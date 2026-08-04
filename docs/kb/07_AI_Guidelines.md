@@ -59,7 +59,11 @@ not receive the first call's candidates. Deterministic agreement on key fields
 is required, and official HTML text always wins conflicts. Every
 result must use a fixed schema and pass date, month, field-length, provenance,
 and duplicate validation before replacing the previous catalog.
-Russian translations must not be stored. Invalid OCR keeps the prior valid
+Validated title-only Russian translations are stored separately in a bounded
+atomic cache keyed by exact source identity, source title, and policy version.
+Only preparation commands may fill missing entries; the 07:30 publication and
+private preview are read-only and use a normalized Spanish title when a
+translation is absent. Invalid OCR keeps the prior valid
 snapshot and cannot erase it. Without a prior snapshot, OCR failure remains an
 optional municipal-agenda failure and cannot stop the rest of the digest.
 
@@ -69,8 +73,8 @@ the same number in the same order. It may not add dates, places, explanations,
 or event facts. If a municipal batch has an invalid response shape, the bot
 may recover at most twelve selected titles through individual schema-checked
 calls; an individually invalid title alone is omitted. This recovery never
-repeats OCR or source collection. Failure omits only the affected event-source
-contribution.
+repeats OCR or source collection. A provider outage preserves already cached
+translations and never removes the verified source event.
 
 The Gemini client sends the key only in the API header, accepts bounded JSON
 only from the exact official HTTPS API host, and exposes stable status codes

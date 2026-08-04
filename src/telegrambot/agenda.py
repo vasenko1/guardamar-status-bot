@@ -19,6 +19,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from .gemini import GeminiError, translate_event_titles
+from .event_translations import cached_title
 from .holidays import is_market_day
 from .models import Event
 
@@ -600,6 +601,7 @@ async def fetch_today_events(
     now: datetime,
     gemini_api_key: str = "",
     state_path: Optional[Path] = None,
+    translation_cache_path: Optional[Path] = None,
 ) -> Tuple[Event, ...]:
     """Read today's cached events, or use the legacy direct collection path."""
 
@@ -613,7 +615,19 @@ async def fetch_today_events(
             if event.starts_at is not None
             and event.starts_at.date() == local_day
         ]
-    if gemini_api_key and events:
+    if translation_cache_path is not None:
+        events = [
+            replace(
+                event,
+                title=cached_title(
+                    translation_cache_path,
+                    "agenda_guardamar",
+                    event.title,
+                ),
+            )
+            for event in events
+        ]
+    elif gemini_api_key and events:
         try:
             titles = await translate_event_titles(
                 gemini_api_key,
@@ -631,6 +645,15 @@ async def fetch_today_events(
             for event, title in zip(events, titles)
         ]
     return tuple(events)
+
+
+async def agenda_translation_items(
+    state_path: Path,
+) -> Tuple[Tuple[str, str], ...]:
+    """Return source identities and exact titles from the local catalog."""
+
+    events = await asyncio.to_thread(_load_agenda_snapshot, state_path)
+    return tuple(("agenda_guardamar", event.title) for event in events)
 
 
 def recurring_events(now: datetime) -> Tuple[Event, ...]:

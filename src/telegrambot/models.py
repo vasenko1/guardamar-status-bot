@@ -95,7 +95,7 @@ class BeachNotice:
 
 @dataclass(frozen=True)
 class MorningDigest:
-    weather: Weather
+    weather: Optional[Weather]
     warnings: Tuple[Warning, ...]
     warnings_available: bool
     beach: Optional[BeachStatus] = None

@@ -247,7 +247,9 @@ current program. The digest merges these facts with the separate local Agenda
 Guardamar catalog and removes duplicates.
 
 During a temporary source outage, the last valid snapshot remains eligible
-until its covered period ends. Generated Russian translations are not stored.
+until its covered period ends. Generated title-only Russian translations are
+kept only in the bounded separate cache defined by ADR 0029; the catalog keeps
+the exact source-language fact.
 If the snapshot is corrupt, it is never used; the bot rebuilds it from a valid
 official HTML page and JPEG, PNG, or WebP poster when possible.
 If a newly validated poster cannot be written to local storage, its events

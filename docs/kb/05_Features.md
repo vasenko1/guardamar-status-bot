@@ -271,7 +271,9 @@ next poster early, still-relevant
 facts from the prior snapshot remain available for the current day and the
 following seven days. The snapshot may also supply today's events during a
 temporary source outage. Extraction preserves explicit event type, medium,
-time range, and place. Russian translations are not stored. Poster and Agenda
+time range, and place. Title-only translations are stored in the bounded
+policy-versioned cache defined by ADR 0029; source facts remain Spanish in the
+catalogs. Poster and Agenda
 Guardamar records are merged and deduplicated; routine opening hours and
 municipal services such as the mobile ecopark are excluded from `📅 События`.
 The heading is rendered as `📅 События дня:` to make its daily scope explicit.

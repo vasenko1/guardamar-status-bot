@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta
 from typing import Optional, Sequence
 from zoneinfo import ZoneInfo
 
-from .models import BeachNotice, BeachStatus, MorningDigest
+from .models import BeachNotice, BeachStatus, MorningDigest, Warning
 
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 
@@ -187,8 +187,13 @@ def _warning_blocks(
 
     today = now.astimezone(GUARDAMAR_TIMEZONE).date()
     priority = {"red": 0, "orange": 1, "yellow": 2}
+    active = [
+        warning for warning in warnings
+        if warning.ends_at is None
+        or warning.ends_at.astimezone(GUARDAMAR_TIMEZONE) > now
+    ]
     ordered = sorted(
-        warnings,
+        active,
         key=lambda warning: (
             priority.get(warning.level, 3),
             warning.starts_at or datetime.min.replace(
@@ -397,94 +402,92 @@ def build_message(
     """Format a Morning Digest without inference or generated prose."""
 
     weather = digest.weather
-    displayed_conditions = weather.sky_conditions
-    if not displayed_conditions and weather.sky_condition:
-        displayed_conditions = (weather.sky_condition,)
-    sky_labels = []
-    for condition in displayed_conditions:
-        label = SKY_LABELS.get(condition)
-        if label is not None and label not in sky_labels:
-            sky_labels.append(label)
-    sky_suffix = f" • {' → '.join(sky_labels)}" if sky_labels else ""
-    weather_icon = (
-        "🌤"
-        if len(displayed_conditions) > 1
-        else WEATHER_ICONS.get(
-            displayed_conditions[0] if displayed_conditions else None,
-            WEATHER_ICONS.get(weather.sky_condition, "🌤"),
-        )
-    )
-    lines = [
-        "🌅 Доброе утро, Гуардамар!",
-        "",
-        "☀️ <b>Погода от AEMET:</b>",
-        (
-            f"{weather_icon} Воздух: {weather.minimum_temperature_c}°"
-            f" → {weather.maximum_temperature_c}°{sky_suffix}"
-        ),
-    ]
-    if (
-        weather.rain_probability_percent is not None
-        and weather.rain_probability_percent >= 75
-    ):
-        rain_line = f"🌧 Дождь: {weather.rain_probability_percent}%"
-        if weather.rain_period:
-            rain_line += f" • {weather.rain_period}"
-        lines.append(rain_line)
-
-    sea_temperature_c = digest.forecast_sea_temperature_c
-    if (
-        sea_temperature_c is None
-        and digest.beach is not None
-    ):
-        sea_temperature_c = digest.beach.sea_temperature_c
-    sea_temperature = (
-        f"{sea_temperature_c}°"
-        if sea_temperature_c is not None
-        else "—"
-    )
-    first_sea_state = digest.forecast_sea_state
-    later_sea_state = digest.forecast_later_sea_state
-    if (
-        first_sea_state is None
-        and later_sea_state is None
-        and digest.beach is not None
-    ):
-        first_sea_state = digest.beach.sea_state
-    first_sea_label = SEA_STATES.get(first_sea_state)
-    later_sea_label = SEA_STATES.get(later_sea_state)
-    if (
-        first_sea_label
-        and later_sea_label
-        and later_sea_label != first_sea_label
-    ):
-        sea_state = f"{first_sea_label} → {later_sea_label}"
-    else:
-        sea_label = first_sea_label or later_sea_label
-        sea_state = f"{sea_label} волны" if sea_label else None
-    sea_suffix = f" • {sea_state}" if sea_state else ""
-    if weather.wind_direction and weather.wind_speed_kmh is not None:
-        direction = WIND_DIRECTIONS.get(
-            weather.wind_direction,
-            "—",
-        )
-        current_wind_mps = _wind_mps(weather.wind_speed_kmh)
-        wind_line = f"💨 Ветер: {direction} {current_wind_mps}"
-        if (
-            weather.forecast_wind_speed_kmh is not None
-            and _wind_mps(weather.forecast_wind_speed_kmh)
-            != current_wind_mps
-        ):
-            wind_line += (
-                f" → {_wind_mps(weather.forecast_wind_speed_kmh)}"
+    lines = ["🌅 Доброе утро, Гуардамар!"]
+    if weather is not None:
+        displayed_conditions = weather.sky_conditions
+        if not displayed_conditions and weather.sky_condition:
+            displayed_conditions = (weather.sky_condition,)
+        sky_labels = []
+        for condition in displayed_conditions:
+            label = SKY_LABELS.get(condition)
+            if label is not None and label not in sky_labels:
+                sky_labels.append(label)
+        sky_suffix = f" • {' → '.join(sky_labels)}" if sky_labels else ""
+        weather_icon = (
+            "🌤"
+            if len(displayed_conditions) > 1
+            else WEATHER_ICONS.get(
+                displayed_conditions[0] if displayed_conditions else None,
+                WEATHER_ICONS.get(weather.sky_condition, "🌤"),
             )
-        wind_line += " м/с"
-        lines.append(wind_line)
-    else:
-        lines.append("💨 Ветер: —")
-    lines.append(f"🌊 Море: {sea_temperature}{sea_suffix}")
+        )
+        if (
+            weather.rain_probability_percent is not None
+            and weather.rain_probability_percent >= 75
+        ):
+            rain_line = f"🌧 Дождь: {weather.rain_probability_percent}%"
+            if weather.rain_period:
+                rain_line += f" • {weather.rain_period}"
+        lines.extend([
+            "",
+            "☀️ <b>Погода от AEMET:</b>",
+            (
+                f"{weather_icon} Воздух: {weather.minimum_temperature_c}°"
+                f" → {weather.maximum_temperature_c}°{sky_suffix}"
+            ),
+        ])
+        if (
+            weather.rain_probability_percent is not None
+            and weather.rain_probability_percent >= 75
+        ):
+            lines.append(rain_line)
+        sea_temperature_c = digest.forecast_sea_temperature_c
+        if sea_temperature_c is None and digest.beach is not None:
+            sea_temperature_c = digest.beach.sea_temperature_c
+        sea_temperature = (
+            f"{sea_temperature_c}°"
+            if sea_temperature_c is not None else "—"
+        )
+        first_sea_state = digest.forecast_sea_state
+        later_sea_state = digest.forecast_later_sea_state
+        if (
+            first_sea_state is None
+            and later_sea_state is None
+            and digest.beach is not None
+        ):
+            first_sea_state = digest.beach.sea_state
+        first_sea_label = SEA_STATES.get(first_sea_state)
+        later_sea_label = SEA_STATES.get(later_sea_state)
+        if (
+            first_sea_label and later_sea_label
+            and later_sea_label != first_sea_label
+        ):
+            sea_state = f"{first_sea_label} → {later_sea_label}"
+        else:
+            sea_label = first_sea_label or later_sea_label
+            sea_state = f"{sea_label} волны" if sea_label else None
+        sea_suffix = f" • {sea_state}" if sea_state else ""
+        if weather.wind_direction and weather.wind_speed_kmh is not None:
+            direction = WIND_DIRECTIONS.get(weather.wind_direction, "—")
+            current_wind_mps = _wind_mps(weather.wind_speed_kmh)
+            wind_line = f"💨 Ветер: {direction} {current_wind_mps}"
+            if (
+                weather.forecast_wind_speed_kmh is not None
+                and _wind_mps(weather.forecast_wind_speed_kmh)
+                != current_wind_mps
+            ):
+                wind_line += (
+                    f" → {_wind_mps(weather.forecast_wind_speed_kmh)}"
+                )
+            wind_line += " м/с"
+            lines.append(wind_line)
+        else:
+            lines.append("💨 Ветер: —")
+        lines.append(f"🌊 Море: {sea_temperature}{sea_suffix}")
 
-    if digest.warnings:
+    if digest.warnings and _warning_blocks(
+        digest.warnings, now or datetime.now(GUARDAMAR_TIMEZONE)
+    ):
         warning_now = now or datetime.now(GUARDAMAR_TIMEZONE)
         lines.extend([
             "",
@@ -546,10 +549,10 @@ def build_message(
             lines.append("  🏛️ Официальный выходной день.")
 
     if digest.events:
-        lines.extend(["", "📅 <b>События дня:</b>"])
+        event_lines = ["", "📅 <b>События дня:</b>"]
         for index, event in enumerate(digest.events):
             if index:
-                lines.append("")
+                event_lines.append("")
             title = event.title
             if event.category == "exhibition":
                 title = _exhibition_title(title)
@@ -568,9 +571,22 @@ def build_message(
                     ).strftime("%H:%M")
                     time_prefix += f"–{end_time}"
                 time_prefix += "</b> — "
-            lines.append(f"• {time_prefix}{title}")
+            event_lines.append(f"• {time_prefix}{title}")
             if event.place:
-                lines.append(
+                event_lines.append(
                     f"  📍 {html.escape(_event_place(event.place))}"
                 )
+            if len("\n".join([*lines, *event_lines])) > 3900:
+                event_lines = (
+                    event_lines[:-2]
+                    if event.place
+                    else event_lines[:-1]
+                )
+                if event_lines and event_lines[-1] == "":
+                    event_lines.pop()
+                break
+        if len(event_lines) > 2:
+            lines.extend(event_lines)
+    if len(lines) == 1:
+        raise ValueError("No verified digest content is available")
     return "\n".join(lines)

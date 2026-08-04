@@ -46,7 +46,9 @@ deployment agent or self-hosted CI runner.
 
 ### CPU and battery
 
-- Collect once at 07:30. In season, allow only seven quick SafeBeach checks
+- Prepare compact event translations before publication and one normalized
+  AEMET snapshot at 07:15; the 07:30 process reuses them. In season, allow
+  only seven quick SafeBeach checks
   from 10:10 through 10:40 and at most one later full recollection.
 - Leave exact timing to a lightweight external Termux scheduler.
 - Avoid continuous parsing, transformation, or monitoring.
@@ -78,9 +80,8 @@ deployment agent or self-hosted CI runner.
   detail links with no more than three requests in flight. The 05:10 municipal
   refresh makes one HTML request and downloads MUPI only after its official
   URL changes. Neither stores downloaded pages or media. Today's bounded title
-  set may share one Gemini translation request during digest construction. An
-  invalid municipal batch may fall back to at most twelve single-title calls;
-  it never repeats event-source collection or OCR.
+  set is translated only by the 06:00/06:30/07:00 preparation commands and
+  stored in a bounded atomic cache. The 07:30 digest never calls Gemini.
 - Telegram operations share one bounded JSON client restricted to the official
   API host. Only sends retry, and only after transient failures.
 - Electricity checks confirmed publication before any source access. The first

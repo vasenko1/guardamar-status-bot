@@ -15,7 +15,7 @@ from .agenda import (
     recurring_events,
     requires_market_exception_check,
 )
-from .aemet import fetch_morning_digest
+from .aemet import AemetError, fetch_morning_digest
 from .digest import build_message
 from .diagnostics import SourceDiagnostic, source_error
 from .holidays import official_holidays_on
@@ -30,7 +30,7 @@ from .municipal_agenda import (
 )
 from .police import PoliceTrafficError, fetch_traffic_notices
 from .safebeach import SafeBeachError, fetch_beach_status
-from .models import BeachNotice, BeachStatus
+from .models import BeachNotice, BeachStatus, MorningDigest
 
 LOGGER = logging.getLogger(__name__)
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
@@ -123,6 +123,10 @@ async def produce_message(
     beach_status: Optional[BeachStatus] = None,
     beach_notice: Optional[BeachNotice] = None,
     diagnostics: Optional[List[SourceDiagnostic]] = None,
+    translation_cache_path: Optional[Path] = None,
+    aemet_digest: Optional[MorningDigest] = None,
+    fetch_aemet: bool = True,
+    aemet_fallback: Optional[MorningDigest] = None,
 ) -> str:
     """Build a digest; SafeBeach failure must not block AEMET delivery."""
 
@@ -132,7 +136,12 @@ async def produce_message(
         else None
     )
     agenda_task = asyncio.create_task(
-        fetch_today_events(now, gemini_api_key, agenda_state_path)
+        fetch_today_events(
+            now,
+            gemini_api_key,
+            agenda_state_path,
+            translation_cache_path,
+        )
     )
     mayor_events_task = asyncio.create_task(
         fetch_today_mayor_events(now)
@@ -151,28 +160,32 @@ async def produce_message(
             gemini_api_key,
             municipal_agenda_state_path,
             diagnostics,
+            translation_cache_path,
         )
     )
     traffic_task = asyncio.create_task(
         fetch_traffic_notices(now, gemini_api_key or None)
     )
     beach_failed = False
-    try:
-        digest = await fetch_morning_digest(
-            api_key=api_key,
-            now=now,
-            diagnostics=diagnostics,
+    digest = aemet_digest
+    if digest is None and fetch_aemet:
+        try:
+            digest = await fetch_morning_digest(
+                api_key=api_key,
+                now=now,
+                diagnostics=diagnostics,
+            )
+        except AemetError as exc:
+            LOGGER.warning(
+                "AEMET unavailable; publishing verified non-weather blocks: %s",
+                exc.diagnostic_code,
+            )
+    if digest is None:
+        digest = aemet_fallback or MorningDigest(
+            weather=None,
+            warnings=(),
+            warnings_available=False,
         )
-    except BaseException:
-        if beach_task is not None:
-            beach_task.cancel()
-        agenda_task.cancel()
-        mayor_events_task.cancel()
-        municipal_agenda_task.cancel()
-        traffic_task.cancel()
-        if market_status_task is not None:
-            market_status_task.cancel()
-        raise
 
     try:
         beach = (
@@ -206,7 +219,8 @@ async def produce_message(
         )
 
     if (
-        beach is not None
+        digest.weather is not None
+        and beach is not None
         and beach.wind_direction is not None
         and beach.wind_speed_kmh is not None
     ):

@@ -9,11 +9,20 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from .aemet import AemetError
-from .agenda import AgendaError, refresh_agenda_catalog
+from .aemet import AemetError, fetch_morning_digest
+from .aemet_snapshot import (
+    load_snapshot,
+    preparation_busy,
+    preparation_lock,
+    write_snapshot,
+)
+from .agenda import (
+    AgendaError,
+    agenda_translation_items,
+    refresh_agenda_catalog,
+)
 from .commands import listen_for_preview, parse_allowed_user_ids
 from .delivery import publish_morning, publish_update
-from .digest import build_fallback_update
 from .diagnostics import render_diagnostics
 from .electricity import (
     ElectricityError,
@@ -25,8 +34,11 @@ from .electricity import (
 from .mayor import latest_beach_notice
 from .municipal_agenda import (
     MunicipalAgendaError,
+    municipal_translation_items,
     refresh_municipal_catalog,
 )
+from .event_translations import prepare_translations
+from .gemini import GeminiError
 from .morning import _safebeach_is_in_season, produce_message
 from .safebeach import (
     SafeBeachError,
@@ -43,6 +55,8 @@ DEFAULT_MUNICIPAL_AGENDA_STATE_PATH = "state/municipal_agenda.json"
 DEFAULT_AGENDA_STATE_PATH = "state/agenda_guardamar.json"
 DEFAULT_ELECTRICITY_STATE_PATH = "state/electricity.json"
 DEFAULT_ELECTRICITY_SNAPSHOT_PATH = "state/electricity_prices.json"
+DEFAULT_EVENT_TRANSLATIONS_PATH = "state/event_translations.json"
+DEFAULT_AEMET_SNAPSHOT_PATH = "state/aemet.json"
 
 
 def _beach_ready_for_update(status, now: datetime, final_attempt: bool) -> bool:
@@ -74,11 +88,28 @@ async def _produce_message(api_key: str, now: datetime) -> str:
             "AGENDA_STATE_PATH", DEFAULT_AGENDA_STATE_PATH
         )),
         diagnostics=diagnostics,
+        translation_cache_path=Path(os.environ.get(
+            "EVENT_TRANSLATIONS_PATH", DEFAULT_EVENT_TRANSLATIONS_PATH
+        )),
     )
     return message + render_diagnostics(diagnostics)
 
 
 async def _run_command(command: str) -> int:
+    now = datetime.now(GUARDAMAR_TIMEZONE)
+    municipal_path = Path(os.environ.get(
+        "MUNICIPAL_AGENDA_STATE_PATH",
+        DEFAULT_MUNICIPAL_AGENDA_STATE_PATH,
+    ))
+    agenda_path = Path(os.environ.get(
+        "AGENDA_STATE_PATH", DEFAULT_AGENDA_STATE_PATH
+    ))
+    translations_path = Path(os.environ.get(
+        "EVENT_TRANSLATIONS_PATH", DEFAULT_EVENT_TRANSLATIONS_PATH
+    ))
+    aemet_snapshot_path = Path(os.environ.get(
+        "AEMET_SNAPSHOT_PATH", DEFAULT_AEMET_SNAPSHOT_PATH
+    ))
     if command == "sync-municipal-events":
         gemini_key = _required_environment("GEMINI_API_KEY")
         state_path = Path(os.environ.get(
@@ -107,8 +138,33 @@ async def _run_command(command: str) -> int:
         )
         return 0
 
+    if command == "prepare-event-translations":
+        gemini_key = _required_environment("GEMINI_API_KEY")
+        items = [
+            *await municipal_translation_items(now, municipal_path),
+            *await agenda_translation_items(agenda_path),
+        ]
+        translated = await prepare_translations(
+            gemini_key, items, translations_path, now
+        )
+        logging.info(
+            "Event translation cache prepared: %d new titles", translated
+        )
+        return 0
+
+    if command == "prepare-aemet":
+        api_key = _required_environment("AEMET_API_KEY")
+        with preparation_lock(aemet_snapshot_path) as acquired:
+            if not acquired:
+                return 0
+            digest = await fetch_morning_digest(api_key, now)
+            await asyncio.to_thread(
+                write_snapshot, aemet_snapshot_path, digest, now
+            )
+        logging.info("AEMET morning snapshot prepared")
+        return 0
+
     if command in {"electricity", "electricity-preview"}:
-        now = datetime.now(GUARDAMAR_TIMEZONE)
         target_date = (now + timedelta(days=1)).date()
         esios_key = os.environ.get("ESIOS_API_KEY", "").strip()
         snapshot_path = Path(
@@ -193,8 +249,13 @@ async def _run_command(command: str) -> int:
         os.environ.get("MORNING_DIGEST_STATE_PATH", DEFAULT_STATE_PATH)
     )
     state = PublicationState(state_path)
-    now = datetime.now(GUARDAMAR_TIMEZONE)
     if command in {"run", "morning"}:
+        prepared = load_snapshot(
+            aemet_snapshot_path, now, max_age=timedelta(minutes=60)
+        )
+        fetch_live = prepared is None and not preparation_busy(
+            aemet_snapshot_path
+        )
         result = await publish_morning(
             now,
             state,
@@ -212,6 +273,9 @@ async def _run_command(command: str) -> int:
                     "AGENDA_STATE_PATH", DEFAULT_AGENDA_STATE_PATH
                 )),
                 collect_beach=False,
+                translation_cache_path=translations_path,
+                aemet_digest=prepared,
+                fetch_aemet=fetch_live,
             ),
             lambda message: send_message(
                 bot_token,
@@ -230,37 +294,52 @@ async def _run_command(command: str) -> int:
         return await latest_beach_notice(now, since)
 
     async def produce_update(status, notice):
-        try:
-            return await produce_message(
-                api_key,
-                now,
-                os.environ.get("GEMINI_API_KEY", "").strip(),
-                Path(
-                    os.environ.get(
-                        "MUNICIPAL_AGENDA_STATE_PATH",
-                        DEFAULT_MUNICIPAL_AGENDA_STATE_PATH,
-                    )
-                ),
-                agenda_state_path=Path(os.environ.get(
-                    "AGENDA_STATE_PATH", DEFAULT_AGENDA_STATE_PATH
-                )),
-                collect_beach=False,
-                beach_status=status,
-                beach_notice=notice,
-            )
-        except AemetError:
-            morning_message = existing.get("morning_message")
-            if not isinstance(morning_message, str) or not morning_message:
-                raise
-            logging.warning(
-                "AEMET update failed after two retries; "
-                "using the published morning message"
-            )
-            return build_fallback_update(
-                morning_message,
-                status,
-                notice,
-            )
+        gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
+        refreshes = await asyncio.gather(
+            refresh_agenda_catalog(now, agenda_path),
+            refresh_municipal_catalog(gemini_key, now, municipal_path),
+            return_exceptions=True,
+        )
+        for source, result in zip(
+            ("Agenda Guardamar", "Agenda municipal"), refreshes
+        ):
+            if isinstance(result, BaseException):
+                logging.warning(
+                    "Late catalog refresh failed for %s: %s",
+                    source,
+                    result,
+                )
+        if gemini_key:
+            try:
+                items = [
+                    *await municipal_translation_items(now, municipal_path),
+                    *await agenda_translation_items(agenda_path),
+                ]
+                await prepare_translations(
+                    gemini_key, items, translations_path, now
+                )
+            except (
+                AgendaError,
+                GeminiError,
+                MunicipalAgendaError,
+                ValueError,
+            ) as exc:
+                logging.warning(
+                    "Late event translation preparation failed: %s", exc
+                )
+        fallback = load_snapshot(aemet_snapshot_path, now)
+        return await produce_message(
+            api_key,
+            now,
+            os.environ.get("GEMINI_API_KEY", "").strip(),
+            municipal_path,
+            agenda_state_path=agenda_path,
+            collect_beach=False,
+            beach_status=status,
+            beach_notice=notice,
+            translation_cache_path=translations_path,
+            aemet_fallback=fallback,
+        )
 
     async def deliver_update(message: str) -> int:
         return await send_message(
@@ -332,6 +411,8 @@ def main() -> None:
             "electricity", "electricity-preview",
             "sync-municipal-events",
             "sync-agenda-events",
+            "prepare-event-translations",
+            "prepare-aemet",
         ),
         default="run",
     )
