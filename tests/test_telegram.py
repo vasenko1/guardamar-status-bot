@@ -11,6 +11,7 @@ from telegrambot.telegram import (
     _get_updates,
     _post_message,
     _delete_message,
+    _edit_message,
     send_message,
 )
 
@@ -141,6 +142,37 @@ class TelegramDeliveryTests(unittest.IsolatedAsyncioTestCase):
             {"chat_id": "@destination", "message_id": 42},
         )
         self.assertTrue(request.full_url.endswith("/deleteMessage"))
+
+    async def test_edit_message_replaces_text_without_link_preview(self):
+        opener = _Opener(
+            _SuccessfulResponse(
+                b'{"ok":true,"result":{"message_id":42}}',
+                url=(
+                    "https://api.telegram.org/"
+                    "botsecret-token/editMessageText"
+                ),
+            )
+        )
+        with patch(
+            "telegrambot.telegram.urllib.request.build_opener",
+            return_value=opener,
+        ):
+            _edit_message(
+                "secret-token", "@destination", 42, "Новый текст"
+            )
+
+        request = opener.request
+        self.assertEqual(
+            json.loads(request.data.decode("utf-8")),
+            {
+                "chat_id": "@destination",
+                "message_id": 42,
+                "text": "Новый текст",
+                "parse_mode": "HTML",
+                "link_preview_options": {"is_disabled": True},
+            },
+        )
+        self.assertTrue(request.full_url.endswith("/editMessageText"))
 
     async def test_reply_uses_telegram_reply_parameters(self):
         opener = _Opener(_SuccessfulResponse())

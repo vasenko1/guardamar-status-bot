@@ -274,6 +274,37 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(published)
         self.assertEqual(anchor_id, 101)
 
+    async def test_cli_updates_persistent_explanation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "electricity.json"
+            PublicationState(state_path).mark_electricity_explanation(101)
+            environment = {
+                "ELECTRICITY_STATE_PATH": str(state_path),
+                "ELECTRICITY_SNAPSHOT_PATH": str(
+                    Path(directory) / "electricity_prices.json"
+                ),
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_CHAT_ID": "chat",
+            }
+            with patch.dict(os.environ, environment, clear=False), patch(
+                "telegrambot.__main__.edit_message",
+                new_callable=AsyncMock,
+            ) as edit, patch(
+                "telegrambot.__main__.load_or_fetch_prices",
+                new_callable=AsyncMock,
+            ) as collect:
+                result = await _run_command(
+                    "electricity-update-explanation"
+                )
+
+        self.assertEqual(result, 0)
+        collect.assert_not_awaited()
+        edit.assert_awaited_once()
+        self.assertEqual(edit.await_args.args[:3], ("token", "chat", 101))
+        self.assertIn(
+            "Это не окончательная стоимость", edit.await_args.args[3]
+        )
+
     async def test_preview_shares_publication_lock(self):
         with tempfile.TemporaryDirectory() as directory:
             state_path = Path(directory) / "electricity.json"
@@ -403,11 +434,11 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Средние по цене часы", message)
         self.assertIn("Самые дорогие часы этого дня", message)
         self.assertIn("сравнивают часы только между собой", message)
-        self.assertIn("Цена PVPC меняется каждый час", message)
-        self.assertIn("солнечной и ветровой энергии", message)
+        self.assertIn("Цена меняется каждый час вслед за оптовым рынком", message)
+        self.assertIn("регулируемыми составляющими тарифа", message)
         self.assertIn("PVPC — регулируемый тариф", message)
         self.assertIn("в типе договора должно быть указано PVPC", message)
-        self.assertIn("Это не весь счёт", message)
+        self.assertIn("Это не окончательная стоимость", message)
         self.assertIn("фиксированный тариф", message)
         self.assertIn("почасовые цены не применяются", message)
         self.assertNotIn("индексированном тарифе", message)

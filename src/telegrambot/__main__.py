@@ -47,7 +47,7 @@ from .safebeach import (
     is_current_status,
 )
 from .state import PublicationState, StateError
-from .telegram import TelegramError, delete_message, send_message
+from .telegram import TelegramError, delete_message, edit_message, send_message
 
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 DEFAULT_STATE_PATH = "state/delivery.json"
@@ -164,7 +164,11 @@ async def _run_command(command: str) -> int:
         logging.info("AEMET morning snapshot prepared")
         return 0
 
-    if command in {"electricity", "electricity-preview"}:
+    if command in {
+        "electricity",
+        "electricity-preview",
+        "electricity-update-explanation",
+    }:
         target_date = (now + timedelta(days=1)).date()
         esios_key = os.environ.get("ESIOS_API_KEY", "").strip()
         snapshot_path = Path(
@@ -189,6 +193,20 @@ async def _run_command(command: str) -> int:
                 "ELECTRICITY_STATE_PATH"
             )
         state = PublicationState(state_path)
+        if command == "electricity-update-explanation":
+            explanation_id = state.electricity_explanation_message_id()
+            if explanation_id is None:
+                raise ValueError(
+                    "electricity explanation message ID is unavailable"
+                )
+            await edit_message(
+                _required_environment("TELEGRAM_BOT_TOKEN"),
+                _required_environment("TELEGRAM_CHAT_ID"),
+                explanation_id,
+                build_explanation_message(),
+            )
+            logging.info("Electricity explanation updated")
+            return 0
         if command == "electricity-preview":
             with state.exclusive_run():
                 data = await load_or_fetch_prices(
@@ -409,6 +427,7 @@ def main() -> None:
         choices=(
             "run", "morning", "update", "preview", "status", "listen",
             "electricity", "electricity-preview",
+            "electricity-update-explanation",
             "sync-municipal-events",
             "sync-agenda-events",
             "prepare-event-translations",

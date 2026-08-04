@@ -21,6 +21,11 @@ The separate explanation carries the PVPC
 scope, fixed-tariff limitation, and `ESIOS / Red Eléctrica` attribution.
 Incomplete days are not published.
 
+When that persistent explanation wording changes, the operator command
+`electricity-update-explanation` edits the saved Telegram message in place.
+It uses the message ID in the local publication state and neither publishes a
+second explanation nor requests electricity data again.
+
 Before public delivery, one complete response is normalized into a private
 local snapshot for the target date. After that snapshot exists, the first
 publication creates one explanation anchor and sends the table as its reply.

@@ -289,6 +289,33 @@ def _delete_message(
     )
 
 
+def _edit_message(
+    bot_token: str,
+    chat_id: str,
+    message_id: int,
+    text: str,
+) -> None:
+    if not 1 <= len(text) <= 4096:
+        raise TelegramError(
+            "Telegram message length is invalid",
+            retryable=False,
+            code="MESSAGE-LENGTH",
+            description="длина сообщения выходит за пределы Telegram",
+        )
+    _call_api(
+        bot_token,
+        "editMessageText",
+        {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "text": text,
+            "parse_mode": "HTML",
+            "link_preview_options": {"is_disabled": True},
+        },
+        REQUEST_TIMEOUT_SECONDS,
+    )
+
+
 def _get_updates(
     bot_token: str,
     offset: Optional[int],
@@ -376,4 +403,17 @@ async def delete_message(
 
     await asyncio.to_thread(
         _delete_message, bot_token, chat_id, message_id
+    )
+
+
+async def edit_message(
+    bot_token: str,
+    chat_id: str,
+    message_id: int,
+    text: str,
+) -> None:
+    """Replace one known bot-authored message."""
+
+    await asyncio.to_thread(
+        _edit_message, bot_token, chat_id, message_id, text
     )
