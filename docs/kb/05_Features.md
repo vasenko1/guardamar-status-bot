@@ -64,11 +64,11 @@ This exact visual structure is the product contract:
 ```text
 🌅 Доброе утро, Гуардамар!
 
-☀️ **Погода от AEMET:**
-🌤 Воздух: 24° → 31° • ясно → облачно
-🌧 Дождь: 80% • 12:00–18:00
-💨 Ветер: СВ 5 → 7 м/с
-🌊 Море: 29° • слабые → умеренные
+🌤 **Погода от AEMET:**
+**Воздух:** 24° → 31° • ясно → облачно
+**Дождь:** 80% • 12:00–18:00
+**Ветер:** СВ 5 → 7 м/с
+**Море:** 29° • слабые → умеренные
 
 ⚠️ **Предупреждения AEMET:**
 Зона: южное побережье Аликанте
@@ -123,8 +123,10 @@ Compact condition labels end with `:` and use one following space. Do not
 align columns with runs of spaces. The sea row keeps the user-facing label
 `Море`.
 
-The weather heading is `☀️ Погода от AEMET:`. Its mandatory sky row combines
-the temperature range and at most two remaining AEMET sky states. Equal
+The weather heading uses the dynamic sky icon followed by
+`Погода от AEMET:`. Internal weather rows have bold labels and no icons. Its
+mandatory air row combines the temperature range and at most two remaining
+AEMET sky states. Equal
 adjacent states are collapsed; a change renders as `ясно → облачно`.
 Sea and wind remain mandatory compact rows inside the same weather block.
 Rain is one optional compact row. It uses the highest AEMET probability for an eligible remaining period

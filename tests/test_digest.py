@@ -208,11 +208,11 @@ class DigestMessageTests(unittest.TestCase):
         )
         self.assertNotIn("Rojales", message)
         self.assertNotIn("дайджест", message.casefold())
-        self.assertIn("☀️ <b>Погода от AEMET:</b>", message)
-        self.assertIn("⛈️ Воздух: 21° → 30° • гроза", message)
-        self.assertIn("🌧 Дождь: 80% • 12:00–18:00", message)
+        self.assertIn("⛈️ <b>Погода от AEMET:</b>", message)
+        self.assertIn("<b>Воздух:</b> 21° → 30° • гроза", message)
+        self.assertIn("<b>Дождь:</b> 80% • 12:00–18:00", message)
         self.assertIn(
-            "🌊 Море: 29° • слабые → умеренные",
+            "<b>Море:</b> 29° • слабые → умеренные",
             message,
         )
         self.assertIn(
@@ -223,9 +223,15 @@ class DigestMessageTests(unittest.TestCase):
         )
         self.assertIn("🪼 Медузы: Roqueta", message)
         self.assertNotIn("15:56", message)
-        self.assertIn("💨 Ветер: В 3 → 5 м/с", message)
-        self.assertLess(message.index("⛈️ Воздух:"), message.index("💨 Ветер:"))
-        self.assertLess(message.index("💨 Ветер:"), message.index("🌊 Море:"))
+        self.assertIn("<b>Ветер:</b> В 3 → 5 м/с", message)
+        self.assertLess(
+            message.index("<b>Воздух:</b>"),
+            message.index("<b>Ветер:</b>"),
+        )
+        self.assertLess(
+            message.index("<b>Ветер:</b>"),
+            message.index("<b>Море:</b>"),
+        )
         self.assertIn(
             "\n\n⚠️ <b>Предупреждения AEMET:</b>\n"
             "Зона: южное побережье Аликанте\n",
@@ -268,7 +274,7 @@ class DigestMessageTests(unittest.TestCase):
             warnings_available=True,
         )
 
-        self.assertNotIn("🌧 Дождь", build_message(digest))
+        self.assertNotIn("<b>Дождь:</b>", build_message(digest))
 
     def test_includes_rain_at_threshold(self):
         digest = MorningDigest(
@@ -287,7 +293,7 @@ class DigestMessageTests(unittest.TestCase):
         )
 
         self.assertIn(
-            "🌧 Дождь: 75% • 18:00–24:00",
+            "<b>Дождь:</b> 75% • 18:00–24:00",
             build_message(digest),
         )
 
@@ -308,11 +314,12 @@ class DigestMessageTests(unittest.TestCase):
 
         message = build_message(digest)
 
-        self.assertIn("🌤 Воздух: 21° → 30°", message)
-        self.assertIn("🌊 Море: 28°", message)
+        self.assertIn("🌤 <b>Погода от AEMET:</b>", message)
+        self.assertIn("<b>Воздух:</b> 21° → 30°", message)
+        self.assertIn("<b>Море:</b> 28°", message)
         self.assertNotIn("🏖 Флаги", message)
         self.assertNotIn("🪼 Медузы", message)
-        self.assertIn("💨 Ветер: —", message)
+        self.assertIn("<b>Ветер:</b> —", message)
         self.assertNotIn("⚠️ <b>Предупреждения AEMET:</b>", message)
         self.assertNotIn("Предупреждений нет", message)
 
@@ -341,7 +348,7 @@ class DigestMessageTests(unittest.TestCase):
         message = build_message(digest)
 
         self.assertIn(
-            "🌤 Воздух: 21° → 30° • ясно → облачно",
+            "<b>Воздух:</b> 21° → 30° • ясно → облачно",
             message,
         )
         self.assertIn(
@@ -536,7 +543,7 @@ class DigestMessageTests(unittest.TestCase):
 
         message = build_message(digest)
 
-        self.assertIn("🌊 Море: 29° • умеренные волны", message)
+        self.assertIn("<b>Море:</b> 29° • умеренные волны", message)
         self.assertNotIn("умеренные → умеренные", message)
 
     def test_labels_all_day_exhibition_without_inventing_time(self):

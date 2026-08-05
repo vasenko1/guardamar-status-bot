@@ -482,7 +482,7 @@ class SafeBeachFailureTests(unittest.IsolatedAsyncioTestCase):
             message = await produce_message("api-key", now)
 
         beach_fetch.assert_not_awaited()
-        self.assertIn("🌊 Море: 18°", message)
+        self.assertIn("<b>Море:</b> 18°", message)
         self.assertNotIn("🏖 Флаги", message)
 
     async def test_uses_beach_wind_as_current_and_aemet_as_forecast(self):
@@ -535,7 +535,7 @@ class SafeBeachFailureTests(unittest.IsolatedAsyncioTestCase):
         ):
             message = await produce_message("api-key", now)
 
-        self.assertIn("💨 Ветер: В 3 → 4 м/с", message)
+        self.assertIn("<b>Ветер:</b> В 3 → 4 м/с", message)
 
     async def test_failure_omits_beach_without_blocking_weather(self):
         digest = MorningDigest(
@@ -583,7 +583,7 @@ class SafeBeachFailureTests(unittest.IsolatedAsyncioTestCase):
                 diagnostics=diagnostics,
             )
 
-        self.assertIn("🌊 Море: —", message)
+        self.assertIn("<b>Море:</b> —", message)
         self.assertNotIn("Источник", message)
         self.assertNotIn("Флаг", message)
         self.assertNotIn("SafeBeach", message)

@@ -415,7 +415,12 @@ def build_fallback_update(
     weather_rows = [
         index
         for index, line in enumerate(lines)
-        if line.startswith(("💨 Ветер:", "🌊 Море:"))
+        if line.startswith((
+            "💨 Ветер:",
+            "🌊 Море:",
+            "<b>Ветер:</b>",
+            "<b>Море:</b>",
+        ))
     ]
     insert_at = max(weather_rows) + 1 if weather_rows else len(lines)
     lines[insert_at:insert_at] = ["", *additions]
@@ -452,14 +457,16 @@ def build_message(
             weather.rain_probability_percent is not None
             and weather.rain_probability_percent >= 75
         ):
-            rain_line = f"🌧 Дождь: {weather.rain_probability_percent}%"
+            rain_line = (
+                f"<b>Дождь:</b> {weather.rain_probability_percent}%"
+            )
             if weather.rain_period:
                 rain_line += f" • {weather.rain_period}"
         lines.extend([
             "",
-            "☀️ <b>Погода от AEMET:</b>",
+            f"{weather_icon} <b>Погода от AEMET:</b>",
             (
-                f"{weather_icon} Воздух: {weather.minimum_temperature_c}°"
+                f"<b>Воздух:</b> {weather.minimum_temperature_c}°"
                 f" → {weather.maximum_temperature_c}°{sky_suffix}"
             ),
         ])
@@ -497,7 +504,7 @@ def build_message(
         if weather.wind_direction and weather.wind_speed_kmh is not None:
             direction = WIND_DIRECTIONS.get(weather.wind_direction, "—")
             current_wind_mps = _wind_mps(weather.wind_speed_kmh)
-            wind_line = f"💨 Ветер: {direction} {current_wind_mps}"
+            wind_line = f"<b>Ветер:</b> {direction} {current_wind_mps}"
             if (
                 weather.forecast_wind_speed_kmh is not None
                 and _wind_mps(weather.forecast_wind_speed_kmh)
@@ -509,8 +516,8 @@ def build_message(
             wind_line += " м/с"
             lines.append(wind_line)
         else:
-            lines.append("💨 Ветер: —")
-        lines.append(f"🌊 Море: {sea_temperature}{sea_suffix}")
+            lines.append("<b>Ветер:</b> —")
+        lines.append(f"<b>Море:</b> {sea_temperature}{sea_suffix}")
 
     if digest.warnings and _warning_blocks(
         digest.warnings, now or datetime.now(GUARDAMAR_TIMEZONE)
