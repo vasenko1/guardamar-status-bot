@@ -151,6 +151,7 @@ Local inspection remains available:
 PYTHONPATH=src python -m telegrambot preview
 PYTHONPATH=src python -m telegrambot status
 PYTHONPATH=src python -m telegrambot electricity-preview
+PYTHONPATH=src python -m telegrambot refresh-current
 ```
 
 - `preview` collects and prints without Telegram or publication state.
@@ -160,6 +161,9 @@ PYTHONPATH=src python -m telegrambot electricity-preview
   after one complete ESIOS response, the same private normalized target-day
   snapshot used by publication. It shares the electricity publication lock,
   so a simultaneous cron run exits safely instead of duplicating the request.
+- `refresh-current` is an explicit operator action that rebuilds today's
+  digest and edits its one live Telegram message in place. It never creates a
+  replacement message and refuses to act without a trusted current-day state.
 
 To enable private Telegram previews, run the independent listener:
 

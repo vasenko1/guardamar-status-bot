@@ -72,6 +72,17 @@ def _required_environment(name: str) -> str:
     return value
 
 
+def _current_morning_message_id(record: dict) -> int:
+    """Resolve the one live digest message from a validated daily record."""
+
+    update_id = record.get("update_message_id")
+    if isinstance(update_id, int):
+        return update_id
+    if record.get("morning_deleted") is True:
+        raise StateError("current morning message is unavailable")
+    return record["morning_message_id"]
+
+
 async def _produce_message(api_key: str, now: datetime) -> str:
     diagnostics = []
     message = await produce_message(
@@ -267,6 +278,26 @@ async def _run_command(command: str) -> int:
         os.environ.get("MORNING_DIGEST_STATE_PATH", DEFAULT_STATE_PATH)
     )
     state = PublicationState(state_path)
+    if command == "refresh-current":
+        record = state.morning_record(now.date())
+        if record is None:
+            raise StateError(
+                f"no morning message exists for {now.date().isoformat()}"
+            )
+        message_id = _current_morning_message_id(record)
+        fallback = load_snapshot(aemet_snapshot_path, now)
+        message = await produce_message(
+            api_key,
+            now,
+            os.environ.get("GEMINI_API_KEY", "").strip(),
+            municipal_path,
+            agenda_state_path=agenda_path,
+            translation_cache_path=translations_path,
+            aemet_fallback=fallback,
+        )
+        await edit_message(bot_token, chat_id, message_id, message)
+        logging.info("Current morning message %s refreshed", message_id)
+        return 0
     if command in {"run", "morning"}:
         prepared = load_snapshot(
             aemet_snapshot_path, now, max_age=timedelta(minutes=60)
@@ -425,7 +456,8 @@ def main() -> None:
         "command",
         nargs="?",
         choices=(
-            "run", "morning", "update", "preview", "status", "listen",
+            "run", "morning", "update", "refresh-current", "preview",
+            "status", "listen",
             "electricity", "electricity-preview",
             "electricity-update-explanation",
             "sync-municipal-events",

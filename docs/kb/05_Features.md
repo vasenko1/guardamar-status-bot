@@ -303,6 +303,10 @@ Google Maps HTTPS search URL. Append `Guardamar del Segura` to the search
 query when the source place does not already name the city. Keep the visible
 label concise and independent from the query; in particular, render the
 reviewed exhibition venue as `Casa de Cultura (Sala de exposiciones)`.
+The explicit operator command `refresh-current` may rebuild today's digest
+and edit the one live morning or beach-replacement message in place. It must
+refuse missing, stale, or internally inconsistent publication state and must
+not create a new group message.
 
 Every public digest and electricity message ends with one compact linked
 signature, `📣 обЪявления Гуардамар`. It is part of the message so forwarded
