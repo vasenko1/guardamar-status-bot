@@ -162,7 +162,9 @@ persistently missing record does not suppress all beach information.
 
 Mayor, Policía Local, and municipal-agenda transports accept only their exact
 official HTTPS hosts, expected content types, and bounded responses. Gemini
-uses the same fail-closed protocol checks and returns structured diagnostics;
+uses the same fail-closed protocol checks. One OpenRouter request with a
+pinned non-Google model may follow a Gemini failure, using the identical
+bounded public input and JSON schema. Both return structured diagnostics;
 provider response text is never exposed. A corrupt event catalog is ignored.
 The official municipal HTML text is primary; a changed MUPI is supplementary.
 Its second structured reading receives only the image, never the first result,
@@ -203,6 +205,6 @@ the message ID is stored remains an unavoidable duplicate edge.
   is merged with still-relevant prior-poster events for a seven-day transition
   window; expired facts are not retained.
 - Add abstractions only for current, demonstrated needs.
-- Keep Gemini isolated to accepted bounded municipal extraction and title-only
-  translation; do not add general AI, microservices, webhooks, or heavy
-  background infrastructure.
+- Keep Gemini and its single OpenRouter fallback isolated to accepted bounded
+  municipal extraction and title-only translation; do not add general AI,
+  provider chains, microservices, webhooks, or heavy background infrastructure.

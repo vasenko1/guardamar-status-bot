@@ -76,8 +76,15 @@ calls; an individually invalid title alone is omitted. This recovery never
 repeats OCR or source collection. A provider outage preserves already cached
 translations and never removes the verified source event.
 
-The Gemini client sends the key only in the API header, accepts bounded JSON
-only from the exact official HTTPS API host, and exposes stable status codes
-instead of provider response text. Apart from the bounded title recovery
-above, it performs no internal retry; a failed AI call omits the affected
-optional result or preserves an already valid snapshot.
+Gemini remains the primary model for every approved task. ADR 0030 permits one
+secondary request through OpenRouter with pinned non-Google model
+`openai/gpt-4.1-mini` after a Gemini failure. It receives only the same bounded
+public input and the same strict JSON schema; every existing deterministic
+validator remains authoritative. There is no third model and no provider
+retry inside this layer.
+
+Both clients send their keys only in API headers, accept bounded JSON only
+from their exact HTTPS API hosts, and expose stable status codes instead of
+provider response text. A missing secondary key preserves Gemini-only
+behavior. A double failure omits the affected optional result or preserves an
+already valid snapshot and reports both stages to the private diagnostics.

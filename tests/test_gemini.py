@@ -7,8 +7,10 @@ from unittest.mock import patch
 
 from telegrambot.gemini import (
     AGENDA_EXTRACTION_SCHEMA,
+    GeminiError,
     _extract_agenda_events,
     _extract_agenda_text_events,
+    _request_json,
     _verify_agenda_poster_events,
     _request_translation,
     translate_event_titles,
@@ -65,6 +67,95 @@ class _Opener:
 
 
 class GeminiRequestTests(unittest.TestCase):
+    def test_uses_openrouter_once_after_gemini_failure(self):
+        expected = {"publish": False, "measures": []}
+        with patch(
+            "telegrambot.gemini._request_gemini_json",
+            side_effect=GeminiError(
+                "unavailable",
+                code="HTTP-503",
+                description="Gemini вернул HTTP 503",
+            ),
+        ), patch.dict(
+            "telegrambot.gemini.os.environ",
+            {"OPENROUTER_API_KEY": "reserve-key"},
+            clear=False,
+        ), patch(
+            "telegrambot.gemini.request_openrouter_json",
+            return_value=expected,
+        ) as fallback:
+            result = _request_json(
+                "gemini-key",
+                [{"text": "test"}],
+                None,
+                100,
+            )
+
+        self.assertEqual(result, expected)
+        fallback.assert_called_once_with(
+            "reserve-key",
+            [{"text": "test"}],
+            None,
+            100,
+        )
+
+    def test_preserves_gemini_error_without_fallback_key(self):
+        primary = GeminiError("unavailable", code="HTTP-503")
+        with patch(
+            "telegrambot.gemini._request_gemini_json",
+            side_effect=primary,
+        ), patch.dict(
+            "telegrambot.gemini.os.environ",
+            {},
+            clear=True,
+        ):
+            with self.assertRaises(GeminiError) as raised:
+                _request_json(
+                    "gemini-key",
+                    [{"text": "test"}],
+                    None,
+                    100,
+                )
+
+        self.assertIs(raised.exception, primary)
+
+    def test_reports_both_provider_failures(self):
+        from telegrambot.openrouter import OpenRouterError
+
+        with patch(
+            "telegrambot.gemini._request_gemini_json",
+            side_effect=GeminiError(
+                "unavailable",
+                code="HTTP-503",
+                description="Gemini вернул HTTP 503",
+            ),
+        ), patch.dict(
+            "telegrambot.gemini.os.environ",
+            {"OPENROUTER_API_KEY": "reserve-key"},
+            clear=False,
+        ), patch(
+            "telegrambot.gemini.request_openrouter_json",
+            side_effect=OpenRouterError(
+                "timeout",
+                code="TIMEOUT",
+                description="OpenRouter не ответил до тайм-аута",
+            ),
+        ):
+            with self.assertRaises(GeminiError) as raised:
+                _request_json(
+                    "gemini-key",
+                    [{"text": "test"}],
+                    None,
+                    100,
+                )
+
+        self.assertEqual(
+            raised.exception.diagnostic_code,
+            "FALLBACK-TIMEOUT",
+        )
+        self.assertIn("Gemini вернул HTTP 503", raised.exception.safe_description)
+        self.assertIn("OpenRouter", raised.exception.safe_description)
+
     def test_event_translation_accepts_full_valid_event_length(self):
         translated = "Д" * 100
         with patch(

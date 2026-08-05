@@ -90,9 +90,10 @@ deployment agent or self-hosted CI runner.
   API request. Preview and publication share one non-blocking local lock. No
   raw response or token is stored. The publication marker also retains one
   Telegram message ID for the persistent PVPC explanation anchor.
-- Mayor, Policía Local, municipal-agenda, and Gemini requests enforce exact
-  HTTPS hosts, expected MIME types, and existing response-size limits. They do
-  not add internal retries.
+- Mayor, Policía Local, municipal-agenda, Gemini, and the single OpenRouter
+  fallback enforce exact HTTPS hosts, expected MIME types, and existing
+  response-size limits. One secondary LLM request may follow a Gemini failure;
+  neither provider retries inside this layer.
 - Do not make digest delivery depend on every source succeeding.
 
 ### Storage
@@ -136,8 +137,9 @@ need is demonstrated.
   watchers, or cache synchronization
 - Browser automation for routine source collection
 - Continuous OCR, computer vision, or media processing
-- Local AI models, embeddings, vector databases, or cloud AI outside the
-  bounded Gemini traffic fallback accepted in ADR 0011
+- Local AI models, embeddings, vector databases, general cloud generation, or
+  cloud AI outside the bounded municipal tasks and single secondary provider
+  accepted in ADRs 0011, 0012, 0028, and 0030
 - Unbounded retries, caches, queues, concurrency, logs, or data retention
 - Dependencies that duplicate a clear standard-library solution without
   material benefit

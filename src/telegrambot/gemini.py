@@ -4,6 +4,8 @@ import asyncio
 import base64
 import http.client
 import json
+import logging
+import os
 import socket
 import urllib.error
 import urllib.parse
@@ -11,6 +13,9 @@ import urllib.request
 from datetime import date
 from typing import Any, Dict, List, Optional, Sequence
 
+from .openrouter import OpenRouterError, request_json as request_openrouter_json
+
+LOGGER = logging.getLogger(__name__)
 MODEL = "gemini-3.5-flash-lite"
 ENDPOINT = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
@@ -158,7 +163,7 @@ AGENDA_EXTRACTION_SCHEMA = {
 
 
 class GeminiError(RuntimeError):
-    """An operator-safe Gemini protocol or validation failure."""
+    """An operator-safe structured-model protocol or validation failure."""
 
     def __init__(
         self,
@@ -244,7 +249,7 @@ def _http_error(exc: urllib.error.HTTPError) -> GeminiError:
     )
 
 
-def _request_json(
+def _request_gemini_json(
     api_key: str,
     parts: List[Dict[str, Any]],
     schema: Optional[Dict[str, Any]],
@@ -351,6 +356,52 @@ def _request_json(
             description="структура результата Gemini некорректна",
         )
     return result
+
+
+def _request_json(
+    api_key: str,
+    parts: List[Dict[str, Any]],
+    schema: Optional[Dict[str, Any]],
+    max_output_tokens: int,
+) -> Dict[str, Any]:
+    try:
+        return _request_gemini_json(
+            api_key,
+            parts,
+            schema,
+            max_output_tokens,
+        )
+    except GeminiError as primary_error:
+        fallback_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+        if not fallback_key:
+            raise
+        LOGGER.warning(
+            "Gemini failed [%s]; using OpenRouter fallback",
+            primary_error.diagnostic_code,
+        )
+        try:
+            return request_openrouter_json(
+                fallback_key,
+                parts,
+                schema,
+                max_output_tokens,
+            )
+        except OpenRouterError as fallback_error:
+            primary_description = (
+                primary_error.safe_description or "Gemini вернул ошибку"
+            )
+            fallback_description = (
+                fallback_error.safe_description
+                or "OpenRouter вернул ошибку"
+            )
+            raise GeminiError(
+                "Both structured LLM providers failed",
+                code=f"FALLBACK-{fallback_error.diagnostic_code}",
+                status=fallback_error.server_status,
+                description=(
+                    f"{primary_description}; резерв: {fallback_description}"
+                ),
+            ) from fallback_error
 
 
 def _request_translation(

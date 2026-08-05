@@ -58,6 +58,7 @@ export TELEGRAM_BOT_TOKEN="your-bot-token"
 export TELEGRAM_CHAT_ID="@your-channel-or-chat-id"
 export TELEGRAM_ALLOWED_USER_IDS="your-private-telegram-user-id"
 export GEMINI_API_KEY="your-optional-gemini-key"
+export OPENROUTER_API_KEY="your-optional-fallback-key"
 ```
 
 Morning state defaults to `state/delivery.json`; override it with
@@ -178,10 +179,12 @@ bounded transient failures and repeats the complete two-step product request.
 The rendered copy is used only when a verified later update exists but AEMET
 remains unavailable after recovery. No raw source cache is implemented.
 
-Gemini is optional and is called only when the official Policía Local traffic
-page contains an unknown notice format. Known notices use deterministic rules
-and consume no model quota. Any Gemini error or failed source-fact validation
-silently omits the traffic section.
+Gemini is used only for the bounded municipal AI tasks documented in ADRs
+0011, 0012, and 0028. If `OPENROUTER_API_KEY` is configured, one pinned
+non-Google model may receive the same public input and JSON schema after a
+Gemini failure. Known notices use deterministic rules and consume no model
+quota. Any double provider error or failed source-fact validation omits only
+the affected optional contribution or preserves its prior valid snapshot.
 
 ADRs 0012 and 0028 implement two bounded normalized event catalogs. Official
 monthly HTML is primary; a changed linked MUPI is supplementary and accepted
