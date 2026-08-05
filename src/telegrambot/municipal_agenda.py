@@ -989,6 +989,12 @@ def _apply_reviewed_daily_schedules(
     scheduled = []
     for event in events:
         normalized = event.title_es.casefold()
+        is_spanish_brass = (
+            "spanish brass" in normalized
+            and event.start_date == date(2026, 8, 5)
+            and event.end_date == date(2026, 8, 5)
+            and event.start_time == "22:00"
+        )
         is_mediterraneo = (
             "mediterráneo" in normalized
             and "lenguaje del agua" in normalized
@@ -1000,6 +1006,23 @@ def _apply_reviewed_daily_schedules(
             and event.start_date == date(2026, 7, 31)
             and event.end_date == date(2026, 8, 21)
         )
+        if is_spanish_brass:
+            scheduled.append(SourceEvent(
+                title_es=event.title_es,
+                start_date=event.start_date,
+                end_date=event.end_date,
+                start_time=event.start_time,
+                end_time=event.end_time,
+                place=event.place,
+                category=event.category,
+                sources=event.sources,
+                ticket_price_cents=(
+                    event.ticket_price_cents
+                    if event.ticket_price_cents is not None
+                    else 1500
+                ),
+            ))
+            continue
         if is_vira_degliarenko:
             if local_day.weekday() >= 5:
                 continue

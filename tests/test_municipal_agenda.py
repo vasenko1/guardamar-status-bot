@@ -612,6 +612,40 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(weekday[0].place, "Biblioteca Municipal")
         self.assertEqual(saturday, ())
 
+    def test_spanish_brass_price_is_restored_for_legacy_snapshot(self):
+        event = SourceEvent(
+            title_es="Concierto Spanish Brass «Top Secret»",
+            start_date=date(2026, 8, 5),
+            end_date=date(2026, 8, 5),
+            start_time="22:00",
+            end_time=None,
+            place="Castell de Guardamar",
+            category="music",
+        )
+
+        scheduled = _apply_reviewed_daily_schedules(
+            (event,), date(2026, 8, 5)
+        )
+
+        self.assertEqual(scheduled[0].ticket_price_cents, 1500)
+
+    def test_spanish_brass_price_is_not_applied_to_another_date(self):
+        event = SourceEvent(
+            title_es="Concierto Spanish Brass",
+            start_date=date(2026, 8, 6),
+            end_date=date(2026, 8, 6),
+            start_time="22:00",
+            end_time=None,
+            place="Castell de Guardamar",
+            category="music",
+        )
+
+        scheduled = _apply_reviewed_daily_schedules(
+            (event,), date(2026, 8, 6)
+        )
+
+        self.assertIsNone(scheduled[0].ticket_price_cents)
+
     def test_keeps_prior_month_events_for_seven_day_transition(self):
         new = SourceEvent(
             title_es="Evento de agosto",
