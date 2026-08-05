@@ -274,6 +274,32 @@ omitted on Sunday because no Sunday visiting time is published. The comma in
 the official title is preserved. These are event-specific hours, not inferred
 Casa de Cultura opening hours.
 
+The reviewed August 2026 youth-workshop cards are separate occurrences, not a
+continuous date range: K-Pop/TikTok on 1 August and music workshops on 8, 15,
+22 and 29 August, each `19:00–21:00` at Centro Social Juvenil. A correction
+tied to the exact August poster prevents a finished workshop from remaining
+active on later dates. Todo Cultura Vega Baja's dated reproduction of the
+Ayuntamiento programme corroborates the four music-workshop times; it is a
+secondary review source, not an automated cancellation authority.
+
+Todo Cultura is also queried through one bounded public WordPress REST request
+during the municipal refresh. Its latest Guardamar programme article is split
+at Spanish date headings, and only the section for the requested Guardamar
+date is sent through the existing text extractor. The adapter rejects an
+unattributed article, a missing date section, an oversized section, redirects
+outside the source hosts and malformed JSON. Supplemental results have lower
+merge priority than official municipal HTML and Agenda Guardamar; absence from
+Todo Cultura never means cancellation.
+
+Agenda Guardamar detail pages are the authoritative source for their own
+sessions and ticket links. One page may contain several dated sessions; each
+is stored separately. Only an HTTPS purchase URL on the Agenda Guardamar host
+whose date and time match that occurrence is retained. The regular price or
+explicit free admission may be shown; discounts remain on the official
+purchase page. A detail page that
+publishes `Duración 2 horas aprox` may supply the displayed end time for that
+session, following the approved compact product wording.
+
 ## Approved Policía Local traffic data
 
 `https://policiaguardamar.com/cortecallefiestas.html` is an official Policía

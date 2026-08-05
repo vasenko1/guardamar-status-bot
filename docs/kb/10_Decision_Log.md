@@ -5,6 +5,7 @@ Detailed decisions belong in `adr/`.
 
 | Date | Decision | Context and reason | Record |
 | --- | --- | --- | --- |
+| 2026-08-05 | Expand official ticket sessions and add a bounded daily supplement | Agenda Guardamar can place several dated sessions, admission and occurrence-specific purchase links on one detail page; storing only its first JSON-LD event lost useful facts. The August MUPI represented separate youth workshops, so exact reviewed dates prevent an expired K-Pop workshop from reappearing. Todo Cultura supplies only the requested date section from one REST programme item and remains lower priority than official sources. | `adr/0028-text-first-local-event-catalogs.md`, `docs/kb/06_Data_Sources.md` |
 | 2026-08-04 | Add one forwarding-safe group footer to every public message | Bot-authored forwards otherwise lead to the bot; a compact HTML link survives forwarding, while disabled link previews avoid a large Telegram card. | `docs/kb/05_Features.md` |
 | 2026-08-04 | Prepare translations and AEMET before the 07:30 publication | Small atomic caches remove Gemini from publication time, absorb transient AEMET failures, preserve verified non-weather blocks, and remain suitable for Termux. | `adr/0029-prepared-morning-publication.md` |
 | 2026-08-03 | Keep one persistent PVPC explanation thread | The educational text is stable and need not be repeated daily. One explanation is stored as the thread anchor; the first and all later tables reply to it. | `adr/0027-evening-next-day-pvpc.md` |

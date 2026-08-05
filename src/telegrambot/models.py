@@ -53,6 +53,8 @@ class Event:
     active_until: Optional[date] = None
     category: str = "event"
     is_final_day: bool = False
+    ticket_price_cents: Optional[int] = None
+    ticket_url: Optional[str] = None
 
 
 @dataclass(frozen=True)

@@ -119,6 +119,43 @@ class PreparationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(message.count(FOOTER), 1)
         self.assertTrue(message.endswith(FOOTER))
 
+    def test_ticket_row_is_complete_and_html_safe(self):
+        event = Event(
+            "Экскурсия",
+            self.now,
+            place="Castillo de Guardamar",
+            ticket_price_cents=500,
+            ticket_url=(
+                "https://www.agendaguardamar.com/entradas/12/tour.html"
+                "?webfecha=05/08/2026&webhora=10:00"
+            ),
+        )
+
+        message = build_message(MorningDigest(
+            weather=None,
+            warnings=(),
+            warnings_available=False,
+            events=(event,),
+        ), now=self.now)
+
+        self.assertIn("🎟", message)
+        self.assertIn("Билет 5 €", message)
+        self.assertIn("&amp;webhora=10:00", message)
+
+    def test_free_admission_is_compact(self):
+        message = build_message(MorningDigest(
+            weather=None,
+            warnings=(),
+            warnings_available=False,
+            events=(Event(
+                "Actividad familiar",
+                self.now,
+                ticket_price_cents=0,
+            ),),
+        ), now=self.now)
+
+        self.assertIn("🎟 Бесплатно", message)
+
 
 if __name__ == "__main__":
     unittest.main()

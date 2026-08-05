@@ -29,6 +29,10 @@ bounded detail-page reads.
 - Permit a narrow correction tied to one exact official poster after a human
   review proves a material OCR error. Such a correction may repair only facts
   visible in that poster and does not become a general recurring-event rule.
+- Expand every dated session published on one Agenda Guardamar detail page.
+  Keep an occurrence-specific official ticket URL, regular price and explicit
+  duration when present. A malformed empty index is a source failure and may
+  not replace the last valid catalog with an empty one.
 - Store source-language facts and provenance, never generated Russian copy or
   raw pages/images. Replace each JSON catalog atomically.
 - Retain only the existing seven-day month-transition window. Do not build an
@@ -52,6 +56,16 @@ Independent readings can disagree and omit a real poster-only event. This is
 the intended fail-closed tradeoff. Passing first-pass candidates into the
 second reading is prohibited because it creates confirmation bias without
 adding independent evidence.
+
+Todo Cultura Vega Baja is a supplemental discovery source because its latest
+Guardamar REST item reproduces dated Ayuntamiento programme text. One bounded
+request extracts only the paragraph range headed by the requested local date;
+the full monthly article and individual detail pages are not sent to Gemini.
+The resulting events are merged after official HTML and Agenda Guardamar, so
+the aggregator cannot silently cancel or override those sources. A failed or
+oversized daily section leaves the prior atomic snapshot intact. Giglon is
+treated only as a ticket platform; its unstable internal listing interface is
+not a municipal event feed.
 
 ## Alternatives rejected
 

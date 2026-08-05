@@ -244,9 +244,13 @@ Neither AEMET nor fallback logic supplies or infers a beach flag.
 
 The event slice adds today's official ticketed Agenda Guardamar events from a
 small catalog refreshed before the morning run. The refresh reads the title,
-local time range, and place, recovers the official calendar
+all explicitly dated sessions, local time range, and place, recovers the official calendar
 venue when the site's JSON-LD contains only its publisher identifier,
 translates titles to Russian, sorts chronologically, and removes duplicates.
+When the official detail page publishes admission, the event adds one compact
+`🎟 Билет …` link or `🎟 Бесплатно` row. A paid purchase URL is retained only
+when its date and time match the occurrence. Reduced categories stay on the
+official ticket page instead of expanding the morning digest.
 Source failure or no event today omits that source's contribution.
 
 The event section includes the recurring official Wednesday market.

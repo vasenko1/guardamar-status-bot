@@ -29,6 +29,7 @@ from telegrambot.municipal_agenda import (
     normalize_extraction_candidates,
 )
 from telegrambot.gemini import GeminiError
+from telegrambot.todo_cultura import TodoCulturaError, TodoCulturaProgram
 
 TZ = ZoneInfo("Europe/Madrid")
 
@@ -69,6 +70,18 @@ def extraction():
 
 
 class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        patcher = patch(
+            "telegrambot.municipal_agenda.fetch_latest_program",
+            new=AsyncMock(side_effect=TodoCulturaError(
+                "offline in unit tests",
+                code="NETWORK",
+                description="test source unavailable",
+            )),
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_extracts_declared_month_and_only_programme_section(self):
         payload = b"""
         <nav>irrelevant</nav>
@@ -362,6 +375,15 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(any(
             "ajedrez" in event.title_es.casefold() for event in corrected
         ))
+        workshops = [
+            event for event in corrected
+            if event.place == "Centro Social Juvenil"
+        ]
+        self.assertEqual(
+            [(event.start_date.day, event.start_time) for event in workshops],
+            [(1, "19:00"), (8, "19:00"), (15, "19:00"),
+             (22, "19:00"), (29, "19:00")],
+        )
 
     def test_august_first_day_keeps_only_reviewed_active_events(self):
         corrected = _apply_reviewed_corrections(
@@ -387,6 +409,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                 "Memorial Pepe y Juan Tendero 2026",
                 "Exposición de pintura y escultura: "
                 "Mediterráneo, el lenguaje del agua",
+                "Taller de cultura K-Pop y TikTok",
             ],
         )
         self.assertIsNone(active[1].start_time)
@@ -621,6 +644,87 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                 )
         self.assertEqual(len(current), 2)
         ocr.assert_not_awaited()
+
+    async def test_todo_cultura_adds_only_requested_daily_section(self):
+        official = SourceEvent(
+            title_es="Concierto oficial",
+            start_date=date(2026, 8, 5),
+            end_date=date(2026, 8, 5),
+            start_time="22:00",
+            end_time=None,
+            place="Castillo",
+            category="event",
+            sources=("mupi",),
+        )
+        todo = TodoCulturaProgram(
+            text="Miércoles 5 de agosto\n19 h.: Taller juvenil.",
+            sha256="todo-hash",
+            source_url="https://todoculturavegabaja.es/eventos/guardamar/",
+            modified="2026-08-04T22:40:40",
+        )
+        poster_url = (
+            "https://www.guardamardelsegura.es/wp-content/uploads/"
+            "2026/08/MUPI-AGOSTO-2026.jpg"
+        )
+        page = f'<a href="{poster_url}">poster</a>'.encode()
+        fetch_todo = AsyncMock(return_value=todo)
+        extract_text = AsyncMock(return_value={
+            "month": "2026-08",
+            "events": [{
+                "title_es": "Taller juvenil",
+                "start_date": "2026-08-05",
+                "end_date": "2026-08-05",
+                "start_time": "19:00",
+                "end_time": None,
+                "place": "Centro Social Juvenil",
+                "category": "event",
+            }],
+        })
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agenda.json"
+            _write_snapshot(
+                path,
+                _snapshot_data(
+                    poster_url,
+                    "poster-hash",
+                    datetime(2026, 8, 4, tzinfo=TZ),
+                    (official,),
+                    {"mupi": {"url": poster_url, "sha256": "poster-hash"}},
+                ),
+            )
+            with (
+                patch(
+                    "telegrambot.municipal_agenda._read_url",
+                    return_value=(page, "text/html"),
+                ),
+                patch(
+                    "telegrambot.municipal_agenda.fetch_latest_program",
+                    new=fetch_todo,
+                ),
+                patch(
+                    "telegrambot.municipal_agenda.extract_agenda_text_events",
+                    new=extract_text,
+                ),
+            ):
+                current = await _current_events(
+                    "key", datetime(2026, 8, 5, 5, 10, tzinfo=TZ), path
+                )
+                await _current_events(
+                    "key", datetime(2026, 8, 5, 10, 10, tzinfo=TZ), path
+                )
+
+            stored = json.loads(path.read_text(encoding="utf-8"))
+
+        self.assertEqual(fetch_todo.await_count, 2)
+        self.assertEqual(fetch_todo.await_args_list[0].args, (date(2026, 8, 5),))
+        extract_text.assert_awaited_once_with("key", todo.text)
+        self.assertEqual(
+            [event.title_es for event in current],
+            ["Concierto oficial", "Taller juvenil"],
+        )
+        self.assertEqual(
+            stored["sources"]["todo_cultura"]["sha256"], "todo-hash"
+        )
 
     async def test_site_failure_uses_snapshot_and_translates_selected_events(self):
         events = normalize_extraction(extraction())

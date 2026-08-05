@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import re
 import unicodedata
 from dataclasses import replace
 from datetime import datetime
@@ -66,7 +67,7 @@ def _merge_events(*groups):
         aliases = {"castell": "castillo"}
         return {
             aliases.get(word, word)
-            for word in normalized.replace("/", " ").split()
+            for word in re.findall(r"[^\W_]+", normalized)
             if len(word) > 2 and word != "guardamar"
         }
 
@@ -82,20 +83,39 @@ def _merge_events(*groups):
     for group in groups:
         for event in group:
             normalized_title = normalize_title(event.title)
-            duplicate = any(
-                current.starts_at == event.starts_at
+            duplicate_index = next((
+                index
+                for index, current in enumerate(result)
+                if (
+                    current.starts_at is None
+                    or event.starts_at is None
+                    or current.starts_at == event.starts_at
+                )
                 and (
                     normalized_title == normalize_title(current.title)
                     or overlap(current.title, event.title) >= 0.5
                     or (
-                        current.place is not None
+                        overlap(current.title, event.title) >= 0.2
+                        and current.place is not None
                         and event.place is not None
                         and overlap(current.place, event.place) >= 0.5
                     )
                 )
-                for current in result
-            )
-            if duplicate:
+            ), None)
+            if duplicate_index is not None:
+                current = result[duplicate_index]
+                result[duplicate_index] = replace(
+                    current,
+                    starts_at=current.starts_at or event.starts_at,
+                    ends_at=current.ends_at or event.ends_at,
+                    place=current.place or event.place,
+                    ticket_price_cents=(
+                        current.ticket_price_cents
+                        if current.ticket_price_cents is not None
+                        else event.ticket_price_cents
+                    ),
+                    ticket_url=current.ticket_url or event.ticket_url,
+                )
                 continue
             result.append(event)
     result.sort(

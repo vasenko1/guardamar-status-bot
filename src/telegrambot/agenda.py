@@ -31,6 +31,7 @@ AGENDA_HOSTS = {"agendaguardamar.com", "www.agendaguardamar.com"}
 REQUEST_TIMEOUT_SECONDS = 10
 PAGE_LIMIT_BYTES = 300_000
 MAX_EVENT_LINKS = 12
+MAX_CATALOG_EVENTS = 100
 MAX_EVENT_CONCURRENCY = 3
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 _IGNORED_PLACES = {"ayuntamientoguardamardelsegura"}
@@ -432,37 +433,187 @@ def normalize_event_page(
     payload: bytes,
     local_day: Optional[date],
 ) -> Optional[Event]:
-    """Return one event only from a valid JSON-LD object for local_day."""
+    """Return the first occurrence from a valid official event page."""
+
+    events = normalize_event_pages(payload, local_day)
+    return events[0] if events else None
+
+
+def _ticket_url(value: str, starts_at: datetime) -> Optional[str]:
+    """Accept only an occurrence-specific ticket URL on the official host."""
+
+    url = urllib.parse.urljoin(AGENDA_URL, html.unescape(value))
+    if not _is_agenda_url(url) or "/entradas/" not in url:
+        return None
+    query = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+    expected_date = starts_at.strftime("%d/%m/%Y")
+    expected_time = starts_at.strftime("%H:%M")
+    if query.get("webfecha") != [expected_date]:
+        return None
+    if query.get("webhora") != [expected_time]:
+        return None
+    return url
+
+
+def _page_facts(
+    payload: bytes,
+) -> Tuple[Optional[int], Optional[int], Optional[str]]:
+    """Read bounded duration, regular price and meeting point from official text."""
+
+    markup = payload.decode("cp1252", "replace")
+    text = " ".join(
+        html.unescape(re.sub(r"<[^>]+>", " ", markup)).split()
+    )
+    duration = None
+    duration_match = re.search(
+        r"Duraci[oó]n\s+(\d{1,2})\s+horas?\s+aprox",
+        text,
+        re.IGNORECASE,
+    )
+    if duration_match is not None:
+        candidate = int(duration_match.group(1))
+        if 1 <= candidate <= 12:
+            duration = candidate
+    price = None
+    price_match = re.search(
+        r"Regular\s*:\s*(\d{1,4})(?:[,.](\d{1,2}))?\s*[€\x80]",
+        text,
+        re.IGNORECASE,
+    )
+    if price_match is not None:
+        euros = int(price_match.group(1))
+        cents = int((price_match.group(2) or "0").ljust(2, "0"))
+        candidate = euros * 100 + cents
+        if 0 <= candidate <= 100_000:
+            price = candidate
+    elif re.search(
+        r"\b(?:entrada|actividad|acceso)\s+(?:es\s+)?"
+        r"(?:libre|gratuit[oa])\b",
+        text,
+        re.IGNORECASE,
+    ):
+        price = 0
+    place = None
+    place_match = re.search(
+        r"Punto de encuentro\s*:\s*(.{1,120}?)"
+        r"(?=\s+(?:Itinerario|Distancia|Duraci[oó]n|ENTRADA|Regular|Precio)\b|$)",
+        text,
+        re.IGNORECASE,
+    )
+    if place_match is not None:
+        place = " ".join(html.unescape(place_match.group(1)).split())
+    return duration, price, place
+
+
+def _page_sessions(payload: bytes) -> Tuple[Tuple[datetime, str], ...]:
+    """Return the bounded dated sessions advertised by the official page."""
+
+    text = payload.decode("cp1252", "replace")
+    result = []
+    seen = set()
+    ticket_path = None
+    for match in re.finditer(
+        r"href\s*=\s*['\"]?([^'\"\s>]+/entradas/[^'\"\s>]+)",
+        text,
+        re.IGNORECASE,
+    ):
+        raw_url = html.unescape(match.group(1))
+        parsed_url = urllib.parse.urlparse(
+            urllib.parse.urljoin(AGENDA_URL, raw_url)
+        )
+        if ticket_path is None:
+            ticket_path = parsed_url.path
+        elif parsed_url.path != ticket_path:
+            continue
+        query = urllib.parse.parse_qs(
+            parsed_url.query
+        )
+        raw_date = (query.get("webfecha") or [None])[0]
+        raw_time = (query.get("webhora") or [None])[0]
+        if not isinstance(raw_date, str) or not isinstance(raw_time, str):
+            continue
+        try:
+            starts_at = datetime.strptime(
+                f"{raw_date} {raw_time}", "%d/%m/%Y %H:%M"
+            ).replace(tzinfo=GUARDAMAR_TIMEZONE)
+        except ValueError:
+            continue
+        url = _ticket_url(raw_url, starts_at)
+        key = starts_at
+        if url is not None and key not in seen:
+            seen.add(key)
+            result.append((starts_at, url))
+            if len(result) == MAX_CATALOG_EVENTS:
+                break
+    result.sort(key=lambda item: item[0])
+    return tuple(result)
+
+
+def normalize_event_pages(
+    payload: bytes,
+    local_day: Optional[date],
+) -> Tuple[Event, ...]:
+    """Return all validated occurrences from one official event page."""
 
     parser = _JsonLdParser()
-    parser.feed(payload.decode("iso-8859-1", "replace"))
+    parser.feed(payload.decode("cp1252", "replace"))
+    base_event = None
     for document in parser.documents:
         decoded = _decode_json_ld(document)
         if decoded is None:
             continue
         for candidate in _json_objects(decoded):
-            event = _event_from_mapping(candidate, local_day)
+            event = _event_from_mapping(candidate, None)
             if event is not None:
-                if event.place is None:
-                    place = _calendar_place(payload)
-                    if place is not None:
-                        if (
-                            "sand memories" in event.title.casefold()
-                            and place.casefold() == "castell"
-                        ):
-                            place = (
-                                "место встречи — "
-                                "Castillo de Guardamar"
-                            )
-                        event = replace(event, place=place)
-                return event
-    return None
+                base_event = event
+                break
+        if base_event is not None:
+            break
+    if base_event is None:
+        return ()
+
+    duration_hours, price_cents, meeting_point = _page_facts(payload)
+    place = (
+        f"место встречи — {meeting_point}"
+        if meeting_point is not None
+        else base_event.place or _calendar_place(payload)
+    )
+    if (
+        place is not None
+        and place.casefold() == "castell"
+        and any(
+            marker in base_event.title.casefold()
+            for marker in ("sand memories", "memoria de arena")
+        )
+    ):
+        place = "место встречи — Castillo de Guardamar"
+    sessions = _page_sessions(payload)
+    if not sessions:
+        sessions = ((base_event.starts_at, ""),)
+    result = []
+    for starts_at, ticket_url in sessions:
+        if local_day is not None and starts_at.date() != local_day:
+            continue
+        ends_at = base_event.ends_at
+        if duration_hours is not None:
+            ends_at = starts_at + timedelta(hours=duration_hours)
+        elif len(sessions) > 1 or starts_at != base_event.starts_at:
+            ends_at = None
+        result.append(replace(
+            base_event,
+            starts_at=starts_at,
+            ends_at=ends_at,
+            place=place,
+            ticket_price_cents=price_cents,
+            ticket_url=ticket_url or None,
+        ))
+    return tuple(result)
 
 
 def _write_agenda_snapshot(path: Path, now: datetime, events: Tuple[Event, ...]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     data = {
-        "version": 1,
+        "version": 2,
         "fetched_at": now.isoformat(),
         "events": [
             {
@@ -472,6 +623,8 @@ def _write_agenda_snapshot(path: Path, now: datetime, events: Tuple[Event, ...])
                 "ends_at": event.ends_at.isoformat()
                 if event.ends_at else None,
                 "place": event.place,
+                "ticket_price_cents": event.ticket_price_cents,
+                "ticket_url": event.ticket_url,
             }
             for event in events
         ],
@@ -497,10 +650,13 @@ def _write_agenda_snapshot(path: Path, now: datetime, events: Tuple[Event, ...])
 def _load_agenda_snapshot(path: Path) -> Tuple[Event, ...]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict) or data.get("version") != 1:
+        if not isinstance(data, dict) or data.get("version") not in {1, 2}:
             raise ValueError
         raw_events = data.get("events")
-        if not isinstance(raw_events, list) or len(raw_events) > MAX_EVENT_LINKS:
+        if (
+            not isinstance(raw_events, list)
+            or len(raw_events) > MAX_CATALOG_EVENTS
+        ):
             raise ValueError
         events = []
         for raw in raw_events:
@@ -524,12 +680,28 @@ def _load_agenda_snapshot(path: Path) -> Tuple[Event, ...]:
             place = raw.get("place")
             if place is not None and not isinstance(place, str):
                 raise ValueError
+            ticket_price_cents = raw.get("ticket_price_cents")
+            if ticket_price_cents is not None and (
+                not isinstance(ticket_price_cents, int)
+                or not 0 <= ticket_price_cents <= 100_000
+            ):
+                raise ValueError
+            ticket_url = raw.get("ticket_url")
+            if ticket_url is not None:
+                if not isinstance(ticket_url, str):
+                    raise ValueError
+                normalized_ticket_url = _ticket_url(ticket_url, starts_at)
+                if normalized_ticket_url is None:
+                    raise ValueError
+                ticket_url = normalized_ticket_url
             events.append(Event(
                 title=title,
                 starts_at=starts_at.astimezone(GUARDAMAR_TIMEZONE),
                 ends_at=ends_at.astimezone(GUARDAMAR_TIMEZONE)
                 if ends_at else None,
                 place=place,
+                ticket_price_cents=ticket_price_cents,
+                ticket_url=ticket_url,
             ))
         return tuple(events)
     except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
@@ -543,7 +715,11 @@ async def _collect_agenda_catalog(now: datetime) -> Tuple[Event, ...]:
     index = await asyncio.to_thread(_read_page, AGENDA_URL)
     links = extract_event_links(index)
     if not links:
-        return ()
+        raise AgendaError(
+            "Agenda Guardamar index contained no event links",
+            code="INDEX-EMPTY",
+            description="страница программы не содержит ссылок на мероприятия",
+        )
     semaphore = asyncio.Semaphore(MAX_EVENT_CONCURRENCY)
 
     async def read_detail(link: str) -> Optional[bytes]:
@@ -571,17 +747,21 @@ async def _collect_agenda_catalog(now: datetime) -> Tuple[Event, ...]:
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
     horizon = local_day + timedelta(days=45)
     for payload in successful_payloads:
-        event = normalize_event_page(payload, None)
-        if event is None:
-            continue
-        if event.starts_at is None or not (
-            local_day <= event.starts_at.date() <= horizon
-        ):
-            continue
-        key = (event.title.casefold(), event.starts_at)
-        if key not in seen:
-            seen.add(key)
-            events.append(event)
+        for event in normalize_event_pages(payload, None):
+            if event.starts_at is None or not (
+                local_day <= event.starts_at.date() <= horizon
+            ):
+                continue
+            key = (event.title.casefold(), event.starts_at)
+            if key not in seen:
+                seen.add(key)
+                events.append(event)
+    if not events:
+        raise AgendaError(
+            "Agenda Guardamar event details contained no usable events",
+            code="DETAILS-INVALID",
+            description="страницы мероприятий не содержат пригодных данных",
+        )
     events.sort(key=lambda item: (item.starts_at, item.title.casefold()))
     return tuple(events)
 
@@ -648,12 +828,19 @@ async def fetch_today_events(
 
 
 async def agenda_translation_items(
+    now: datetime,
     state_path: Path,
 ) -> Tuple[Tuple[str, str], ...]:
-    """Return source identities and exact titles from the local catalog."""
+    """Return only today's source titles from the local catalog."""
 
     events = await asyncio.to_thread(_load_agenda_snapshot, state_path)
-    return tuple(("agenda_guardamar", event.title) for event in events)
+    local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
+    return tuple(
+        ("agenda_guardamar", event.title)
+        for event in events
+        if event.starts_at is not None
+        and event.starts_at.date() == local_day
+    )
 
 
 def recurring_events(now: datetime) -> Tuple[Event, ...]:

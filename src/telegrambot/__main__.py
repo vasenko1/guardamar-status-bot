@@ -142,7 +142,7 @@ async def _run_command(command: str) -> int:
         gemini_key = _required_environment("GEMINI_API_KEY")
         items = [
             *await municipal_translation_items(now, municipal_path),
-            *await agenda_translation_items(agenda_path),
+            *await agenda_translation_items(now, agenda_path),
         ]
         translated = await prepare_translations(
             gemini_key, items, translations_path, now
@@ -331,7 +331,7 @@ async def _run_command(command: str) -> int:
             try:
                 items = [
                     *await municipal_translation_items(now, municipal_path),
-                    *await agenda_translation_items(agenda_path),
+                    *await agenda_translation_items(now, agenda_path),
                 ]
                 await prepare_translations(
                     gemini_key, items, translations_path, now

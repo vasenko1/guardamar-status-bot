@@ -5,6 +5,7 @@ import hashlib
 import html
 import http.client
 import json
+import logging
 import os
 import re
 import socket
@@ -29,6 +30,9 @@ from .gemini import (
 from .event_translations import cached_title
 from .models import Event
 from .diagnostics import SourceDiagnostic, source_error
+from .todo_cultura import TodoCulturaError, fetch_latest_program
+
+LOGGER = logging.getLogger(__name__)
 
 AGENDA_PAGE_URL = "https://guardamarturismo.com/agenda-cultural/"
 PAGE_HOSTS = {"guardamarturismo.com", "www.guardamarturismo.com"}
@@ -792,6 +796,34 @@ def _apply_reviewed_corrections(
                 )
                 for day in (7, 14, 21, 28)
             ),
+            SourceEvent(
+                title_es="Taller de cultura K-Pop y TikTok",
+                start_date=date(2026, 8, 1),
+                end_date=date(2026, 8, 1),
+                start_time="19:00",
+                end_time="21:00",
+                place="Centro Social Juvenil",
+                category="event",
+                sources=("mupi_reviewed",),
+            ),
+            *tuple(
+                SourceEvent(
+                    title_es=title,
+                    start_date=date(2026, 8, day),
+                    end_date=date(2026, 8, day),
+                    start_time="19:00",
+                    end_time="21:00",
+                    place="Centro Social Juvenil",
+                    category="event",
+                    sources=("mupi_reviewed", "todo_cultura_reviewed"),
+                )
+                for day, title in (
+                    (8, "Taller de baterías"),
+                    (15, "Taller de guitarras eléctricas"),
+                    (22, "Taller de música electrónica"),
+                    (29, "Taller de canto"),
+                )
+            ),
         )
         filtered = []
         for event in events:
@@ -803,6 +835,14 @@ def _apply_reviewed_corrections(
                 or "tendero" in title
                 or "open real villa" in title
                 or "open" in title and "villa de guardamar" in title
+                or "k-pop" in title
+                or "tik tok" in title
+                or "tiktok" in title
+                or "taller de bater" in title
+                or "taller de guitarra" in title
+                or "taller de música electrónica" in title
+                or "taller de musica electronica" in title
+                or "taller de canto" in title
             ):
                 continue
             filtered.append(event)
@@ -972,6 +1012,15 @@ async def refresh_municipal_catalog(
             if "mupi" in event.sources
             and "turismo_html" not in event.sources
         )
+        old_todo_events = tuple(
+            event
+            for event in old_events
+            if "todo_cultura" in event.sources
+            and not any(
+                source in event.sources
+                for source in ("turismo_html", "mupi", "mupi_reviewed")
+            )
+        )
 
         text_source = old_sources.get("turismo_html", {})
         if not page_text:
@@ -1071,7 +1120,52 @@ async def refresh_municipal_catalog(
                     )
                 )
 
+        todo_source = old_sources.get("todo_cultura", {})
+        todo_events = old_todo_events
+        todo_program = None
+        try:
+            todo_program = await fetch_latest_program(local_now.date())
+            if (
+                isinstance(todo_source, dict)
+                and todo_source.get("sha256") == todo_program.sha256
+                and todo_source.get("date") == local_now.date().isoformat()
+            ):
+                todo_events = old_todo_events
+            else:
+                todo_result = await extract_agenda_text_events(
+                    api_key,
+                    todo_program.text,
+                )
+                todo_month = local_now.strftime("%Y-%m")
+                todo_result = {**todo_result, "month": todo_month}
+                todo_events = normalize_extraction_candidates(
+                    todo_result,
+                    todo_month,
+                    "todo_cultura",
+                )
+        except (TodoCulturaError, GeminiError, MunicipalAgendaError) as exc:
+            if old_todo_events:
+                LOGGER.warning("Todo Cultura supplement unavailable: %s", exc)
+            else:
+                LOGGER.info("Todo Cultura supplement unavailable: %s", exc)
+            if diagnostics is not None and old_todo_events:
+                failure = source_error(
+                    "TODO-CULTURA",
+                    "Todo Cultura Vega Baja",
+                    exc,
+                    stage="SUPPLEMENTAL",
+                )
+                diagnostics.append(SourceDiagnostic(
+                    failure.code,
+                    failure.source,
+                    (
+                        f"{failure.description}; использован предыдущий "
+                        "дополнительный снимок"
+                    ),
+                ))
+
         events = merge_text_and_poster_events(text_events, poster_events)
+        events = merge_text_and_poster_events(events, todo_events)
         if not events:
             if isinstance(poster_failure, GeminiError):
                 raise MunicipalAgendaError(
@@ -1114,6 +1208,16 @@ async def refresh_municipal_catalog(
             }
         elif isinstance(poster_source, dict) and poster_source:
             source_state["mupi"] = poster_source
+        if todo_program is not None:
+            source_state["todo_cultura"] = {
+                "url": todo_program.source_url,
+                "sha256": todo_program.sha256,
+                "modified": todo_program.modified,
+                "date": local_now.date().isoformat(),
+                "checked_at": now.isoformat(),
+            }
+        elif isinstance(todo_source, dict) and todo_source:
+            source_state["todo_cultura"] = todo_source
         try:
             await asyncio.to_thread(
                 _write_snapshot,

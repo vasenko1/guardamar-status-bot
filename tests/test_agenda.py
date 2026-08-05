@@ -14,6 +14,7 @@ from telegrambot.agenda import (
     _load_agenda_snapshot,
     _write_agenda_snapshot,
     normalize_event_page,
+    normalize_event_pages,
     recurring_events,
     requires_market_exception_check,
 )
@@ -59,6 +60,69 @@ class _Opener:
 
 
 class AgendaNormalizationTests(unittest.TestCase):
+    def test_extracts_all_sessions_with_bounded_ticket_facts(self):
+        payload = b"""
+        <script type="application/ld+json">
+        {"@type":"Event","name":"VISITA GUIADA MEMORIA DE ARENA",
+         "startDate":"2026-08-08T10:00",
+         "location":{"name":"ayuntamientoguardamardelsegura"}}
+        </script>
+        <p>Punto de encuentro: Castillo de Guardamar
+        Duraci\xf3n 2 horas aprox
+        ENTRADA:
+        Regular: 5\x80</p>
+        <a href=//www.agendaguardamar.com/entradas/12/tour.html?webfecha=08/08/2026&amp;webhora=10:00&amp;websala=12>
+        <a href=//www.agendaguardamar.com/entradas/12/tour.html?webfecha=15/08/2026&amp;webhora=10:00&amp;websala=12>
+        <a href=//www.agendaguardamar.com/entradas/48/other.html?webfecha=20/08/2026&amp;webhora=22:00&amp;websala=48>
+        """
+
+        events = normalize_event_pages(payload, None)
+
+        self.assertEqual(len(events), 2)
+        self.assertEqual(events[0].starts_at.date(), date(2026, 8, 8))
+        self.assertEqual(events[1].starts_at.date(), date(2026, 8, 15))
+        self.assertEqual(events[0].ends_at.hour, 12)
+        self.assertEqual(
+            events[0].place,
+            "место встречи — Castillo de Guardamar",
+        )
+        self.assertEqual(events[0].ticket_price_cents, 500)
+        self.assertIn("webfecha=08/08/2026", events[0].ticket_url)
+        later = normalize_event_page(payload, date(2026, 8, 15))
+        self.assertIsNotNone(later)
+        self.assertEqual(later.starts_at.date(), date(2026, 8, 15))
+
+    def test_rejects_ticket_url_outside_official_host(self):
+        payload = b"""
+        <script type="application/ld+json">
+        {"@type":"Event","name":"Official event",
+         "startDate":"2026-08-08T10:00"}
+        </script>
+        <p>Regular: 5\x80</p>
+        <a href=https://example.com/entradas/12/event.html?webfecha=08/08/2026&amp;webhora=10:00>
+        """
+
+        event = normalize_event_page(payload, date(2026, 8, 8))
+
+        self.assertIsNotNone(event)
+        self.assertIsNone(event.ticket_url)
+        self.assertEqual(event.ticket_price_cents, 500)
+
+    def test_reads_free_admission_without_requiring_ticket_link(self):
+        payload = b"""
+        <script type="application/ld+json">
+        {"@type":"Event","name":"Actividad familiar",
+         "startDate":"2026-08-09T18:00"}
+        </script>
+        <p>La <strong>entrada</strong> es <strong>libre</strong>.</p>
+        """
+
+        event = normalize_event_page(payload, date(2026, 8, 9))
+
+        self.assertIsNotNone(event)
+        self.assertEqual(event.ticket_price_cents, 0)
+        self.assertIsNone(event.ticket_url)
+
     def test_cross_catalog_duplicate_prefers_richer_municipal_fact(self):
         starts_at = datetime(2026, 8, 1, 10, 0, tzinfo=TZ)
         municipal = Event(
@@ -78,6 +142,40 @@ class AgendaNormalizationTests(unittest.TestCase):
         merged = _merge_events((municipal,), (agenda,))
 
         self.assertEqual(merged, (municipal,))
+
+    def test_duplicate_keeps_title_but_adds_official_ticket_details(self):
+        starts_at = datetime(2026, 8, 8, 10, 0, tzinfo=TZ)
+        municipal = Event(
+            title="Экскурсия «Песчаная память»",
+            starts_at=starts_at,
+            place="Castillo de Guardamar",
+        )
+        agenda = Event(
+            title="Экскурсия Песчаная память",
+            starts_at=starts_at,
+            ends_at=datetime(2026, 8, 8, 12, 0, tzinfo=TZ),
+            ticket_price_cents=500,
+            ticket_url=(
+                "https://www.agendaguardamar.com/entradas/12/tour.html"
+                "?webfecha=08/08/2026&webhora=10:00"
+            ),
+        )
+
+        merged = _merge_events((municipal,), (agenda,))
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0].title, municipal.title)
+        self.assertEqual(merged[0].ends_at.hour, 12)
+        self.assertEqual(merged[0].ticket_price_cents, 500)
+
+    def test_same_place_and_time_does_not_merge_unrelated_events(self):
+        starts_at = datetime(2026, 8, 8, 10, 0, tzinfo=TZ)
+        first = Event("Концерт", starts_at, place="Casa de Cultura")
+        second = Event("Выставка", starts_at, place="Casa de Cultura")
+
+        merged = _merge_events((first,), (second,))
+
+        self.assertEqual(len(merged), 2)
 
     def test_extracts_unique_official_event_links(self):
         payload = b"""
@@ -352,6 +450,11 @@ class AgendaCollectionTests(unittest.IsolatedAsyncioTestCase):
             starts_at=datetime(2026, 8, 2, 10, 0, tzinfo=TZ),
             ends_at=datetime(2026, 8, 2, 12, 0, tzinfo=TZ),
             place="Castillo de Guardamar",
+            ticket_price_cents=500,
+            ticket_url=(
+                "https://www.agendaguardamar.com/entradas/12/tour.html"
+                "?webfecha=02/08/2026&webhora=10:00"
+            ),
         )
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "agenda.json"
@@ -363,6 +466,18 @@ class AgendaCollectionTests(unittest.IsolatedAsyncioTestCase):
             loaded = _load_agenda_snapshot(path)
 
         self.assertEqual(loaded, (event,))
+
+    async def test_empty_index_is_a_source_failure_not_an_empty_catalog(self):
+        with patch(
+            "telegrambot.agenda._read_page",
+            return_value=b"<html><body>maintenance</body></html>",
+        ):
+            with self.assertRaises(AgendaError) as raised:
+                await fetch_today_events(
+                    datetime(2026, 8, 5, 7, tzinfo=TZ)
+                )
+
+        self.assertEqual(raised.exception.diagnostic_code, "INDEX-EMPTY")
 
     async def test_reports_when_all_event_pages_fail(self):
         index = (
@@ -393,6 +508,28 @@ class AgendaCollectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             raised.exception.diagnostic_code,
             "DETAILS-UNAVAILABLE",
+        )
+
+    async def test_reports_when_event_pages_have_no_valid_events(self):
+        index = b'<a href="/espectaculo/1/a.html">A</a>'
+
+        def read_page(url):
+            if url.endswith("PROGRAMACION-ESPECTACULOS.html"):
+                return index
+            return b"<html>maintenance</html>"
+
+        with patch(
+            "telegrambot.agenda._read_page",
+            side_effect=read_page,
+        ):
+            with self.assertRaises(AgendaError) as raised:
+                await fetch_today_events(
+                    datetime(2026, 8, 5, 7, tzinfo=TZ)
+                )
+
+        self.assertEqual(
+            raised.exception.diagnostic_code,
+            "DETAILS-INVALID",
         )
 
     async def test_translates_all_today_events_without_product_limit(self):

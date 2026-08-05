@@ -577,12 +577,30 @@ def build_message(
                 event_lines.append(
                     f"  📍 {html.escape(_event_place(event.place))}"
                 )
+            if event.ticket_price_cents is not None:
+                price = event.ticket_price_cents / 100
+                if event.ticket_price_cents == 0:
+                    ticket_label = "Бесплатно"
+                else:
+                    price_label = (
+                        f"{int(price)} €"
+                        if price.is_integer()
+                        else f"{price:.2f} €".replace(".", ",")
+                    )
+                    ticket_label = f"Билет {price_label}"
+                if event.ticket_url:
+                    event_lines.append(
+                        '  🎟 <a href="'
+                        + html.escape(event.ticket_url, quote=True)
+                        + f'">{ticket_label}</a>'
+                    )
+                else:
+                    event_lines.append(f"  🎟 {ticket_label}")
             if len("\n".join([*lines, *event_lines])) > 3900:
-                event_lines = (
-                    event_lines[:-2]
-                    if event.place
-                    else event_lines[:-1]
+                rows = 1 + int(bool(event.place)) + int(
+                    event.ticket_price_cents is not None
                 )
+                event_lines = event_lines[:-rows]
                 if event_lines and event_lines[-1] == "":
                     event_lines.pop()
                 break
