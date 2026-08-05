@@ -3,6 +3,7 @@
 import html
 import re
 import unicodedata
+import urllib.parse
 from datetime import date, datetime, timedelta
 from typing import Optional, Sequence
 from zoneinfo import ZoneInfo
@@ -285,6 +286,11 @@ def _event_title(value: str) -> str:
 
 def _event_place(value: str) -> str:
     value = " ".join(value.split())
+    if value.casefold() in {
+        "sala de exposiciones casa de cultura",
+        "sala de exposiciones de la casa de cultura",
+    }:
+        return "Casa de Cultura (Sala de exposiciones)"
     value = re.sub(r"\bC/\s*", "улица ", value, flags=re.IGNORECASE)
     value = re.sub(
         r"^parque\s+улица\s+",
@@ -303,6 +309,26 @@ def _event_place(value: str) -> str:
             " De ", " de "
         )
     return _event_title(value)
+
+
+def _event_place_link(value: str) -> str:
+    """Render one fixed-host Google Maps search for a verified place."""
+
+    source_place = " ".join(value.split())
+    query = source_place
+    if "guardamar" not in source_place.casefold():
+        query = f"{source_place}, Guardamar del Segura"
+    map_url = "https://www.google.com/maps/search/?" + urllib.parse.urlencode({
+        "api": "1",
+        "query": query,
+    })
+    return (
+        '<a href="'
+        + html.escape(map_url, quote=True)
+        + '">'
+        + html.escape(_event_place(source_place))
+        + "</a>"
+    )
 
 
 def _exhibition_title(value: str) -> str:
@@ -574,9 +600,7 @@ def build_message(
                 time_prefix += "</b> — "
             event_lines.append(f"• {time_prefix}{title}")
             if event.place:
-                event_lines.append(
-                    f"  📍 {html.escape(_event_place(event.place))}"
-                )
+                event_lines.append(f"  📍 {_event_place_link(event.place)}")
             if event.ticket_price_cents is not None:
                 price = event.ticket_price_cents / 100
                 if event.ticket_price_cents == 0:

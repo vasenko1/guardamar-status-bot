@@ -506,11 +506,12 @@ class DigestMessageTests(unittest.TestCase):
 
         message = build_message(digest)
 
+        self.assertIn("• Музыка &lt;джаз&gt; &amp; танцы", message)
         self.assertIn(
-            "• Музыка &lt;джаз&gt; &amp; танцы\n"
-            "  📍 Sala &lt;A&gt;",
+            'https://www.google.com/maps/search/?api=1&amp;query=',
             message,
         )
+        self.assertIn(">Sala &lt;A&gt;</a>", message)
 
     def test_uses_one_label_when_sea_state_does_not_change(self):
         digest = MorningDigest(
@@ -562,11 +563,8 @@ class DigestMessageTests(unittest.TestCase):
 
         message = build_message(digest)
 
-        self.assertIn(
-            "• Выставка «Средиземноморье, язык воды»\n"
-            "  📍 Casa de Cultura",
-            message,
-        )
+        self.assertIn("• Выставка «Средиземноморье, язык воды»", message)
+        self.assertIn(">Casa de Cultura</a>", message)
         self.assertNotIn("00:00", message)
 
     def test_marks_confirmed_final_day(self):
@@ -644,6 +642,9 @@ class DigestMessageTests(unittest.TestCase):
             "«Средиземноморье, язык воды»",
             message,
         )
+        self.assertIn(
+            ">Casa de Cultura (Sala de exposiciones)</a>", message
+        )
         self.assertNotIn(
             "скульптуры: Средиземноморье",
             message,
@@ -677,11 +678,8 @@ class DigestMessageTests(unittest.TestCase):
 
         message = build_message(digest)
 
-        self.assertIn(
-            "• <b>09:00–15:30</b> — Рынок\n"
-            "  📍 парковка La Redonda",
-            message,
-        )
+        self.assertIn("• <b>09:00–15:30</b> — Рынок", message)
+        self.assertIn(">парковка La Redonda</a>", message)
 
     def test_fallback_preserves_morning_copy_and_adds_beach_update(self):
         morning = (
@@ -808,13 +806,10 @@ class DigestMessageTests(unittest.TestCase):
 
         self.assertEqual(message.count("\n• "), 3)
         self.assertIn("парк на улице Berlín", message)
-        self.assertIn(
-            "• <b>21:00</b> — Событие 1\n"
-            "  📍 парк на улице Berlín\n\n"
-            "• <b>22:00</b> — Событие 2\n"
-            "  📍 Castell",
-            message,
-        )
+        self.assertIn("• <b>21:00</b> — Событие 1", message)
+        self.assertIn(">парк на улице Berlín</a>", message)
+        self.assertIn("• <b>22:00</b> — Событие 2", message)
+        self.assertIn(">Castell</a>", message)
 
     def test_removes_duplicate_exhibition_type_and_keeps_author(self):
         digest = MorningDigest(

@@ -298,6 +298,11 @@ an explicit end date.
 For exhibitions, keep the medium or category outside the title and place an
 explicit work name in Russian typographic quotes, for example:
 `Выставка живописи и скульптуры «Средиземноморье, язык воды»`.
+Render every non-empty event location as one linked `📍` row using a fixed
+Google Maps HTTPS search URL. Append `Guardamar del Segura` to the search
+query when the source place does not already name the city. Keep the visible
+label concise and independent from the query; in particular, render the
+reviewed exhibition venue as `Casa de Cultura (Sala de exposiciones)`.
 
 Every public digest and electricity message ends with one compact linked
 signature, `📣 обЪявления Гуардамар`. It is part of the message so forwarded

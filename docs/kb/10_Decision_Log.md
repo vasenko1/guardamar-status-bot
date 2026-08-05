@@ -5,6 +5,7 @@ Detailed decisions belong in `adr/`.
 
 | Date | Decision | Context and reason | Record |
 | --- | --- | --- | --- |
+| 2026-08-05 | Link event venues through Google Maps HTTPS searches | One cross-platform URL opens the Google Maps app when installed and falls back to the browser; linking the concise venue label keeps the phone layout compact without separate location messages. | `docs/kb/05_Features.md` |
 | 2026-08-05 | Prefer exact reviewed Russian titles for a bounded set of verified programme items | Current high-value events must not regress to Spanish or lose their event type when the optional translation service is unavailable; exact source-title matches avoid broad heuristic rewriting. | `docs/kb/06_Data_Sources.md` |
 | 2026-08-05 | Preserve verified prices and remove routine programme rows | Todo Cultura's bounded Ayuntamiento programme carries explicit regular prices linked to Agenda Guardamar, while routine youth-centre hours and vague campaigns added noise. Different same-day sessions must not merge merely because their titles match. | `adr/0028-text-first-local-event-catalogs.md`, `docs/kb/06_Data_Sources.md` |
 | 2026-08-05 | Add exactly one secondary structured LLM | A single pinned non-Google OpenRouter model can recover bounded municipal extraction and translation after Gemini failures without dependencies, provider chains, or relaxed validation. | `adr/0030-single-secondary-llm.md`, `docs/kb/07_AI_Guidelines.md` |
