@@ -17,9 +17,48 @@ POLICY_VERSION = 1
 MAX_ENTRIES = 500
 RETENTION_DAYS = 90
 
+REVIEWED_TRANSLATIONS = {
+    "spanish brass": "Концерт духового квинтета Spanish Brass «Top Secret»",
+    "spanish brass. top secret": (
+        "Концерт духового квинтета Spanish Brass «Top Secret»"
+    ),
+    (
+        "torneo de tenis 24.º open real villa de guardamar, "
+        "memorial pepe y juan tendero 2026"
+    ): (
+        "24-й открытый теннисный турнир «Real Villa de Guardamar» "
+        "памяти Пепе и Хуана Тендеро"
+    ),
+    (
+        "exposición de pintura y escultura: "
+        "mediterráneo, el lenguaje del agua"
+    ): (
+        "Выставка живописи и скульптуры "
+        "«Средиземноморье, язык воды»"
+    ),
+    (
+        "exposición de pintura con el título "
+        "‘mediterráneo, el lenguaje del agua’"
+    ): (
+        "Выставка живописи и скульптуры "
+        "«Средиземноморье, язык воды»"
+    ),
+    (
+        "exposición de pintura «luz a pesar del dolor» "
+        "de vira degliarenko"
+    ): "Выставка живописи «Свет вопреки боли» — Вира Дегляренко",
+}
+
 
 def _key(source: str, title: str) -> str:
     return f"{POLICY_VERSION}\0{source.strip()}\0{title.strip()}"
+
+
+def reviewed_translation(title: str) -> Optional[str]:
+    """Return an exact operator-reviewed translation for a known title."""
+
+    normalized = " ".join(title.split()).strip().casefold()
+    return REVIEWED_TRANSLATIONS.get(normalized)
 
 
 def spanish_fallback(title: str) -> str:
@@ -85,6 +124,9 @@ def _exclusive(path: Path):
 
 
 def cached_title(path: Path, source: str, title: str) -> str:
+    reviewed = reviewed_translation(title)
+    if reviewed is not None:
+        return reviewed
     entry = _read(path)["entries"].get(_key(source, title))
     if isinstance(entry, dict):
         translated = entry.get("translation")

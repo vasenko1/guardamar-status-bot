@@ -574,6 +574,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(weekday[0].start_time, "08:00")
         self.assertEqual(weekday[0].end_time, "14:00")
+        self.assertEqual(weekday[0].place, "Biblioteca Municipal")
         self.assertEqual(saturday, ())
 
     def test_keeps_prior_month_events_for_seven_day_transition(self):

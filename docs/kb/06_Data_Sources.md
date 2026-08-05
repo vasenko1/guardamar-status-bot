@@ -249,7 +249,10 @@ Guardamar catalog and removes duplicates.
 During a temporary source outage, the last valid snapshot remains eligible
 until its covered period ends. Generated title-only Russian translations are
 kept only in the bounded separate cache defined by ADR 0029; the catalog keeps
-the exact source-language fact.
+the exact source-language fact. Exact operator-reviewed translations for a
+small bounded set of independently verified programme titles take precedence
+over generated cache entries, so an LLM outage cannot restore an untranslated
+or editorially incomplete heading.
 If the snapshot is corrupt, it is never used; the bot rebuilds it from a valid
 official HTML page and JPEG, PNG, or WebP poster when possible.
 If a newly validated poster cannot be written to local storage, its events

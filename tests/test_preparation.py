@@ -11,6 +11,7 @@ from telegrambot.digest import build_message
 from telegrambot.event_translations import (
     cached_title,
     prepare_translations,
+    reviewed_translation,
     spanish_fallback,
 )
 from telegrambot.models import Event, MorningDigest, Warning, Weather
@@ -77,6 +78,31 @@ class PreparationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             spanish_fallback("Memoria de arena"), "Memoria de arena"
         )
+
+    def test_reviewed_current_event_titles_do_not_depend_on_llm(self):
+        self.assertEqual(
+            reviewed_translation("SPANISH BRASS"),
+            "Концерт духового квинтета Spanish Brass «Top Secret»",
+        )
+        self.assertEqual(
+            reviewed_translation(
+                "Torneo de tenis 24.º Open Real Villa de Guardamar, "
+                "Memorial Pepe y Juan Tendero 2026"
+            ),
+            (
+                "24-й открытый теннисный турнир «Real Villa de Guardamar» "
+                "памяти Пепе и Хуана Тендеро"
+            ),
+        )
+
+    def test_reviewed_title_overrides_empty_cache(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "translations.json"
+
+            self.assertEqual(
+                cached_title(path, "municipal_agenda", "SPANISH BRASS"),
+                "Концерт духового квинтета Spanish Brass «Top Secret»",
+            )
 
     def test_message_can_publish_events_without_weather(self):
         message = build_message(MorningDigest(

@@ -857,7 +857,7 @@ def _apply_reviewed_corrections(
                 end_date=date(2026, 8, 21),
                 start_time="08:00",
                 end_time="14:00",
-                place="Biblioteca Municipal Guardamar del Segura",
+                place="Biblioteca Municipal",
                 category="exhibition",
                 sources=("mupi_reviewed", "todo_cultura_reviewed"),
             ),
@@ -1006,7 +1006,7 @@ def _apply_reviewed_daily_schedules(
                 end_date=event.end_date,
                 start_time="08:00",
                 end_time="14:00",
-                place="Biblioteca Municipal Guardamar del Segura",
+                place="Biblioteca Municipal",
                 category="exhibition",
                 sources=event.sources,
             ))
