@@ -371,6 +371,41 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("title_ru", path.read_text() if path.exists() else json.dumps(raw))
         self.assertEqual(raw["events"][0]["title_es"], "Concierto en el castillo")
 
+    def test_snapshot_loader_skips_entries_removed_by_new_policy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agenda.json"
+            path.write_text(json.dumps({
+                "version": 2,
+                "fetched_at": datetime(2026, 8, 5, tzinfo=TZ).isoformat(),
+                "events": [
+                    {
+                        "title_es": "Actividades del Centro Social Juvenil",
+                        "start_date": "2026-08-05",
+                        "end_date": "2026-08-05",
+                        "start_time": "08:30",
+                        "end_time": "14:00",
+                        "place": "Centro Social Juvenil",
+                        "category": "event",
+                        "sources": [],
+                    },
+                    {
+                        "title_es": "SPANISH BRASS",
+                        "start_date": "2026-08-05",
+                        "end_date": "2026-08-05",
+                        "start_time": "22:00",
+                        "end_time": None,
+                        "place": "Castell de Guardamar",
+                        "category": "event",
+                        "sources": ["todo_cultura"],
+                    },
+                ],
+            }), encoding="utf-8")
+
+            loaded = _load_snapshot(path)
+
+        self.assertEqual(len(loaded["_events"]), 1)
+        self.assertEqual(loaded["_events"][0].title_es, "SPANISH BRASS")
+
     def test_repairs_reviewed_entropia_facts_without_reprocessing_poster(self):
         incorrect = (
             normalize_extraction(

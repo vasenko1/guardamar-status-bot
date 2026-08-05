@@ -754,7 +754,7 @@ def _load_snapshot(path: Path) -> Optional[Dict[str, Any]]:
             raise ValueError
         events = []
         for raw in data["events"]:
-            normalized = normalize_extraction(
+            normalized_events = normalize_extraction(
                 {"events": [raw]},
                 source=(
                     raw.get("sources", ["mupi"])[0]
@@ -763,7 +763,10 @@ def _load_snapshot(path: Path) -> Optional[Dict[str, Any]]:
                     and raw.get("sources", ["mupi"])
                     else "mupi"
                 ),
-            )[0]
+            )
+            if not normalized_events:
+                continue
+            normalized = normalized_events[0]
             raw_sources = raw.get("sources") if isinstance(raw, dict) else None
             if (
                 isinstance(raw_sources, list)
