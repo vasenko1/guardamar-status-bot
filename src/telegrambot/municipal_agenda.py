@@ -30,7 +30,11 @@ from .gemini import (
 from .event_translations import cached_title
 from .models import Event
 from .diagnostics import SourceDiagnostic, source_error
-from .todo_cultura import TodoCulturaError, fetch_latest_program
+from .todo_cultura import (
+    TodoCulturaAdmission,
+    TodoCulturaError,
+    fetch_latest_program,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -74,6 +78,7 @@ class SourceEvent:
     place: Optional[str]
     category: str
     sources: Tuple[str, ...] = ()
+    ticket_price_cents: Optional[int] = None
 
 
 class _PosterParser(HTMLParser):
@@ -332,6 +337,12 @@ def _poster_conflicts_with_text(
     )
     if not dates_overlap:
         return False
+    if (
+        text_event.start_time is not None
+        and poster_event.start_time is not None
+        and text_event.start_time != poster_event.start_time
+    ):
+        return False
     if _word_overlap(text_event.title_es, poster_event.title_es) >= 0.5:
         return True
     same_time = (
@@ -373,9 +384,43 @@ def merge_text_and_poster_events(
                 "sources": tuple(dict.fromkeys(
                     current.sources + poster_event.sources
                 )),
+                "ticket_price_cents": (
+                    current.ticket_price_cents
+                    if current.ticket_price_cents is not None
+                    else poster_event.ticket_price_cents
+                ),
             }
         )
     return tuple(merged[:MAX_EVENTS])
+
+
+def _enrich_todo_admissions(
+    events: Tuple[SourceEvent, ...],
+    admissions: Tuple[TodoCulturaAdmission, ...],
+) -> Tuple[SourceEvent, ...]:
+    """Attach explicit prices to matching Todo Cultura event facts."""
+
+    enriched = []
+    for event in events:
+        best = None
+        best_overlap = 0.0
+        for admission in admissions:
+            slug = urllib.parse.unquote(
+                urllib.parse.urlparse(admission.event_url).path
+                .rsplit("/", 1)[-1]
+                .removesuffix(".html")
+                .replace("-", " ")
+            )
+            candidate_overlap = _word_overlap(event.title_es, slug)
+            if candidate_overlap > best_overlap:
+                best = admission
+                best_overlap = candidate_overlap
+        if best is not None and best_overlap >= 0.5:
+            event = SourceEvent(
+                **{**event.__dict__, "ticket_price_cents": best.price_cents}
+            )
+        enriched.append(event)
+    return tuple(enriched)
 
 
 def intersect_verified_poster_events(
@@ -544,15 +589,34 @@ def normalize_extraction(
         start_time, end_time = times
         if end_time is not None and start_time is None:
             raise MunicipalAgendaError("event end time has no start time")
+        title_es = _clean_text(raw.get("title_es"), 120) or ""
+        place = _clean_text(raw.get("place"), 120)
+        normalized_title = title_es.casefold()
+        if "actividades del centro social juvenil" in normalized_title:
+            continue
+        if (
+            "campaña" in normalized_title
+            and start_date != end_date
+            and start_time is None
+            and place is None
+        ):
+            continue
+        ticket_price_cents = raw.get("ticket_price_cents")
+        if ticket_price_cents is not None and (
+            not isinstance(ticket_price_cents, int)
+            or not 0 <= ticket_price_cents <= 100_000
+        ):
+            raise MunicipalAgendaError("invalid event ticket price")
         event = SourceEvent(
-            title_es=_clean_text(raw.get("title_es"), 120) or "",
+            title_es=title_es,
             start_date=start_date,
             end_date=end_date,
             start_time=start_time,
             end_time=end_time,
-            place=_clean_text(raw.get("place"), 120),
+            place=place,
             category="event" if category == "workshop" else category,
             sources=(source,),
+            ticket_price_cents=ticket_price_cents,
         )
         key = (event.title_es.casefold(), event.start_date, event.start_time)
         if key not in seen:
@@ -619,6 +683,7 @@ def _snapshot_data(
                 "place": event.place,
                 "category": event.category,
                 "sources": list(event.sources),
+                "ticket_price_cents": event.ticket_price_cents,
             }
             for event in events
         ],
@@ -783,6 +848,19 @@ def _apply_reviewed_corrections(
                 category="exhibition",
                 sources=("mupi_reviewed",),
             ),
+            SourceEvent(
+                title_es=(
+                    "Exposición de pintura «Luz a pesar del dolor» "
+                    "de Vira Degliarenko"
+                ),
+                start_date=date(2026, 7, 31),
+                end_date=date(2026, 8, 21),
+                start_time="08:00",
+                end_time="14:00",
+                place="Biblioteca Municipal Guardamar del Segura",
+                category="exhibition",
+                sources=("mupi_reviewed", "todo_cultura_reviewed"),
+            ),
             *tuple(
                 SourceEvent(
                     title_es="Rutas nocturnas: senderismo y dinámica grupal",
@@ -832,6 +910,8 @@ def _apply_reviewed_corrections(
                 "rutas nocturnas" in title
                 or "senderismo" in title and "dinámica" in title
                 or "mediterráneo" in title and "lenguaje del agua" in title
+                or "luz a pesar del dolor" in title
+                or "vira deg" in title
                 or "tendero" in title
                 or "open real villa" in title
                 or "open" in title and "villa de guardamar" in title
@@ -934,6 +1014,13 @@ def _apply_reviewed_daily_schedules(
         if not is_mediterraneo:
             scheduled.append(event)
             continue
+        if local_day.weekday() == 6:
+            continue
+        start_time, end_time = (
+            ("10:30", "14:30")
+            if local_day.weekday() == 5
+            else ("08:00", "20:00")
+        )
         scheduled.append(
             SourceEvent(
                 title_es=(
@@ -942,8 +1029,8 @@ def _apply_reviewed_daily_schedules(
                 ),
                 start_date=event.start_date,
                 end_date=event.end_date,
-                start_time=None,
-                end_time=None,
+                start_time=start_time,
+                end_time=end_time,
                 place="Sala de exposiciones Casa de Cultura",
                 category="exhibition",
                 sources=event.sources,
@@ -1129,6 +1216,7 @@ async def refresh_municipal_catalog(
                 isinstance(todo_source, dict)
                 and todo_source.get("sha256") == todo_program.sha256
                 and todo_source.get("date") == local_now.date().isoformat()
+                and todo_source.get("parser_version") == 2
             ):
                 todo_events = old_todo_events
             else:
@@ -1142,6 +1230,10 @@ async def refresh_municipal_catalog(
                     todo_result,
                     todo_month,
                     "todo_cultura",
+                )
+                todo_events = _enrich_todo_admissions(
+                    todo_events,
+                    todo_program.admissions,
                 )
         except (TodoCulturaError, GeminiError, MunicipalAgendaError) as exc:
             if old_todo_events:
@@ -1214,6 +1306,7 @@ async def refresh_municipal_catalog(
                 "sha256": todo_program.sha256,
                 "modified": todo_program.modified,
                 "date": local_now.date().isoformat(),
+                "parser_version": 2,
                 "checked_at": now.isoformat(),
             }
         elif isinstance(todo_source, dict) and todo_source:
@@ -1432,6 +1525,7 @@ async def fetch_today_municipal_events(
                 place=source.place,
                 active_until=source.end_date,
                 category=source.category,
+                ticket_price_cents=source.ticket_price_cents,
                 is_final_day=(
                     source.start_date != source.end_date
                     and local_day == source.end_date

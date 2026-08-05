@@ -168,6 +168,29 @@ class AgendaNormalizationTests(unittest.TestCase):
         self.assertEqual(merged[0].ends_at.hour, 12)
         self.assertEqual(merged[0].ticket_price_cents, 500)
 
+    def test_duplicate_combines_supplement_price_with_official_ticket_url(self):
+        starts_at = datetime(2026, 8, 5, 22, 0, tzinfo=TZ)
+        supplement = Event(
+            title="Концерт Spanish Brass «Top secret»",
+            starts_at=starts_at,
+            place="Castell de Guardamar",
+            ticket_price_cents=1500,
+        )
+        official = Event(
+            title="Spanish Brass Top secret",
+            starts_at=starts_at,
+            ticket_url=(
+                "https://www.agendaguardamar.com/entradas/48/concert.html"
+                "?webfecha=05/08/2026&webhora=22:00"
+            ),
+        )
+
+        merged = _merge_events((supplement,), (official,))
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0].ticket_price_cents, 1500)
+        self.assertIn("webfecha=05/08/2026", merged[0].ticket_url)
+
     def test_same_place_and_time_does_not_merge_unrelated_events(self):
         starts_at = datetime(2026, 8, 8, 10, 0, tzinfo=TZ)
         first = Event("Концерт", starts_at, place="Casa de Cultura")

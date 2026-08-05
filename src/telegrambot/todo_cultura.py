@@ -34,11 +34,18 @@ class TodoCulturaError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class TodoCulturaAdmission:
+    event_url: str
+    price_cents: int
+
+
+@dataclass(frozen=True)
 class TodoCulturaProgram:
     text: str
     sha256: str
     source_url: str
     modified: Optional[str]
+    admissions: Tuple[TodoCulturaAdmission, ...] = ()
 
 
 class _TextParser(HTMLParser):
@@ -112,6 +119,57 @@ def _daily_section(lines: List[str], target_date: date) -> str:
 def _allowed_url(url: str) -> bool:
     parsed = urllib.parse.urlparse(url)
     return parsed.scheme == "https" and parsed.hostname in API_HOSTS
+
+
+def _admissions(rendered: str) -> Tuple[TodoCulturaAdmission, ...]:
+    """Read explicit prices linked to official Agenda Guardamar events."""
+
+    result = []
+    seen = set()
+    for paragraph in re.findall(
+        r"<p\b[^>]*>(.*?)</p>", rendered, flags=re.IGNORECASE | re.DOTALL
+    ):
+        plain = " ".join(
+            html.unescape(re.sub(r"<[^>]+>", " ", paragraph)).split()
+        )
+        price_match = re.search(
+            r"\bprecio\s+de\s+la\s+entrada\s+es\s+de\s+"
+            r"(\d{1,4})(?:[,.](\d{1,2}))?\s+euros?\b",
+            plain,
+            re.IGNORECASE,
+        )
+        if price_match is None:
+            continue
+        euros = int(price_match.group(1))
+        cents = int((price_match.group(2) or "0").ljust(2, "0"))
+        price_cents = euros * 100 + cents
+        if not 0 <= price_cents <= 100_000:
+            continue
+        for raw_url in re.findall(
+            r"href\s*=\s*['\"]([^'\"]+)['\"]", paragraph, re.IGNORECASE
+        ):
+            event_url = html.unescape(raw_url)
+            parsed = urllib.parse.urlparse(event_url)
+            if (
+                parsed.scheme != "https"
+                or parsed.hostname not in {
+                    "agendaguardamar.com",
+                    "www.agendaguardamar.com",
+                }
+                or "/espectaculo/" not in parsed.path
+                or not parsed.path.endswith(".html")
+            ):
+                continue
+            normalized = urllib.parse.urlunparse(
+                parsed._replace(query="", fragment="")
+            )
+            if normalized not in seen:
+                seen.add(normalized)
+                result.append(TodoCulturaAdmission(normalized, price_cents))
+            break
+        if len(result) == 20:
+            break
+    return tuple(result)
 
 
 class _RedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -232,6 +290,7 @@ def _read_latest_program(target_date: date) -> TodoCulturaProgram:
         sha256=hashlib.sha256(text.encode("utf-8")).hexdigest(),
         source_url=source_url,
         modified=modified if isinstance(modified, str) else None,
+        admissions=_admissions(rendered),
     )
 
 

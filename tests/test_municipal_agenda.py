@@ -11,6 +11,7 @@ from telegrambot.municipal_agenda import (
     MunicipalAgendaError,
     SourceEvent,
     _current_events,
+    _enrich_todo_admissions,
     _cached_current_events,
     _apply_reviewed_corrections,
     _apply_reviewed_daily_schedules,
@@ -29,7 +30,11 @@ from telegrambot.municipal_agenda import (
     normalize_extraction_candidates,
 )
 from telegrambot.gemini import GeminiError
-from telegrambot.todo_cultura import TodoCulturaError, TodoCulturaProgram
+from telegrambot.todo_cultura import (
+    TodoCulturaAdmission,
+    TodoCulturaError,
+    TodoCulturaProgram,
+)
 
 TZ = ZoneInfo("Europe/Madrid")
 
@@ -161,6 +166,82 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(merged), 1)
         self.assertEqual(merged[0].title_es, "SPANISH BRASS")
         self.assertEqual(merged[0].sources, ("turismo_html", "mupi"))
+
+    def test_same_titled_sessions_at_different_times_are_not_merged(self):
+        morning = SourceEvent(
+            "Actividad juvenil", date(2026, 8, 5), date(2026, 8, 5),
+            "08:30", "14:00", "Centro", "event", ("turismo_html",),
+        )
+        evening = SourceEvent(
+            "Actividad juvenil", date(2026, 8, 5), date(2026, 8, 5),
+            "17:00", "21:00", "Centro", "event", ("todo_cultura",),
+        )
+
+        merged = merge_text_and_poster_events((morning,), (evening,))
+
+        self.assertEqual(len(merged), 2)
+
+    def test_todo_admission_enriches_matching_event_only(self):
+        spanish_brass = SourceEvent(
+            "Concierto Spanish Brass «Top secret»",
+            date(2026, 8, 5), date(2026, 8, 5), "22:00", None,
+            "Castell de Guardamar", "event", ("todo_cultura",),
+        )
+        other = SourceEvent(
+            "Exposición Mediterráneo", date(2026, 8, 5),
+            date(2026, 8, 5), None, None, "Casa de Cultura",
+            "exhibition", ("todo_cultura",),
+        )
+        admissions = (TodoCulturaAdmission(
+            "https://www.agendaguardamar.com/espectaculo/48/"
+            "spanish-brass-top-secret.html",
+            1500,
+        ),)
+
+        enriched = _enrich_todo_admissions(
+            (spanish_brass, other), admissions
+        )
+
+        self.assertEqual(enriched[0].ticket_price_cents, 1500)
+        self.assertIsNone(enriched[1].ticket_price_cents)
+
+    def test_routine_youth_hours_and_vague_campaign_are_omitted(self):
+        result = normalize_extraction_candidates({
+            "month": "2026-08",
+            "events": [
+                {
+                    "title_es": "Actividades del Centro Social Juvenil",
+                    "start_date": "2026-08-05",
+                    "end_date": "2026-08-05",
+                    "start_time": "08:30",
+                    "end_time": "14:00",
+                    "place": "Centro Social Juvenil",
+                    "category": "event",
+                },
+                {
+                    "title_es": "Campaña de voluntariado medioambiental",
+                    "start_date": "2026-08-01",
+                    "end_date": "2026-08-31",
+                    "start_time": None,
+                    "end_time": None,
+                    "place": None,
+                    "category": "event",
+                },
+                {
+                    "title_es": "Concierto Spanish Brass",
+                    "start_date": "2026-08-05",
+                    "end_date": "2026-08-05",
+                    "start_time": "22:00",
+                    "end_time": None,
+                    "place": "Castell de Guardamar",
+                    "category": "event",
+                },
+            ],
+        }, "2026-08", "todo_cultura")
+
+        self.assertEqual([event.title_es for event in result], [
+            "Concierto Spanish Brass"
+        ])
 
     def test_poster_fact_requires_independent_agreement(self):
         first = SourceEvent(
@@ -412,8 +493,8 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                 "Taller de cultura K-Pop y TikTok",
             ],
         )
-        self.assertIsNone(active[1].start_time)
-        self.assertIsNone(active[1].end_time)
+        self.assertEqual(active[1].start_time, "10:30")
+        self.assertEqual(active[1].end_time, "14:30")
 
     def test_keeps_entropia_when_site_advances_to_august_poster(self):
         august_events = normalize_extraction(
@@ -440,7 +521,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(entropia.end_date, datetime(2026, 7, 29).date())
         self.assertEqual(entropia.start_time, "08:00")
 
-    def test_does_not_infer_mediterraneo_hours_from_venue(self):
+    def test_uses_published_mediterraneo_visiting_hours(self):
         event = SourceEvent(
             title_es=(
                 "EXPOSICIÓN DE PINTURA: "
@@ -464,12 +545,11 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             (event,), datetime(2026, 8, 2).date()
         )
 
-        self.assertIsNone(weekday[0].start_time)
-        self.assertIsNone(weekday[0].end_time)
-        self.assertIsNone(saturday[0].start_time)
-        self.assertIsNone(saturday[0].end_time)
-        self.assertIsNone(sunday[0].start_time)
-        self.assertIsNone(sunday[0].end_time)
+        self.assertEqual(weekday[0].start_time, "08:00")
+        self.assertEqual(weekday[0].end_time, "20:00")
+        self.assertEqual(saturday[0].start_time, "10:30")
+        self.assertEqual(saturday[0].end_time, "14:30")
+        self.assertEqual(sunday, ())
         self.assertEqual(
             weekday[0].title_es,
             (

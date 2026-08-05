@@ -268,8 +268,9 @@ switches its poster link to August before the July exhibition ends.
 
 For `Mediterráneo, el lenguaje del agua`, the August 2026 official text agenda
 is the reviewed authority: paintings and sculptures by Humberto Valencia
-Giraldo, 19 June–14 August, in Sala de exposiciones Casa de Cultura. Visits are
-`09:00–20:00` Monday through Friday and `10:00–14:00` Saturday; the event is
+Giraldo, 19 June–14 August, in Sala de exposiciones Casa de Cultura. The
+published August programme gives visits as `08:00–20:00` Monday through Friday
+and `10:30–14:30` Saturday; the event is
 omitted on Sunday because no Sunday visiting time is published. The comma in
 the official title is preserved. These are event-specific hours, not inferred
 Casa de Cultura opening hours.
@@ -290,6 +291,13 @@ unattributed article, a missing date section, an oversized section, redirects
 outside the source hosts and malformed JSON. Supplemental results have lower
 merge priority than official municipal HTML and Agenda Guardamar; absence from
 Todo Cultura never means cancellation.
+
+An explicit regular admission price in that same bounded programme may enrich
+the matching event only when the price paragraph links to an HTTPS Agenda
+Guardamar event page and the normalized titles agree. The existing Agenda
+Guardamar occurrence remains the authority for its dated purchase link.
+Routine Centro Social Juvenil opening sessions and undated, placeless campaigns
+are not Morning Digest events.
 
 Agenda Guardamar detail pages are the authoritative source for their own
 sessions and ticket links. One page may contain several dated sessions; each

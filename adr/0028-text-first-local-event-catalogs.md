@@ -67,6 +67,11 @@ oversized daily section leaves the prior atomic snapshot intact. Giglon is
 treated only as a ticket platform; its unstable internal listing interface is
 not a municipal event feed.
 
+The same bounded Todo Cultura article may supply an explicit regular price only
+when that price paragraph links to the matching official Agenda Guardamar event
+page. Agenda Guardamar still supplies the occurrence-specific purchase URL.
+Routine facility hours and vague campaigns remain excluded.
+
 ## Alternatives rejected
 
 - OCR as the primary source: less reliable than available official text.
