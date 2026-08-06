@@ -1107,7 +1107,7 @@ def _apply_reviewed_daily_schedules(
                 title_es=(
                     "DIXI PROJECT: Viaje por la música de los años 20"
                 ),
-                place="Plaça dels Llauradors",
+                place="Plaza Labradores",
             ))
             continue
         if is_ball_destiu:

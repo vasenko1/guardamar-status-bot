@@ -281,6 +281,9 @@ Casa de Cultura opening hours.
 The same reviewed programme identifies the 6 August `DIXI PROJECT` item as a
 journey through 1920s music at Plaça dels Llauradors, and `KIKI MORENTE` as a
 22:00 flamenco concert within `VI Estival al Castell`, regular price `25 €`.
+The digest renders the DIXI venue as `Plaza Labradores`, the Spanish municipal
+street form recognized reliably by Google Maps; other Ayuntamiento material
+also uses the Valencian form `Plaça Llauradors`, without `dels`.
 It also identifies `BALL D’ESTIU` as a free `21:30–23:30` summer dance session
 inside Parque Reina Sofía at Auditorio Orquesta GÚMAR. The digest uses exact
 reviewed Russian titles for these bounded occurrences, renders the park before

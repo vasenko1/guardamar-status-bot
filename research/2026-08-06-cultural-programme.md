@@ -39,7 +39,9 @@ HTML and cannot cancel or override official facts.
 ## Display decisions
 
 - `DIXI PROJECT` renders as a jazz concert and preserves the published
-  1920s-music description. Free admission is not inferred.
+  1920s-music description. Its map label is normalized to the municipality's
+  Spanish `Plaza Labradores`, which Google Maps recognizes more reliably than
+  the agenda wording. Free admission is not inferred.
 - `BALL D’ESTIU` renders as a summer dance evening, not a formal Russian
   “ball”; its venue is `Parque Reina Sofía (Auditorio Orquesta GÚMAR)`.
 - `KIKI MORENTE` explicitly names flamenco and VI Estival al Castell.
