@@ -53,6 +53,7 @@ BEACH_NAMES = {
     "Camp": "Camp",
     "Ortigues": "Ortigues",
 }
+MAX_BEACH_NAMES_PER_LINE = 3
 SEA_STATES = {
     "calm": "спокойные",
     "slight": "слабые",
@@ -374,7 +375,17 @@ def _beach_operational_lines(
         nearby_flags = (("Centre", beach.flag_color),)
     if nearby_flags:
         lines.append("🏖 <b>Флаги на пляжах:</b>")
+        all_known_green = (
+            len(nearby_flags) == len(BEACH_ORDER)
+            and {name for name, _ in nearby_flags} == set(BEACH_ORDER)
+            and all(color == "green" for _, color in nearby_flags)
+            and not (notice is not None and notice.bathing_prohibited)
+        )
+        if all_known_green:
+            lines.append("   🟢 На всех пляжах")
         for color in ("red", "yellow", "green"):
+            if all_known_green:
+                break
             matching = [
                 name
                 for name, flag_color in nearby_flags
@@ -385,19 +396,24 @@ def _beach_operational_lines(
             )
             if not matching:
                 continue
-            lines.append(
-                f"   {FLAG_DOTS[color]} "
-                f"{', '.join(BEACH_NAMES.get(name, name) for name in matching)}"
-            )
+            for offset in range(0, len(matching), MAX_BEACH_NAMES_PER_LINE):
+                chunk = matching[offset:offset + MAX_BEACH_NAMES_PER_LINE]
+                lines.append(
+                    f"   {FLAG_DOTS[color]} "
+                    f"{', '.join(BEACH_NAMES.get(name, name) for name in chunk)}"
+                )
     if beach is not None and beach.jellyfish_beaches:
         jellyfish = sorted(
             beach.jellyfish_beaches,
             key=lambda name: BEACH_ORDER.get(name, len(BEACH_ORDER)),
         )
-        lines.append(
-            "🪼 Медузы: "
-            + ", ".join(BEACH_NAMES.get(name, name) for name in jellyfish)
-        )
+        for offset in range(0, len(jellyfish), MAX_BEACH_NAMES_PER_LINE):
+            chunk = jellyfish[offset:offset + MAX_BEACH_NAMES_PER_LINE]
+            prefix = "🪼 Медузы: " if offset == 0 else "   🪼 "
+            lines.append(
+                prefix
+                + ", ".join(BEACH_NAMES.get(name, name) for name in chunk)
+            )
     if notice is not None:
         heading = (
             "⛔ Ограничение купания"

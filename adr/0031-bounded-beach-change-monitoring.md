@@ -23,9 +23,9 @@ The monitor runs only when all of these conditions are true:
 - the check is one of the bounded scheduled invocations defined below.
 
 Monitor every valid, active Guardamar beach returned by the municipality-linked
-SafeBeach page. The three-beach display limit and preferred/fallback ordering
-remain presentation rules for the daily digest only; they do not limit the
-monitor.
+SafeBeach page. ADR 0032 also retains all six known zones for the daily digest,
+so the later full digest can become the monitor's complete baseline without a
+second selection policy.
 
 The monitor runs even when the morning digest had no beach section. A source
 failure then costs only one bounded request: it produces no group message and

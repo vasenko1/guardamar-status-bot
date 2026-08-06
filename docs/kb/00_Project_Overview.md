@@ -74,8 +74,8 @@ The project is successful when the digest is:
 The MVP first publishes one short message at 07:30. During the SafeBeach
 season, short external invocations check for complete current beach data every
 five minutes from 10:10 through 10:40. Before the final attempt, completeness
-requires current flags for Centre / Babilònia, Roqueta, and Vivers. At 10:40,
-any non-empty verified Guardamar beach set is eligible. An eligible beach or
+requires current flags for all six known Guardamar zones. At 10:40, any
+non-empty verified Guardamar beach set is eligible. An eligible beach or
 new Mayor-channel update triggers one fresh full digest; Telegram receives the
 replacement before the earlier message is deleted. Otherwise the 07:30 message
 remains.

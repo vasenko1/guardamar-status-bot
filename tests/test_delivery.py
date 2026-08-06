@@ -37,7 +37,7 @@ class DeliveryRunTests(unittest.IsolatedAsyncioTestCase):
             _beach_ready_for_update(partial, now, final_attempt=True)
         )
 
-    def test_three_preferred_beaches_publish_before_final_attempt(self):
+    def test_all_six_beaches_publish_before_final_attempt(self):
         now = datetime(2026, 7, 29, 10, 20, tzinfo=MADRID)
         complete = BeachStatus(
             flag_color="yellow",
@@ -47,16 +47,46 @@ class DeliveryRunTests(unittest.IsolatedAsyncioTestCase):
                 ("Centre", "yellow"),
                 ("Roqueta", "yellow"),
                 ("Vivers", "yellow"),
+                ("Montcaio", "red"),
+                ("Camp", "green"),
+                ("Ortigues", "green"),
             ),
             updated_times=(
                 ("Centre", now.time().replace(second=0, microsecond=0)),
                 ("Roqueta", now.time().replace(second=0, microsecond=0)),
                 ("Vivers", now.time().replace(second=0, microsecond=0)),
+                ("Montcaio", now.time().replace(second=0, microsecond=0)),
+                ("Camp", now.time().replace(second=0, microsecond=0)),
+                ("Ortigues", now.time().replace(second=0, microsecond=0)),
             ),
         )
 
         self.assertTrue(
             _beach_ready_for_update(complete, now, final_attempt=False)
+        )
+
+    def test_three_preferred_beaches_keep_waiting_before_final_attempt(self):
+        now = datetime(2026, 7, 29, 10, 20, tzinfo=MADRID)
+        preferred = BeachStatus(
+            flag_color="green",
+            sea_temperature_c=27,
+            source_date=now.date(),
+            nearby_flags=(
+                ("Centre", "green"),
+                ("Roqueta", "green"),
+                ("Vivers", "green"),
+            ),
+            updated_times=tuple(
+                (name, now.time().replace(second=0, microsecond=0))
+                for name in ("Centre", "Roqueta", "Vivers")
+            ),
+        )
+
+        self.assertFalse(
+            _beach_ready_for_update(preferred, now, final_attempt=False)
+        )
+        self.assertTrue(
+            _beach_ready_for_update(preferred, now, final_attempt=True)
         )
 
     async def test_success_is_persisted_and_duplicate_does_no_work(self):

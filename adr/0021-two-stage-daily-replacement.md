@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-07-29
 - Supersedes: ADR 0016 and the single-run state rules in ADR 0008
+- Superseded in part by: ADR 0032
 
 ## Context
 
@@ -41,11 +42,11 @@ independent messages leaves stale duplicate information in the group.
 
 ## Consequences
 
-The group normally contains one current full message, city information arrives
-early, and the replacement normally contains all three preferred beaches.
-Persistently missing records still allow a truthful partial replacement at
-10:40. Seasonal checks add at most seven small SafeBeach requests and no idle
-runtime.
+The group normally contains one current full message and city information
+arrives early. ADR 0032 now requires all six known zones for replacement before
+the final attempt. Persistently missing records still allow a truthful partial
+replacement at 10:40. Seasonal checks add at most seven small SafeBeach
+requests and no idle runtime.
 Telegram still has an unavoidable edge when a successful send response is lost
 before its message ID can be stored.
 

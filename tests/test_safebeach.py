@@ -199,7 +199,7 @@ class SafeBeachNormalizationTests(unittest.TestCase):
 
         self.assertEqual(raised.exception.diagnostic_code, "NO-DATA")
 
-    def test_completeness_requires_all_three_preferred_beaches(self):
+    def test_completeness_requires_all_six_known_beaches(self):
         status = _normalize(
             [
                 _marker("verde", updated="10:05"),
@@ -212,6 +212,21 @@ class SafeBeachNormalizationTests(unittest.TestCase):
                     "verde",
                     beach_name="Platja dels Vivers",
                     updated="10:03",
+                ),
+                _marker(
+                    "roja",
+                    beach_name="Platja del Montcaio",
+                    updated="10:02",
+                ),
+                _marker(
+                    "verde",
+                    beach_name="Platja del Camp",
+                    updated="10:01",
+                ),
+                _marker(
+                    "amarilla",
+                    beach_name="Platja de les Ortigues",
+                    updated="10:00",
                 ),
             ]
         )
@@ -250,6 +265,30 @@ class SafeBeachNormalizationTests(unittest.TestCase):
                 now,
             )
         )
+
+    def test_current_status_rejects_duplicate_or_unscoped_records(self):
+        now = datetime(2026, 7, 29, 10, 10, tzinfo=MADRID)
+        duplicate = BeachStatus(
+            flag_color="green",
+            sea_temperature_c=24,
+            source_date=now.date(),
+            nearby_flags=(
+                ("Centre", "green"),
+                ("Centre", "green"),
+            ),
+            updated_times=(("Centre", time(10, 5)),),
+        )
+        unscoped_jellyfish = BeachStatus(
+            flag_color="green",
+            sea_temperature_c=24,
+            source_date=now.date(),
+            nearby_flags=(("Centre", "green"),),
+            jellyfish_beaches=("Roqueta",),
+            updated_times=(("Centre", time(10, 5)),),
+        )
+
+        self.assertFalse(is_current_status(duplicate, now))
+        self.assertFalse(is_current_status(unscoped_jellyfish, now))
 
     def test_ignores_ended_service_and_allows_missing_temperature(self):
         status = _normalize(
@@ -364,7 +403,7 @@ class SafeBeachTransportTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(status.source_date, TEST_DAY)
 
-    async def test_fills_three_slots_from_lower_priority_active_beaches(self):
+    async def test_keeps_every_current_known_beach(self):
         markers = [
             _marker("verde", updated=""),
             _marker(
@@ -387,6 +426,12 @@ class SafeBeachTransportTests(unittest.IsolatedAsyncioTestCase):
                 beach_name="Platja del Camp",
                 updated="10:01",
             ),
+            _marker(
+                "amarilla",
+                beach_name="Platja de les Ortigues",
+                updated="10:00",
+                jellyfish="Sí",
+            ),
         ]
         with patch(
             "telegrambot.safebeach._read_page",
@@ -402,8 +447,11 @@ class SafeBeachTransportTests(unittest.IsolatedAsyncioTestCase):
                 ("Roqueta", "yellow"),
                 ("Vivers", "green"),
                 ("Montcaio", "red"),
+                ("Camp", "green"),
+                ("Ortigues", "yellow"),
             ),
         )
+        self.assertEqual(status.jellyfish_beaches, ("Ortigues",))
         self.assertFalse(
             is_complete_current_status(
                 status,

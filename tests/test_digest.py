@@ -7,6 +7,7 @@ from telegrambot.digest import (
     build_message,
 )
 from telegrambot.models import (
+    BeachNotice,
     BeachStatus,
     Event,
     Holiday,
@@ -829,6 +830,106 @@ class DigestMessageTests(unittest.TestCase):
         self.assertIn("   🟡 Roqueta", updated)
         self.assertIn("   🟢 Vivers", updated)
         self.assertNotIn("Centre / Babilònia", updated)
+
+    def test_groups_all_beaches_with_at_most_three_names_per_row(self):
+        morning = "🌅 Доброе утро, Гуардамар!"
+        beach = BeachStatus(
+            flag_color="red",
+            sea_temperature_c=28,
+            nearby_flags=(
+                ("Centre", "red"),
+                ("Roqueta", "red"),
+                ("Vivers", "red"),
+                ("Montcaio", "red"),
+                ("Camp", "green"),
+                ("Ortigues", "green"),
+            ),
+            jellyfish_beaches=(
+                "Centre",
+                "Roqueta",
+                "Vivers",
+                "Montcaio",
+            ),
+        )
+
+        updated = build_fallback_update(morning, beach, None)
+
+        self.assertIn(
+            "   🔴 Centre / Babilònia, Roqueta, Vivers\n"
+            "   🔴 Montcaio\n"
+            "   🟢 Camp, Ortigues",
+            updated,
+        )
+        self.assertIn(
+            "🪼 Медузы: Centre / Babilònia, Roqueta, Vivers\n"
+            "   🪼 Montcaio",
+            updated,
+        )
+
+    def test_compacts_only_a_complete_all_green_beach_set(self):
+        morning = "🌅 Доброе утро, Гуардамар!"
+        all_green = BeachStatus(
+            flag_color="green",
+            sea_temperature_c=28,
+            nearby_flags=tuple(
+                (name, "green")
+                for name in (
+                    "Centre",
+                    "Roqueta",
+                    "Vivers",
+                    "Montcaio",
+                    "Camp",
+                    "Ortigues",
+                )
+            ),
+        )
+
+        compact = build_fallback_update(morning, all_green, None)
+        partial = build_fallback_update(
+            morning,
+            BeachStatus(
+                flag_color="green",
+                sea_temperature_c=28,
+                nearby_flags=all_green.nearby_flags[:-1],
+            ),
+            None,
+        )
+
+        self.assertIn("   🟢 На всех пляжах", compact)
+        self.assertNotIn("На всех пляжах", partial)
+        self.assertIn(
+            "   🟢 Centre / Babilònia, Roqueta, Vivers\n"
+            "   🟢 Montcaio, Camp",
+            partial,
+        )
+
+    def test_official_prohibition_disables_all_green_compaction(self):
+        morning = "🌅 Доброе утро, Гуардамар!"
+        all_green = BeachStatus(
+            flag_color="green",
+            sea_temperature_c=28,
+            nearby_flags=tuple(
+                (name, "green")
+                for name in (
+                    "Centre",
+                    "Roqueta",
+                    "Vivers",
+                    "Montcaio",
+                    "Camp",
+                    "Ortigues",
+                )
+            ),
+        )
+        notice = BeachNotice(
+            text="Купание временно запрещено.",
+            bathing_prohibited=True,
+            published_at=datetime(2026, 7, 29, 10, 20, tzinfo=timezone.utc),
+        )
+
+        updated = build_fallback_update(morning, all_green, notice)
+
+        self.assertNotIn("На всех пляжах", updated)
+        self.assertIn("⛔ Ограничение купания", updated)
 
     def test_renders_all_events_and_expands_street_abbreviation(self):
         digest = MorningDigest(

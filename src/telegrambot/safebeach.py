@@ -28,8 +28,7 @@ BEACH_PRIORITY = {
 BEACH_ORDER = {
     name: index for index, name in enumerate(BEACH_PRIORITY.values())
 }
-MAX_DISPLAYED_BEACHES = 3
-PREFERRED_BEACHES = ("Centre", "Roqueta", "Vivers")
+KNOWN_BEACHES = tuple(BEACH_PRIORITY.values())
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 
 _MARKERS_ASSIGNMENT = re.compile(rb"\bwindow\.SB_MARKERS\s*=\s*")
@@ -448,14 +447,20 @@ def is_current_status(
 
     if status is None:
         return False
-    expected = set(BEACH_PRIORITY.values())
-    flags = {name for name, _ in status.nearby_flags}
+    expected = set(KNOWN_BEACHES)
+    flag_names = [name for name, _ in status.nearby_flags]
+    time_names = [name for name, _ in status.updated_times]
+    jellyfish_names = list(status.jellyfish_beaches)
+    flags = set(flag_names)
     times = dict(status.updated_times)
     if (
         not flags
-        or len(flags) > MAX_DISPLAYED_BEACHES
+        or len(flag_names) != len(flags)
+        or len(time_names) != len(set(time_names))
+        or len(jellyfish_names) != len(set(jellyfish_names))
         or not flags <= expected
         or set(times) != flags
+        or not set(jellyfish_names) <= flags
         or any(
             color not in {"green", "yellow", "red"}
             for _, color in status.nearby_flags
@@ -478,19 +483,19 @@ def is_complete_current_status(
     status: Optional[BeachStatus],
     now: datetime,
 ) -> bool:
-    """Require all three preferred beaches before the final attempt."""
+    """Require every known Guardamar beach before the final attempt."""
 
     if not is_current_status(status, now):
         return False
     flags = {name for name, _ in status.nearby_flags}
-    return set(PREFERRED_BEACHES) <= flags
+    return flags == set(KNOWN_BEACHES)
 
 
 def _current_status(
     status: Optional[BeachStatus],
     now: datetime,
 ) -> Optional[BeachStatus]:
-    """Keep up to three timestamped current flags in product priority order."""
+    """Keep every timestamped current flag in product priority order."""
 
     if status is None:
         return None
@@ -509,7 +514,7 @@ def _current_status(
         )
     ]
     flags.sort(key=lambda item: BEACH_ORDER[item[0]])
-    selected_flags = tuple(flags[:MAX_DISPLAYED_BEACHES])
+    selected_flags = tuple(flags)
     if not selected_flags:
         return None
     selected_names = {name for name, _ in selected_flags}

@@ -153,11 +153,11 @@ copy and inserts only newly verified beach information.
 The SafeBeach adapter performs one bounded HTML request per invocation and
 does not add an internal retry or cache. The external five-minute invocations
 provide recovery. It accepts only a page carrying today's local calendar date
-and independently valid, timestamped beach records. It returns at most three
-flags: Centre / Babilònia, Roqueta, and Vivers first, then other active
-Guardamar beaches as named fallbacks. Conflicting or malformed records are
-omitted. Update checks before 10:40 continue until all three preferred beaches
-are present. The 10:40 attempt may use any non-empty valid selected set so a
+and independently valid, timestamped beach records. It returns every valid
+record among the six known Guardamar zones in fixed product order. Conflicting,
+duplicate, or malformed records are omitted. Update checks before 10:40
+continue until all six zones are present. The 10:40 attempt may use any
+non-empty valid set so a
 persistently missing record does not suppress all beach information.
 
 Mayor, Policía Local, and municipal-agenda transports accept only their exact

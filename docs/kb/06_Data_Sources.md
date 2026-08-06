@@ -108,18 +108,17 @@ AEMET's period. Lower or malformed values are omitted.
 Guardamar municipality links to
 `https://info.safebeach.es/guardamar-del-segura`. The public page embeds
 structured records for Guardamar beaches. The adapter selects
-up to three active records. It prioritizes `Platja Centre / Babilònia`,
-`Platja La Roqueta`, and `Platja dels Vivers`, then fills missing slots from
-`Platja del Montcaio`, `Platja del Camp`, and `Platja de les Ortigues`.
-Fallback records retain their own beach names and are never treated as
-measurements for a missing preferred beach. The adapter reads only name,
+every valid active record among `Platja Centre / Babilònia`, `Platja La
+Roqueta`, `Platja dels Vivers`, `Platja del Montcaio`, `Platja del Camp`, and
+`Platja de les Ortigues`. Records retain their own beach names and are never
+treated as measurements for a missing beach. The adapter reads only name,
 activity state, service-ended state, update time, and flag color, plus
 jellyfish presence, and Centre water temperature, sea state, wind speed, and
 wind direction.
 
 Only active, non-ended lifeguard records are eligible. Before the final 10:40
-attempt, a replacement requires plausible current flags for all three
-preferred beaches. At 10:40, one or more valid selected flags are sufficient.
+attempt, a replacement requires plausible current flags for all six known
+zones. At 10:40, one or more valid current flags are sufficient.
 A missing timestamp omits only that beach; it delays early replacement but
 does not block the final partial replacement. Missing beaches are omitted;
 their colors are never inferred. Optional sea, wind, and jellyfish fields
