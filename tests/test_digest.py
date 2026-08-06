@@ -688,6 +688,27 @@ class DigestMessageTests(unittest.TestCase):
         self.assertIn("query=Parque+Reina+Sof", message)
         self.assertIn("🎟 Бесплатно", message)
 
+    def test_plaza_labradores_uses_coordinates_not_ambiguous_search(self):
+        digest = MorningDigest(
+            weather=None,
+            warnings=(),
+            warnings_available=True,
+            events=(Event(
+                title="Dixie Project",
+                starts_at=None,
+                place="Plaza Labradores",
+            ),),
+        )
+
+        message = build_message(digest)
+
+        self.assertIn(
+            "query=38.0921948%2C-0.6552320",
+            message,
+        )
+        self.assertIn(">Plaza Labradores</a>", message)
+        self.assertNotIn("query=Plaza+Labradores", message)
+
     def test_formats_market_time_range_and_place(self):
         digest = MorningDigest(
             weather=Weather(
