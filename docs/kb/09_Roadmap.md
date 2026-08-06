@@ -66,6 +66,13 @@
 - Add sources only where they increase daily value.
 - Improve localization or personalization only if demand is clear.
 - Optimize measured bottlenecks rather than anticipated ones.
+- Parked idea: after the 10:10 beach update, optionally send one current beach
+  camera still as a separate reply to the digest. Consider it only when the
+  owner permits republication and exposes a stable direct JPEG/snapshot URL;
+  do not add video capture or `ffmpeg` to the weak Android runtime. The photo
+  must include beach, capture time and source in its short caption, must not be
+  used to infer a flag automatically, and must be skipped silently when the
+  camera is unavailable. It must never delay or fail the text digest.
 
 ## Approved second feature
 
