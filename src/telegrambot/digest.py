@@ -315,7 +315,11 @@ def _event_place_link(value: str) -> str:
     """Render one fixed-host Google Maps search for a verified place."""
 
     source_place = " ".join(value.split())
-    if source_place.casefold() == "plaza labradores":
+    if source_place.casefold() in {
+        "plaça dels llauradors",
+        "plaça llauradors",
+        "plaza labradores",
+    }:
         query = "38.0921948,-0.6552320"
     elif "guardamar" not in source_place.casefold():
         query = f"{source_place}, Guardamar del Segura"

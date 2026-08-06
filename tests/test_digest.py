@@ -688,7 +688,7 @@ class DigestMessageTests(unittest.TestCase):
         self.assertIn("query=Parque+Reina+Sof", message)
         self.assertIn("🎟 Бесплатно", message)
 
-    def test_plaza_labradores_uses_coordinates_not_ambiguous_search(self):
+    def test_placa_dels_llauradors_uses_coordinates_not_ambiguous_search(self):
         digest = MorningDigest(
             weather=None,
             warnings=(),
@@ -696,7 +696,7 @@ class DigestMessageTests(unittest.TestCase):
             events=(Event(
                 title="Dixie Project",
                 starts_at=None,
-                place="Plaza Labradores",
+                place="Plaça dels Llauradors",
             ),),
         )
 
@@ -706,8 +706,9 @@ class DigestMessageTests(unittest.TestCase):
             "query=38.0921948%2C-0.6552320",
             message,
         )
-        self.assertIn(">Plaza Labradores</a>", message)
+        self.assertIn(">Plaça dels Llauradors</a>", message)
         self.assertNotIn("query=Plaza+Labradores", message)
+        self.assertNotIn("query=Pla%C3%A7a+dels+Llauradors", message)
 
     def test_formats_market_time_range_and_place(self):
         digest = MorningDigest(

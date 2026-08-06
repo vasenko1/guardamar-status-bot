@@ -39,8 +39,8 @@ HTML and cannot cancel or override official facts.
 ## Display decisions
 
 - `DIXI PROJECT` renders as a jazz concert and preserves the published
-  1920s-music description. Its map label is normalized to the municipality's
-  Spanish `Plaza Labradores`; the link uses the verified square coordinates
+  1920s-music description. Its visible venue remains the Google Maps label
+  `Plaça dels Llauradors`; the link uses the verified square coordinates
   `38.0921948,-0.6552320` because Google Maps name search can select a nearby
   dental clinic. Free admission is not inferred.
 - `BALL D’ESTIU` renders as a summer dance evening, not a formal Russian

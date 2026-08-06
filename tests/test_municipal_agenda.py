@@ -642,7 +642,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             scheduled[2].title_es,
             "DIXI PROJECT: Viaje por la música de los años 20",
         )
-        self.assertEqual(scheduled[2].place, "Plaza Labradores")
+        self.assertEqual(scheduled[2].place, "Plaça dels Llauradors")
         self.assertIsNone(scheduled[2].ticket_price_cents)
         self.assertEqual(
             scheduled[3].place,
