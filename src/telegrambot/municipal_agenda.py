@@ -13,7 +13,7 @@ import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
@@ -864,6 +864,19 @@ def _apply_reviewed_corrections(
                 category="exhibition",
                 sources=("mupi_reviewed", "todo_cultura_reviewed"),
             ),
+            SourceEvent(
+                title_es=(
+                    "Labores a la fresca: ‘Yo te enseño, tú me enseñas’"
+                ),
+                start_date=date(2026, 8, 6),
+                end_date=date(2026, 8, 6),
+                start_time="18:00",
+                end_time="20:00",
+                place="Casa de Cultura",
+                category="event",
+                ticket_price_cents=0,
+                sources=("mupi_reviewed", "todo_cultura_reviewed"),
+            ),
             *tuple(
                 SourceEvent(
                     title_es="Rutas nocturnas: senderismo y dinámica grupal",
@@ -915,6 +928,7 @@ def _apply_reviewed_corrections(
                 or "mediterráneo" in title and "lenguaje del agua" in title
                 or "luz a pesar del dolor" in title
                 or "vira deg" in title
+                or "labores a la fresca" in title
                 or "tendero" in title
                 or "open real villa" in title
                 or "open" in title and "villa de guardamar" in title
@@ -1006,6 +1020,36 @@ def _apply_reviewed_daily_schedules(
             and event.start_date == date(2026, 7, 31)
             and event.end_date == date(2026, 8, 21)
         )
+        is_emotions_workshop = (
+            "explorador de emociones" in normalized
+            and "alegría que hay en ti" in normalized
+            and event.start_date == date(2026, 8, 6)
+            and event.end_date == date(2026, 8, 6)
+            and event.start_time == "11:30"
+        )
+        is_labores = (
+            "labores a la fresca" in normalized
+            and event.start_date == local_day
+            and event.start_time == "18:00"
+            and event.end_time == "20:00"
+        )
+        is_dixi_project = (
+            ("dixi project" in normalized or "dixie project" in normalized)
+            and event.start_date == date(2026, 8, 6)
+            and event.end_date == date(2026, 8, 6)
+            and event.start_time == "19:30"
+        )
+        is_ball_destiu = (
+            ("ball d’estiu" in normalized or "ball d'estiu" in normalized)
+            and event.start_date == local_day
+            and event.start_time == "21:30"
+        )
+        is_kiki_morente = (
+            "kiki morente" in normalized
+            and event.start_date == date(2026, 8, 6)
+            and event.end_date == date(2026, 8, 6)
+            and event.start_time == "22:00"
+        )
         if is_spanish_brass:
             scheduled.append(SourceEvent(
                 title_es=event.title_es,
@@ -1037,15 +1081,65 @@ def _apply_reviewed_daily_schedules(
                 sources=event.sources,
             ))
             continue
+        if is_emotions_workshop:
+            scheduled.append(replace(
+                event,
+                title_es=(
+                    "EXPLORADOR DE EMOCIONES: “La alegría que hay en ti”, "
+                    "de Cat Deeley"
+                ),
+                place="Biblioteca Infantil Municipal",
+            ))
+            continue
+        if is_labores:
+            scheduled.append(replace(
+                event,
+                title_es=(
+                    "Labores a la fresca: ‘Yo te enseño, tú me enseñas’"
+                ),
+                place="Casa de Cultura",
+                ticket_price_cents=0,
+            ))
+            continue
+        if is_dixi_project:
+            scheduled.append(replace(
+                event,
+                title_es=(
+                    "DIXI PROJECT: Viaje por la música de los años 20"
+                ),
+                place="Plaça dels Llauradors",
+            ))
+            continue
+        if is_ball_destiu:
+            scheduled.append(replace(
+                event,
+                title_es="BALL D’ESTIU",
+                end_time="23:30",
+                place=(
+                    "Parque Reina Sofía (Auditorio Orquesta GÚMAR)"
+                ),
+                ticket_price_cents=0,
+            ))
+            continue
+        if is_kiki_morente:
+            scheduled.append(replace(
+                event,
+                title_es=(
+                    "KIKI MORENTE EN CONCIERTO. ESTIVAL AL CASTELL"
+                ),
+                place="Castell de Guardamar",
+                ticket_price_cents=2500,
+            ))
+            continue
         if not is_mediterraneo:
             scheduled.append(event)
             continue
         if local_day.weekday() == 6:
             continue
         start_time, end_time = (
-            ("10:30", "14:30")
+            ("10:00", "14:00")
             if local_day.weekday() == 5
-            else ("08:00", "20:00")
+            else ("09:00", "20:00")
         )
         scheduled.append(
             SourceEvent(

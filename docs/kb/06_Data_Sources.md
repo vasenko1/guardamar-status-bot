@@ -272,11 +272,22 @@ switches its poster link to August before the July exhibition ends.
 For `Mediterráneo, el lenguaje del agua`, the August 2026 official text agenda
 is the reviewed authority: paintings and sculptures by Humberto Valencia
 Giraldo, 19 June–14 August, in Sala de exposiciones Casa de Cultura. The
-published August programme gives visits as `08:00–20:00` Monday through Friday
-and `10:30–14:30` Saturday; the event is
+current official August programme gives visits as `09:00–20:00` Monday through
+Friday and `10:00–14:00` Saturday; the event is
 omitted on Sunday because no Sunday visiting time is published. The comma in
 the official title is preserved. These are event-specific hours, not inferred
 Casa de Cultura opening hours.
+
+The same reviewed programme identifies the 6 August `DIXI PROJECT` item as a
+journey through 1920s music at Plaça dels Llauradors, and `KIKI MORENTE` as a
+22:00 flamenco concert within `VI Estival al Castell`, regular price `25 €`.
+It also identifies `BALL D’ESTIU` as a free `21:30–23:30` summer dance session
+inside Parque Reina Sofía at Auditorio Orquesta GÚMAR. The digest uses exact
+reviewed Russian titles for these bounded occurrences, renders the park before
+the auditorium in the venue label, and does not infer free admission for DIXI
+PROJECT because the official programme publishes no price or admission claim.
+The lower-priority dated municipal-programme reproduction supplies `Labores a
+la fresca` as a free handicraft gathering, not a generic work activity.
 
 The reviewed August 2026 youth-workshop cards are separate occurrences, not a
 continuous date range: K-Pop/TikTok on 1 August and music workshops on 8, 15,

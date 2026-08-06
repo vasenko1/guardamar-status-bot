@@ -491,6 +491,16 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(any(
             "ajedrez" in event.title_es.casefold() for event in corrected
         ))
+        labores = next(
+            event
+            for event in corrected
+            if "Labores a la fresca" in event.title_es
+        )
+        self.assertEqual(labores.start_date, date(2026, 8, 6))
+        self.assertEqual((labores.start_time, labores.end_time), (
+            "18:00", "20:00"
+        ))
+        self.assertEqual(labores.ticket_price_cents, 0)
         workshops = [
             event for event in corrected
             if event.place == "Centro Social Juvenil"
@@ -528,8 +538,8 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                 "Taller de cultura K-Pop y TikTok",
             ],
         )
-        self.assertEqual(active[1].start_time, "10:30")
-        self.assertEqual(active[1].end_time, "14:30")
+        self.assertEqual(active[1].start_time, "10:00")
+        self.assertEqual(active[1].end_time, "14:00")
 
     def test_keeps_entropia_when_site_advances_to_august_poster(self):
         august_events = normalize_extraction(
@@ -580,10 +590,10 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             (event,), datetime(2026, 8, 2).date()
         )
 
-        self.assertEqual(weekday[0].start_time, "08:00")
+        self.assertEqual(weekday[0].start_time, "09:00")
         self.assertEqual(weekday[0].end_time, "20:00")
-        self.assertEqual(saturday[0].start_time, "10:30")
-        self.assertEqual(saturday[0].end_time, "14:30")
+        self.assertEqual(saturday[0].start_time, "10:00")
+        self.assertEqual(saturday[0].end_time, "14:00")
         self.assertEqual(sunday, ())
         self.assertEqual(
             weekday[0].title_es,
@@ -591,6 +601,57 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                 "Exposición de pintura y escultura: "
                 "Mediterráneo, el lenguaje del agua"
             ),
+        )
+
+    def test_normalizes_reviewed_august_sixth_event_details(self):
+        events = (
+            SourceEvent(
+                "EXPLORADOR DE EMOCIONES: “La alegría que hay en ti”, de Cat Deeley",
+                date(2026, 8, 6), date(2026, 8, 6), "11:30", None,
+                "Biblioteca Infantil Municipal", "event",
+            ),
+            SourceEvent(
+                "Actividad ‘Labores a la fresca’",
+                date(2026, 8, 6), date(2026, 8, 6), "18:00", "20:00",
+                "Casa de Cultura", "event",
+            ),
+            SourceEvent(
+                "DIXI PROJECT",
+                date(2026, 8, 6), date(2026, 8, 6), "19:30", None,
+                "Plaça dels Llauradors", "event",
+            ),
+            SourceEvent(
+                "BALL D’ESTIU",
+                date(2026, 8, 6), date(2026, 8, 6), "21:30", "23:30",
+                "Auditorio Orquesta GÚMAR. Parque Reina Sofía", "event",
+            ),
+            SourceEvent(
+                "KIKI MORENTE",
+                date(2026, 8, 6), date(2026, 8, 6), "22:00", None,
+                "Castell de Guardamar", "event",
+            ),
+        )
+
+        scheduled = _apply_reviewed_daily_schedules(
+            events, date(2026, 8, 6)
+        )
+
+        self.assertIn("de Cat Deeley", scheduled[0].title_es)
+        self.assertEqual(scheduled[1].ticket_price_cents, 0)
+        self.assertEqual(
+            scheduled[2].title_es,
+            "DIXI PROJECT: Viaje por la música de los años 20",
+        )
+        self.assertIsNone(scheduled[2].ticket_price_cents)
+        self.assertEqual(
+            scheduled[3].place,
+            "Parque Reina Sofía (Auditorio Orquesta GÚMAR)",
+        )
+        self.assertEqual(scheduled[3].ticket_price_cents, 0)
+        self.assertEqual(scheduled[4].ticket_price_cents, 2500)
+        self.assertEqual(
+            scheduled[4].title_es,
+            "KIKI MORENTE EN CONCIERTO. ESTIVAL AL CASTELL",
         )
 
     def test_vira_exhibition_uses_only_published_weekday_hours(self):

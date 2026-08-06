@@ -5,6 +5,7 @@ Detailed decisions belong in `adr/`.
 
 | Date | Decision | Context and reason | Record |
 | --- | --- | --- | --- |
+| 2026-08-06 | Pin reviewed facts for the 6 August cultural programme | The current official text agenda corrects the Mediterranean exhibition hours and explains DIXI PROJECT, Kiki Morente and Ball d’Estiu; the dated municipal-programme reproduction also shows that `Labores a la fresca` is a free handicraft gathering. Exact bounded corrections prevent literal or incomplete LLM titles and preserve the verified venue order. | `docs/kb/06_Data_Sources.md`, `research/2026-08-06-cultural-programme.md` |
 | 2026-08-05 | Treat newly ineligible legacy event rows as a normal snapshot migration | Tightened event policy can legitimately filter records stored by an older release; the loader skips those rows while retaining other validated facts instead of indexing an empty normalization result. | `docs/kb/06_Data_Sources.md` |
 | 2026-08-05 | Add one explicit in-place refresh for today's live digest | Corrected source facts or formatting sometimes need immediate application after the normal two-stage cycle; selecting the recorded live message and using Telegram edit avoids duplicates or manual message-ID handling. | `docs/kb/05_Features.md` |
 | 2026-08-05 | Link event venues through Google Maps HTTPS searches | One cross-platform URL opens the Google Maps app when installed and falls back to the browser; linking the concise venue label keeps the phone layout compact without separate location messages. | `docs/kb/05_Features.md` |

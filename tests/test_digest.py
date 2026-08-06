@@ -1,7 +1,11 @@
 import unittest
 from datetime import date, datetime, time, timedelta, timezone
 
-from telegrambot.digest import build_fallback_update, build_message
+from telegrambot.digest import (
+    GUARDAMAR_TIMEZONE,
+    build_fallback_update,
+    build_message,
+)
 from telegrambot.models import (
     BeachStatus,
     Event,
@@ -656,6 +660,33 @@ class DigestMessageTests(unittest.TestCase):
             "скульптуры: Средиземноморье",
             message,
         )
+
+    def test_ball_venue_keeps_park_first_in_map_label_and_query(self):
+        digest = MorningDigest(
+            weather=None,
+            warnings=(),
+            warnings_available=True,
+            events=(Event(
+                title="Летний танцевальный вечер Ball d’Estiu",
+                starts_at=datetime(
+                    2026, 8, 6, 21, 30, tzinfo=GUARDAMAR_TIMEZONE
+                ),
+                ends_at=datetime(
+                    2026, 8, 6, 23, 30, tzinfo=GUARDAMAR_TIMEZONE
+                ),
+                place="Parque Reina Sofía (Auditorio Orquesta GÚMAR)",
+                ticket_price_cents=0,
+            ),),
+        )
+
+        message = build_message(digest)
+
+        self.assertIn(
+            ">Parque Reina Sofía (Auditorio Orquesta GÚMAR)</a>",
+            message,
+        )
+        self.assertIn("query=Parque+Reina+Sof", message)
+        self.assertIn("🎟 Бесплатно", message)
 
     def test_formats_market_time_range_and_place(self):
         digest = MorningDigest(

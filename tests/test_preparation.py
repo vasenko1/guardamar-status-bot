@@ -94,6 +94,25 @@ class PreparationTests(unittest.IsolatedAsyncioTestCase):
                 "памяти Пепе и Хуана Тендеро"
             ),
         )
+        self.assertEqual(
+            reviewed_translation(
+                "DIXI PROJECT: Viaje por la música de los años 20"
+            ),
+            (
+                "Джазовый концерт Dixie Project "
+                "«Путешествие по музыке 1920-х»"
+            ),
+        )
+        self.assertEqual(
+            reviewed_translation("BALL D’ESTIU"),
+            "Летний танцевальный вечер Ball d’Estiu",
+        )
+        self.assertEqual(
+            reviewed_translation(
+                "KIKI MORENTE EN CONCIERTO. ESTIVAL AL CASTELL"
+            ),
+            "Концерт фламенко Кики Моренте · VI Estival al Castell",
+        )
 
     def test_reviewed_title_overrides_empty_cache(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -47,6 +47,26 @@ REVIEWED_TRANSLATIONS = {
         "exposición de pintura «luz a pesar del dolor» "
         "de vira degliarenko"
     ): "Выставка живописи «Свет вопреки боли» — Вира Дегляренко",
+    (
+        "explorador de emociones: “la alegría que hay en ti”, "
+        "de cat deeley"
+    ): (
+        "Детское занятие «Исследователь эмоций»: "
+        "«Радость, которая в тебе» — Кэт Дили"
+    ),
+    (
+        "labores a la fresca: ‘yo te enseño, tú me enseñas’"
+    ): "Встреча по рукоделию «На свежем воздухе»",
+    (
+        "dixi project: viaje por la música de los años 20"
+    ): (
+        "Джазовый концерт Dixie Project "
+        "«Путешествие по музыке 1920-х»"
+    ),
+    "ball d’estiu": "Летний танцевальный вечер Ball d’Estiu",
+    (
+        "kiki morente en concierto. estival al castell"
+    ): "Концерт фламенко Кики Моренте · VI Estival al Castell",
 }
 
 
