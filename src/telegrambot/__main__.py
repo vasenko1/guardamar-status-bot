@@ -173,6 +173,45 @@ async def _produce_message(api_key: str, now: datetime) -> str:
     return message + render_diagnostics(diagnostics)
 
 
+async def _refresh_event_catalogs_once(
+    now: datetime,
+    state: PublicationState,
+    municipal_path: Path,
+    agenda_path: Path,
+) -> None:
+    """Persist one bounded late event refresh independently of SafeBeach."""
+
+    sources = (
+        (
+            "municipal",
+            lambda: refresh_municipal_catalog(
+                os.environ.get("GEMINI_API_KEY", "").strip(),
+                now,
+                municipal_path,
+            ),
+        ),
+        ("agenda", lambda: refresh_agenda_catalog(now, agenda_path)),
+    )
+    try:
+        with state.exclusive_run():
+            if state.morning_record(now.date()) is None:
+                return
+            for name, refresh in sources:
+                if state.event_catalog_sync_attempted(now.date(), name):
+                    continue
+                try:
+                    await refresh()
+                except Exception as exc:
+                    logging.warning(
+                        "Late event catalog sync failed for %s: %s",
+                        name,
+                        exc,
+                    )
+                state.mark_event_catalog_sync_attempted(now.date(), name)
+    except StateError as exc:
+        logging.info("Late event catalog sync deferred: %s", exc)
+
+
 async def _run_command(command: str) -> int:
     now = datetime.now(GUARDAMAR_TIMEZONE)
     municipal_path = Path(os.environ.get(
@@ -508,10 +547,6 @@ async def _run_command(command: str) -> int:
             write_snapshot(aemet_snapshot_path, morning_aemet[-1], now)
         return 0 if result in {"success", "duplicate"} else 1
 
-    if not _safebeach_is_in_season(now):
-        logging.info("SKIP: SafeBeach update phase is out of season")
-        return 0
-
     async def find_notice(since: datetime):
         return await latest_beach_notice(now, since)
 
@@ -519,20 +554,6 @@ async def _run_command(command: str) -> int:
 
     async def produce_update(status, notice):
         gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
-        refreshes = await asyncio.gather(
-            refresh_agenda_catalog(now, agenda_path),
-            refresh_municipal_catalog(gemini_key, now, municipal_path),
-            return_exceptions=True,
-        )
-        for source, result in zip(
-            ("Agenda Guardamar", "Agenda municipal"), refreshes
-        ):
-            if isinstance(result, BaseException):
-                logging.warning(
-                    "Late catalog refresh failed for %s: %s",
-                    source,
-                    result,
-                )
         if gemini_key:
             try:
                 items = [
@@ -582,6 +603,9 @@ async def _run_command(command: str) -> int:
         logging.info("SKIP: no morning message exists for %s", now.date())
         return 0
     if isinstance(existing.get("update_message_id"), int):
+        await _refresh_event_catalogs_once(
+            now, state, municipal_path, agenda_path
+        )
         result = await publish_update(
             now,
             state,
@@ -594,22 +618,30 @@ async def _run_command(command: str) -> int:
         )
         return 0 if result == "duplicate" else 1
 
+    in_beach_season = _safebeach_is_in_season(now)
     final_attempt = (now.hour, now.minute) >= (10, 40)
     beach = None
-    try:
-        candidate = await fetch_beach_status(now)
-        beach = _select_beach_for_update(
-            state, candidate, now, final_attempt
-        )
-    except SafeBeachError as exc:
-        logging.warning(
-            "SafeBeach update check failed: SB-%s",
-            exc.diagnostic_code,
-        )
-        if final_attempt:
+    if in_beach_season:
+        try:
+            candidate = await fetch_beach_status(now)
             beach = _select_beach_for_update(
-                state, None, now, final_attempt=True
+                state, candidate, now, final_attempt
             )
+        except SafeBeachError as exc:
+            logging.warning(
+                "SafeBeach update check failed: SB-%s",
+                exc.diagnostic_code,
+            )
+            if final_attempt:
+                beach = _select_beach_for_update(
+                    state, None, now, final_attempt=True
+                )
+    await _refresh_event_catalogs_once(
+        now, state, municipal_path, agenda_path
+    )
+    if not in_beach_season:
+        logging.info("SKIP: SafeBeach update phase is out of season")
+        return 0
     result = await publish_update(
         now,
         state,

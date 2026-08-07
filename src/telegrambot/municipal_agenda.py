@@ -34,7 +34,7 @@ from .todo_cultura import (
     TodoCulturaAdmission,
     TodoCulturaError,
     TodoCulturaParticipation,
-    fetch_latest_program,
+    fetch_program_window,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -1484,39 +1484,71 @@ async def refresh_municipal_catalog(
                 )
 
         todo_source = old_sources.get("todo_cultura", {})
-        todo_events = old_todo_events
-        todo_program = None
+        todo_horizon = local_now.date() + timedelta(days=44)
+        prior_todo_events = tuple(
+            event
+            for event in old_todo_events
+            if event.end_date >= local_now.date()
+            and event.start_date <= todo_horizon
+        )
+        todo_events = prior_todo_events
+        todo_window = None
         try:
-            todo_program = await fetch_latest_program(local_now.date())
-            if (
-                isinstance(todo_source, dict)
-                and todo_source.get("sha256") == todo_program.sha256
-                and todo_source.get("date") == local_now.date().isoformat()
-                and todo_source.get("parser_version") == 3
-            ):
-                todo_events = old_todo_events
-            else:
+            todo_window = await fetch_program_window(
+                local_now.date(),
+                todo_source if isinstance(todo_source, dict) else None,
+            )
+            for todo_program in todo_window.programs:
                 todo_result = await extract_agenda_text_events(
                     api_key,
                     todo_program.text,
                 )
-                todo_month = local_now.strftime("%Y-%m")
+                todo_month = (
+                    todo_program.dates[0].strftime("%Y-%m")
+                    if todo_program.dates
+                    else local_now.strftime("%Y-%m")
+                )
                 todo_result = {**todo_result, "month": todo_month}
-                todo_events = normalize_extraction_candidates(
+                new_todo_events = normalize_extraction_candidates(
                     todo_result,
                     todo_month,
                     "todo_cultura",
                 )
-                todo_events = _enrich_todo_admissions(
-                    todo_events,
+                new_todo_events = _enrich_todo_admissions(
+                    new_todo_events,
                     todo_program.admissions,
                 )
-                todo_events = _enrich_todo_participation(
-                    todo_events,
-                    todo_program.participation,
-                    local_now.date(),
+                for target_date in todo_program.dates:
+                    new_todo_events = _enrich_todo_participation(
+                        new_todo_events,
+                        todo_program.participation,
+                        target_date,
+                    )
+                if not new_todo_events:
+                    continue
+                refreshed_dates = set(todo_program.dates)
+                retained = tuple(
+                    event
+                    for event in todo_events
+                    if not any(
+                        event.start_date <= target <= event.end_date
+                        and candidate.start_date <= target <= candidate.end_date
+                        and _word_overlap(
+                            event.title_es, candidate.title_es
+                        ) >= 0.5
+                        for target in refreshed_dates
+                        for candidate in new_todo_events
+                    )
+                )
+                todo_events = merge_text_and_poster_events(
+                    retained,
+                    new_todo_events,
                 )
         except (TodoCulturaError, GeminiError, MunicipalAgendaError) as exc:
+            # Do not advance the incremental cursor or processed dates unless
+            # every selected section was normalized successfully.
+            todo_window = None
+            todo_events = prior_todo_events
             if old_todo_events:
                 LOGGER.warning("Todo Cultura supplement unavailable: %s", exc)
             else:
@@ -1581,20 +1613,21 @@ async def refresh_municipal_catalog(
             }
         elif isinstance(poster_source, dict) and poster_source:
             source_state["mupi"] = poster_source
-        if todo_program is not None:
+        if todo_window is not None:
+            evidence = [
+                detail
+                for program in todo_window.programs
+                for detail in program.participation
+            ]
             source_state["todo_cultura"] = {
-                "url": todo_program.source_url,
-                "sha256": todo_program.sha256,
-                "modified": todo_program.modified,
-                "date": local_now.date().isoformat(),
-                "parser_version": 3,
+                **todo_window.source_state,
                 "checked_at": now.isoformat(),
                 "participation_evidence": [
                     {
                         "title_hint": detail.title_hint,
                         "evidence": detail.evidence,
                     }
-                    for detail in todo_program.participation[:12]
+                    for detail in evidence[:12]
                 ],
             }
         elif isinstance(todo_source, dict) and todo_source:

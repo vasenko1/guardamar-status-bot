@@ -12,7 +12,8 @@ schemas, and library choices belong in later design work or ADRs.
 ## High-level flow
 
 1. **Pre-morning event refreshes** update two small normalized catalogs at
-   05:10 and 05:30, then exit.
+   05:10 and 05:30, including a bounded rolling supplemental event window,
+   then exit.
 2. **External 07:30 trigger** starts one short-lived digest process.
 3. **Source collection** requests current data from approved official sources
    and reads event facts from the local catalogs.
@@ -25,7 +26,8 @@ schemas, and library choices belong in later design work or ADRs.
 7. **Telegram delivery** sends the early message and stores its message ID.
 8. **External beach checks** run at 10:10–10:40 in five-minute steps. Each
    process checks SafeBeach first, retains at most the best whole normalized
-   partial response for this window, and normally exits immediately.
+   partial response for this window, and attempts each event catalog at most
+   once that day so later event facts are saved without seven repeat calls.
 9. **Conditional replacement** checks the Mayor channel once after SafeBeach
    succeeds or its retry window expires. A verified update permits one fresh
    full collection, delivery of the replacement, then deletion of the earlier
@@ -191,6 +193,9 @@ official poster when a documented OCR error is discovered.
 Termux refreshes municipal and Agenda Guardamar catalogs at 05:10 and 05:30,
 invokes the morning command at 07:30, and runs the update command every five
 minutes from 10:10 through 10:40 in `Europe/Madrid`.
+The first update invocation that acquires the daily state lock attempts each
+event catalog once, independently of whether SafeBeach succeeds. These facts
+are retained for later publications and do not alone trigger replacement.
 The electricity command runs at 20:30, then after 5, 15 and 30 minutes, with a
 final 21:20 attempt. It publishes at most once for the next local date.
 
@@ -215,7 +220,9 @@ the message ID is stored remains an unavoidable duplicate edge.
 - Collect sources only in bounded scheduled runs; never continuously.
 - Bound network time, retries, response sizes, concurrency, and stored history.
 - Keep domain rules independent from transport and source formats.
-- Do not add a generic cache layer for municipal or event information.
+- Do not add a generic cache layer for municipal or event information. ADR
+  0033 permits only a bounded Todo Cultura cursor, candidate index and covered
+  dates inside the existing normalized catalog; no raw response is cached.
 - ADRs 0012 and 0028 permit two bounded normalized event catalogs. When the
   official page advances early, a new poster
   is merged with still-relevant prior-poster events for a seven-day transition

@@ -91,6 +91,11 @@ deployment agent or self-hosted CI runner.
   URL changes. Neither stores downloaded pages or media. Today's bounded title
   set is translated only by the 06:00/06:30/07:00 preparation commands and
   stored in a bounded atomic cache. The 07:30 digest never calls Gemini.
+- The 05:10 municipal refresh may read one Todo Cultura metadata page and one
+  batch of at most three selected details. It keeps a five-minute cursor
+  overlap, at most 100 lightweight candidates and 45 covered dates. Unchanged
+  covered dates cause no full-detail or LLM work. The 10:10–10:40 invocations
+  attempt each event catalog at most once per local day.
 - Telegram operations share one bounded JSON client restricted to the official
   API host. Only sends retry, and only after transient failures.
 - Electricity checks confirmed publication before any source access. The first
@@ -118,7 +123,8 @@ deployment agent or self-hosted CI runner.
 - Keep logs rotated or otherwise bounded.
 - Do not archive raw responses by default.
 - Do not cache raw source responses or municipal information. Only normalized
-  source-language event facts and provenance may enter the two event catalogs.
+  source-language event facts, bounded provenance, and the incremental Todo
+  Cultura metadata allowed by ADR 0033 may enter the two event catalogs.
 - Use one small atomic JSON file; SQLite is unnecessary for the MVP.
 
 ## Preferred technology direction

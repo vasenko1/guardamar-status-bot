@@ -58,12 +58,10 @@ second reading is prohibited because it creates confirmation bias without
 adding independent evidence.
 
 Todo Cultura Vega Baja is a supplemental discovery source because dated
-Guardamar REST items reproduce Ayuntamiento programme text. One bounded REST
-response searches for the requested Spanish date and examines at most three
-results in source order; the first attributed municipal programme containing
-that exact date is selected. Only that day's paragraph range is sent to
-Gemini. The full monthly article and individual detail pages are not fetched
-or sent to Gemini.
+Guardamar REST items reproduce Ayuntamiento programme text. Its original
+exact-date request policy is superseded by the rolling incremental collection
+in ADR 0033. Only bounded newly covered date sections are sent to Gemini; raw
+articles are not stored.
 The resulting events are merged after official HTML and Agenda Guardamar, so
 the aggregator cannot silently cancel or override those sources. A failed or
 oversized daily section leaves the prior atomic snapshot intact. Giglon is

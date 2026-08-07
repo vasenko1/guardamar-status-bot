@@ -227,6 +227,36 @@ class PublicationState:
         value["morning_deleted"] = True
         self._write(value)
 
+    def event_catalog_sync_attempted(
+        self, local_day: date, source: str
+    ) -> bool:
+        value = self.morning_record(local_day)
+        if value is None:
+            return False
+        completed = value.get("event_catalog_sync", [])
+        return (
+            isinstance(completed, list)
+            and source in completed
+        )
+
+    def mark_event_catalog_sync_attempted(
+        self, local_day: date, source: str
+    ) -> None:
+        if not source or len(source) > 40:
+            raise StateError("event catalog source is invalid")
+        value = self.morning_record(local_day)
+        if value is None:
+            raise StateError("morning publication record is missing")
+        completed = value.get("event_catalog_sync", [])
+        if not isinstance(completed, list) or not all(
+            isinstance(item, str) for item in completed
+        ):
+            raise StateError("event catalog sync state is invalid")
+        value["event_catalog_sync"] = list(dict.fromkeys(
+            completed + [source]
+        ))
+        self._write(value)
+
     def _write(self, value: dict) -> None:
         temporary_path = self.path.with_name(f".{self.path.name}.tmp")
         try:

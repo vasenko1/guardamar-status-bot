@@ -303,15 +303,24 @@ secondary review source, not an automated cancellation authority. Its dated
 registration at Centro Social Juvenil or WhatsApp `609 00 67 54`. It does not
 state a price, so the digest makes no free-admission claim.
 
-Todo Cultura is also queried through one bounded public WordPress REST request
-during the municipal refresh. The request searches for the requested Spanish
-date and returns at most three candidates; the adapter chooses the first
-attributed municipal programme that actually contains that date. Only its
-matching date section is sent through the existing text extractor. The adapter
-rejects an unattributed article, a missing date section, an oversized section,
-redirects outside the source hosts and malformed JSON. Supplemental results
-have lower merge priority than official municipal HTML and Agenda Guardamar;
-absence from Todo Cultura never means cancellation.
+Todo Cultura is queried through its bounded public WordPress REST API during
+the municipal refresh. One metadata page advances a five-minute-overlap cursor
+and maintains a rolling window from today through six days ahead. At most
+three dated municipal-programme candidates are downloaded in one batch; only
+new date sections enter the existing structured extractor. Already covered
+dates are shared across duplicate programme reproductions, while a later
+`modified_gmt` reopens the affected date. Metadata without a discoverable date
+does not trigger a full download. The adapter rejects unattributed articles,
+oversized sections, redirects outside the source hosts and malformed JSON.
+Supplemental results have lower merge priority than official municipal HTML
+and Agenda Guardamar; absence from Todo Cultura never means cancellation.
+
+The cursor, at most 100 lightweight candidates and at most 45 covered dates
+are stored inside the existing atomic municipal catalog. They advance only
+after successful structured normalization and catalog replacement. During the
+10:10–10:40 beach window each event catalog gets at most one independent late
+refresh attempt, allowing new facts to be retained without making event-only
+changes trigger a second public digest.
 
 An explicit regular admission price in that same bounded programme may enrich
 the matching event only when the price paragraph links to an HTTPS Agenda

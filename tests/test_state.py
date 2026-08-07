@@ -107,6 +107,31 @@ class PublicationStateTests(unittest.TestCase):
                 {"Centre": {"flag": "green", "jellyfish": False}},
             )
 
+    def test_records_each_late_event_catalog_once_for_current_day(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = PublicationState(Path(directory) / "delivery.json")
+            local_day = date(2026, 8, 7)
+            state.mark_morning(
+                local_day,
+                101,
+                datetime.fromisoformat("2026-08-07T07:30:00+02:00"),
+                "morning",
+            )
+
+            self.assertFalse(
+                state.event_catalog_sync_attempted(local_day, "municipal")
+            )
+            state.mark_event_catalog_sync_attempted(local_day, "municipal")
+            state.mark_event_catalog_sync_attempted(local_day, "municipal")
+
+            self.assertTrue(
+                state.event_catalog_sync_attempted(local_day, "municipal")
+            )
+            self.assertEqual(
+                state.morning_record(local_day)["event_catalog_sync"],
+                ["municipal"],
+            )
+
     def test_keeps_most_complete_beach_candidate_across_processes(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "delivery.json"

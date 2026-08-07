@@ -7,8 +7,13 @@ from unittest.mock import patch
 
 from telegrambot.todo_cultura import (
     TodoCulturaError,
+    _admissions,
+    _date_sections,
+    _metadata_candidate,
+    _metadata_query,
     _participation,
-    _read_latest_program,
+    _read_documents,
+    _read_program_window,
 )
 
 
@@ -42,6 +47,238 @@ class _Opener:
 
 
 class TodoCulturaTests(unittest.TestCase):
+    def test_metadata_candidate_uses_date_mentioned_in_excerpt(self):
+        candidate = _metadata_candidate({
+            "id": 128245,
+            "modified_gmt": "2026-08-07T10:00:00",
+            "link": "https://todoculturavegabaja.es/eventos/programa/",
+            "title": {"rendered": "Agenda municipal de Guardamar"},
+            "excerpt": {"rendered": "Actividades del 12 de agosto"},
+        }, date(2026, 8, 7))
+
+        self.assertEqual(candidate["dates"], ["2026-08-12"])
+        self.assertFalse(candidate["detail_checked"])
+
+    def test_metadata_without_date_is_not_selected_for_full_download(self):
+        metadata = [{
+            "id": 128245,
+            "modified_gmt": "2026-08-07T10:00:00",
+            "link": "https://todoculturavegabaja.es/eventos/noticia/",
+            "title": {"rendered": "Guardamar cultura"},
+            "excerpt": {"rendered": "Toda la información municipal"},
+        }]
+        with (
+            patch(
+                "telegrambot.todo_cultura._read_metadata",
+                return_value=metadata,
+            ),
+            patch("telegrambot.todo_cultura._read_documents") as details,
+        ):
+            window = _read_program_window(date(2026, 8, 7), {})
+
+        details.assert_called_once_with([])
+        self.assertEqual(window.programs, ())
+        self.assertTrue(
+            window.source_state["candidates"][0]["detail_checked"]
+        )
+
+    def test_incremental_query_overlaps_cursor_by_five_minutes(self):
+        query = urllib.parse.parse_qs(
+            urllib.parse.urlparse(
+                _metadata_query("2026-08-07T10:00:00")
+            ).query
+        )
+
+        self.assertEqual(
+            query["modified_after"], ["2026-08-07T09:55:00"]
+        )
+        self.assertIn("modified_gmt", query["_fields"][0])
+        self.assertEqual(query["order"], ["asc"])
+
+    def test_date_sections_roll_january_into_next_year(self):
+        sections = _date_sections(
+            ["Viernes 1 de enero", "19:00: Concierto"],
+            2026,
+            date(2026, 12, 29),
+        )
+
+        self.assertIn(date(2027, 1, 1), sections)
+
+    def test_splits_inline_first_event_from_date_heading(self):
+        sections = _date_sections([
+            "– Lunes 10 de agosto, 8:30 a 14 horas: Taller juvenil",
+            "Inscripciones: Centro Social Juvenil 609 00 67 54",
+            "Martes 11 de agosto",
+            "19:00: Concierto",
+        ], 2026)
+
+        self.assertIn(date(2026, 8, 10), sections)
+        self.assertIn("8:30 a 14 horas", sections[date(2026, 8, 10)])
+        self.assertNotIn("Concierto", sections[date(2026, 8, 10)])
+
+    def test_processes_only_new_edge_date_from_saved_candidate(self):
+        prior = {
+            "parser_version": 4,
+            "cursor_modified_gmt": "2026-08-07T10:00:00",
+            "candidates": [{
+                "id": 128245,
+                "modified_gmt": "2026-08-07T10:00:00",
+                "link": "https://todoculturavegabaja.es/eventos/programa/",
+                "dates": [f"2026-08-{day:02d}" for day in range(9, 16)],
+                "processed_dates": [
+                    f"2026-08-{day:02d}" for day in range(9, 15)
+                ],
+                "detail_checked": True,
+            }],
+        }
+        rendered = (
+            "<p>El Ayuntamiento de Guardamar publica la agenda municipal.</p>"
+            "<p>Sábado 15 de agosto</p>"
+            "<p>19:00: Taller de música para jóvenes.</p>"
+        )
+        document = {
+            "id": 128245,
+            "modified_gmt": "2026-08-07T10:00:00",
+            "link": "https://todoculturavegabaja.es/eventos/programa/",
+            "content": {"rendered": rendered},
+        }
+        with (
+            patch("telegrambot.todo_cultura._read_metadata", return_value=[]),
+            patch(
+                "telegrambot.todo_cultura._read_documents",
+                return_value=[document],
+            ) as details,
+        ):
+            window = _read_program_window(date(2026, 8, 9), prior)
+
+        details.assert_called_once_with([128245])
+        self.assertEqual(len(window.programs), 1)
+        self.assertEqual(window.programs[0].dates, (date(2026, 8, 15),))
+        candidate = window.source_state["candidates"][0]
+        self.assertIn("2026-08-15", candidate["processed_dates"])
+
+    def test_unchanged_complete_window_makes_no_detail_request(self):
+        prior = {
+            "parser_version": 4,
+            "cursor_modified_gmt": "2026-08-07T10:00:00",
+            "candidates": [{
+                "id": 128245,
+                "modified_gmt": "2026-08-07T10:00:00",
+                "link": "https://todoculturavegabaja.es/eventos/programa/",
+                "dates": ["2026-08-09", "2026-08-10"],
+                "processed_dates": ["2026-08-09", "2026-08-10"],
+                "detail_checked": True,
+            }],
+        }
+        with (
+            patch("telegrambot.todo_cultura._read_metadata", return_value=[]),
+            patch("telegrambot.todo_cultura._read_documents") as details,
+        ):
+            window = _read_program_window(date(2026, 8, 9), prior)
+
+        details.assert_called_once_with([])
+        self.assertEqual(window.programs, ())
+
+    def test_covering_date_marks_older_duplicate_candidate_processed(self):
+        prior = {
+            "parser_version": 4,
+            "cursor_modified_gmt": "2026-08-07T10:00:00",
+            "candidates": [
+                {
+                    "id": 2,
+                    "modified_gmt": "2026-08-07T10:00:00",
+                    "link": "https://todoculturavegabaja.es/eventos/new/",
+                    "dates": ["2026-08-09"],
+                    "processed_dates": [],
+                    "detail_checked": True,
+                },
+                {
+                    "id": 1,
+                    "modified_gmt": "2026-08-06T10:00:00",
+                    "link": "https://todoculturavegabaja.es/eventos/old/",
+                    "dates": ["2026-08-09"],
+                    "processed_dates": [],
+                    "detail_checked": True,
+                },
+            ],
+        }
+        documents = [{
+            "id": identifier,
+            "modified_gmt": modified,
+            "link": link,
+            "content": {"rendered": (
+                "<p>El Ayuntamiento de Guardamar publica la agenda "
+                "municipal.</p><p>Domingo 9 de agosto</p>"
+                f"<p>19:00: Evento {identifier}.</p>"
+            )},
+        } for identifier, modified, link in (
+            (2, "2026-08-07T10:00:00", prior["candidates"][0]["link"]),
+            (1, "2026-08-06T10:00:00", prior["candidates"][1]["link"]),
+        )]
+        with (
+            patch("telegrambot.todo_cultura._read_metadata", return_value=[]),
+            patch(
+                "telegrambot.todo_cultura._read_documents",
+                return_value=documents,
+            ),
+        ):
+            window = _read_program_window(date(2026, 8, 9), prior)
+
+        self.assertEqual(len(window.programs), 1)
+        self.assertIn("Evento 2", window.programs[0].text)
+        self.assertNotIn("Evento 1", window.programs[0].text)
+        self.assertTrue(all(
+            "2026-08-09" in candidate["processed_dates"]
+            for candidate in window.source_state["candidates"]
+        ))
+        self.assertIn("2026-08-09", window.source_state["covered_dates"])
+
+    def test_changed_publication_reopens_already_processed_date(self):
+        prior = {
+            "parser_version": 4,
+            "cursor_modified_gmt": "2026-08-07T10:00:00",
+            "covered_dates": ["2026-08-09"],
+            "candidates": [{
+                "id": 128245,
+                "modified_gmt": "2026-08-07T10:00:00",
+                "link": "https://todoculturavegabaja.es/eventos/programa/",
+                "dates": ["2026-08-09"],
+                "processed_dates": ["2026-08-09"],
+                "detail_checked": True,
+            }],
+        }
+        metadata = [{
+            "id": 128245,
+            "modified_gmt": "2026-08-08T10:00:00",
+            "link": "https://todoculturavegabaja.es/eventos/programa/",
+            "title": {"rendered": "Guardamar"},
+            "excerpt": {"rendered": "<p>Domingo 9 de agosto</p>"},
+        }]
+        document = {
+            "id": 128245,
+            "modified_gmt": "2026-08-08T10:00:00",
+            "link": "https://todoculturavegabaja.es/eventos/programa/",
+            "content": {"rendered": (
+                "<p>El Ayuntamiento de Guardamar publica la agenda "
+                "municipal.</p><p>Domingo 9 de agosto</p>"
+                "<p>20:00: Concierto actualizado.</p>"
+            )},
+        }
+        with (
+            patch(
+                "telegrambot.todo_cultura._read_metadata",
+                return_value=metadata,
+            ),
+            patch(
+                "telegrambot.todo_cultura._read_documents",
+                return_value=[document],
+            ),
+        ):
+            window = _read_program_window(date(2026, 8, 9), prior)
+
+        self.assertEqual(window.programs[0].dates, (date(2026, 8, 9),))
+        self.assertIn("Concierto actualizado", window.programs[0].text)
+
     def test_binds_explicit_registration_to_preceding_workshop(self):
         details = _participation(
             "Sábado 8 de agosto\n"
@@ -72,45 +309,6 @@ class TodoCulturaTests(unittest.TestCase):
 
         self.assertEqual(details, ())
 
-    def test_selects_dated_candidate_instead_of_latest_guardamar_item(self):
-        programme = (
-            "<p>El Ayuntamiento de Guardamar publica la agenda municipal.</p>"
-            "<p>Sábado 8 de agosto</p>"
-            f"<p>{'Programa cultural. ' * 20}</p>"
-            "<p>Domingo 9 de agosto</p><p>Otro evento.</p>"
-        )
-        payload = json.dumps([
-            {
-                "modified": "2026-08-07T09:10:00",
-                "link": "https://todoculturavegabaja.es/eventos/routine/",
-                "title": {"rendered": "Actividades juveniles"},
-                "content": {"rendered": (
-                    "<p>El Ayuntamiento de Guardamar publica la agenda "
-                    "municipal.</p><p>Domingo 9 de agosto</p>"
-                    f"<p>{'Otro programa. ' * 20}</p>"
-                )},
-            },
-            {
-                "modified": "2026-08-07T09:00:00",
-                "link": "https://todoculturavegabaja.es/eventos/drums/",
-                "title": {"rendered": "Taller de baterías"},
-                "content": {"rendered": programme},
-            },
-        ]).encode()
-        opener = _Opener(_Response(payload))
-        with patch(
-            "telegrambot.todo_cultura.urllib.request.build_opener",
-            return_value=opener,
-        ):
-            program = _read_latest_program(date(2026, 8, 8))
-
-        self.assertTrue(program.source_url.endswith("/drums/"))
-        query = urllib.parse.parse_qs(
-            urllib.parse.urlparse(opener.request.full_url).query
-        )
-        self.assertEqual(query["search"], ["Guardamar 8 de agosto"])
-        self.assertEqual(query["per_page"], ["3"])
-
     def test_reads_explicit_price_linked_to_official_event(self):
         rendered = (
             "<p>El Ayuntamiento de Guardamar publica la agenda municipal.</p>"
@@ -122,80 +320,57 @@ class TodoCulturaTests(unittest.TestCase):
             f"<p>{'Programa cultural. ' * 20}</p>"
             "<p>Jueves 6 de agosto</p><p>Otro evento.</p>"
         )
-        payload = json.dumps([{
-            "modified": "2026-08-05T09:00:00",
-            "link": "https://todoculturavegabaja.es/eventos/guardamar/",
-            "content": {"rendered": rendered},
-        }]).encode()
-        with patch(
-            "telegrambot.todo_cultura.urllib.request.build_opener",
-            return_value=_Opener(_Response(payload)),
-        ):
-            program = _read_latest_program(date(2026, 8, 5))
+        admissions = _admissions(rendered)
 
-        self.assertEqual(len(program.admissions), 1)
-        self.assertEqual(program.admissions[0].price_cents, 1500)
-        self.assertTrue(program.admissions[0].event_url.endswith(
+        self.assertEqual(len(admissions), 1)
+        self.assertEqual(admissions[0].price_cents, 1500)
+        self.assertTrue(admissions[0].event_url.endswith(
             "/spanish-brass-top-secret.html"
         ))
 
-    def test_reads_one_bounded_attributed_programme(self):
-        text = (
-            "El Ayuntamiento de Guardamar del Segura publica la agenda "
-            "municipal."
-        )
-        payload = json.dumps([{
-            "modified": "2026-08-05T09:00:00",
-            "link": "https://todoculturavegabaja.es/eventos/guardamar/",
-            "title": {"rendered": "Guardamar"},
+    def test_incomplete_detail_batch_is_rejected(self):
+        payload = json.dumps([{"id": 1}]).encode()
+        with patch(
+            "telegrambot.todo_cultura.urllib.request.build_opener",
+            return_value=_Opener(_Response(payload)),
+        ):
+            with self.assertRaises(TodoCulturaError) as raised:
+                _read_documents([1, 2])
+
+        self.assertEqual(raised.exception.diagnostic_code, "INVALID")
+
+    def test_oversized_rolling_sections_do_not_advance_state(self):
+        prior = {
+            "cursor_modified_gmt": "2026-08-07T10:00:00",
+            "candidates": [{
+                "id": 1,
+                "modified_gmt": "2026-08-07T10:00:00",
+                "link": "https://todoculturavegabaja.es/eventos/programa/",
+                "dates": ["2026-08-09"],
+                "processed_dates": [],
+                "detail_checked": True,
+            }],
+        }
+        document = {
+            "id": 1,
+            "modified_gmt": "2026-08-07T10:00:00",
+            "link": "https://todoculturavegabaja.es/eventos/programa/",
             "content": {"rendered": (
-                f"<p>{text}</p><p>Miércoles 5 de agosto</p>"
-                f"<p>{'Evento cultural. ' * 30}</p>"
-                "<p>Jueves 6 de agosto</p><p>Otro evento.</p>"
+                "<p>El Ayuntamiento de Guardamar publica la agenda "
+                "municipal.</p><p>Domingo 9 de agosto</p><p>"
+                + "Actividad cultural. " * 800
+                + "</p>"
             )},
-        }]).encode()
-        with patch(
-            "telegrambot.todo_cultura.urllib.request.build_opener",
-            return_value=_Opener(_Response(payload)),
-        ):
-            program = _read_latest_program(date(2026, 8, 5))
-
-        self.assertIn("Evento cultural", program.text)
-        self.assertEqual(len(program.sha256), 64)
-
-    def test_rejects_unattributed_general_article(self):
-        payload = json.dumps([{
-            "link": "https://todoculturavegabaja.es/eventos/other/",
-            "title": {"rendered": "Other"},
-            "content": {"rendered": "<p>Not a programme</p>"},
-        }]).encode()
-        with patch(
-            "telegrambot.todo_cultura.urllib.request.build_opener",
-            return_value=_Opener(_Response(payload)),
+        }
+        with (
+            patch("telegrambot.todo_cultura._read_metadata", return_value=[]),
+            patch(
+                "telegrambot.todo_cultura._read_documents",
+                return_value=[document],
+            ),
         ):
             with self.assertRaises(TodoCulturaError) as raised:
-                _read_latest_program(date(2026, 8, 5))
-
-        self.assertEqual(raised.exception.diagnostic_code, "NOT-PROGRAMME")
-
-    def test_rejects_daily_section_larger_than_llm_input_limit(self):
-        text = (
-            "El Ayuntamiento de Guardamar publica la agenda municipal.\n"
-            "Miércoles 5 de agosto\n"
-            + "Actividad cultural. " * 800
-            + "\nJueves 6 de agosto\nOtra actividad"
-        )
-        payload = json.dumps([{
-            "link": "https://todoculturavegabaja.es/eventos/guardamar/",
-            "title": {"rendered": "Guardamar"},
-            "content": {"rendered": f"<p>{text}</p>"},
-        }]).encode()
-        with patch(
-            "telegrambot.todo_cultura.urllib.request.build_opener",
-            return_value=_Opener(_Response(payload)),
-        ):
-            with self.assertRaises(TodoCulturaError) as raised:
-                _read_latest_program(date(2026, 8, 5))
+                _read_program_window(date(2026, 8, 9), prior)
 
         self.assertEqual(raised.exception.diagnostic_code, "DAILY-SIZE")
 

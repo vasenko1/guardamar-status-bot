@@ -36,6 +36,7 @@ from telegrambot.todo_cultura import (
     TodoCulturaError,
     TodoCulturaParticipation,
     TodoCulturaProgram,
+    TodoCulturaWindow,
 )
 
 TZ = ZoneInfo("Europe/Madrid")
@@ -79,7 +80,7 @@ def extraction():
 class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         patcher = patch(
-            "telegrambot.municipal_agenda.fetch_latest_program",
+            "telegrambot.municipal_agenda.fetch_program_window",
             new=AsyncMock(side_effect=TodoCulturaError(
                 "offline in unit tests",
                 code="NETWORK",
@@ -1005,7 +1006,20 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             "2026/08/MUPI-AGOSTO-2026.jpg"
         )
         page = f'<a href="{poster_url}">poster</a>'.encode()
-        fetch_todo = AsyncMock(return_value=todo)
+        first_window = TodoCulturaWindow(
+            programs=(TodoCulturaProgram(
+                **{**todo.__dict__, "dates": (date(2026, 8, 5),)}
+            ),),
+            source_state={
+                "parser_version": 4,
+                "cursor_modified_gmt": "2026-08-04T22:40:40",
+                "candidates": [],
+            },
+        )
+        fetch_todo = AsyncMock(side_effect=(
+            first_window,
+            TodoCulturaWindow((), first_window.source_state),
+        ))
         extract_text = AsyncMock(return_value={
             "month": "2026-08",
             "events": [{
@@ -1036,7 +1050,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                     return_value=(page, "text/html"),
                 ),
                 patch(
-                    "telegrambot.municipal_agenda.fetch_latest_program",
+                    "telegrambot.municipal_agenda.fetch_program_window",
                     new=fetch_todo,
                 ),
                 patch(
@@ -1054,14 +1068,121 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             stored = json.loads(path.read_text(encoding="utf-8"))
 
         self.assertEqual(fetch_todo.await_count, 2)
-        self.assertEqual(fetch_todo.await_args_list[0].args, (date(2026, 8, 5),))
+        self.assertEqual(fetch_todo.await_args_list[0].args[0], date(2026, 8, 5))
         extract_text.assert_awaited_once_with("key", todo.text)
         self.assertEqual(
             [event.title_es for event in current],
             ["Concierto oficial", "Taller juvenil"],
         )
         self.assertEqual(
-            stored["sources"]["todo_cultura"]["sha256"], "todo-hash"
+            stored["sources"]["todo_cultura"]["parser_version"], 4
+        )
+
+    async def test_todo_llm_failure_does_not_advance_incremental_state(self):
+        official = SourceEvent(
+            title_es="Concierto oficial",
+            start_date=date(2026, 8, 5),
+            end_date=date(2026, 8, 5),
+            start_time="22:00",
+            end_time=None,
+            place="Castillo",
+            category="event",
+            sources=("mupi",),
+        )
+        poster_url = (
+            "https://www.guardamardelsegura.es/wp-content/uploads/"
+            "2026/08/MUPI-AGOSTO-2026.jpg"
+        )
+        old_todo_state = {
+            "parser_version": 4,
+            "cursor_modified_gmt": "2026-08-04T08:00:00",
+            "candidates": [],
+        }
+        advanced_state = {
+            **old_todo_state,
+            "cursor_modified_gmt": "2026-08-05T08:00:00",
+        }
+        first_program = TodoCulturaProgram(
+            text="Miércoles 5 de agosto\n19:00: Taller juvenil",
+            sha256="todo-hash-1",
+            source_url=(
+                "https://todoculturavegabaja.es/eventos/guardamar-1/"
+            ),
+            modified="2026-08-05T08:00:00",
+            dates=(date(2026, 8, 5),),
+        )
+        second_program = TodoCulturaProgram(
+            text="Miércoles 5 de agosto\n20:00: Segundo taller",
+            sha256="todo-hash-2",
+            source_url=(
+                "https://todoculturavegabaja.es/eventos/guardamar-2/"
+            ),
+            modified="2026-08-05T08:00:00",
+            dates=(date(2026, 8, 5),),
+        )
+        window = TodoCulturaWindow(
+            programs=(first_program, second_program),
+            source_state=advanced_state,
+        )
+        first_extraction = {
+            "month": "2026-08",
+            "events": [{
+                "title_es": "Taller juvenil",
+                "start_date": "2026-08-05",
+                "end_date": "2026-08-05",
+                "start_time": "19:00",
+                "end_time": None,
+                "place": "Centro Social Juvenil",
+                "category": "event",
+            }],
+        }
+        page = f'<a href="{poster_url}">poster</a>'.encode()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agenda.json"
+            _write_snapshot(
+                path,
+                _snapshot_data(
+                    poster_url,
+                    "poster-hash",
+                    datetime(2026, 8, 4, tzinfo=TZ),
+                    (official,),
+                    {
+                        "mupi": {
+                            "url": poster_url,
+                            "sha256": "poster-hash",
+                        },
+                        "todo_cultura": old_todo_state,
+                    },
+                ),
+            )
+            with (
+                patch(
+                    "telegrambot.municipal_agenda._read_url",
+                    return_value=(page, "text/html"),
+                ),
+                patch(
+                    "telegrambot.municipal_agenda.fetch_program_window",
+                    new=AsyncMock(return_value=window),
+                ),
+                patch(
+                    "telegrambot.municipal_agenda.extract_agenda_text_events",
+                    new=AsyncMock(side_effect=(
+                        first_extraction,
+                        GeminiError("temporarily down"),
+                    )),
+                ),
+            ):
+                current = await _current_events(
+                    "key", datetime(2026, 8, 5, 5, 10, tzinfo=TZ), path
+                )
+            stored = json.loads(path.read_text(encoding="utf-8"))
+
+        self.assertEqual([event.title_es for event in current], [
+            "Concierto oficial"
+        ])
+        self.assertEqual(
+            stored["sources"]["todo_cultura"]["cursor_modified_gmt"],
+            old_todo_state["cursor_modified_gmt"],
         )
 
     async def test_site_failure_uses_snapshot_and_translates_selected_events(self):

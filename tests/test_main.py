@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 from telegrambot.__main__ import (
     _current_morning_message_id,
+    _refresh_event_catalogs_once,
     _send_operational_update,
     _produce_message,
     _run_command,
@@ -21,6 +22,39 @@ MADRID = ZoneInfo("Europe/Madrid")
 
 
 class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
+    async def test_late_event_catalogs_refresh_only_once_after_success(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = PublicationState(Path(directory) / "delivery.json")
+            now = datetime(2026, 8, 7, 10, 10, tzinfo=MADRID)
+            state.mark_morning(now.date(), 10, now, "morning")
+            municipal = AsyncMock(return_value=())
+            agenda = AsyncMock(return_value=())
+            with (
+                patch(
+                    "telegrambot.__main__.refresh_municipal_catalog",
+                    new=municipal,
+                ),
+                patch(
+                    "telegrambot.__main__.refresh_agenda_catalog",
+                    new=agenda,
+                ),
+            ):
+                await _refresh_event_catalogs_once(
+                    now,
+                    state,
+                    Path(directory) / "municipal.json",
+                    Path(directory) / "agenda.json",
+                )
+                await _refresh_event_catalogs_once(
+                    now,
+                    state,
+                    Path(directory) / "municipal.json",
+                    Path(directory) / "agenda.json",
+                )
+
+        municipal.assert_awaited_once()
+        agenda.assert_awaited_once()
+
     def test_current_message_prefers_published_update(self):
         self.assertEqual(
             _current_morning_message_id({
