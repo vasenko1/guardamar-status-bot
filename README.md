@@ -158,6 +158,22 @@ CRON_TZ=Europe/Madrid
 0,20 21 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity.sh
 ```
 
+After deployment, install only the operational-monitor entries without
+overwriting cron jobs belonging to this or another bot:
+
+```sh
+cd ~/bots/guardamar-status
+./termux/install-monitor-cron.sh
+```
+
+The installer saves the original crontab once as
+`~/.cache/crontab/crontab.before-monitor`, preserves unrelated lines, and owns
+only its clearly marked operational-monitor block. Repeated execution replaces
+that block and removes exact legacy copies of its eight jobs. A final scoped
+`CRON_TZ=Europe/Madrid` prevents another bot's timezone setting from changing
+this schedule. The installer does not install or modify the other Morning
+Digest and electricity entries listed above.
+
 Install `cronie`, `termux-services`, and the Python `tzdata` dependency before
 enabling the services. Open Termux:Boot once after installation. On Android,
 allow Termux and Termux:Boot to auto-start and run without battery

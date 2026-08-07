@@ -51,6 +51,8 @@ deployment agent or self-hosted CI runner.
   only seven quick SafeBeach checks
   from 10:10 through 10:40 and at most one later full recollection.
 - Leave exact timing to a lightweight external Termux scheduler.
+- Install the operational-monitor cron rows by merging them with the existing
+  crontab; never replace unrelated jobs owned by another bot.
 - Avoid continuous parsing, transformation, or monitoring.
 - Do not optimize speculatively, but reject designs with obvious background
   cost.
