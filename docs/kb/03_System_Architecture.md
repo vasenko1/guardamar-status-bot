@@ -24,7 +24,8 @@ schemas, and library choices belong in later design work or ADRs.
    message.
 7. **Telegram delivery** sends the early message and stores its message ID.
 8. **External beach checks** run at 10:10–10:40 in five-minute steps. Each
-   process checks SafeBeach first and normally exits immediately.
+   process checks SafeBeach first, retains at most the best whole normalized
+   partial response for this window, and normally exits immediately.
 9. **Conditional replacement** checks the Mayor channel once after SafeBeach
    succeeds or its retry window expires. A verified update permits one fresh
    full collection, delivery of the replacement, then deletion of the earlier
@@ -160,7 +161,7 @@ unavailable during replacement, the renderer preserves the published 07:30
 copy and inserts only newly verified beach information.
 
 The SafeBeach adapter performs one bounded HTML request per invocation and
-does not add an internal retry or cache. The external five-minute invocations
+does not add an internal retry or response cache. The external five-minute invocations
 provide recovery. It accepts only a page carrying today's local calendar date
 and independently valid, timestamped beach records. It returns every valid
 record among the six known Guardamar zones in fixed product order. Conflicting,
@@ -168,6 +169,12 @@ duplicate, or malformed records are omitted. Update checks before 10:40
 continue until all six zones are present. The 10:40 attempt may use any
 non-empty valid set so a
 persistently missing record does not suppress all beach information.
+Separate attempts never merge beach records. The daily publication state keeps
+only the whole response with the most verified beaches, breaking ties in favor
+of the later observation. A valid current 10:40 response remains authoritative;
+the attempt reuses the stored candidate only after a timeout or invalid final
+response. Candidates older than the bounded window or from another date are
+ignored and successful replacement removes the temporary record.
 
 Mayor, Policía Local, and municipal-agenda transports accept only their exact
 official HTTPS hosts, expected content types, and bounded responses. Gemini

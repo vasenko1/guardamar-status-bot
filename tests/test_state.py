@@ -1,7 +1,7 @@
 import json
 import tempfile
 import unittest
-from datetime import date, datetime
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 from telegrambot.models import BeachStatus
@@ -9,6 +9,16 @@ from telegrambot.state import PublicationState, StateError
 
 
 class PublicationStateTests(unittest.TestCase):
+    def _beach_status(self, local_day, names, color="green"):
+        return BeachStatus(
+            flag_color=color if "Centre" in names else None,
+            sea_temperature_c=28 if "Centre" in names else None,
+            source_date=local_day,
+            nearby_flags=tuple((name, color) for name in names),
+            jellyfish_states=tuple((name, False) for name in names),
+            updated_times=tuple((name, time(10, 0)) for name in names),
+        )
+
     def test_stores_only_last_successful_date(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "delivery.json"
@@ -95,6 +105,141 @@ class PublicationStateTests(unittest.TestCase):
             self.assertEqual(
                 record["beach_baseline"],
                 {"Centre": {"flag": "green", "jellyfish": False}},
+            )
+
+    def test_keeps_most_complete_beach_candidate_across_processes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "delivery.json"
+            state = PublicationState(path)
+            local_day = date(2026, 8, 7)
+            morning = datetime.fromisoformat("2026-08-07T07:30:00+02:00")
+            first_seen = datetime.fromisoformat("2026-08-07T10:15:00+02:00")
+            later_seen = datetime.fromisoformat("2026-08-07T10:35:00+02:00")
+            state.mark_morning(local_day, 101, morning, "morning")
+
+            state.remember_beach_candidate(
+                local_day,
+                self._beach_status(local_day, ("Centre", "Roqueta")),
+                first_seen,
+            )
+            state.remember_beach_candidate(
+                local_day,
+                self._beach_status(local_day, ("Centre",)),
+                later_seen,
+            )
+
+            candidate = state.beach_candidate(
+                local_day,
+                datetime.fromisoformat("2026-08-07T10:40:00+02:00"),
+            )
+            self.assertIsNotNone(candidate)
+            self.assertEqual(
+                candidate.nearby_flags,
+                (("Centre", "green"), ("Roqueta", "green")),
+            )
+            self.assertEqual(candidate.sea_temperature_c, 28)
+            self.assertEqual(
+                candidate.jellyfish_states,
+                (("Centre", False), ("Roqueta", False)),
+            )
+
+    def test_equal_beach_candidate_prefers_later_whole_snapshot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "delivery.json"
+            state = PublicationState(path)
+            local_day = date(2026, 8, 7)
+            morning = datetime.fromisoformat("2026-08-07T07:30:00+02:00")
+            state.mark_morning(local_day, 101, morning, "morning")
+
+            state.remember_beach_candidate(
+                local_day,
+                self._beach_status(
+                    local_day, ("Centre", "Roqueta"), "yellow"
+                ),
+                datetime.fromisoformat("2026-08-07T10:15:00+02:00"),
+            )
+            state.remember_beach_candidate(
+                local_day,
+                self._beach_status(
+                    local_day, ("Centre", "Roqueta"), "green"
+                ),
+                datetime.fromisoformat("2026-08-07T10:35:00+02:00"),
+            )
+
+            candidate = state.beach_candidate(
+                local_day,
+                datetime.fromisoformat("2026-08-07T10:40:00+02:00"),
+            )
+            self.assertEqual(
+                candidate.nearby_flags,
+                (("Centre", "green"), ("Roqueta", "green")),
+            )
+
+    def test_rejects_stale_or_corrupt_beach_candidate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "delivery.json"
+            state = PublicationState(path)
+            local_day = date(2026, 8, 7)
+            morning = datetime.fromisoformat("2026-08-07T07:30:00+02:00")
+            state.mark_morning(local_day, 101, morning, "morning")
+            state.remember_beach_candidate(
+                local_day,
+                self._beach_status(local_day, ("Centre", "Roqueta")),
+                datetime.fromisoformat("2026-08-07T10:10:00+02:00"),
+            )
+
+            self.assertIsNone(state.beach_candidate(
+                local_day,
+                datetime.fromisoformat("2026-08-07T11:00:01+02:00"),
+                max_age=timedelta(minutes=45),
+            ))
+
+            value = json.loads(path.read_text())
+            value["beach_candidate"]["status"]["nearby_flags"] = "broken"
+            path.write_text(json.dumps(value))
+            self.assertIsNone(state.beach_candidate(
+                local_day,
+                datetime.fromisoformat("2026-08-07T10:40:00+02:00"),
+            ))
+
+    def test_rejects_beach_candidate_for_another_day(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "delivery.json"
+            state = PublicationState(path)
+            local_day = date(2026, 8, 7)
+            morning = datetime.fromisoformat("2026-08-07T07:30:00+02:00")
+            state.mark_morning(local_day, 101, morning, "morning")
+
+            self.assertFalse(state.remember_beach_candidate(
+                local_day,
+                self._beach_status(
+                    date(2026, 8, 6), ("Centre", "Roqueta")
+                ),
+                datetime.fromisoformat("2026-08-07T10:20:00+02:00"),
+            ))
+            self.assertIsNone(state.beach_candidate(
+                local_day,
+                datetime.fromisoformat("2026-08-07T10:40:00+02:00"),
+            ))
+
+    def test_successful_update_removes_temporary_beach_candidate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "delivery.json"
+            state = PublicationState(path)
+            local_day = date(2026, 8, 7)
+            morning = datetime.fromisoformat("2026-08-07T07:30:00+02:00")
+            status = self._beach_status(local_day, ("Centre", "Roqueta"))
+            state.mark_morning(local_day, 101, morning, "morning")
+            state.remember_beach_candidate(
+                local_day,
+                status,
+                datetime.fromisoformat("2026-08-07T10:35:00+02:00"),
+            )
+
+            state.mark_update_sent(local_day, 202, status)
+
+            self.assertNotIn(
+                "beach_candidate", json.loads(path.read_text())
             )
 
     def test_ignores_unsuccessful_previous_attempt(self):

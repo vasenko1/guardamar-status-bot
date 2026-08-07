@@ -4,7 +4,7 @@ import fcntl
 import json
 import os
 from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Iterator, Optional
 
@@ -144,6 +144,7 @@ class PublicationState:
         if value is None:
             raise StateError("morning publication record is missing")
         value["update_message_id"] = message_id
+        value.pop("beach_candidate", None)
         if beach_status is not None:
             jellyfish = dict(beach_status.jellyfish_states)
             value["beach_baseline"] = {
@@ -154,6 +155,70 @@ class PublicationState:
                 for name, color in beach_status.nearby_flags
             }
         self._write(value)
+
+    def remember_beach_candidate(
+        self,
+        local_day: date,
+        status: BeachStatus,
+        observed_at: datetime,
+    ) -> bool:
+        """Keep one whole best SafeBeach response for the final attempt."""
+
+        if (
+            observed_at.tzinfo is None
+            or observed_at.date() != local_day
+            or status.source_date != local_day
+            or not status.nearby_flags
+        ):
+            return False
+        with self.exclusive_run():
+            value = self.morning_record(local_day)
+            if value is None or isinstance(value.get("update_message_id"), int):
+                return False
+            existing = _decode_beach_candidate(value.get("beach_candidate"))
+            if existing is not None:
+                existing_time, existing_status = existing
+                existing_size = len(existing_status.nearby_flags)
+                candidate_size = len(status.nearby_flags)
+                if candidate_size < existing_size or (
+                    candidate_size == existing_size
+                    and observed_at <= existing_time
+                ):
+                    return False
+            value["beach_candidate"] = {
+                "observed_at": observed_at.isoformat(),
+                "status": _encode_beach_status(status),
+            }
+            self._write(value)
+            return True
+
+    def beach_candidate(
+        self,
+        local_day: date,
+        now: datetime,
+        *,
+        max_age: timedelta = timedelta(minutes=45),
+    ) -> Optional[BeachStatus]:
+        """Return a recent same-day candidate without trusting bad state."""
+
+        if now.tzinfo is None or max_age < timedelta(0):
+            return None
+        value = self.morning_record(local_day)
+        if value is None:
+            return None
+        decoded = _decode_beach_candidate(value.get("beach_candidate"))
+        if decoded is None:
+            return None
+        observed_at, status = decoded
+        age = now - observed_at
+        if (
+            observed_at.date() != local_day
+            or status.source_date != local_day
+            or age < timedelta(0)
+            or age > max_age
+        ):
+            return None
+        return status
 
     def mark_morning_deleted(self, local_day: date) -> None:
         value = self.morning_record(local_day)
@@ -208,3 +273,139 @@ class PublicationState:
         finally:
             assert lock_file is not None
             lock_file.close()
+
+
+def _encode_beach_status(status: BeachStatus) -> dict:
+    return {
+        "flag_color": status.flag_color,
+        "sea_temperature_c": status.sea_temperature_c,
+        "wind_direction": status.wind_direction,
+        "wind_speed_kmh": status.wind_speed_kmh,
+        "sea_state": status.sea_state,
+        "nearby_flags": [list(item) for item in status.nearby_flags],
+        "jellyfish_beaches": list(status.jellyfish_beaches),
+        "jellyfish_states": [list(item) for item in status.jellyfish_states],
+        "flag_meanings": [list(item) for item in status.flag_meanings],
+        "updated_times": [
+            [name, updated.isoformat()]
+            for name, updated in status.updated_times
+        ],
+        "source_date": (
+            status.source_date.isoformat()
+            if status.source_date is not None else None
+        ),
+    }
+
+
+def _decode_beach_candidate(value) -> Optional[tuple]:
+    if not isinstance(value, dict):
+        return None
+    observed_raw = value.get("observed_at")
+    status_raw = value.get("status")
+    if not isinstance(observed_raw, str) or not isinstance(status_raw, dict):
+        return None
+    try:
+        observed_at = datetime.fromisoformat(observed_raw)
+    except ValueError:
+        return None
+    if observed_at.tzinfo is None:
+        return None
+    status = _decode_beach_status(status_raw)
+    if status is None:
+        return None
+    return observed_at, status
+
+
+def _decode_beach_status(value: dict) -> Optional[BeachStatus]:
+    optional_strings = (
+        "flag_color", "wind_direction", "sea_state",
+    )
+    if any(
+        value.get(name) is not None
+        and not isinstance(value.get(name), str)
+        for name in optional_strings
+    ):
+        return None
+    optional_integers = ("sea_temperature_c", "wind_speed_kmh")
+    if any(
+        value.get(name) is not None
+        and (
+            not isinstance(value.get(name), int)
+            or isinstance(value.get(name), bool)
+        )
+        for name in optional_integers
+    ):
+        return None
+    nearby_flags = _string_pairs(value.get("nearby_flags"))
+    jellyfish_states = _boolean_pairs(value.get("jellyfish_states"))
+    flag_meanings = _string_pairs(value.get("flag_meanings"))
+    jellyfish_beaches = value.get("jellyfish_beaches")
+    updated_raw = value.get("updated_times")
+    source_raw = value.get("source_date")
+    if (
+        nearby_flags is None
+        or jellyfish_states is None
+        or flag_meanings is None
+        or not isinstance(jellyfish_beaches, list)
+        or any(not isinstance(name, str) for name in jellyfish_beaches)
+        or not isinstance(updated_raw, list)
+        or not isinstance(source_raw, str)
+    ):
+        return None
+    updated_times = []
+    try:
+        for item in updated_raw:
+            if (
+                not isinstance(item, list)
+                or len(item) != 2
+                or not all(isinstance(part, str) for part in item)
+            ):
+                return None
+            updated_times.append((item[0], time.fromisoformat(item[1])))
+        source_date = date.fromisoformat(source_raw)
+    except ValueError:
+        return None
+    return BeachStatus(
+        flag_color=value.get("flag_color"),
+        sea_temperature_c=value.get("sea_temperature_c"),
+        wind_direction=value.get("wind_direction"),
+        wind_speed_kmh=value.get("wind_speed_kmh"),
+        sea_state=value.get("sea_state"),
+        nearby_flags=nearby_flags,
+        jellyfish_beaches=tuple(jellyfish_beaches),
+        jellyfish_states=jellyfish_states,
+        flag_meanings=flag_meanings,
+        updated_times=tuple(updated_times),
+        source_date=source_date,
+    )
+
+
+def _string_pairs(value) -> Optional[tuple]:
+    if not isinstance(value, list):
+        return None
+    pairs = []
+    for item in value:
+        if (
+            not isinstance(item, list)
+            or len(item) != 2
+            or not all(isinstance(part, str) for part in item)
+        ):
+            return None
+        pairs.append((item[0], item[1]))
+    return tuple(pairs)
+
+
+def _boolean_pairs(value) -> Optional[tuple]:
+    if not isinstance(value, list):
+        return None
+    pairs = []
+    for item in value:
+        if (
+            not isinstance(item, list)
+            or len(item) != 2
+            or not isinstance(item[0], str)
+            or not isinstance(item[1], bool)
+        ):
+            return None
+        pairs.append((item[0], item[1]))
+    return tuple(pairs)

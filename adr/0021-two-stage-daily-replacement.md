@@ -36,8 +36,9 @@ independent messages leaves stale duplicate information in the group.
   published 07:30 copy for unchanged sections and add only the verified
   SafeBeach and/or Mayor update.
 - If deletion fails, a later invocation retries deletion without resending.
-- Keep one atomic JSON state containing only the current date, morning
-  publication time and rendered copy, message IDs, and deletion result.
+- Keep one atomic JSON state containing the current date, morning publication
+  time and rendered copy, message IDs, deletion result, and at most one
+  temporary normalized SafeBeach candidate for the current retry window.
 - Use external cron invocations. Do not keep a process asleep between retries.
 
 ## Consequences

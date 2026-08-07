@@ -19,6 +19,13 @@ verified records adds no request or dependency.
   zones: Centre / Babilònia, Roqueta, Vivers, Montcaio, Camp, and Ortigues.
 - Before 10:40, replace the morning message only when all six zones have valid
   current flags. At 10:40, any non-empty valid subset remains publishable.
+- Preserve the best whole valid partial response across the separate 10:10–
+  10:40 cron processes. Prefer more verified beaches; for equal counts prefer
+  the later response. Never merge beach records from different responses.
+- On the final attempt, prefer any valid current response, even when it has
+  fewer verified beaches. Use the stored recent same-day candidate only when
+  the current request supplies no valid data. Discard it after successful
+  replacement and never reuse it outside the bounded retry window.
 - Group flags in red, yellow, green order and keep the fixed beach order within
   each color. Render at most three beach names on one semantic row; allow
   Telegram to wrap text naturally without estimating visual width.
@@ -36,9 +43,9 @@ verified records adds no request or dependency.
 
 The digest can no longer hide a known stricter peripheral flag merely because
 three preferred records arrived first. Complete data may take longer to become
-available, but the existing 10:40 partial fallback prevents one missing zone
-from suppressing all beach information. The change adds no network request,
-cache, process, dependency, or source.
+available, but the 10:40 fallback now survives a final request timeout without
+mixing observations. It adds one small normalized temporary record but no
+network request, process, dependency, source, raw response, or history.
 
 The proposed later-day monitor in ADR 0031 remains separate. Its full-beach
 baseline can reuse this normalized six-zone result, but this decision does not

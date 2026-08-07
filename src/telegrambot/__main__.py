@@ -59,6 +59,7 @@ from .safebeach import (
     is_complete_current_status,
     is_current_status,
 )
+from .models import BeachStatus
 from .state import PublicationState, StateError
 from .telegram import TelegramError, delete_message, edit_message, send_message
 
@@ -77,6 +78,28 @@ def _beach_ready_for_update(status, now: datetime, final_attempt: bool) -> bool:
     return is_complete_current_status(status, now) or (
         final_attempt and is_current_status(status, now)
     )
+
+
+def _select_beach_for_update(
+    state: PublicationState,
+    candidate: Optional[BeachStatus],
+    now: datetime,
+    final_attempt: bool,
+) -> Optional[BeachStatus]:
+    """Persist valid partial data and select one whole publishable snapshot."""
+
+    if is_current_status(candidate, now):
+        state.remember_beach_candidate(now.date(), candidate, now)
+    if is_complete_current_status(candidate, now) or (
+        final_attempt and is_current_status(candidate, now)
+    ):
+        return candidate
+    if not final_attempt:
+        return None
+    stored = state.beach_candidate(now.date(), now)
+    if is_current_status(stored, now):
+        return stored
+    return None
 
 
 def _required_environment(name: str) -> str:
@@ -574,14 +597,19 @@ async def _run_command(command: str) -> int:
     final_attempt = (now.hour, now.minute) >= (10, 40)
     beach = None
     try:
-        candidate = await fetch_beach_status()
-        if _beach_ready_for_update(candidate, now, final_attempt):
-            beach = candidate
+        candidate = await fetch_beach_status(now)
+        beach = _select_beach_for_update(
+            state, candidate, now, final_attempt
+        )
     except SafeBeachError as exc:
         logging.warning(
             "SafeBeach update check failed: SB-%s",
             exc.diagnostic_code,
         )
+        if final_attempt:
+            beach = _select_beach_for_update(
+                state, None, now, final_attempt=True
+            )
     result = await publish_update(
         now,
         state,

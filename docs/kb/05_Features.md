@@ -362,9 +362,12 @@ presented as absence of warnings.
 - Before `10:40`, require active, non-ended, timestamped flags for all six
   known Guardamar zones
 - Before that complete six-zone set is available, exit without checking or
-  collecting other sources
+  collecting other sources, but retain the most complete whole valid response
+  in the small daily state; equal-size responses prefer the later observation
 - At `10:40`, accept any non-empty valid set so one missing zone cannot
-  suppress the whole update
+  suppress the whole update; prefer that current response and use the recent
+  same-day candidate only if the final request has no valid data, without
+  merging records from separate responses
 - After completeness, or after the final failed check, inspect the Mayor
   channel once for a new explicit bathing-status transition since 07:30
 - If neither source has an update, retain the 07:30 message and exit
@@ -376,7 +379,8 @@ presented as absence of warnings.
   published 07:30 message and add only verified SafeBeach/Mayor blocks
 - At most three bounded Telegram HTTP attempts within that run
 - One small atomic JSON state with the date, rendered morning copy, morning
-  time, message IDs, and deletion result
+  time, message IDs, deletion result, and one temporary normalized SafeBeach
+  candidate removed after successful replacement
 - Concise process output for success, duplicate, skip, and failure
 
 The replacement ID is stored before deleting the earlier message. If deletion

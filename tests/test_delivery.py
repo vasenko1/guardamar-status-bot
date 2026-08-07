@@ -9,7 +9,10 @@ from telegrambot.delivery import (
     publish_morning,
     publish_update,
 )
-from telegrambot.__main__ import _beach_ready_for_update
+from telegrambot.__main__ import (
+    _beach_ready_for_update,
+    _select_beach_for_update,
+)
 from telegrambot.models import BeachStatus
 from telegrambot.state import PublicationState
 
@@ -17,6 +20,60 @@ MADRID = ZoneInfo("Europe/Madrid")
 
 
 class DeliveryRunTests(unittest.IsolatedAsyncioTestCase):
+    def _partial_status(self, now, names):
+        return BeachStatus(
+            flag_color="yellow" if "Centre" in names else None,
+            sea_temperature_c=27 if "Centre" in names else None,
+            source_date=now.date(),
+            nearby_flags=tuple((name, "yellow") for name in names),
+            updated_times=tuple(
+                (name, now.time().replace(second=0, microsecond=0))
+                for name in names
+            ),
+        )
+
+    def test_partial_candidate_survives_until_final_timeout(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = PublicationState(Path(directory) / "delivery.json")
+            morning = datetime(2026, 8, 7, 7, 30, tzinfo=MADRID)
+            first = datetime(2026, 8, 7, 10, 20, tzinfo=MADRID)
+            final = datetime(2026, 8, 7, 10, 40, tzinfo=MADRID)
+            partial = self._partial_status(
+                first, ("Centre", "Roqueta", "Vivers")
+            )
+            state.mark_morning(morning.date(), 10, morning, "morning")
+
+            self.assertIsNone(_select_beach_for_update(
+                state, partial, first, final_attempt=False
+            ))
+            selected = _select_beach_for_update(
+                state, None, final, final_attempt=True
+            )
+
+            self.assertIsNotNone(selected)
+            self.assertEqual(selected.nearby_flags, partial.nearby_flags)
+
+    def test_final_current_candidate_is_preferred_over_older_larger_snapshot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = PublicationState(Path(directory) / "delivery.json")
+            morning = datetime(2026, 8, 7, 7, 30, tzinfo=MADRID)
+            first = datetime(2026, 8, 7, 10, 20, tzinfo=MADRID)
+            final = datetime(2026, 8, 7, 10, 40, tzinfo=MADRID)
+            larger = self._partial_status(
+                first, ("Centre", "Roqueta", "Vivers")
+            )
+            smaller = self._partial_status(final, ("Centre", "Roqueta"))
+            state.mark_morning(morning.date(), 10, morning, "morning")
+
+            _select_beach_for_update(
+                state, larger, first, final_attempt=False
+            )
+            selected = _select_beach_for_update(
+                state, smaller, final, final_attempt=True
+            )
+
+            self.assertEqual(selected.nearby_flags, smaller.nearby_flags)
+
     def test_partial_beach_status_waits_until_final_attempt(self):
         now = datetime(2026, 7, 29, 10, 20, tzinfo=MADRID)
         partial = BeachStatus(

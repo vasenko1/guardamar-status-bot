@@ -74,8 +74,10 @@ deployment agent or self-hosted CI runner.
   delays or a server-provided `Retry-After` only when it fits the runtime
   budget.
 - SafeBeach uses one bounded request per invocation. Do not add an inner retry,
-  response cache, cookies, or browser execution; the external five-minute
-  checks already provide seasonal recovery. Its bounded HTML limit is 512 KiB.
+  raw-response cache, cookies, or browser execution; the external five-minute
+  checks already provide seasonal recovery. The daily publication state may
+  retain only one small normalized whole partial response until the 10:40
+  fallback. Its bounded HTML limit is 512 KiB.
 - Later-day beach monitoring uses four or five primary seasonal checks. A
   five-minute confirmation request occurs only for a candidate change; one
   final request is allowed only when that confirmation reveals a different
