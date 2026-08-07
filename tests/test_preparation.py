@@ -127,6 +127,10 @@ class PreparationTests(unittest.IsolatedAsyncioTestCase):
             ),
             "Ночной пешеходный маршрут (8 км) для молодёжи 12–30 лет",
         )
+        self.assertEqual(
+            reviewed_translation("Taller de baterías"),
+            "Мастер-класс по игре на барабанах",
+        )
 
     def test_reviewed_title_overrides_empty_cache(self):
         with tempfile.TemporaryDirectory() as directory:

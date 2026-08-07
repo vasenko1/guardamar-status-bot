@@ -74,6 +74,7 @@ REVIEWED_TRANSLATIONS = {
     (
         "rutas nocturnas: senderismo y dinámica grupal"
     ): "Ночной пешеходный маршрут (8 км) для молодёжи 12–30 лет",
+    "taller de baterías": "Мастер-класс по игре на барабанах",
 }
 
 

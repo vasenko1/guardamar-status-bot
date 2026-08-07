@@ -33,6 +33,7 @@ from .diagnostics import SourceDiagnostic, source_error
 from .todo_cultura import (
     TodoCulturaAdmission,
     TodoCulturaError,
+    TodoCulturaParticipation,
     fetch_latest_program,
 )
 
@@ -392,6 +393,18 @@ def merge_text_and_poster_events(
                     if current.ticket_price_cents is not None
                     else poster_event.ticket_price_cents
                 ),
+                "participation_note": (
+                    current.participation_note
+                    or poster_event.participation_note
+                ),
+                "registration_contact": (
+                    current.registration_contact
+                    or poster_event.registration_contact
+                ),
+                "capacity_limited": (
+                    current.capacity_limited
+                    or poster_event.capacity_limited
+                ),
             }
         )
     return tuple(merged[:MAX_EVENTS])
@@ -423,6 +436,46 @@ def _enrich_todo_admissions(
                 **{**event.__dict__, "ticket_price_cents": best.price_cents}
             )
         enriched.append(event)
+    return tuple(enriched)
+
+
+def _enrich_todo_participation(
+    events: Tuple[SourceEvent, ...],
+    details: Tuple[TodoCulturaParticipation, ...],
+    target_date: date,
+) -> Tuple[SourceEvent, ...]:
+    """Attach explicit event-local registration facts to one occurrence."""
+
+    enriched = []
+    for event in events:
+        if not event.start_date <= target_date <= event.end_date:
+            enriched.append(event)
+            continue
+        best = None
+        best_overlap = 0.0
+        for detail in details:
+            candidate_overlap = _word_overlap(event.title_es, detail.title_hint)
+            if candidate_overlap > best_overlap:
+                best = detail
+                best_overlap = candidate_overlap
+        if best is None or best_overlap < 0.5:
+            enriched.append(event)
+            continue
+        enriched.append(replace(
+            event,
+            sources=tuple(dict.fromkeys(
+                event.sources + ("todo_cultura_detail",)
+            )),
+            participation_note=(
+                event.participation_note or best.participation_note
+            ),
+            registration_contact=(
+                event.registration_contact or best.registration_contact
+            ),
+            capacity_limited=(
+                event.capacity_limited or best.capacity_limited
+            ),
+        ))
     return tuple(enriched)
 
 
@@ -610,6 +663,13 @@ def normalize_extraction(
             or not 0 <= ticket_price_cents <= 100_000
         ):
             raise MunicipalAgendaError("invalid event ticket price")
+        participation_note = _clean_text(raw.get("participation_note"), 180)
+        registration_contact = _clean_text(
+            raw.get("registration_contact"), 180
+        )
+        capacity_limited = raw.get("capacity_limited", False)
+        if not isinstance(capacity_limited, bool):
+            raise MunicipalAgendaError("invalid event capacity flag")
         event = SourceEvent(
             title_es=title_es,
             start_date=start_date,
@@ -620,6 +680,9 @@ def normalize_extraction(
             category="event" if category == "workshop" else category,
             sources=(source,),
             ticket_price_cents=ticket_price_cents,
+            participation_note=participation_note,
+            registration_contact=registration_contact,
+            capacity_limited=capacity_limited,
         )
         key = (event.title_es.casefold(), event.start_date, event.start_time)
         if key not in seen:
@@ -671,7 +734,7 @@ def _snapshot_data(
     sources: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     return {
-        "version": 2,
+        "version": 3,
         "poster_url": poster_url,
         "poster_sha256": poster_hash,
         "fetched_at": fetched_at.isoformat(),
@@ -687,6 +750,9 @@ def _snapshot_data(
                 "category": event.category,
                 "sources": list(event.sources),
                 "ticket_price_cents": event.ticket_price_cents,
+                "participation_note": event.participation_note,
+                "registration_contact": event.registration_contact,
+                "capacity_limited": event.capacity_limited,
             }
             for event in events
         ],
@@ -750,7 +816,7 @@ def _load_snapshot(path: Path) -> Optional[Dict[str, Any]]:
         return None
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict) or data.get("version") not in {1, 2}:
+        if not isinstance(data, dict) or data.get("version") not in {1, 2, 3}:
             raise ValueError
         fetched_at = datetime.fromisoformat(data["fetched_at"])
         if fetched_at.tzinfo is None:
@@ -801,6 +867,48 @@ def _load_snapshot(path: Path) -> Optional[Dict[str, Any]]:
             code="CORRUPT",
             description="локальный снимок афиши повреждён",
         ) from exc
+
+
+def _inherit_reviewed_details(
+    reviewed: Tuple[SourceEvent, ...],
+    existing: Tuple[SourceEvent, ...],
+) -> Tuple[SourceEvent, ...]:
+    """Keep optional verified details when structural corrections replace facts."""
+
+    result = []
+    for corrected in reviewed:
+        candidate = next((
+            event
+            for event in existing
+            if event.start_date == corrected.start_date
+            and event.start_time == corrected.start_time
+            and _word_overlap(event.title_es, corrected.title_es) >= 0.5
+        ), None)
+        if candidate is None:
+            result.append(corrected)
+            continue
+        result.append(replace(
+            corrected,
+            sources=tuple(dict.fromkeys(
+                corrected.sources + candidate.sources
+            )),
+            ticket_price_cents=(
+                corrected.ticket_price_cents
+                if corrected.ticket_price_cents is not None
+                else candidate.ticket_price_cents
+            ),
+            participation_note=(
+                corrected.participation_note or candidate.participation_note
+            ),
+            registration_contact=(
+                corrected.registration_contact
+                or candidate.registration_contact
+            ),
+            capacity_limited=(
+                corrected.capacity_limited or candidate.capacity_limited
+            ),
+        ))
+    return tuple(result)
 
 
 def _apply_reviewed_corrections(
@@ -913,6 +1021,14 @@ def _apply_reviewed_corrections(
                     place="Centro Social Juvenil",
                     category="event",
                     sources=("mupi_reviewed", "todo_cultura_reviewed"),
+                    participation_note=(
+                        "для молодёжи 12–30 лет" if day == 8 else None
+                    ),
+                    registration_contact=(
+                        "Centro Social Juvenil или WhatsApp 609 00 67 54"
+                        if day == 8
+                        else None
+                    ),
                 )
                 for day, title in (
                     (8, "Taller de baterías"),
@@ -946,7 +1062,7 @@ def _apply_reviewed_corrections(
             ):
                 continue
             filtered.append(event)
-        return tuple(filtered) + reviewed
+        return tuple(filtered) + _inherit_reviewed_details(reviewed, events)
     corrected = []
     entropia_added = False
     for event in events:
@@ -1376,7 +1492,7 @@ async def refresh_municipal_catalog(
                 isinstance(todo_source, dict)
                 and todo_source.get("sha256") == todo_program.sha256
                 and todo_source.get("date") == local_now.date().isoformat()
-                and todo_source.get("parser_version") == 2
+                and todo_source.get("parser_version") == 3
             ):
                 todo_events = old_todo_events
             else:
@@ -1394,6 +1510,11 @@ async def refresh_municipal_catalog(
                 todo_events = _enrich_todo_admissions(
                     todo_events,
                     todo_program.admissions,
+                )
+                todo_events = _enrich_todo_participation(
+                    todo_events,
+                    todo_program.participation,
+                    local_now.date(),
                 )
         except (TodoCulturaError, GeminiError, MunicipalAgendaError) as exc:
             if old_todo_events:
@@ -1466,8 +1587,15 @@ async def refresh_municipal_catalog(
                 "sha256": todo_program.sha256,
                 "modified": todo_program.modified,
                 "date": local_now.date().isoformat(),
-                "parser_version": 2,
+                "parser_version": 3,
                 "checked_at": now.isoformat(),
+                "participation_evidence": [
+                    {
+                        "title_hint": detail.title_hint,
+                        "evidence": detail.evidence,
+                    }
+                    for detail in todo_program.participation[:12]
+                ],
             }
         elif isinstance(todo_source, dict) and todo_source:
             source_state["todo_cultura"] = todo_source

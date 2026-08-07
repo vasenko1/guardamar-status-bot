@@ -12,6 +12,7 @@ from telegrambot.municipal_agenda import (
     SourceEvent,
     _current_events,
     _enrich_todo_admissions,
+    _enrich_todo_participation,
     _cached_current_events,
     _apply_reviewed_corrections,
     _apply_reviewed_daily_schedules,
@@ -33,6 +34,7 @@ from telegrambot.gemini import GeminiError
 from telegrambot.todo_cultura import (
     TodoCulturaAdmission,
     TodoCulturaError,
+    TodoCulturaParticipation,
     TodoCulturaProgram,
 )
 
@@ -205,6 +207,42 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(enriched[0].ticket_price_cents, 1500)
         self.assertIsNone(enriched[1].ticket_price_cents)
 
+    def test_todo_registration_enriches_matching_occurrence_only(self):
+        drums = SourceEvent(
+            "Taller de baterías", date(2026, 8, 8), date(2026, 8, 8),
+            "19:00", "21:00", "Centro Social Juvenil", "event",
+            ("mupi",),
+        )
+        other = SourceEvent(
+            "Visita Memoria de arena", date(2026, 8, 8),
+            date(2026, 8, 8), "10:00", "12:00", "Castillo", "event",
+            ("turismo_html",),
+        )
+        details = (TodoCulturaParticipation(
+            title_hint=(
+                "19 a 21 h.: Taller de baterías para jóvenes de 12 a 30 años"
+            ),
+            registration_contact=(
+                "Centro Social Juvenil или WhatsApp 609 00 67 54"
+            ),
+            participation_note="для молодёжи 12–30 лет",
+            evidence="Inscripciones: Centro Social Juvenil y Whatsapp 609 00 67 54",
+        ),)
+
+        enriched = _enrich_todo_participation(
+            (drums, other), details, date(2026, 8, 8)
+        )
+
+        self.assertEqual(
+            enriched[0].registration_contact,
+            "Centro Social Juvenil или WhatsApp 609 00 67 54",
+        )
+        self.assertEqual(
+            enriched[0].participation_note, "для молодёжи 12–30 лет"
+        )
+        self.assertIn("todo_cultura_detail", enriched[0].sources)
+        self.assertIsNone(enriched[1].registration_contact)
+
     def test_routine_youth_hours_and_vague_campaign_are_omitted(self):
         result = normalize_extraction_candidates({
             "month": "2026-08",
@@ -371,6 +409,35 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("title_ru", path.read_text() if path.exists() else json.dumps(raw))
         self.assertEqual(raw["events"][0]["title_es"], "Concierto en el castillo")
 
+    def test_snapshot_round_trips_participation_details(self):
+        event = SourceEvent(
+            "Taller de baterías", date(2026, 8, 8), date(2026, 8, 8),
+            "19:00", "21:00", "Centro Social Juvenil", "event",
+            ("mupi", "todo_cultura_detail"),
+            participation_note="для молодёжи 12–30 лет",
+            registration_contact=(
+                "Centro Social Juvenil или WhatsApp 609 00 67 54"
+            ),
+            capacity_limited=True,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agenda.json"
+            _write_snapshot(path, _snapshot_data(
+                "https://www.guardamardelsegura.es/mupi.jpg",
+                "abc",
+                datetime(2026, 8, 8, tzinfo=TZ),
+                (event,),
+            ))
+            loaded = _load_snapshot(path)["_events"][0]
+
+        self.assertEqual(loaded.participation_note, "для молодёжи 12–30 лет")
+        self.assertEqual(
+            loaded.registration_contact,
+            "Centro Social Juvenil или WhatsApp 609 00 67 54",
+        )
+        self.assertTrue(loaded.capacity_limited)
+        self.assertIn("todo_cultura_detail", loaded.sources)
+
     def test_snapshot_loader_skips_entries_removed_by_new_policy(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "agenda.json"
@@ -491,6 +558,14 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(any(
             "ajedrez" in event.title_es.casefold() for event in corrected
         ))
+        drums = next(
+            event for event in corrected if event.title_es == "Taller de baterías"
+        )
+        self.assertEqual(drums.participation_note, "для молодёжи 12–30 лет")
+        self.assertEqual(
+            drums.registration_contact,
+            "Centro Social Juvenil или WhatsApp 609 00 67 54",
+        )
         labores = next(
             event
             for event in corrected
@@ -1093,7 +1168,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                 diagnostics[0].code,
                 "MUNI-AGENDA-SNAPSHOT-CORRUPT",
             )
-            self.assertEqual(json.loads(path.read_text())["version"], 2)
+            self.assertEqual(json.loads(path.read_text())["version"], 3)
 
     async def test_snapshot_write_failure_keeps_new_events(self):
         poster_url = (

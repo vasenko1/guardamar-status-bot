@@ -298,21 +298,31 @@ continuous date range: K-Pop/TikTok on 1 August and music workshops on 8, 15,
 tied to the exact August poster prevents a finished workshop from remaining
 active on later dates. Todo Cultura Vega Baja's dated reproduction of the
 Ayuntamiento programme corroborates the four music-workshop times; it is a
-secondary review source, not an automated cancellation authority.
+secondary review source, not an automated cancellation authority. Its dated
+8 August record explicitly limits the drums workshop to ages 12–30 and gives
+registration at Centro Social Juvenil or WhatsApp `609 00 67 54`. It does not
+state a price, so the digest makes no free-admission claim.
 
 Todo Cultura is also queried through one bounded public WordPress REST request
-during the municipal refresh. Its latest Guardamar programme article is split
-at Spanish date headings, and only the section for the requested Guardamar
-date is sent through the existing text extractor. The adapter rejects an
-unattributed article, a missing date section, an oversized section, redirects
-outside the source hosts and malformed JSON. Supplemental results have lower
-merge priority than official municipal HTML and Agenda Guardamar; absence from
-Todo Cultura never means cancellation.
+during the municipal refresh. The request searches for the requested Spanish
+date and returns at most three candidates; the adapter chooses the first
+attributed municipal programme that actually contains that date. Only its
+matching date section is sent through the existing text extractor. The adapter
+rejects an unattributed article, a missing date section, an oversized section,
+redirects outside the source hosts and malformed JSON. Supplemental results
+have lower merge priority than official municipal HTML and Agenda Guardamar;
+absence from Todo Cultura never means cancellation.
 
 An explicit regular admission price in that same bounded programme may enrich
 the matching event only when the price paragraph links to an HTTPS Agenda
 Guardamar event page and the normalized titles agree. The existing Agenda
 Guardamar occurrence remains the authority for its dated purchase link.
+An explicit `Inscripciones:` or `Reservas:` row with a valid phone number may
+similarly enrich only a title-matched occurrence on the requested date. A
+generic information contact is not registration, and missing price is not
+interpreted as free admission. Registration, participation and capacity facts
+are stored in the small normalized catalog so reviewed occurrence corrections
+do not discard them.
 Routine Centro Social Juvenil opening sessions and undated, placeless campaigns
 are not Morning Digest events.
 

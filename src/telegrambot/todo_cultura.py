@@ -17,9 +17,10 @@ from typing import List, Optional, Tuple
 
 
 API_HOSTS = {"todoculturavegabaja.es", "www.todoculturavegabaja.es"}
-REQUEST_TIMEOUT_SECONDS = 12
+REQUEST_TIMEOUT_SECONDS = 20
 RESPONSE_LIMIT_BYTES = 300_000
 PROGRAM_TEXT_LIMIT = 12_000
+MAX_CANDIDATES = 3
 API_URL = "https://todoculturavegabaja.es/wp-json/wp/v2/mec-events"
 
 
@@ -40,12 +41,24 @@ class TodoCulturaAdmission:
 
 
 @dataclass(frozen=True)
+class TodoCulturaParticipation:
+    """Explicit event-local participation facts from the dated programme."""
+
+    title_hint: str
+    registration_contact: str
+    participation_note: Optional[str] = None
+    capacity_limited: bool = False
+    evidence: str = ""
+
+
+@dataclass(frozen=True)
 class TodoCulturaProgram:
     text: str
     sha256: str
     source_url: str
     modified: Optional[str]
     admissions: Tuple[TodoCulturaAdmission, ...] = ()
+    participation: Tuple[TodoCulturaParticipation, ...] = ()
 
 
 class _TextParser(HTMLParser):
@@ -114,6 +127,86 @@ def _daily_section(lines: List[str], target_date: date) -> str:
             description="в дополнительной программе нет раздела нужной даты",
         )
     return "\n".join(lines[start:end])
+
+
+def _date_search(target_date: date) -> str:
+    month = next(
+        name for name, number in _MONTHS.items() if number == target_date.month
+    )
+    return f"Guardamar {target_date.day} de {month}"
+
+
+def _participation(text: str) -> Tuple[TodoCulturaParticipation, ...]:
+    """Bind only explicit registration rows to their preceding event row."""
+
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    result = []
+    seen = set()
+    for index, line in enumerate(lines):
+        match = re.match(
+            r"^(?:inscripci(?:ón|on|ones)|reservas?)\s*:\s*(.+)$",
+            line,
+            re.IGNORECASE,
+        )
+        if match is None:
+            continue
+        contact = " ".join(match.group(1).split())
+        phone = re.search(r"(?:\+34\s*)?(?:\d[\s.-]*){9}", contact)
+        if phone is None or len(contact) > 180:
+            continue
+        anchors = []
+        for candidate in lines[max(0, index - 4):index]:
+            normalized = candidate.casefold()
+            if (
+                any(word in normalized for word in (
+                    "taller", "ruta", "visita", "concierto", "curso",
+                    "actividad", "sesión", "sesion",
+                ))
+                and "actividades del centro social juvenil" not in normalized
+            ):
+                anchors.append(candidate)
+        if not anchors:
+            continue
+        anchor = next((
+            candidate
+            for candidate in reversed(anchors)
+            if re.search(r"\b\d{1,2}\s*(?:a|:)\s*\d{1,2}\b", candidate)
+        ), anchors[-1])
+        contact = re.sub(r"\bwasap\b", "WhatsApp", contact, flags=re.IGNORECASE)
+        contact = re.sub(
+            r"\bwhatsapp\b", "WhatsApp", contact, flags=re.IGNORECASE
+        )
+        contact = re.sub(r"\s+y\s+WhatsApp\b", " или WhatsApp", contact)
+        age = re.search(
+            r"(?:jóvenes|personas)\s+de\s+(\d{1,2})\s+a\s+"
+            r"(\d{1,2})\s+años",
+            anchor,
+            re.IGNORECASE,
+        )
+        participation_note = (
+            f"для молодёжи {age.group(1)}–{age.group(2)} лет"
+            if age is not None
+            else None
+        )
+        evidence_lines = lines[max(0, index - 2):index + 1]
+        evidence = " ".join(evidence_lines)[:600]
+        key = (anchor.casefold(), contact.casefold())
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(TodoCulturaParticipation(
+            title_hint=anchor,
+            registration_contact=contact,
+            participation_note=participation_note,
+            capacity_limited=any(
+                phrase in evidence.casefold()
+                for phrase in ("plazas limitadas", "aforo limitado")
+            ),
+            evidence=evidence,
+        ))
+        if len(result) == 12:
+            break
+    return tuple(result)
 
 
 def _allowed_url(url: str) -> bool:
@@ -187,15 +280,7 @@ class _RedirectHandler(urllib.request.HTTPRedirectHandler):
         )
 
 
-def _read_latest_program(target_date: date) -> TodoCulturaProgram:
-    query = urllib.parse.urlencode({
-        "search": "Guardamar",
-        "per_page": 1,
-        "orderby": "modified",
-        "order": "desc",
-        "_fields": "id,modified,link,content",
-    })
-    url = f"{API_URL}?{query}"
+def _read_api_payload(url: str, limit: int) -> bytes:
     request = urllib.request.Request(
         url,
         headers={
@@ -218,7 +303,7 @@ def _read_latest_program(target_date: date) -> TodoCulturaProgram:
                     code="CONTENT-TYPE",
                     description="источник вернул данные не в формате JSON",
                 )
-            payload = response.read(RESPONSE_LIMIT_BYTES + 1)
+            payload = response.read(limit + 1)
     except urllib.error.HTTPError as exc:
         raise TodoCulturaError(
             f"Todo Cultura returned HTTP {exc.code}",
@@ -239,23 +324,30 @@ def _read_latest_program(target_date: date) -> TodoCulturaProgram:
             code="NETWORK",
             description="не удалось получить дополнительную программу",
         ) from exc
-    if len(payload) > RESPONSE_LIMIT_BYTES:
+    if len(payload) > limit:
         raise TodoCulturaError(
             "Todo Cultura response was too large",
             code="TOO-LARGE",
             description="ответ превысил допустимый размер",
         )
+    return payload
+
+
+def _read_latest_program(target_date: date) -> TodoCulturaProgram:
+    query = urllib.parse.urlencode({
+        "search": _date_search(target_date),
+        "per_page": MAX_CANDIDATES,
+        "orderby": "modified",
+        "order": "desc",
+        "_fields": "id,modified,link,title,content",
+    })
+    url = f"{API_URL}?{query}"
     try:
-        data = json.loads(payload)
-        if not isinstance(data, list) or len(data) != 1:
-            raise ValueError
-        item = data[0]
-        rendered = item["content"]["rendered"]
-        source_url = item["link"]
-        modified = item.get("modified")
-        if not all(isinstance(value, str) for value in (rendered, source_url)):
-            raise ValueError
-        if not _allowed_url(source_url):
+        data = json.loads(_read_api_payload(url, RESPONSE_LIMIT_BYTES))
+        if (
+            not isinstance(data, list)
+            or not 1 <= len(data) <= MAX_CANDIDATES
+        ):
             raise ValueError
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise TodoCulturaError(
@@ -263,38 +355,75 @@ def _read_latest_program(target_date: date) -> TodoCulturaProgram:
             code="INVALID",
             description="источник вернул неполные данные",
         ) from exc
-    parser = _TextParser()
-    parser.feed(rendered)
-    full_text = html.unescape("".join(parser.parts))
-    lines = [" ".join(line.split()) for line in full_text.splitlines()]
-    lines = [line for line in lines if line]
-    attributed = " ".join(lines).casefold()
-    if (
-        "ayuntamiento de guardamar" not in attributed
-        or "agenda municipal" not in attributed
-    ):
+    candidates = []
+    failure_code = "INVALID"
+    failure_description = "источник вернул неполные данные"
+    for item in data:
+        try:
+            rendered = item["content"]["rendered"]
+            source_url = item["link"]
+            modified = item.get("modified")
+            title = item.get("title", {}).get("rendered", "")
+            if not all(
+                isinstance(value, str)
+                for value in (rendered, source_url, title)
+            ):
+                continue
+            if not _allowed_url(source_url):
+                continue
+            parser = _TextParser()
+            parser.feed(rendered)
+            full_text = html.unescape("".join(parser.parts))
+            lines = [" ".join(line.split()) for line in full_text.splitlines()]
+            lines = [line for line in lines if line]
+            attributed = " ".join(lines).casefold()
+            if (
+                "ayuntamiento de guardamar" not in attributed
+                or "agenda municipal" not in attributed
+            ):
+                failure_code = "NOT-PROGRAMME"
+                failure_description = (
+                    "запись не является программой Гуардамара"
+                )
+                continue
+            try:
+                text = _daily_section(lines, target_date)
+            except TodoCulturaError:
+                failure_code = "NO-DATE"
+                failure_description = (
+                    "в дополнительной программе нет раздела нужной даты"
+                )
+                continue
+            if not 100 <= len(text) <= PROGRAM_TEXT_LIMIT:
+                failure_code = "DAILY-SIZE"
+                failure_description = (
+                    "раздел нужной даты имеет недопустимый размер"
+                )
+                continue
+            candidates.append((
+                1,
+                TodoCulturaProgram(
+                    text=text,
+                    sha256=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                    source_url=source_url,
+                    modified=modified if isinstance(modified, str) else None,
+                    admissions=_admissions(rendered),
+                    participation=_participation(text),
+                ),
+            ))
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+            continue
+    if not candidates:
         raise TodoCulturaError(
-            "Todo Cultura item was not a municipal programme",
-            code="NOT-PROGRAMME",
-            description="последняя запись не является программой Гуардамара",
+            "Todo Cultura candidates had no municipal daily programme",
+            code=failure_code,
+            description=failure_description,
         )
-    text = _daily_section(lines, target_date)
-    if not 100 <= len(text) <= PROGRAM_TEXT_LIMIT:
-        raise TodoCulturaError(
-            "Todo Cultura daily section had an unexpected size",
-            code="DAILY-SIZE",
-            description="раздел нужной даты имеет недопустимый размер",
-        )
-    return TodoCulturaProgram(
-        text=text,
-        sha256=hashlib.sha256(text.encode("utf-8")).hexdigest(),
-        source_url=source_url,
-        modified=modified if isinstance(modified, str) else None,
-        admissions=_admissions(rendered),
-    )
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    return candidates[0][1]
 
 
 async def fetch_latest_program(target_date: date) -> TodoCulturaProgram:
-    """Fetch one latest bounded programme record without bulk page reads."""
+    """Fetch one bounded date-matched programme record."""
 
     return await asyncio.to_thread(_read_latest_program, target_date)

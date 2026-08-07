@@ -57,10 +57,13 @@ the intended fail-closed tradeoff. Passing first-pass candidates into the
 second reading is prohibited because it creates confirmation bias without
 adding independent evidence.
 
-Todo Cultura Vega Baja is a supplemental discovery source because its latest
-Guardamar REST item reproduces dated Ayuntamiento programme text. One bounded
-request extracts only the paragraph range headed by the requested local date;
-the full monthly article and individual detail pages are not sent to Gemini.
+Todo Cultura Vega Baja is a supplemental discovery source because dated
+Guardamar REST items reproduce Ayuntamiento programme text. One bounded REST
+response searches for the requested Spanish date and examines at most three
+results in source order; the first attributed municipal programme containing
+that exact date is selected. Only that day's paragraph range is sent to
+Gemini. The full monthly article and individual detail pages are not fetched
+or sent to Gemini.
 The resulting events are merged after official HTML and Agenda Guardamar, so
 the aggregator cannot silently cancel or override those sources. A failed or
 oversized daily section leaves the prior atomic snapshot intact. Giglon is
@@ -70,6 +73,11 @@ not a municipal event feed.
 The same bounded Todo Cultura article may supply an explicit regular price only
 when that price paragraph links to the matching official Agenda Guardamar event
 page. Agenda Guardamar still supplies the occurrence-specific purchase URL.
+An explicit `Inscripciones:` or `Reservas:` row with a verified phone number
+may enrich only the matching dated event with its contact, audience note and
+capacity limit. Generic `Más información` text is not registration. These
+optional facts persist in the normalized catalog and survive exact reviewed
+structural corrections, but never overwrite a higher-priority fact.
 Routine facility hours and vague campaigns remain excluded.
 
 ## Alternatives rejected

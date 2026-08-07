@@ -24,6 +24,16 @@ to Gemini. The supplement must not override conflicting official HTML or
 Agenda Guardamar facts. Disappearance from the site is never interpreted as
 cancellation.
 
+Follow-up on 7 August: the generic newest youth-centre result did not contain
+the 8 August section, while a date-specific drums result did. A single REST
+search for `Guardamar 8 de agosto` with at most three full candidates returned
+the exact dated record without extra detail-page requests. That record states
+`19:00–21:00`, ages 12–30, and `Inscripciones: Centro Social Juvenil y
+Whatsapp 609 00 67 54`; it does not state a price. The adapter therefore binds
+those explicit participation facts to the matching occurrence and does not
+infer free admission. `Más información` alone remains a general contact, not
+registration.
+
 ## Giglon
 
 `https://www.giglon.com/todos?city=GuardamardelSegura` exposes commercial
