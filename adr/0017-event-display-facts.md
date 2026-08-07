@@ -18,6 +18,12 @@ medium such as painting or sculpture.
 - Preserve an explicit activity type or medium in the translated title.
 - Preserve an explicit start and end time.
 - Include the official place when available.
+- Keep at most one short verified practical note in the title. Put admission,
+  a concrete participation action, and explicit limited capacity on one
+  `🎟` row.
+- Never state that registration is required without a verified phone,
+  WhatsApp, email, or official URL for that occurrence. Do not copy organizer
+  contacts between similar events.
 - Never infer a missing time, type, medium, or place.
 
 ## Consequences

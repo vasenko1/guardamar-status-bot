@@ -56,6 +56,9 @@ class Event:
     is_final_day: bool = False
     ticket_price_cents: Optional[int] = None
     ticket_url: Optional[str] = None
+    participation_note: Optional[str] = None
+    registration_contact: Optional[str] = None
+    capacity_limited: bool = False
 
 
 @dataclass(frozen=True)

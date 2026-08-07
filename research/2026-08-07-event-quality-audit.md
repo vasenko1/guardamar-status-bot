@@ -42,3 +42,20 @@ found. The digest therefore preserves the event without inventing a time.
 - Apply exact-date night-route details and render its departure instruction as
   plain text rather than a map search.
 - Do not broaden generic fuzzy matching or infer a tennis schedule.
+
+## Actionable participation details
+
+The dated programme reproduction explicitly publishes for every August night
+route: sports shoes, water and a flashlight, limited places, and registration
+phone `633 14 57 75`. An older official Turismo Guardamar youth programme uses
+the same organizer phone and the valid `.com` email. The 2026 reproduction
+prints a malformed `.gmail.es` address, so the bot uses only the corroborated
+phone.
+
+The event model can carry one short practical note, one concrete registration
+contact and a limited-capacity flag. These facts are attached only by exact
+reviewed occurrence rules. The general LLM extraction contract is unchanged,
+and no contact is copied between events. User-facing `регистрация` is rendered
+only when a verified action point is present. A generic youth-centre
+`Más información` contact does not prove that it is the registration channel
+for a particular workshop.

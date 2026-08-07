@@ -735,6 +735,29 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             scheduled[1].place, "Место старта сообщит инструктор"
         )
         self.assertEqual(scheduled[1].ticket_price_cents, 0)
+        self.assertEqual(
+            scheduled[1].participation_note,
+            "с собой: спортивная обувь, вода и фонарик",
+        )
+        self.assertEqual(
+            scheduled[1].registration_contact, "633 14 57 75"
+        )
+        self.assertTrue(scheduled[1].capacity_limited)
+
+    def test_night_route_details_do_not_leak_to_another_event(self):
+        event = SourceEvent(
+            "Taller de música electrónica",
+            date(2026, 8, 7), date(2026, 8, 7),
+            "19:00", "21:00", "Centro Social Juvenil", "event",
+        )
+
+        scheduled = _apply_reviewed_daily_schedules(
+            (event,), date(2026, 8, 7)
+        )
+
+        self.assertIsNone(scheduled[0].registration_contact)
+        self.assertIsNone(scheduled[0].participation_note)
+        self.assertFalse(scheduled[0].capacity_limited)
 
     def test_keeps_prior_month_events_for_seven_day_transition(self):
         new = SourceEvent(

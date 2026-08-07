@@ -125,7 +125,7 @@ class PreparationTests(unittest.IsolatedAsyncioTestCase):
             reviewed_translation(
                 "Rutas nocturnas: senderismo y dinámica grupal"
             ),
-            "Ночной поход (8 км) для молодёжи 12–30 лет",
+            "Ночной пешеходный маршрут (8 км) для молодёжи 12–30 лет",
         )
 
     def test_reviewed_title_overrides_empty_cache(self):

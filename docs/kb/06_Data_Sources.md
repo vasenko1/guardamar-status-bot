@@ -336,8 +336,16 @@ occurrence-specific ticket URL. The ticket platform's technical venue label
 The reviewed August poster schedules the youth night walks at
 `22:15–00:15` on 7, 14, 21 and 28 August. The dated programme corroborates an
 8 km route for participants aged 12–30, free participation, and a start point
-communicated by the instructor. The latter is rendered as a plain instruction,
-not as an invented Google Maps destination. The tennis tournament retains its
+communicated by the instructor. It also explicitly publishes required sports
+shoes, water and a flashlight, limited capacity, and registration phone
+`633 14 57 75`. The phone is independently consistent with the official
+Turismo Guardamar youth-programme contact; the malformed email printed by the
+secondary reproduction is not used. The departure instruction is rendered as
+plain text, not as an invented Google Maps destination. For the independently
+reviewed children's library workshop, the published reservation phone and
+WhatsApp may be shown with its limited capacity. A generic `Más información`
+contact for Centro Social Juvenil is not relabelled as registration for a
+workshop. The tennis tournament retains its
 verified 1–8 August period and Polideportivo venue without an invented daily
 time because none is published by the accepted sources.
 

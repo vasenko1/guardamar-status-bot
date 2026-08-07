@@ -192,6 +192,13 @@ When the official source has no time, omit only the time prefix and keep the
 event. Preserve an explicit activity type or medium such as painting,
 sculpture, concert, workshop, guided tour, or night route. Include the
 official place when available. Never invent missing time, type, or place.
+One short verified practical note, such as age, distance, language, or required
+equipment, may follow the title in parentheses. Admission and participation
+use one `🎟` row. The row may contain the regular price, a concrete registration
+phone, WhatsApp, email, or official URL, and an explicit limited-capacity note.
+Never say that registration is required without also giving its verified
+action point. A generic organizer contact or a contact copied from another
+event is not a registration point.
 
 The message has no source footer, links, report-style title, explanatory prose,
 or separate weather section. A routine day should fit on one phone screen and

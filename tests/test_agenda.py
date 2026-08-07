@@ -185,6 +185,33 @@ class AgendaNormalizationTests(unittest.TestCase):
         self.assertEqual(merged[0].ends_at.hour, 12)
         self.assertEqual(merged[0].ticket_price_cents, 500)
 
+    def test_duplicate_keeps_actionable_participation_details(self):
+        starts_at = datetime(2026, 8, 7, 22, 15, tzinfo=TZ)
+        municipal = Event(
+            title="Ночной пешеходный маршрут",
+            starts_at=starts_at,
+            participation_note="с собой: вода и фонарик",
+            registration_contact="633 14 57 75",
+            capacity_limited=True,
+        )
+        duplicate = Event(
+            title="Ночной маршрут",
+            starts_at=starts_at,
+            ticket_price_cents=0,
+        )
+
+        merged = _merge_events((municipal,), (duplicate,))
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(
+            merged[0].registration_contact, "633 14 57 75"
+        )
+        self.assertEqual(
+            merged[0].participation_note, "с собой: вода и фонарик"
+        )
+        self.assertTrue(merged[0].capacity_limited)
+        self.assertEqual(merged[0].ticket_price_cents, 0)
+
     def test_duplicate_combines_supplement_price_with_official_ticket_url(self):
         starts_at = datetime(2026, 8, 5, 22, 0, tzinfo=TZ)
         supplement = Event(

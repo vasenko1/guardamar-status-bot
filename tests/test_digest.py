@@ -726,6 +726,11 @@ class DigestMessageTests(unittest.TestCase):
                 ),
                 place="Место старта сообщит инструктор",
                 ticket_price_cents=0,
+                participation_note=(
+                    "с собой: спортивная обувь, вода и фонарик"
+                ),
+                registration_contact="633 14 57 75",
+                capacity_limited=True,
             ),),
         )
 
@@ -733,7 +738,34 @@ class DigestMessageTests(unittest.TestCase):
 
         self.assertIn("📍 Место старта сообщит инструктор", message)
         self.assertNotIn("query=%D0%9C%D0%B5%D1%81%D1%82%D0%BE", message)
-        self.assertIn("🎟 Бесплатно", message)
+        self.assertIn(
+            "Ночной поход (8 км) для молодёжи 12–30 лет "
+            "(с собой: спортивная обувь, вода и фонарик)",
+            message,
+        )
+        self.assertIn(
+            "🎟 Бесплатно · регистрация: 633 14 57 75 · "
+            "места ограничены",
+            message,
+        )
+
+    def test_never_invents_registration_without_a_contact(self):
+        digest = MorningDigest(
+            weather=None,
+            warnings=(),
+            warnings_available=True,
+            events=(Event(
+                title="Мастер-класс по электронной музыке",
+                starts_at=None,
+                ticket_price_cents=0,
+                capacity_limited=True,
+            ),),
+        )
+
+        message = build_message(digest)
+
+        self.assertIn("🎟 Бесплатно · места ограничены", message)
+        self.assertNotIn("регистрац", message)
 
     def test_formats_market_time_range_and_place(self):
         digest = MorningDigest(

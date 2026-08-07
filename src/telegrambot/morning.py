@@ -115,6 +115,17 @@ def _merge_events(*groups):
                         else event.ticket_price_cents
                     ),
                     ticket_url=current.ticket_url or event.ticket_url,
+                    participation_note=(
+                        current.participation_note
+                        or event.participation_note
+                    ),
+                    registration_contact=(
+                        current.registration_contact
+                        or event.registration_contact
+                    ),
+                    capacity_limited=(
+                        current.capacity_limited or event.capacity_limited
+                    ),
                 )
                 continue
             result.append(event)

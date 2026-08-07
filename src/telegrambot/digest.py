@@ -626,6 +626,8 @@ def build_message(
             if event.category == "exhibition":
                 title = _exhibition_title(title)
             title = html.escape(_event_title(title))
+            if event.participation_note:
+                title += " (" + html.escape(event.participation_note) + ")"
             if event.is_final_day:
                 title = f"Последний день: {title}"
             time_prefix = ""
@@ -643,29 +645,44 @@ def build_message(
             event_lines.append(f"• {time_prefix}{title}")
             if event.place:
                 event_lines.append(f"  📍 {_event_place_link(event.place)}")
-            if event.ticket_price_cents is not None:
-                price = event.ticket_price_cents / 100
+            has_ticket_row = (
+                event.ticket_price_cents is not None
+                or event.registration_contact is not None
+                or event.capacity_limited
+            )
+            if has_ticket_row:
                 if event.ticket_price_cents == 0:
                     ticket_label = "Бесплатно"
-                else:
+                elif event.ticket_price_cents is not None:
+                    price = event.ticket_price_cents / 100
                     price_label = (
                         f"{int(price)} €"
                         if price.is_integer()
                         else f"{price:.2f} €".replace(".", ",")
                     )
                     ticket_label = f"Билет {price_label}"
-                if event.ticket_url:
-                    event_lines.append(
-                        '  🎟 <a href="'
+                else:
+                    ticket_label = ""
+                details = []
+                if event.ticket_url and ticket_label:
+                    details.append(
+                        '<a href="'
                         + html.escape(event.ticket_url, quote=True)
                         + f'">{ticket_label}</a>'
                     )
-                else:
-                    event_lines.append(f"  🎟 {ticket_label}")
+                elif ticket_label:
+                    details.append(ticket_label)
+                if event.registration_contact:
+                    details.append(
+                        "регистрация: "
+                        + html.escape(event.registration_contact)
+                    )
+                if event.capacity_limited:
+                    details.append("места ограничены")
+                if details:
+                    event_lines.append("  🎟 " + " · ".join(details))
             if len("\n".join([*lines, *event_lines])) > 3900:
-                rows = 1 + int(bool(event.place)) + int(
-                    event.ticket_price_cents is not None
-                )
+                rows = 1 + int(bool(event.place)) + int(has_ticket_row)
                 event_lines = event_lines[:-rows]
                 if event_lines and event_lines[-1] == "":
                     event_lines.pop()

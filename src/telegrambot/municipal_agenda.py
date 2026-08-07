@@ -79,6 +79,9 @@ class SourceEvent:
     category: str
     sources: Tuple[str, ...] = ()
     ticket_price_cents: Optional[int] = None
+    participation_note: Optional[str] = None
+    registration_contact: Optional[str] = None
+    capacity_limited: bool = False
 
 
 class _PosterParser(HTMLParser):
@@ -1101,6 +1104,10 @@ def _apply_reviewed_daily_schedules(
                     "de Cat Deeley"
                 ),
                 place="Biblioteca Infantil Municipal",
+                registration_contact=(
+                    "тел. 966 72 71 70 · WhatsApp 696 11 34 46"
+                ),
+                capacity_limited=True,
             ))
             continue
         if is_labores:
@@ -1157,6 +1164,11 @@ def _apply_reviewed_daily_schedules(
                 title_es="Rutas nocturnas: senderismo y dinámica grupal",
                 place="Место старта сообщит инструктор",
                 ticket_price_cents=0,
+                participation_note=(
+                    "с собой: спортивная обувь, вода и фонарик"
+                ),
+                registration_contact="633 14 57 75",
+                capacity_limited=True,
             ))
             continue
         if not is_mediterraneo:
@@ -1674,6 +1686,9 @@ async def fetch_today_municipal_events(
                 active_until=source.end_date,
                 category=source.category,
                 ticket_price_cents=source.ticket_price_cents,
+                participation_note=source.participation_note,
+                registration_contact=source.registration_contact,
+                capacity_limited=source.capacity_limited,
                 is_final_day=(
                     source.start_date != source.end_date
                     and local_day == source.end_date

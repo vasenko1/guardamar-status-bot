@@ -73,7 +73,7 @@ REVIEWED_TRANSLATIONS = {
     ): "Концерт Alice Wonder «Soulost» · VI Estival al Castell",
     (
         "rutas nocturnas: senderismo y dinámica grupal"
-    ): "Ночной поход (8 км) для молодёжи 12–30 лет",
+    ): "Ночной пешеходный маршрут (8 км) для молодёжи 12–30 лет",
 }
 
 
