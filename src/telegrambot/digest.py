@@ -281,6 +281,22 @@ def _warning_blocks(
     return blocks
 
 
+def build_warning_section(
+    warnings: Sequence[Warning],
+    now: datetime,
+) -> str:
+    """Render the approved complete AEMET warning section."""
+
+    blocks = _warning_blocks(warnings, now)
+    if not blocks:
+        return ""
+    return "\n".join([
+        "⚠️ <b>Предупреждения AEMET:</b>",
+        "Зона: южное побережье Аликанте",
+        *blocks,
+    ])
+
+
 def _event_title(value: str) -> str:
     return value if len(value) <= 120 else f"{value[:117].rstrip()}…"
 
@@ -316,6 +332,8 @@ def _event_place_link(value: str) -> str:
     """Render one fixed-host Google Maps search for a verified place."""
 
     source_place = " ".join(value.split())
+    if source_place == "Место старта сообщит инструктор":
+        return html.escape(source_place)
     if source_place.casefold() in {
         "plaça dels llauradors",
         "plaça llauradors",
@@ -542,16 +560,10 @@ def build_message(
             lines.append("<b>Ветер:</b> —")
         lines.append(f"<b>Море:</b> {sea_temperature}{sea_suffix}")
 
-    if digest.warnings and _warning_blocks(
-        digest.warnings, now or datetime.now(GUARDAMAR_TIMEZONE)
-    ):
-        warning_now = now or datetime.now(GUARDAMAR_TIMEZONE)
-        lines.extend([
-            "",
-            "⚠️ <b>Предупреждения AEMET:</b>",
-            "Зона: южное побережье Аликанте",
-            *_warning_blocks(digest.warnings, warning_now),
-        ])
+    warning_now = now or datetime.now(GUARDAMAR_TIMEZONE)
+    warning_section = build_warning_section(digest.warnings, warning_now)
+    if warning_section:
+        lines.extend(["", *warning_section.splitlines()])
 
     beach_lines = _beach_operational_lines(
         digest.beach,

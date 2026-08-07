@@ -1,236 +1,109 @@
-# ADR 0031: Bounded beach safety change monitoring
+# ADR 0031: Bounded operational change monitoring
 
-- Status: Proposed
-- Date: 2026-08-06
+- Status: Accepted
+- Date: 2026-08-07
 
-## Purpose
+## Context
 
-Add a quiet, bounded follow-up monitor for material beach-safety changes after
-the daily beach section has been published. The monitor is not a real-time
-emergency service and does not replace lifeguard instructions, beach signage,
-or official closure notices.
+The 07:30 digest and its later full replacement are snapshots. Verified beach
+flags and official AEMET warnings can change materially afterwards. Silently
+editing the full digest hides the change, while continuous polling would be
+noisy and too expensive for the Termux device.
 
-This document defines the product concept and implementation boundaries. It
-does not authorize implementation by itself.
+## Decision
 
-## Scope
+Add one small one-shot operational monitor. It never remains resident and
+uses a separate atomically replaced daily JSON state.
 
-The monitor runs only when all of these conditions are true:
+### Beach checks
 
-- the local date is inside the accepted beach season, from 20 June through
-  14 September, inclusive;
-- the beach service is operating at the time of the check;
-- the check is one of the bounded scheduled invocations defined below.
+- Run only from 20 June through 14 September and only inside normal lifeguard
+  hours.
+- In July and August, primary checks run at 11:00, 13:00, 15:00, 17:00 and
+  19:00. In June and September they run at 12:00, 14:00, 16:00 and 18:00.
+- Monitor all six known Guardamar zones.
+- Every explicit flag transition qualifies, including green to yellow and
+  yellow to green. Explicit jellyfish appearance and disappearance also
+  qualify.
+- A missing beach, field, stale page, invalid response or transport failure is
+  unknown and never becomes a transition.
+- A newly available flag creates a silent baseline. A first explicit positive
+  jellyfish report remains a safety candidate.
 
-Monitor every valid, active Guardamar beach returned by the municipality-linked
-SafeBeach page. ADR 0032 also retains all six known zones for the daily digest,
-so the later full digest can become the monitor's complete baseline without a
-second selection policy.
+Each possible change is checked again after five minutes. If the second sample
+contains another new explicit state, that state receives one final check after
+another five minutes. A third disagreement is treated as unstable source data
+and is not published. Therefore one window makes at most three SafeBeach
+requests and never starts an unbounded retry chain. Changes are confirmed per
+beach and field, held briefly when necessary, and combined into one message.
 
-The monitor runs even when the morning digest had no beach section. A source
-failure then costs only one bounded request: it produces no group message and
-does not alter known state.
+### AEMET warning checks
 
-## Service hours and initial schedule
+- Fetch only the official CAP warning product, not the full weather bundle.
+- Check every four hours after the later digest phase: 11:00, 15:00 and 19:00,
+  shifted to 12:00, 16:00 and 20:00 during the June/September beach schedule.
+- Compare a canonical set of event, level, start, end, probability and
+  normalized description. XML order and whitespace do not create changes.
+- Publish new warnings, level/time/content changes, and verified early
+  cancellations. Natural expiry at the published end time advances state
+  silently.
+- A source failure, malformed response or unavailable warning product never
+  means cancellation.
+- Reuse the approved full AEMET warning layout. When a beach confirmation is
+  pending in the same window, hold the AEMET change and send both sections in
+  one notification.
 
-The official Guardamar lifeguard specification describes these normal service
-hours:
+Air-quality monitoring is not part of this decision. The official open source
+available for the area is station-based and does not provide a trustworthy
+Guardamar measurement.
 
-- June and September: 11:00–19:00 on the staffed beaches;
-- July and August: 10:00–20:00 on the staffed beaches.
+### Telegram delivery and history
 
-The Ayuntamiento may change operational days or hours. To keep the first
-version simple, start one hour after the service opens and check every two
-hours. The last window starts one hour before the published closing time:
+Every operational message is a reply to the current full daily digest. The
+stable anchor is resolved from `delivery.json` at send time: before replacement
+it is the live 07:30 message; afterwards it is the later complete digest. It is
+never the previous operational update, so updates do not form a fragile chain.
 
-- 20–30 June and 1–14 September: 12:00, 14:00, 16:00, and 18:00;
-- July and August: 11:00, 13:00, 15:00, 17:00, and 19:00.
+If the full digest identifier is absent or Telegram reports that the reply
+anchor no longer exists, send the update as a standalone message. Keep older
+updates unchanged as an audit trail; do not delete or silently edit them.
 
-Each window has a scheduled confirmation opportunity five minutes later. It
-makes a second SafeBeach request only when the primary check stored a candidate
-change; otherwise it exits after reading local state. These are short scheduled
-invocations, not a resident polling process. The primary final check therefore
-runs one hour before the published closing time.
-The schedule can be changed later from cron after observing actual update
-behavior; it must not expand into continuous polling.
+Advance confirmed source state only after Telegram confirms delivery. The Bot
+API has no idempotency key, so a lost success response retains the existing
+small duplicate edge.
 
-Source checked on 2026-08-06:
-`https://www.guardamardelsegura.es/wp-content/uploads/2023/10/20231005_9-PROYECTO-DE-GESTION-SOCORRISMO-PLAYAS.pdf`
+## State
 
-## Daily baseline
+Store only the current local date, last confirmed explicit beach values,
+latest usable beach context, bounded pending/ready changes, and the canonical
+active AEMET set. Raw HTML, CAP documents and histories are not stored. Reset
+the state when the Madrid local date changes and protect each run with one
+non-blocking file lock.
 
-Use the later full digest's beach data as the first baseline when available.
-Otherwise, the first valid monitoring response of the day creates the baseline
-without treating newly available flag information as a change. An explicit
-jellyfish-positive value remains a safety candidate and follows the normal
-two-sample confirmation rule. Save:
-
-- local date;
-- identifier of the current full digest message, when one exists;
-- every valid, active Guardamar beach observed that day;
-- last explicit valid flag color for each beach;
-- last explicit valid jellyfish state for each beach, when the source provides
-  one.
-
-A beach first observed later in the day is added silently with its current flag
-as that beach's baseline. The appearance of its record or flag information is
-not an urgent transition. An explicit jellyfish-positive value is handled as a
-candidate, not silently discarded. Subsequent explicit changes are monitored
-normally. Confirmed safety values advance as notifications are published.
-
-A missing beach record, missing field, stale page, invalid response, or source
-failure is an unknown value. It never overwrites the last explicit valid
-state.
-
-## Changes that generate a notification
-
-Only confirmed transitions for an observed Guardamar beach qualify:
-
-1. a non-red flag changes to red;
-2. a red flag changes to an explicit current yellow or green flag;
-3. SafeBeach explicitly reports jellyfish present, including the first valid
-   observation of that hazard that day;
-4. a jellyfish-present state changes to an explicit no-jellyfish state.
-
-The following are not urgent updates and produce no group message:
-
-- a beach record or flag field appears after being unavailable at the start of
-  the day; its current flag becomes the silent baseline;
-- a beach record or flag field disappears;
-- a green flag changes to yellow or yellow changes to green;
-- a timestamp, sea temperature, wind, wave, or other descriptive field changes;
-- an unknown jellyfish state becomes explicitly negative.
-
-This distinction prevents data availability from being mistaken for a safety
-transition.
-
-## Confirmation and false-positive protection
-
-Every candidate transition must be present in both samples of the same
-five-minute window:
-
-1. the first check stores a pending candidate but sends nothing;
-2. the confirmation check must return the same explicit new state;
-3. only then is the notification published and the saved state advanced.
-
-If either request fails, the beach disappears, fields become unknown, or the
-two samples disagree, the candidate is discarded without changing the known
-state. A later window may detect it again.
-
-Missing data must never mean that a red flag was removed or jellyfish
-disappeared. A red-flag removal requires an explicit current yellow or green
-flag. Jellyfish disappearance requires an explicit negative source value.
-
-## Telegram delivery
-
-Confirmed changes from the same window are combined into one compact message.
-The message is sent as a reply to the current full daily digest so that the
-context is preserved and subscribers receive a normal notification. The
-original digest is not silently edited. If no usable daily message identifier
-was saved, send the safety update as a standalone group message rather than
-discarding it.
-
-Recommended wording:
-
-```text
-🔴 Изменение на пляжах
-На Roqueta поднят красный флаг — купание запрещено.
-
-Источник: SafeBeach · 13:05
-📣 обЪявления Гуардамар
-```
-
-```text
-🏖 Изменение на пляжах
-На Roqueta красный флаг заменён на жёлтый.
-
-Источник: SafeBeach · 17:05
-📣 обЪявления Гуардамар
-```
-
-```text
-🪼 Изменение на пляжах
-SafeBeach отмечает медуз на Roqueta.
-
-Источник: SafeBeach · 13:05
-📣 обЪявления Гуардамар
-```
-
-Do not write that an official restriction has been lifted merely because a
-red flag changed. A separate sanitary or municipal prohibition may still be
-active.
-
-## State and duplicate prevention
-
-Use one small, atomically replaced JSON state file. It contains only:
-
-- the local date and full-digest message identifier, when one exists;
-- all Guardamar beaches observed so far that day;
-- last explicit valid flag and jellyfish states;
-- a pending first-sample candidate and timestamp;
-- fingerprints of notifications already sent that day.
-
-Reset the state on the next local date. Do not store raw HTML, build a status
-history, or add a database. Repeated cron invocations and service restarts must
-not resend an already published transition.
-
-## Failure behavior
-
-- SafeBeach transport, schema, type, date, or validation failures remain
-  silent in the group.
-- A failure does not clear pending known safety state or manufacture a change.
-- The monitor does not retry internally; the paired scheduled invocation is
-  the only confirmation request.
-- Operator diagnostics may be written to the local log. Private bot feedback
-  can be considered separately and is not required for the first version.
-
-## Runtime and source load
-
-The normal design adds four SafeBeach requests on an eligible June/September
-day and five on a July/August day. A second request is added only for a detected
-candidate, giving a theoretical maximum of eight or ten requests when every
-window observes a possible change. Together with the existing bounded morning
-checks, this remains a small load and requires no new dependency, browser,
-daemon, or extra AEMET request. The public source has no published numerical
-quota, so requests must remain conditional, non-concurrent, and free of
-internal retries.
-
-## Acceptance criteria
-
-- No monitoring request runs outside 20 June–14 September.
-- No monitoring request runs outside the scheduled service-hour windows.
-- Monitoring can establish a silent baseline when the morning beach section
-  was absent.
-- Every valid active Guardamar beach returned by SafeBeach can be monitored.
-- A newly observed beach or flag is enrolled silently and does not generate a
-  flag notification.
-- Availability changes and green/yellow transitions never notify the group.
-- Red-flag and explicit jellyfish transitions require two matching samples.
-- A confirmation invocation makes no network request when no candidate is
-  pending.
-- Missing or invalid data never clears a known red flag or jellyfish state.
-- Multiple confirmed transitions in one window produce one message.
-- The same transition is not sent twice after retries or restarts.
-- State is reset by local date and written atomically.
-
-## Out of scope
-
-- continuous or minute-by-minute monitoring;
-- treating SafeBeach as an emergency alert system;
-- monitoring ordinary flag changes, weather, waves, or sea temperature;
-- merging AEMET, Policía Local, mayoral, or sanitary alerts into this monitor;
-- notifications caused only by source recovery or data loss.
-
-Official urgent notices from the Ayuntamiento, mayor, Policía Local, or health
-authority can be designed as a separate source-specific feature. They must not
-be inferred from a SafeBeach data gap.
+Seed the AEMET baseline from the same-day prepared morning snapshot only when
+a daily digest record exists. Otherwise a valid active warning found later is
+eligible for notification. The first valid beach response establishes the
+flag baseline silently.
 
 ## Consequences
 
-- Subscribers receive only high-value changes with a low false-positive rate.
-- The phone performs a small, predictable number of network requests.
-- A real change may be reported after the next two-hour window and changes
-  outside service hours may not be reported. This is an intentional tradeoff
-  for low noise, low load, and source reliability.
-- If this proposal is accepted for implementation, the architecture,
-  features, runtime constraints, roadmap, and decision log must be updated.
+- Subscribers see every verified beach status transition without hidden
+  green/yellow changes and receive changed official warnings.
+- Multiple source changes in one window produce at most one notification.
+- The device uses bounded short processes, small state and no new dependency.
+- A beach change may be reported after the next two-hour window plus five or
+  ten minutes. This is the accepted tradeoff for source stability and low
+  load.
+
+## Acceptance criteria
+
+- No beach request outside the accepted season or scheduled service window.
+- No confirmation request when there is no pending beach candidate.
+- At most three SafeBeach requests per primary window.
+- Missing data never clears a known flag or jellyfish value.
+- All explicit confirmed flag colors can generate an update.
+- AEMET failures never manufacture a warning cancellation.
+- Natural warning expiry is silent; early cancellation is visible.
+- Combined changes create one message replying to the full daily digest.
+- A deleted reply anchor falls back to a standalone message.
+- No database, daemon, new dependency or raw-source archive is introduced.

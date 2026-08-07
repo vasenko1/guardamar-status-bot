@@ -7,9 +7,10 @@ import os
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Optional
 from zoneinfo import ZoneInfo
 
-from .aemet import AemetError, fetch_morning_digest
+from .aemet import AemetError, fetch_morning_digest, fetch_warnings
 from .aemet_snapshot import (
     load_snapshot,
     preparation_busy,
@@ -40,6 +41,18 @@ from .municipal_agenda import (
 from .event_translations import prepare_translations
 from .gemini import GeminiError
 from .morning import _safebeach_is_in_season, produce_message
+from .operational_updates import (
+    OperationalUpdateState,
+    OperationalUpdateStateError,
+    build_update_message,
+    finalize_delivery,
+    miss_beach_sample,
+    observe_beaches,
+    observe_warnings,
+    scheduled_run,
+    seed_beaches,
+    seed_warnings,
+)
 from .safebeach import (
     SafeBeachError,
     fetch_beach_status,
@@ -57,6 +70,7 @@ DEFAULT_ELECTRICITY_STATE_PATH = "state/electricity.json"
 DEFAULT_ELECTRICITY_SNAPSHOT_PATH = "state/electricity_prices.json"
 DEFAULT_EVENT_TRANSLATIONS_PATH = "state/event_translations.json"
 DEFAULT_AEMET_SNAPSHOT_PATH = "state/aemet.json"
+DEFAULT_OPERATIONAL_UPDATE_STATE_PATH = "state/operational_updates.json"
 
 
 def _beach_ready_for_update(status, now: datetime, final_attempt: bool) -> bool:
@@ -81,6 +95,36 @@ def _current_morning_message_id(record: dict) -> int:
     if record.get("morning_deleted") is True:
         raise StateError("current morning message is unavailable")
     return record["morning_message_id"]
+
+
+async def _send_operational_update(
+    bot_token: str,
+    chat_id: str,
+    message: str,
+    reply_id: Optional[int],
+) -> None:
+    """Prefer the full digest anchor and fall back only if it is gone."""
+
+    try:
+        await send_message(
+            bot_token,
+            chat_id,
+            message,
+            disable_notification=False,
+            reply_to_message_id=reply_id,
+        )
+    except TelegramError as exc:
+        if reply_id is None or exc.server_status != 400:
+            raise
+        logging.warning(
+            "Daily digest reply anchor unavailable; sending standalone"
+        )
+        await send_message(
+            bot_token,
+            chat_id,
+            message,
+            disable_notification=False,
+        )
 
 
 async def _produce_message(api_key: str, now: datetime) -> str:
@@ -121,6 +165,104 @@ async def _run_command(command: str) -> int:
     aemet_snapshot_path = Path(os.environ.get(
         "AEMET_SNAPSHOT_PATH", DEFAULT_AEMET_SNAPSHOT_PATH
     ))
+    if command == "monitor-updates":
+        schedule = scheduled_run(now)
+        if schedule.beach_phase is None and not schedule.check_aemet:
+            logging.info("SKIP: no operational update check is due")
+            return 0
+        api_key = (
+            _required_environment("AEMET_API_KEY")
+            if schedule.check_aemet else ""
+        )
+        bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
+        chat_id = _required_environment("TELEGRAM_CHAT_ID")
+        publication_state = PublicationState(Path(os.environ.get(
+            "MORNING_DIGEST_STATE_PATH", DEFAULT_STATE_PATH
+        )))
+        monitor_state = OperationalUpdateState(Path(os.environ.get(
+            "OPERATIONAL_UPDATE_STATE_PATH",
+            DEFAULT_OPERATIONAL_UPDATE_STATE_PATH,
+        )))
+        with monitor_state.exclusive_run():
+            value = monitor_state.read(now)
+            daily_record = publication_state.morning_record(now.date())
+            if daily_record is not None:
+                seed_beaches(value, daily_record.get("beach_baseline"))
+            if (
+                not value.get("warnings_initialized")
+                and daily_record is not None
+            ):
+                snapshot = load_snapshot(aemet_snapshot_path, now)
+                if snapshot is not None and snapshot.warnings_available:
+                    seed_warnings(value, snapshot.warnings)
+
+            phase = schedule.beach_phase
+            if phase == 1 and value.get("beach_pending") is not None:
+                # A previous two-hour window can no longer be confirmed.
+                value["beach_pending"] = None
+            elif (
+                phase == 3
+                and isinstance(value.get("beach_pending"), dict)
+                and value["beach_pending"].get("stage") == 1
+            ):
+                miss_beach_sample(value, phase)
+            has_ready_update = bool(value.get("beach_ready")) or isinstance(
+                value.get("warning_ready"), dict
+            )
+            should_fetch_beach = (phase == 1 and not has_ready_update) or (
+                phase in {2, 3}
+                and isinstance(value.get("beach_pending"), dict)
+                and value["beach_pending"].get("stage") == phase - 1
+            )
+            if should_fetch_beach:
+                try:
+                    beach = await fetch_beach_status(now)
+                    if is_current_status(beach, now):
+                        observe_beaches(value, beach, phase)
+                    else:
+                        miss_beach_sample(value, phase)
+                except SafeBeachError as exc:
+                    logging.warning(
+                        "Operational SafeBeach check failed: SB-%s",
+                        exc.diagnostic_code,
+                    )
+                    miss_beach_sample(value, phase)
+
+            if schedule.check_aemet and value.get("warning_ready") is None:
+                try:
+                    observe_warnings(
+                        value,
+                        await fetch_warnings(api_key, now),
+                        now,
+                    )
+                except AemetError as exc:
+                    logging.warning(
+                        "Operational AEMET check failed: AEMET-%s",
+                        exc.diagnostic_code,
+                    )
+
+            monitor_state.write(value)
+            if value.get("beach_pending") is not None:
+                logging.info("WAIT: beach change confirmation is pending")
+                return 0
+            message = build_update_message(value, now)
+            if message is None:
+                logging.info("SKIP: no confirmed operational changes")
+                return 0
+
+            reply_id = None
+            if daily_record is not None:
+                try:
+                    reply_id = _current_morning_message_id(daily_record)
+                except StateError:
+                    reply_id = None
+            await _send_operational_update(
+                bot_token, chat_id, message, reply_id
+            )
+            finalize_delivery(value)
+            monitor_state.write(value)
+            logging.info("SUCCESS: operational update delivered")
+            return 0
     if command == "sync-municipal-events":
         gemini_key = _required_environment("GEMINI_API_KEY")
         state_path = Path(os.environ.get(
@@ -286,6 +428,7 @@ async def _run_command(command: str) -> int:
             )
         message_id = _current_morning_message_id(record)
         fallback = load_snapshot(aemet_snapshot_path, now)
+        refreshed_aemet = []
         message = await produce_message(
             api_key,
             now,
@@ -294,11 +437,15 @@ async def _run_command(command: str) -> int:
             agenda_state_path=agenda_path,
             translation_cache_path=translations_path,
             aemet_fallback=fallback,
+            aemet_observer=refreshed_aemet.append,
         )
         await edit_message(bot_token, chat_id, message_id, message)
+        if refreshed_aemet:
+            write_snapshot(aemet_snapshot_path, refreshed_aemet[-1], now)
         logging.info("Current morning message %s refreshed", message_id)
         return 0
     if command in {"run", "morning"}:
+        morning_aemet = []
         prepared = load_snapshot(
             aemet_snapshot_path, now, max_age=timedelta(minutes=60)
         )
@@ -325,6 +472,7 @@ async def _run_command(command: str) -> int:
                 translation_cache_path=translations_path,
                 aemet_digest=prepared,
                 fetch_aemet=fetch_live,
+                aemet_observer=morning_aemet.append,
             ),
             lambda message: send_message(
                 bot_token,
@@ -333,6 +481,8 @@ async def _run_command(command: str) -> int:
                 disable_notification=False,
             ),
         )
+        if result == "success" and morning_aemet:
+            write_snapshot(aemet_snapshot_path, morning_aemet[-1], now)
         return 0 if result in {"success", "duplicate"} else 1
 
     if not _safebeach_is_in_season(now):
@@ -341,6 +491,8 @@ async def _run_command(command: str) -> int:
 
     async def find_notice(since: datetime):
         return await latest_beach_notice(now, since)
+
+    update_aemet = []
 
     async def produce_update(status, notice):
         gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
@@ -388,6 +540,7 @@ async def _run_command(command: str) -> int:
             beach_notice=notice,
             translation_cache_path=translations_path,
             aemet_fallback=fallback,
+            aemet_observer=update_aemet.append,
         )
 
     async def deliver_update(message: str) -> int:
@@ -439,6 +592,8 @@ async def _run_command(command: str) -> int:
         deliver_update,
         delete_old,
     )
+    if result in {"success", "cleanup_failure"} and update_aemet:
+        write_snapshot(aemet_snapshot_path, update_aemet[-1], now)
     return 0 if result in {
         "success",
         "duplicate",
@@ -464,6 +619,7 @@ def main() -> None:
             "sync-agenda-events",
             "prepare-event-translations",
             "prepare-aemet",
+            "monitor-updates",
         ),
         default="run",
     )
@@ -503,7 +659,7 @@ def main() -> None:
         raise SystemExit(2) from exc
     except (
         AemetError, AgendaError, MunicipalAgendaError, TelegramError,
-        StateError, ValueError
+        StateError, OperationalUpdateStateError, ValueError
     ) as exc:
         print(f"Command failed: {exc}", file=sys.stderr)
         raise SystemExit(2) from exc

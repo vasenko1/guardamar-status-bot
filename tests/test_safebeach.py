@@ -128,6 +128,15 @@ class SafeBeachNormalizationTests(unittest.TestCase):
             ),
         )
         self.assertEqual(status.jellyfish_beaches, ("Roqueta",))
+        self.assertEqual(
+            status.jellyfish_states,
+            (
+                ("Centre", False),
+                ("Roqueta", True),
+                ("Vivers", False),
+                ("Camp", False),
+            ),
+        )
         self.assertEqual(status.source_date, TEST_DAY)
 
     def test_rejects_page_from_another_local_date(self):

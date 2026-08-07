@@ -894,6 +894,26 @@ def normalize_warnings(payload: bytes, now: datetime) -> Tuple[Warning, ...]:
     return tuple(warnings)
 
 
+async def fetch_warnings(
+    api_key: str,
+    now: datetime,
+) -> Tuple[Warning, ...]:
+    """Fetch only the complete current Guardamar CAP warning set."""
+
+    return await _fetch_normalized(
+        (
+            "avisos_cap/ultimoelaborado/area/"
+            f"{VALENCIAN_COMMUNITY_WARNING_AREA}"
+        ),
+        api_key,
+        WARNING_LIMIT_BYTES,
+        lambda payload: normalize_warnings(payload, now),
+        attempts=OPTIONAL_PRODUCT_ATTEMPTS,
+        retry_base_delay=OPTIONAL_RETRY_BASE_SECONDS,
+        max_retry_delay=OPTIONAL_MAX_RETRY_DELAY_SECONDS,
+    )
+
+
 async def fetch_morning_digest(
     api_key: str,
     now: datetime,

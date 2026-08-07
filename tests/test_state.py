@@ -4,6 +4,7 @@ import unittest
 from datetime import date, datetime
 from pathlib import Path
 
+from telegrambot.models import BeachStatus
 from telegrambot.state import PublicationState, StateError
 
 
@@ -74,7 +75,16 @@ class PublicationStateTests(unittest.TestCase):
             )
 
             state.mark_morning(local_day, 101, sent_at, "morning")
-            state.mark_update_sent(local_day, 202)
+            state.mark_update_sent(
+                local_day,
+                202,
+                BeachStatus(
+                    flag_color="green",
+                    sea_temperature_c=27,
+                    nearby_flags=(("Centre", "green"),),
+                    jellyfish_states=(("Centre", False),),
+                ),
+            )
             state.mark_morning_deleted(local_day)
 
             record = state.morning_record(local_day)
@@ -82,6 +92,10 @@ class PublicationStateTests(unittest.TestCase):
             self.assertEqual(record["morning_message"], "morning")
             self.assertEqual(record["update_message_id"], 202)
             self.assertTrue(record["morning_deleted"])
+            self.assertEqual(
+                record["beach_baseline"],
+                {"Centre": {"flag": "green", "jellyfish": False}},
+            )
 
     def test_ignores_unsuccessful_previous_attempt(self):
         with tempfile.TemporaryDirectory() as directory:

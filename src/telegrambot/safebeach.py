@@ -260,10 +260,15 @@ def _sea_state(value: Any) -> Optional[str]:
     return states.get(normalized)
 
 
-def _jellyfish_present(value: Any) -> bool:
+def _jellyfish_state(value: Any) -> Optional[bool]:
     if not isinstance(value, str):
+        return None
+    normalized = value.strip().casefold()
+    if normalized in {"sí", "si", "yes"}:
+        return True
+    if normalized in {"no"}:
         return False
-    return value.strip().casefold() in {"sí", "si", "yes"}
+    return None
 
 
 def _updated_time(value: Any) -> Optional[time]:
@@ -370,7 +375,7 @@ def normalize_beach_status(
                 _wind_direction(item.get("windDeg")),
                 _wind_speed_kmh(item.get("viento")),
                 _sea_state(item.get("oleaje")),
-                _jellyfish_present(item.get("medusas")),
+                _jellyfish_state(item.get("medusas")),
                 _updated_time(item.get("hora")),
             )
             previous = records.get(short_name)
@@ -415,8 +420,13 @@ def normalize_beach_status(
         for name, record in records.items()
         if record[0] is not None
     ]
+    jellyfish_states = [
+        (name, record[5])
+        for name, record in records.items()
+        if record[5] is not None
+    ]
     jellyfish_beaches = [
-        name for name, record in records.items() if record[5]
+        name for name, present in jellyfish_states if present
     ]
     updated_times = [
         (name, record[6])
@@ -425,6 +435,7 @@ def normalize_beach_status(
     ]
     nearby_flags.sort(key=lambda item: BEACH_ORDER[item[0]])
     jellyfish_beaches.sort(key=BEACH_ORDER.__getitem__)
+    jellyfish_states.sort(key=lambda item: BEACH_ORDER[item[0]])
     updated_times.sort(key=lambda item: BEACH_ORDER[item[0]])
     return BeachStatus(
         flag_color=flag,
@@ -435,6 +446,7 @@ def normalize_beach_status(
         sea_state=sea_state,
         nearby_flags=tuple(nearby_flags),
         jellyfish_beaches=tuple(jellyfish_beaches),
+        jellyfish_states=tuple(jellyfish_states),
         updated_times=tuple(updated_times),
     )
 
@@ -451,6 +463,7 @@ def is_current_status(
     flag_names = [name for name, _ in status.nearby_flags]
     time_names = [name for name, _ in status.updated_times]
     jellyfish_names = list(status.jellyfish_beaches)
+    jellyfish_state_names = [name for name, _ in status.jellyfish_states]
     flags = set(flag_names)
     times = dict(status.updated_times)
     if (
@@ -458,9 +471,19 @@ def is_current_status(
         or len(flag_names) != len(flags)
         or len(time_names) != len(set(time_names))
         or len(jellyfish_names) != len(set(jellyfish_names))
+        or len(jellyfish_state_names) != len(set(jellyfish_state_names))
         or not flags <= expected
         or set(times) != flags
         or not set(jellyfish_names) <= flags
+        or not set(jellyfish_state_names) <= flags
+        or (
+            status.jellyfish_states
+            and set(jellyfish_names) != {
+                name
+                for name, present in status.jellyfish_states
+                if present
+            }
+        )
         or any(
             color not in {"green", "yellow", "red"}
             for _, color in status.nearby_flags
@@ -535,6 +558,11 @@ def _current_status(
         jellyfish_beaches=tuple(
             name
             for name in status.jellyfish_beaches
+            if name in selected_names
+        ),
+        jellyfish_states=tuple(
+            (name, present)
+            for name, present in status.jellyfish_states
             if name in selected_names
         ),
         updated_times=selected_times,

@@ -83,3 +83,7 @@ There is no resident scheduler, sleeping retry process, background collector,
 or cache synchronization. A separate optional
 operator listener may use one idle Telegram long poll solely for allowlisted
 private `/preview`; it never publishes or changes publication state.
+
+After the later digest phase, bounded one-shot checks may publish a new reply
+when a beach flag, explicit jellyfish status, or official AEMET warning has
+actually changed. They remain silent when verified state is unchanged.

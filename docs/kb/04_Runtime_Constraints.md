@@ -76,6 +76,11 @@ deployment agent or self-hosted CI runner.
 - SafeBeach uses one bounded request per invocation. Do not add an inner retry,
   response cache, cookies, or browser execution; the external five-minute
   checks already provide seasonal recovery. Its bounded HTML limit is 512 KiB.
+- Later-day beach monitoring uses four or five primary seasonal checks. A
+  five-minute confirmation request occurs only for a candidate change; one
+  final request is allowed only when that confirmation reveals a different
+  explicit state. Later AEMET checks request only the CAP warning product every
+  four hours and share delivery with beach changes when their windows overlap.
 - The 05:30 Agenda Guardamar refresh may inspect at most twelve same-host
   detail links with no more than three requests in flight. The 05:10 municipal
   refresh makes one HTML request and downloads MUPI only after its official

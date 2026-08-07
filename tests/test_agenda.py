@@ -123,6 +123,23 @@ class AgendaNormalizationTests(unittest.TestCase):
         self.assertEqual(event.ticket_price_cents, 0)
         self.assertIsNone(event.ticket_url)
 
+    def test_reads_catalan_price_label_from_official_page(self):
+        payload = b"""
+        <script type="application/ld+json">
+        {"@type":"Event","name":"ALICE WONDER EN CONCIERTO. ESTIVAL AL CASTELL",
+         "startDate":"2026-08-07T22:00",
+         "location":{"name":"Estival Al Castell Aforo Ampliado"}}
+        </script>
+        <p>Preu: 25\x80</p>
+        <a href=//www.agendaguardamar.com/entradas/48/alice.html?webfecha=07/08/2026&amp;webhora=22:00&amp;websala=48>
+        """
+
+        event = normalize_event_page(payload, date(2026, 8, 7))
+
+        self.assertIsNotNone(event)
+        self.assertEqual(event.ticket_price_cents, 2500)
+        self.assertIn("webfecha=07/08/2026", event.ticket_url)
+
     def test_cross_catalog_duplicate_prefers_richer_municipal_fact(self):
         starts_at = datetime(2026, 8, 1, 10, 0, tzinfo=TZ)
         municipal = Event(
@@ -190,6 +207,31 @@ class AgendaNormalizationTests(unittest.TestCase):
         self.assertEqual(len(merged), 1)
         self.assertEqual(merged[0].ticket_price_cents, 1500)
         self.assertIn("webfecha=05/08/2026", merged[0].ticket_url)
+
+    def test_alice_catalog_entries_merge_after_reviewed_translation(self):
+        starts_at = datetime(2026, 8, 7, 22, 0, tzinfo=TZ)
+        municipal = Event(
+            title="Концерт Alice Wonder «Soulost» · VI Estival al Castell",
+            starts_at=starts_at,
+            place="Castell de Guardamar",
+            ticket_price_cents=2500,
+        )
+        agenda = Event(
+            title="Концерт Alice Wonder «Soulost» · VI Estival al Castell",
+            starts_at=starts_at,
+            place="Estival Al Castell Aforo Ampliado",
+            ticket_price_cents=2500,
+            ticket_url=(
+                "https://www.agendaguardamar.com/entradas/48/alice.html"
+                "?webfecha=07/08/2026&webhora=22:00"
+            ),
+        )
+
+        merged = _merge_events((municipal,), (agenda,))
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0].place, "Castell de Guardamar")
+        self.assertIn("webfecha=07/08/2026", merged[0].ticket_url)
 
     def test_same_place_and_time_does_not_merge_unrelated_events(self):
         starts_at = datetime(2026, 8, 8, 10, 0, tzinfo=TZ)

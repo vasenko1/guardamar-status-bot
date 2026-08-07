@@ -8,6 +8,8 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Iterator, Optional
 
+from .models import BeachStatus
+
 
 class StateError(RuntimeError):
     """Raised when publication state cannot be trusted or saved."""
@@ -136,11 +138,21 @@ class PublicationState:
         self,
         local_day: date,
         message_id: int,
+        beach_status: Optional[BeachStatus] = None,
     ) -> None:
         value = self.morning_record(local_day)
         if value is None:
             raise StateError("morning publication record is missing")
         value["update_message_id"] = message_id
+        if beach_status is not None:
+            jellyfish = dict(beach_status.jellyfish_states)
+            value["beach_baseline"] = {
+                name: {
+                    "flag": color,
+                    "jellyfish": jellyfish.get(name),
+                }
+                for name, color in beach_status.nearby_flags
+            }
         self._write(value)
 
     def mark_morning_deleted(self, local_day: date) -> None:

@@ -476,7 +476,8 @@ def _page_facts(
             duration = candidate
     price = None
     price_match = re.search(
-        r"Regular\s*:\s*(\d{1,4})(?:[,.](\d{1,2}))?\s*[€\x80]",
+        r"(?:Regular|Precio|Preu)\s*:\s*"
+        r"(\d{1,4})(?:[,.](\d{1,2}))?\s*[€\x80]",
         text,
         re.IGNORECASE,
     )
@@ -496,7 +497,7 @@ def _page_facts(
     place = None
     place_match = re.search(
         r"Punto de encuentro\s*:\s*(.{1,120}?)"
-        r"(?=\s+(?:Itinerario|Distancia|Duraci[oó]n|ENTRADA|Regular|Precio)\b|$)",
+        r"(?=\s+(?:Itinerario|Distancia|Duraci[oó]n|ENTRADA|Regular|Precio|Preu)\b|$)",
         text,
         re.IGNORECASE,
     )

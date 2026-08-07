@@ -113,6 +113,20 @@ class PreparationTests(unittest.IsolatedAsyncioTestCase):
             ),
             "Концерт фламенко Кики Моренте · VI Estival al Castell",
         )
+        alice = "Концерт Alice Wonder «Soulost» · VI Estival al Castell"
+        self.assertEqual(reviewed_translation("ALICE WONDER"), alice)
+        self.assertEqual(
+            reviewed_translation(
+                "ALICE WONDER EN CONCIERTO. ESTIVAL AL CASTELL"
+            ),
+            alice,
+        )
+        self.assertEqual(
+            reviewed_translation(
+                "Rutas nocturnas: senderismo y dinámica grupal"
+            ),
+            "Ночной поход (8 км) для молодёжи 12–30 лет",
+        )
 
     def test_reviewed_title_overrides_empty_cache(self):
         with tempfile.TemporaryDirectory() as directory:

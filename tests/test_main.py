@@ -3,16 +3,18 @@ import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, call, patch
 from zoneinfo import ZoneInfo
 
 from telegrambot.__main__ import (
     _current_morning_message_id,
+    _send_operational_update,
     _produce_message,
     _run_command,
 )
 from telegrambot.diagnostics import SourceDiagnostic
 from telegrambot.state import PublicationState, StateError
+from telegrambot.telegram import TelegramError
 
 
 MADRID = ZoneInfo("Europe/Madrid")
@@ -46,6 +48,48 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 "update_message_id": None,
                 "morning_deleted": True,
             })
+
+    async def test_operational_update_replies_to_full_digest(self):
+        send = AsyncMock(return_value=30)
+        with patch("telegrambot.__main__.send_message", new=send):
+            await _send_operational_update("token", "group", "update", 20)
+
+        send.assert_awaited_once_with(
+            "token",
+            "group",
+            "update",
+            disable_notification=False,
+            reply_to_message_id=20,
+        )
+
+    async def test_operational_update_falls_back_if_anchor_is_gone(self):
+        send = AsyncMock(side_effect=[
+            TelegramError(
+                "missing reply",
+                retryable=False,
+                code="HTTP-400",
+                status=400,
+            ),
+            30,
+        ])
+        with patch("telegrambot.__main__.send_message", new=send):
+            await _send_operational_update("token", "group", "update", 20)
+
+        self.assertEqual(send.await_args_list, [
+            call(
+                "token",
+                "group",
+                "update",
+                disable_notification=False,
+                reply_to_message_id=20,
+            ),
+            call(
+                "token",
+                "group",
+                "update",
+                disable_notification=False,
+            ),
+        ])
 
     async def test_refresh_current_edits_recorded_update_in_place(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -87,6 +131,46 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
             "message_id": 20,
             "message": "обновлённое сообщение",
         })
+
+    async def test_successful_live_morning_fetch_updates_aemet_snapshot(self):
+        observed_digest = object()
+
+        async def produce(*args, **kwargs):
+            kwargs["aemet_observer"](observed_digest)
+            return "утреннее сообщение"
+
+        async def publish(now, state, producer, sender):
+            await producer()
+            return "success"
+
+        with tempfile.TemporaryDirectory() as directory:
+            with (
+                patch.dict(os.environ, {
+                    "AEMET_API_KEY": "aemet",
+                    "TELEGRAM_BOT_TOKEN": "telegram",
+                    "TELEGRAM_CHAT_ID": "group",
+                    "MORNING_DIGEST_STATE_PATH": str(
+                        Path(directory) / "delivery.json"
+                    ),
+                    "AEMET_SNAPSHOT_PATH": str(
+                        Path(directory) / "aemet.json"
+                    ),
+                }),
+                patch(
+                    "telegrambot.__main__.load_snapshot", return_value=None
+                ),
+                patch(
+                    "telegrambot.__main__.preparation_busy",
+                    return_value=False,
+                ),
+                patch("telegrambot.__main__.produce_message", new=produce),
+                patch("telegrambot.__main__.publish_morning", new=publish),
+                patch("telegrambot.__main__.write_snapshot") as write,
+            ):
+                result = await _run_command("morning")
+
+        self.assertEqual(result, 0)
+        self.assertIs(write.call_args.args[1], observed_digest)
 
     async def test_appends_diagnostics_only_in_preview_wrapper(self):
         async def produce(*args, diagnostics=None, **kwargs):

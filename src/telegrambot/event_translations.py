@@ -67,6 +67,13 @@ REVIEWED_TRANSLATIONS = {
     (
         "kiki morente en concierto. estival al castell"
     ): "Концерт фламенко Кики Моренте · VI Estival al Castell",
+    "alice wonder": "Концерт Alice Wonder «Soulost» · VI Estival al Castell",
+    (
+        "alice wonder en concierto. estival al castell"
+    ): "Концерт Alice Wonder «Soulost» · VI Estival al Castell",
+    (
+        "rutas nocturnas: senderismo y dinámica grupal"
+    ): "Ночной поход (8 км) для молодёжи 12–30 лет",
 }
 
 

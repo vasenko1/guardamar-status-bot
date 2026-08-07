@@ -708,6 +708,34 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNone(scheduled[0].ticket_price_cents)
 
+    def test_normalizes_reviewed_august_seventh_event_details(self):
+        events = (
+            SourceEvent(
+                "Alice Wonder", date(2026, 8, 7), date(2026, 8, 7),
+                "22:00", None, "Castell de Guardamar", "music",
+            ),
+            SourceEvent(
+                "Rutas nocturnas: senderismo y dinámica grupal",
+                date(2026, 8, 7), date(2026, 8, 7),
+                "22:15", "00:15", None, "event",
+            ),
+        )
+
+        scheduled = _apply_reviewed_daily_schedules(
+            events, date(2026, 8, 7)
+        )
+
+        self.assertEqual(
+            scheduled[0].title_es,
+            "ALICE WONDER EN CONCIERTO. ESTIVAL AL CASTELL",
+        )
+        self.assertEqual(scheduled[0].place, "Castell de Guardamar")
+        self.assertEqual(scheduled[0].ticket_price_cents, 2500)
+        self.assertEqual(
+            scheduled[1].place, "Место старта сообщит инструктор"
+        )
+        self.assertEqual(scheduled[1].ticket_price_cents, 0)
+
     def test_keeps_prior_month_events_for_seven_day_transition(self):
         new = SourceEvent(
             title_es="Evento de agosto",

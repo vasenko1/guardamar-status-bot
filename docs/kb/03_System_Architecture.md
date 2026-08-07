@@ -33,6 +33,12 @@ schemas, and library choices belong in later design work or ADRs.
    message IDs, morning publication time, and cleanup result.
 11. **Exit** ends every process; no collector or watcher remains active.
 
+After the later full digest is settled, externally scheduled operational
+checks compare current SafeBeach and AEMET warning state with one small daily
+snapshot. Beach candidates use at most two scheduled confirmations. Confirmed
+changes are sent as replies to the current full digest; older updates remain
+unchanged.
+
 If nothing trustworthy and useful remains after filtering, the run may produce
 no message.
 
@@ -107,14 +113,17 @@ Telegram and minimal file state; it does not depend on Morning Digest internals.
 ## Operating model
 
 - One 07:30 process plus up to seven short update checks in season
+- Four or five seasonal operational beach checks, with five- and ten-minute
+  confirmation invocations that access SafeBeach only while a candidate is
+  pending; three warning-only AEMET checks per day
 - Up to five short evening electricity attempts; success-only state makes
   later invocations no-ops after the first publication
 - Optional lightweight operator listener with one idle Telegram long poll
 - One event loop with bounded asynchronous I/O
 - One direct 07:30 collection; one later full collection only after an update
 - No webhook or public server
-- No resident scheduler, source polling, or watcher; only two bounded daily
-  event-catalog refresh commands
+- No resident scheduler, source polling, or watcher; only bounded one-shot
+  event refresh, digest, electricity and operational-change commands
 - Small local state
 - No required database server, message broker, or worker service
 

@@ -7,7 +7,7 @@ import unicodedata
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import Callable, List, Optional
 from zoneinfo import ZoneInfo
 
 from .agenda import (
@@ -147,6 +147,7 @@ async def produce_message(
     aemet_digest: Optional[MorningDigest] = None,
     fetch_aemet: bool = True,
     aemet_fallback: Optional[MorningDigest] = None,
+    aemet_observer: Optional[Callable[[MorningDigest], None]] = None,
 ) -> str:
     """Build a digest; SafeBeach failure must not block AEMET delivery."""
 
@@ -195,6 +196,13 @@ async def produce_message(
                 now=now,
                 diagnostics=diagnostics,
             )
+            if aemet_observer is not None:
+                try:
+                    aemet_observer(digest)
+                except (OSError, ValueError) as exc:
+                    LOGGER.warning(
+                        "Current AEMET snapshot could not be saved: %s", exc
+                    )
         except AemetError as exc:
             LOGGER.warning(
                 "AEMET unavailable; publishing verified non-weather blocks: %s",

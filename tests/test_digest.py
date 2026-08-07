@@ -711,6 +711,30 @@ class DigestMessageTests(unittest.TestCase):
         self.assertNotIn("query=Plaza+Labradores", message)
         self.assertNotIn("query=Pla%C3%A7a+dels+Llauradors", message)
 
+    def test_non_geographic_meeting_instruction_is_not_a_map_link(self):
+        digest = MorningDigest(
+            weather=None,
+            warnings=(),
+            warnings_available=True,
+            events=(Event(
+                title="Ночной поход (8 км) для молодёжи 12–30 лет",
+                starts_at=datetime(
+                    2026, 8, 7, 22, 15, tzinfo=GUARDAMAR_TIMEZONE
+                ),
+                ends_at=datetime(
+                    2026, 8, 8, 0, 15, tzinfo=GUARDAMAR_TIMEZONE
+                ),
+                place="Место старта сообщит инструктор",
+                ticket_price_cents=0,
+            ),),
+        )
+
+        message = build_message(digest)
+
+        self.assertIn("📍 Место старта сообщит инструктор", message)
+        self.assertNotIn("query=%D0%9C%D0%B5%D1%81%D1%82%D0%BE", message)
+        self.assertIn("🎟 Бесплатно", message)
+
     def test_formats_market_time_range_and_place(self):
         digest = MorningDigest(
             weather=Weather(

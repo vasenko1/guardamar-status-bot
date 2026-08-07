@@ -91,6 +91,14 @@ CRON_TZ=Europe/Madrid
 15 7 * * * /path/to/TelegramBot/termux/prepare-aemet.sh
 30 7 * * * /path/to/TelegramBot/termux/run-daily.sh
 10-40/5 10 * * * /path/to/TelegramBot/termux/update-daily.sh
+0,5,10 11,13,15,17,19 * 7,8 * /path/to/TelegramBot/termux/monitor-updates.sh
+0,5,10 12,14,16,18 20-30 6 * /path/to/TelegramBot/termux/monitor-updates.sh
+0,5,10 12,14,16,18 1-14 9 * /path/to/TelegramBot/termux/monitor-updates.sh
+0 20 20-30 6 * /path/to/TelegramBot/termux/monitor-updates.sh
+0 20 1-14 9 * /path/to/TelegramBot/termux/monitor-updates.sh
+0 11,15,19 * 1-5,10-12 * /path/to/TelegramBot/termux/monitor-updates.sh
+0 11,15,19 1-19 6 * /path/to/TelegramBot/termux/monitor-updates.sh
+0 11,15,19 15-30 9 * /path/to/TelegramBot/termux/monitor-updates.sh
 30,35,45 20 * * * /path/to/TelegramBot/termux/run-electricity.sh
 0,20 21 * * * /path/to/TelegramBot/termux/run-electricity.sh
 ```
@@ -105,6 +113,8 @@ The validated Android deployment uses the scripts in `termux/`:
   resolves the real target path before loading the project `.env`;
 - `termux/run-daily.sh` at 07:30 and `termux/update-daily.sh` every five
   minutes from 10:10 through 10:40;
+- `termux/monitor-updates.sh` at the bounded seasonal beach windows and the
+  three daily AEMET warning windows documented in ADR 0031;
 - `termux/sync-municipal-events.sh` at 05:10 and
   `termux/sync-agenda-events.sh` at 05:30 to atomically refresh small event
   catalogs before publication;
@@ -136,6 +146,14 @@ CRON_TZ=Europe/Madrid
 15 7 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/prepare-aemet.sh
 30 7 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-daily.sh
 10-40/5 10 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/update-daily.sh
+0,5,10 11,13,15,17,19 * 7,8 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
+0,5,10 12,14,16,18 20-30 6 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
+0,5,10 12,14,16,18 1-14 9 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
+0 20 20-30 6 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
+0 20 1-14 9 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
+0 11,15,19 * 1-5,10-12 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
+0 11,15,19 1-19 6 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
+0 11,15,19 15-30 9 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
 30,35,45 20 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity.sh
 0,20 21 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity.sh
 ```

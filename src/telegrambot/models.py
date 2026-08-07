@@ -39,6 +39,7 @@ class BeachStatus:
     sea_state: Optional[str] = None
     nearby_flags: Tuple[Tuple[str, str], ...] = ()
     jellyfish_beaches: Tuple[str, ...] = ()
+    jellyfish_states: Tuple[Tuple[str, bool], ...] = ()
     flag_meanings: Tuple[Tuple[str, str], ...] = ()
     updated_times: Tuple[Tuple[str, time], ...] = ()
     source_date: Optional[date] = None

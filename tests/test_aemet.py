@@ -12,6 +12,7 @@ from telegrambot.aemet import (
     JSON_LIMIT_BYTES,
     _fetch_normalized,
     _fetch_product,
+    fetch_warnings,
     normalize_beach_forecast,
     normalize_daily_forecast,
     normalize_observation,
@@ -20,6 +21,16 @@ from telegrambot.aemet import (
 
 
 class AemetTransportTests(unittest.IsolatedAsyncioTestCase):
+    async def test_warning_only_fetch_uses_cap_product(self):
+        fetch = AsyncMock(return_value=())
+        now = datetime(2026, 8, 7, 11, 0, tzinfo=ZoneInfo("Europe/Madrid"))
+        with patch("telegrambot.aemet._fetch_normalized", new=fetch):
+            result = await fetch_warnings("key", now)
+
+        self.assertEqual(result, ())
+        self.assertIn("avisos_cap/ultimoelaborado/area/", fetch.call_args.args[0])
+        self.assertEqual(fetch.call_args.args[1], "key")
+
     async def test_key_is_sent_only_for_metadata_request(self):
         metadata = json.dumps(
             {

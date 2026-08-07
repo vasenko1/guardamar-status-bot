@@ -1050,6 +1050,18 @@ def _apply_reviewed_daily_schedules(
             and event.end_date == date(2026, 8, 6)
             and event.start_time == "22:00"
         )
+        is_alice_wonder = (
+            "alice wonder" in normalized
+            and event.start_date == date(2026, 8, 7)
+            and event.end_date == date(2026, 8, 7)
+            and event.start_time == "22:00"
+        )
+        is_night_route = (
+            "rutas nocturnas" in normalized
+            and event.start_date == local_day
+            and event.start_time == "22:15"
+            and event.end_time == "00:15"
+        )
         if is_spanish_brass:
             scheduled.append(SourceEvent(
                 title_es=event.title_es,
@@ -1129,6 +1141,22 @@ def _apply_reviewed_daily_schedules(
                 ),
                 place="Castell de Guardamar",
                 ticket_price_cents=2500,
+            ))
+            continue
+        if is_alice_wonder:
+            scheduled.append(replace(
+                event,
+                title_es="ALICE WONDER EN CONCIERTO. ESTIVAL AL CASTELL",
+                place="Castell de Guardamar",
+                ticket_price_cents=2500,
+            ))
+            continue
+        if is_night_route:
+            scheduled.append(replace(
+                event,
+                title_es="Rutas nocturnas: senderismo y dinámica grupal",
+                place="Место старта сообщит инструктор",
+                ticket_price_cents=0,
             ))
             continue
         if not is_mediterraneo:

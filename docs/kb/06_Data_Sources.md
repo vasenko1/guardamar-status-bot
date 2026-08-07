@@ -320,10 +320,26 @@ Agenda Guardamar detail pages are the authoritative source for their own
 sessions and ticket links. One page may contain several dated sessions; each
 is stored separately. Only an HTTPS purchase URL on the Agenda Guardamar host
 whose date and time match that occurrence is retained. The regular price or
-explicit free admission may be shown; discounts remain on the official
+explicit free admission may be shown; the parser accepts the site's observed
+`Regular`, `Precio`, and Valencian `Preu` labels, while discounts remain on the official
 purchase page. A detail page that
 publishes `Duración 2 horas aprox` may supply the displayed end time for that
 session, following the approved compact product wording.
+
+For 7 August 2026, the official municipal programme and Agenda Guardamar are
+two records of the same `22:00` Alice Wonder concert. Exact reviewed title and
+date matching keeps one digest item with `Castell de Guardamar`, the `Soulost`
+tour and VI Estival al Castell context, regular price `25 €`, and the official
+occurrence-specific ticket URL. The ticket platform's technical venue label
+`Estival Al Castell Aforo Ampliado` is not rendered as a public place.
+
+The reviewed August poster schedules the youth night walks at
+`22:15–00:15` on 7, 14, 21 and 28 August. The dated programme corroborates an
+8 km route for participants aged 12–30, free participation, and a start point
+communicated by the instructor. The latter is rendered as a plain instruction,
+not as an invented Google Maps destination. The tennis tournament retains its
+verified 1–8 August period and Polideportivo venue without an invented daily
+time because none is published by the accepted sources.
 
 ## Approved Policía Local traffic data
 

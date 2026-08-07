@@ -152,7 +152,7 @@ async def publish_update(
                 LOGGER.error("FAILURE: updated digest delivery failed: %s", exc)
                 return "failure"
 
-            state.mark_update_sent(local_day, message_id)
+            state.mark_update_sent(local_day, message_id, beach_status)
             try:
                 await delete_message(record["morning_message_id"])
             except Exception as exc:
