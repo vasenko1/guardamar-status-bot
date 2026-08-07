@@ -35,6 +35,12 @@ within the published local day: the cheapest third is green, the middle third
 yellow, and the most expensive third red. Equal prices are not split across a
 boundary; when both boundaries are the same, that shared level is yellow.
 These colors are presentation metadata and are not attributed to ESIOS.
+All user-facing comparisons use the same `0.001 €/kWh` half-up precision shown
+in the table, so two visibly equal prices can never receive different colors.
+The cheapest and most expensive summaries include every continuous period at
+the visible daily extreme; adjacent equal hours are rendered as one range.
+If the visible price is identical for all 24 hours, one neutral all-day block
+replaces contradictory cheapest and most-expensive blocks.
 
 The recommendation uses the longest continuous run of green hours, so its
 wording cannot contradict the table colors. Equal-length runs are ordered by

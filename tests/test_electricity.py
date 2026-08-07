@@ -403,6 +403,50 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
         colors = _colors(prices)
         self.assertEqual({colors[hour] for hour in range(6, 18)}, {"🟡"})
 
+    def test_prices_equal_at_display_precision_keep_the_same_color(self):
+        values = (
+            [Decimal("0.100")] * 7
+            + [Decimal("0.1426"), Decimal("0.1434")]
+            + [Decimal("0.180")] * 7
+            + [Decimal("0.250")] * 8
+        )
+        prices = tuple(
+            HourlyPrice(hour, value) for hour, value in enumerate(values)
+        )
+
+        colors = _colors(prices)
+
+        self.assertEqual(colors[7], "🟢")
+        self.assertEqual(colors[8], "🟢")
+
+    def test_adjacent_visible_extremes_are_rendered_as_full_periods(self):
+        values = [Decimal("0.150") + Decimal(hour) / 1000 for hour in range(24)]
+        values[13] = Decimal("0.0026")
+        values[14] = Decimal("0.0034")
+        values[21] = Decimal("0.2356")
+        values[22] = Decimal("0.2364")
+        data = DailyPrices(TARGET, tuple(
+            HourlyPrice(hour, value) for hour, value in enumerate(values)
+        ))
+
+        message = build_price_message(data)
+
+        self.assertIn("13:00–15:00 · 0,003 €/кВт·ч", message)
+        self.assertIn("21:00–23:00 · 0,236 €/кВт·ч", message)
+
+    def test_disjoint_visible_extremes_are_all_rendered(self):
+        values = [Decimal("0.150") + Decimal(hour) / 1000 for hour in range(24)]
+        values[2] = Decimal("0.0027")
+        values[13] = Decimal("0.0026")
+        values[14] = Decimal("0.0034")
+        data = DailyPrices(TARGET, tuple(
+            HourlyPrice(hour, value) for hour, value in enumerate(values)
+        ))
+
+        message = build_price_message(data)
+
+        self.assertIn("02:00–03:00, 13:00–15:00 · 0,003 €/кВт·ч", message)
+
     def test_recommendation_uses_continuous_green_hours(self):
         values = (
             "0.189", "0.188", "0.184", "0.167", "0.166", "0.175",
@@ -426,7 +470,11 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
         )
         data = DailyPrices(TARGET, prices)
 
-        self.assertNotIn("Энергоёмкие дела", build_price_message(data))
+        message = build_price_message(data)
+        self.assertNotIn("Энергоёмкие дела", message)
+        self.assertIn("Одинаковая цена весь день", message)
+        self.assertNotIn("Выгоднее всего", message)
+        self.assertNotIn("Дороже всего", message)
 
     def test_explanation_documents_relative_daily_colors(self):
         message = build_explanation_message()

@@ -372,8 +372,14 @@ async def load_or_fetch_prices(
     return verified
 
 
+def _display_price(value: Decimal) -> Decimal:
+    """Use the same precision for visible prices and visible comparisons."""
+
+    return value.quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
+
+
 def _price(value: Decimal) -> str:
-    return str(value.quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)).replace(".", ",")
+    return str(_display_price(value)).replace(".", ",")
 
 
 def _colors(prices: Sequence[HourlyPrice]) -> Dict[int, str]:
@@ -383,7 +389,10 @@ def _colors(prices: Sequence[HourlyPrice]) -> Dict[int, str]:
     value, that shared level is neutral yellow rather than being split by hour.
     """
 
-    ordered = sorted(item.eur_kwh for item in prices)
+    visible_prices = {
+        item.hour: _display_price(item.eur_kwh) for item in prices
+    }
+    ordered = sorted(visible_prices.values())
     if not ordered:
         return {}
     third = len(ordered) // 3
@@ -393,16 +402,17 @@ def _colors(prices: Sequence[HourlyPrice]) -> Dict[int, str]:
     expensive_boundary = ordered[-third]
     colors: Dict[int, str] = {}
     for item in prices:
+        visible = visible_prices[item.hour]
         if cheap_boundary == expensive_boundary:
-            if item.eur_kwh < cheap_boundary:
+            if visible < cheap_boundary:
                 colors[item.hour] = "🟢"
-            elif item.eur_kwh > expensive_boundary:
+            elif visible > expensive_boundary:
                 colors[item.hour] = "🔴"
             else:
                 colors[item.hour] = "🟡"
-        elif item.eur_kwh <= cheap_boundary:
+        elif visible <= cheap_boundary:
             colors[item.hour] = "🟢"
-        elif item.eur_kwh >= expensive_boundary:
+        elif visible >= expensive_boundary:
             colors[item.hour] = "🔴"
         else:
             colors[item.hour] = "🟡"
@@ -443,10 +453,51 @@ def _best_green_window(
     return prices[first].hour, prices[last - 1].hour + 1
 
 
+def _extreme_windows(
+    prices: Sequence[HourlyPrice],
+    *,
+    cheapest: bool,
+) -> Tuple[Decimal, Tuple[Tuple[int, int], ...]]:
+    """Return every continuous window at the visible daily extreme."""
+
+    visible = tuple(
+        (item.hour, _display_price(item.eur_kwh)) for item in prices
+    )
+    target = (min if cheapest else max)(value for _, value in visible)
+    windows = []
+    start = None
+    previous = None
+    for hour, value in sorted(visible):
+        if value == target:
+            if start is None or previous is None or hour != previous + 1:
+                if start is not None and previous is not None:
+                    windows.append((start, previous + 1))
+                start = hour
+            previous = hour
+            continue
+        if start is not None and previous is not None:
+            windows.append((start, previous + 1))
+            start = None
+            previous = None
+    if start is not None and previous is not None:
+        windows.append((start, previous + 1))
+    return target, tuple(windows)
+
+
+def _window_label(windows: Sequence[Tuple[int, int]]) -> str:
+    return ", ".join(
+        f"{start:02d}:00–{end:02d}:00" for start, end in windows
+    )
+
+
 def build_price_message(data: DailyPrices) -> str:
     colors = _colors(data.hours)
-    cheapest = min(data.hours, key=lambda item: (item.eur_kwh, item.hour))
-    expensive = max(data.hours, key=lambda item: (item.eur_kwh, -item.hour))
+    cheapest_price, cheapest_windows = _extreme_windows(
+        data.hours, cheapest=True
+    )
+    expensive_price, expensive_windows = _extreme_windows(
+        data.hours, cheapest=False
+    )
     best_window = _best_green_window(data.hours, colors)
     rows = []
     for left, right in zip(data.hours[:12], data.hours[12:]):
@@ -467,15 +518,26 @@ def build_price_message(data: DailyPrices) -> str:
             "\n\n💡 Энергоёмкие дела лучше запланировать "
             f"на период с {best_start:02d}:00 до {best_end:02d}:00."
         )
+    if cheapest_price == expensive_price:
+        extremes = (
+            "🟡 <b>Одинаковая цена весь день</b>\n"
+            f"00:00–24:00 · {_price(cheapest_price)} €/кВт·ч"
+        )
+    else:
+        extremes = (
+            "🟢 <b>Выгоднее всего</b>\n"
+            f"{_window_label(cheapest_windows)} · "
+            f"{_price(cheapest_price)} €/кВт·ч\n\n"
+            "🔴 <b>Дороже всего</b>\n"
+            f"{_window_label(expensive_windows)} · "
+            f"{_price(expensive_price)} €/кВт·ч"
+        )
     return with_footer(
         "⚡ <b>Цены на электричество завтра</b>\n"
         f"{weekday.capitalize()}, {data.local_date.day} {months[data.local_date.month]}\n\n"
         "🕐 <b>По часам</b>\n"
         f"<pre>{table}</pre>\n\n"
-        "🟢 <b>Выгоднее всего</b>\n"
-        f"{cheapest.hour:02d}:00–{cheapest.hour + 1:02d}:00 · {_price(cheapest.eur_kwh)} €/кВт·ч\n\n"
-        "🔴 <b>Дороже всего</b>\n"
-        f"{expensive.hour:02d}:00–{expensive.hour + 1:02d}:00 · {_price(expensive.eur_kwh)} €/кВт·ч"
+        f"{extremes}"
         f"{recommendation}"
     )
 

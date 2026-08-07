@@ -4,7 +4,7 @@
 
 An evening message shows tomorrow's official PVPC 2.0TD hourly energy term for
 Península in €/kWh. The fixed layout contains a two-column monospace 24-hour
-table followed by the cheapest and most expensive hour and a practical-use
+table followed by the cheapest and most expensive period and a practical-use
 recommendation. A concise persistent explanation defines PVPC as a
 regulated Spanish tariff, tells readers to check `PVPC` in the contract type
 on their bill, says the table covers the hourly consumed-energy component
@@ -14,7 +14,11 @@ fixed tariff.
 The header must say `завтра` and include the target date. The 24 prices are
 ranked within that local day: the cheapest third is green, the middle third is
 yellow, and the most expensive third is red. Equal boundary prices keep one
-color rather than being split by hour. The main message ends with the longest
+color rather than being split by hour. Ranking and extrema use the same
+three-decimal price displayed to the reader. Every continuous run sharing the
+visible minimum or maximum is shown, and adjacent equal hours form one range.
+If all displayed prices are equal, one neutral all-day block replaces the two
+extreme blocks. The main message ends with the longest
 continuous run of green hours; equal-length runs prefer the lower total and
 then the earlier start. If no hours are green, the recommendation is omitted.
 The separate explanation carries the PVPC
