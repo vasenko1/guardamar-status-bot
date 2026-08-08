@@ -15,6 +15,7 @@ from telegrambot.electricity import (
     _best_green_window,
     _colors,
     _load_price_snapshot,
+    _price,
     _RejectRedirects,
     _write_price_snapshot,
     build_explanation_message,
@@ -419,6 +420,10 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(colors[7], "🟢")
         self.assertEqual(colors[8], "🟢")
 
+    def test_display_price_does_not_render_negative_zero(self):
+        self.assertEqual(_price(Decimal("-0.0004")), "0,000")
+        self.assertEqual(_price(Decimal("-0.0005")), "-0,001")
+
     def test_adjacent_visible_extremes_are_rendered_as_full_periods(self):
         values = [Decimal("0.150") + Decimal(hour) / 1000 for hour in range(24)]
         values[13] = Decimal("0.0026")
@@ -462,6 +467,22 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(colors[12], "🟡")
         self.assertEqual(_best_green_window(prices, colors), (13, 18))
+
+    def test_visibly_equal_green_windows_prefer_the_earlier_period(self):
+        values = [Decimal("0.200")] * 24
+        for hour, value in {
+            0: "0.1004", 1: "0.1004",
+            4: "0.1003", 5: "0.1003",
+            8: "0.1002", 9: "0.1002",
+            12: "0.1001", 13: "0.1001",
+        }.items():
+            values[hour] = Decimal(value)
+        prices = tuple(
+            HourlyPrice(hour, value) for hour, value in enumerate(values)
+        )
+        colors = _colors(prices)
+
+        self.assertEqual(_best_green_window(prices, colors), (0, 2))
 
     def test_recommendation_is_omitted_without_green_hours(self):
         prices = tuple(

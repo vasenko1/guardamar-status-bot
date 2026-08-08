@@ -375,7 +375,8 @@ async def load_or_fetch_prices(
 def _display_price(value: Decimal) -> Decimal:
     """Use the same precision for visible prices and visible comparisons."""
 
-    return value.quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
+    rounded = value.quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
+    return abs(rounded) if rounded == 0 else rounded
 
 
 def _price(value: Decimal) -> str:
@@ -444,8 +445,11 @@ def _best_green_window(
         key=lambda window: (
             -(window[1] - window[0]),
             sum(
-                item.eur_kwh
-                for item in prices[window[0]:window[1]]
+                (
+                    _display_price(item.eur_kwh)
+                    for item in prices[window[0]:window[1]]
+                ),
+                Decimal(0),
             ),
             prices[window[0]].hour,
         ),

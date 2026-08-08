@@ -20,7 +20,9 @@ visible minimum or maximum is shown, and adjacent equal hours form one range.
 If all displayed prices are equal, one neutral all-day block replaces the two
 extreme blocks. The main message ends with the longest
 continuous run of green hours; equal-length runs prefer the lower total and
-then the earlier start. If no hours are green, the recommendation is omitted.
+then the earlier start, using the same displayed precision. Rounded zero is
+always rendered as `0,000`, without a negative sign. If no hours are green,
+the recommendation is omitted.
 The separate explanation carries the PVPC
 scope, fixed-tariff limitation, and `ESIOS / Red Eléctrica` attribution.
 Incomplete days are not published.

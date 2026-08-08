@@ -44,8 +44,9 @@ replaces contradictory cheapest and most-expensive blocks.
 
 The recommendation uses the longest continuous run of green hours, so its
 wording cannot contradict the table colors. Equal-length runs are ordered by
-their total price and then by the earlier start. When tie-heavy prices produce
-no green hours, omit the recommendation.
+their total visible price and then by the earlier start. A value that rounds
+to zero is rendered as `0,000`, never as negative zero. When tie-heavy prices
+produce no green hours, omit the recommendation.
 
 The persistent explanation defines PVPC, tells readers how to identify it on
 their bill, states that the table is not the whole bill, excludes fixed
