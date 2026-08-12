@@ -24,6 +24,7 @@ official endpoints and lightweight access methods are validated.
 | Turismo Guardamar municipal agenda | Broader official monthly cultural text plus supplementary MUPI | High for text; image facts require agreement | 05:10 text-first catalog refresh; MUPI only after URL change | Yes |
 | BOE, DOGV, and official Guardamar holiday calendar | Official national, regional, and local days off applicable in Guardamar; Wednesday-market holiday moves | High; legally authoritative annual publications | Small reviewed annual in-code calendar; no morning request | Yes |
 | `@AlcaldeGuardamar` public channel | Explicit market exceptions, bathing-status transitions, and explicitly dated Fiestas de Barrio | Operational municipal channel; text must be mechanically grounded | One bounded morning event check, market check when relevant, or one check after SafeBeach retries | Yes, narrow role |
+| Colegio Oficial de Farmacéuticos de Alicante | Legally authoritative on-call pharmacy rota | High; the provincial college responsible for the service | One weekly bounded fetch of the linked annual XLSX; normalized 45-day Guardamar catalog; no morning request | Yes, ADR 0037 |
 | Campo de Guardamar market website | Sunday market at Camino del Raso, 15 | Operator-published schedule; no authoritative cancellation feed found | Local Sunday rule, `07:00–16:00` | Yes, explicit product exception |
 | Community or commercial sources | Gap filling only | Variable | Varies | No by default |
 
