@@ -38,6 +38,42 @@ _FIESTAS_DATE_PATTERN = re.compile(
     r"(\d{1,2}):(\d{2})\s*h",
     re.IGNORECASE,
 )
+_MUNICIPAL_EVENT_DATE_PATTERN = re.compile(
+    r"(?:(lunes|martes|mi[eé]rcoles|jueves|viernes|"
+    r"s[aá]bado|domingo)\s+)?"
+    r"(\d{1,2})\s+de\s+"
+    r"(enero|febrero|marzo|abril|mayo|junio|julio|agosto|"
+    r"septiembre|octubre|noviembre|diciembre)"
+    r"(?:\s+de\s+(\d{4}))?\s*,?\s*"
+    r"(?:de|desde(?:\s+de)?\s+las?|a\s+partir\s+de\s+las|"
+    r"a\s+las?)\s+"
+    r"(\d{1,2}):(\d{2})"
+    r"(?:\s*h?\.?\s*(?:a|[-–])\s*(\d{1,2}):(\d{2}))?"
+    r"\s*h?\.?",
+    re.IGNORECASE,
+)
+_QUOTED_TITLE_PATTERN = re.compile(r'["“«]([^"”»]{3,160})["”»]')
+_EVENT_INVITATIONS = (
+    "os esperamos",
+    "te esperamos",
+    "ven a",
+    "no te lo pierdas",
+    "no os lo perdais",
+)
+_WEEKDAYS = {
+    "lunes": 0,
+    "martes": 1,
+    "miercoles": 2,
+    "jueves": 3,
+    "viernes": 4,
+    "sabado": 5,
+    "domingo": 6,
+}
+_REVIEWED_EVENT_TITLES = {
+    "seres fascinantes del mediterraneo": (
+        "Удивительные обитатели Средиземного моря"
+    ),
+}
 _MONTHS = {
     name: index
     for index, name in enumerate(
@@ -335,6 +371,128 @@ def _fiestas_de_barrio_events(
     return tuple(events)
 
 
+def _clean_hashtag_place(value: str) -> Optional[str]:
+    """Render one explicit hashtag-style place without inventing details."""
+
+    parts = re.findall(r"#([^\s#,.!;:]+)", value)
+    if parts:
+        cleaned = []
+        for part in parts:
+            words = re.sub(
+                r"(?<=[a-záéíóúüñ])(?=[A-ZÁÉÍÓÚÜÑ])",
+                " ",
+                part,
+            )
+            cleaned.append(" ".join(words.split()))
+        return ", ".join(item for item in cleaned if item) or None
+    plain = " ".join(value.strip(" ,.;:").split())
+    return plain or None
+
+
+def _reviewed_event_title(value: str) -> str:
+    normalized = _normalized(value).strip(" .")
+    return _REVIEWED_EVENT_TITLES.get(normalized, " ".join(value.split()))
+
+
+def _municipal_announcement_events(
+    text: str,
+    local_day: date,
+) -> Tuple[Event, ...]:
+    """Extract only explicit invited municipal events for the local day."""
+
+    normalized = _normalized(text)
+    if not any(marker in normalized for marker in _EVENT_INVITATIONS):
+        return ()
+
+    matches = list(_MUNICIPAL_EVENT_DATE_PATTERN.finditer(text))
+    events = []
+    for index, match in enumerate(matches):
+        (
+            weekday,
+            day,
+            month_name,
+            explicit_year,
+            start_hour,
+            start_minute,
+            end_hour,
+            end_minute,
+        ) = match.groups()
+        try:
+            event_day = date(
+                int(explicit_year) if explicit_year else local_day.year,
+                _MONTHS[_normalized(month_name)],
+                int(day),
+            )
+        except (KeyError, ValueError):
+            continue
+        if event_day != local_day:
+            continue
+        if (
+            weekday is not None
+            and _WEEKDAYS.get(_normalized(weekday)) != event_day.weekday()
+        ):
+            continue
+
+        titles = list(_QUOTED_TITLE_PATTERN.finditer(text, 0, match.start()))
+        if not titles:
+            continue
+        title = _reviewed_event_title(titles[-1].group(1))
+
+        segment_end = (
+            matches[index + 1].start()
+            if index + 1 < len(matches)
+            else len(text)
+        )
+        segment = text[match.end():segment_end]
+        place_match = re.search(
+            r"(?:^|[,.;]\s*)\b(?:en|lugar\s*:)\s+(.+?)"
+            r"(?=\s+(?:os|te)\s+esperamos\b|"
+            r"\s+no\s+(?:te|os)\s+lo\s+pierdas\b|$)",
+            segment,
+            re.IGNORECASE,
+        )
+        if place_match is None:
+            continue
+        place = _clean_hashtag_place(place_match.group(1))
+        if place is None:
+            continue
+
+        try:
+            starts_at = datetime(
+                event_day.year,
+                event_day.month,
+                event_day.day,
+                int(start_hour),
+                int(start_minute),
+                tzinfo=GUARDAMAR_TIMEZONE,
+            )
+            ends_at = (
+                datetime(
+                    event_day.year,
+                    event_day.month,
+                    event_day.day,
+                    int(end_hour),
+                    int(end_minute),
+                    tzinfo=GUARDAMAR_TIMEZONE,
+                )
+                if end_hour is not None and end_minute is not None
+                else None
+            )
+        except ValueError:
+            continue
+        if ends_at is not None and ends_at <= starts_at:
+            continue
+        events.append(
+            Event(
+                title=title,
+                starts_at=starts_at,
+                ends_at=ends_at,
+                place=place,
+            )
+        )
+    return tuple(events)
+
+
 async def fetch_today_mayor_events(now: datetime) -> Tuple[Event, ...]:
     """Return explicitly dated supported events from the official channel."""
 
@@ -343,7 +501,10 @@ async def fetch_today_mayor_events(now: datetime) -> Tuple[Event, ...]:
     events = [
         event
         for _, text in extract_recent_posts(payload, now)
-        for event in _fiestas_de_barrio_events(text, local_day)
+        for event in (
+            *_fiestas_de_barrio_events(text, local_day),
+            *_municipal_announcement_events(text, local_day),
+        )
     ]
     events.sort(key=lambda event: event.starts_at or now)
     return tuple(events)

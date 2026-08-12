@@ -14,7 +14,8 @@ The digest may cover:
 - official warnings;
 - important municipal updates;
 - official national, regional, and Guardamar holiday days off;
-- events relevant today.
+- events relevant today, including narrowly validated late municipal
+  announcements.
 
 Sections are included only when current, useful information is available. The
 bot does not need to fill every section every day.

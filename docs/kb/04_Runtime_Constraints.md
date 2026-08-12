@@ -108,6 +108,8 @@ deployment agent or self-hosted CI runner.
   fallback enforce exact HTTPS hosts, expected MIME types, and existing
   response-size limits. One secondary LLM request may follow a Gemini failure;
   neither provider retries inside this layer.
+- Explicit Mayor-channel events reuse the existing bounded morning page read;
+  they add no request, model call, raw-response cache or background process.
 - Do not make digest delivery depend on every source succeeding.
 
 ### Storage
