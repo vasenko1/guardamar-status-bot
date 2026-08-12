@@ -221,7 +221,7 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
         target = (datetime.now(TIMEZONE) + timedelta(days=1)).date()
         with tempfile.TemporaryDirectory() as directory:
             state_path = Path(directory) / "electricity.json"
-            PublicationState(state_path).mark_published(target)
+            PublicationState(state_path).mark_electricity_published(target)
             environment = {
                 "ELECTRICITY_STATE_PATH": str(state_path),
                 "ELECTRICITY_SNAPSHOT_PATH": str(

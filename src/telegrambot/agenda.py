@@ -429,16 +429,6 @@ def _calendar_place(payload: bytes) -> Optional[str]:
     return place
 
 
-def normalize_event_page(
-    payload: bytes,
-    local_day: Optional[date],
-) -> Optional[Event]:
-    """Return the first occurrence from a valid official event page."""
-
-    events = normalize_event_pages(payload, local_day)
-    return events[0] if events else None
-
-
 def _ticket_url(value: str, starts_at: datetime) -> Optional[str]:
     """Accept only an occurrence-specific ticket URL on the official host."""
 

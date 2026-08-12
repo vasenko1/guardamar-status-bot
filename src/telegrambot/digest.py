@@ -442,32 +442,6 @@ def _beach_operational_lines(
     return lines
 
 
-def build_fallback_update(
-    morning_message: str,
-    beach: Optional[BeachStatus],
-    notice: Optional[BeachNotice],
-) -> str:
-    """Add verified beach updates to the already published morning copy."""
-
-    additions = _beach_operational_lines(beach, notice)
-    if not additions:
-        return with_footer(morning_message)
-    lines = morning_message.splitlines()
-    weather_rows = [
-        index
-        for index, line in enumerate(lines)
-        if line.startswith((
-            "💨 Ветер:",
-            "🌊 Море:",
-            "<b>Ветер:</b>",
-            "<b>Море:</b>",
-        ))
-    ]
-    insert_at = max(weather_rows) + 1 if weather_rows else len(lines)
-    lines[insert_at:insert_at] = ["", *additions]
-    return with_footer("\n".join(lines))
-
-
 def build_message(
     digest: MorningDigest,
     now: Optional[datetime] = None,

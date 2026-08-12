@@ -5,7 +5,6 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from telegrambot.delivery import (
-    attempt_delivery,
     publish_morning,
     publish_update,
 )
@@ -41,7 +40,7 @@ class DeliveryRunTests(unittest.IsolatedAsyncioTestCase):
             partial = self._partial_status(
                 first, ("Centre", "Roqueta", "Vivers")
             )
-            state.mark_morning(morning.date(), 10, morning, "morning")
+            state.mark_morning(morning.date(), 10, morning)
 
             self.assertIsNone(_select_beach_for_update(
                 state, partial, first, final_attempt=False
@@ -63,7 +62,7 @@ class DeliveryRunTests(unittest.IsolatedAsyncioTestCase):
                 first, ("Centre", "Roqueta", "Vivers")
             )
             smaller = self._partial_status(final, ("Centre", "Roqueta"))
-            state.mark_morning(morning.date(), 10, morning, "morning")
+            state.mark_morning(morning.date(), 10, morning)
 
             _select_beach_for_update(
                 state, larger, first, final_attempt=False
@@ -159,11 +158,12 @@ class DeliveryRunTests(unittest.IsolatedAsyncioTestCase):
             async def deliver(message):
                 self.assertEqual(message, "digest")
                 calls["deliver"] += 1
+                return 10
 
-            first = await attempt_delivery(
+            first = await publish_morning(
                 now, state, produce, deliver
             )
-            second = await attempt_delivery(
+            second = await publish_morning(
                 now, state, produce, deliver
             )
 
@@ -173,6 +173,10 @@ class DeliveryRunTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(
                 state.last_successful_date(),
                 now.date(),
+            )
+            self.assertEqual(
+                state.morning_record(now.date())["morning_message_id"],
+                10,
             )
 
     async def test_unsafe_digest_is_skipped_without_telegram(self):
@@ -187,12 +191,13 @@ class DeliveryRunTests(unittest.IsolatedAsyncioTestCase):
             async def deliver(message):
                 nonlocal delivered
                 delivered = True
+                return 10
 
-            result = await attempt_delivery(
+            result = await publish_morning(
                 now, state, produce, deliver
             )
 
-            self.assertEqual(result, "skipped")
+            self.assertEqual(result, "failure")
             self.assertFalse(delivered)
             self.assertIsNone(state.last_successful_date())
 
@@ -200,7 +205,7 @@ class DeliveryRunTests(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as directory:
             state = PublicationState(Path(directory) / "delivery.json")
             morning = datetime(2026, 7, 29, 7, 30, tzinfo=MADRID)
-            state.mark_morning(morning.date(), 10, morning, "morning")
+            state.mark_morning(morning.date(), 10, morning)
             mayor_calls = 0
 
             async def mayor(since):
@@ -225,7 +230,7 @@ class DeliveryRunTests(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as directory:
             state = PublicationState(Path(directory) / "delivery.json")
             morning = datetime(2026, 7, 29, 7, 30, tzinfo=MADRID)
-            state.mark_morning(morning.date(), 10, morning, "morning")
+            state.mark_morning(morning.date(), 10, morning)
             actions = []
             beach = BeachStatus(
                 flag_color="green",
@@ -292,10 +297,10 @@ class DeliveryRunTests(unittest.IsolatedAsyncioTestCase):
                 attempts += 1
                 raise RuntimeError("telegram unavailable")
 
-            first = await attempt_delivery(
+            first = await publish_morning(
                 now, state, produce, deliver
             )
-            second = await attempt_delivery(
+            second = await publish_morning(
                 now, state, produce, deliver
             )
 

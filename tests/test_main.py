@@ -26,7 +26,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as directory:
             state = PublicationState(Path(directory) / "delivery.json")
             now = datetime(2026, 8, 7, 10, 10, tzinfo=MADRID)
-            state.mark_morning(now.date(), 10, now, "morning")
+            state.mark_morning(now.date(), 10, now)
             municipal = AsyncMock(return_value=())
             agenda = AsyncMock(return_value=())
             with (
@@ -130,7 +130,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
             state_path = Path(directory) / "delivery.json"
             now = datetime.now(MADRID)
             state = PublicationState(state_path)
-            state.mark_morning(now.date(), 10, now, "утреннее сообщение")
+            state.mark_morning(now.date(), 10, now)
             state.mark_update_sent(now.date(), 20)
             edited = {}
 
