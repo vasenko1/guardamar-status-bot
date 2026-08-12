@@ -3,17 +3,15 @@
 import asyncio
 import hashlib
 import html
-import http.client
 import json
 import re
-import socket
-import urllib.error
 import urllib.parse
-import urllib.request
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from html.parser import HTMLParser
 from typing import Any, Dict, List, Optional, Tuple
+
+from ._transport import BoundedFetchError, fetch_bounded
 
 
 API_HOSTS = {"todoculturavegabaja.es", "www.todoculturavegabaja.es"}
@@ -329,71 +327,40 @@ def _admissions(rendered: str) -> Tuple[TodoCulturaAdmission, ...]:
     return tuple(result)
 
 
-class _RedirectHandler(urllib.request.HTTPRedirectHandler):
-    def redirect_request(
-        self, request, file_pointer, code, message, headers, new_url
-    ):
-        if not _allowed_url(new_url):
-            raise TodoCulturaError(
-                "Todo Cultura redirected outside its hosts",
-                code="REDIRECT",
-                description="источник перенаправил запрос на другой сайт",
-            )
-        return super().redirect_request(
-            request, file_pointer, code, message, headers, new_url
-        )
+_TRANSPORT_DESCRIPTIONS = {
+    "REDIRECT": "получен недопустимый адрес ответа",
+    "CONTENT-TYPE": "источник вернул данные не в формате JSON",
+    "NETWORK": "не удалось получить дополнительную программу",
+    "TOO-LARGE": "ответ превысил допустимый размер",
+}
 
 
 def _read_api_payload(url: str, limit: int) -> bytes:
-    request = urllib.request.Request(
-        url,
-        headers={
-            "Accept": "application/json",
-            "User-Agent": "GuardamarMorningDigest/0.12",
-        },
-    )
-    opener = urllib.request.build_opener(_RedirectHandler())
     try:
-        with opener.open(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
-            if not _allowed_url(response.geturl()):
-                raise TodoCulturaError(
-                    "Todo Cultura returned an unexpected redirect",
-                    code="REDIRECT",
-                    description="получен недопустимый адрес ответа",
-                )
-            if response.headers.get_content_type() != "application/json":
-                raise TodoCulturaError(
-                    "Todo Cultura returned non-JSON content",
-                    code="CONTENT-TYPE",
-                    description="источник вернул данные не в формате JSON",
-                )
-            payload = response.read(limit + 1)
-    except urllib.error.HTTPError as exc:
-        raise TodoCulturaError(
-            f"Todo Cultura returned HTTP {exc.code}",
-            code=f"HTTP-{exc.code}",
-            description=f"сервер вернул HTTP {exc.code}",
-        ) from exc
-    except TodoCulturaError:
-        raise
-    except (
-        urllib.error.URLError,
-        TimeoutError,
-        socket.timeout,
-        OSError,
-        http.client.HTTPException,
-    ) as exc:
-        raise TodoCulturaError(
-            "Todo Cultura request failed",
-            code="NETWORK",
-            description="не удалось получить дополнительную программу",
-        ) from exc
-    if len(payload) > limit:
-        raise TodoCulturaError(
-            "Todo Cultura response was too large",
-            code="TOO-LARGE",
-            description="ответ превысил допустимый размер",
+        payload, _, _ = fetch_bounded(
+            url,
+            is_allowed_url=_allowed_url,
+            accepted_types=frozenset({"application/json"}),
+            limit_bytes=limit,
+            timeout_seconds=REQUEST_TIMEOUT_SECONDS,
+            headers={
+                "Accept": "application/json",
+                "User-Agent": "GuardamarMorningDigest/0.12",
+            },
         )
+    except BoundedFetchError as exc:
+        # This optional supplement keeps one coarse NETWORK code for
+        # timeouts as well; finer classification adds no operator value.
+        code = "NETWORK" if exc.code == "TIMEOUT" else exc.code
+        raise TodoCulturaError(
+            f"Todo Cultura request failed: {code}",
+            code=code,
+            description=(
+                f"сервер вернул HTTP {exc.status}"
+                if exc.status is not None
+                else _TRANSPORT_DESCRIPTIONS.get(code)
+            ),
+        ) from exc
     return payload
 
 

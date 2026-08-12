@@ -2,22 +2,19 @@
 
 import asyncio
 import html
-import http.client
 import json
 import logging
 import os
-import socket
 import tempfile
-import urllib.error
 import urllib.parse
-import urllib.request
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from typing import Awaitable, Callable, Dict, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
+from ._transport import BoundedFetchError, fetch_bounded
 from .branding import with_footer
 
 ESIOS_HOST = "api.esios.ree.es"
@@ -38,17 +35,6 @@ class ElectricityError(RuntimeError):
         super().__init__(message)
         self.diagnostic_code = code
         self.retryable = retryable
-
-
-class _RejectRedirects(urllib.request.HTTPRedirectHandler):
-    """Keep the personal ESIOS token on the configured API request."""
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        raise ElectricityError(
-            "ESIOS returned an unexpected redirect",
-            code="REDIRECT",
-            retryable=False,
-        )
 
 
 @dataclass(frozen=True)
@@ -75,53 +61,37 @@ def _request_payload(api_key: str, target_date: date) -> bytes:
         "end_date": end.isoformat(),
     })
     url = f"https://{ESIOS_HOST}/indicators/{INDICATOR_ID}?{query}"
-    request = urllib.request.Request(
-        url,
-        headers={
-            "Accept": "application/json; application/vnd.esios-api-v1+json",
-            "Content-Type": "application/json",
-            "x-api-key": api_key,
-            "User-Agent": USER_AGENT,
-        },
-    )
-    opener = urllib.request.build_opener(_RejectRedirects())
     try:
-        with opener.open(request, timeout=TIMEOUT_SECONDS) as response:
-            if urllib.parse.urlparse(response.geturl()).hostname != ESIOS_HOST:
-                raise ElectricityError(
-                    "ESIOS redirected outside its API host",
-                    code="REDIRECT",
-                    retryable=False,
-                )
-            if response.headers.get_content_type() != "application/json":
-                raise ElectricityError(
-                    "ESIOS returned an unexpected content type",
-                    code="CONTENT-TYPE",
-                    retryable=True,
-                )
-            payload = response.read(RESPONSE_LIMIT_BYTES + 1)
-    except urllib.error.HTTPError as exc:
-        retryable = exc.code == 429 or 500 <= exc.code <= 599
+        payload, _, _ = fetch_bounded(
+            url,
+            is_allowed_url=lambda value: (
+                urllib.parse.urlparse(value).hostname == ESIOS_HOST
+            ),
+            accepted_types=frozenset({"application/json"}),
+            limit_bytes=RESPONSE_LIMIT_BYTES,
+            timeout_seconds=TIMEOUT_SECONDS,
+            headers={
+                "Accept": (
+                    "application/json; application/vnd.esios-api-v1+json"
+                ),
+                "Content-Type": "application/json",
+                "x-api-key": api_key,
+                "User-Agent": USER_AGENT,
+            },
+            # Never follow a redirect: the personal token stays on the
+            # configured API request only.
+            follow_redirects=False,
+        )
+    except BoundedFetchError as exc:
+        if exc.status is not None:
+            retryable = exc.status == 429 or 500 <= exc.status <= 599
+        else:
+            retryable = exc.code != "REDIRECT"
         raise ElectricityError(
-            f"ESIOS returned HTTP {exc.code}",
-            code=f"HTTP-{exc.code}",
+            f"ESIOS request failed: {exc.code}",
+            code=exc.code,
             retryable=retryable,
         ) from None
-    except (urllib.error.URLError, TimeoutError, socket.timeout,
-            OSError, http.client.HTTPException) as exc:
-        timed_out = isinstance(exc, (TimeoutError, socket.timeout)) or (
-            isinstance(exc, urllib.error.URLError)
-            and isinstance(exc.reason, (TimeoutError, socket.timeout))
-        )
-        raise ElectricityError(
-            "ESIOS request failed",
-            code="TIMEOUT" if timed_out else "NETWORK",
-            retryable=True,
-        ) from None
-    if len(payload) > RESPONSE_LIMIT_BYTES:
-        raise ElectricityError(
-            "ESIOS response is too large", code="TOO-LARGE", retryable=True
-        )
     return payload
 
 

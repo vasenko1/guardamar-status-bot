@@ -1,13 +1,11 @@
 """Minimal Telegram Bot API client with bounded protocol-aware recovery."""
 
 import asyncio
-import http.client
 import json
-import socket
-import urllib.error
 import urllib.parse
-import urllib.request
 from typing import Any, Awaitable, Callable, Dict, List, Optional
+
+from ._transport import BoundedFetchError, fetch_bounded
 
 API_HOST = "api.telegram.org"
 REQUEST_TIMEOUT_SECONDS = 15
@@ -42,35 +40,6 @@ class TelegramError(RuntimeError):
 def _is_telegram_url(url: str) -> bool:
     parsed = urllib.parse.urlparse(url)
     return parsed.scheme == "https" and parsed.hostname == API_HOST
-
-
-class _TelegramRedirectHandler(urllib.request.HTTPRedirectHandler):
-    def redirect_request(
-        self,
-        request,
-        file_pointer,
-        code,
-        message,
-        headers,
-        new_url,
-    ):
-        if not _is_telegram_url(new_url):
-            raise TelegramError(
-                "Telegram redirected outside its API host",
-                retryable=False,
-                code="REDIRECT",
-                description=(
-                    "сервер перенаправил запрос за пределы Telegram API"
-                ),
-            )
-        return super().redirect_request(
-            request,
-            file_pointer,
-            code,
-            message,
-            headers,
-            new_url,
-        )
 
 
 def _decode_response(payload: bytes) -> Dict[str, Any]:
@@ -128,33 +97,28 @@ def _api_url(bot_token: str, method: str) -> str:
     return f"https://{API_HOST}/bot{bot_token}/{method}"
 
 
-def _read_error_payload(exc: urllib.error.HTTPError) -> Dict[str, Any]:
-    try:
-        payload = exc.read(RESPONSE_LIMIT_BYTES + 1)
-    except (
-        urllib.error.URLError,
-        TimeoutError,
-        socket.timeout,
-        OSError,
-        http.client.HTTPException,
-    ) as read_error:
-        raise TelegramError(
-            "Telegram error response could not be read",
-            retryable=True,
-            code="NETWORK",
-            description="не удалось прочитать ответ с ошибкой Telegram",
-        ) from read_error
-    if len(payload) > RESPONSE_LIMIT_BYTES:
-        raise TelegramError(
-            "Telegram error response was too large",
-            retryable=True,
-            code="TOO-LARGE",
-            description="ответ Telegram превысил допустимый размер",
-        ) from None
-    try:
-        return _decode_response(payload)
-    except TelegramError:
-        return {}
+_TRANSPORT_FAILURES = {
+    "REDIRECT": (
+        False,
+        "получен недопустимый адрес ответа Telegram",
+    ),
+    "CONTENT-TYPE": (
+        True,
+        "Telegram вернул ответ не в формате JSON",
+    ),
+    "TIMEOUT": (
+        True,
+        "Telegram не ответил до истечения тайм-аута",
+    ),
+    "NETWORK": (
+        True,
+        "не удалось установить соединение с Telegram",
+    ),
+    "TOO-LARGE": (
+        True,
+        "ответ Telegram превысил допустимый размер",
+    ),
+}
 
 
 def _call_api(
@@ -163,72 +127,42 @@ def _call_api(
     body: Dict[str, Any],
     timeout: int,
 ) -> Dict[str, Any]:
-    request = urllib.request.Request(
-        _api_url(bot_token, method),
-        data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
-        headers={
-            "Accept": "application/json",
-            "Content-Type": "application/json; charset=utf-8",
-            "User-Agent": USER_AGENT,
-        },
-        method="POST",
-    )
-    opener = urllib.request.build_opener(_TelegramRedirectHandler())
     try:
-        with opener.open(request, timeout=timeout) as response:
-            if not _is_telegram_url(response.geturl()):
-                raise TelegramError(
-                    "Telegram returned an unexpected URL",
-                    retryable=False,
-                    code="REDIRECT",
-                    description="получен недопустимый адрес ответа Telegram",
-                )
-            if response.headers.get_content_type() != "application/json":
-                raise TelegramError(
-                    "Telegram returned an unexpected content type",
-                    retryable=True,
-                    code="CONTENT-TYPE",
-                    description="Telegram вернул ответ не в формате JSON",
-                )
-            payload = response.read(RESPONSE_LIMIT_BYTES + 1)
-            status = response.status
-    except urllib.error.HTTPError as exc:
-        decoded = _read_error_payload(exc)
-        raise _response_error(decoded, exc.code) from None
-    except (
-        urllib.error.URLError,
-        TimeoutError,
-        socket.timeout,
-        OSError,
-        http.client.HTTPException,
-    ) as exc:
-        timed_out = isinstance(exc, (TimeoutError, socket.timeout)) or (
-            isinstance(exc, urllib.error.URLError)
-            and isinstance(exc.reason, (TimeoutError, socket.timeout))
+        payload, _, _ = fetch_bounded(
+            _api_url(bot_token, method),
+            is_allowed_url=_is_telegram_url,
+            accepted_types=frozenset({"application/json"}),
+            limit_bytes=RESPONSE_LIMIT_BYTES,
+            timeout_seconds=timeout,
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json; charset=utf-8",
+                "User-Agent": USER_AGENT,
+            },
+            method="POST",
+            data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+            read_error_body=True,
         )
-        code = "TIMEOUT" if timed_out else "NETWORK"
-        description = (
-            "Telegram не ответил до истечения тайм-аута"
-            if code == "TIMEOUT"
-            else "не удалось установить соединение с Telegram"
+    except BoundedFetchError as exc:
+        if exc.status is not None:
+            # The bounded error body may carry Telegram's retry_after.
+            try:
+                decoded = _decode_response(exc.payload or b"")
+            except TelegramError:
+                decoded = {}
+            raise _response_error(decoded, exc.status) from None
+        retryable, description = _TRANSPORT_FAILURES.get(
+            exc.code, (True, None)
         )
         raise TelegramError(
             "Telegram request failed",
-            retryable=True,
-            code=code,
+            retryable=retryable,
+            code=exc.code,
             description=description,
         ) from None
-
-    if len(payload) > RESPONSE_LIMIT_BYTES:
-        raise TelegramError(
-            "Telegram response was too large",
-            retryable=True,
-            code="TOO-LARGE",
-            description="ответ Telegram превысил допустимый размер",
-        )
     decoded = _decode_response(payload)
-    if status != 200 or decoded.get("ok") is not True:
-        raise _response_error(decoded, status)
+    if decoded.get("ok") is not True:
+        raise _response_error(decoded, 200)
     return decoded
 
 

@@ -6,12 +6,9 @@ import json
 import logging
 import math
 import re
-import socket
 import tarfile
 import unicodedata
-import urllib.error
 import urllib.parse
-import urllib.request
 import zipfile
 from datetime import date, datetime, time, timedelta, timezone
 from email.utils import parsedate_to_datetime
@@ -19,6 +16,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 from xml.etree import ElementTree
 from zoneinfo import ZoneInfo
 
+from ._transport import BoundedFetchError, fetch_bounded
 from .diagnostics import SourceDiagnostic, source_error
 from .models import MorningDigest, Warning, Weather
 
@@ -51,27 +49,6 @@ def _is_aemet_https_url(url: str) -> bool:
         parsed.hostname == "aemet.es"
         or (parsed.hostname or "").endswith(".aemet.es")
     )
-
-
-class _AemetRedirectHandler(urllib.request.HTTPRedirectHandler):
-    def redirect_request(
-        self,
-        request,
-        file_pointer,
-        code,
-        message,
-        headers,
-        new_url,
-    ):
-        if not _is_aemet_https_url(new_url):
-            raise AemetError(
-                "AEMET redirected to an unexpected URL",
-                code="REDIRECT",
-                description="сервер перенаправил запрос за пределы AEMET",
-            )
-        return super().redirect_request(
-            request, file_pointer, code, message, headers, new_url
-        )
 
 
 class AemetError(RuntimeError):
@@ -155,13 +132,6 @@ def _read_url(
     limit: int,
     api_key: Optional[str] = None,
 ) -> bytes:
-    if not _is_aemet_https_url(url):
-        raise AemetError(
-            "AEMET returned an unexpected download URL",
-            code="REDIRECT",
-            description="получен недопустимый адрес загрузки",
-        )
-
     headers = {
         "Accept": (
             "application/json, application/xml, application/zip, "
@@ -171,44 +141,45 @@ def _read_url(
     }
     if api_key is not None:
         headers["api_key"] = api_key
-    request = urllib.request.Request(
-        url,
-        headers=headers,
-    )
     try:
-        opener = urllib.request.build_opener(_AemetRedirectHandler())
-        with opener.open(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
-            payload = response.read(limit + 1)
-    except urllib.error.HTTPError as exc:
-        raise _server_error(
-            exc.code,
-            retry_after=_retry_after_seconds(
-                exc.headers.get("Retry-After")
-                if exc.headers is not None
-                else None
+        payload, _, _ = fetch_bounded(
+            url,
+            is_allowed_url=_is_aemet_https_url,
+            limit_bytes=limit,
+            timeout_seconds=REQUEST_TIMEOUT_SECONDS,
+            headers=headers,
+        )
+    except BoundedFetchError as exc:
+        if exc.status is not None:
+            raise _server_error(
+                exc.status,
+                retry_after=_retry_after_seconds(exc.retry_after),
+            ) from exc
+        if exc.code in {"URL-POLICY", "REDIRECT"}:
+            raise AemetError(
+                "AEMET returned an unexpected download URL",
+                code="REDIRECT",
+                description="получен недопустимый адрес загрузки",
+            ) from exc
+        if exc.code == "TOO-LARGE":
+            raise AemetError(
+                "AEMET response exceeded the configured size limit",
+                code="TOO-LARGE",
+                description="ответ превысил допустимый размер",
+            ) from exc
+        timed_out = exc.code == "TIMEOUT"
+        raise AemetError(
+            "AEMET request timed out"
+            if timed_out
+            else "AEMET network request failed",
+            code=exc.code,
+            retryable=True,
+            description=(
+                "сервер не ответил до истечения тайм-аута"
+                if timed_out
+                else "не удалось установить сетевое соединение"
             ),
         ) from exc
-    except (TimeoutError, socket.timeout) as exc:
-        raise AemetError(
-            "AEMET request timed out",
-            code="TIMEOUT",
-            retryable=True,
-            description="сервер не ответил до истечения тайм-аута",
-        ) from exc
-    except urllib.error.URLError as exc:
-        raise AemetError(
-            "AEMET network request failed",
-            code="NETWORK",
-            retryable=True,
-            description="не удалось установить сетевое соединение",
-        ) from exc
-
-    if len(payload) > limit:
-        raise AemetError(
-            "AEMET response exceeded the configured size limit",
-            code="TOO-LARGE",
-            description="ответ превысил допустимый размер",
-        )
     return payload
 
 

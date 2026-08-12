@@ -1,12 +1,10 @@
 """Bounded OpenRouter fallback for Gemini structured requests."""
 
-import http.client
 import json
-import socket
-import urllib.error
 import urllib.parse
-import urllib.request
 from typing import Any, Dict, List, Optional
+
+from ._transport import BoundedFetchError, fetch_bounded
 
 
 MODEL = "openai/gpt-4.1-mini"
@@ -38,30 +36,13 @@ def _is_openrouter_url(url: str) -> bool:
     return parsed.scheme == "https" and parsed.hostname == API_HOST
 
 
-class _OpenRouterRedirectHandler(urllib.request.HTTPRedirectHandler):
-    def redirect_request(
-        self,
-        request,
-        file_pointer,
-        code,
-        message,
-        headers,
-        new_url,
-    ):
-        if not _is_openrouter_url(new_url):
-            raise OpenRouterError(
-                "OpenRouter redirected outside its API host",
-                code="REDIRECT",
-                description="OpenRouter перенаправил запрос на другой сайт",
-            )
-        return super().redirect_request(
-            request,
-            file_pointer,
-            code,
-            message,
-            headers,
-            new_url,
-        )
+_TRANSPORT_DESCRIPTIONS = {
+    "REDIRECT": "OpenRouter перенаправил запрос на другой сайт",
+    "CONTENT-TYPE": "OpenRouter вернул ответ не в формате JSON",
+    "TIMEOUT": "OpenRouter не ответил до истечения тайм-аута",
+    "NETWORK": "не удалось установить соединение с OpenRouter",
+    "TOO-LARGE": "ответ OpenRouter превысил допустимый размер",
+}
 
 
 def _content_from_parts(parts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -115,15 +96,6 @@ def _content_from_parts(parts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return content
 
 
-def _http_error(exc: urllib.error.HTTPError) -> OpenRouterError:
-    return OpenRouterError(
-        f"OpenRouter returned HTTP {exc.code}",
-        code=f"HTTP-{exc.code}",
-        status=exc.code,
-        description=f"OpenRouter вернул HTTP {exc.code}",
-    )
-
-
 def request_json(
     api_key: str,
     parts: List[Dict[str, Any]],
@@ -159,61 +131,33 @@ def request_json(
         }
     else:
         body_data["response_format"] = {"type": "json_object"}
-    request = urllib.request.Request(
-        ENDPOINT,
-        data=json.dumps(body_data, ensure_ascii=False).encode("utf-8"),
-        headers={
-            "Accept": "application/json",
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json; charset=utf-8",
-            "User-Agent": "GuardamarMorningDigest/0.12",
-        },
-        method="POST",
-    )
-    opener = urllib.request.build_opener(_OpenRouterRedirectHandler())
     try:
-        with opener.open(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
-            if not _is_openrouter_url(response.geturl()):
-                raise OpenRouterError(
-                    "OpenRouter returned an unexpected response URL",
-                    code="REDIRECT",
-                    description="получен недопустимый адрес ответа OpenRouter",
-                )
-            if response.headers.get_content_type() != "application/json":
-                raise OpenRouterError(
-                    "OpenRouter returned an unexpected content type",
-                    code="CONTENT-TYPE",
-                    description="OpenRouter вернул ответ не в формате JSON",
-                )
-            payload = response.read(RESPONSE_LIMIT_BYTES + 1)
-    except urllib.error.HTTPError as exc:
-        raise _http_error(exc) from exc
-    except (
-        urllib.error.URLError,
-        TimeoutError,
-        socket.timeout,
-        OSError,
-        http.client.HTTPException,
-    ) as exc:
-        timed_out = isinstance(exc, (TimeoutError, socket.timeout)) or (
-            isinstance(exc, urllib.error.URLError)
-            and isinstance(exc.reason, (TimeoutError, socket.timeout))
+        payload, _, _ = fetch_bounded(
+            ENDPOINT,
+            is_allowed_url=_is_openrouter_url,
+            accepted_types=frozenset({"application/json"}),
+            limit_bytes=RESPONSE_LIMIT_BYTES,
+            timeout_seconds=REQUEST_TIMEOUT_SECONDS,
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json; charset=utf-8",
+                "User-Agent": "GuardamarMorningDigest/0.12",
+            },
+            method="POST",
+            data=json.dumps(body_data, ensure_ascii=False).encode("utf-8"),
         )
+    except BoundedFetchError as exc:
         raise OpenRouterError(
-            "OpenRouter request failed",
-            code="TIMEOUT" if timed_out else "NETWORK",
+            f"OpenRouter request failed: {exc.code}",
+            code=exc.code,
+            status=exc.status,
             description=(
-                "OpenRouter не ответил до истечения тайм-аута"
-                if timed_out
-                else "не удалось установить соединение с OpenRouter"
+                f"OpenRouter вернул HTTP {exc.status}"
+                if exc.status is not None
+                else _TRANSPORT_DESCRIPTIONS.get(exc.code)
             ),
         ) from exc
-    if len(payload) > RESPONSE_LIMIT_BYTES:
-        raise OpenRouterError(
-            "OpenRouter response was too large",
-            code="TOO-LARGE",
-            description="ответ OpenRouter превысил допустимый размер",
-        )
     try:
         response_data = json.loads(payload.decode("utf-8"))
         text = response_data["choices"][0]["message"]["content"]
