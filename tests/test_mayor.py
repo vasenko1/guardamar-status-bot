@@ -9,6 +9,7 @@ from telegrambot.morning import produce_message
 from telegrambot.mayor import (
     MayorChannelError,
     _fiestas_de_barrio_events,
+    _municipal_announcement_events,
     _read_page,
     extract_recent_posts,
     latest_beach_notice,
@@ -173,6 +174,87 @@ class MayorChannelTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0].place, "Parque C/ Berlín")
+
+    def test_extracts_explicit_invited_municipal_event(self):
+        events = _municipal_announcement_events(
+            (
+                'Información y talleres de naturaleza y educación ambiental '
+                '"SERES FASCINANTES DEL MEDITERRÁNEO". Mañana miércoles '
+                "12 de agosto de 09:00 a 13:00 h., en #PlayaCentro "
+                "#PaseoMarítimo Os esperamos! #MedioAmbiente "
+                "#AyuntamientoGuardamar"
+            ),
+            date(2026, 8, 12),
+        )
+
+        self.assertEqual(len(events), 1)
+        self.assertEqual(
+            events[0].title,
+            "Удивительные обитатели Средиземного моря",
+        )
+        self.assertEqual(events[0].starts_at.hour, 9)
+        self.assertEqual(events[0].ends_at.hour, 13)
+        self.assertEqual(events[0].place, "Playa Centro, Paseo Marítimo")
+
+    def test_rejects_retrospective_municipal_post(self):
+        events = _municipal_announcement_events(
+            (
+                'Ayer celebramos "SERES FASCINANTES DEL MEDITERRÁNEO". '
+                "Miércoles 12 de agosto de 09:00 a 13:00 h., en "
+                "#PlayaCentro #PaseoMarítimo. Muchas gracias por venir."
+            ),
+            date(2026, 8, 12),
+        )
+
+        self.assertEqual(events, ())
+
+    def test_rejects_municipal_post_without_explicit_place(self):
+        events = _municipal_announcement_events(
+            (
+                'Taller "SERES FASCINANTES DEL MEDITERRÁNEO". '
+                "Miércoles 12 de agosto de 09:00 a 13:00 h. "
+                "Os esperamos!"
+            ),
+            date(2026, 8, 12),
+        )
+
+        self.assertEqual(events, ())
+
+    def test_rejects_municipal_event_for_another_day(self):
+        events = _municipal_announcement_events(
+            (
+                'Taller "SERES FASCINANTES DEL MEDITERRÁNEO". '
+                "Jueves 13 de agosto de 09:00 a 13:00 h., en "
+                "#PlayaCentro. Os esperamos!"
+            ),
+            date(2026, 8, 12),
+        )
+
+        self.assertEqual(events, ())
+
+    def test_rejects_municipal_event_with_wrong_explicit_year(self):
+        events = _municipal_announcement_events(
+            (
+                'Taller "SERES FASCINANTES DEL MEDITERRÁNEO". '
+                "Miércoles 12 de agosto de 2025 de 09:00 a 13:00 h., "
+                "en #PlayaCentro. Os esperamos!"
+            ),
+            date(2026, 8, 12),
+        )
+
+        self.assertEqual(events, ())
+
+    def test_rejects_municipal_event_with_wrong_weekday(self):
+        events = _municipal_announcement_events(
+            (
+                'Taller "SERES FASCINANTES DEL MEDITERRÁNEO". '
+                "Jueves 12 de agosto de 09:00 a 13:00 h., en "
+                "#PlayaCentro. Os esperamos!"
+            ),
+            date(2026, 8, 12),
+        )
+
+        self.assertEqual(events, ())
 
     async def test_skips_gemini_when_no_market_post_exists(self):
         now = datetime(2026, 7, 29, 7, 30, tzinfo=TZ)

@@ -23,7 +23,7 @@ official endpoints and lightweight access methods are validated.
 | Agenda Guardamar | Official ticketed events occurring today | High for listed Ayuntamiento events | 05:30 bounded HTML/Schema.org catalog refresh | Yes |
 | Turismo Guardamar municipal agenda | Broader official monthly cultural text plus supplementary MUPI | High for text; image facts require agreement | 05:10 text-first catalog refresh; MUPI only after URL change | Yes |
 | BOE, DOGV, and official Guardamar holiday calendar | Official national, regional, and local days off applicable in Guardamar; Wednesday-market holiday moves | High; legally authoritative annual publications | Small reviewed annual in-code calendar; no morning request | Yes |
-| `@AlcaldeGuardamar` public channel | Explicit market exceptions, bathing-status transitions, and explicitly dated Fiestas de Barrio | Operational municipal channel; text must be mechanically grounded | One bounded morning event check, market check when relevant, or one check after SafeBeach retries | Yes, narrow role |
+| `@AlcaldeGuardamar` public channel | Explicit market exceptions, bathing-status transitions, Fiestas de Barrio, and complete invited same-day municipal announcements | Operational municipal channel; text must be mechanically grounded | One bounded morning event check, market check when relevant, or one check after SafeBeach retries | Yes, narrow role |
 | Campo de Guardamar market website | Sunday market at Camino del Raso, 15 | Operator-published schedule; no authoritative cancellation feed found | Local Sunday rule, `07:00–16:00` | Yes, explicit product exception |
 | Community or commercial sources | Gap filling only | Variable | Varies | No by default |
 
@@ -392,7 +392,17 @@ bathing transitions. A morning check also recognizes explicitly dated
 urbanizations and `Ubicación`, including the 31 July 2026 event at
 `parque C/ Berlín`, independently confirmed by the municipal poster and the
 official Turismo Guardamar text agenda. The user-facing location expands `C/`
-to `улица` and retains `парк`. Other Mayor posts are not treated as events.
+to `улица` and retains `парк`.
+
+The same bounded morning read may accept a late general municipal event only
+when one fresh post has an invitation, a quoted title, an explicit day and
+month matching today, a valid start time, an explicit place and a consistent
+weekday or year when either is published. The independently reviewed
+11 August 2026 post for `SERES FASCINANTES DEL MEDITERRÁNEO` supplies the
+12 August `09:00–13:00` environmental workshop at Playa Centro / Paseo
+Marítimo. Its exact reviewed Russian title is `Удивительные обитатели
+Средиземного моря`. Posts about completed activities and announcements with
+missing fields remain ineligible. Other Mayor posts are not treated as events.
 Known causes use a fixed
 Russian vocabulary; no AI inference is used. The Mayor and Policía Local
 adapters accept only bounded

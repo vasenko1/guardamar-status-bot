@@ -326,7 +326,10 @@ copies lead to the public group instead of only identifying the bot. Telegram
 link previews are disabled globally to keep the footer to one phone-width row.
 
 The official `@AlcaldeGuardamar` channel additionally supplies explicitly
-dated `Fiestas de Barrio` entries through a narrow deterministic parser. It
+dated `Fiestas de Barrio` entries and narrowly validated late municipal event
+announcements through deterministic parsers. A general announcement requires
+an invitation, a quoted title, the current explicit date, a valid time and an
+explicit place; retrospective reports and incomplete posts are omitted. This
 does not turn the channel into a general news source. Preserve named
 participating urbanizations and the complete published venue:
 `Ubicación parque C/ Berlín` renders as `парк на улице Berlín`.

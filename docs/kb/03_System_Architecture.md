@@ -190,6 +190,12 @@ and deterministic intersection keeps agreeing facts. A MUPI failure cannot
 erase valid text facts. Narrow corrections may be pinned to one reviewed
 official poster when a documented OCR error is discovered.
 
+The Mayor-channel event path reuses the existing bounded public-page request.
+Besides its dedicated market, bathing and Fiestas de Barrio rules, it accepts
+only a fresh invitation with a quoted title, explicit current date, valid
+time and explicit place. It uses no AI, cache or additional request; ordinary
+news and retrospective reports remain ineligible.
+
 Termux refreshes municipal and Agenda Guardamar catalogs at 05:10 and 05:30,
 invokes the morning command at 07:30, and runs the update command every five
 minutes from 10:10 through 10:40 in `Europe/Madrid`.
