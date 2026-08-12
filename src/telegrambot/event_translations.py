@@ -8,7 +8,7 @@ import tempfile
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Iterable, Mapping, Optional, Tuple
+from typing import Iterable, Optional, Tuple
 
 from .gemini import translate_event_titles
 
@@ -18,17 +18,6 @@ MAX_ENTRIES = 500
 RETENTION_DAYS = 90
 
 REVIEWED_TRANSLATIONS = {
-    "spanish brass": "Концерт духового квинтета Spanish Brass «Top Secret»",
-    "spanish brass. top secret": (
-        "Концерт духового квинтета Spanish Brass «Top Secret»"
-    ),
-    (
-        "torneo de tenis 24.º open real villa de guardamar, "
-        "memorial pepe y juan tendero 2026"
-    ): (
-        "24-й открытый теннисный турнир «Real Villa de Guardamar» "
-        "памяти Пепе и Хуана Тендеро"
-    ),
     (
         "exposición de pintura y escultura: "
         "mediterráneo, el lenguaje del agua"
@@ -48,33 +37,12 @@ REVIEWED_TRANSLATIONS = {
         "de vira degliarenko"
     ): "Выставка живописи «Свет вопреки боли» — Вира Дегляренко",
     (
-        "explorador de emociones: “la alegría que hay en ti”, "
-        "de cat deeley"
-    ): (
-        "Детское занятие «Исследователь эмоций»: "
-        "«Радость, которая в тебе» — Кэт Дили"
-    ),
-    (
         "labores a la fresca: ‘yo te enseño, tú me enseñas’"
     ): "Встреча по рукоделию «На свежем воздухе»",
-    (
-        "dixi project: viaje por la música de los años 20"
-    ): (
-        "Джазовый концерт Dixie Project "
-        "«Путешествие по музыке 1920-х»"
-    ),
     "ball d’estiu": "Летний танцевальный вечер Ball d’Estiu",
-    (
-        "kiki morente en concierto. estival al castell"
-    ): "Концерт фламенко Кики Моренте · VI Estival al Castell",
-    "alice wonder": "Концерт Alice Wonder «Soulost» · VI Estival al Castell",
-    (
-        "alice wonder en concierto. estival al castell"
-    ): "Концерт Alice Wonder «Soulost» · VI Estival al Castell",
     (
         "rutas nocturnas: senderismo y dinámica grupal"
     ): "Ночной пешеходный маршрут (8 км) для молодёжи 12–30 лет",
-    "taller de baterías": "Мастер-класс по игре на барабанах",
 }
 
 

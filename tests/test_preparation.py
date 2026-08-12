@@ -81,45 +81,8 @@ class PreparationTests(unittest.IsolatedAsyncioTestCase):
 
     def test_reviewed_current_event_titles_do_not_depend_on_llm(self):
         self.assertEqual(
-            reviewed_translation("SPANISH BRASS"),
-            "Концерт духового квинтета Spanish Brass «Top Secret»",
-        )
-        self.assertEqual(
-            reviewed_translation(
-                "Torneo de tenis 24.º Open Real Villa de Guardamar, "
-                "Memorial Pepe y Juan Tendero 2026"
-            ),
-            (
-                "24-й открытый теннисный турнир «Real Villa de Guardamar» "
-                "памяти Пепе и Хуана Тендеро"
-            ),
-        )
-        self.assertEqual(
-            reviewed_translation(
-                "DIXI PROJECT: Viaje por la música de los años 20"
-            ),
-            (
-                "Джазовый концерт Dixie Project "
-                "«Путешествие по музыке 1920-х»"
-            ),
-        )
-        self.assertEqual(
             reviewed_translation("BALL D’ESTIU"),
             "Летний танцевальный вечер Ball d’Estiu",
-        )
-        self.assertEqual(
-            reviewed_translation(
-                "KIKI MORENTE EN CONCIERTO. ESTIVAL AL CASTELL"
-            ),
-            "Концерт фламенко Кики Моренте · VI Estival al Castell",
-        )
-        alice = "Концерт Alice Wonder «Soulost» · VI Estival al Castell"
-        self.assertEqual(reviewed_translation("ALICE WONDER"), alice)
-        self.assertEqual(
-            reviewed_translation(
-                "ALICE WONDER EN CONCIERTO. ESTIVAL AL CASTELL"
-            ),
-            alice,
         )
         self.assertEqual(
             reviewed_translation(
@@ -128,8 +91,11 @@ class PreparationTests(unittest.IsolatedAsyncioTestCase):
             "Ночной пешеходный маршрут (8 км) для молодёжи 12–30 лет",
         )
         self.assertEqual(
-            reviewed_translation("Taller de baterías"),
-            "Мастер-класс по игре на барабанах",
+            reviewed_translation(
+                "Exposición de pintura «Luz a pesar del dolor» "
+                "de Vira Degliarenko"
+            ),
+            "Выставка живописи «Свет вопреки боли» — Вира Дегляренко",
         )
 
     def test_reviewed_title_overrides_empty_cache(self):
@@ -137,8 +103,8 @@ class PreparationTests(unittest.IsolatedAsyncioTestCase):
             path = Path(directory) / "translations.json"
 
             self.assertEqual(
-                cached_title(path, "municipal_agenda", "SPANISH BRASS"),
-                "Концерт духового квинтета Spanish Brass «Top Secret»",
+                cached_title(path, "municipal_agenda", "BALL D’ESTIU"),
+                "Летний танцевальный вечер Ball d’Estiu",
             )
 
     def test_message_can_publish_events_without_weather(self):

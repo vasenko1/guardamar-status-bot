@@ -919,198 +919,99 @@ def _apply_reviewed_corrections(
 
     parsed = urllib.parse.urlparse(poster_url)
     poster_name = parsed.path.rsplit("/", 1)[-1].casefold()
-    is_july_2026 = (
-        parsed.scheme == "https"
-        and parsed.hostname in POSTER_HOSTS
-        and "/wp-content/uploads/2026/07/" in parsed.path.casefold()
-        and poster_name.startswith("mupi-julio-2026")
-        and poster_name.endswith((".jpg", ".jpeg", ".png", ".webp"))
-    )
     is_august_2026 = (
         parsed.scheme == "https"
         and parsed.hostname in POSTER_HOSTS
         and "/wp-content/uploads/2026/07/" in parsed.path.casefold()
         and poster_name == "mupi-agosto-2026-scaled.jpg"
     )
-    if not is_july_2026 and not is_august_2026:
+    if not is_august_2026:
         return events
-    if is_august_2026:
-        reviewed = (
+    # Expired reviewed occurrences are removed after their final date; the
+    # title filter below still drops their known-bad OCR rows.
+    reviewed = (
+        SourceEvent(
+            title_es=(
+                "Exposición de pintura y escultura: "
+                "Mediterráneo, el lenguaje del agua"
+            ),
+            start_date=date(2026, 6, 19),
+            end_date=date(2026, 8, 14),
+            start_time=None,
+            end_time=None,
+            place="Sala de exposiciones Casa de Cultura",
+            category="exhibition",
+            sources=("mupi_reviewed",),
+        ),
+        SourceEvent(
+            title_es=(
+                "Exposición de pintura «Luz a pesar del dolor» "
+                "de Vira Degliarenko"
+            ),
+            start_date=date(2026, 7, 31),
+            end_date=date(2026, 8, 21),
+            start_time="08:00",
+            end_time="14:00",
+            place="Biblioteca Municipal",
+            category="exhibition",
+            sources=("mupi_reviewed", "todo_cultura_reviewed"),
+        ),
+        *tuple(
             SourceEvent(
-                title_es=(
-                    "Torneo de tenis 24.º Open Real Villa de Guardamar, "
-                    "Memorial Pepe y Juan Tendero 2026"
-                ),
-                start_date=date(2026, 8, 1),
-                end_date=date(2026, 8, 8),
-                start_time=None,
-                end_time=None,
-                place="Polideportivo Municipal Guardamar",
+                title_es="Rutas nocturnas: senderismo y dinámica grupal",
+                start_date=date(2026, 8, day),
+                end_date=date(2026, 8, day),
+                start_time="22:15",
+                end_time="00:15",
+                place=None,
                 category="event",
                 sources=("mupi_reviewed",),
-            ),
+            )
+            for day in (14, 21, 28)
+        ),
+        *tuple(
             SourceEvent(
-                title_es=(
-                    "Exposición de pintura y escultura: "
-                    "Mediterráneo, el lenguaje del agua"
-                ),
-                start_date=date(2026, 6, 19),
-                end_date=date(2026, 8, 14),
-                start_time=None,
-                end_time=None,
-                place="Sala de exposiciones Casa de Cultura",
-                category="exhibition",
-                sources=("mupi_reviewed",),
-            ),
-            SourceEvent(
-                title_es=(
-                    "Exposición de pintura «Luz a pesar del dolor» "
-                    "de Vira Degliarenko"
-                ),
-                start_date=date(2026, 7, 31),
-                end_date=date(2026, 8, 21),
-                start_time="08:00",
-                end_time="14:00",
-                place="Biblioteca Municipal",
-                category="exhibition",
-                sources=("mupi_reviewed", "todo_cultura_reviewed"),
-            ),
-            SourceEvent(
-                title_es=(
-                    "Labores a la fresca: ‘Yo te enseño, tú me enseñas’"
-                ),
-                start_date=date(2026, 8, 6),
-                end_date=date(2026, 8, 6),
-                start_time="18:00",
-                end_time="20:00",
-                place="Casa de Cultura",
-                category="event",
-                ticket_price_cents=0,
-                sources=("mupi_reviewed", "todo_cultura_reviewed"),
-            ),
-            *tuple(
-                SourceEvent(
-                    title_es="Rutas nocturnas: senderismo y dinámica grupal",
-                    start_date=date(2026, 8, day),
-                    end_date=date(2026, 8, day),
-                    start_time="22:15",
-                    end_time="00:15",
-                    place=None,
-                    category="event",
-                    sources=("mupi_reviewed",),
-                )
-                for day in (7, 14, 21, 28)
-            ),
-            SourceEvent(
-                title_es="Taller de cultura K-Pop y TikTok",
-                start_date=date(2026, 8, 1),
-                end_date=date(2026, 8, 1),
+                title_es=title,
+                start_date=date(2026, 8, day),
+                end_date=date(2026, 8, day),
                 start_time="19:00",
                 end_time="21:00",
                 place="Centro Social Juvenil",
                 category="event",
-                sources=("mupi_reviewed",),
-            ),
-            *tuple(
-                SourceEvent(
-                    title_es=title,
-                    start_date=date(2026, 8, day),
-                    end_date=date(2026, 8, day),
-                    start_time="19:00",
-                    end_time="21:00",
-                    place="Centro Social Juvenil",
-                    category="event",
-                    sources=("mupi_reviewed", "todo_cultura_reviewed"),
-                    participation_note=(
-                        "для молодёжи 12–30 лет" if day == 8 else None
-                    ),
-                    registration_contact=(
-                        "Centro Social Juvenil или WhatsApp 609 00 67 54"
-                        if day == 8
-                        else None
-                    ),
-                )
-                for day, title in (
-                    (8, "Taller de baterías"),
-                    (15, "Taller de guitarras eléctricas"),
-                    (22, "Taller de música electrónica"),
-                    (29, "Taller de canto"),
-                )
-            ),
-        )
-        filtered = []
-        for event in events:
-            title = event.title_es.casefold()
-            if (
-                "rutas nocturnas" in title
-                or "senderismo" in title and "dinámica" in title
-                or "mediterráneo" in title and "lenguaje del agua" in title
-                or "luz a pesar del dolor" in title
-                or "vira deg" in title
-                or "labores a la fresca" in title
-                or "tendero" in title
-                or "open real villa" in title
-                or "open" in title and "villa de guardamar" in title
-                or "k-pop" in title
-                or "tik tok" in title
-                or "tiktok" in title
-                or "taller de bater" in title
-                or "taller de guitarra" in title
-                or "taller de música electrónica" in title
-                or "taller de musica electronica" in title
-                or "taller de canto" in title
-            ):
-                continue
-            filtered.append(event)
-        return tuple(filtered) + _inherit_reviewed_details(reviewed, events)
-    corrected = []
-    entropia_added = False
+                sources=("mupi_reviewed", "todo_cultura_reviewed"),
+            )
+            for day, title in (
+                (15, "Taller de guitarras eléctricas"),
+                (22, "Taller de música electrónica"),
+                (29, "Taller de canto"),
+            )
+        ),
+    )
+    filtered = []
     for event in events:
         title = event.title_es.casefold()
-        if "conchi montes" not in title and "entrop" not in title:
-            corrected.append(event)
+        if (
+            "rutas nocturnas" in title
+            or "senderismo" in title and "dinámica" in title
+            or "mediterráneo" in title and "lenguaje del agua" in title
+            or "luz a pesar del dolor" in title
+            or "vira deg" in title
+            or "labores a la fresca" in title
+            or "tendero" in title
+            or "open real villa" in title
+            or "open" in title and "villa de guardamar" in title
+            or "k-pop" in title
+            or "tik tok" in title
+            or "tiktok" in title
+            or "taller de bater" in title
+            or "taller de guitarra" in title
+            or "taller de música electrónica" in title
+            or "taller de musica electronica" in title
+            or "taller de canto" in title
+        ):
             continue
-        if not entropia_added:
-            corrected.append(
-                SourceEvent(
-                    title_es=(
-                        "Exposición de pintura «Entropía» "
-                        "de Conchi Montes"
-                    ),
-                    start_date=date(2026, 7, 3),
-                    end_date=date(2026, 7, 29),
-                    start_time="08:00",
-                    end_time="14:00",
-                    place="Biblioteca Pública Municipal",
-                    category="exhibition",
-                    sources=event.sources,
-                )
-            )
-            entropia_added = True
-    return tuple(corrected)
-
-
-def _merge_reviewed_text_agenda(
-    events: Tuple[SourceEvent, ...],
-) -> Tuple[SourceEvent, ...]:
-    """Keep verified current-month facts when the poster advances early."""
-
-    additions = []
-    if not any(
-        "conchi montes" in event.title_es.casefold()
-        or "entrop" in event.title_es.casefold()
-        for event in events
-    ):
-        additions.append(SourceEvent(
-            title_es="Exposición de pintura «Entropía» de Conchi Montes",
-            start_date=date(2026, 7, 3),
-            end_date=date(2026, 7, 29),
-            start_time="08:00",
-            end_time="14:00",
-            place="Biblioteca Pública Municipal",
-            category="exhibition",
-        ))
-    return events + tuple(additions)
+        filtered.append(event)
+    return tuple(filtered) + _inherit_reviewed_details(reviewed, events)
 
 
 def _apply_reviewed_daily_schedules(
@@ -1122,12 +1023,6 @@ def _apply_reviewed_daily_schedules(
     scheduled = []
     for event in events:
         normalized = event.title_es.casefold()
-        is_spanish_brass = (
-            "spanish brass" in normalized
-            and event.start_date == date(2026, 8, 5)
-            and event.end_date == date(2026, 8, 5)
-            and event.start_time == "22:00"
-        )
         is_mediterraneo = (
             "mediterráneo" in normalized
             and "lenguaje del agua" in normalized
@@ -1139,41 +1034,16 @@ def _apply_reviewed_daily_schedules(
             and event.start_date == date(2026, 7, 31)
             and event.end_date == date(2026, 8, 21)
         )
-        is_emotions_workshop = (
-            "explorador de emociones" in normalized
-            and "alegría que hay en ti" in normalized
-            and event.start_date == date(2026, 8, 6)
-            and event.end_date == date(2026, 8, 6)
-            and event.start_time == "11:30"
-        )
         is_labores = (
             "labores a la fresca" in normalized
             and event.start_date == local_day
             and event.start_time == "18:00"
             and event.end_time == "20:00"
         )
-        is_dixi_project = (
-            ("dixi project" in normalized or "dixie project" in normalized)
-            and event.start_date == date(2026, 8, 6)
-            and event.end_date == date(2026, 8, 6)
-            and event.start_time == "19:30"
-        )
         is_ball_destiu = (
             ("ball d’estiu" in normalized or "ball d'estiu" in normalized)
             and event.start_date == local_day
             and event.start_time == "21:30"
-        )
-        is_kiki_morente = (
-            "kiki morente" in normalized
-            and event.start_date == date(2026, 8, 6)
-            and event.end_date == date(2026, 8, 6)
-            and event.start_time == "22:00"
-        )
-        is_alice_wonder = (
-            "alice wonder" in normalized
-            and event.start_date == date(2026, 8, 7)
-            and event.end_date == date(2026, 8, 7)
-            and event.start_time == "22:00"
         )
         is_night_route = (
             "rutas nocturnas" in normalized
@@ -1181,23 +1051,6 @@ def _apply_reviewed_daily_schedules(
             and event.start_time == "22:15"
             and event.end_time == "00:15"
         )
-        if is_spanish_brass:
-            scheduled.append(SourceEvent(
-                title_es=event.title_es,
-                start_date=event.start_date,
-                end_date=event.end_date,
-                start_time=event.start_time,
-                end_time=event.end_time,
-                place=event.place,
-                category=event.category,
-                sources=event.sources,
-                ticket_price_cents=(
-                    event.ticket_price_cents
-                    if event.ticket_price_cents is not None
-                    else 1500
-                ),
-            ))
-            continue
         if is_vira_degliarenko:
             if local_day.weekday() >= 5:
                 continue
@@ -1212,20 +1065,6 @@ def _apply_reviewed_daily_schedules(
                 sources=event.sources,
             ))
             continue
-        if is_emotions_workshop:
-            scheduled.append(replace(
-                event,
-                title_es=(
-                    "EXPLORADOR DE EMOCIONES: “La alegría que hay en ti”, "
-                    "de Cat Deeley"
-                ),
-                place="Biblioteca Infantil Municipal",
-                registration_contact=(
-                    "тел. 966 72 71 70 · WhatsApp 696 11 34 46"
-                ),
-                capacity_limited=True,
-            ))
-            continue
         if is_labores:
             scheduled.append(replace(
                 event,
@@ -1234,15 +1073,6 @@ def _apply_reviewed_daily_schedules(
                 ),
                 place="Casa de Cultura",
                 ticket_price_cents=0,
-            ))
-            continue
-        if is_dixi_project:
-            scheduled.append(replace(
-                event,
-                title_es=(
-                    "DIXI PROJECT: Viaje por la música de los años 20"
-                ),
-                place="Plaça dels Llauradors",
             ))
             continue
         if is_ball_destiu:
@@ -1254,24 +1084,6 @@ def _apply_reviewed_daily_schedules(
                     "Parque Reina Sofía (Auditorio Orquesta GÚMAR)"
                 ),
                 ticket_price_cents=0,
-            ))
-            continue
-        if is_kiki_morente:
-            scheduled.append(replace(
-                event,
-                title_es=(
-                    "KIKI MORENTE EN CONCIERTO. ESTIVAL AL CASTELL"
-                ),
-                place="Castell de Guardamar",
-                ticket_price_cents=2500,
-            ))
-            continue
-        if is_alice_wonder:
-            scheduled.append(replace(
-                event,
-                title_es="ALICE WONDER EN CONCIERTO. ESTIVAL AL CASTELL",
-                place="Castell de Guardamar",
-                ticket_price_cents=2500,
             ))
             continue
         if is_night_route:
@@ -1710,7 +1522,6 @@ async def _cached_current_events(
     events = snapshot["_events"]
     poster_url = str(snapshot.get("poster_url", ""))
     events = _apply_reviewed_corrections(poster_url, events)
-    events = _merge_reviewed_text_agenda(events)
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
     events = _apply_reviewed_daily_schedules(events, local_day)
     active = [
