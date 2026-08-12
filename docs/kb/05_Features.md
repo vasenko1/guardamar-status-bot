@@ -381,12 +381,13 @@ presented as absence of warnings.
   replacement with a normal notification, then delete the 07:30 message
 - For every digest collection, use the AEMET adapter's bounded transient-only
   recovery policy; publication and preview do not add outer retries
-- If all three AEMET attempts fail, preserve every unchanged line from the
-  published 07:30 message and add only verified SafeBeach/Mayor blocks
+- If all three AEMET attempts fail, build the weather blocks from the
+  same-day prepared AEMET snapshot and add only verified SafeBeach/Mayor
+  blocks
 - At most three bounded Telegram HTTP attempts within that run
-- One small atomic JSON state with the date, rendered morning copy, morning
-  time, message IDs, deletion result, and one temporary normalized SafeBeach
-  candidate removed after successful replacement
+- One small atomic JSON state with the date, morning time, message IDs,
+  deletion result, and one temporary normalized SafeBeach candidate removed
+  after successful replacement
 - Concise process output for success, duplicate, skip, and failure
 
 The replacement ID is stored before deleting the earlier message. If deletion

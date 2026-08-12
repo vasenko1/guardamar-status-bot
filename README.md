@@ -210,12 +210,13 @@ Send `/preview` to the bot in a private chat. Only IDs in
 to the configured group, and does not change publication state. The listener
 does not fetch any source until an authorized command arrives.
 
-State contains only the current local date, rendered morning copy, publication
-time, Telegram message IDs, cleanup result, and the isolated electricity
-publication marker plus one normalized 24-hour target-day snapshot. AEMET recovery retries only
+State contains only the current local date, publication time, Telegram
+message IDs, cleanup result, and the isolated electricity publication marker
+plus one normalized 24-hour target-day snapshot. AEMET recovery retries only
 bounded transient failures and repeats the complete two-step product request.
-The rendered copy is used only when a verified later update exists but AEMET
-remains unavailable after recovery. No raw source cache is implemented.
+If AEMET remains unavailable during a later update, the same-day prepared
+AEMET snapshot supplies the weather blocks. No raw source cache is
+implemented.
 
 Gemini is used only for the bounded municipal AI tasks documented in ADRs
 0011, 0012, and 0028. If `OPENROUTER_API_KEY` is configured, one pinned

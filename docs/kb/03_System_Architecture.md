@@ -32,8 +32,8 @@ schemas, and library choices belong in later design work or ADRs.
    succeeds or its retry window expires. A verified update permits one fresh
    full collection, delivery of the replacement, then deletion of the earlier
    message.
-10. **Minimal state** keeps the local date, rendered morning copy, both Telegram
-   message IDs, morning publication time, and cleanup result.
+10. **Minimal state** keeps the local date, both Telegram message IDs,
+   morning publication time, and cleanup result.
 11. **Exit** ends every process; no collector or watcher remains active.
 
 After the later full digest is settled, externally scheduled operational
@@ -159,8 +159,8 @@ permanent or invalid-data failures. The 05:30 Agenda Guardamar refresh reads
 event details with at most three concurrent same-host requests and saves a
 small atomic catalog. The morning run translates only today's bounded titles.
 If the mandatory forecast remains
-unavailable during replacement, the renderer preserves the published 07:30
-copy and inserts only newly verified beach information.
+unavailable during replacement, the same-day prepared AEMET snapshot supplies
+the weather blocks alongside the newly verified beach information.
 
 The SafeBeach adapter performs one bounded HTML request per invocation and
 does not add an internal retry or response cache. The external five-minute invocations
