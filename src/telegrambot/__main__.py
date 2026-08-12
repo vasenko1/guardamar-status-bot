@@ -62,7 +62,13 @@ from .safebeach import (
 from .weekend import produce_weekend_message, weekend_dates
 from .models import BeachStatus
 from .state import PublicationState, StateError
-from .telegram import TelegramError, delete_message, edit_message, send_message
+from .telegram import (
+    TelegramError,
+    delete_message,
+    edit_message,
+    send_message,
+    send_poll,
+)
 
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 DEFAULT_STATE_PATH = "state/delivery.json"
@@ -214,7 +220,7 @@ async def _refresh_event_catalogs_once(
         logging.info("Late event catalog sync deferred: %s", exc)
 
 
-async def _run_command(command: str) -> int:
+async def _run_command(command: str, extra: tuple = ()) -> int:
     now = datetime.now(GUARDAMAR_TIMEZONE)
     municipal_path = Path(os.environ.get(
         "MUNICIPAL_AGENDA_STATE_PATH",
@@ -353,6 +359,20 @@ async def _run_command(command: str) -> int:
         logging.info(
             "Agenda Guardamar catalog synchronized: %d facts", len(events)
         )
+        return 0
+
+    if command == "poll":
+        if len(extra) < 3:
+            raise ValueError(
+                "poll needs one question and at least two options"
+            )
+        message_id = await send_poll(
+            _required_environment("TELEGRAM_BOT_TOKEN"),
+            _required_environment("TELEGRAM_CHAT_ID"),
+            extra[0],
+            list(extra[1:]),
+        )
+        logging.info("SUCCESS: poll %s delivered", message_id)
         return 0
 
     if command in {"weekend", "weekend-preview"}:
@@ -762,8 +782,14 @@ def main() -> None:
             "prepare-aemet",
             "monitor-updates",
             "weekend", "weekend-preview",
+            "poll",
         ),
         default="run",
+    )
+    parser.add_argument(
+        "extra",
+        nargs="*",
+        help="poll only: one question followed by two to ten options",
     )
     arguments = parser.parse_args()
     logging.basicConfig(
@@ -792,7 +818,9 @@ def main() -> None:
         return
 
     try:
-        exit_code = asyncio.run(_run_command(arguments.command))
+        exit_code = asyncio.run(
+            _run_command(arguments.command, tuple(arguments.extra))
+        )
     except ElectricityError as exc:
         print(
             f"Command failed [ESIOS-{exc.diagnostic_code}]: {exc}",

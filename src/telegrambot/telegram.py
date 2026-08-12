@@ -328,6 +328,63 @@ async def send_message(
     raise AssertionError("unreachable")
 
 
+async def send_poll(
+    bot_token: str,
+    chat_id: str,
+    question: str,
+    options: List[str],
+) -> int:
+    """Send one anonymous native poll; the operator retries manually."""
+
+    question = question.strip()
+    cleaned = [option.strip() for option in options]
+    if not 1 <= len(question) <= 300:
+        raise TelegramError(
+            "Poll question length is invalid",
+            retryable=False,
+            code="CONFIG",
+            description="вопрос опроса должен занимать от 1 до 300 символов",
+        )
+    if not 2 <= len(cleaned) <= 10 or any(
+        not 1 <= len(option) <= 100 for option in cleaned
+    ):
+        raise TelegramError(
+            "Poll options are invalid",
+            retryable=False,
+            code="CONFIG",
+            description=(
+                "нужно от 2 до 10 вариантов длиной от 1 до 100 символов"
+            ),
+        )
+
+    def post() -> int:
+        decoded = _call_api(
+            bot_token,
+            "sendPoll",
+            {
+                "chat_id": chat_id,
+                "question": question,
+                "options": cleaned,
+                "is_anonymous": True,
+            },
+            REQUEST_TIMEOUT_SECONDS,
+        )
+        result = decoded.get("result")
+        message_id = (
+            result.get("message_id") if isinstance(result, dict) else None
+        )
+        if not isinstance(message_id, int):
+            raise TelegramError(
+                "Telegram poll response had no message ID",
+                retryable=False,
+                code="INVALID-STRUCTURE",
+                description="структура ответа Telegram некорректна",
+            )
+        return message_id
+
+    return await asyncio.to_thread(post)
+
+
 async def delete_message(
     bot_token: str,
     chat_id: str,
