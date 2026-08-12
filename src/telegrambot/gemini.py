@@ -2,17 +2,14 @@
 
 import asyncio
 import base64
-import http.client
 import json
 import logging
 import os
-import socket
-import urllib.error
 import urllib.parse
-import urllib.request
 from datetime import date
 from typing import Any, Dict, List, Optional, Sequence
 
+from ._transport import BoundedFetchError, fetch_bounded
 from .openrouter import OpenRouterError, request_json as request_openrouter_json
 
 LOGGER = logging.getLogger(__name__)
@@ -184,37 +181,20 @@ def _is_gemini_url(url: str) -> bool:
     return parsed.scheme == "https" and parsed.hostname == API_HOST
 
 
-class _GeminiRedirectHandler(urllib.request.HTTPRedirectHandler):
-    def redirect_request(
-        self,
-        request,
-        file_pointer,
-        code,
-        message,
-        headers,
-        new_url,
-    ):
-        if not _is_gemini_url(new_url):
-            raise GeminiError(
-                "Gemini redirected outside its API host",
-                code="REDIRECT",
-                description="Gemini перенаправил запрос на другой сайт",
-            )
-        return super().redirect_request(
-            request,
-            file_pointer,
-            code,
-            message,
-            headers,
-            new_url,
-        )
+_TRANSPORT_DESCRIPTIONS = {
+    "REDIRECT": "получен недопустимый адрес ответа Gemini",
+    "CONTENT-TYPE": "Gemini вернул ответ не в формате JSON",
+    "TIMEOUT": "Gemini не ответил до истечения тайм-аута",
+    "NETWORK": "не удалось установить соединение с Gemini",
+    "TOO-LARGE": "ответ Gemini превысил допустимый размер",
+}
 
 
-def _http_error(exc: urllib.error.HTTPError) -> GeminiError:
+def _http_error(exc: BoundedFetchError) -> GeminiError:
     provider_status = ""
+    payload = exc.payload
     try:
-        payload = exc.read(2_001)
-        if len(payload) <= 2_000:
+        if payload is not None and len(payload) <= 2_000:
             decoded = json.loads(payload.decode("utf-8"))
             raw_status = decoded.get("error", {}).get("status")
             if (
@@ -232,14 +212,14 @@ def _http_error(exc: urllib.error.HTTPError) -> GeminiError:
     code = (
         f"API-{provider_status}"
         if provider_status
-        else f"HTTP-{exc.code}"
+        else f"HTTP-{exc.status}"
     )
     return GeminiError(
-        f"Gemini returned HTTP {exc.code}",
+        f"Gemini returned HTTP {exc.status}",
         code=code,
-        status=exc.code,
+        status=exc.status,
         description=(
-            f"Gemini вернул HTTP {exc.code}"
+            f"Gemini вернул HTTP {exc.status}"
             + (
                 f" ({provider_status})"
                 if provider_status
@@ -274,64 +254,31 @@ def _request_gemini_json(
         },
         ensure_ascii=False,
     ).encode("utf-8")
-    request = urllib.request.Request(
-        ENDPOINT,
-        data=body,
-        headers={
-            "Accept": "application/json",
-            "Content-Type": "application/json; charset=utf-8",
-            "User-Agent": "GuardamarMorningDigest/0.12",
-            "x-goog-api-key": api_key,
-        },
-        method="POST",
-    )
-    opener = urllib.request.build_opener(_GeminiRedirectHandler())
     try:
-        with opener.open(
-            request,
-            timeout=REQUEST_TIMEOUT_SECONDS,
-        ) as response:
-            if not _is_gemini_url(response.geturl()):
-                raise GeminiError(
-                    "Gemini returned an unexpected response URL",
-                    code="REDIRECT",
-                    description="получен недопустимый адрес ответа Gemini",
-                )
-            if response.headers.get_content_type() != "application/json":
-                raise GeminiError(
-                    "Gemini returned an unexpected content type",
-                    code="CONTENT-TYPE",
-                    description="Gemini вернул ответ не в формате JSON",
-                )
-            payload = response.read(RESPONSE_LIMIT_BYTES + 1)
-    except urllib.error.HTTPError as exc:
-        raise _http_error(exc) from exc
-    except (
-        urllib.error.URLError,
-        TimeoutError,
-        socket.timeout,
-        OSError,
-        http.client.HTTPException,
-    ) as exc:
-        timed_out = isinstance(exc, (TimeoutError, socket.timeout)) or (
-            isinstance(exc, urllib.error.URLError)
-            and isinstance(exc.reason, (TimeoutError, socket.timeout))
+        payload, _, _ = fetch_bounded(
+            ENDPOINT,
+            is_allowed_url=_is_gemini_url,
+            accepted_types=frozenset({"application/json"}),
+            limit_bytes=RESPONSE_LIMIT_BYTES,
+            timeout_seconds=REQUEST_TIMEOUT_SECONDS,
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json; charset=utf-8",
+                "User-Agent": "GuardamarMorningDigest/0.12",
+                "x-goog-api-key": api_key,
+            },
+            method="POST",
+            data=body,
+            read_error_body=True,
         )
+    except BoundedFetchError as exc:
+        if exc.status is not None:
+            raise _http_error(exc) from exc
         raise GeminiError(
-            "Gemini request failed",
-            code="TIMEOUT" if timed_out else "NETWORK",
-            description=(
-                "Gemini не ответил до истечения тайм-аута"
-                if timed_out
-                else "не удалось установить соединение с Gemini"
-            ),
+            f"Gemini request failed: {exc.code}",
+            code=exc.code,
+            description=_TRANSPORT_DESCRIPTIONS.get(exc.code),
         ) from exc
-    if len(payload) > RESPONSE_LIMIT_BYTES:
-        raise GeminiError(
-            "Gemini response was too large",
-            code="TOO-LARGE",
-            description="ответ Gemini превысил допустимый размер",
-        )
     try:
         response_data = json.loads(payload.decode("utf-8"))
         candidates = response_data["candidates"]

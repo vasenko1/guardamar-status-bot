@@ -3,16 +3,12 @@
 import asyncio
 import hashlib
 import html
-import http.client
 import json
 import logging
 import os
 import re
-import socket
 import tempfile
-import urllib.error
 import urllib.parse
-import urllib.request
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from html.parser import HTMLParser
@@ -20,6 +16,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
+from ._transport import BoundedFetchError, fetch_bounded
 from .gemini import (
     GeminiError,
     extract_agenda_events,
@@ -104,36 +101,14 @@ def _is_allowed_url(url: str, allowed_hosts: set[str]) -> bool:
     return parsed.scheme == "https" and parsed.hostname in allowed_hosts
 
 
-class _MunicipalRedirectHandler(urllib.request.HTTPRedirectHandler):
-    def __init__(self, allowed_hosts: set[str]) -> None:
-        super().__init__()
-        self.allowed_hosts = allowed_hosts
-
-    def redirect_request(
-        self,
-        request,
-        file_pointer,
-        code,
-        message,
-        headers,
-        new_url,
-    ):
-        if not _is_allowed_url(new_url, self.allowed_hosts):
-            raise MunicipalAgendaError(
-                "Municipal agenda redirected outside official hosts",
-                code="REDIRECT",
-                description=(
-                    "сервер перенаправил запрос за пределы официального сайта"
-                ),
-            )
-        return super().redirect_request(
-            request,
-            file_pointer,
-            code,
-            message,
-            headers,
-            new_url,
-        )
+_TRANSPORT_DESCRIPTIONS = {
+    "URL-POLICY": "адрес не принадлежит официальной афише",
+    "REDIRECT": "получен недопустимый адрес ответа официальной афиши",
+    "CONTENT-TYPE": "официальная афиша вернула неожиданный формат",
+    "TIMEOUT": "сервер не ответил до истечения тайм-аута",
+    "NETWORK": "не удалось установить сетевое соединение",
+    "TOO-LARGE": "ответ превысил допустимый размер",
+}
 
 
 def _read_url(
@@ -141,88 +116,41 @@ def _read_url(
     allowed_hosts: set[str],
     limit: int,
 ) -> Tuple[bytes, str]:
-    if not _is_allowed_url(url, allowed_hosts):
-        raise MunicipalAgendaError(
-            "Municipal agenda URL is not allowed",
-            code="URL-POLICY",
-            description="адрес не принадлежит официальной афише",
-        )
     page_request = allowed_hosts == PAGE_HOSTS
     accepted_types = (
-        {"text/html"}
+        frozenset({"text/html"})
         if page_request
-        else {"image/jpeg", "image/png", "image/webp"}
-    )
-    request = urllib.request.Request(
-        url,
-        headers={
-            "Accept": (
-                "text/html"
-                if page_request
-                else "image/jpeg,image/png,image/webp"
-            ),
-            "User-Agent": "GuardamarMorningDigest/0.12",
-        },
-    )
-    opener = urllib.request.build_opener(
-        _MunicipalRedirectHandler(allowed_hosts)
+        else frozenset({"image/jpeg", "image/png", "image/webp"})
     )
     try:
-        with opener.open(
-            request,
-            timeout=REQUEST_TIMEOUT_SECONDS,
-        ) as response:
-            if not _is_allowed_url(response.geturl(), allowed_hosts):
-                raise MunicipalAgendaError(
-                    "Unexpected municipal agenda redirect",
-                    code="REDIRECT",
-                    description=(
-                        "получен недопустимый адрес ответа официальной афиши"
-                    ),
-                )
-            mime_type = response.headers.get_content_type()
-            if mime_type not in accepted_types:
-                raise MunicipalAgendaError(
-                    "Municipal agenda returned an unexpected content type",
-                    code="CONTENT-TYPE",
-                    description=(
-                        "официальная афиша вернула неожиданный формат"
-                    ),
-                )
-            payload = response.read(limit + 1)
-    except urllib.error.HTTPError as exc:
-        raise MunicipalAgendaError(
-            f"Municipal agenda returned HTTP {exc.code}",
-            code=f"HTTP-{exc.code}",
-            status=exc.code,
-            description=f"сервер вернул HTTP {exc.code}",
-        ) from exc
-    except (
-        urllib.error.URLError,
-        TimeoutError,
-        socket.timeout,
-        OSError,
-        http.client.HTTPException,
-    ) as exc:
-        timed_out = isinstance(exc, (TimeoutError, socket.timeout)) or (
-            isinstance(exc, urllib.error.URLError)
-            and isinstance(exc.reason, (TimeoutError, socket.timeout))
+        payload, _, mime_type = fetch_bounded(
+            url,
+            is_allowed_url=lambda value: _is_allowed_url(
+                value, allowed_hosts
+            ),
+            accepted_types=accepted_types,
+            limit_bytes=limit,
+            timeout_seconds=REQUEST_TIMEOUT_SECONDS,
+            headers={
+                "Accept": (
+                    "text/html"
+                    if page_request
+                    else "image/jpeg,image/png,image/webp"
+                ),
+                "User-Agent": "GuardamarMorningDigest/0.12",
+            },
         )
+    except BoundedFetchError as exc:
         raise MunicipalAgendaError(
-            "Municipal agenda request failed",
-            code="TIMEOUT" if timed_out else "NETWORK",
+            f"Municipal agenda request failed: {exc.code}",
+            code=exc.code,
+            status=exc.status,
             description=(
-                "сервер не ответил до истечения тайм-аута"
-                if timed_out
-                else "не удалось установить сетевое соединение"
+                f"сервер вернул HTTP {exc.status}"
+                if exc.status is not None
+                else _TRANSPORT_DESCRIPTIONS.get(exc.code)
             ),
         ) from exc
-    if len(payload) > limit:
-        raise MunicipalAgendaError(
-            "Municipal agenda response was too large",
-            code="TOO-LARGE",
-            description="ответ превысил допустимый размер",
-        )
     return payload, mime_type
 
 

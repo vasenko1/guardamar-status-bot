@@ -2,18 +2,15 @@
 
 import asyncio
 import hashlib
-import http.client
 import re
-import socket
 import unicodedata
-import urllib.error
 import urllib.parse
-import urllib.request
 from datetime import date, datetime
 from html.parser import HTMLParser
 from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
+from ._transport import BoundedFetchError, fetch_bounded
 from .models import TrafficMeasure, TrafficNotice
 from .gemini import GeminiError, translate_traffic_notice
 
@@ -102,109 +99,43 @@ def _is_police_url(url: str) -> bool:
     return parsed.scheme == "https" and parsed.hostname in ALLOWED_HOSTS
 
 
-class _PoliceRedirectHandler(urllib.request.HTTPRedirectHandler):
-    def redirect_request(
-        self,
-        request,
-        file_pointer,
-        code,
-        message,
-        headers,
-        new_url,
-    ):
-        if not _is_police_url(new_url):
-            raise PoliceTrafficError(
-                "Policía Local redirected outside its official hosts",
-                code="REDIRECT",
-                description=(
-                    "сервер перенаправил запрос за пределы Policía Local"
-                ),
-            )
-        return super().redirect_request(
-            request,
-            file_pointer,
-            code,
-            message,
-            headers,
-            new_url,
-        )
-
-
 def _read_official(
     url: str,
     expected_type: str,
     limit: int,
     label: str,
 ) -> bytes:
-    if not _is_police_url(url):
-        raise PoliceTrafficError(
-            f"Policía Local {label} URL is not allowed",
-            code="URL-POLICY",
-            description="адрес не принадлежит Policía Local",
-        )
-    request = urllib.request.Request(
-        url,
-        headers={
-            "Accept": expected_type,
-            "User-Agent": "GuardamarMorningDigest/0.12",
-        },
-    )
-    opener = urllib.request.build_opener(_PoliceRedirectHandler())
+    descriptions = {
+        "URL-POLICY": "адрес не принадлежит Policía Local",
+        "REDIRECT": "получен недопустимый адрес ответа Policía Local",
+        "CONTENT-TYPE": f"сервер вернул {label} в неожиданном формате",
+        "TIMEOUT": "сервер не ответил до истечения тайм-аута",
+        "NETWORK": "не удалось установить сетевое соединение",
+        "TOO-LARGE": "ответ превысил допустимый размер",
+    }
     try:
-        with opener.open(
-            request,
-            timeout=REQUEST_TIMEOUT_SECONDS,
-        ) as response:
-            if not _is_police_url(response.geturl()):
-                raise PoliceTrafficError(
-                    f"Policía Local {label} returned an unexpected redirect",
-                    code="REDIRECT",
-                    description=(
-                        "получен недопустимый адрес ответа Policía Local"
-                    ),
-                )
-            if response.headers.get_content_type() != expected_type:
-                raise PoliceTrafficError(
-                    f"Policía Local {label} returned an unexpected type",
-                    code="CONTENT-TYPE",
-                    description=(
-                        f"сервер вернул {label} в неожиданном формате"
-                    ),
-                )
-            payload = response.read(limit + 1)
-    except urllib.error.HTTPError as exc:
-        raise PoliceTrafficError(
-            f"Policía Local {label} returned HTTP {exc.code}",
-            code=f"HTTP-{exc.code}",
-            status=exc.code,
-            description=f"сервер вернул HTTP {exc.code}",
-        ) from exc
-    except (
-        urllib.error.URLError,
-        TimeoutError,
-        socket.timeout,
-        OSError,
-        http.client.HTTPException,
-    ) as exc:
-        timed_out = isinstance(exc, (TimeoutError, socket.timeout)) or (
-            isinstance(exc, urllib.error.URLError)
-            and isinstance(exc.reason, (TimeoutError, socket.timeout))
+        payload, _, _ = fetch_bounded(
+            url,
+            is_allowed_url=_is_police_url,
+            accepted_types=frozenset({expected_type}),
+            limit_bytes=limit,
+            timeout_seconds=REQUEST_TIMEOUT_SECONDS,
+            headers={
+                "Accept": expected_type,
+                "User-Agent": "GuardamarMorningDigest/0.12",
+            },
         )
+    except BoundedFetchError as exc:
         raise PoliceTrafficError(
-            f"Policía Local {label} request failed",
-            code="TIMEOUT" if timed_out else "NETWORK",
+            f"Policía Local {label} request failed: {exc.code}",
+            code=exc.code,
+            status=exc.status,
             description=(
-                "сервер не ответил до истечения тайм-аута"
-                if timed_out
-                else "не удалось установить сетевое соединение"
+                f"сервер вернул HTTP {exc.status}"
+                if exc.status is not None
+                else descriptions.get(exc.code)
             ),
         ) from exc
-    if len(payload) > limit:
-        raise PoliceTrafficError(
-            f"Policía Local {label} response was too large",
-            code="TOO-LARGE",
-            description="ответ превысил допустимый размер",
-        )
     return payload
 
 

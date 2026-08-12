@@ -4,14 +4,12 @@ import asyncio
 import json
 import math
 import re
-import socket
-import urllib.error
 import urllib.parse
-import urllib.request
 from datetime import date, datetime, time
 from typing import Any, Dict, Optional, Tuple
 from zoneinfo import ZoneInfo
 
+from ._transport import BoundedFetchError, fetch_bounded
 from .models import BeachStatus
 
 SAFEBEACH_URL = "https://info.safebeach.es/guardamar-del-segura"
@@ -72,88 +70,40 @@ def _is_safebeach_url(url: str) -> bool:
     )
 
 
-class _SafeBeachRedirectHandler(urllib.request.HTTPRedirectHandler):
-    def redirect_request(
-        self,
-        request,
-        file_pointer,
-        code,
-        message,
-        headers,
-        new_url,
-    ):
-        if not _is_safebeach_url(new_url):
-            raise SafeBeachError(
-                "SafeBeach redirected outside its public host",
-                code="REDIRECT",
-                description="сервер перенаправил запрос за пределы SafeBeach",
-            )
-        return super().redirect_request(
-            request,
-            file_pointer,
-            code,
-            message,
-            headers,
-            new_url,
-        )
+_TRANSPORT_DESCRIPTIONS = {
+    "REDIRECT": "получен недопустимый адрес ответа",
+    "CONTENT-TYPE": "сервер вернул содержимое не в формате HTML",
+    "TIMEOUT": "сервер не ответил до истечения тайм-аута",
+    "NETWORK": "не удалось установить сетевое соединение",
+    "TOO-LARGE": "ответ превысил допустимый размер",
+}
 
 
 def _read_page() -> bytes:
-    request = urllib.request.Request(
-        SAFEBEACH_URL,
-        headers={
-            "Accept": "text/html",
-            "Accept-Language": "es",
-            "User-Agent": "GuardamarMorningDigest/0.11",
-        },
-    )
     try:
-        opener = urllib.request.build_opener(
-            _SafeBeachRedirectHandler()
+        payload, _, _ = fetch_bounded(
+            SAFEBEACH_URL,
+            is_allowed_url=_is_safebeach_url,
+            accepted_types=frozenset({"text/html"}),
+            limit_bytes=HTML_LIMIT_BYTES,
+            timeout_seconds=REQUEST_TIMEOUT_SECONDS,
+            headers={
+                "Accept": "text/html",
+                "Accept-Language": "es",
+                "User-Agent": "GuardamarMorningDigest/0.11",
+            },
         )
-        with opener.open(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
-            if not _is_safebeach_url(response.geturl()):
-                raise SafeBeachError(
-                    "SafeBeach returned an unexpected URL",
-                    code="REDIRECT",
-                    description="получен недопустимый адрес ответа",
-                )
-            content_type = response.headers.get_content_type()
-            if content_type != "text/html":
-                raise SafeBeachError(
-                    "SafeBeach returned an unexpected content type",
-                    code="CONTENT-TYPE",
-                    description=(
-                        "сервер вернул содержимое не в формате HTML"
-                    ),
-                )
-            payload = response.read(HTML_LIMIT_BYTES + 1)
-    except urllib.error.HTTPError as exc:
+    except BoundedFetchError as exc:
         raise SafeBeachError(
-            f"SafeBeach HTTP status {exc.code}",
-            code=f"HTTP-{exc.code}",
-            status=exc.code,
-            description=f"сервер вернул HTTP {exc.code}",
+            f"SafeBeach request failed: {exc.code}",
+            code=exc.code,
+            status=exc.status,
+            description=(
+                f"сервер вернул HTTP {exc.status}"
+                if exc.status is not None
+                else _TRANSPORT_DESCRIPTIONS.get(exc.code)
+            ),
         ) from exc
-    except (TimeoutError, socket.timeout) as exc:
-        raise SafeBeachError(
-            "SafeBeach request timed out",
-            code="TIMEOUT",
-            description="сервер не ответил до истечения тайм-аута",
-        ) from exc
-    except urllib.error.URLError as exc:
-        raise SafeBeachError(
-            "SafeBeach network request failed",
-            code="NETWORK",
-            description="не удалось установить сетевое соединение",
-        ) from exc
-
-    if len(payload) > HTML_LIMIT_BYTES:
-        raise SafeBeachError(
-            "SafeBeach response exceeded the configured size limit",
-            code="TOO-LARGE",
-            description="ответ превысил допустимый размер",
-        )
     return payload
 
 
