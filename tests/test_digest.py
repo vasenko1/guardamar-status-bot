@@ -11,6 +11,7 @@ from telegrambot.models import (
     Event,
     Holiday,
     MorningDigest,
+    PharmacyDuty,
     TrafficNotice,
     Warning,
     Weather,
@@ -78,6 +79,24 @@ class DigestMessageTests(unittest.TestCase):
 
         self.assertNotIn("УФ:", message)
         self.assertNotIn("Солнце:", message)
+
+    def test_renders_duty_pharmacy_with_maps_link(self):
+        digest = self._routine_digest(
+            pharmacies=(PharmacyDuty(
+                name="Planelles Mas, Asuncion",
+                address="Av. Cervantes, Nº29",
+                hours="круглосуточно (с 9:00)",
+            ),),
+        )
+
+        message = build_message(digest)
+
+        self.assertIn(
+            "💊 <b>Дежурная аптека:</b>\n"
+            "• Planelles Mas, Asuncion — круглосуточно (с 9:00)",
+            message,
+        )
+        self.assertIn("query=Av.+Cervantes%2C+N%C2%BA29", message)
 
     def test_renders_weekday_holiday_before_events(self):
         digest = self._routine_digest(

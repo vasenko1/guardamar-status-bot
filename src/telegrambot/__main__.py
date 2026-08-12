@@ -40,6 +40,7 @@ from .municipal_agenda import (
 )
 from .event_translations import prepare_translations
 from .gemini import GeminiError
+from .pharmacy import PharmacyError, refresh_pharmacy_catalog
 from .morning import _safebeach_is_in_season, produce_message
 from .operational_updates import (
     OperationalUpdateState,
@@ -80,6 +81,7 @@ DEFAULT_EVENT_TRANSLATIONS_PATH = "state/event_translations.json"
 DEFAULT_AEMET_SNAPSHOT_PATH = "state/aemet.json"
 DEFAULT_OPERATIONAL_UPDATE_STATE_PATH = "state/operational_updates.json"
 DEFAULT_WEEKEND_STATE_PATH = "state/weekend.json"
+DEFAULT_PHARMACY_STATE_PATH = "state/pharmacy.json"
 
 
 def _beach_ready_for_update(status, now: datetime, final_attempt: bool) -> bool:
@@ -177,6 +179,9 @@ async def _produce_message(api_key: str, now: datetime) -> str:
         translation_cache_path=Path(os.environ.get(
             "EVENT_TRANSLATIONS_PATH", DEFAULT_EVENT_TRANSLATIONS_PATH
         )),
+        pharmacy_state_path=Path(os.environ.get(
+            "PHARMACY_STATE_PATH", DEFAULT_PHARMACY_STATE_PATH
+        )),
     )
     return message + render_diagnostics(diagnostics)
 
@@ -231,6 +236,9 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
     ))
     translations_path = Path(os.environ.get(
         "EVENT_TRANSLATIONS_PATH", DEFAULT_EVENT_TRANSLATIONS_PATH
+    ))
+    pharmacy_path = Path(os.environ.get(
+        "PHARMACY_STATE_PATH", DEFAULT_PHARMACY_STATE_PATH
     ))
     aemet_snapshot_path = Path(os.environ.get(
         "AEMET_SNAPSHOT_PATH", DEFAULT_AEMET_SNAPSHOT_PATH
@@ -347,6 +355,11 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         logging.info(
             "Municipal event catalog synchronized: %d facts", len(events)
         )
+        return 0
+
+    if command == "sync-pharmacy":
+        count = await refresh_pharmacy_catalog(now, pharmacy_path)
+        logging.info("Pharmacy rota synchronized: %d duty rows", count)
         return 0
 
     if command == "sync-agenda-events":
@@ -601,6 +614,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             translation_cache_path=translations_path,
             aemet_fallback=fallback,
             aemet_observer=refreshed_aemet.append,
+            pharmacy_state_path=pharmacy_path,
         )
         await edit_message(bot_token, chat_id, message_id, message)
         if refreshed_aemet:
@@ -636,6 +650,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 aemet_digest=prepared,
                 fetch_aemet=fetch_live,
                 aemet_observer=morning_aemet.append,
+                pharmacy_state_path=pharmacy_path,
             ),
             lambda message: send_message(
                 bot_token,
@@ -686,6 +701,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             translation_cache_path=translations_path,
             aemet_fallback=fallback,
             aemet_observer=update_aemet.append,
+            pharmacy_state_path=pharmacy_path,
         )
 
     async def deliver_update(message: str) -> int:
@@ -778,6 +794,7 @@ def main() -> None:
             "electricity-update-explanation",
             "sync-municipal-events",
             "sync-agenda-events",
+            "sync-pharmacy",
             "prepare-event-translations",
             "prepare-aemet",
             "monitor-updates",
@@ -828,8 +845,8 @@ def main() -> None:
         )
         raise SystemExit(2) from exc
     except (
-        AemetError, AgendaError, MunicipalAgendaError, TelegramError,
-        StateError, OperationalUpdateStateError, ValueError
+        AemetError, AgendaError, MunicipalAgendaError, PharmacyError,
+        TelegramError, StateError, OperationalUpdateStateError, ValueError
     ) as exc:
         print(f"Command failed: {exc}", file=sys.stderr)
         raise SystemExit(2) from exc

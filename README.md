@@ -103,6 +103,7 @@ CRON_TZ=Europe/Madrid
 0,20 21 * * * /path/to/TelegramBot/termux/run-electricity.sh
 0,20 18 * * 5 /path/to/TelegramBot/termux/run-weekend.sh
 0 19 * * 5 /path/to/TelegramBot/termux/run-weekend.sh
+50 5 * * 0 /path/to/TelegramBot/termux/sync-pharmacy.sh
 ```
 
 Keep the Android device timezone set to `Europe/Madrid` as an additional
@@ -160,6 +161,7 @@ CRON_TZ=Europe/Madrid
 0,20 21 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity.sh
 0,20 18 * * 5 /data/data/com.termux/files/home/bots/guardamar-status/termux/run-weekend.sh
 0 19 * * 5 /data/data/com.termux/files/home/bots/guardamar-status/termux/run-weekend.sh
+50 5 * * 0 /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-pharmacy.sh
 ```
 
 After deployment, install only the operational-monitor entries without

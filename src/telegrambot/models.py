@@ -96,6 +96,15 @@ class TrafficNotice:
 
 
 @dataclass(frozen=True)
+class PharmacyDuty:
+    """One on-call pharmacy row from the official provincial rota."""
+
+    name: str
+    address: str
+    hours: str
+
+
+@dataclass(frozen=True)
 class BeachNotice:
     text: str
     bathing_prohibited: bool
@@ -115,3 +124,4 @@ class MorningDigest:
     holidays: Tuple[Holiday, ...] = ()
     events: Tuple[Event, ...] = ()
     beach_notice: Optional[BeachNotice] = None
+    pharmacies: Tuple[PharmacyDuty, ...] = ()
