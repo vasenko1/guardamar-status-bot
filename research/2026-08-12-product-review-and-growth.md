@@ -129,11 +129,11 @@ Draft pinned onboarding message (operator pins manually):
 
 | Candidate | Source and authority | Verdict |
 | --- | --- | --- |
-| Weekend events digest | The two existing local catalogs; no new source | **Accepted** — ADR 0034 |
-| UV index | AEMET municipal payload `uvMax`, or the dedicated UVI product; same key | **Accepted** — ADR 0035 |
-| Sunrise/sunset | Deterministic astronomy, no source at all | **Accepted** — ADR 0035 |
-| Poll capability | Telegram Bot API `sendPoll`; operator-triggered only | **Accepted** — ADR 0036 |
-| Pharmacy on duty | Colegio Oficial de Farmacéuticos de Alicante rota | **Accepted, feasibility-gated** — ADR 0037 |
+| Weekend events digest | The two existing local catalogs; no new source | **Accepted** — ADR 0035 |
+| UV index | AEMET municipal payload `uvMax`, or the dedicated UVI product; same key | **Accepted** — ADR 0036 |
+| Sunrise/sunset | Deterministic astronomy, no source at all | **Accepted** — ADR 0036 |
+| Poll capability | Telegram Bot API `sendPoll`; operator-triggered only | **Accepted** — ADR 0037 |
+| Pharmacy on duty | Colegio Oficial de Farmacéuticos de Alicante rota | **Accepted, feasibility-gated** — ADR 0038 |
 | Bathing water quality | Generalitat Valenciana / EU bathing-water sampling | Deferred — seasonal, evaluate before summer 2027 |
 | Tides | — | Rejected: Mediterranean tidal range at Guardamar is centimeters; no decision value |
 | DGT road incidents | DGT open data | Rejected for now: mostly non-local noise; revisit only with a proven N-332 filter |

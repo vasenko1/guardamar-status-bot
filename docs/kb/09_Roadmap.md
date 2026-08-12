@@ -87,15 +87,15 @@ sources. Each accepted item requires its own accepted ADR before
 implementation and must keep Gemini inside its free tier:
 
 - Friday-evening weekend events digest built only from the two existing local
-  event catalogs (ADR 0034).
+  event catalogs (ADR 0035).
 - UV-index row from already approved AEMET data plus a computed
-  sunrise/sunset row with no new source (ADR 0035).
+  sunrise/sunset row with no new source (ADR 0036).
 - One operator-triggered Telegram poll capability plus manual channel
   engagement steps: reactions, attached discussion group, pinned onboarding
-  message (ADR 0036).
+  message (ADR 0037).
 - On-call pharmacy row from the Colegio Oficial de Farmacéuticos de Alicante,
   only if its research note proves a bounded server-rendered page
-  (ADR 0037).
+  (ADR 0038).
 
 Deferred from the same review: moving reviewed event corrections and
 translations into a validated data file so monthly poster review becomes a

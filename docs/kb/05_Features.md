@@ -14,7 +14,7 @@ the same bounded cache; a provider outage degrades titles to normalized
 Spanish. Publication runs Friday at `18:00` with bounded retries at `18:20`
 and `19:00`, guarded by one atomic success marker in `state/weekend.json`
 keyed to the target Saturday. `weekend-preview` prints the message without
-Telegram or state changes. See ADR 0034.
+Telegram or state changes. See ADR 0035.
 
 ## Next-day electricity prices
 
@@ -187,7 +187,7 @@ at 6 or above with the WHO category names `высокий` (6–7),
 `очень высокий` (8–10), and `экстремальный` (11+). A missing or implausible
 value produces no row and no extra request. The `Солнце:` row renders the
 computed local sunrise and sunset (`07:10 → 21:00`) from the deterministic
-on-device NOAA calculation; it uses no network source. See ADR 0035.
+on-device NOAA calculation; it uses no network source. See ADR 0036.
 
 SafeBeach flag lines contain only the color and beach names. The generic
 SafeBeach flag description is not repeated. Update times are used only for

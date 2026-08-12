@@ -1,4 +1,4 @@
-# 0037: On-call pharmacy row from the official provincial rota
+# 0038: On-call pharmacy row from the official provincial rota
 
 - Status: Accepted
 - Date: 2026-08-12

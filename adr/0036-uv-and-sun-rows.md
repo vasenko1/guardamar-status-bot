@@ -1,4 +1,4 @@
-# 0035: UV-index and sunrise/sunset rows in the weather block
+# 0036: UV-index and sunrise/sunset rows in the weather block
 
 - Status: Accepted
 - Date: 2026-08-12

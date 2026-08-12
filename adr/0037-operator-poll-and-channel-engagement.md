@@ -1,4 +1,4 @@
-# 0036: Operator-triggered poll and channel engagement steps
+# 0037: Operator-triggered poll and channel engagement steps
 
 - Status: Accepted
 - Date: 2026-08-12
