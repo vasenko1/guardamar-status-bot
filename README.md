@@ -193,6 +193,12 @@ PYTHONPATH=src python -m telegrambot weekend-preview
 PYTHONPATH=src python -m telegrambot refresh-current
 ```
 
+An occasional operator-triggered anonymous poll (never scheduled):
+
+```sh
+PYTHONPATH=src python -m telegrambot poll "Что добавить в дайджест?" "Аптеки" "УФ-индекс" "Ничего"
+```
+
 - `preview` collects and prints without Telegram or publication state.
 - `status` prints the last successfully published local date.
 - `electricity-preview` prints tomorrow's table and its explanatory reply
