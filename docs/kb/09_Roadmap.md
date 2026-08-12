@@ -78,3 +78,26 @@
 
 The evening next-day PVPC table fills the former feature slot. Keep it isolated
 from the Morning Digest and do not create another feature slot speculatively.
+
+## Growth cycle — 2026-08 product review
+
+`research/2026-08-12-product-review-and-growth.md` reviewed the delivered
+functionality, the deterministic event phrase engine, and candidate content
+sources. Each accepted item requires its own accepted ADR before
+implementation and must keep Gemini inside its free tier:
+
+- Friday-evening weekend events digest built only from the two existing local
+  event catalogs (ADR 0034).
+- UV-index row from already approved AEMET data plus a computed
+  sunrise/sunset row with no new source (ADR 0035).
+- One operator-triggered Telegram poll capability plus manual channel
+  engagement steps: reactions, attached discussion group, pinned onboarding
+  message (ADR 0036).
+- On-call pharmacy row from the Colegio Oficial de Farmacéuticos de Alicante,
+  only if its research note proves a bounded server-rendered page
+  (ADR 0037).
+
+Deferred from the same review: moving reviewed event corrections and
+translations into a validated data file so monthly poster review becomes a
+data-only change, and seasonal bathing-water quality before summer 2027.
+Rejected: tides, DGT incident feeds, and any non-Guardamar content.
