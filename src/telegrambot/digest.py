@@ -578,6 +578,14 @@ def build_message(
             prefix = "• " if len(visible_traffic) > 1 else ""
             lines.append(prefix + html.escape(notice.text))
 
+    if digest.pharmacies:
+        lines.extend(["", "💊 <b>Дежурная аптека:</b>"])
+        for duty in digest.pharmacies[:2]:
+            lines.append(
+                f"• {html.escape(duty.name)} — {html.escape(duty.hours)}"
+            )
+            lines.append(f"  📍 {_event_place_link(duty.address)}")
+
     if digest.holidays:
         scope_labels = {
             "national": "национальный праздник",

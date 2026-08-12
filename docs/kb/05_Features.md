@@ -110,6 +110,10 @@ This exact visual structure is the product contract:
 • С 19:30 перекрыта Calle Mayor.
 • Автобусы следуют по временному маршруту.
 
+💊 **Дежурная аптека:**
+• Planelles Mas, Asuncion — круглосуточно (с 9:00)
+  📍 Av. Cervantes, Nº29
+
 🎉 **Праздник сегодня:**
 • Канун Дня святого Иакова — официальный городской праздник
   🏛️ Официальный выходной день.
@@ -134,8 +138,9 @@ The order never changes:
 8. Available flags for all six known Guardamar beach zones, grouped by color
 9. Jellyfish beaches, only when explicitly reported
 10. Traffic or closure
-11. Official holiday applicable in Guardamar today
-12. Today's events
+11. On-call pharmacy from the weekly-synced official rota catalog
+12. Official holiday applicable in Guardamar today
+13. Today's events
 
 Each event is one bullet. Its official place, when available, is rendered on
 the following indented `📍` line. Events are separated by one blank line;
