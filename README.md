@@ -101,6 +101,8 @@ CRON_TZ=Europe/Madrid
 0 11,15,19 15-30 9 * /path/to/TelegramBot/termux/monitor-updates.sh
 30,35,45 20 * * * /path/to/TelegramBot/termux/run-electricity.sh
 0,20 21 * * * /path/to/TelegramBot/termux/run-electricity.sh
+0,20 18 * * 5 /path/to/TelegramBot/termux/run-weekend.sh
+0 19 * * 5 /path/to/TelegramBot/termux/run-weekend.sh
 ```
 
 Keep the Android device timezone set to `Europe/Madrid` as an additional
@@ -156,6 +158,8 @@ CRON_TZ=Europe/Madrid
 0 11,15,19 15-30 9 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
 30,35,45 20 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity.sh
 0,20 21 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity.sh
+0,20 18 * * 5 /data/data/com.termux/files/home/bots/guardamar-status/termux/run-weekend.sh
+0 19 * * 5 /data/data/com.termux/files/home/bots/guardamar-status/termux/run-weekend.sh
 ```
 
 After deployment, install only the operational-monitor entries without
@@ -185,6 +189,7 @@ Local inspection remains available:
 PYTHONPATH=src python -m telegrambot preview
 PYTHONPATH=src python -m telegrambot status
 PYTHONPATH=src python -m telegrambot electricity-preview
+PYTHONPATH=src python -m telegrambot weekend-preview
 PYTHONPATH=src python -m telegrambot refresh-current
 ```
 

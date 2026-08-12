@@ -1,5 +1,21 @@
 # Features
 
+## Weekend events digest
+
+One optional Friday-evening message, «Афиша выходных», previews Saturday and
+Sunday. It is built only from the two existing normalized event catalogs and
+the recurring market rules; no other source is consulted and the Mayor
+channel is not checked. Each day renders under its own dated heading
+(`📅 Суббота, 15 августа:`) using the same bounded event renderer, ticket
+rows, and Google-Maps venue links as the Morning Digest. A day without
+verified events omits its heading; a weekend with no verified events sends
+no message. Missing weekend title translations are prepared inline through
+the same bounded cache; a provider outage degrades titles to normalized
+Spanish. Publication runs Friday at `18:00` with bounded retries at `18:20`
+and `19:00`, guarded by one atomic success marker in `state/weekend.json`
+keyed to the target Saturday. `weekend-preview` prints the message without
+Telegram or state changes. See ADR 0034.
+
 ## Next-day electricity prices
 
 An evening message shows tomorrow's official PVPC 2.0TD hourly energy term for

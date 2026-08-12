@@ -59,6 +59,7 @@ from .safebeach import (
     is_complete_current_status,
     is_current_status,
 )
+from .weekend import produce_weekend_message, weekend_dates
 from .models import BeachStatus
 from .state import PublicationState, StateError
 from .telegram import TelegramError, delete_message, edit_message, send_message
@@ -72,6 +73,7 @@ DEFAULT_ELECTRICITY_SNAPSHOT_PATH = "state/electricity_prices.json"
 DEFAULT_EVENT_TRANSLATIONS_PATH = "state/event_translations.json"
 DEFAULT_AEMET_SNAPSHOT_PATH = "state/aemet.json"
 DEFAULT_OPERATIONAL_UPDATE_STATE_PATH = "state/operational_updates.json"
+DEFAULT_WEEKEND_STATE_PATH = "state/weekend.json"
 
 
 def _beach_ready_for_update(status, now: datetime, final_attempt: bool) -> bool:
@@ -352,6 +354,85 @@ async def _run_command(command: str) -> int:
             "Agenda Guardamar catalog synchronized: %d facts", len(events)
         )
         return 0
+
+    if command in {"weekend", "weekend-preview"}:
+        saturday, sunday = weekend_dates(now)
+        gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
+
+        async def prepare_weekend_titles() -> None:
+            if not gemini_key:
+                return
+            items = []
+            for day in (saturday, sunday):
+                moment = datetime.combine(
+                    day, datetime.min.time(), GUARDAMAR_TIMEZONE
+                )
+                items.extend(
+                    await municipal_translation_items(moment, municipal_path)
+                )
+                items.extend(
+                    await agenda_translation_items(moment, agenda_path)
+                )
+            try:
+                await prepare_translations(
+                    gemini_key, items, translations_path, now
+                )
+            except (
+                AgendaError,
+                GeminiError,
+                MunicipalAgendaError,
+                ValueError,
+            ) as exc:
+                logging.warning(
+                    "Weekend title preparation failed: %s", exc
+                )
+
+        if command == "weekend-preview":
+            await prepare_weekend_titles()
+            message = await produce_weekend_message(
+                now,
+                gemini_key,
+                municipal_path,
+                agenda_state_path=agenda_path,
+                translation_cache_path=translations_path,
+            )
+            print(message or "No verified weekend events are available")
+            return 0
+        bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
+        chat_id = _required_environment("TELEGRAM_CHAT_ID")
+        weekend_state = PublicationState(Path(os.environ.get(
+            "WEEKEND_STATE_PATH", DEFAULT_WEEKEND_STATE_PATH
+        )))
+        with weekend_state.exclusive_run():
+            if weekend_state.is_published(saturday):
+                logging.info(
+                    "SKIP: weekend digest already published for %s", saturday
+                )
+                return 0
+            await prepare_weekend_titles()
+            message = await produce_weekend_message(
+                now,
+                gemini_key,
+                municipal_path,
+                agenda_state_path=agenda_path,
+                translation_cache_path=translations_path,
+            )
+            if message is None:
+                logging.info(
+                    "SKIP: no verified weekend events for %s", saturday
+                )
+                return 0
+            await send_message(
+                bot_token,
+                chat_id,
+                message,
+                disable_notification=False,
+            )
+            weekend_state.mark_published(saturday)
+            logging.info(
+                "SUCCESS: weekend digest delivered for %s", saturday
+            )
+            return 0
 
     if command == "prepare-event-translations":
         gemini_key = _required_environment("GEMINI_API_KEY")
@@ -680,6 +761,7 @@ def main() -> None:
             "prepare-event-translations",
             "prepare-aemet",
             "monitor-updates",
+            "weekend", "weekend-preview",
         ),
         default="run",
     )
