@@ -52,6 +52,13 @@ class PublicationState:
     def is_published(self, local_day: date) -> bool:
         return self.last_successful_date() == local_day
 
+    def mark_published(self, local_day: date) -> None:
+        """Record one confirmed success for a simple single-date workflow."""
+
+        self._write({
+            "last_successful_date": local_day.isoformat(),
+        })
+
     def electricity_explanation_message_id(self) -> Optional[int]:
         value = self._read()
         message_id = value.get("electricity_explanation_message_id")
