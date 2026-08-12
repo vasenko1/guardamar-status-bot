@@ -336,8 +336,9 @@ def normalize_daily_forecast(
     Tuple[str, ...],
     Optional[int],
     Optional[str],
+    Optional[int],
 ]:
-    """Return today's temperature, wind, sky, and remaining rain forecast."""
+    """Return today's temperature, wind, sky, rain, and UV forecast."""
 
     documents = _decode_json(payload)
     if not isinstance(documents, list) or not documents:
@@ -461,6 +462,9 @@ def normalize_daily_forecast(
         local_day,
         local_hour,
     )
+    uv_index = _as_int(selected.get("uvMax"))
+    if uv_index is not None and not 0 <= uv_index <= 16:
+        uv_index = None
     if wind_options:
         wind_speed, wind_direction = max(wind_options, key=lambda item: item[0])
         return (
@@ -472,6 +476,7 @@ def normalize_daily_forecast(
             tuple(sky_conditions),
             rain_probability,
             rain_period,
+            uv_index,
         )
     return (
         minimum,
@@ -482,6 +487,7 @@ def normalize_daily_forecast(
         tuple(sky_conditions),
         rain_probability,
         rain_period,
+        uv_index,
     )
 
 
@@ -1006,6 +1012,7 @@ async def fetch_morning_digest(
         sky_conditions,
         rain_probability,
         rain_period,
+        uv_index,
     ) = daily_values
     wind_direction = forecast_direction
     wind_speed = forecast_speed
@@ -1049,6 +1056,7 @@ async def fetch_morning_digest(
             sky_conditions=sky_conditions,
             rain_probability_percent=rain_probability,
             rain_period=rain_period,
+            uv_index=uv_index,
         ),
         warnings=warnings,
         warnings_available=warnings_available,
