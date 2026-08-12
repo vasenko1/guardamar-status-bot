@@ -15,5 +15,8 @@ morning-digest = "telegrambot.__main__:main"
 [tool.setuptools]
 package-dir = {"" = "src"}
 
+[tool.setuptools.package-data]
+telegrambot = ["reviewed.json"]
+
 [tool.setuptools.packages.find]
 where = ["src"]

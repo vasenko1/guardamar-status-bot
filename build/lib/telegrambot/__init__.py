@@ -1,0 +1,2 @@
+"""Lightweight Guardamar morning digest."""
+
