@@ -97,7 +97,8 @@ implementation and must keep Gemini inside its free tier:
   only if its research note proves a bounded server-rendered page
   (ADR 0038).
 
-Deferred from the same review: moving reviewed event corrections and
-translations into a validated data file so monthly poster review becomes a
-data-only change, and seasonal bathing-water quality before summer 2027.
+Done from the same review: reviewed event corrections and translations now
+live in one validated packaged data file, so monthly poster review is a
+data-only commit (ADR 0039). Still deferred: seasonal bathing-water quality
+before summer 2027.
 Rejected: tides, DGT incident feeds, and any non-Guardamar content.

@@ -246,6 +246,13 @@ This prevents an early next-month poster from erasing the final days of the
 current program. The digest merges these facts with the separate local Agenda
 Guardamar catalog and removes duplicates.
 
+Operator-reviewed corrections — exact Russian titles, per-poster reviewed
+occurrences with their known-bad-OCR drop filter, and bounded day-of
+schedule rules — live in the validated packaged data file described by ADR
+0039. Monthly poster review edits that file only; a defective file is
+rejected whole at load and the digest falls back to uncorrected source
+facts, while the test suite validates the committed file on every run.
+
 During a temporary source outage, the last valid snapshot remains eligible
 until its covered period ends. Generated title-only Russian translations are
 kept only in the bounded separate cache defined by ADR 0029; the catalog keeps

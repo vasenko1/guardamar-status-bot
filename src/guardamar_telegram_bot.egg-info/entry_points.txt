@@ -1,0 +1,2 @@
+[console_scripts]
+morning-digest = telegrambot.__main__:main
