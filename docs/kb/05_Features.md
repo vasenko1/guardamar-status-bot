@@ -91,6 +91,8 @@ This exact visual structure is the product contract:
 **Дождь:** 80% • 12:00–18:00
 **Ветер:** СВ 5 → 7 м/с
 **Море:** 29° • слабые → умеренные
+**УФ:** 9 (очень высокий)
+**Солнце:** 07:10 → 21:00
 
 ⚠️ **Предупреждения AEMET:**
 Зона: южное побережье Аликанте
@@ -127,12 +129,13 @@ The order never changes:
 3. Rain probability and period, only at 75% or above
 4. Current wind with optional inline forecast
 5. AEMET sea temperature and optional sea-state forecast
-6. Warning
-7. Available flags for all six known Guardamar beach zones, grouped by color
-8. Jellyfish beaches, only when explicitly reported
-9. Traffic or closure
-10. Official holiday applicable in Guardamar today
-11. Today's events
+6. UV index, only at 6 or above, and the computed sunrise/sunset span
+7. Warning
+8. Available flags for all six known Guardamar beach zones, grouped by color
+9. Jellyfish beaches, only when explicitly reported
+10. Traffic or closure
+11. Official holiday applicable in Guardamar today
+12. Today's events
 
 Each event is one bullet. Its official place, when available, is rendered on
 the following indented `📍` line. Events are separated by one blank line;
@@ -173,6 +176,13 @@ shown only for beaches where SafeBeach explicitly reports presence. A negative,
 missing, or unknown jellyfish field produces no row. The wind
 forecast is appended to the wind row as `→ <speed>` and is omitted when
 unavailable. It never creates another row.
+
+The optional `УФ:` row uses AEMET's municipal `uvMax` value and appears only
+at 6 or above with the WHO category names `высокий` (6–7),
+`очень высокий` (8–10), and `экстремальный` (11+). A missing or implausible
+value produces no row and no extra request. The `Солнце:` row renders the
+computed local sunrise and sunset (`07:10 → 21:00`) from the deterministic
+on-device NOAA calculation; it uses no network source. See ADR 0035.
 
 SafeBeach flag lines contain only the color and beach names. The generic
 SafeBeach flag description is not repeated. Update times are used only for

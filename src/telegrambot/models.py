@@ -18,6 +18,9 @@ class Weather:
     sky_conditions: Tuple[str, ...] = ()
     rain_probability_percent: Optional[int] = None
     rain_period: Optional[str] = None
+    uv_index: Optional[int] = None
+    sunrise: Optional[datetime] = None
+    sunset: Optional[datetime] = None
 
 
 @dataclass(frozen=True)

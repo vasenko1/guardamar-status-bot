@@ -35,6 +35,50 @@ class DigestMessageTests(unittest.TestCase):
         values.update(changes)
         return MorningDigest(**values)
 
+    def test_renders_high_uv_and_sun_rows_inside_weather_block(self):
+        digest = self._routine_digest(
+            weather=Weather(
+                current_temperature_c=None,
+                minimum_temperature_c=22,
+                maximum_temperature_c=30,
+                wind_direction="E",
+                wind_speed_kmh=10,
+                observed_at=None,
+                uv_index=9,
+                sunrise=datetime(2026, 8, 15, 7, 10, tzinfo=GUARDAMAR_TIMEZONE),
+                sunset=datetime(2026, 8, 15, 21, 0, tzinfo=GUARDAMAR_TIMEZONE),
+            ),
+        )
+
+        message = build_message(digest)
+
+        self.assertIn(
+            "<b>Море:</b> —\n"
+            "<b>УФ:</b> 9 (очень высокий)\n"
+            "<b>Солнце:</b> 07:10 → 21:00",
+            message,
+        )
+
+    def test_moderate_uv_is_omitted_and_sun_needs_both_times(self):
+        digest = self._routine_digest(
+            weather=Weather(
+                current_temperature_c=None,
+                minimum_temperature_c=22,
+                maximum_temperature_c=30,
+                wind_direction="E",
+                wind_speed_kmh=10,
+                observed_at=None,
+                uv_index=5,
+                sunrise=datetime(2026, 8, 15, 7, 10, tzinfo=GUARDAMAR_TIMEZONE),
+                sunset=None,
+            ),
+        )
+
+        message = build_message(digest)
+
+        self.assertNotIn("УФ:", message)
+        self.assertNotIn("Солнце:", message)
+
     def test_renders_weekday_holiday_before_events(self):
         digest = self._routine_digest(
             holidays=(

@@ -33,6 +33,26 @@ class PreparationTests(unittest.IsolatedAsyncioTestCase):
             warnings_available=True,
         )
 
+    def test_snapshot_round_trips_uv_and_sun_fields(self):
+        digest = MorningDigest(
+            weather=Weather(
+                None, 24, 32, "NE", 7, None,
+                uv_index=9,
+                sunrise=self.now.replace(hour=7, minute=10),
+                sunset=self.now.replace(hour=21, minute=5),
+            ),
+            warnings=(),
+            warnings_available=True,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "aemet.json"
+            write_snapshot(path, digest, self.now)
+            loaded = load_snapshot(path, self.now)
+
+        self.assertEqual(loaded.weather.uv_index, 9)
+        self.assertEqual(loaded.weather.sunrise, digest.weather.sunrise)
+        self.assertEqual(loaded.weather.sunset, digest.weather.sunset)
+
     def test_aemet_snapshot_is_same_day_and_age_bounded(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "aemet.json"

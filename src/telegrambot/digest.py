@@ -111,6 +111,16 @@ MONTHS_GENITIVE = (
 )
 
 
+def _uv_label(uv_index: int) -> str:
+    """Return the WHO exposure-category name for a high UV index."""
+
+    if uv_index >= 11:
+        return "экстремальный"
+    if uv_index >= 8:
+        return "очень высокий"
+    return "высокий"
+
+
 def _warning_text(event: str) -> str:
     normalized = unicodedata.normalize("NFKD", event.strip().casefold())
     key = "".join(
@@ -533,6 +543,21 @@ def build_message(
         else:
             lines.append("<b>Ветер:</b> —")
         lines.append(f"<b>Море:</b> {sea_temperature}{sea_suffix}")
+        if weather.uv_index is not None and weather.uv_index >= 6:
+            lines.append(
+                f"<b>УФ:</b> {weather.uv_index}"
+                f" ({_uv_label(weather.uv_index)})"
+            )
+        if weather.sunrise is not None and weather.sunset is not None:
+            sunrise_label = weather.sunrise.astimezone(
+                GUARDAMAR_TIMEZONE
+            ).strftime("%H:%M")
+            sunset_label = weather.sunset.astimezone(
+                GUARDAMAR_TIMEZONE
+            ).strftime("%H:%M")
+            lines.append(
+                f"<b>Солнце:</b> {sunrise_label} → {sunset_label}"
+            )
 
     warning_now = now or datetime.now(GUARDAMAR_TIMEZONE)
     warning_section = build_warning_section(digest.warnings, warning_now)

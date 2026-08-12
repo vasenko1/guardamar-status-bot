@@ -31,6 +31,7 @@ from .municipal_agenda import (
 )
 from .police import PoliceTrafficError, fetch_traffic_notices
 from .safebeach import SafeBeachError, fetch_beach_status
+from .sun import sun_times
 from .models import BeachNotice, BeachStatus, MorningDigest
 
 LOGGER = logging.getLogger(__name__)
@@ -269,6 +270,14 @@ async def produce_message(
                 digest.weather,
                 wind_direction=beach.wind_direction,
                 wind_speed_kmh=beach.wind_speed_kmh,
+            ),
+        )
+    if digest.weather is not None:
+        sunrise, sunset = sun_times(now)
+        digest = replace(
+            digest,
+            weather=replace(
+                digest.weather, sunrise=sunrise, sunset=sunset
             ),
         )
 
