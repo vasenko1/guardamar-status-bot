@@ -45,8 +45,10 @@ was a multi-file code change for what is conceptually a data update.
 Because a data-only edit reaches published output without a code review,
 the loader refuses anything it would otherwise resolve by defaulting:
 
-- unknown keys at every object level, so a typo cannot silently disarm the
-  field it was meant to set;
+- unknown *and* missing keys at every object level, so neither a typo nor
+  a deletion can silently disarm the field it was meant to set. An
+  explicit empty list stays valid, because it states an intent that an
+  absent key cannot;
 - duplicate JSON keys, which the parser would resolve to the last one and
   quietly discard the earlier definition;
 - match and drop substrings shorter than three characters or carrying

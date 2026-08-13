@@ -66,18 +66,32 @@ def normalized_title(value: str) -> str:
     return value.casefold().replace("’", "'")
 
 
-def _reject_unknown(mapping, allowed, label: str) -> None:
-    """Refuse a misspelled key instead of silently ignoring its value.
+def _check_keys(
+    mapping,
+    label: str,
+    *,
+    required=frozenset(),
+    optional=frozenset(),
+) -> None:
+    """Refuse both a misspelled key and a missing one.
 
-    Every object in this schema goes through here: a typo such as
-    `drop_title` would otherwise validate and leave an empty filter,
-    republishing OCR rows already judged wrong.
+    Every object in this schema goes through here. A typo such as
+    `drop_title` would otherwise leave an empty filter, and deleting
+    `drop_titles` outright would do the same silently — either way
+    republishing OCR rows already judged wrong. An explicit empty list
+    stays valid: it states the intent that a typo or deletion cannot.
     """
 
-    unknown = set(mapping) - allowed
+    present = set(mapping)
+    unknown = present - required - optional
     if unknown:
         raise ReviewedDataError(
             f"{label} has unknown fields {sorted(unknown)}"
+        )
+    missing = required - present
+    if missing:
+        raise ReviewedDataError(
+            f"{label} is missing required fields {sorted(missing)}"
         )
 
 
@@ -145,18 +159,19 @@ def _date(value, field: str) -> str:
 def _validate_event(entry, index: int) -> dict:
     if not isinstance(entry, dict):
         raise ReviewedDataError(f"poster event {index} must be an object")
-    _reject_unknown(
+    _check_keys(
         entry,
-        {
-            "title_es", "start_date", "end_date", "start_time", "end_time",
-            "place", "category", "sources", "ticket_price_cents",
-            "participation_note", "registration_contact", "capacity_limited",
-        },
         f"poster event {index}",
+        required={"title_es", "start_date", "end_date", "category"},
+        optional={
+            "start_time", "end_time", "place", "sources",
+            "ticket_price_cents", "participation_note",
+            "registration_contact", "capacity_limited",
+        },
     )
-    _text(entry.get("title_es"), f"event {index} title_es")
-    start = _date(entry.get("start_date"), f"event {index} start_date")
-    end = _date(entry.get("end_date"), f"event {index} end_date")
+    _text(entry["title_es"], f"event {index} title_es")
+    start = _date(entry["start_date"], f"event {index} start_date")
+    end = _date(entry["end_date"], f"event {index} end_date")
     if date.fromisoformat(end) < date.fromisoformat(start):
         # An inverted range matches no day, so the occurrence would simply
         # never appear rather than announcing the mistake.
@@ -168,7 +183,7 @@ def _validate_event(entry, index: int) -> dict:
             _time(entry[field], f"event {index} {field}")
     if entry.get("place") is not None:
         _text(entry["place"], f"event {index} place")
-    _text(entry.get("category"), f"event {index} category")
+    _text(entry["category"], f"event {index} category")
     sources = entry.get("sources", [])
     if not isinstance(sources, list) or not all(
         isinstance(source, str) and source for source in sources
@@ -198,12 +213,13 @@ def _validate_event(entry, index: int) -> dict:
 def _validate_rule(entry, index: int) -> ScheduleRule:
     if not isinstance(entry, dict):
         raise ReviewedDataError(f"schedule rule {index} must be an object")
-    _reject_unknown(
+    _check_keys(
         entry,
-        {"match", "requires", "weekday_windows", "set"},
         f"schedule rule {index}",
+        required={"match", "requires", "set"},
+        optional={"weekday_windows"},
     )
-    match = entry.get("match")
+    match = entry["match"]
     if not isinstance(match, list) or not match:
         raise ReviewedDataError(f"rule {index} match must list substrings")
     for position, term in enumerate(match):
@@ -211,7 +227,7 @@ def _validate_rule(entry, index: int) -> ScheduleRule:
 
     # An absent guard would let one substring rewrite matching events on
     # every date, so a rule must state what it applies to.
-    requires = entry.get("requires")
+    requires = entry["requires"]
     if not isinstance(requires, dict) or not requires:
         raise ReviewedDataError(
             f"rule {index} requires must name at least one condition"
@@ -248,7 +264,7 @@ def _validate_rule(entry, index: int) -> ScheduleRule:
                 _time(window[1], f"rule {index} {day} end"),
             )
 
-    set_fields = entry.get("set", {})
+    set_fields = entry["set"]
     if not isinstance(set_fields, dict) or not set_fields:
         raise ReviewedDataError(f"rule {index} set must assign fields")
     for field, value in set_fields.items():
@@ -309,12 +325,12 @@ def _validate_posters(data) -> Dict[str, ReviewedPoster]:
             raise ReviewedDataError(f"poster name must be casefolded: {name}")
         if not isinstance(poster, dict):
             raise ReviewedDataError(f"poster {name} must be an object")
-        _reject_unknown(
+        _check_keys(
             poster,
-            {"upload_path", "drop_titles", "events"},
             f"poster {name}",
+            required={"upload_path", "drop_titles", "events"},
         )
-        drop_titles = poster.get("drop_titles", [])
+        drop_titles = poster["drop_titles"]
         if not isinstance(drop_titles, list) or not all(
             isinstance(clause, list) and clause for clause in drop_titles
         ):
@@ -327,12 +343,12 @@ def _validate_posters(data) -> Dict[str, ReviewedPoster]:
                     term,
                     f"poster {name} drop_titles[{clause_index}][{position}]",
                 )
-        events = poster.get("events", [])
+        events = poster["events"]
         if not isinstance(events, list):
             raise ReviewedDataError(f"poster {name} events must be a list")
         posters[name] = ReviewedPoster(
             upload_path=_text(
-                poster.get("upload_path"), f"poster {name} upload_path"
+                poster["upload_path"], f"poster {name} upload_path"
             ).casefold(),
             drop_titles=tuple(
                 tuple(normalized_title(term) for term in clause)
@@ -380,12 +396,12 @@ def _load(path: Path):
         raise ReviewedDataError("reviewed data is unreadable") from exc
     if not isinstance(data, dict) or data.get("version") != DATA_VERSION:
         raise ReviewedDataError("reviewed data has an unsupported version")
-    # A misspelled section name would otherwise be ignored, silently
+    # A misspelled or deleted section would otherwise be ignored, silently
     # dropping every correction it was meant to carry.
-    _reject_unknown(
+    _check_keys(
         data,
-        {"version", *_SECTIONS},
         "reviewed data",
+        required={"version", *_SECTIONS},
     )
 
     sections = {}
