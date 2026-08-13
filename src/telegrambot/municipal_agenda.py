@@ -25,6 +25,7 @@ from .gemini import (
     verify_agenda_poster_events,
 )
 from .event_translations import cached_title
+from .event_urls import normalize_ticket_url
 from .reviewed import (
     ReviewedDataError,
     normalized_title,
@@ -37,6 +38,7 @@ from .todo_cultura import (
     TodoCulturaAdmission,
     TodoCulturaError,
     TodoCulturaParticipation,
+    _all_mentioned_dates,
     _admissions,
     fetch_program_window,
 )
@@ -52,16 +54,9 @@ REQUEST_TIMEOUT_SECONDS = 15
 MAX_EVENTS = 100
 MAX_INDIVIDUAL_TRANSLATION_RECOVERY = 12
 TRANSITION_HORIZON_DAYS = 7
+TEXT_EXTRACTOR_VERSION = 2
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 _TIME_PATTERN = re.compile(r"^\d{2}:\d{2}$")
-_TICKET_HOSTS = {
-    "agendaguardamar.com",
-    "www.agendaguardamar.com",
-    "giglon.com",
-    "www.giglon.com",
-}
-
-
 class MunicipalAgendaError(RuntimeError):
     """An operator-safe municipal agenda failure."""
 
@@ -94,6 +89,7 @@ class SourceEvent:
     participation_note: Optional[str] = None
     registration_contact: Optional[str] = None
     capacity_limited: bool = False
+    admission_evidence: Optional[str] = None
 
 
 class _PosterParser(HTMLParser):
@@ -262,13 +258,62 @@ def _word_overlap(left: str, right: str) -> float:
 
 
 def _supported_title(title: str, evidence: str) -> bool:
-    """Require most meaningful title words to occur in the exact quotation."""
+    """Require every meaningful title word to occur in the exact quotation."""
 
-    title_words = _normalized_words(title)
-    evidence_words = _normalized_words(evidence)
+    title_words = _claim_words(title)
+    evidence_words = _claim_words(evidence)
     if not title_words:
         return False
-    return len(title_words & evidence_words) / len(title_words) >= 0.75
+    return title_words <= evidence_words
+
+
+def _claim_words(value: str) -> set[str]:
+    """Keep claim-bearing tokens, including short names such as DJ."""
+
+    stop_words = {
+        "a", "al", "de", "del", "el", "en", "la", "las", "los",
+        "o", "para", "por", "un", "una", "y",
+    }
+    return {
+        word
+        for word in re.sub(
+            r"[^\w]+", " ", value.casefold(), flags=re.UNICODE
+        ).split()
+        if len(word) >= 2 and word not in stop_words
+    }
+
+
+def _evidence_supports_date(value: date, evidence: str) -> bool:
+    if value.isoformat() in evidence:
+        return True
+    return value in _all_mentioned_dates(evidence, value)
+
+
+def _evidence_supports_time(value: str, evidence: str) -> bool:
+    hour, minute = value.split(":")
+    hour_value = str(int(hour))
+    minute_value = str(int(minute))
+    if int(minute) == 0:
+        pattern = (
+            rf"(?<!\d)(?:"
+            rf"a\s+las\s+{hour_value}(?:[.,:]0{{1,2}})?"
+            rf"(?:\s*h(?:oras?)?\.?)?"
+            rf"|{hour_value}[.,:]0{{1,2}}(?:\s*h(?:oras?)?\.?)?"
+            rf"|{hour_value}\s+a\s+\d{{1,2}}"
+            rf"(?:[.,:]\d{{2}})?\s*h(?:oras?)?\.?"
+            rf"|{hour_value}\s*h(?:oras?)?\.?)\b"
+        )
+    else:
+        pattern = (
+            rf"(?<!\d){hour_value}[.,:]{minute_value.zfill(2)}"
+            rf"\s*(?:h(?:oras?)?\.?)?\b"
+        )
+    return re.search(pattern, evidence, re.IGNORECASE) is not None
+
+
+def _evidence_supports_place(place: str, evidence: str) -> bool:
+    place_words = _claim_words(place)
+    return bool(place_words) and place_words <= _claim_words(evidence)
 
 
 def _richer_title(current: str, candidate: str) -> str:
@@ -292,6 +337,12 @@ def _same_occurrence(left: SourceEvent, right: SourceEvent) -> bool:
         or left.start_time != right.start_time
     ):
         return False
+    if (
+        left.place is not None
+        and right.place is not None
+        and _word_overlap(left.place, right.place) < 0.5
+    ):
+        return False
     return _word_overlap(left.title_es, right.title_es) >= 0.5
 
 
@@ -301,6 +352,11 @@ def _poster_conflicts_with_text(
 ) -> bool:
     """Detect a less reliable poster rendering of a text occurrence."""
 
+    if (
+        not set(text_event.sources) & {"turismo_html"}
+        or not set(poster_event.sources) & {"mupi", "mupi_reviewed"}
+    ):
+        return False
     dates_overlap = not (
         poster_event.end_date < text_event.start_date
         or poster_event.start_date > text_event.end_date
@@ -335,24 +391,27 @@ def merge_text_and_poster_events(
 
     merged = list(text_events)
     for poster_event in poster_events:
-        duplicate_index = next(
-            (
-                index
-                for index, text_event in enumerate(merged)
-                if _same_occurrence(text_event, poster_event)
-                or _poster_conflicts_with_text(text_event, poster_event)
-            ),
-            None,
-        )
+        duplicate_index = next((
+            index
+            for index, text_event in enumerate(merged)
+            if _same_occurrence(text_event, poster_event)
+            or _poster_conflicts_with_text(text_event, poster_event)
+        ), None)
         if duplicate_index is None:
             merged.append(poster_event)
             continue
         current = merged[duplicate_index]
+        same_occurrence = _same_occurrence(current, poster_event)
+        candidate_is_text = bool(
+            set(poster_event.sources) & {"todo_cultura", "todo_cultura_reviewed"}
+        )
         merged[duplicate_index] = SourceEvent(
             **{
                 **current.__dict__,
-                "title_es": _richer_title(
-                    current.title_es, poster_event.title_es
+                "title_es": (
+                    _richer_title(current.title_es, poster_event.title_es)
+                    if same_occurrence and candidate_is_text
+                    else current.title_es
                 ),
                 "sources": tuple(dict.fromkeys(
                     current.sources + poster_event.sources
@@ -360,20 +419,28 @@ def merge_text_and_poster_events(
                 "ticket_price_cents": (
                     current.ticket_price_cents
                     if current.ticket_price_cents is not None
-                    else poster_event.ticket_price_cents
+                    else (
+                        poster_event.ticket_price_cents
+                        if same_occurrence else None
+                    )
                 ),
-                "ticket_url": current.ticket_url or poster_event.ticket_url,
+                "ticket_url": current.ticket_url or (
+                    poster_event.ticket_url if same_occurrence else None
+                ),
                 "participation_note": (
                     current.participation_note
-                    or poster_event.participation_note
+                    or (poster_event.participation_note if same_occurrence else None)
                 ),
                 "registration_contact": (
                     current.registration_contact
-                    or poster_event.registration_contact
+                    or (poster_event.registration_contact if same_occurrence else None)
                 ),
                 "capacity_limited": (
                     current.capacity_limited
-                    or poster_event.capacity_limited
+                    or (poster_event.capacity_limited if same_occurrence else False)
+                ),
+                "admission_evidence": current.admission_evidence or (
+                    poster_event.admission_evidence if same_occurrence else None
                 ),
             }
         )
@@ -394,32 +461,58 @@ def _enrich_admissions(
         "representación", "sesion", "sesión",
         "taller", "teatro",
     }
-    for event in events:
-        best = None
-        best_overlap = 0.0
-        best_shared: set[str] = set()
-        for admission in admissions:
-            if (
-                admission.event_date is not None
-                and not event.start_date
-                <= admission.event_date
-                <= event.end_date
-            ):
-                continue
-            candidate_overlap = _word_overlap(
-                event.title_es, admission.title_hint
-            )
-            if candidate_overlap > best_overlap:
-                best = admission
-                best_overlap = candidate_overlap
-                best_shared = (
-                    _normalized_words(event.title_es)
-                    & _normalized_words(admission.title_hint)
-                )
-        discriminating = len(best_shared) >= 2 or bool(
-            best_shared - generic_words
+
+    def matches(admission: TodoCulturaAdmission, event: SourceEvent):
+        dates = admission.event_dates or (
+            (admission.event_date,) if admission.event_date is not None else ()
         )
-        if best is not None and best_overlap >= 0.5 and discriminating:
+        if dates and not any(
+            event.start_date <= candidate <= event.end_date for candidate in dates
+        ):
+            return None
+        if (
+            admission.start_time is not None
+            and event.start_time != admission.start_time
+        ):
+            return None
+        overlap = _word_overlap(event.title_es, admission.title_hint)
+        shared = (
+            _normalized_words(event.title_es)
+            & _normalized_words(admission.title_hint)
+        )
+        discriminating = len(shared) >= 2 or bool(shared - generic_words)
+        if overlap < 0.5 or not discriminating:
+            return None
+        return overlap
+
+    for event in events:
+        ranked = []
+        for admission in admissions:
+            overlap = matches(admission, event)
+            if overlap is not None:
+                ranked.append((overlap, admission))
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        best = ranked[0][1] if ranked else None
+        if best is not None:
+            same_identity_sessions = {
+                candidate.start_time
+                for candidate in events
+                if candidate.start_date == event.start_date
+                and matches(best, candidate) is not None
+            }
+            tied = [
+                candidate for overlap, candidate in ranked
+                if overlap == ranked[0][0]
+            ]
+            ambiguous_facts = {
+                (candidate.price_cents, candidate.ticket_url, candidate.start_time)
+                for candidate in tied
+            }
+            if (
+                best.start_time is None and len(same_identity_sessions) > 1
+            ) or len(ambiguous_facts) > 1:
+                best = None
+        if best is not None:
             event = replace(
                 event,
                 sources=tuple(dict.fromkeys(
@@ -432,6 +525,9 @@ def _enrich_admissions(
                     else best.price_cents
                 ),
                 ticket_url=event.ticket_url or best.ticket_url,
+                admission_evidence=(
+                    event.admission_evidence or best.evidence or None
+                ),
             )
         enriched.append(event)
     return tuple(enriched)
@@ -653,9 +749,23 @@ def normalize_extraction(
                 or len(evidence) < 10
                 or evidence not in " ".join(source_text.split())
                 or not _supported_title(title_es, evidence)
+                or not _evidence_supports_date(start_date, evidence)
+                or not _evidence_supports_date(end_date, evidence)
+                or (
+                    start_time is not None
+                    and not _evidence_supports_time(start_time, evidence)
+                )
+                or (
+                    end_time is not None
+                    and not _evidence_supports_time(end_time, evidence)
+                )
+                or (
+                    place is not None
+                    and not _evidence_supports_place(place, evidence)
+                )
             ):
                 raise MunicipalAgendaError(
-                    "event title has no exact source evidence"
+                    "event facts have no exact source evidence"
                 )
         normalized_title = title_es.casefold()
         if "actividades del centro social juvenil" in normalized_title:
@@ -677,14 +787,10 @@ def normalize_extraction(
         if ticket_url is not None:
             if not isinstance(ticket_url, str):
                 raise MunicipalAgendaError("invalid event ticket URL")
-            parsed_ticket = urllib.parse.urlparse(ticket_url)
-            if (
-                parsed_ticket.scheme != "https"
-                or parsed_ticket.hostname not in _TICKET_HOSTS
-                or parsed_ticket.username is not None
-                or parsed_ticket.password is not None
-            ):
+            normalized_ticket_url = normalize_ticket_url(ticket_url)
+            if normalized_ticket_url is None:
                 raise MunicipalAgendaError("invalid event ticket URL")
+            ticket_url = normalized_ticket_url
         participation_note = _clean_text(raw.get("participation_note"), 180)
         registration_contact = _clean_text(
             raw.get("registration_contact"), 180
@@ -692,6 +798,7 @@ def normalize_extraction(
         capacity_limited = raw.get("capacity_limited", False)
         if not isinstance(capacity_limited, bool):
             raise MunicipalAgendaError("invalid event capacity flag")
+        admission_evidence = _clean_text(raw.get("admission_evidence"), 600)
         event = SourceEvent(
             title_es=title_es,
             start_date=start_date,
@@ -706,6 +813,7 @@ def normalize_extraction(
             participation_note=participation_note,
             registration_contact=registration_contact,
             capacity_limited=capacity_limited,
+            admission_evidence=admission_evidence,
         )
         key = (event.title_es.casefold(), event.start_date, event.start_time)
         if key not in seen:
@@ -779,6 +887,7 @@ def _snapshot_data(
                 "participation_note": event.participation_note,
                 "registration_contact": event.registration_contact,
                 "capacity_limited": event.capacity_limited,
+                "admission_evidence": event.admission_evidence,
             }
             for event in events
         ],
@@ -934,6 +1043,9 @@ def _inherit_reviewed_details(
             capacity_limited=(
                 corrected.capacity_limited or candidate.capacity_limited
             ),
+            admission_evidence=(
+                corrected.admission_evidence or candidate.admission_evidence
+            ),
         ))
     return tuple(result)
 
@@ -965,6 +1077,7 @@ def _reviewed_source_event(entry: dict) -> SourceEvent:
         participation_note=entry.get("participation_note"),
         registration_contact=entry.get("registration_contact"),
         capacity_limited=bool(entry.get("capacity_limited", False)),
+        admission_evidence=entry.get("admission_evidence"),
     )
 
 
@@ -1124,6 +1237,13 @@ async def refresh_municipal_catalog(
             else {}
         )
         old_events = snapshot["_events"] if snapshot is not None else ()
+        transition_events = (
+            _apply_reviewed_corrections(
+                str(snapshot.get("poster_url", "")), old_events
+            )
+            if snapshot is not None
+            else ()
+        )
         old_text_events = tuple(
             event for event in old_events if "turismo_html" in event.sources
         )
@@ -1150,6 +1270,7 @@ async def refresh_municipal_catalog(
             old_text_events
             and isinstance(text_source, dict)
             and text_source.get("sha256") == page_hash
+            and text_source.get("extractor_version") == TEXT_EXTRACTOR_VERSION
         ):
             text_events = old_text_events
         else:
@@ -1359,7 +1480,7 @@ async def refresh_municipal_catalog(
         if source_month > local_month:
             events = _merge_transition_events(
                 events,
-                old_events,
+                transition_events,
                 local_now.date(),
             )
         source_state = {
@@ -1367,6 +1488,7 @@ async def refresh_municipal_catalog(
                 "url": AGENDA_PAGE_URL,
                 "sha256": page_hash,
                 "month": text_month or None,
+                "extractor_version": TEXT_EXTRACTOR_VERSION,
                 "checked_at": now.isoformat(),
             },
         }
@@ -1385,6 +1507,12 @@ async def refresh_municipal_catalog(
                 for program in todo_window.programs
                 for detail in program.participation
             ]
+            admission_evidence = [
+                admission
+                for program in todo_window.programs
+                for admission in program.admissions
+                if admission.evidence
+            ]
             source_state["todo_cultura"] = {
                 **todo_window.source_state,
                 "checked_at": now.isoformat(),
@@ -1394,6 +1522,13 @@ async def refresh_municipal_catalog(
                         "evidence": detail.evidence,
                     }
                     for detail in evidence[:12]
+                ],
+                "admission_evidence": [
+                    {
+                        "title_hint": detail.title_hint,
+                        "evidence": detail.evidence,
+                    }
+                    for detail in admission_evidence[:20]
                 ],
             }
         elif isinstance(todo_source, dict) and todo_source:

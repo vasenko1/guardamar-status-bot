@@ -10,12 +10,13 @@ instead of silently changing published output.
 
 import json
 import re
-import urllib.parse
 from dataclasses import dataclass
 from datetime import date, time
 from functools import lru_cache
 from pathlib import Path
 from typing import Dict, Optional, Tuple
+
+from .event_urls import normalize_ticket_url
 
 DATA_PATH = Path(__file__).with_name("reviewed.json")
 DATA_VERSION = 1
@@ -214,18 +215,7 @@ def _validate_event(entry, index: int) -> dict:
             raise ReviewedDataError(
                 f"event {index} ticket_url is not an approved HTTPS URL"
             )
-        parsed = urllib.parse.urlparse(ticket_url)
-        if (
-            parsed.scheme != "https"
-            or parsed.hostname not in {
-                "agendaguardamar.com",
-                "www.agendaguardamar.com",
-                "giglon.com",
-                "www.giglon.com",
-            }
-            or parsed.username is not None
-            or parsed.password is not None
-        ):
+        if normalize_ticket_url(ticket_url) is None:
             raise ReviewedDataError(
                 f"event {index} ticket_url is not an approved HTTPS URL"
             )

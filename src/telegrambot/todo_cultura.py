@@ -12,6 +12,7 @@ from html.parser import HTMLParser
 from typing import Any, Dict, List, Optional, Tuple
 
 from ._transport import BoundedFetchError, fetch_bounded
+from .event_urls import normalize_ticket_url
 
 
 API_HOSTS = {"todoculturavegabaja.es", "www.todoculturavegabaja.es"}
@@ -24,6 +25,7 @@ METADATA_PAGE_SIZE = 100
 METADATA_LIMIT_BYTES = 150_000
 ROLLING_WINDOW_DAYS = 7
 CURSOR_OVERLAP_MINUTES = 5
+PARSER_VERSION = 6
 API_URL = "https://todoculturavegabaja.es/wp-json/wp/v2/mec-events"
 
 
@@ -44,6 +46,8 @@ class TodoCulturaAdmission:
     ticket_url: Optional[str] = None
     evidence: str = ""
     event_date: Optional[date] = None
+    start_time: Optional[str] = None
+    event_dates: Tuple[date, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -289,14 +293,6 @@ _INLINE_EVENT_ROW = re.compile(
     r"\b\d{1,2}(?:[.,:]\d{1,2})?\s*(?:h(?:oras?)?\.?)?\s*:\s*",
     re.IGNORECASE,
 )
-_TICKET_HOSTS = {
-    "agendaguardamar.com",
-    "www.agendaguardamar.com",
-    "giglon.com",
-    "www.giglon.com",
-}
-
-
 def _paragraphs(rendered: str) -> List[Tuple[str, str]]:
     """Return bounded paragraph HTML and normalized visible text."""
 
@@ -318,12 +314,87 @@ def _ticket_url(fragment: str) -> Optional[str]:
     for raw_url in re.findall(
         r"href\s*=\s*['\"]([^'\"]+)['\"]", fragment, re.IGNORECASE
     ):
-        candidate = html.unescape(raw_url)
-        parsed = urllib.parse.urlparse(candidate)
-        if parsed.scheme != "https" or parsed.hostname not in _TICKET_HOSTS:
-            continue
-        return urllib.parse.urlunparse(parsed._replace(fragment=""))
+        normalized = normalize_ticket_url(html.unescape(raw_url))
+        if normalized is not None:
+            return normalized
     return None
+
+
+def _event_time(value: str) -> Optional[str]:
+    """Read the explicit leading or inline time that introduces an event."""
+
+    patterns = (
+        r"(?<!\d)(\d{1,2})(?:[.,:](\d{2}))?\s*"
+        r"(?:h(?:oras?)?\.?)?\s+a\s+\d{1,2}"
+        r"(?:[.,:]\d{2})?\s*h",
+        r"\ba\s+las\s+(\d{1,2})(?:[.,:](\d{2}))?"
+        r"\s*(?:h(?:oras?)?\.?)?",
+        r"(?<!\d)(\d{1,2}):(\d{2})(?!\d)",
+        r"(?<!\d)(\d{1,2})[.,](\d{2})\s*h(?:oras?)?\.?(?!\d)",
+        r"(?<!\d)(\d{1,2})\s*h(?:oras?)?\.?(?!\d)",
+    )
+    for raw_pattern in patterns:
+        match = re.search(raw_pattern, value, re.IGNORECASE)
+        if match is None:
+            continue
+        hour = int(match.group(1))
+        minute = int(
+            match.group(2) if match.lastindex and match.lastindex >= 2
+            and match.group(2) else 0
+        )
+        if hour <= 23 and minute <= 59:
+            return f"{hour:02d}:{minute:02d}"
+    return None
+
+
+def _all_mentioned_dates(text: str, reference_date: date) -> Tuple[date, ...]:
+    """Expand explicit Spanish date lists as occurrence-level facts."""
+
+    result = set(_mentioned_dates(text, reference_date))
+    list_pattern = re.compile(
+        r"\b((?:\d{1,2}\s*(?:,|y)\s*)+\d{1,2})\s+de\s+"
+        r"([a-záéíóúñ]+)(?:\s+de\s+(\d{4}))?\b",
+        re.IGNORECASE,
+    )
+    for match in list_pattern.finditer(text):
+        month = _MONTHS.get(match.group(2).casefold())
+        if month is None:
+            continue
+        year = int(match.group(3) or reference_date.year)
+        for raw_day in re.findall(r"\d{1,2}", match.group(1)):
+            try:
+                candidates = [date(year, month, int(raw_day))]
+                if match.group(3) is None:
+                    candidates = [
+                        date(candidate_year, month, int(raw_day))
+                        for candidate_year in (
+                            reference_date.year - 1,
+                            reference_date.year,
+                            reference_date.year + 1,
+                        )
+                    ]
+                result.add(min(
+                    candidates,
+                    key=lambda candidate: abs((candidate - reference_date).days),
+                ))
+            except ValueError:
+                continue
+    range_pattern = re.compile(
+        r"\b(?:del\s+)?(\d{1,2})\s+(?:al|a)\s+(\d{1,2})\s+de\s+"
+        r"([a-záéíóúñ]+)(?:\s+de\s+(\d{4}))?\b",
+        re.IGNORECASE,
+    )
+    for match in range_pattern.finditer(text):
+        month = _MONTHS.get(match.group(3).casefold())
+        if month is None:
+            continue
+        year = int(match.group(4) or reference_date.year)
+        for raw_day in match.group(1), match.group(2):
+            try:
+                result.add(date(year, month, int(raw_day)))
+            except ValueError:
+                continue
+    return tuple(sorted(result))
 
 
 def _admissions(
@@ -340,26 +411,52 @@ def _admissions(
     result = []
     seen = set()
     title_hint = None
-    title_date = None
+    title_dates: Tuple[date, ...] = ()
+    title_time = None
     current_date = None
     anchor = reference_date or date.today()
     for paragraph, plain in _paragraphs(rendered):
-        header_date = _header_date(plain, anchor.year)
+        admission_marker = re.search(
+            r"\b(?:precio\s*:|el\s+precio\b|venta\s+de\s+entradas\b|"
+            r"(?:(?:la|las)\s+)?entradas?\s+(?:(?:es|son)\s+)?"
+            r"(?:libres?|gratuitas?)\b|"
+            r"(?:(?:el|los)\s+)?accesos?\s+(?:(?:es|son)\s+)?"
+            r"(?:libres?|gratuitos?)\b|"
+            r"entradas?\s+en\b)",
+            plain,
+            re.IGNORECASE,
+        )
+        event_context = (
+            plain[:admission_marker.start()].strip(" .,:;–—-")
+            if admission_marker is not None
+            else plain
+        )
+        header_date = _header_date(event_context, anchor.year)
         if header_date is not None:
             current_date = header_date
-        mentioned = _mentioned_dates(plain, anchor)
+        mentioned = _all_mentioned_dates(event_context, anchor)
         mentioned_date = min(
             mentioned,
             key=lambda candidate: abs((candidate - anchor).days),
         ) if mentioned else None
         if mentioned_date is not None:
             current_date = mentioned_date
+        explicit_time = _event_time(event_context)
         is_event_row = bool(
-            _EVENT_ROW.match(plain) or _INLINE_EVENT_ROW.search(plain)
+            _EVENT_ROW.match(event_context)
+            or _INLINE_EVENT_ROW.search(event_context)
+            or re.match(
+                r"^\s*[–—•-]?\s*a\s+las\s+\d",
+                event_context,
+                re.IGNORECASE,
+            )
         )
         if is_event_row:
-            title_hint = plain[:300]
-            title_date = current_date
+            title_hint = event_context[:300]
+            title_dates = mentioned or (
+                (current_date,) if current_date is not None else ()
+            )
+            title_time = explicit_time
         price_match = re.search(
             r"(?:\bprecio\s+de\s+(?:(?:la|las)\s+)?(?:entrada|entradas)"
             r"\s+es\s+de\s+(\d{1,4})(?:[,.](\d{1,2}))?\s+euros?\b|"
@@ -369,13 +466,15 @@ def _admissions(
             re.IGNORECASE,
         )
         free = re.search(
-            r"\b(?:la\s+)?entrada\s+es\s+(?:libre|gratuita)\b",
+            r"\b(?:(?:(?:la|las)\s+)?entradas?|"
+            r"(?:(?:el|los)\s+)?accesos?)"
+            r"(?:\s+(?:es|son))?\s+(?:libres?|gratuit[oa]s?)\b",
             plain,
             re.IGNORECASE,
         )
         ticket_url = _ticket_url(paragraph)
         ticket_only = bool(
-            is_event_row
+            (is_event_row or bool(mentioned and event_context))
             and ticket_url
             and re.search(
                 r"\b(?:entradas?|tickets?|venta|compra)\b",
@@ -385,10 +484,21 @@ def _admissions(
         )
         if price_match is None and free is None and not ticket_only:
             continue
+        if mentioned and event_context:
+            # A dated paragraph carrying its own admission fact is a complete
+            # event block even when it does not use the usual leading-time
+            # punctuation. It must not borrow the preceding row's identity.
+            title_hint = event_context[:300]
+            title_dates = mentioned
+            title_time = explicit_time
         if title_hint is None:
             # Some short articles put the event name and price in one
             # paragraph. It remains event-local evidence, not a guessed link.
             title_hint = plain[:300]
+            title_dates = mentioned or (
+                (current_date,) if current_date is not None else ()
+            )
+            title_time = explicit_time
         if price_match is not None:
             euros = int(price_match.group(1) or price_match.group(3))
             cents = int(
@@ -402,15 +512,23 @@ def _admissions(
             price_cents = None
         if price_cents is not None and not 0 <= price_cents <= 100_000:
             continue
-        key = (title_hint.casefold(), title_date, price_cents, ticket_url)
+        evidence = (
+            plain if plain == title_hint else f"{title_hint} {plain}"
+        )[:600]
+        key = (
+            title_hint.casefold(), title_dates, title_time,
+            price_cents, ticket_url,
+        )
         if key not in seen:
             seen.add(key)
             result.append(TodoCulturaAdmission(
                 title_hint=title_hint,
                 price_cents=price_cents,
                 ticket_url=ticket_url,
-                evidence=plain[:600],
-                event_date=title_date,
+                evidence=evidence,
+                event_date=title_dates[0] if len(title_dates) == 1 else None,
+                start_time=title_time,
+                event_dates=title_dates,
             ))
         if len(result) == 20:
             break
@@ -662,7 +780,7 @@ def _read_program_window(
     """Incrementally collect only sections entering the rolling week."""
 
     prior = prior_state if isinstance(prior_state, dict) else {}
-    if prior.get("parser_version") != 5:
+    if prior.get("parser_version") != PARSER_VERSION:
         # Re-open the rolling window once when extraction capabilities change.
         # The metadata cursor remains useful, but old coverage must not prevent
         # richer event-local facts from being collected.
@@ -872,7 +990,7 @@ def _read_program_window(
             dates=tuple(dict.fromkeys(day for day, _ in dated_sections)),
         ))
     state = {
-        "parser_version": 5,
+        "parser_version": PARSER_VERSION,
         "cursor_modified_gmt": (
             newest_cursor.isoformat(timespec="seconds")
             if newest_cursor is not None

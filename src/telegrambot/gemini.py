@@ -548,8 +548,10 @@ def _extract_agenda_text_events(
         "Classify routine facility schedules as opening_hours and routine "
         "administrative services as municipal_service. Return the fixed JSON "
         "schema and use null for unknown optional fields. evidence_es must be "
-        "one exact contiguous quotation from OFFICIAL TEXT that contains the "
-        "event identity and supports the enriched title.\n\nOFFICIAL TEXT:\n"
+        "one exact contiguous quotation from OFFICIAL TEXT that explicitly "
+        "supports the complete title, start and end dates, every returned "
+        "time, and the place. If one quotation cannot support all returned "
+        "facts, omit unsupported optional facts or the event.\n\nOFFICIAL TEXT:\n"
         + source_text
     )
     return _request_json(

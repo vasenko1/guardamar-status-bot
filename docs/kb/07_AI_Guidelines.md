@@ -60,8 +60,8 @@ is required, and official HTML text always wins conflicts. Every
 result must use a fixed schema and pass date, month, field-length, provenance,
 and duplicate validation before replacing the previous catalog.
 For text agendas, each candidate additionally needs an exact contiguous source
-quotation. At least three quarters of the meaningful words in a self-contained
-title must occur in that quotation. The model may compress explicit event
+quotation. Every meaningful word in a self-contained title and every returned
+date, time and place must occur in that quotation. The model may compress explicit event
 kind, act, tribute, benefit purpose, audience or cause into the title, but may
 not create a free-form description. Poster candidates use null evidence and
 remain governed by independent-reading agreement.

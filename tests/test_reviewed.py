@@ -128,6 +128,8 @@ class ValidationTests(unittest.TestCase):
             {"registration_contact": []},
             {"ticket_url": "http://www.giglon.com/event"},
             {"ticket_url": "https://evil.example/event"},
+            {"ticket_url": "https://operator@giglon.com/event"},
+            {"ticket_url": "https://giglon.com:443/event"},
             {"ticket_url": 123},
         )
         for extra in cases:
