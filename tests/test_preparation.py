@@ -129,6 +129,10 @@ class PreparationTests(unittest.IsolatedAsyncioTestCase):
             reviewed_translation("TRIVOX (Tributo a Il Divo)"),
             "TRIVOX, трибьют-шоу Il Divo",
         )
+        self.assertEqual(
+            reviewed_translation("Taller de guitarras eléctricas"),
+            "Мастер-класс по электрогитаре",
+        )
 
     def test_reviewed_title_overrides_empty_cache(self):
         with tempfile.TemporaryDirectory() as directory:
