@@ -3,7 +3,6 @@ from datetime import date, datetime, time, timedelta, timezone
 
 from telegrambot.digest import (
     GUARDAMAR_TIMEZONE,
-    build_fallback_update,
     build_message,
 )
 from telegrambot.models import (
@@ -12,6 +11,7 @@ from telegrambot.models import (
     Event,
     Holiday,
     MorningDigest,
+    PharmacyDuty,
     TrafficNotice,
     Warning,
     Weather,
@@ -35,6 +35,68 @@ class DigestMessageTests(unittest.TestCase):
         }
         values.update(changes)
         return MorningDigest(**values)
+
+    def test_renders_high_uv_and_sun_rows_inside_weather_block(self):
+        digest = self._routine_digest(
+            weather=Weather(
+                current_temperature_c=None,
+                minimum_temperature_c=22,
+                maximum_temperature_c=30,
+                wind_direction="E",
+                wind_speed_kmh=10,
+                observed_at=None,
+                uv_index=9,
+                sunrise=datetime(2026, 8, 15, 7, 10, tzinfo=GUARDAMAR_TIMEZONE),
+                sunset=datetime(2026, 8, 15, 21, 0, tzinfo=GUARDAMAR_TIMEZONE),
+            ),
+        )
+
+        message = build_message(digest)
+
+        self.assertIn(
+            "<b>Море:</b> —\n"
+            "<b>УФ:</b> 9 (очень высокий)\n"
+            "<b>Солнце:</b> 07:10 → 21:00",
+            message,
+        )
+
+    def test_moderate_uv_is_omitted_and_sun_needs_both_times(self):
+        digest = self._routine_digest(
+            weather=Weather(
+                current_temperature_c=None,
+                minimum_temperature_c=22,
+                maximum_temperature_c=30,
+                wind_direction="E",
+                wind_speed_kmh=10,
+                observed_at=None,
+                uv_index=5,
+                sunrise=datetime(2026, 8, 15, 7, 10, tzinfo=GUARDAMAR_TIMEZONE),
+                sunset=None,
+            ),
+        )
+
+        message = build_message(digest)
+
+        self.assertNotIn("УФ:", message)
+        self.assertNotIn("Солнце:", message)
+
+    def test_renders_duty_pharmacy_with_maps_link(self):
+        digest = self._routine_digest(
+            pharmacies=(PharmacyDuty(
+                name="Planelles Mas, Asuncion",
+                address="Av. Cervantes, Nº29",
+                hours="круглосуточно (с 9:00)",
+            ),),
+        )
+
+        message = build_message(digest)
+
+        self.assertIn(
+            "💊 <b>Дежурная аптека:</b>\n"
+            "• Planelles Mas, Asuncion — круглосуточно (с 9:00)",
+            message,
+        )
+        self.assertIn("query=Av.+Cervantes%2C+N%C2%BA29", message)
 
     def test_renders_weekday_holiday_before_events(self):
         digest = self._routine_digest(
@@ -798,42 +860,6 @@ class DigestMessageTests(unittest.TestCase):
         self.assertIn("• <b>09:00–15:30</b> — Рынок", message)
         self.assertIn(">парковка La Redonda</a>", message)
 
-    def test_fallback_preserves_morning_copy_and_adds_beach_update(self):
-        morning = (
-            "🌅 Доброе утро, Гуардамар!\n\n"
-            "☀️ <b>Погода от AEMET:</b>\n"
-            "🌤 Воздух: 22° → 30°\n"
-            "💨 Ветер: В 3 → 5 м/с\n"
-            "🌊 Море: 27° • умеренные волны\n\n"
-            "📅 <b>События дня:</b>\n• Выставка"
-        )
-        beach = BeachStatus(
-            flag_color="yellow",
-            sea_temperature_c=28,
-            nearby_flags=(
-                ("Vivers", "green"),
-                ("Centre", "yellow"),
-                ("Roqueta", "red"),
-            ),
-            jellyfish_beaches=("Roqueta",),
-        )
-
-        updated = build_fallback_update(morning, beach, None)
-
-        self.assertIn("🌤 Воздух: 22° → 30°", updated)
-        self.assertIn("🌊 Море: 27° • умеренные волны", updated)
-        self.assertIn(
-            "🌊 Море: 27° • умеренные волны\n\n"
-            "🏖 <b>Флаги на пляжах:</b>\n"
-            "   🔴 Roqueta\n"
-            "   🟡 Centre / Babilònia\n"
-            "   🟢 Vivers\n"
-            "🪼 Медузы: Roqueta",
-            updated,
-        )
-        self.assertIn("📅 <b>События дня:</b>\n• Выставка", updated)
-        self.assertTrue(updated.endswith("обЪявления Гуардамар</b></a>"))
-
     def test_omits_missing_beaches_and_flag_descriptions(self):
         digest = MorningDigest(
             weather=Weather(
@@ -862,68 +888,63 @@ class DigestMessageTests(unittest.TestCase):
         self.assertNotIn("Vivers", message)
         self.assertNotIn("купание запрещено", message)
 
-    def test_renders_named_fallback_beaches_without_renaming(self):
-        morning = (
-            "🌅 Доброе утро, Гуардамар!\n\n"
-            "☀️ <b>Погода от AEMET:</b>\n"
-            "🌤 Воздух: 22° → 30°\n"
-            "💨 Ветер: В 3 → 5 м/с\n"
-            "🌊 Море: 27° • умеренные волны"
-        )
-        beach = BeachStatus(
-            flag_color=None,
-            sea_temperature_c=None,
-            nearby_flags=(
-                ("Roqueta", "yellow"),
-                ("Vivers", "green"),
-                ("Montcaio", "red"),
+    def test_renders_named_beaches_without_renaming(self):
+        digest = self._routine_digest(
+            beach=BeachStatus(
+                flag_color=None,
+                sea_temperature_c=None,
+                nearby_flags=(
+                    ("Roqueta", "yellow"),
+                    ("Vivers", "green"),
+                    ("Montcaio", "red"),
+                ),
             ),
         )
 
-        updated = build_fallback_update(morning, beach, None)
+        message = build_message(digest)
 
-        self.assertIn("   🔴 Montcaio", updated)
-        self.assertIn("   🟡 Roqueta", updated)
-        self.assertIn("   🟢 Vivers", updated)
-        self.assertNotIn("Centre / Babilònia", updated)
+        self.assertIn("   🔴 Montcaio", message)
+        self.assertIn("   🟡 Roqueta", message)
+        self.assertIn("   🟢 Vivers", message)
+        self.assertNotIn("Centre / Babilònia", message)
 
     def test_groups_all_beaches_with_at_most_three_names_per_row(self):
-        morning = "🌅 Доброе утро, Гуардамар!"
-        beach = BeachStatus(
-            flag_color="red",
-            sea_temperature_c=28,
-            nearby_flags=(
-                ("Centre", "red"),
-                ("Roqueta", "red"),
-                ("Vivers", "red"),
-                ("Montcaio", "red"),
-                ("Camp", "green"),
-                ("Ortigues", "green"),
-            ),
-            jellyfish_beaches=(
-                "Centre",
-                "Roqueta",
-                "Vivers",
-                "Montcaio",
+        digest = self._routine_digest(
+            beach=BeachStatus(
+                flag_color="red",
+                sea_temperature_c=28,
+                nearby_flags=(
+                    ("Centre", "red"),
+                    ("Roqueta", "red"),
+                    ("Vivers", "red"),
+                    ("Montcaio", "red"),
+                    ("Camp", "green"),
+                    ("Ortigues", "green"),
+                ),
+                jellyfish_beaches=(
+                    "Centre",
+                    "Roqueta",
+                    "Vivers",
+                    "Montcaio",
+                ),
             ),
         )
 
-        updated = build_fallback_update(morning, beach, None)
+        message = build_message(digest)
 
         self.assertIn(
             "   🔴 Centre / Babilònia, Roqueta, Vivers\n"
             "   🔴 Montcaio\n"
             "   🟢 Camp, Ortigues",
-            updated,
+            message,
         )
         self.assertIn(
             "🪼 Медузы: Centre / Babilònia, Roqueta, Vivers\n"
             "   🪼 Montcaio",
-            updated,
+            message,
         )
 
     def test_compacts_only_a_complete_all_green_beach_set(self):
-        morning = "🌅 Доброе утро, Гуардамар!"
         all_green = BeachStatus(
             flag_color="green",
             sea_temperature_c=28,
@@ -940,16 +961,14 @@ class DigestMessageTests(unittest.TestCase):
             ),
         )
 
-        compact = build_fallback_update(morning, all_green, None)
-        partial = build_fallback_update(
-            morning,
-            BeachStatus(
+        compact = build_message(self._routine_digest(beach=all_green))
+        partial = build_message(self._routine_digest(
+            beach=BeachStatus(
                 flag_color="green",
                 sea_temperature_c=28,
                 nearby_flags=all_green.nearby_flags[:-1],
             ),
-            None,
-        )
+        ))
 
         self.assertIn("   🟢 На всех пляжах", compact)
         self.assertNotIn("На всех пляжах", partial)
@@ -960,7 +979,6 @@ class DigestMessageTests(unittest.TestCase):
         )
 
     def test_official_prohibition_disables_all_green_compaction(self):
-        morning = "🌅 Доброе утро, Гуардамар!"
         all_green = BeachStatus(
             flag_color="green",
             sea_temperature_c=28,
@@ -982,10 +1000,13 @@ class DigestMessageTests(unittest.TestCase):
             published_at=datetime(2026, 7, 29, 10, 20, tzinfo=timezone.utc),
         )
 
-        updated = build_fallback_update(morning, all_green, notice)
+        message = build_message(self._routine_digest(
+            beach=all_green,
+            beach_notice=notice,
+        ))
 
-        self.assertNotIn("На всех пляжах", updated)
-        self.assertIn("⛔ Ограничение купания", updated)
+        self.assertNotIn("На всех пляжах", message)
+        self.assertIn("⛔ Ограничение купания", message)
 
     def test_renders_all_events_and_expands_street_abbreviation(self):
         digest = MorningDigest(

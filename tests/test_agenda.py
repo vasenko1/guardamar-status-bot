@@ -13,7 +13,6 @@ from telegrambot.agenda import (
     fetch_today_events,
     _load_agenda_snapshot,
     _write_agenda_snapshot,
-    normalize_event_page,
     normalize_event_pages,
     recurring_events,
     requires_market_exception_check,
@@ -22,6 +21,13 @@ from telegrambot.models import Event
 from telegrambot.morning import _merge_events
 
 TZ = ZoneInfo("Europe/Madrid")
+
+
+def normalize_event_page(payload, local_day):
+    """Return the first occurrence, as older single-event tests expect."""
+
+    events = normalize_event_pages(payload, local_day)
+    return events[0] if events else None
 
 
 class _Response:

@@ -114,8 +114,8 @@ deployment agent or self-hosted CI runner.
 
 ### Storage
 
-- Store configuration, the rendered morning copy needed for safe fallback,
-  minimal daily replacement state, and the two bounded normalized event
+- Store configuration, minimal daily replacement state, the prepared AEMET
+  snapshot from ADR 0029, and the two bounded normalized event
   catalogs accepted in ADRs 0012 and 0028. The municipal catalog may retain
   unexpired prior-poster events
   for at most the next seven days during a month transition.

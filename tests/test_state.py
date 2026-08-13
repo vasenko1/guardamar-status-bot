@@ -19,19 +19,6 @@ class PublicationStateTests(unittest.TestCase):
             updated_times=tuple((name, time(10, 0)) for name in names),
         )
 
-    def test_stores_only_last_successful_date(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "delivery.json"
-            state = PublicationState(path)
-
-            state.mark_published(date(2026, 7, 26))
-
-            self.assertEqual(
-                json.loads(path.read_text()),
-                {"last_successful_date": "2026-07-26"},
-            )
-            self.assertTrue(state.is_published(date(2026, 7, 26)))
-
     def test_keeps_electricity_explanation_across_publication_dates(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "electricity.json"
@@ -58,23 +45,6 @@ class PublicationStateTests(unittest.TestCase):
                 state.electricity_explanation_message_id(), 321
             )
 
-    def test_reads_confirmed_success_from_previous_schema(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "delivery.json"
-            path.write_text(
-                json.dumps(
-                    {
-                        "local_date": "2026-07-26",
-                        "status": "success",
-                        "updated_at": "2026-07-26T07:30:00+02:00",
-                    }
-                )
-            )
-            self.assertEqual(
-                PublicationState(path).last_successful_date(),
-                date(2026, 7, 26),
-            )
-
     def test_stores_message_ids_needed_for_safe_replacement(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "delivery.json"
@@ -84,7 +54,7 @@ class PublicationStateTests(unittest.TestCase):
                 "2026-07-29T07:30:00+02:00"
             )
 
-            state.mark_morning(local_day, 101, sent_at, "morning")
+            state.mark_morning(local_day, 101, sent_at)
             state.mark_update_sent(
                 local_day,
                 202,
@@ -99,7 +69,6 @@ class PublicationStateTests(unittest.TestCase):
 
             record = state.morning_record(local_day)
             self.assertEqual(record["morning_message_id"], 101)
-            self.assertEqual(record["morning_message"], "morning")
             self.assertEqual(record["update_message_id"], 202)
             self.assertTrue(record["morning_deleted"])
             self.assertEqual(
@@ -115,7 +84,6 @@ class PublicationStateTests(unittest.TestCase):
                 local_day,
                 101,
                 datetime.fromisoformat("2026-08-07T07:30:00+02:00"),
-                "morning",
             )
 
             self.assertFalse(
@@ -140,7 +108,7 @@ class PublicationStateTests(unittest.TestCase):
             morning = datetime.fromisoformat("2026-08-07T07:30:00+02:00")
             first_seen = datetime.fromisoformat("2026-08-07T10:15:00+02:00")
             later_seen = datetime.fromisoformat("2026-08-07T10:35:00+02:00")
-            state.mark_morning(local_day, 101, morning, "morning")
+            state.mark_morning(local_day, 101, morning)
 
             state.remember_beach_candidate(
                 local_day,
@@ -174,7 +142,7 @@ class PublicationStateTests(unittest.TestCase):
             state = PublicationState(path)
             local_day = date(2026, 8, 7)
             morning = datetime.fromisoformat("2026-08-07T07:30:00+02:00")
-            state.mark_morning(local_day, 101, morning, "morning")
+            state.mark_morning(local_day, 101, morning)
 
             state.remember_beach_candidate(
                 local_day,
@@ -206,7 +174,7 @@ class PublicationStateTests(unittest.TestCase):
             state = PublicationState(path)
             local_day = date(2026, 8, 7)
             morning = datetime.fromisoformat("2026-08-07T07:30:00+02:00")
-            state.mark_morning(local_day, 101, morning, "morning")
+            state.mark_morning(local_day, 101, morning)
             state.remember_beach_candidate(
                 local_day,
                 self._beach_status(local_day, ("Centre", "Roqueta")),
@@ -233,7 +201,7 @@ class PublicationStateTests(unittest.TestCase):
             state = PublicationState(path)
             local_day = date(2026, 8, 7)
             morning = datetime.fromisoformat("2026-08-07T07:30:00+02:00")
-            state.mark_morning(local_day, 101, morning, "morning")
+            state.mark_morning(local_day, 101, morning)
 
             self.assertFalse(state.remember_beach_candidate(
                 local_day,
@@ -254,7 +222,7 @@ class PublicationStateTests(unittest.TestCase):
             local_day = date(2026, 8, 7)
             morning = datetime.fromisoformat("2026-08-07T07:30:00+02:00")
             status = self._beach_status(local_day, ("Centre", "Roqueta"))
-            state.mark_morning(local_day, 101, morning, "morning")
+            state.mark_morning(local_day, 101, morning)
             state.remember_beach_candidate(
                 local_day,
                 status,
@@ -267,7 +235,7 @@ class PublicationStateTests(unittest.TestCase):
                 "beach_candidate", json.loads(path.read_text())
             )
 
-    def test_ignores_unsuccessful_previous_attempt(self):
+    def test_unknown_state_structure_fails_closed(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "delivery.json"
             path.write_text(
@@ -279,9 +247,8 @@ class PublicationStateTests(unittest.TestCase):
                 )
             )
 
-            self.assertIsNone(
+            with self.assertRaises(StateError):
                 PublicationState(path).last_successful_date()
-            )
 
     def test_corrupt_state_fails_closed(self):
         with tempfile.TemporaryDirectory() as directory:

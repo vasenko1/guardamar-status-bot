@@ -18,6 +18,9 @@ class Weather:
     sky_conditions: Tuple[str, ...] = ()
     rain_probability_percent: Optional[int] = None
     rain_period: Optional[str] = None
+    uv_index: Optional[int] = None
+    sunrise: Optional[datetime] = None
+    sunset: Optional[datetime] = None
 
 
 @dataclass(frozen=True)
@@ -93,6 +96,15 @@ class TrafficNotice:
 
 
 @dataclass(frozen=True)
+class PharmacyDuty:
+    """One on-call pharmacy row from the official provincial rota."""
+
+    name: str
+    address: str
+    hours: str
+
+
+@dataclass(frozen=True)
 class BeachNotice:
     text: str
     bathing_prohibited: bool
@@ -112,3 +124,4 @@ class MorningDigest:
     holidays: Tuple[Holiday, ...] = ()
     events: Tuple[Event, ...] = ()
     beach_notice: Optional[BeachNotice] = None
+    pharmacies: Tuple[PharmacyDuty, ...] = ()

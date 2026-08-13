@@ -13,6 +13,7 @@ from telegrambot.telegram import (
     _delete_message,
     _edit_message,
     send_message,
+    send_poll,
 )
 
 
@@ -119,6 +120,54 @@ class TelegramDeliveryTests(unittest.IsolatedAsyncioTestCase):
             },
         )
         self.assertTrue(request.full_url.endswith("/sendMessage"))
+
+    async def test_send_poll_posts_anonymous_native_poll(self):
+        opener = _Opener(_SuccessfulResponse(
+            payload=b'{"ok": true, "result": {"message_id": 77}}',
+            url="https://api.telegram.org/botsecret-token/sendPoll",
+        ))
+        with patch(
+            "telegrambot.telegram.urllib.request.build_opener",
+            return_value=opener,
+        ):
+            message_id = await send_poll(
+                "secret-token",
+                "@destination",
+                "Что добавить в дайджест?",
+                ["Аптеки", "УФ-индекс", "Ничего"],
+            )
+
+        self.assertEqual(message_id, 77)
+        request = opener.request
+        body = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(
+            body,
+            {
+                "chat_id": "@destination",
+                "question": "Что добавить в дайджест?",
+                "options": ["Аптеки", "УФ-индекс", "Ничего"],
+                "is_anonymous": True,
+            },
+        )
+        self.assertTrue(request.full_url.endswith("/sendPoll"))
+
+    async def test_send_poll_rejects_invalid_shapes_without_network(self):
+        cases = (
+            ("", ["a", "b"]),
+            ("q" * 301, ["a", "b"]),
+            ("вопрос", ["одинокий вариант"]),
+            ("вопрос", ["a"] * 11),
+            ("вопрос", ["a", "x" * 101]),
+        )
+        for question, options in cases:
+            with self.subTest(question=question[:10], count=len(options)):
+                with self.assertRaises(TelegramError) as raised:
+                    await send_poll(
+                        "secret-token", "@destination", question, options
+                    )
+                self.assertEqual(
+                    raised.exception.diagnostic_code, "CONFIG"
+                )
 
     async def test_delete_message_uses_known_message_identifier(self):
         opener = _Opener(

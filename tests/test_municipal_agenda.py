@@ -13,11 +13,9 @@ from telegrambot.municipal_agenda import (
     _current_events,
     _enrich_todo_admissions,
     _enrich_todo_participation,
-    _cached_current_events,
     _apply_reviewed_corrections,
     _apply_reviewed_daily_schedules,
     _load_snapshot,
-    _merge_reviewed_text_agenda,
     _merge_transition_events,
     _snapshot_data,
     _write_snapshot,
@@ -474,44 +472,6 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(loaded["_events"]), 1)
         self.assertEqual(loaded["_events"][0].title_es, "SPANISH BRASS")
 
-    def test_repairs_reviewed_entropia_facts_without_reprocessing_poster(self):
-        incorrect = (
-            normalize_extraction(
-                {
-                    "events": [
-                        {
-                            "title_es": "Exposición de pintura: Conchi Montes",
-                            "start_date": "2026-07-03",
-                            "end_date": "2026-07-29",
-                            "start_time": "09:00",
-                            "end_time": "14:00",
-                            "place": "Biblioteca Municipal",
-                            "category": "exhibition",
-                        }
-                    ]
-                }
-            )
-        )
-
-        corrected = _apply_reviewed_corrections(
-            (
-                "https://www.guardamardelsegura.es/wp-content/uploads/"
-                "2026/07/MUPI-JULIO-2026.jpg"
-            ),
-            incorrect,
-        )
-
-        self.assertEqual(
-            corrected[0].title_es,
-            "Exposición de pintura «Entropía» de Conchi Montes",
-        )
-        self.assertEqual(corrected[0].start_time, "08:00")
-        self.assertEqual(corrected[0].end_time, "14:00")
-        self.assertEqual(
-            corrected[0].place,
-            "Biblioteca Pública Municipal",
-        )
-
     def test_repairs_reviewed_august_poster_facts(self):
         incorrect = (
             SourceEvent(
@@ -544,50 +504,30 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             incorrect,
         )
 
-        tennis = next(
-            event for event in corrected if "Torneo de tenis" in event.title_es
-        )
         routes = [
             event for event in corrected if "Rutas nocturnas" in event.title_es
         ]
-        self.assertEqual(tennis.start_date, date(2026, 8, 1))
-        self.assertIsNone(tennis.start_time)
         self.assertEqual(
             [(event.start_date.day, event.start_time) for event in routes],
-            [(7, "22:15"), (14, "22:15"), (21, "22:15"), (28, "22:15")],
+            [(14, "22:15"), (21, "22:15"), (28, "22:15")],
         )
         self.assertFalse(any(
             "ajedrez" in event.title_es.casefold() for event in corrected
         ))
-        drums = next(
-            event for event in corrected if event.title_es == "Taller de baterías"
-        )
-        self.assertEqual(drums.participation_note, "для молодёжи 12–30 лет")
-        self.assertEqual(
-            drums.registration_contact,
-            "Centro Social Juvenil или WhatsApp 609 00 67 54",
-        )
-        labores = next(
-            event
-            for event in corrected
-            if "Labores a la fresca" in event.title_es
-        )
-        self.assertEqual(labores.start_date, date(2026, 8, 6))
-        self.assertEqual((labores.start_time, labores.end_time), (
-            "18:00", "20:00"
-        ))
-        self.assertEqual(labores.ticket_price_cents, 0)
+        exhibitions = [
+            event for event in corrected if event.category == "exhibition"
+        ]
+        self.assertEqual(len(exhibitions), 2)
         workshops = [
             event for event in corrected
             if event.place == "Centro Social Juvenil"
         ]
         self.assertEqual(
             [(event.start_date.day, event.start_time) for event in workshops],
-            [(1, "19:00"), (8, "19:00"), (15, "19:00"),
-             (22, "19:00"), (29, "19:00")],
+            [(15, "19:00"), (22, "19:00"), (29, "19:00")],
         )
 
-    def test_august_first_day_keeps_only_reviewed_active_events(self):
+    def test_reviewed_active_events_for_current_day(self):
         corrected = _apply_reviewed_corrections(
             (
                 "https://www.guardamardelsegura.es/wp-content/uploads/"
@@ -597,50 +537,25 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         )
         scheduled = _apply_reviewed_daily_schedules(
             corrected,
-            date(2026, 8, 1),
+            date(2026, 8, 14),
         )
         active = [
             event for event in scheduled
-            if event.start_date <= date(2026, 8, 1) <= event.end_date
+            if event.start_date <= date(2026, 8, 14) <= event.end_date
         ]
 
         self.assertEqual(
             [event.title_es for event in active],
             [
-                "Torneo de tenis 24.º Open Real Villa de Guardamar, "
-                "Memorial Pepe y Juan Tendero 2026",
                 "Exposición de pintura y escultura: "
                 "Mediterráneo, el lenguaje del agua",
-                "Taller de cultura K-Pop y TikTok",
+                "Exposición de pintura «Luz a pesar del dolor» "
+                "de Vira Degliarenko",
+                "Rutas nocturnas: senderismo y dinámica grupal",
             ],
         )
-        self.assertEqual(active[1].start_time, "10:00")
-        self.assertEqual(active[1].end_time, "14:00")
-
-    def test_keeps_entropia_when_site_advances_to_august_poster(self):
-        august_events = normalize_extraction(
-            {
-                "events": [
-                    {
-                        "title_es": "Evento de agosto",
-                        "start_date": "2026-08-01",
-                        "end_date": "2026-08-01",
-                        "start_time": None,
-                        "end_time": None,
-                        "place": None,
-                        "category": "event",
-                    }
-                ]
-            }
-        )
-
-        merged = _merge_reviewed_text_agenda(august_events)
-
-        entropia = next(
-            event for event in merged if "Entropía" in event.title_es
-        )
-        self.assertEqual(entropia.end_date, datetime(2026, 7, 29).date())
-        self.assertEqual(entropia.start_time, "08:00")
+        self.assertEqual(active[0].start_time, "09:00")
+        self.assertEqual(active[0].end_time, "20:00")
 
     def test_uses_published_mediterraneo_visiting_hours(self):
         event = SourceEvent(
@@ -679,57 +594,36 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             ),
         )
 
-    def test_normalizes_reviewed_august_sixth_event_details(self):
+    def test_normalizes_recurring_evening_event_details(self):
         events = (
             SourceEvent(
-                "EXPLORADOR DE EMOCIONES: “La alegría que hay en ti”, de Cat Deeley",
-                date(2026, 8, 6), date(2026, 8, 6), "11:30", None,
-                "Biblioteca Infantil Municipal", "event",
-            ),
-            SourceEvent(
                 "Actividad ‘Labores a la fresca’",
-                date(2026, 8, 6), date(2026, 8, 6), "18:00", "20:00",
+                date(2026, 8, 13), date(2026, 8, 13), "18:00", "20:00",
                 "Casa de Cultura", "event",
             ),
             SourceEvent(
-                "DIXI PROJECT",
-                date(2026, 8, 6), date(2026, 8, 6), "19:30", None,
-                "Plaça dels Llauradors", "event",
-            ),
-            SourceEvent(
                 "BALL D’ESTIU",
-                date(2026, 8, 6), date(2026, 8, 6), "21:30", "23:30",
+                date(2026, 8, 13), date(2026, 8, 13), "21:30", None,
                 "Auditorio Orquesta GÚMAR. Parque Reina Sofía", "event",
-            ),
-            SourceEvent(
-                "KIKI MORENTE",
-                date(2026, 8, 6), date(2026, 8, 6), "22:00", None,
-                "Castell de Guardamar", "event",
             ),
         )
 
         scheduled = _apply_reviewed_daily_schedules(
-            events, date(2026, 8, 6)
+            events, date(2026, 8, 13)
         )
 
-        self.assertIn("de Cat Deeley", scheduled[0].title_es)
-        self.assertEqual(scheduled[1].ticket_price_cents, 0)
         self.assertEqual(
-            scheduled[2].title_es,
-            "DIXI PROJECT: Viaje por la música de los años 20",
+            scheduled[0].title_es,
+            "Labores a la fresca: ‘Yo te enseño, tú me enseñas’",
         )
-        self.assertEqual(scheduled[2].place, "Plaça dels Llauradors")
-        self.assertIsNone(scheduled[2].ticket_price_cents)
+        self.assertEqual(scheduled[0].place, "Casa de Cultura")
+        self.assertEqual(scheduled[0].ticket_price_cents, 0)
         self.assertEqual(
-            scheduled[3].place,
+            scheduled[1].place,
             "Parque Reina Sofía (Auditorio Orquesta GÚMAR)",
         )
-        self.assertEqual(scheduled[3].ticket_price_cents, 0)
-        self.assertEqual(scheduled[4].ticket_price_cents, 2500)
-        self.assertEqual(
-            scheduled[4].title_es,
-            "KIKI MORENTE EN CONCIERTO. ESTIVAL AL CASTELL",
-        )
+        self.assertEqual(scheduled[1].end_time, "23:30")
+        self.assertEqual(scheduled[1].ticket_price_cents, 0)
 
     def test_vira_exhibition_uses_only_published_weekday_hours(self):
         event = SourceEvent(
@@ -750,75 +644,31 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(weekday[0].place, "Biblioteca Municipal")
         self.assertEqual(saturday, ())
 
-    def test_spanish_brass_price_is_restored_for_legacy_snapshot(self):
-        event = SourceEvent(
-            title_es="Concierto Spanish Brass «Top Secret»",
-            start_date=date(2026, 8, 5),
-            end_date=date(2026, 8, 5),
-            start_time="22:00",
-            end_time=None,
-            place="Castell de Guardamar",
-            category="music",
-        )
-
-        scheduled = _apply_reviewed_daily_schedules(
-            (event,), date(2026, 8, 5)
-        )
-
-        self.assertEqual(scheduled[0].ticket_price_cents, 1500)
-
-    def test_spanish_brass_price_is_not_applied_to_another_date(self):
-        event = SourceEvent(
-            title_es="Concierto Spanish Brass",
-            start_date=date(2026, 8, 6),
-            end_date=date(2026, 8, 6),
-            start_time="22:00",
-            end_time=None,
-            place="Castell de Guardamar",
-            category="music",
-        )
-
-        scheduled = _apply_reviewed_daily_schedules(
-            (event,), date(2026, 8, 6)
-        )
-
-        self.assertIsNone(scheduled[0].ticket_price_cents)
-
-    def test_normalizes_reviewed_august_seventh_event_details(self):
+    def test_normalizes_reviewed_night_route_details(self):
         events = (
             SourceEvent(
-                "Alice Wonder", date(2026, 8, 7), date(2026, 8, 7),
-                "22:00", None, "Castell de Guardamar", "music",
-            ),
-            SourceEvent(
                 "Rutas nocturnas: senderismo y dinámica grupal",
-                date(2026, 8, 7), date(2026, 8, 7),
+                date(2026, 8, 14), date(2026, 8, 14),
                 "22:15", "00:15", None, "event",
             ),
         )
 
         scheduled = _apply_reviewed_daily_schedules(
-            events, date(2026, 8, 7)
+            events, date(2026, 8, 14)
         )
 
         self.assertEqual(
-            scheduled[0].title_es,
-            "ALICE WONDER EN CONCIERTO. ESTIVAL AL CASTELL",
+            scheduled[0].place, "Место старта сообщит инструктор"
         )
-        self.assertEqual(scheduled[0].place, "Castell de Guardamar")
-        self.assertEqual(scheduled[0].ticket_price_cents, 2500)
+        self.assertEqual(scheduled[0].ticket_price_cents, 0)
         self.assertEqual(
-            scheduled[1].place, "Место старта сообщит инструктор"
-        )
-        self.assertEqual(scheduled[1].ticket_price_cents, 0)
-        self.assertEqual(
-            scheduled[1].participation_note,
+            scheduled[0].participation_note,
             "с собой: спортивная обувь, вода и фонарик",
         )
         self.assertEqual(
-            scheduled[1].registration_contact, "633 14 57 75"
+            scheduled[0].registration_contact, "633 14 57 75"
         )
-        self.assertTrue(scheduled[1].capacity_limited)
+        self.assertTrue(scheduled[0].capacity_limited)
 
     def test_night_route_details_do_not_leak_to_another_event(self):
         event = SourceEvent(

@@ -5,7 +5,7 @@ import re
 import unicodedata
 import urllib.parse
 from datetime import date, datetime, timedelta
-from typing import Optional, Sequence
+from typing import List, Optional, Sequence
 from zoneinfo import ZoneInfo
 
 from .branding import with_footer
@@ -109,6 +109,16 @@ MONTHS_GENITIVE = (
     "", "января", "февраля", "марта", "апреля", "мая", "июня",
     "июля", "августа", "сентября", "октября", "ноября", "декабря",
 )
+
+
+def _uv_label(uv_index: int) -> str:
+    """Return the WHO exposure-category name for a high UV index."""
+
+    if uv_index >= 11:
+        return "экстремальный"
+    if uv_index >= 8:
+        return "очень высокий"
+    return "высокий"
 
 
 def _warning_text(event: str) -> str:
@@ -442,32 +452,6 @@ def _beach_operational_lines(
     return lines
 
 
-def build_fallback_update(
-    morning_message: str,
-    beach: Optional[BeachStatus],
-    notice: Optional[BeachNotice],
-) -> str:
-    """Add verified beach updates to the already published morning copy."""
-
-    additions = _beach_operational_lines(beach, notice)
-    if not additions:
-        return with_footer(morning_message)
-    lines = morning_message.splitlines()
-    weather_rows = [
-        index
-        for index, line in enumerate(lines)
-        if line.startswith((
-            "💨 Ветер:",
-            "🌊 Море:",
-            "<b>Ветер:</b>",
-            "<b>Море:</b>",
-        ))
-    ]
-    insert_at = max(weather_rows) + 1 if weather_rows else len(lines)
-    lines[insert_at:insert_at] = ["", *additions]
-    return with_footer("\n".join(lines))
-
-
 def build_message(
     digest: MorningDigest,
     now: Optional[datetime] = None,
@@ -559,6 +543,21 @@ def build_message(
         else:
             lines.append("<b>Ветер:</b> —")
         lines.append(f"<b>Море:</b> {sea_temperature}{sea_suffix}")
+        if weather.uv_index is not None and weather.uv_index >= 6:
+            lines.append(
+                f"<b>УФ:</b> {weather.uv_index}"
+                f" ({_uv_label(weather.uv_index)})"
+            )
+        if weather.sunrise is not None and weather.sunset is not None:
+            sunrise_label = weather.sunrise.astimezone(
+                GUARDAMAR_TIMEZONE
+            ).strftime("%H:%M")
+            sunset_label = weather.sunset.astimezone(
+                GUARDAMAR_TIMEZONE
+            ).strftime("%H:%M")
+            lines.append(
+                f"<b>Солнце:</b> {sunrise_label} → {sunset_label}"
+            )
 
     warning_now = now or datetime.now(GUARDAMAR_TIMEZONE)
     warning_section = build_warning_section(digest.warnings, warning_now)
@@ -578,6 +577,14 @@ def build_message(
         for notice in visible_traffic:
             prefix = "• " if len(visible_traffic) > 1 else ""
             lines.append(prefix + html.escape(notice.text))
+
+    if digest.pharmacies:
+        lines.extend(["", "💊 <b>Дежурная аптека:</b>"])
+        for duty in digest.pharmacies[:2]:
+            lines.append(
+                f"• {html.escape(duty.name)} — {html.escape(duty.hours)}"
+            )
+            lines.append(f"  📍 {_event_place_link(duty.address)}")
 
     if digest.holidays:
         scope_labels = {
@@ -618,77 +625,96 @@ def build_message(
             lines.append("  🏛️ Официальный выходной день.")
 
     if digest.events:
-        event_lines = ["", "📅 <b>События дня:</b>"]
-        for index, event in enumerate(digest.events):
-            if index:
-                event_lines.append("")
-            title = event.title
-            if event.category == "exhibition":
-                title = _exhibition_title(title)
-            title = html.escape(_event_title(title))
-            if event.participation_note:
-                title += " (" + html.escape(event.participation_note) + ")"
-            if event.is_final_day:
-                title = f"Последний день: {title}"
-            time_prefix = ""
-            if event.starts_at is not None:
-                start_time = event.starts_at.astimezone(
-                    GUARDAMAR_TIMEZONE
-                ).strftime("%H:%M")
-                time_prefix = f"<b>{start_time}"
-                if event.ends_at is not None:
-                    end_time = event.ends_at.astimezone(
-                        GUARDAMAR_TIMEZONE
-                    ).strftime("%H:%M")
-                    time_prefix += f"–{end_time}"
-                time_prefix += "</b> — "
-            event_lines.append(f"• {time_prefix}{title}")
-            if event.place:
-                event_lines.append(f"  📍 {_event_place_link(event.place)}")
-            has_ticket_row = (
-                event.ticket_price_cents is not None
-                or event.registration_contact is not None
-                or event.capacity_limited
-            )
-            if has_ticket_row:
-                if event.ticket_price_cents == 0:
-                    ticket_label = "Бесплатно"
-                elif event.ticket_price_cents is not None:
-                    price = event.ticket_price_cents / 100
-                    price_label = (
-                        f"{int(price)} €"
-                        if price.is_integer()
-                        else f"{price:.2f} €".replace(".", ",")
-                    )
-                    ticket_label = f"Билет {price_label}"
-                else:
-                    ticket_label = ""
-                details = []
-                if event.ticket_url and ticket_label:
-                    details.append(
-                        '<a href="'
-                        + html.escape(event.ticket_url, quote=True)
-                        + f'">{ticket_label}</a>'
-                    )
-                elif ticket_label:
-                    details.append(ticket_label)
-                if event.registration_contact:
-                    details.append(
-                        "регистрация: "
-                        + html.escape(event.registration_contact)
-                    )
-                if event.capacity_limited:
-                    details.append("места ограничены")
-                if details:
-                    event_lines.append("  🎟 " + " · ".join(details))
-            if len("\n".join([*lines, *event_lines])) > 3900:
-                rows = 1 + int(bool(event.place)) + int(has_ticket_row)
-                event_lines = event_lines[:-rows]
-                if event_lines and event_lines[-1] == "":
-                    event_lines.pop()
-                break
-        if len(event_lines) > 2:
-            lines.extend(event_lines)
+        event_lines = build_event_section(
+            digest.events,
+            "📅 <b>События дня:</b>",
+            prefix_length=len("\n".join(lines)),
+        )
+        lines.extend(event_lines)
     if len(lines) == 1:
         raise ValueError("No verified digest content is available")
     return with_footer("\n".join(lines))
+
+
+def build_event_section(
+    events: Sequence,
+    heading: str,
+    *,
+    prefix_length: int = 0,
+) -> List[str]:
+    """Render one bounded event list shared by every digest variant.
+
+    Returns a leading empty line, the heading, and event bullets, or an
+    empty list when nothing survives the message-size bound.
+    """
+
+    event_lines = ["", heading]
+    for index, event in enumerate(events):
+        if index:
+            event_lines.append("")
+        title = event.title
+        if event.category == "exhibition":
+            title = _exhibition_title(title)
+        title = html.escape(_event_title(title))
+        if event.participation_note:
+            title += " (" + html.escape(event.participation_note) + ")"
+        if event.is_final_day:
+            title = f"Последний день: {title}"
+        time_prefix = ""
+        if event.starts_at is not None:
+            start_time = event.starts_at.astimezone(
+                GUARDAMAR_TIMEZONE
+            ).strftime("%H:%M")
+            time_prefix = f"<b>{start_time}"
+            if event.ends_at is not None:
+                end_time = event.ends_at.astimezone(
+                    GUARDAMAR_TIMEZONE
+                ).strftime("%H:%M")
+                time_prefix += f"–{end_time}"
+            time_prefix += "</b> — "
+        event_lines.append(f"• {time_prefix}{title}")
+        if event.place:
+            event_lines.append(f"  📍 {_event_place_link(event.place)}")
+        has_ticket_row = (
+            event.ticket_price_cents is not None
+            or event.registration_contact is not None
+            or event.capacity_limited
+        )
+        if has_ticket_row:
+            if event.ticket_price_cents == 0:
+                ticket_label = "Бесплатно"
+            elif event.ticket_price_cents is not None:
+                price = event.ticket_price_cents / 100
+                price_label = (
+                    f"{int(price)} €"
+                    if price.is_integer()
+                    else f"{price:.2f} €".replace(".", ",")
+                )
+                ticket_label = f"Билет {price_label}"
+            else:
+                ticket_label = ""
+            details = []
+            if event.ticket_url and ticket_label:
+                details.append(
+                    '<a href="'
+                    + html.escape(event.ticket_url, quote=True)
+                    + f'">{ticket_label}</a>'
+                )
+            elif ticket_label:
+                details.append(ticket_label)
+            if event.registration_contact:
+                details.append(
+                    "регистрация: "
+                    + html.escape(event.registration_contact)
+                )
+            if event.capacity_limited:
+                details.append("места ограничены")
+            if details:
+                event_lines.append("  🎟 " + " · ".join(details))
+        if prefix_length + 1 + len("\n".join(event_lines)) > 3900:
+            rows = 1 + int(bool(event.place)) + int(has_ticket_row)
+            event_lines = event_lines[:-rows]
+            if event_lines and event_lines[-1] == "":
+                event_lines.pop()
+            break
+    return event_lines if len(event_lines) > 2 else []

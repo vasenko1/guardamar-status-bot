@@ -16,7 +16,6 @@ from telegrambot.electricity import (
     _colors,
     _load_price_snapshot,
     _price,
-    _RejectRedirects,
     _write_price_snapshot,
     build_explanation_message,
     build_price_message,
@@ -27,6 +26,7 @@ from telegrambot.electricity import (
     TIMEZONE,
 )
 from telegrambot.__main__ import _run_command
+from telegrambot._transport import BoundedFetchError, _BoundedRedirectHandler
 from telegrambot.state import PublicationState
 from telegrambot.state import StateError
 from telegrambot.telegram import TelegramError
@@ -113,9 +113,11 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(loaded, unusual)
 
     def test_esios_redirects_are_rejected_before_following(self):
-        handler = _RejectRedirects()
+        # ESIOS passes follow_redirects=False, which installs a handler
+        # with no allowed-URL predicate: every redirect must fail closed.
+        handler = _BoundedRedirectHandler(None)
 
-        with self.assertRaises(ElectricityError) as raised:
+        with self.assertRaises(BoundedFetchError) as raised:
             handler.redirect_request(
                 None,
                 None,
@@ -125,8 +127,7 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
                 "https://example.com/collect",
             )
 
-        self.assertEqual(raised.exception.diagnostic_code, "REDIRECT")
-        self.assertFalse(raised.exception.retryable)
+        self.assertEqual(raised.exception.code, "REDIRECT")
 
     def test_snapshot_for_another_date_is_not_reused(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -221,7 +222,7 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
         target = (datetime.now(TIMEZONE) + timedelta(days=1)).date()
         with tempfile.TemporaryDirectory() as directory:
             state_path = Path(directory) / "electricity.json"
-            PublicationState(state_path).mark_published(target)
+            PublicationState(state_path).mark_electricity_published(target)
             environment = {
                 "ELECTRICITY_STATE_PATH": str(state_path),
                 "ELECTRICITY_SNAPSHOT_PATH": str(

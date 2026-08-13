@@ -3,16 +3,12 @@
 import asyncio
 import hashlib
 import html
-import http.client
 import json
 import logging
 import os
 import re
-import socket
 import tempfile
-import urllib.error
 import urllib.parse
-import urllib.request
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from html.parser import HTMLParser
@@ -20,6 +16,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
+from ._transport import BoundedFetchError, fetch_bounded
 from .gemini import (
     GeminiError,
     extract_agenda_events,
@@ -28,6 +25,12 @@ from .gemini import (
     verify_agenda_poster_events,
 )
 from .event_translations import cached_title
+from .reviewed import (
+    ReviewedDataError,
+    normalized_title,
+    reviewed_poster,
+    schedule_rules,
+)
 from .models import Event
 from .diagnostics import SourceDiagnostic, source_error
 from .todo_cultura import (
@@ -104,36 +107,14 @@ def _is_allowed_url(url: str, allowed_hosts: set[str]) -> bool:
     return parsed.scheme == "https" and parsed.hostname in allowed_hosts
 
 
-class _MunicipalRedirectHandler(urllib.request.HTTPRedirectHandler):
-    def __init__(self, allowed_hosts: set[str]) -> None:
-        super().__init__()
-        self.allowed_hosts = allowed_hosts
-
-    def redirect_request(
-        self,
-        request,
-        file_pointer,
-        code,
-        message,
-        headers,
-        new_url,
-    ):
-        if not _is_allowed_url(new_url, self.allowed_hosts):
-            raise MunicipalAgendaError(
-                "Municipal agenda redirected outside official hosts",
-                code="REDIRECT",
-                description=(
-                    "сервер перенаправил запрос за пределы официального сайта"
-                ),
-            )
-        return super().redirect_request(
-            request,
-            file_pointer,
-            code,
-            message,
-            headers,
-            new_url,
-        )
+_TRANSPORT_DESCRIPTIONS = {
+    "URL-POLICY": "адрес не принадлежит официальной афише",
+    "REDIRECT": "получен недопустимый адрес ответа официальной афиши",
+    "CONTENT-TYPE": "официальная афиша вернула неожиданный формат",
+    "TIMEOUT": "сервер не ответил до истечения тайм-аута",
+    "NETWORK": "не удалось установить сетевое соединение",
+    "TOO-LARGE": "ответ превысил допустимый размер",
+}
 
 
 def _read_url(
@@ -141,88 +122,41 @@ def _read_url(
     allowed_hosts: set[str],
     limit: int,
 ) -> Tuple[bytes, str]:
-    if not _is_allowed_url(url, allowed_hosts):
-        raise MunicipalAgendaError(
-            "Municipal agenda URL is not allowed",
-            code="URL-POLICY",
-            description="адрес не принадлежит официальной афише",
-        )
     page_request = allowed_hosts == PAGE_HOSTS
     accepted_types = (
-        {"text/html"}
+        frozenset({"text/html"})
         if page_request
-        else {"image/jpeg", "image/png", "image/webp"}
-    )
-    request = urllib.request.Request(
-        url,
-        headers={
-            "Accept": (
-                "text/html"
-                if page_request
-                else "image/jpeg,image/png,image/webp"
-            ),
-            "User-Agent": "GuardamarMorningDigest/0.12",
-        },
-    )
-    opener = urllib.request.build_opener(
-        _MunicipalRedirectHandler(allowed_hosts)
+        else frozenset({"image/jpeg", "image/png", "image/webp"})
     )
     try:
-        with opener.open(
-            request,
-            timeout=REQUEST_TIMEOUT_SECONDS,
-        ) as response:
-            if not _is_allowed_url(response.geturl(), allowed_hosts):
-                raise MunicipalAgendaError(
-                    "Unexpected municipal agenda redirect",
-                    code="REDIRECT",
-                    description=(
-                        "получен недопустимый адрес ответа официальной афиши"
-                    ),
-                )
-            mime_type = response.headers.get_content_type()
-            if mime_type not in accepted_types:
-                raise MunicipalAgendaError(
-                    "Municipal agenda returned an unexpected content type",
-                    code="CONTENT-TYPE",
-                    description=(
-                        "официальная афиша вернула неожиданный формат"
-                    ),
-                )
-            payload = response.read(limit + 1)
-    except urllib.error.HTTPError as exc:
-        raise MunicipalAgendaError(
-            f"Municipal agenda returned HTTP {exc.code}",
-            code=f"HTTP-{exc.code}",
-            status=exc.code,
-            description=f"сервер вернул HTTP {exc.code}",
-        ) from exc
-    except (
-        urllib.error.URLError,
-        TimeoutError,
-        socket.timeout,
-        OSError,
-        http.client.HTTPException,
-    ) as exc:
-        timed_out = isinstance(exc, (TimeoutError, socket.timeout)) or (
-            isinstance(exc, urllib.error.URLError)
-            and isinstance(exc.reason, (TimeoutError, socket.timeout))
+        payload, _, mime_type = fetch_bounded(
+            url,
+            is_allowed_url=lambda value: _is_allowed_url(
+                value, allowed_hosts
+            ),
+            accepted_types=accepted_types,
+            limit_bytes=limit,
+            timeout_seconds=REQUEST_TIMEOUT_SECONDS,
+            headers={
+                "Accept": (
+                    "text/html"
+                    if page_request
+                    else "image/jpeg,image/png,image/webp"
+                ),
+                "User-Agent": "GuardamarMorningDigest/0.12",
+            },
         )
+    except BoundedFetchError as exc:
         raise MunicipalAgendaError(
-            "Municipal agenda request failed",
-            code="TIMEOUT" if timed_out else "NETWORK",
+            f"Municipal agenda request failed: {exc.code}",
+            code=exc.code,
+            status=exc.status,
             description=(
-                "сервер не ответил до истечения тайм-аута"
-                if timed_out
-                else "не удалось установить сетевое соединение"
+                f"сервер вернул HTTP {exc.status}"
+                if exc.status is not None
+                else _TRANSPORT_DESCRIPTIONS.get(exc.code)
             ),
         ) from exc
-    if len(payload) > limit:
-        raise MunicipalAgendaError(
-            "Municipal agenda response was too large",
-            code="TOO-LARGE",
-            description="ответ превысил допустимый размер",
-        )
     return payload, mime_type
 
 
@@ -911,6 +845,35 @@ def _inherit_reviewed_details(
     return tuple(result)
 
 
+_POSTER_SOURCES = frozenset({"mupi", "mupi_reviewed"})
+_TEXT_SOURCES = frozenset({"turismo_html", "todo_cultura",
+                           "todo_cultura_reviewed"})
+
+
+def _is_poster_only(event: SourceEvent) -> bool:
+    """Report whether OCR is the sole provenance behind this event."""
+
+    sources = set(event.sources)
+    return bool(sources & _POSTER_SOURCES) and not (sources & _TEXT_SOURCES)
+
+
+def _reviewed_source_event(entry: dict) -> SourceEvent:
+    return SourceEvent(
+        title_es=entry["title_es"],
+        start_date=date.fromisoformat(entry["start_date"]),
+        end_date=date.fromisoformat(entry["end_date"]),
+        start_time=entry.get("start_time"),
+        end_time=entry.get("end_time"),
+        place=entry.get("place"),
+        category=entry["category"],
+        sources=tuple(entry.get("sources", ())),
+        ticket_price_cents=entry.get("ticket_price_cents"),
+        participation_note=entry.get("participation_note"),
+        registration_contact=entry.get("registration_contact"),
+        capacity_limited=bool(entry.get("capacity_limited", False)),
+    )
+
+
 def _apply_reviewed_corrections(
     poster_url: str,
     events: Tuple[SourceEvent, ...],
@@ -919,198 +882,60 @@ def _apply_reviewed_corrections(
 
     parsed = urllib.parse.urlparse(poster_url)
     poster_name = parsed.path.rsplit("/", 1)[-1].casefold()
-    is_july_2026 = (
-        parsed.scheme == "https"
-        and parsed.hostname in POSTER_HOSTS
-        and "/wp-content/uploads/2026/07/" in parsed.path.casefold()
-        and poster_name.startswith("mupi-julio-2026")
-        and poster_name.endswith((".jpg", ".jpeg", ".png", ".webp"))
-    )
-    is_august_2026 = (
-        parsed.scheme == "https"
-        and parsed.hostname in POSTER_HOSTS
-        and "/wp-content/uploads/2026/07/" in parsed.path.casefold()
-        and poster_name == "mupi-agosto-2026-scaled.jpg"
-    )
-    if not is_july_2026 and not is_august_2026:
-        return events
-    if is_august_2026:
-        reviewed = (
-            SourceEvent(
-                title_es=(
-                    "Torneo de tenis 24.º Open Real Villa de Guardamar, "
-                    "Memorial Pepe y Juan Tendero 2026"
-                ),
-                start_date=date(2026, 8, 1),
-                end_date=date(2026, 8, 8),
-                start_time=None,
-                end_time=None,
-                place="Polideportivo Municipal Guardamar",
-                category="event",
-                sources=("mupi_reviewed",),
-            ),
-            SourceEvent(
-                title_es=(
-                    "Exposición de pintura y escultura: "
-                    "Mediterráneo, el lenguaje del agua"
-                ),
-                start_date=date(2026, 6, 19),
-                end_date=date(2026, 8, 14),
-                start_time=None,
-                end_time=None,
-                place="Sala de exposiciones Casa de Cultura",
-                category="exhibition",
-                sources=("mupi_reviewed",),
-            ),
-            SourceEvent(
-                title_es=(
-                    "Exposición de pintura «Luz a pesar del dolor» "
-                    "de Vira Degliarenko"
-                ),
-                start_date=date(2026, 7, 31),
-                end_date=date(2026, 8, 21),
-                start_time="08:00",
-                end_time="14:00",
-                place="Biblioteca Municipal",
-                category="exhibition",
-                sources=("mupi_reviewed", "todo_cultura_reviewed"),
-            ),
-            SourceEvent(
-                title_es=(
-                    "Labores a la fresca: ‘Yo te enseño, tú me enseñas’"
-                ),
-                start_date=date(2026, 8, 6),
-                end_date=date(2026, 8, 6),
-                start_time="18:00",
-                end_time="20:00",
-                place="Casa de Cultura",
-                category="event",
-                ticket_price_cents=0,
-                sources=("mupi_reviewed", "todo_cultura_reviewed"),
-            ),
-            *tuple(
-                SourceEvent(
-                    title_es="Rutas nocturnas: senderismo y dinámica grupal",
-                    start_date=date(2026, 8, day),
-                    end_date=date(2026, 8, day),
-                    start_time="22:15",
-                    end_time="00:15",
-                    place=None,
-                    category="event",
-                    sources=("mupi_reviewed",),
-                )
-                for day in (7, 14, 21, 28)
-            ),
-            SourceEvent(
-                title_es="Taller de cultura K-Pop y TikTok",
-                start_date=date(2026, 8, 1),
-                end_date=date(2026, 8, 1),
-                start_time="19:00",
-                end_time="21:00",
-                place="Centro Social Juvenil",
-                category="event",
-                sources=("mupi_reviewed",),
-            ),
-            *tuple(
-                SourceEvent(
-                    title_es=title,
-                    start_date=date(2026, 8, day),
-                    end_date=date(2026, 8, day),
-                    start_time="19:00",
-                    end_time="21:00",
-                    place="Centro Social Juvenil",
-                    category="event",
-                    sources=("mupi_reviewed", "todo_cultura_reviewed"),
-                    participation_note=(
-                        "для молодёжи 12–30 лет" if day == 8 else None
-                    ),
-                    registration_contact=(
-                        "Centro Social Juvenil или WhatsApp 609 00 67 54"
-                        if day == 8
-                        else None
-                    ),
-                )
-                for day, title in (
-                    (8, "Taller de baterías"),
-                    (15, "Taller de guitarras eléctricas"),
-                    (22, "Taller de música electrónica"),
-                    (29, "Taller de canto"),
-                )
-            ),
+    try:
+        poster = reviewed_poster(poster_name)
+    except ReviewedDataError as exc:
+        # The drop filter exists because some poster rows are known to be
+        # wrong. Without it those rows cannot be told apart, so every
+        # poster-only event is withheld; text-corroborated facts survive.
+        LOGGER.warning(
+            "Reviewed poster data rejected; withholding poster-only "
+            "events: %s",
+            exc,
         )
-        filtered = []
-        for event in events:
-            title = event.title_es.casefold()
-            if (
-                "rutas nocturnas" in title
-                or "senderismo" in title and "dinámica" in title
-                or "mediterráneo" in title and "lenguaje del agua" in title
-                or "luz a pesar del dolor" in title
-                or "vira deg" in title
-                or "labores a la fresca" in title
-                or "tendero" in title
-                or "open real villa" in title
-                or "open" in title and "villa de guardamar" in title
-                or "k-pop" in title
-                or "tik tok" in title
-                or "tiktok" in title
-                or "taller de bater" in title
-                or "taller de guitarra" in title
-                or "taller de música electrónica" in title
-                or "taller de musica electronica" in title
-                or "taller de canto" in title
-            ):
-                continue
-            filtered.append(event)
-        return tuple(filtered) + _inherit_reviewed_details(reviewed, events)
-    corrected = []
-    entropia_added = False
-    for event in events:
-        title = event.title_es.casefold()
-        if "conchi montes" not in title and "entrop" not in title:
-            corrected.append(event)
-            continue
-        if not entropia_added:
-            corrected.append(
-                SourceEvent(
-                    title_es=(
-                        "Exposición de pintura «Entropía» "
-                        "de Conchi Montes"
-                    ),
-                    start_date=date(2026, 7, 3),
-                    end_date=date(2026, 7, 29),
-                    start_time="08:00",
-                    end_time="14:00",
-                    place="Biblioteca Pública Municipal",
-                    category="exhibition",
-                    sources=event.sources,
-                )
-            )
-            entropia_added = True
-    return tuple(corrected)
-
-
-def _merge_reviewed_text_agenda(
-    events: Tuple[SourceEvent, ...],
-) -> Tuple[SourceEvent, ...]:
-    """Keep verified current-month facts when the poster advances early."""
-
-    additions = []
-    if not any(
-        "conchi montes" in event.title_es.casefold()
-        or "entrop" in event.title_es.casefold()
-        for event in events
+        return tuple(
+            event for event in events if not _is_poster_only(event)
+        )
+    if (
+        poster is None
+        or parsed.scheme != "https"
+        or parsed.hostname not in POSTER_HOSTS
+        or poster.upload_path not in parsed.path.casefold()
     ):
-        additions.append(SourceEvent(
-            title_es="Exposición de pintura «Entropía» de Conchi Montes",
-            start_date=date(2026, 7, 3),
-            end_date=date(2026, 7, 29),
-            start_time="08:00",
-            end_time="14:00",
-            place="Biblioteca Pública Municipal",
-            category="exhibition",
-        ))
-    return events + tuple(additions)
+        return events
+    # Expired reviewed occurrences are removed after their final date; the
+    # drop filter still discards their known-bad OCR rows.
+    reviewed = tuple(
+        _reviewed_source_event(entry) for entry in poster.events
+    )
+    filtered = [
+        event
+        for event in events
+        if not any(
+            all(
+                term in normalized_title(event.title_es)
+                for term in clause
+            )
+            for clause in poster.drop_titles
+        )
+    ]
+    return tuple(filtered) + _inherit_reviewed_details(reviewed, events)
+
+
+def _rule_matches(rule, event: SourceEvent, local_day: date) -> bool:
+    normalized = normalized_title(event.title_es)
+    if not all(term in normalized for term in rule.match):
+        return False
+    for field, value in rule.requires.items():
+        if field in {"start_date", "end_date"}:
+            expected = (
+                local_day if value == "today" else date.fromisoformat(value)
+            )
+            if getattr(event, field) != expected:
+                return False
+        elif getattr(event, field) != value:
+            return False
+    return True
 
 
 def _apply_reviewed_daily_schedules(
@@ -1119,199 +944,38 @@ def _apply_reviewed_daily_schedules(
 ) -> Tuple[SourceEvent, ...]:
     """Apply event-specific hours published in the official text agenda."""
 
+    try:
+        rules = schedule_rules()
+    except ReviewedDataError as exc:
+        LOGGER.warning("Reviewed data rejected; schedules skipped: %s", exc)
+        return events
+
     scheduled = []
     for event in events:
-        normalized = event.title_es.casefold()
-        is_spanish_brass = (
-            "spanish brass" in normalized
-            and event.start_date == date(2026, 8, 5)
-            and event.end_date == date(2026, 8, 5)
-            and event.start_time == "22:00"
+        rule = next(
+            (
+                candidate
+                for candidate in rules
+                if _rule_matches(candidate, event, local_day)
+            ),
+            None,
         )
-        is_mediterraneo = (
-            "mediterráneo" in normalized
-            and "lenguaje del agua" in normalized
-            and event.start_date == date(2026, 6, 19)
-            and event.end_date == date(2026, 8, 14)
-        )
-        is_vira_degliarenko = (
-            "vira deg" in normalized
-            and event.start_date == date(2026, 7, 31)
-            and event.end_date == date(2026, 8, 21)
-        )
-        is_emotions_workshop = (
-            "explorador de emociones" in normalized
-            and "alegría que hay en ti" in normalized
-            and event.start_date == date(2026, 8, 6)
-            and event.end_date == date(2026, 8, 6)
-            and event.start_time == "11:30"
-        )
-        is_labores = (
-            "labores a la fresca" in normalized
-            and event.start_date == local_day
-            and event.start_time == "18:00"
-            and event.end_time == "20:00"
-        )
-        is_dixi_project = (
-            ("dixi project" in normalized or "dixie project" in normalized)
-            and event.start_date == date(2026, 8, 6)
-            and event.end_date == date(2026, 8, 6)
-            and event.start_time == "19:30"
-        )
-        is_ball_destiu = (
-            ("ball d’estiu" in normalized or "ball d'estiu" in normalized)
-            and event.start_date == local_day
-            and event.start_time == "21:30"
-        )
-        is_kiki_morente = (
-            "kiki morente" in normalized
-            and event.start_date == date(2026, 8, 6)
-            and event.end_date == date(2026, 8, 6)
-            and event.start_time == "22:00"
-        )
-        is_alice_wonder = (
-            "alice wonder" in normalized
-            and event.start_date == date(2026, 8, 7)
-            and event.end_date == date(2026, 8, 7)
-            and event.start_time == "22:00"
-        )
-        is_night_route = (
-            "rutas nocturnas" in normalized
-            and event.start_date == local_day
-            and event.start_time == "22:15"
-            and event.end_time == "00:15"
-        )
-        if is_spanish_brass:
-            scheduled.append(SourceEvent(
-                title_es=event.title_es,
-                start_date=event.start_date,
-                end_date=event.end_date,
-                start_time=event.start_time,
-                end_time=event.end_time,
-                place=event.place,
-                category=event.category,
-                sources=event.sources,
-                ticket_price_cents=(
-                    event.ticket_price_cents
-                    if event.ticket_price_cents is not None
-                    else 1500
-                ),
-            ))
-            continue
-        if is_vira_degliarenko:
-            if local_day.weekday() >= 5:
-                continue
-            scheduled.append(SourceEvent(
-                title_es="Exposición de pintura «Luz a pesar del dolor» de Vira Degliarenko",
-                start_date=event.start_date,
-                end_date=event.end_date,
-                start_time="08:00",
-                end_time="14:00",
-                place="Biblioteca Municipal",
-                category="exhibition",
-                sources=event.sources,
-            ))
-            continue
-        if is_emotions_workshop:
-            scheduled.append(replace(
-                event,
-                title_es=(
-                    "EXPLORADOR DE EMOCIONES: “La alegría que hay en ti”, "
-                    "de Cat Deeley"
-                ),
-                place="Biblioteca Infantil Municipal",
-                registration_contact=(
-                    "тел. 966 72 71 70 · WhatsApp 696 11 34 46"
-                ),
-                capacity_limited=True,
-            ))
-            continue
-        if is_labores:
-            scheduled.append(replace(
-                event,
-                title_es=(
-                    "Labores a la fresca: ‘Yo te enseño, tú me enseñas’"
-                ),
-                place="Casa de Cultura",
-                ticket_price_cents=0,
-            ))
-            continue
-        if is_dixi_project:
-            scheduled.append(replace(
-                event,
-                title_es=(
-                    "DIXI PROJECT: Viaje por la música de los años 20"
-                ),
-                place="Plaça dels Llauradors",
-            ))
-            continue
-        if is_ball_destiu:
-            scheduled.append(replace(
-                event,
-                title_es="BALL D’ESTIU",
-                end_time="23:30",
-                place=(
-                    "Parque Reina Sofía (Auditorio Orquesta GÚMAR)"
-                ),
-                ticket_price_cents=0,
-            ))
-            continue
-        if is_kiki_morente:
-            scheduled.append(replace(
-                event,
-                title_es=(
-                    "KIKI MORENTE EN CONCIERTO. ESTIVAL AL CASTELL"
-                ),
-                place="Castell de Guardamar",
-                ticket_price_cents=2500,
-            ))
-            continue
-        if is_alice_wonder:
-            scheduled.append(replace(
-                event,
-                title_es="ALICE WONDER EN CONCIERTO. ESTIVAL AL CASTELL",
-                place="Castell de Guardamar",
-                ticket_price_cents=2500,
-            ))
-            continue
-        if is_night_route:
-            scheduled.append(replace(
-                event,
-                title_es="Rutas nocturnas: senderismo y dinámica grupal",
-                place="Место старта сообщит инструктор",
-                ticket_price_cents=0,
-                participation_note=(
-                    "с собой: спортивная обувь, вода и фонарик"
-                ),
-                registration_contact="633 14 57 75",
-                capacity_limited=True,
-            ))
-            continue
-        if not is_mediterraneo:
+        if rule is None:
             scheduled.append(event)
             continue
-        if local_day.weekday() == 6:
-            continue
-        start_time, end_time = (
-            ("10:00", "14:00")
-            if local_day.weekday() == 5
-            else ("09:00", "20:00")
-        )
-        scheduled.append(
-            SourceEvent(
-                title_es=(
-                    "Exposición de pintura y escultura: "
-                    "Mediterráneo, el lenguaje del agua"
-                ),
-                start_date=event.start_date,
-                end_date=event.end_date,
-                start_time=start_time,
-                end_time=end_time,
-                place="Sala de exposiciones Casa de Cultura",
-                category="exhibition",
-                sources=event.sources,
+        changes = dict(rule.set_fields)
+        if rule.weekday_windows is not None:
+            day_key = (
+                "sunday"
+                if local_day.weekday() == 6
+                else "saturday" if local_day.weekday() == 5 else "weekday"
             )
-        )
+            window = rule.weekday_windows[day_key]
+            if window is None:
+                # The official agenda publishes no visits for this day.
+                continue
+            changes["start_time"], changes["end_time"] = window
+        scheduled.append(replace(event, **changes))
     return tuple(scheduled)
 
 
@@ -1710,7 +1374,6 @@ async def _cached_current_events(
     events = snapshot["_events"]
     poster_url = str(snapshot.get("poster_url", ""))
     events = _apply_reviewed_corrections(poster_url, events)
-    events = _merge_reviewed_text_agenda(events)
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
     events = _apply_reviewed_daily_schedules(events, local_day)
     active = [

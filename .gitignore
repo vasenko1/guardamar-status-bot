@@ -9,6 +9,8 @@ htmlcov/
 !.env.example
 .venv/
 state/
+build/
 dist/
+*.egg-info/
 *.log
 *.tar.gz

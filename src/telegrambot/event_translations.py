@@ -2,81 +2,24 @@
 
 import fcntl
 import json
+import logging
 import os
 import re
 import tempfile
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Iterable, Mapping, Optional, Tuple
+from typing import Iterable, Optional, Tuple
 
 from .gemini import translate_event_titles
+from .reviewed import ReviewedDataError, reviewed_translations
+
+LOGGER = logging.getLogger(__name__)
 
 CACHE_VERSION = 1
 POLICY_VERSION = 1
 MAX_ENTRIES = 500
 RETENTION_DAYS = 90
-
-REVIEWED_TRANSLATIONS = {
-    "spanish brass": "Концерт духового квинтета Spanish Brass «Top Secret»",
-    "spanish brass. top secret": (
-        "Концерт духового квинтета Spanish Brass «Top Secret»"
-    ),
-    (
-        "torneo de tenis 24.º open real villa de guardamar, "
-        "memorial pepe y juan tendero 2026"
-    ): (
-        "24-й открытый теннисный турнир «Real Villa de Guardamar» "
-        "памяти Пепе и Хуана Тендеро"
-    ),
-    (
-        "exposición de pintura y escultura: "
-        "mediterráneo, el lenguaje del agua"
-    ): (
-        "Выставка живописи и скульптуры "
-        "«Средиземноморье, язык воды»"
-    ),
-    (
-        "exposición de pintura con el título "
-        "‘mediterráneo, el lenguaje del agua’"
-    ): (
-        "Выставка живописи и скульптуры "
-        "«Средиземноморье, язык воды»"
-    ),
-    (
-        "exposición de pintura «luz a pesar del dolor» "
-        "de vira degliarenko"
-    ): "Выставка живописи «Свет вопреки боли» — Вира Дегляренко",
-    (
-        "explorador de emociones: “la alegría que hay en ti”, "
-        "de cat deeley"
-    ): (
-        "Детское занятие «Исследователь эмоций»: "
-        "«Радость, которая в тебе» — Кэт Дили"
-    ),
-    (
-        "labores a la fresca: ‘yo te enseño, tú me enseñas’"
-    ): "Встреча по рукоделию «На свежем воздухе»",
-    (
-        "dixi project: viaje por la música de los años 20"
-    ): (
-        "Джазовый концерт Dixie Project "
-        "«Путешествие по музыке 1920-х»"
-    ),
-    "ball d’estiu": "Летний танцевальный вечер Ball d’Estiu",
-    (
-        "kiki morente en concierto. estival al castell"
-    ): "Концерт фламенко Кики Моренте · VI Estival al Castell",
-    "alice wonder": "Концерт Alice Wonder «Soulost» · VI Estival al Castell",
-    (
-        "alice wonder en concierto. estival al castell"
-    ): "Концерт Alice Wonder «Soulost» · VI Estival al Castell",
-    (
-        "rutas nocturnas: senderismo y dinámica grupal"
-    ): "Ночной пешеходный маршрут (8 км) для молодёжи 12–30 лет",
-    "taller de baterías": "Мастер-класс по игре на барабанах",
-}
-
 
 def _key(source: str, title: str) -> str:
     return f"{POLICY_VERSION}\0{source.strip()}\0{title.strip()}"
@@ -86,7 +29,13 @@ def reviewed_translation(title: str) -> Optional[str]:
     """Return an exact operator-reviewed translation for a known title."""
 
     normalized = " ".join(title.split()).strip().casefold()
-    return REVIEWED_TRANSLATIONS.get(normalized)
+    try:
+        return reviewed_translations().get(normalized)
+    except ReviewedDataError as exc:
+        LOGGER.warning(
+            "Reviewed data rejected; using cache and fallback only: %s", exc
+        )
+        return None
 
 
 def spanish_fallback(title: str) -> str:

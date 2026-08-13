@@ -41,14 +41,7 @@ class PublicationState:
         if raw_date is None:
             if set(value) == {"electricity_explanation_message_id"}:
                 return None
-            # Read the previous schema once so an existing confirmed success
-            # does not cause a duplicate after this upgrade.
-            if value.get("status") == "success":
-                raw_date = value.get("local_date")
-            elif value.get("status") in {"started", "failed", "skipped"}:
-                return None
-            else:
-                raise StateError("publication state has an invalid structure")
+            raise StateError("publication state has an invalid structure")
         if not isinstance(raw_date, str):
             raise StateError("publication state has an invalid date")
         try:
@@ -60,6 +53,8 @@ class PublicationState:
         return self.last_successful_date() == local_day
 
     def mark_published(self, local_day: date) -> None:
+        """Record one confirmed success for a simple single-date workflow."""
+
         self._write({
             "last_successful_date": local_day.isoformat(),
         })
@@ -97,12 +92,8 @@ class PublicationState:
             return None
         message_id = value.get("morning_message_id")
         published_at = value.get("morning_published_at")
-        message = value.get("morning_message")
         if not isinstance(message_id, int) or not isinstance(
             published_at, str
-        ) or (
-            message is not None
-            and (not isinstance(message, str) or not message)
         ):
             raise StateError("publication state has an invalid morning record")
         try:
@@ -122,14 +113,12 @@ class PublicationState:
         local_day: date,
         message_id: int,
         published_at: datetime,
-        message: str,
     ) -> None:
         self._write({
             "last_successful_date": local_day.isoformat(),
             "local_date": local_day.isoformat(),
             "morning_message_id": message_id,
             "morning_published_at": published_at.isoformat(),
-            "morning_message": message,
             "update_message_id": None,
             "morning_deleted": False,
         })

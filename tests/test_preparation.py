@@ -33,6 +33,26 @@ class PreparationTests(unittest.IsolatedAsyncioTestCase):
             warnings_available=True,
         )
 
+    def test_snapshot_round_trips_uv_and_sun_fields(self):
+        digest = MorningDigest(
+            weather=Weather(
+                None, 24, 32, "NE", 7, None,
+                uv_index=9,
+                sunrise=self.now.replace(hour=7, minute=10),
+                sunset=self.now.replace(hour=21, minute=5),
+            ),
+            warnings=(),
+            warnings_available=True,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "aemet.json"
+            write_snapshot(path, digest, self.now)
+            loaded = load_snapshot(path, self.now)
+
+        self.assertEqual(loaded.weather.uv_index, 9)
+        self.assertEqual(loaded.weather.sunrise, digest.weather.sunrise)
+        self.assertEqual(loaded.weather.sunset, digest.weather.sunset)
+
     def test_aemet_snapshot_is_same_day_and_age_bounded(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "aemet.json"
@@ -81,45 +101,8 @@ class PreparationTests(unittest.IsolatedAsyncioTestCase):
 
     def test_reviewed_current_event_titles_do_not_depend_on_llm(self):
         self.assertEqual(
-            reviewed_translation("SPANISH BRASS"),
-            "Концерт духового квинтета Spanish Brass «Top Secret»",
-        )
-        self.assertEqual(
-            reviewed_translation(
-                "Torneo de tenis 24.º Open Real Villa de Guardamar, "
-                "Memorial Pepe y Juan Tendero 2026"
-            ),
-            (
-                "24-й открытый теннисный турнир «Real Villa de Guardamar» "
-                "памяти Пепе и Хуана Тендеро"
-            ),
-        )
-        self.assertEqual(
-            reviewed_translation(
-                "DIXI PROJECT: Viaje por la música de los años 20"
-            ),
-            (
-                "Джазовый концерт Dixie Project "
-                "«Путешествие по музыке 1920-х»"
-            ),
-        )
-        self.assertEqual(
             reviewed_translation("BALL D’ESTIU"),
             "Летний танцевальный вечер Ball d’Estiu",
-        )
-        self.assertEqual(
-            reviewed_translation(
-                "KIKI MORENTE EN CONCIERTO. ESTIVAL AL CASTELL"
-            ),
-            "Концерт фламенко Кики Моренте · VI Estival al Castell",
-        )
-        alice = "Концерт Alice Wonder «Soulost» · VI Estival al Castell"
-        self.assertEqual(reviewed_translation("ALICE WONDER"), alice)
-        self.assertEqual(
-            reviewed_translation(
-                "ALICE WONDER EN CONCIERTO. ESTIVAL AL CASTELL"
-            ),
-            alice,
         )
         self.assertEqual(
             reviewed_translation(
@@ -128,8 +111,11 @@ class PreparationTests(unittest.IsolatedAsyncioTestCase):
             "Ночной пешеходный маршрут (8 км) для молодёжи 12–30 лет",
         )
         self.assertEqual(
-            reviewed_translation("Taller de baterías"),
-            "Мастер-класс по игре на барабанах",
+            reviewed_translation(
+                "Exposición de pintura «Luz a pesar del dolor» "
+                "de Vira Degliarenko"
+            ),
+            "Выставка живописи «Свет вопреки боли» — Вира Дегляренко",
         )
 
     def test_reviewed_title_overrides_empty_cache(self):
@@ -137,8 +123,8 @@ class PreparationTests(unittest.IsolatedAsyncioTestCase):
             path = Path(directory) / "translations.json"
 
             self.assertEqual(
-                cached_title(path, "municipal_agenda", "SPANISH BRASS"),
-                "Концерт духового квинтета Spanish Brass «Top Secret»",
+                cached_title(path, "municipal_agenda", "BALL D’ESTIU"),
+                "Летний танцевальный вечер Ball d’Estiu",
             )
 
     def test_message_can_publish_events_without_weather(self):

@@ -40,6 +40,7 @@ from .municipal_agenda import (
 )
 from .event_translations import prepare_translations
 from .gemini import GeminiError
+from .pharmacy import PharmacyError, refresh_pharmacy_catalog
 from .morning import _safebeach_is_in_season, produce_message
 from .operational_updates import (
     OperationalUpdateState,
@@ -59,9 +60,16 @@ from .safebeach import (
     is_complete_current_status,
     is_current_status,
 )
+from .weekend import produce_weekend_message, weekend_dates
 from .models import BeachStatus
 from .state import PublicationState, StateError
-from .telegram import TelegramError, delete_message, edit_message, send_message
+from .telegram import (
+    TelegramError,
+    delete_message,
+    edit_message,
+    send_message,
+    send_poll,
+)
 
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 DEFAULT_STATE_PATH = "state/delivery.json"
@@ -72,6 +80,8 @@ DEFAULT_ELECTRICITY_SNAPSHOT_PATH = "state/electricity_prices.json"
 DEFAULT_EVENT_TRANSLATIONS_PATH = "state/event_translations.json"
 DEFAULT_AEMET_SNAPSHOT_PATH = "state/aemet.json"
 DEFAULT_OPERATIONAL_UPDATE_STATE_PATH = "state/operational_updates.json"
+DEFAULT_WEEKEND_STATE_PATH = "state/weekend.json"
+DEFAULT_PHARMACY_STATE_PATH = "state/pharmacy.json"
 
 
 def _beach_ready_for_update(status, now: datetime, final_attempt: bool) -> bool:
@@ -169,6 +179,9 @@ async def _produce_message(api_key: str, now: datetime) -> str:
         translation_cache_path=Path(os.environ.get(
             "EVENT_TRANSLATIONS_PATH", DEFAULT_EVENT_TRANSLATIONS_PATH
         )),
+        pharmacy_state_path=Path(os.environ.get(
+            "PHARMACY_STATE_PATH", DEFAULT_PHARMACY_STATE_PATH
+        )),
     )
     return message + render_diagnostics(diagnostics)
 
@@ -212,7 +225,7 @@ async def _refresh_event_catalogs_once(
         logging.info("Late event catalog sync deferred: %s", exc)
 
 
-async def _run_command(command: str) -> int:
+async def _run_command(command: str, extra: tuple = ()) -> int:
     now = datetime.now(GUARDAMAR_TIMEZONE)
     municipal_path = Path(os.environ.get(
         "MUNICIPAL_AGENDA_STATE_PATH",
@@ -223,6 +236,9 @@ async def _run_command(command: str) -> int:
     ))
     translations_path = Path(os.environ.get(
         "EVENT_TRANSLATIONS_PATH", DEFAULT_EVENT_TRANSLATIONS_PATH
+    ))
+    pharmacy_path = Path(os.environ.get(
+        "PHARMACY_STATE_PATH", DEFAULT_PHARMACY_STATE_PATH
     ))
     aemet_snapshot_path = Path(os.environ.get(
         "AEMET_SNAPSHOT_PATH", DEFAULT_AEMET_SNAPSHOT_PATH
@@ -341,6 +357,11 @@ async def _run_command(command: str) -> int:
         )
         return 0
 
+    if command == "sync-pharmacy":
+        count = await refresh_pharmacy_catalog(now, pharmacy_path)
+        logging.info("Pharmacy rota synchronized: %d duty rows", count)
+        return 0
+
     if command == "sync-agenda-events":
         state_path = Path(os.environ.get(
             "AGENDA_STATE_PATH", DEFAULT_AGENDA_STATE_PATH
@@ -352,6 +373,100 @@ async def _run_command(command: str) -> int:
             "Agenda Guardamar catalog synchronized: %d facts", len(events)
         )
         return 0
+
+    if command == "poll":
+        if len(extra) < 3:
+            raise ValueError(
+                "poll needs one question and at least two options"
+            )
+        message_id = await send_poll(
+            _required_environment("TELEGRAM_BOT_TOKEN"),
+            _required_environment("TELEGRAM_CHAT_ID"),
+            extra[0],
+            list(extra[1:]),
+        )
+        logging.info("SUCCESS: poll %s delivered", message_id)
+        return 0
+
+    if command in {"weekend", "weekend-preview"}:
+        saturday, sunday = weekend_dates(now)
+        gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
+
+        async def prepare_weekend_titles() -> None:
+            if not gemini_key:
+                return
+            items = []
+            for day in (saturday, sunday):
+                moment = datetime.combine(
+                    day, datetime.min.time(), GUARDAMAR_TIMEZONE
+                )
+                items.extend(
+                    await municipal_translation_items(moment, municipal_path)
+                )
+                items.extend(
+                    await agenda_translation_items(moment, agenda_path)
+                )
+            try:
+                await prepare_translations(
+                    gemini_key, items, translations_path, now
+                )
+            except (
+                AgendaError,
+                GeminiError,
+                MunicipalAgendaError,
+                ValueError,
+            ) as exc:
+                logging.warning(
+                    "Weekend title preparation failed: %s", exc
+                )
+
+        if command == "weekend-preview":
+            # Preview is read-only: it reads the existing translation cache
+            # and never fills it, matching the morning preview contract.
+            message = await produce_weekend_message(
+                now,
+                gemini_key,
+                municipal_path,
+                agenda_state_path=agenda_path,
+                translation_cache_path=translations_path,
+            )
+            print(message or "No verified weekend events are available")
+            return 0
+        bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
+        chat_id = _required_environment("TELEGRAM_CHAT_ID")
+        weekend_state = PublicationState(Path(os.environ.get(
+            "WEEKEND_STATE_PATH", DEFAULT_WEEKEND_STATE_PATH
+        )))
+        with weekend_state.exclusive_run():
+            if weekend_state.is_published(saturday):
+                logging.info(
+                    "SKIP: weekend digest already published for %s", saturday
+                )
+                return 0
+            await prepare_weekend_titles()
+            message = await produce_weekend_message(
+                now,
+                gemini_key,
+                municipal_path,
+                agenda_state_path=agenda_path,
+                translation_cache_path=translations_path,
+            )
+            if message is None:
+                logging.info(
+                    "SKIP: no verified weekend events for %s", saturday
+                )
+                return 0
+            await send_message(
+                bot_token,
+                chat_id,
+                message,
+                disable_notification=False,
+            )
+            weekend_state.mark_published(saturday)
+            logging.info(
+                "SUCCESS: weekend digest delivered for %s", saturday
+            )
+            return 0
 
     if command == "prepare-event-translations":
         gemini_key = _required_environment("GEMINI_API_KEY")
@@ -500,6 +615,7 @@ async def _run_command(command: str) -> int:
             translation_cache_path=translations_path,
             aemet_fallback=fallback,
             aemet_observer=refreshed_aemet.append,
+            pharmacy_state_path=pharmacy_path,
         )
         await edit_message(bot_token, chat_id, message_id, message)
         if refreshed_aemet:
@@ -535,6 +651,7 @@ async def _run_command(command: str) -> int:
                 aemet_digest=prepared,
                 fetch_aemet=fetch_live,
                 aemet_observer=morning_aemet.append,
+                pharmacy_state_path=pharmacy_path,
             ),
             lambda message: send_message(
                 bot_token,
@@ -585,6 +702,7 @@ async def _run_command(command: str) -> int:
             translation_cache_path=translations_path,
             aemet_fallback=fallback,
             aemet_observer=update_aemet.append,
+            pharmacy_state_path=pharmacy_path,
         )
 
     async def deliver_update(message: str) -> int:
@@ -677,11 +795,19 @@ def main() -> None:
             "electricity-update-explanation",
             "sync-municipal-events",
             "sync-agenda-events",
+            "sync-pharmacy",
             "prepare-event-translations",
             "prepare-aemet",
             "monitor-updates",
+            "weekend", "weekend-preview",
+            "poll",
         ),
         default="run",
+    )
+    parser.add_argument(
+        "extra",
+        nargs="*",
+        help="poll only: one question followed by two to ten options",
     )
     arguments = parser.parse_args()
     logging.basicConfig(
@@ -710,7 +836,9 @@ def main() -> None:
         return
 
     try:
-        exit_code = asyncio.run(_run_command(arguments.command))
+        exit_code = asyncio.run(
+            _run_command(arguments.command, tuple(arguments.extra))
+        )
     except ElectricityError as exc:
         print(
             f"Command failed [ESIOS-{exc.diagnostic_code}]: {exc}",
@@ -718,8 +846,8 @@ def main() -> None:
         )
         raise SystemExit(2) from exc
     except (
-        AemetError, AgendaError, MunicipalAgendaError, TelegramError,
-        StateError, OperationalUpdateStateError, ValueError
+        AemetError, AgendaError, MunicipalAgendaError, PharmacyError,
+        TelegramError, StateError, OperationalUpdateStateError, ValueError
     ) as exc:
         print(f"Command failed: {exc}", file=sys.stderr)
         raise SystemExit(2) from exc

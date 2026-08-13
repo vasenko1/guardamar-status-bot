@@ -24,6 +24,8 @@ def _serialize(digest: MorningDigest, fetched_at: datetime) -> dict:
         raise ValueError("AEMET snapshot requires normalized weather")
     weather = asdict(digest.weather)
     weather["observed_at"] = _datetime(digest.weather.observed_at)
+    weather["sunrise"] = _datetime(digest.weather.sunrise)
+    weather["sunset"] = _datetime(digest.weather.sunset)
     return {
         "version": VERSION,
         "fetched_at": fetched_at.isoformat(),
@@ -75,6 +77,8 @@ def load_snapshot(
             **{
                 **raw_weather,
                 "observed_at": _parse_datetime(raw_weather["observed_at"]),
+                "sunrise": _parse_datetime(raw_weather.get("sunrise")),
+                "sunset": _parse_datetime(raw_weather.get("sunset")),
                 "sky_conditions": tuple(raw_weather.get("sky_conditions", ())),
             }
         )

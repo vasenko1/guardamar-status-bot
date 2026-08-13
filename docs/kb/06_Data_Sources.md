@@ -24,6 +24,7 @@ official endpoints and lightweight access methods are validated.
 | Turismo Guardamar municipal agenda | Broader official monthly cultural text plus supplementary MUPI | High for text; image facts require agreement | 05:10 text-first catalog refresh; MUPI only after URL change | Yes |
 | BOE, DOGV, and official Guardamar holiday calendar | Official national, regional, and local days off applicable in Guardamar; Wednesday-market holiday moves | High; legally authoritative annual publications | Small reviewed annual in-code calendar; no morning request | Yes |
 | `@AlcaldeGuardamar` public channel | Explicit market exceptions, bathing-status transitions, Fiestas de Barrio, and complete invited same-day municipal announcements | Operational municipal channel; text must be mechanically grounded | One bounded morning event check, market check when relevant, or one check after SafeBeach retries | Yes, narrow role |
+| Colegio Oficial de Farmacéuticos de Alicante | Legally authoritative on-call pharmacy rota | High; the provincial college responsible for the service | One weekly bounded fetch of the linked annual XLSX with compressed and uncompressed size bounds; normalized 45-day Guardamar catalog; no morning request | Yes, ADR 0038 |
 | Campo de Guardamar market website | Sunday market at Camino del Raso, 15 | Operator-published schedule; no authoritative cancellation feed found | Local Sunday rule, `07:00–16:00` | Yes, explicit product exception |
 | Community or commercial sources | Gap filling only | Variable | Varies | No by default |
 
@@ -244,6 +245,13 @@ previous snapshot whose dates fall within the current day plus seven days.
 This prevents an early next-month poster from erasing the final days of the
 current program. The digest merges these facts with the separate local Agenda
 Guardamar catalog and removes duplicates.
+
+Operator-reviewed corrections — exact Russian titles, per-poster reviewed
+occurrences with their known-bad-OCR drop filter, and bounded day-of
+schedule rules — live in the validated packaged data file described by ADR
+0039. Monthly poster review edits that file only; a defective file is
+rejected whole at load and the digest falls back to uncorrected source
+facts, while the test suite validates the committed file on every run.
 
 During a temporary source outage, the last valid snapshot remains eligible
 until its covered period ends. Generated title-only Russian translations are

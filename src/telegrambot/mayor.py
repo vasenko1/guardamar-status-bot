@@ -2,17 +2,14 @@
 
 import asyncio
 import html
-import http.client
 import re
-import socket
 import unicodedata
-import urllib.error
 import urllib.parse
-import urllib.request
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
+from ._transport import BoundedFetchError, fetch_bounded
 from .gemini import GeminiError, extract_market_status
 from .models import BeachNotice, Event
 
@@ -121,96 +118,43 @@ def _is_channel_url(url: str) -> bool:
     return parsed.scheme == "https" and parsed.hostname == ALLOWED_HOST
 
 
-class _MayorRedirectHandler(urllib.request.HTTPRedirectHandler):
-    def redirect_request(
-        self,
-        request,
-        file_pointer,
-        code,
-        message,
-        headers,
-        new_url,
-    ):
-        if not _is_channel_url(new_url):
-            raise MayorChannelError(
-                "Mayor channel redirected outside Telegram",
-                code="REDIRECT",
-                description="Telegram перенаправил запрос на другой сайт",
-            )
-        return super().redirect_request(
-            request,
-            file_pointer,
-            code,
-            message,
-            headers,
-            new_url,
-        )
+_TRANSPORT_DESCRIPTIONS = {
+    "REDIRECT": "Telegram перенаправил запрос на другой сайт",
+    "CONTENT-TYPE": "Telegram вернул ответ не в формате HTML",
+    "TIMEOUT": (
+        "сетевой тайм-аут при загрузке публичной страницы "
+        "канала t.me (лимит сетевой операции — 10 с)"
+    ),
+    "NETWORK": "не удалось установить соединение с Telegram",
+    "TOO-LARGE": "ответ Telegram превысил допустимый размер",
+}
 
 
 def _read_page() -> bytes:
-    request = urllib.request.Request(
-        CHANNEL_URL,
-        headers={
-            "Accept": "text/html",
-            "Accept-Language": "es",
-            "User-Agent": "GuardamarMorningDigest/0.12",
-        },
-    )
-    opener = urllib.request.build_opener(_MayorRedirectHandler())
     try:
-        with opener.open(
-            request,
-            timeout=REQUEST_TIMEOUT_SECONDS,
-        ) as response:
-            if not _is_channel_url(response.geturl()):
-                raise MayorChannelError(
-                    "Unexpected Mayor channel response URL",
-                    code="REDIRECT",
-                    description="получен недопустимый адрес ответа Telegram",
-                )
-            if response.headers.get_content_type() != "text/html":
-                raise MayorChannelError(
-                    "Mayor channel returned non-HTML content",
-                    code="CONTENT-TYPE",
-                    description="Telegram вернул ответ не в формате HTML",
-                )
-            payload = response.read(PAGE_LIMIT_BYTES + 1)
-    except urllib.error.HTTPError as exc:
-        raise MayorChannelError(
-            f"Mayor channel HTTP status {exc.code}",
-            code=f"HTTP-{exc.code}",
-            status=exc.code,
-            description=f"Telegram вернул HTTP {exc.code}",
-        ) from exc
-    except (
-        urllib.error.URLError,
-        TimeoutError,
-        socket.timeout,
-        OSError,
-        http.client.HTTPException,
-    ) as exc:
-        timed_out = isinstance(exc, (TimeoutError, socket.timeout)) or (
-            isinstance(exc, urllib.error.URLError)
-            and isinstance(exc.reason, (TimeoutError, socket.timeout))
+        payload, _, _ = fetch_bounded(
+            CHANNEL_URL,
+            is_allowed_url=_is_channel_url,
+            accepted_types=frozenset({"text/html"}),
+            limit_bytes=PAGE_LIMIT_BYTES,
+            timeout_seconds=REQUEST_TIMEOUT_SECONDS,
+            headers={
+                "Accept": "text/html",
+                "Accept-Language": "es",
+                "User-Agent": "GuardamarMorningDigest/0.12",
+            },
         )
+    except BoundedFetchError as exc:
         raise MayorChannelError(
-            "Mayor channel request timed out"
-            if timed_out
-            else "Mayor channel network request failed",
-            code="TIMEOUT" if timed_out else "NETWORK",
+            f"Mayor channel request failed: {exc.code}",
+            code=exc.code,
+            status=exc.status,
             description=(
-                "сетевой тайм-аут при загрузке публичной страницы "
-                "канала t.me (лимит сетевой операции — 10 с)"
-                if timed_out
-                else "не удалось установить соединение с Telegram"
+                f"Telegram вернул HTTP {exc.status}"
+                if exc.status is not None
+                else _TRANSPORT_DESCRIPTIONS.get(exc.code)
             ),
         ) from exc
-    if len(payload) > PAGE_LIMIT_BYTES:
-        raise MayorChannelError(
-            "Mayor channel response was too large",
-            code="TOO-LARGE",
-            description="ответ Telegram превысил допустимый размер",
-        )
     return payload
 
 

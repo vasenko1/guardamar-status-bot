@@ -29,8 +29,10 @@ from .municipal_agenda import (
     MunicipalAgendaError,
     fetch_today_municipal_events,
 )
+from .pharmacy import duty_pharmacies_on
 from .police import PoliceTrafficError, fetch_traffic_notices
 from .safebeach import SafeBeachError, fetch_beach_status
+from .sun import sun_times
 from .models import BeachNotice, BeachStatus, MorningDigest
 
 LOGGER = logging.getLogger(__name__)
@@ -159,6 +161,7 @@ async def produce_message(
     fetch_aemet: bool = True,
     aemet_fallback: Optional[MorningDigest] = None,
     aemet_observer: Optional[Callable[[MorningDigest], None]] = None,
+    pharmacy_state_path: Optional[Path] = None,
 ) -> str:
     """Build a digest; SafeBeach failure must not block AEMET delivery."""
 
@@ -271,6 +274,14 @@ async def produce_message(
                 wind_speed_kmh=beach.wind_speed_kmh,
             ),
         )
+    if digest.weather is not None:
+        sunrise, sunset = sun_times(now)
+        digest = replace(
+            digest,
+            weather=replace(
+                digest.weather, sunrise=sunrise, sunset=sunset
+            ),
+        )
 
     try:
         events = await agenda_task
@@ -355,11 +366,21 @@ async def produce_message(
                     )
                 )
 
+    pharmacies = ()
+    if pharmacy_state_path is not None:
+        try:
+            pharmacies = await duty_pharmacies_on(now, pharmacy_state_path)
+        except OSError as exc:
+            LOGGER.warning(
+                "Pharmacy catalog unavailable; omitting the row: %s", exc
+            )
+
     return build_message(
         replace(
             digest,
             beach=beach,
             beach_notice=beach_notice,
+            pharmacies=pharmacies,
             traffic_notices=traffic_notices,
             holidays=official_holidays_on(
                 now.astimezone(GUARDAMAR_TIMEZONE).date()

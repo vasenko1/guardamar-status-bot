@@ -1,5 +1,23 @@
 # Features
 
+## Weekend events digest
+
+One optional Friday-evening message, «Афиша выходных», previews Saturday and
+Sunday. It is built only from the two existing normalized event catalogs and
+the recurring market rules; no other source is consulted and the Mayor
+channel is not checked. Each day renders under its own dated heading
+(`📅 Суббота, 15 августа:`) using the same bounded event renderer, ticket
+rows, and Google-Maps venue links as the Morning Digest. A day without
+verified events omits its heading; a weekend with no verified events sends
+no message. Missing weekend title translations are prepared inline through
+the same bounded cache; a provider outage degrades titles to normalized
+Spanish. Publication runs Friday at `18:00` with bounded retries at `18:20`
+and `19:00`, guarded by one atomic success marker in `state/weekend.json`
+keyed to the target Saturday. Only the publishing command fills missing
+weekend translations; `weekend-preview` reads the existing cache and prints
+the message without
+Telegram or state changes. See ADR 0035.
+
 ## Next-day electricity prices
 
 An evening message shows tomorrow's official PVPC 2.0TD hourly energy term for
@@ -75,6 +93,8 @@ This exact visual structure is the product contract:
 **Дождь:** 80% • 12:00–18:00
 **Ветер:** СВ 5 → 7 м/с
 **Море:** 29° • слабые → умеренные
+**УФ:** 9 (очень высокий)
+**Солнце:** 07:10 → 21:00
 
 ⚠️ **Предупреждения AEMET:**
 Зона: южное побережье Аликанте
@@ -91,6 +111,10 @@ This exact visual structure is the product contract:
 🚧 **Движение:**
 • С 19:30 перекрыта Calle Mayor.
 • Автобусы следуют по временному маршруту.
+
+💊 **Дежурная аптека:**
+• Planelles Mas, Asuncion — круглосуточно (с 9:00)
+  📍 Av. Cervantes, Nº29
 
 🎉 **Праздник сегодня:**
 • Канун Дня святого Иакова — официальный городской праздник
@@ -111,12 +135,14 @@ The order never changes:
 3. Rain probability and period, only at 75% or above
 4. Current wind with optional inline forecast
 5. AEMET sea temperature and optional sea-state forecast
-6. Warning
-7. Available flags for all six known Guardamar beach zones, grouped by color
-8. Jellyfish beaches, only when explicitly reported
-9. Traffic or closure
-10. Official holiday applicable in Guardamar today
-11. Today's events
+6. UV index, only at 6 or above, and the computed sunrise/sunset span
+7. Warning
+8. Available flags for all six known Guardamar beach zones, grouped by color
+9. Jellyfish beaches, only when explicitly reported
+10. Traffic or closure
+11. On-call pharmacy from the weekly-synced official rota catalog
+12. Official holiday applicable in Guardamar today
+13. Today's events
 
 Each event is one bullet. Its official place, when available, is rendered on
 the following indented `📍` line. Events are separated by one blank line;
@@ -157,6 +183,13 @@ shown only for beaches where SafeBeach explicitly reports presence. A negative,
 missing, or unknown jellyfish field produces no row. The wind
 forecast is appended to the wind row as `→ <speed>` and is omitted when
 unavailable. It never creates another row.
+
+The optional `УФ:` row uses AEMET's municipal `uvMax` value and appears only
+at 6 or above with the WHO category names `высокий` (6–7),
+`очень высокий` (8–10), and `экстремальный` (11+). A missing or implausible
+value produces no row and no extra request. The `Солнце:` row renders the
+computed local sunrise and sunset (`07:10 → 21:00`) from the deterministic
+on-device NOAA calculation; it uses no network source. See ADR 0036.
 
 SafeBeach flag lines contain only the color and beach names. The generic
 SafeBeach flag description is not repeated. Update times are used only for
@@ -384,12 +417,13 @@ presented as absence of warnings.
   replacement with a normal notification, then delete the 07:30 message
 - For every digest collection, use the AEMET adapter's bounded transient-only
   recovery policy; publication and preview do not add outer retries
-- If all three AEMET attempts fail, preserve every unchanged line from the
-  published 07:30 message and add only verified SafeBeach/Mayor blocks
+- If all three AEMET attempts fail, build the weather blocks from the
+  same-day prepared AEMET snapshot and add only verified SafeBeach/Mayor
+  blocks
 - At most three bounded Telegram HTTP attempts within that run
-- One small atomic JSON state with the date, rendered morning copy, morning
-  time, message IDs, deletion result, and one temporary normalized SafeBeach
-  candidate removed after successful replacement
+- One small atomic JSON state with the date, morning time, message IDs,
+  deletion result, and one temporary normalized SafeBeach candidate removed
+  after successful replacement
 - Concise process output for success, duplicate, skip, and failure
 
 The replacement ID is stored before deleting the earlier message. If deletion

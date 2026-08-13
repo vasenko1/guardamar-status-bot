@@ -26,7 +26,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as directory:
             state = PublicationState(Path(directory) / "delivery.json")
             now = datetime(2026, 8, 7, 10, 10, tzinfo=MADRID)
-            state.mark_morning(now.date(), 10, now, "morning")
+            state.mark_morning(now.date(), 10, now)
             municipal = AsyncMock(return_value=())
             agenda = AsyncMock(return_value=())
             with (
@@ -130,7 +130,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
             state_path = Path(directory) / "delivery.json"
             now = datetime.now(MADRID)
             state = PublicationState(state_path)
-            state.mark_morning(now.date(), 10, now, "утреннее сообщение")
+            state.mark_morning(now.date(), 10, now)
             state.mark_update_sent(now.date(), 20)
             edited = {}
 
@@ -226,6 +226,41 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("готовый дайджест", message)
         self.assertIn("🔧 Диагностика источников", message)
         self.assertIn("[SB-NO-ACTIVE] SafeBeach", message)
+
+    async def test_weekend_preview_neither_publishes_nor_writes_state(self):
+        prepared = AsyncMock(return_value=0)
+        with tempfile.TemporaryDirectory() as directory:
+            translations = Path(directory) / "translations.json"
+            weekend_state = Path(directory) / "weekend.json"
+            with (
+                patch(
+                    "telegrambot.__main__.prepare_translations",
+                    new=prepared,
+                ),
+                patch(
+                    "telegrambot.__main__.produce_weekend_message",
+                    new=AsyncMock(return_value="афиша"),
+                ),
+                patch(
+                    "telegrambot.__main__.send_message",
+                    new=AsyncMock(),
+                ) as sent,
+                patch.dict(os.environ, {
+                    "EVENT_TRANSLATIONS_PATH": str(translations),
+                    "WEEKEND_STATE_PATH": str(weekend_state),
+                    "GEMINI_API_KEY": "configured-key",
+                    "TELEGRAM_BOT_TOKEN": "token",
+                    "TELEGRAM_CHAT_ID": "@chat",
+                }),
+            ):
+                result = await _run_command("weekend-preview")
+
+            # A configured Gemini key must not turn preview into a writer.
+            self.assertEqual(result, 0)
+            prepared.assert_not_awaited()
+            sent.assert_not_awaited()
+            self.assertFalse(translations.exists())
+            self.assertFalse(weekend_state.exists())
 
     async def test_preview_uses_both_configured_event_catalogs(self):
         captured = {}

@@ -292,6 +292,7 @@ class DailyForecastTests(unittest.TestCase):
                 ("partly_cloudy", "rain"),
                 80,
                 "14:00–20:00",
+                None,
             ),
         )
 
@@ -320,7 +321,37 @@ class DailyForecastTests(unittest.TestCase):
             local_hour=10,
         )
 
-        self.assertEqual(result[-2:], (76, "в течение дня"))
+        self.assertEqual(result[6:8], (76, "в течение дня"))
+
+    def test_reads_valid_uv_index_and_rejects_implausible_values(self):
+        def payload(uv_value):
+            return json.dumps(
+                [
+                    {
+                        "prediccion": {
+                            "dia": [
+                                {
+                                    "fecha": "2026-07-26T00:00:00",
+                                    "temperatura": {
+                                        "minima": 23, "maxima": 31,
+                                    },
+                                    "uvMax": uv_value,
+                                }
+                            ]
+                        }
+                    }
+                ]
+            ).encode()
+
+        valid = normalize_daily_forecast(payload(9), date(2026, 7, 26))
+        missing = normalize_daily_forecast(payload(None), date(2026, 7, 26))
+        implausible = normalize_daily_forecast(
+            payload(42), date(2026, 7, 26)
+        )
+
+        self.assertEqual(valid[8], 9)
+        self.assertIsNone(missing[8])
+        self.assertIsNone(implausible[8])
 
     def test_rejects_forecast_without_today(self):
         payload = json.dumps(

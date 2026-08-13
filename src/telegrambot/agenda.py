@@ -2,15 +2,11 @@
 
 import asyncio
 import html
-import http.client
 import json
 import os
 import re
-import socket
 import tempfile
-import urllib.error
 import urllib.parse
-import urllib.request
 from dataclasses import replace
 from datetime import date, datetime, timedelta
 from html.parser import HTMLParser
@@ -18,6 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
+from ._transport import BoundedFetchError, fetch_bounded
 from .gemini import GeminiError, translate_event_titles
 from .event_translations import cached_title
 from .holidays import is_market_day
@@ -61,34 +58,6 @@ class AgendaError(RuntimeError):
 def _is_agenda_url(url: str) -> bool:
     parsed = urllib.parse.urlparse(url)
     return parsed.scheme == "https" and parsed.hostname in AGENDA_HOSTS
-
-
-class _AgendaRedirectHandler(urllib.request.HTTPRedirectHandler):
-    def redirect_request(
-        self,
-        request,
-        file_pointer,
-        code,
-        message,
-        headers,
-        new_url,
-    ):
-        if not _is_agenda_url(new_url):
-            raise AgendaError(
-                "Agenda Guardamar redirected outside its official hosts",
-                code="REDIRECT",
-                description=(
-                    "сервер перенаправил запрос за пределы Agenda Guardamar"
-                ),
-            )
-        return super().redirect_request(
-            request,
-            file_pointer,
-            code,
-            message,
-            headers,
-            new_url,
-        )
 
 
 class _EventLinkParser(HTMLParser):
@@ -217,77 +186,41 @@ def _decode_json_ld(document: str) -> Optional[Any]:
             return None
 
 
+_TRANSPORT_DESCRIPTIONS = {
+    "URL-POLICY": "адрес не принадлежит Agenda Guardamar",
+    "REDIRECT": "получен недопустимый адрес ответа Agenda Guardamar",
+    "CONTENT-TYPE": "сервер вернул содержимое не в формате HTML",
+    "TIMEOUT": "сервер не ответил до истечения тайм-аута",
+    "NETWORK": "не удалось установить сетевое соединение",
+    "TOO-LARGE": "ответ превысил допустимый размер",
+}
+
+
 def _read_page(url: str) -> bytes:
-    if not _is_agenda_url(url):
-        raise AgendaError(
-            "Agenda Guardamar URL is not allowed",
-            code="URL-POLICY",
-            description="адрес не принадлежит Agenda Guardamar",
-        )
-    request = urllib.request.Request(
-        url,
-        headers={
-            "Accept": "text/html",
-            "Accept-Language": "es",
-            "User-Agent": "GuardamarMorningDigest/0.12",
-        },
-    )
-    opener = urllib.request.build_opener(_AgendaRedirectHandler())
     try:
-        with opener.open(
-            request,
-            timeout=REQUEST_TIMEOUT_SECONDS,
-        ) as response:
-            if not _is_agenda_url(response.geturl()):
-                raise AgendaError(
-                    "Agenda Guardamar returned an unexpected redirect",
-                    code="REDIRECT",
-                    description=(
-                        "получен недопустимый адрес ответа Agenda Guardamar"
-                    ),
-                )
-            if response.headers.get_content_type() != "text/html":
-                raise AgendaError(
-                    "Agenda Guardamar returned an unexpected content type",
-                    code="CONTENT-TYPE",
-                    description="сервер вернул содержимое не в формате HTML",
-                )
-            payload = response.read(PAGE_LIMIT_BYTES + 1)
-    except urllib.error.HTTPError as exc:
-        raise AgendaError(
-            f"Agenda Guardamar HTTP status {exc.code}",
-            code=f"HTTP-{exc.code}",
-            status=exc.code,
-            description=f"сервер вернул HTTP {exc.code}",
-        ) from exc
-    except (
-        urllib.error.URLError,
-        TimeoutError,
-        socket.timeout,
-        OSError,
-        http.client.HTTPException,
-    ) as exc:
-        timed_out = isinstance(exc, (TimeoutError, socket.timeout)) or (
-            isinstance(exc, urllib.error.URLError)
-            and isinstance(exc.reason, (TimeoutError, socket.timeout))
+        payload, _, _ = fetch_bounded(
+            url,
+            is_allowed_url=_is_agenda_url,
+            accepted_types=frozenset({"text/html"}),
+            limit_bytes=PAGE_LIMIT_BYTES,
+            timeout_seconds=REQUEST_TIMEOUT_SECONDS,
+            headers={
+                "Accept": "text/html",
+                "Accept-Language": "es",
+                "User-Agent": "GuardamarMorningDigest/0.12",
+            },
         )
+    except BoundedFetchError as exc:
         raise AgendaError(
-            "Agenda Guardamar request timed out"
-            if timed_out
-            else "Agenda Guardamar network request failed",
-            code="TIMEOUT" if timed_out else "NETWORK",
+            f"Agenda Guardamar request failed: {exc.code}",
+            code=exc.code,
+            status=exc.status,
             description=(
-                "сервер не ответил до истечения тайм-аута"
-                if timed_out
-                else "не удалось установить сетевое соединение"
+                f"сервер вернул HTTP {exc.status}"
+                if exc.status is not None
+                else _TRANSPORT_DESCRIPTIONS.get(exc.code)
             ),
         ) from exc
-    if len(payload) > PAGE_LIMIT_BYTES:
-        raise AgendaError(
-            "Agenda Guardamar response was too large",
-            code="TOO-LARGE",
-            description="ответ превысил допустимый размер",
-        )
     return payload
 
 
@@ -427,16 +360,6 @@ def _calendar_place(payload: bytes) -> Optional[str]:
     if place.isupper():
         place = place.title().replace(" De ", " de ")
     return place
-
-
-def normalize_event_page(
-    payload: bytes,
-    local_day: Optional[date],
-) -> Optional[Event]:
-    """Return the first occurrence from a valid official event page."""
-
-    events = normalize_event_pages(payload, local_day)
-    return events[0] if events else None
 
 
 def _ticket_url(value: str, starts_at: datetime) -> Optional[str]:
