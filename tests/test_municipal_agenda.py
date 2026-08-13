@@ -512,7 +512,8 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             [(14, "22:15"), (21, "22:15"), (28, "22:15")],
         )
         self.assertFalse(any(
-            "ajedrez" in event.title_es.casefold() for event in corrected
+            "open de ajedrez" in event.title_es.casefold()
+            for event in corrected
         ))
         exhibitions = [
             event for event in corrected if event.category == "exhibition"
@@ -552,10 +553,48 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                 "Exposición de pintura «Luz a pesar del dolor» "
                 "de Vira Degliarenko",
                 "Rutas nocturnas: senderismo y dinámica grupal",
+                "Feria de Comercio 2026: talleres, ajedrez gigante, "
+                "ELBOX GRM y Dirty Piks",
             ],
         )
         self.assertEqual(active[0].start_time, "09:00")
         self.assertEqual(active[0].end_time, "20:00")
+
+    def test_replaces_sparse_fair_rows_with_one_reviewed_daily_summary(self):
+        extracted = (
+            SourceEvent(
+                "FERIA DEL COMERCIO",
+                date(2026, 8, 13), date(2026, 8, 16),
+                None, None, "Avda. Els Pins", "event", ("mupi",),
+            ),
+            SourceEvent(
+                "Espectáculo ‘Faüla’, por ‘Dos en vilo’",
+                date(2026, 8, 13), date(2026, 8, 13),
+                "21:30", None, "avenida de los Pinos", "event",
+                ("todo_cultura",),
+            ),
+        )
+
+        corrected = _apply_reviewed_corrections(
+            (
+                "https://www.guardamardelsegura.es/wp-content/uploads/"
+                "2026/07/MUPI-AGOSTO-2026-scaled.jpg"
+            ),
+            extracted,
+        )
+        active = [
+            event for event in corrected
+            if event.start_date <= date(2026, 8, 13) <= event.end_date
+            and "Feria de Comercio 2026" in event.title_es
+        ]
+
+        self.assertEqual(len(active), 1)
+        self.assertEqual(active[0].start_time, "18:00")
+        self.assertEqual(active[0].place, "Avenida de los Pinos")
+        self.assertIn("Faüla", active[0].title_es)
+        self.assertFalse(any(
+            event.title_es == "FERIA DEL COMERCIO" for event in corrected
+        ))
 
     def test_uses_published_mediterraneo_visiting_hours(self):
         event = SourceEvent(

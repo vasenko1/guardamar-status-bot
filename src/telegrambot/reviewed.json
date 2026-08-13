@@ -6,7 +6,11 @@
     "exposición de pintura «luz a pesar del dolor» de vira degliarenko": "Выставка живописи «Свет вопреки боли» — Вира Дегляренко",
     "labores a la fresca: ‘yo te enseño, tú me enseñas’": "Встреча по рукоделию «На свежем воздухе»",
     "ball d’estiu": "Летний танцевальный вечер Ball d’Estiu",
-    "rutas nocturnas: senderismo y dinámica grupal": "Ночной пешеходный маршрут (8 км) для молодёжи 12–30 лет"
+    "rutas nocturnas: senderismo y dinámica grupal": "Ночной пешеходный маршрут (8 км) для молодёжи 12–30 лет",
+    "feria de comercio 2026: inauguración, talleres, faüla y dj jesús": "Торговая ярмарка: открытие, мастер-классы, шоу «Faüla» и DJ Jesús",
+    "feria de comercio 2026: talleres, ajedrez gigante, elbox grm y dirty piks": "Торговая ярмарка: мастер-классы, гигантские шахматы, ELBOX GRM и Dirty Piks",
+    "feria de comercio 2026: cuentos musicales, juegos, desfile de moda y noelia braceras": "Торговая ярмарка: музыкальные истории, игры, показ мод и Noelia Braceras",
+    "feria de comercio 2026: bingo solidario y concierto de 40 duros": "Торговая ярмарка: благотворительное бинго и концерт 40 Duros"
   },
   "posters": {
     "mupi-agosto-2026-scaled.jpg": {
@@ -28,7 +32,24 @@
         ["taller de guitarra"],
         ["taller de música electrónica"],
         ["taller de musica electronica"],
-        ["taller de canto"]
+        ["taller de canto"],
+        ["feria del comercio"],
+        ["faüla", "dos en vilo"],
+        ["taller de galletas", "magia en azúcar"],
+        ["asociación de artistas plásticas"],
+        ["crea tu propia historia"],
+        ["clase de velas", "atmósfera"],
+        ["dj jesús"],
+        ["ajedrez gigante"],
+        ["elbox grm"],
+        ["clase de cerámica", "atmósfera"],
+        ["dirty piks"],
+        ["quien canta su mal espanta"],
+        ["juegos de madera"],
+        ["desfile de moda"],
+        ["noelia braceras"],
+        ["bingo solidario", "virgen del rosario"],
+        ["40 duros"]
       ],
       "events": [
         {
@@ -105,6 +126,42 @@
           "place": "Centro Social Juvenil",
           "category": "event",
           "sources": ["mupi_reviewed", "todo_cultura_reviewed"]
+        },
+        {
+          "title_es": "Feria de Comercio 2026: inauguración, talleres, Faüla y DJ Jesús",
+          "start_date": "2026-08-13",
+          "end_date": "2026-08-13",
+          "start_time": "18:00",
+          "place": "Avenida de los Pinos",
+          "category": "event",
+          "sources": ["todo_cultura_reviewed", "mayor_reviewed"]
+        },
+        {
+          "title_es": "Feria de Comercio 2026: talleres, ajedrez gigante, ELBOX GRM y Dirty Piks",
+          "start_date": "2026-08-14",
+          "end_date": "2026-08-14",
+          "start_time": "18:30",
+          "place": "Avenida de los Pinos",
+          "category": "event",
+          "sources": ["todo_cultura_reviewed"]
+        },
+        {
+          "title_es": "Feria de Comercio 2026: cuentos musicales, juegos, desfile de moda y Noelia Braceras",
+          "start_date": "2026-08-15",
+          "end_date": "2026-08-15",
+          "start_time": "18:30",
+          "place": "Avenida de los Pinos",
+          "category": "event",
+          "sources": ["todo_cultura_reviewed"]
+        },
+        {
+          "title_es": "Feria de Comercio 2026: bingo solidario y concierto de 40 Duros",
+          "start_date": "2026-08-16",
+          "end_date": "2026-08-16",
+          "start_time": "18:30",
+          "place": "Avenida de los Pinos",
+          "category": "event",
+          "sources": ["todo_cultura_reviewed"]
         }
       ]
     }

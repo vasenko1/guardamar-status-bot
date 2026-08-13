@@ -49,6 +49,10 @@ _SHEET_NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 _HOURS_PATTERN = re.compile(
     r"^de\s+(\d{1,2}:\d{2})\s+a\s+(\d{1,2}:\d{2})$", re.IGNORECASE
 )
+_COMMUNITY_PROPERTY_SUFFIX = re.compile(
+    r"\s*,?\s+C\.?\s*B\.?\s*$", re.IGNORECASE
+)
+_STREET_NUMBER_MARKER = re.compile(r"\bN[º°]\s*", re.IGNORECASE)
 
 
 class PharmacyError(RuntimeError):
@@ -95,6 +99,18 @@ def _padded(value: str) -> str:
 
     hour, minute = value.split(":")
     return f"{int(hour):02d}:{minute}"
+
+
+def _public_name(value: str) -> str:
+    """Hide the registry-only Comunidad de Bienes suffix from readers."""
+
+    return _COMMUNITY_PROPERTY_SUFFIX.sub("", value).rstrip(" ,")
+
+
+def _public_address(value: str) -> str:
+    """Use a plain street number that Google Maps resolves reliably."""
+
+    return _STREET_NUMBER_MARKER.sub("", value)
 
 
 def _display_hours(raw: str) -> Optional[str]:
@@ -157,8 +173,8 @@ def normalize_rota(payload: bytes, window_start: date) -> Tuple[dict, ...]:
             continue
         records.append({
             "date": duty_date.isoformat(),
-            "name": _title_case(name),
-            "address": _title_case(address).rstrip(" ,"),
+            "name": _public_name(_title_case(name)),
+            "address": _public_address(_title_case(address)).rstrip(" ,"),
             "hours": display_hours,
             "all_day": display_hours.startswith("круглосуточно"),
         })
@@ -280,8 +296,10 @@ async def duty_pharmacies_on(
             continue
         seen.add(key)
         todays.append(PharmacyDuty(
-            name=record["name"],
-            address=record["address"],
+            # Clean again so catalogs created by an older deployed version
+            # become user-friendly immediately, before the next weekly sync.
+            name=_public_name(record["name"]),
+            address=_public_address(record["address"]),
             hours=record["hours"],
         ))
     return tuple(todays[:2])

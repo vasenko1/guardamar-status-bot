@@ -84,7 +84,7 @@ class DigestMessageTests(unittest.TestCase):
         digest = self._routine_digest(
             pharmacies=(PharmacyDuty(
                 name="Planelles Mas, Asuncion",
-                address="Av. Cervantes, Nº29",
+                address="Av. Cervantes, 29",
                 hours="круглосуточно (с 9:00)",
             ),),
         )
@@ -96,7 +96,8 @@ class DigestMessageTests(unittest.TestCase):
             "• Planelles Mas, Asuncion — круглосуточно (с 9:00)",
             message,
         )
-        self.assertIn("query=Av.+Cervantes%2C+N%C2%BA29", message)
+        self.assertIn("query=Av.+Cervantes%2C+29", message)
+        self.assertNotIn("%C2%BA", message)
 
     def test_renders_weekday_holiday_before_events(self):
         digest = self._routine_digest(

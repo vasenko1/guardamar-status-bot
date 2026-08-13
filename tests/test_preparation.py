@@ -117,6 +117,14 @@ class PreparationTests(unittest.IsolatedAsyncioTestCase):
             ),
             "Выставка живописи «Свет вопреки боли» — Вира Дегляренко",
         )
+        self.assertEqual(
+            reviewed_translation(
+                "Feria de Comercio 2026: inauguración, talleres, "
+                "Faüla y DJ Jesús"
+            ),
+            "Торговая ярмарка: открытие, мастер-классы, "
+            "шоу «Faüla» и DJ Jesús",
+        )
 
     def test_reviewed_title_overrides_empty_cache(self):
         with tempfile.TemporaryDirectory() as directory:
