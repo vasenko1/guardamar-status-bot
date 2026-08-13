@@ -131,6 +131,40 @@ class ValidationTests(unittest.TestCase):
                     with self.assertRaises(ReviewedDataError):
                         reviewed_poster("p.jpg", _write(directory, data))
 
+    def test_rejects_a_misspelled_key_at_every_object_level(self):
+        top_level = self._base()
+        top_level["postrs"] = {}
+        poster_level = self._base()
+        poster_level["posters"] = {"p.jpg": {
+            "upload_path": "/u/",
+            # A typo here previously produced a silently empty filter.
+            "drop_title": [["ajedrez"]],
+            "events": [],
+        }}
+        event_level = self._base()
+        event_level["posters"] = {"p.jpg": {"upload_path": "/u/", "events": [{
+            "title_es": "X", "start_date": "2026-08-01",
+            "end_date": "2026-08-01", "category": "event", "plaice": "Casa",
+        }]}}
+        rule_level = self._base()
+        rule_level["schedules"] = [{
+            "match": ["x"], "requiers": {}, "set": {"place": "Casa"},
+        }]
+
+        cases = (
+            ("top level", top_level, lambda p: reviewed_translations(p)),
+            ("poster", poster_level, lambda p: reviewed_poster("p.jpg", p)),
+            ("event", event_level, lambda p: reviewed_poster("p.jpg", p)),
+            ("rule", rule_level, schedule_rules),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            for index, (label, data, read) in enumerate(cases):
+                path = Path(directory) / f"unknown{index}.json"
+                path.write_text(json.dumps(data), "utf-8")
+                with self.subTest(level=label):
+                    with self.assertRaises(ReviewedDataError):
+                        read(path)
+
     def test_one_bad_section_does_not_disable_the_others(self):
         data = self._base()
         data["translations"] = {"Not Normalized": "x"}
