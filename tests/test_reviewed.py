@@ -131,6 +131,85 @@ class ValidationTests(unittest.TestCase):
                     with self.assertRaises(ReviewedDataError):
                         reviewed_poster("p.jpg", _write(directory, data))
 
+    def test_rejects_a_deleted_section_or_poster_field(self):
+        # Deleting a key is as dangerous as misspelling it: both leave the
+        # drop filter absent, so known-bad OCR could publish again.
+        poster = {
+            "upload_path": "/u/",
+            "drop_titles": [["ajedrez"]],
+            "events": [],
+        }
+        full = self._base(); full["posters"] = {"p.jpg": dict(poster)}
+        read_poster = lambda p: reviewed_poster("p.jpg", p)
+        cases = [("version", read_poster)]
+        cases += [(section, read_poster) for section in
+                  ("translations", "posters", "schedules")]
+
+        with tempfile.TemporaryDirectory() as directory:
+            for index, (section, read) in enumerate(cases):
+                data = json.loads(json.dumps(full))
+                del data[section]
+                path = Path(directory) / f"top{index}.json"
+                path.write_text(json.dumps(data), "utf-8")
+                with self.subTest(deleted=section):
+                    with self.assertRaises(ReviewedDataError):
+                        read(path)
+
+            for index, field in enumerate(poster):
+                data = json.loads(json.dumps(full))
+                del data["posters"]["p.jpg"][field]
+                path = Path(directory) / f"poster{index}.json"
+                path.write_text(json.dumps(data), "utf-8")
+                with self.subTest(deleted=f"poster.{field}"):
+                    with self.assertRaises(ReviewedDataError):
+                        reviewed_poster("p.jpg", path)
+
+    def test_explicit_empty_collections_remain_valid(self):
+        # An empty list states an intent that a deletion cannot.
+        data = self._base()
+        data["posters"] = {"p.jpg": {
+            "upload_path": "/u/", "drop_titles": [], "events": [],
+        }}
+        with tempfile.TemporaryDirectory() as directory:
+            path = _write(directory, data)
+            loaded = reviewed_poster("p.jpg", path)
+
+            self.assertEqual(loaded.drop_titles, ())
+            self.assertEqual(loaded.events, ())
+            self.assertEqual(reviewed_translations(path), {})
+            self.assertEqual(schedule_rules(path), ())
+
+    def test_rejects_a_rule_missing_a_required_key(self):
+        for field in ("match", "requires", "set"):
+            rule = {
+                "match": ["concierto"],
+                "requires": {"start_time": "18:00"},
+                "set": {"place": "Casa"},
+            }
+            del rule[field]
+            data = self._base()
+            data["schedules"] = [rule]
+            with tempfile.TemporaryDirectory() as directory:
+                with self.subTest(deleted=field):
+                    with self.assertRaises(ReviewedDataError):
+                        schedule_rules(_write(directory, data))
+
+    def test_rejects_an_event_missing_a_required_key(self):
+        for field in ("title_es", "start_date", "end_date", "category"):
+            event = {
+                "title_es": "X", "start_date": "2026-08-01",
+                "end_date": "2026-08-01", "category": "event",
+            }
+            del event[field]
+            data = self._base()
+            data["posters"] = {"p.jpg": {
+                "upload_path": "/u/", "drop_titles": [], "events": [event],
+            }}
+            with tempfile.TemporaryDirectory() as directory:
+                with self.subTest(deleted=field):
+                    with self.assertRaises(ReviewedDataError):
+                        reviewed_poster("p.jpg", _write(directory, data))
+
     def test_rejects_a_misspelled_key_at_every_object_level(self):
         top_level = self._base()
         top_level["postrs"] = {}
