@@ -20,6 +20,10 @@ DATA_PATH = Path(__file__).with_name("reviewed.json")
 DATA_VERSION = 1
 _TIME_PATTERN = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 _MAX_TEXT = 200
+# Match and drop terms are substrings, so a very short or blank one selects
+# almost every title: a single space in a drop clause empties the whole
+# event section, and in a match term it rewrites every event.
+_MIN_MATCH_TERM = 3
 _SET_FIELDS = {
     "title_es": str,
     "place": str,
@@ -62,6 +66,53 @@ def normalized_title(value: str) -> str:
     return value.casefold().replace("’", "'")
 
 
+def _reject_unknown(mapping, allowed, label: str) -> None:
+    """Refuse a misspelled key instead of silently ignoring its value.
+
+    Every object in this schema goes through here: a typo such as
+    `drop_title` would otherwise validate and leave an empty filter,
+    republishing OCR rows already judged wrong.
+    """
+
+    unknown = set(mapping) - allowed
+    if unknown:
+        raise ReviewedDataError(
+            f"{label} has unknown fields {sorted(unknown)}"
+        )
+
+
+def _reject_duplicate_keys(pairs):
+    """Refuse a repeated key, which JSON would resolve to the last one.
+
+    Two `posters` blocks, or one title listed twice, would otherwise load
+    quietly with the earlier definition — including its drop filter —
+    discarded.
+    """
+
+    seen = set()
+    for key, _ in pairs:
+        if key in seen:
+            raise ValueError(f"duplicate key {key!r} in reviewed data")
+        seen.add(key)
+    return dict(pairs)
+
+
+def _match_term(value, field: str) -> str:
+    """Accept only a substring specific enough to select real titles."""
+
+    if (
+        not isinstance(value, str)
+        or value != value.strip()
+        or len(value) < _MIN_MATCH_TERM
+        or len(value) > _MAX_TEXT
+    ):
+        raise ReviewedDataError(
+            f"{field} must be a trimmed substring of at least "
+            f"{_MIN_MATCH_TERM} characters"
+        )
+    return value
+
+
 def _text(value, field: str) -> str:
     if not isinstance(value, str) or not 1 <= len(value) <= _MAX_TEXT:
         raise ReviewedDataError(f"{field} must be a bounded string")
@@ -94,19 +145,24 @@ def _date(value, field: str) -> str:
 def _validate_event(entry, index: int) -> dict:
     if not isinstance(entry, dict):
         raise ReviewedDataError(f"poster event {index} must be an object")
-    known = {
-        "title_es", "start_date", "end_date", "start_time", "end_time",
-        "place", "category", "sources", "ticket_price_cents",
-        "participation_note", "registration_contact", "capacity_limited",
-    }
-    unknown = set(entry) - known
-    if unknown:
-        raise ReviewedDataError(
-            f"poster event {index} has unknown fields {sorted(unknown)}"
-        )
+    _reject_unknown(
+        entry,
+        {
+            "title_es", "start_date", "end_date", "start_time", "end_time",
+            "place", "category", "sources", "ticket_price_cents",
+            "participation_note", "registration_contact", "capacity_limited",
+        },
+        f"poster event {index}",
+    )
     _text(entry.get("title_es"), f"event {index} title_es")
-    _date(entry.get("start_date"), f"event {index} start_date")
-    _date(entry.get("end_date"), f"event {index} end_date")
+    start = _date(entry.get("start_date"), f"event {index} start_date")
+    end = _date(entry.get("end_date"), f"event {index} end_date")
+    if date.fromisoformat(end) < date.fromisoformat(start):
+        # An inverted range matches no day, so the occurrence would simply
+        # never appear rather than announcing the mistake.
+        raise ReviewedDataError(
+            f"event {index} ends before it starts"
+        )
     for field in ("start_time", "end_time"):
         if entry.get(field) is not None:
             _time(entry[field], f"event {index} {field}")
@@ -142,20 +198,24 @@ def _validate_event(entry, index: int) -> dict:
 def _validate_rule(entry, index: int) -> ScheduleRule:
     if not isinstance(entry, dict):
         raise ReviewedDataError(f"schedule rule {index} must be an object")
-    unknown = set(entry) - {"match", "requires", "weekday_windows", "set"}
-    if unknown:
-        raise ReviewedDataError(
-            f"schedule rule {index} has unknown fields {sorted(unknown)}"
-        )
+    _reject_unknown(
+        entry,
+        {"match", "requires", "weekday_windows", "set"},
+        f"schedule rule {index}",
+    )
     match = entry.get("match")
-    if not isinstance(match, list) or not match or not all(
-        isinstance(term, str) and term for term in match
-    ):
+    if not isinstance(match, list) or not match:
         raise ReviewedDataError(f"rule {index} match must list substrings")
+    for position, term in enumerate(match):
+        _match_term(term, f"rule {index} match[{position}]")
 
-    requires = entry.get("requires", {})
-    if not isinstance(requires, dict):
-        raise ReviewedDataError(f"rule {index} requires must be an object")
+    # An absent guard would let one substring rewrite matching events on
+    # every date, so a rule must state what it applies to.
+    requires = entry.get("requires")
+    if not isinstance(requires, dict) or not requires:
+        raise ReviewedDataError(
+            f"rule {index} requires must name at least one condition"
+        )
     for field, value in requires.items():
         if field in {"start_date", "end_date"}:
             if value != "today":
@@ -207,6 +267,15 @@ def _validate_rule(entry, index: int) -> ScheduleRule:
             if field in {"start_time", "end_time"}:
                 _time(value, f"rule {index} {field}")
 
+    if parsed_windows is not None and (
+        {"start_time", "end_time"} & set(set_fields)
+    ):
+        # The window is applied after `set`, so keeping both would let the
+        # window silently override the hours the rule appears to assign.
+        raise ReviewedDataError(
+            f"rule {index} cannot set hours and weekday_windows together"
+        )
+
     return ScheduleRule(
         match=tuple(normalized_title(term) for term in match),
         requires=dict(requires),
@@ -240,16 +309,24 @@ def _validate_posters(data) -> Dict[str, ReviewedPoster]:
             raise ReviewedDataError(f"poster name must be casefolded: {name}")
         if not isinstance(poster, dict):
             raise ReviewedDataError(f"poster {name} must be an object")
+        _reject_unknown(
+            poster,
+            {"upload_path", "drop_titles", "events"},
+            f"poster {name}",
+        )
         drop_titles = poster.get("drop_titles", [])
         if not isinstance(drop_titles, list) or not all(
-            isinstance(clause, list)
-            and clause
-            and all(isinstance(term, str) and term for term in clause)
-            for clause in drop_titles
+            isinstance(clause, list) and clause for clause in drop_titles
         ):
             raise ReviewedDataError(
                 f"poster {name} drop_titles must be substring clauses"
             )
+        for clause_index, clause in enumerate(drop_titles):
+            for position, term in enumerate(clause):
+                _match_term(
+                    term,
+                    f"poster {name} drop_titles[{clause_index}][{position}]",
+                )
         events = poster.get("events", [])
         if not isinstance(events, list):
             raise ReviewedDataError(f"poster {name} events must be a list")
@@ -295,11 +372,21 @@ def _load(path: Path):
     """
 
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_keys,
+        )
     except (OSError, ValueError) as exc:
         raise ReviewedDataError("reviewed data is unreadable") from exc
     if not isinstance(data, dict) or data.get("version") != DATA_VERSION:
         raise ReviewedDataError("reviewed data has an unsupported version")
+    # A misspelled section name would otherwise be ignored, silently
+    # dropping every correction it was meant to carry.
+    _reject_unknown(
+        data,
+        {"version", *_SECTIONS},
+        "reviewed data",
+    )
 
     sections = {}
     for name, validate in _SECTIONS.items():

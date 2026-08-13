@@ -40,6 +40,30 @@ was a multi-file code change for what is conceptually a data update.
 - Genuinely conditional logic (detail inheritance, merge precedence, date
   filtering) stays in code; the file holds facts, not behavior.
 
+## Validation obligations
+
+Because a data-only edit reaches published output without a code review,
+the loader refuses anything it would otherwise resolve by defaulting:
+
+- unknown keys at every object level, so a typo cannot silently disarm the
+  field it was meant to set;
+- duplicate JSON keys, which the parser would resolve to the last one and
+  quietly discard the earlier definition;
+- match and drop substrings shorter than three characters or carrying
+  surrounding whitespace, because a substring that short selects nearly
+  every title — one stray space in a drop clause empties the whole event
+  section, and in a match term it rewrites every event;
+- a schedule rule with no `requires`, which would apply on every date;
+- a rule that assigns hours while also declaring `weekday_windows`, since
+  the window is applied last and would silently win;
+- an occurrence whose end date precedes its start, which would match no
+  day and disappear without complaint.
+
+A deliberate limitation: a plausible-but-wrong year such as `2062` still
+validates. It fails silent — the occurrence simply never renders — and any
+bound would be arbitrary, so it is left to the annual review rather than
+encoded as a rule the file cannot justify.
+
 ## Consequences
 
 - Benefits: monthly review edits one JSON file; expired entries are

@@ -131,6 +131,113 @@ class ValidationTests(unittest.TestCase):
                     with self.assertRaises(ReviewedDataError):
                         reviewed_poster("p.jpg", _write(directory, data))
 
+    def test_rejects_a_misspelled_key_at_every_object_level(self):
+        top_level = self._base()
+        top_level["postrs"] = {}
+        poster_level = self._base()
+        poster_level["posters"] = {"p.jpg": {
+            "upload_path": "/u/",
+            # A typo here previously produced a silently empty filter.
+            "drop_title": [["ajedrez"]],
+            "events": [],
+        }}
+        event_level = self._base()
+        event_level["posters"] = {"p.jpg": {"upload_path": "/u/", "events": [{
+            "title_es": "X", "start_date": "2026-08-01",
+            "end_date": "2026-08-01", "category": "event", "plaice": "Casa",
+        }]}}
+        rule_level = self._base()
+        rule_level["schedules"] = [{
+            "match": ["x"], "requiers": {}, "set": {"place": "Casa"},
+        }]
+
+        cases = (
+            ("top level", top_level, lambda p: reviewed_translations(p)),
+            ("poster", poster_level, lambda p: reviewed_poster("p.jpg", p)),
+            ("event", event_level, lambda p: reviewed_poster("p.jpg", p)),
+            ("rule", rule_level, schedule_rules),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            for index, (label, data, read) in enumerate(cases):
+                path = Path(directory) / f"unknown{index}.json"
+                path.write_text(json.dumps(data), "utf-8")
+                with self.subTest(level=label):
+                    with self.assertRaises(ReviewedDataError):
+                        read(path)
+
+    def test_rejects_substring_terms_that_would_match_everything(self):
+        # A blank or one-character substring selects nearly every title:
+        # in a drop clause it empties the event section, in a match term
+        # it rewrites every event.
+        for term in (" ", "", "x", "  a  "):
+            drop = self._base()
+            drop["posters"] = {"p.jpg": {
+                "upload_path": "/u/", "drop_titles": [[term]], "events": [],
+            }}
+            rule = self._base()
+            rule["schedules"] = [{
+                "match": [term],
+                "requires": {"start_time": "18:00"},
+                "set": {"place": "Casa"},
+            }]
+            with tempfile.TemporaryDirectory() as directory:
+                with self.subTest(term=repr(term)):
+                    with self.assertRaises(ReviewedDataError):
+                        reviewed_poster("p.jpg", _write(directory, drop))
+                    path = Path(directory) / "rule.json"
+                    path.write_text(json.dumps(rule), "utf-8")
+                    with self.assertRaises(ReviewedDataError):
+                        schedule_rules(path)
+
+    def test_rejects_a_rule_without_an_explicit_guard(self):
+        data = self._base()
+        data["schedules"] = [{"match": ["concierto"], "set": {"place": "X"}}]
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(ReviewedDataError):
+                schedule_rules(_write(directory, data))
+
+    def test_rejects_hours_fighting_weekday_windows(self):
+        data = self._base()
+        data["schedules"] = [{
+            "match": ["concierto"],
+            "requires": {"start_time": "09:00"},
+            "weekday_windows": {
+                "weekday": ["09:00", "20:00"],
+                "saturday": None,
+                "sunday": None,
+            },
+            # The window is applied last, so this would silently lose.
+            "set": {"start_time": "11:00", "place": "Casa"},
+        }]
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(ReviewedDataError):
+                schedule_rules(_write(directory, data))
+
+    def test_rejects_an_event_that_ends_before_it_starts(self):
+        data = self._base()
+        data["posters"] = {"p.jpg": {"upload_path": "/u/", "events": [{
+            "title_es": "X", "start_date": "2026-09-01",
+            "end_date": "2026-08-01", "category": "event",
+        }]}}
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(ReviewedDataError):
+                reviewed_poster("p.jpg", _write(directory, data))
+
+    def test_rejects_duplicate_keys_that_json_would_resolve_silently(self):
+        # The second block would win, discarding the first drop filter.
+        raw = (
+            '{"version":1,"translations":{},"schedules":[],'
+            '"posters":{"p.jpg":{"upload_path":"/u/",'
+            '"drop_titles":[["ajedrez"]],"events":[]}},'
+            '"posters":{"p.jpg":{"upload_path":"/u/",'
+            '"drop_titles":[],"events":[]}}}'
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "dup.json"
+            path.write_text(raw, "utf-8")
+            with self.assertRaises(ReviewedDataError):
+                reviewed_poster("p.jpg", path)
+
     def test_one_bad_section_does_not_disable_the_others(self):
         data = self._base()
         data["translations"] = {"Not Normalized": "x"}
