@@ -677,6 +677,7 @@ def build_event_section(
             event_lines.append(f"  📍 {_event_place_link(event.place)}")
         has_ticket_row = (
             event.ticket_price_cents is not None
+            or event.ticket_url is not None
             or event.registration_contact is not None
             or event.capacity_limited
         )
@@ -692,7 +693,7 @@ def build_event_section(
                 )
                 ticket_label = f"Билет {price_label}"
             else:
-                ticket_label = ""
+                ticket_label = "Билеты" if event.ticket_url else ""
             details = []
             if event.ticket_url and ticket_label:
                 details.append(

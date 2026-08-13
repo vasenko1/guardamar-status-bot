@@ -127,7 +127,8 @@ class PreparationTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             reviewed_translation("TRIVOX (Tributo a Il Divo)"),
-            "TRIVOX, трибьют-шоу Il Divo",
+            "TRIVOX, благотворительный концерт-трибьют Il Divo "
+            "в поддержку борьбы с раком",
         )
         self.assertEqual(
             reviewed_translation("Taller de guitarras eléctricas"),

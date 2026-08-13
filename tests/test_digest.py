@@ -774,6 +774,25 @@ class DigestMessageTests(unittest.TestCase):
         self.assertNotIn("query=Plaza+Labradores", message)
         self.assertNotIn("query=Pla%C3%A7a+dels+Llauradors", message)
 
+    def test_ticket_link_without_published_price_has_useful_label(self):
+        digest = MorningDigest(
+            weather=None,
+            warnings=(),
+            warnings_available=True,
+            events=(Event(
+                title="Благотворительный концерт TRIVOX",
+                starts_at=None,
+                ticket_url="https://www.giglon.com/",
+            ),),
+        )
+
+        message = build_message(digest)
+
+        self.assertIn(
+            '🎟 <a href="https://www.giglon.com/">Билеты</a>',
+            message,
+        )
+
     def test_non_geographic_meeting_instruction_is_not_a_map_link(self):
         digest = MorningDigest(
             weather=None,

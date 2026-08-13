@@ -59,6 +59,12 @@ not receive the first call's candidates. Deterministic agreement on key fields
 is required, and official HTML text always wins conflicts. Every
 result must use a fixed schema and pass date, month, field-length, provenance,
 and duplicate validation before replacing the previous catalog.
+For text agendas, each candidate additionally needs an exact contiguous source
+quotation. At least three quarters of the meaningful words in a self-contained
+title must occur in that quotation. The model may compress explicit event
+kind, act, tribute, benefit purpose, audience or cause into the title, but may
+not create a free-form description. Poster candidates use null evidence and
+remain governed by independent-reading agreement.
 Validated title-only Russian translations are stored separately in a bounded
 atomic cache keyed by exact source identity, source title, and policy version.
 Only preparation commands may fill missing entries; the 07:30 publication and

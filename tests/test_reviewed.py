@@ -34,6 +34,13 @@ class ShippedDataTests(unittest.TestCase):
         rules = schedule_rules()
 
         self.assertTrue(translations)
+        self.assertIn(
+            "благотворительный концерт-трибьют",
+            translations[
+                "concierto benéfico: trivox (tributo a il divo) "
+                "para la lucha contra el cáncer"
+            ].casefold(),
+        )
         self.assertTrue(rules)
         self.assertIsNotNone(reviewed_poster("MUPI-AGOSTO-2026-scaled.jpg"))
         for rule in rules:

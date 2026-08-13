@@ -132,6 +132,7 @@ AGENDA_EXTRACTION_SCHEMA = {
                     "start_time": {"type": ["string", "null"]},
                     "end_time": {"type": ["string", "null"]},
                     "place": {"type": ["string", "null"]},
+                    "evidence_es": {"type": ["string", "null"]},
                     "category": {
                         "type": "string",
                         "enum": [
@@ -150,6 +151,7 @@ AGENDA_EXTRACTION_SCHEMA = {
                     "start_time",
                     "end_time",
                     "place",
+                    "evidence_es",
                     "category",
                 ],
             },
@@ -429,7 +431,8 @@ def _extract_agenda_events(
         "municipal_service. Do not invent unreadable fields. Return one JSON "
         "object with month as YYYY-MM and events as an array. Every event must "
         "contain title_es, start_date, end_date, start_time, end_time, place, and "
-        "category. Use null for unknown optional values. category must be "
+        "category. Set evidence_es to null because the source is an image. "
+        "Use null for unknown optional values. category must be "
         "event, exhibition, workshop, municipal_service, or opening_hours."
     )
     return _request_json(
@@ -485,7 +488,8 @@ def _verify_agenda_poster_events(
         "Treat hours printed inside a specific exhibition card as that "
         "exhibition's hours. Exclude routine facility opening hours and "
         "municipal services using their schema categories. Use ISO dates, "
-        "HH:MM times, and the poster month as YYYY-MM."
+        "HH:MM times, and the poster month as YYYY-MM. Set evidence_es to null "
+        "because the source is an image."
     )
     return _request_json(
         api_key,
@@ -532,13 +536,20 @@ def _extract_agenda_text_events(
         "Guardamar del Segura into structured event facts. Return every "
         "explicitly dated activity, exhibition, workshop, concert, tour, "
         "festival act, neighbourhood event, and repeated series date. Expand "
-        "each repeated date into its own event record. Preserve official "
-        "titles, activity types, dates, times and places; do not infer missing "
+        "each repeated date into its own event record. Make title_es a concise, "
+        "self-contained digest title of at most 120 characters. Preserve the "
+        "explicit event kind and named act or work. When the same event row "
+        "explicitly says that it is a tribute, benefit event, or for a named "
+        "audience or cause, keep that short purpose in title_es. Never reduce "
+        "'concierto benéfico ... tributo a Il Divo ... Trivox' to only "
+        "'TRIVOX'. Preserve official dates, times and places; do not infer missing "
         "facts. Exhibition visiting hours printed with the exhibition are its "
         "start_time and end_time. Use ISO YYYY-MM-DD dates and HH:MM times. "
         "Classify routine facility schedules as opening_hours and routine "
         "administrative services as municipal_service. Return the fixed JSON "
-        "schema and use null for unknown optional fields.\n\nOFFICIAL TEXT:\n"
+        "schema and use null for unknown optional fields. evidence_es must be "
+        "one exact contiguous quotation from OFFICIAL TEXT that contains the "
+        "event identity and supports the enriched title.\n\nOFFICIAL TEXT:\n"
         + source_text
     )
     return _request_json(

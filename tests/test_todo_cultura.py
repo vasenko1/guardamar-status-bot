@@ -118,7 +118,7 @@ class TodoCulturaTests(unittest.TestCase):
 
     def test_processes_only_new_edge_date_from_saved_candidate(self):
         prior = {
-            "parser_version": 4,
+            "parser_version": 5,
             "cursor_modified_gmt": "2026-08-07T10:00:00",
             "candidates": [{
                 "id": 128245,
@@ -159,7 +159,7 @@ class TodoCulturaTests(unittest.TestCase):
 
     def test_unchanged_complete_window_makes_no_detail_request(self):
         prior = {
-            "parser_version": 4,
+            "parser_version": 5,
             "cursor_modified_gmt": "2026-08-07T10:00:00",
             "candidates": [{
                 "id": 128245,
@@ -179,9 +179,46 @@ class TodoCulturaTests(unittest.TestCase):
         details.assert_called_once_with([])
         self.assertEqual(window.programs, ())
 
-    def test_covering_date_marks_older_duplicate_candidate_processed(self):
+    def test_parser_upgrade_reopens_previously_covered_dates(self):
         prior = {
             "parser_version": 4,
+            "cursor_modified_gmt": "2026-08-07T10:00:00",
+            "covered_dates": ["2026-08-09"],
+            "candidates": [{
+                "id": 128245,
+                "modified_gmt": "2026-08-07T10:00:00",
+                "link": "https://todoculturavegabaja.es/eventos/programa/",
+                "dates": ["2026-08-09"],
+                "processed_dates": ["2026-08-09"],
+                "detail_checked": True,
+            }],
+        }
+        document = {
+            "id": 128245,
+            "modified_gmt": "2026-08-07T10:00:00",
+            "link": "https://todoculturavegabaja.es/eventos/programa/",
+            "content": {"rendered": (
+                "<p>El Ayuntamiento de Guardamar publica la agenda "
+                "municipal.</p><p>Domingo 9 de agosto</p>"
+                "<p>22:30: Concierto benéfico de Trivox.</p>"
+            )},
+        }
+        with (
+            patch("telegrambot.todo_cultura._read_metadata", return_value=[]),
+            patch(
+                "telegrambot.todo_cultura._read_documents",
+                return_value=[document],
+            ) as details,
+        ):
+            window = _read_program_window(date(2026, 8, 9), prior)
+
+        details.assert_called_once_with([128245])
+        self.assertEqual(window.programs[0].dates, (date(2026, 8, 9),))
+        self.assertEqual(window.source_state["parser_version"], 5)
+
+    def test_covering_date_marks_older_duplicate_candidate_processed(self):
+        prior = {
+            "parser_version": 5,
             "cursor_modified_gmt": "2026-08-07T10:00:00",
             "candidates": [
                 {
@@ -235,7 +272,7 @@ class TodoCulturaTests(unittest.TestCase):
 
     def test_changed_publication_reopens_already_processed_date(self):
         prior = {
-            "parser_version": 4,
+            "parser_version": 5,
             "cursor_modified_gmt": "2026-08-07T10:00:00",
             "covered_dates": ["2026-08-09"],
             "candidates": [{
@@ -320,13 +357,79 @@ class TodoCulturaTests(unittest.TestCase):
             f"<p>{'Programa cultural. ' * 20}</p>"
             "<p>Jueves 6 de agosto</p><p>Otro evento.</p>"
         )
-        admissions = _admissions(rendered)
+        admissions = _admissions(rendered, date(2026, 8, 14))
 
         self.assertEqual(len(admissions), 1)
         self.assertEqual(admissions[0].price_cents, 1500)
-        self.assertTrue(admissions[0].event_url.endswith(
+        self.assertTrue(admissions[0].ticket_url.endswith(
             "/spanish-brass-top-secret.html"
         ))
+
+    def test_reads_giglon_price_and_binds_it_to_preceding_event(self):
+        rendered = (
+            "<p>Viernes 14 de agosto</p>"
+            "<p>– <strong>22,30 h.</strong>: Concierto benéfico a favor de "
+            "Alicante contra el cáncer, tributo a Il Divo, por Trivox.</p>"
+            "<p>El precio de las entradas es de <strong>20 euros</strong>. "
+            "Venta en <a href=\"https://www.giglon.com/todos?"
+            "idEvent=concierto-benefico-trivox\">Giglon</a>.</p>"
+        )
+
+        admissions = _admissions(rendered)
+
+        self.assertEqual(len(admissions), 1)
+        self.assertIn("Concierto benéfico", admissions[0].title_hint)
+        self.assertEqual(admissions[0].price_cents, 2000)
+        self.assertEqual(
+            admissions[0].ticket_url,
+            "https://www.giglon.com/todos?idEvent=concierto-benefico-trivox",
+        )
+        self.assertEqual(admissions[0].event_date, date(2026, 8, 14))
+
+    def test_reads_ticket_only_from_same_official_event_paragraph(self):
+        admissions = _admissions(
+            "<p><strong>Viernes, 14 de agosto a las 22:30 h. Parque "
+            "Reina Sofía.</strong><br>TRIVOX (Tributo a Il Divo)<br>"
+            "Concierto benéfico para la lucha contra el cáncer<br>"
+            "Entradas en <a href=\"https://www.giglon.com/\">Giglon</a></p>",
+            date(2026, 8, 13),
+        )
+
+        self.assertEqual(len(admissions), 1)
+        self.assertIsNone(admissions[0].price_cents)
+        self.assertEqual(admissions[0].ticket_url, "https://www.giglon.com/")
+        self.assertEqual(admissions[0].event_date, date(2026, 8, 14))
+
+    def test_inline_dated_event_replaces_previous_price_anchor(self):
+        admissions = _admissions(
+            "<p>– 21:30 h.: Sesión de baile de verano.</p>"
+            "<p>Miércoles 2 de septiembre, 20 horas: Representación de la "
+            "obra de teatro La balada de los tres inocentes.</p>"
+            "<p>El precio de las entradas es de 8 euros.</p>",
+            date(2026, 8, 13),
+        )
+
+        self.assertIn("Representación", admissions[0].title_hint)
+        self.assertEqual(admissions[0].event_date, date(2026, 9, 2))
+
+    def test_reads_event_local_free_admission_without_link(self):
+        admissions = _admissions(
+            "<p>– 21,30 h.: Sesión de baile de verano.</p>"
+            "<p>La entrada es libre.</p>"
+        )
+
+        self.assertEqual(admissions[0].price_cents, 0)
+        self.assertIsNone(admissions[0].ticket_url)
+
+    def test_reads_compact_official_price_format(self):
+        admissions = _admissions(
+            "<p>Miércoles 19 de agosto, a las 20:30 h. Casa de Cultura. "
+            "RECITAL FLAMENCO: AL ALIMÓN<br>Precio: 5 €</p>",
+            date(2026, 8, 13),
+        )
+
+        self.assertEqual(admissions[0].price_cents, 500)
+        self.assertEqual(admissions[0].event_date, date(2026, 8, 19))
 
     def test_incomplete_detail_batch_is_rejected(self):
         payload = json.dumps([{"id": 1}]).encode()

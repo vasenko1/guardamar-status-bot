@@ -330,10 +330,16 @@ after successful structured normalization and catalog replacement. During the
 refresh attempt, allowing new facts to be retained without making event-only
 changes trigger a second public digest.
 
-An explicit regular admission price in that same bounded programme may enrich
-the matching event only when the price paragraph links to an HTTPS Agenda
-Guardamar event page and the normalized titles agree. The existing Agenda
-Guardamar occurrence remains the authority for its dated purchase link.
+An explicit regular admission price or `entrada libre` in that same bounded
+programme may enrich only the event named by the preceding event row. Matching
+needs either two shared meaningful words or one shared non-generic word, so a
+bare `Concierto` cannot borrow another occurrence's price. An HTTPS purchase
+link in the same admission paragraph is retained only for the reviewed Agenda
+Guardamar and Giglon hosts. The existing Agenda Guardamar occurrence remains
+the authority for its dated purchase link.
+The primary Turismo HTML uses the same deterministic event-local rules for its
+own explicit `Precio`, `Entrada libre`, and ticket links. A link without a
+published price is rendered simply as `Билеты`; no price is inferred.
 An explicit `Inscripciones:` or `Reservas:` row with a valid phone number may
 similarly enrich only a title-matched occurrence on the requested date. A
 generic information contact is not registration, and missing price is not
@@ -342,6 +348,15 @@ are stored in the small normalized catalog so reviewed occurrence corrections
 do not discard them.
 Routine Centro Social Juvenil opening sessions and undated, placeless campaigns
 are not Morning Digest events.
+
+Text extraction also returns one exact source quotation for every event. The
+quotation must occur in the bounded input and support at least three quarters
+of the meaningful words in its concise title. This permits a self-contained
+title to retain an explicit event kind, tribute or benefit purpose without
+accepting unsupported editorial details. A corroborating lower-priority title
+may replace a sparse title only as an identity-preserving superset; conflicts
+still keep the higher-priority title. The quotation and raw article are not
+stored. Poster OCR continues to require two blind agreeing readings instead.
 
 Agenda Guardamar detail pages are the authoritative source for their own
 sessions and ticket links. One page may contain several dated sessions; each

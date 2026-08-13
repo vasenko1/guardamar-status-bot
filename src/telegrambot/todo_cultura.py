@@ -39,8 +39,11 @@ class TodoCulturaError(RuntimeError):
 
 @dataclass(frozen=True)
 class TodoCulturaAdmission:
-    event_url: str
-    price_cents: int
+    title_hint: str
+    price_cents: Optional[int]
+    ticket_url: Optional[str] = None
+    evidence: str = ""
+    event_date: Optional[date] = None
 
 
 @dataclass(frozen=True)
@@ -276,52 +279,139 @@ def _allowed_url(url: str) -> bool:
     return parsed.scheme == "https" and parsed.hostname in API_HOSTS
 
 
-def _admissions(rendered: str) -> Tuple[TodoCulturaAdmission, ...]:
-    """Read explicit prices linked to official Agenda Guardamar events."""
+_EVENT_ROW = re.compile(
+    r"^\s*[–—•-]?\s*(?:\d{1,2}(?:[.,:]\d{1,2})?\s*"
+    r"(?:a\s*\d{1,2}(?:[.,:]\d{1,2})?\s*)?(?:h(?:oras?)?\.?)?\s*:\s*)",
+    re.IGNORECASE,
+)
+_INLINE_EVENT_ROW = re.compile(
+    r"\b\d{1,2}\s+de\s+[a-záéíóúñ]+(?:\s+de\s+\d{4})?.{0,80}"
+    r"\b\d{1,2}(?:[.,:]\d{1,2})?\s*(?:h(?:oras?)?\.?)?\s*:\s*",
+    re.IGNORECASE,
+)
+_TICKET_HOSTS = {
+    "agendaguardamar.com",
+    "www.agendaguardamar.com",
+    "giglon.com",
+    "www.giglon.com",
+}
+
+
+def _paragraphs(rendered: str) -> List[Tuple[str, str]]:
+    """Return bounded paragraph HTML and normalized visible text."""
 
     result = []
-    seen = set()
-    for paragraph in re.findall(
+    for fragment in re.findall(
         r"<p\b[^>]*>(.*?)</p>", rendered, flags=re.IGNORECASE | re.DOTALL
     ):
         plain = " ".join(
-            html.unescape(re.sub(r"<[^>]+>", " ", paragraph)).split()
+            html.unescape(re.sub(r"<[^>]+>", " ", fragment)).split()
         )
+        if plain:
+            result.append((fragment, plain))
+    return result
+
+
+def _ticket_url(fragment: str) -> Optional[str]:
+    """Keep only explicit purchase links on reviewed ticketing hosts."""
+
+    for raw_url in re.findall(
+        r"href\s*=\s*['\"]([^'\"]+)['\"]", fragment, re.IGNORECASE
+    ):
+        candidate = html.unescape(raw_url)
+        parsed = urllib.parse.urlparse(candidate)
+        if parsed.scheme != "https" or parsed.hostname not in _TICKET_HOSTS:
+            continue
+        return urllib.parse.urlunparse(parsed._replace(fragment=""))
+    return None
+
+
+def _admissions(
+    rendered: str,
+    reference_date: Optional[date] = None,
+) -> Tuple[TodoCulturaAdmission, ...]:
+    """Bind explicit admission facts to the preceding event row.
+
+    Municipal programmes put admission facts in the event paragraph or the
+    paragraph immediately after it, so the event row itself is retained as
+    deterministic matching evidence.
+    """
+
+    result = []
+    seen = set()
+    title_hint = None
+    title_date = None
+    current_date = None
+    anchor = reference_date or date.today()
+    for paragraph, plain in _paragraphs(rendered):
+        header_date = _header_date(plain, anchor.year)
+        if header_date is not None:
+            current_date = header_date
+        mentioned = _mentioned_dates(plain, anchor)
+        mentioned_date = min(
+            mentioned,
+            key=lambda candidate: abs((candidate - anchor).days),
+        ) if mentioned else None
+        if mentioned_date is not None:
+            current_date = mentioned_date
+        is_event_row = bool(
+            _EVENT_ROW.match(plain) or _INLINE_EVENT_ROW.search(plain)
+        )
+        if is_event_row:
+            title_hint = plain[:300]
+            title_date = current_date
         price_match = re.search(
-            r"\bprecio\s+de\s+la\s+entrada\s+es\s+de\s+"
-            r"(\d{1,4})(?:[,.](\d{1,2}))?\s+euros?\b",
+            r"(?:\bprecio\s+de\s+(?:(?:la|las)\s+)?(?:entrada|entradas)"
+            r"\s+es\s+de\s+(\d{1,4})(?:[,.](\d{1,2}))?\s+euros?\b|"
+            r"\bprecio\s*:\s*(\d{1,4})(?:[,.](\d{1,2}))?\s*(?:€|euros?)"
+            r")",
             plain,
             re.IGNORECASE,
         )
-        if price_match is None:
-            continue
-        euros = int(price_match.group(1))
-        cents = int((price_match.group(2) or "0").ljust(2, "0"))
-        price_cents = euros * 100 + cents
-        if not 0 <= price_cents <= 100_000:
-            continue
-        for raw_url in re.findall(
-            r"href\s*=\s*['\"]([^'\"]+)['\"]", paragraph, re.IGNORECASE
-        ):
-            event_url = html.unescape(raw_url)
-            parsed = urllib.parse.urlparse(event_url)
-            if (
-                parsed.scheme != "https"
-                or parsed.hostname not in {
-                    "agendaguardamar.com",
-                    "www.agendaguardamar.com",
-                }
-                or "/espectaculo/" not in parsed.path
-                or not parsed.path.endswith(".html")
-            ):
-                continue
-            normalized = urllib.parse.urlunparse(
-                parsed._replace(query="", fragment="")
+        free = re.search(
+            r"\b(?:la\s+)?entrada\s+es\s+(?:libre|gratuita)\b",
+            plain,
+            re.IGNORECASE,
+        )
+        ticket_url = _ticket_url(paragraph)
+        ticket_only = bool(
+            is_event_row
+            and ticket_url
+            and re.search(
+                r"\b(?:entradas?|tickets?|venta|compra)\b",
+                plain,
+                re.IGNORECASE,
             )
-            if normalized not in seen:
-                seen.add(normalized)
-                result.append(TodoCulturaAdmission(normalized, price_cents))
-            break
+        )
+        if price_match is None and free is None and not ticket_only:
+            continue
+        if title_hint is None:
+            # Some short articles put the event name and price in one
+            # paragraph. It remains event-local evidence, not a guessed link.
+            title_hint = plain[:300]
+        if price_match is not None:
+            euros = int(price_match.group(1) or price_match.group(3))
+            cents = int(
+                (price_match.group(2) or price_match.group(4) or "0")
+                .ljust(2, "0")
+            )
+            price_cents = euros * 100 + cents
+        elif free is not None:
+            price_cents = 0
+        else:
+            price_cents = None
+        if price_cents is not None and not 0 <= price_cents <= 100_000:
+            continue
+        key = (title_hint.casefold(), title_date, price_cents, ticket_url)
+        if key not in seen:
+            seen.add(key)
+            result.append(TodoCulturaAdmission(
+                title_hint=title_hint,
+                price_cents=price_cents,
+                ticket_url=ticket_url,
+                evidence=plain[:600],
+                event_date=title_date,
+            ))
         if len(result) == 20:
             break
     return tuple(result)
@@ -572,6 +662,23 @@ def _read_program_window(
     """Incrementally collect only sections entering the rolling week."""
 
     prior = prior_state if isinstance(prior_state, dict) else {}
+    if prior.get("parser_version") != 5:
+        # Re-open the rolling window once when extraction capabilities change.
+        # The metadata cursor remains useful, but old coverage must not prevent
+        # richer event-local facts from being collected.
+        prior = {
+            **prior,
+            "covered_dates": [],
+            "candidates": [
+                {
+                    **candidate,
+                    "processed_dates": [],
+                    "detail_checked": False,
+                }
+                for candidate in prior.get("candidates", [])
+                if isinstance(candidate, dict)
+            ],
+        }
     cursor = prior.get("cursor_modified_gmt")
     if not isinstance(cursor, str):
         cursor = None
@@ -689,7 +796,7 @@ def _read_program_window(
         ):
             continue
         sections = _date_sections(lines, local_day.year, local_day)
-        document_admissions = _admissions(rendered)
+        document_admissions = _admissions(rendered, local_day)
         candidate["dates"] = sorted(day.isoformat() for day in sections)
         processed = _candidate_dates(candidate, "processed_dates")
         included = []
@@ -765,7 +872,7 @@ def _read_program_window(
             dates=tuple(dict.fromkeys(day for day, _ in dated_sections)),
         ))
     state = {
-        "parser_version": 4,
+        "parser_version": 5,
         "cursor_modified_gmt": (
             newest_cursor.isoformat(timespec="seconds")
             if newest_cursor is not None
