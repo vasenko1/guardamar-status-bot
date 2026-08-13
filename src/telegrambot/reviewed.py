@@ -11,14 +11,14 @@ instead of silently changing published output.
 import json
 import re
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, time
 from functools import lru_cache
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 DATA_PATH = Path(__file__).with_name("reviewed.json")
 DATA_VERSION = 1
-_TIME_PATTERN = re.compile(r"^\d{2}:\d{2}$")
+_TIME_PATTERN = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 _MAX_TEXT = 200
 _SET_FIELDS = {
     "title_es": str,
@@ -69,8 +69,17 @@ def _text(value, field: str) -> str:
 
 
 def _time(value, field: str) -> str:
+    """Accept only a real wall-clock time, not merely the HH:MM shape."""
+
+    # The pattern rejects impossible values itself because
+    # time.fromisoformat accepts "24:00" and silently returns midnight,
+    # which would move an end-of-day correction to the start of the day.
     if not isinstance(value, str) or not _TIME_PATTERN.match(value):
-        raise ReviewedDataError(f"{field} must use HH:MM")
+        raise ReviewedDataError(f"{field} must be a real zero-padded HH:MM")
+    try:
+        time.fromisoformat(value)
+    except ValueError as exc:
+        raise ReviewedDataError(f"{field} is not a real time") from exc
     return value
 
 
@@ -109,9 +118,22 @@ def _validate_event(entry, index: int) -> dict:
         isinstance(source, str) and source for source in sources
     ):
         raise ReviewedDataError(f"event {index} sources must be strings")
+    for field in ("participation_note", "registration_contact"):
+        if entry.get(field) is not None:
+            _text(entry[field], f"event {index} {field}")
+    if "capacity_limited" in entry and not isinstance(
+        entry["capacity_limited"], bool
+    ):
+        # A JSON string such as "false" would otherwise render as True.
+        raise ReviewedDataError(
+            f"event {index} capacity_limited must be a boolean"
+        )
     price = entry.get("ticket_price_cents")
     if price is not None and (
-        not isinstance(price, int) or not 0 <= price <= 100_000
+        # bool subclasses int, so True would pass a bare isinstance check.
+        not isinstance(price, int)
+        or isinstance(price, bool)
+        or not 0 <= price <= 100_000
     ):
         raise ReviewedDataError(f"event {index} price is implausible")
     return entry
@@ -193,15 +215,7 @@ def _validate_rule(entry, index: int) -> ScheduleRule:
     )
 
 
-@lru_cache(maxsize=4)
-def _load(path: Path):
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        raise ReviewedDataError("reviewed data is unreadable") from exc
-    if not isinstance(data, dict) or data.get("version") != DATA_VERSION:
-        raise ReviewedDataError("reviewed data has an unsupported version")
-
+def _validate_translations(data) -> Dict[str, str]:
     translations = data.get("translations", {})
     if not isinstance(translations, dict):
         raise ReviewedDataError("translations must be an object")
@@ -212,7 +226,10 @@ def _load(path: Path):
             raise ReviewedDataError(
                 f"translation key is not normalized: {source!r}"
             )
+    return dict(translations)
 
+
+def _validate_posters(data) -> Dict[str, ReviewedPoster]:
     posters = {}
     raw_posters = data.get("posters", {})
     if not isinstance(raw_posters, dict):
@@ -249,30 +266,67 @@ def _load(path: Path):
                 for index, event in enumerate(events)
             ),
         )
+    return posters
 
+
+def _validate_schedules(data) -> Tuple[ScheduleRule, ...]:
     raw_rules = data.get("schedules", [])
     if not isinstance(raw_rules, list):
         raise ReviewedDataError("schedules must be a list")
-    rules = tuple(
+    return tuple(
         _validate_rule(rule, index) for index, rule in enumerate(raw_rules)
     )
-    return {
-        "translations": dict(translations),
-        "posters": posters,
-        "schedules": rules,
-    }
+
+
+_SECTIONS = {
+    "translations": _validate_translations,
+    "posters": _validate_posters,
+    "schedules": _validate_schedules,
+}
+
+
+@lru_cache(maxsize=4)
+def _load(path: Path):
+    """Validate each section independently so one defect stays contained.
+
+    A structural failure still rejects everything, but a defect confined to
+    one section must not disable the others — in particular a translation
+    typo must never switch off a poster's known-bad-OCR filter.
+    """
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ReviewedDataError("reviewed data is unreadable") from exc
+    if not isinstance(data, dict) or data.get("version") != DATA_VERSION:
+        raise ReviewedDataError("reviewed data has an unsupported version")
+
+    sections = {}
+    for name, validate in _SECTIONS.items():
+        try:
+            sections[name] = validate(data)
+        except ReviewedDataError as exc:
+            sections[name] = exc
+    return sections
+
+
+def _section(name: str, path: Path):
+    value = _load(path)[name]
+    if isinstance(value, ReviewedDataError):
+        raise value
+    return value
 
 
 def reviewed_translations(path: Path = DATA_PATH) -> Dict[str, str]:
-    return _load(path)["translations"]
+    return _section("translations", path)
 
 
 def reviewed_poster(
     poster_name: str,
     path: Path = DATA_PATH,
 ) -> Optional[ReviewedPoster]:
-    return _load(path)["posters"].get(poster_name.casefold())
+    return _section("posters", path).get(poster_name.casefold())
 
 
 def schedule_rules(path: Path = DATA_PATH) -> Tuple[ScheduleRule, ...]:
-    return _load(path)["schedules"]
+    return _section("schedules", path)

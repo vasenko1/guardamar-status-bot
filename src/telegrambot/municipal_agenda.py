@@ -845,6 +845,18 @@ def _inherit_reviewed_details(
     return tuple(result)
 
 
+_POSTER_SOURCES = frozenset({"mupi", "mupi_reviewed"})
+_TEXT_SOURCES = frozenset({"turismo_html", "todo_cultura",
+                           "todo_cultura_reviewed"})
+
+
+def _is_poster_only(event: SourceEvent) -> bool:
+    """Report whether OCR is the sole provenance behind this event."""
+
+    sources = set(event.sources)
+    return bool(sources & _POSTER_SOURCES) and not (sources & _TEXT_SOURCES)
+
+
 def _reviewed_source_event(entry: dict) -> SourceEvent:
     return SourceEvent(
         title_es=entry["title_es"],
@@ -873,8 +885,17 @@ def _apply_reviewed_corrections(
     try:
         poster = reviewed_poster(poster_name)
     except ReviewedDataError as exc:
-        LOGGER.warning("Reviewed data rejected; corrections skipped: %s", exc)
-        return events
+        # The drop filter exists because some poster rows are known to be
+        # wrong. Without it those rows cannot be told apart, so every
+        # poster-only event is withheld; text-corroborated facts survive.
+        LOGGER.warning(
+            "Reviewed poster data rejected; withholding poster-only "
+            "events: %s",
+            exc,
+        )
+        return tuple(
+            event for event in events if not _is_poster_only(event)
+        )
     if (
         poster is None
         or parsed.scheme != "https"
