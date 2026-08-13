@@ -16,6 +16,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
+from .event_urls import normalize_ticket_url
+
 DATA_PATH = Path(__file__).with_name("reviewed.json")
 DATA_VERSION = 1
 _TIME_PATTERN = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
@@ -165,7 +167,7 @@ def _validate_event(entry, index: int) -> dict:
         required={"title_es", "start_date", "end_date", "category"},
         optional={
             "start_time", "end_time", "place", "sources",
-            "ticket_price_cents", "participation_note",
+            "ticket_price_cents", "ticket_url", "participation_note",
             "registration_contact", "capacity_limited",
         },
     )
@@ -207,6 +209,16 @@ def _validate_event(entry, index: int) -> dict:
         or not 0 <= price <= 100_000
     ):
         raise ReviewedDataError(f"event {index} price is implausible")
+    ticket_url = entry.get("ticket_url")
+    if ticket_url is not None:
+        if not isinstance(ticket_url, str):
+            raise ReviewedDataError(
+                f"event {index} ticket_url is not an approved HTTPS URL"
+            )
+        if normalize_ticket_url(ticket_url) is None:
+            raise ReviewedDataError(
+                f"event {index} ticket_url is not an approved HTTPS URL"
+            )
     return entry
 
 

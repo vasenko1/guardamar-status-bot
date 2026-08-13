@@ -93,7 +93,7 @@ class RotaNormalizationTests(unittest.TestCase):
 
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0]["name"], "Planelles Mas, Asuncion")
-        self.assertEqual(records[0]["address"], "Av. Cervantes, Nº29")
+        self.assertEqual(records[0]["address"], "Av. Cervantes, 29")
         self.assertEqual(records[0]["hours"], "круглосуточно (с 09:00)")
         self.assertTrue(records[0]["all_day"])
 
@@ -151,6 +151,24 @@ class RotaNormalizationTests(unittest.TestCase):
 
 
 class DutySelectionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_hides_legal_suffix_and_cleans_an_old_catalog_address(self):
+        now = datetime(2026, 8, 13, 7, 30, tzinfo=TZ)
+        records = ({
+            "date": "2026-08-13",
+            "name": "Farmacia Mora, C.B.",
+            "address": "Av. Pais Valenciano, Nº29",
+            "hours": "09:00–00:00",
+            "all_day": False,
+        },)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "pharmacy.json"
+            _write_catalog(path, records, now)
+
+            duties = await duty_pharmacies_on(now, path)
+
+        self.assertEqual(duties[0].name, "Farmacia Mora")
+        self.assertEqual(duties[0].address, "Av. Pais Valenciano, 29")
+
     async def test_returns_all_day_duty_first_without_duplicates(self):
         now = datetime(2026, 8, 12, 7, 30, tzinfo=TZ)
         records = (

@@ -231,6 +231,10 @@ When the official source has no time, omit only the time prefix and keep the
 event. Preserve an explicit activity type or medium such as painting,
 sculpture, concert, workshop, guided tour, or night route. Include the
 official place when available. Never invent missing time, type, or place.
+For text sources, keep the title self-contained: a named act must not displace
+an explicitly stated format such as a concert, theatre performance, tribute or
+benefit event. A short stated audience or cause may remain in the title when it
+is needed to explain the event and has exact source evidence.
 One short verified practical note, such as age, distance, language, or required
 equipment, may follow the title in parentheses. Admission and participation
 use one `🎟` row. The row may contain the regular price, a concrete registration

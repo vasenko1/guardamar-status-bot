@@ -34,6 +34,13 @@ class ShippedDataTests(unittest.TestCase):
         rules = schedule_rules()
 
         self.assertTrue(translations)
+        self.assertIn(
+            "благотворительный концерт-трибьют",
+            translations[
+                "concierto benéfico: trivox (tributo a il divo) "
+                "para la lucha contra el cáncer"
+            ].casefold(),
+        )
         self.assertTrue(rules)
         self.assertIsNotNone(reviewed_poster("MUPI-AGOSTO-2026-scaled.jpg"))
         for rule in rules:
@@ -119,6 +126,11 @@ class ValidationTests(unittest.TestCase):
             {"capacity_limited": "false"},
             {"participation_note": 123},
             {"registration_contact": []},
+            {"ticket_url": "http://www.giglon.com/event"},
+            {"ticket_url": "https://evil.example/event"},
+            {"ticket_url": "https://operator@giglon.com/event"},
+            {"ticket_url": "https://giglon.com:443/event"},
+            {"ticket_url": 123},
         )
         for extra in cases:
             data = self._base()

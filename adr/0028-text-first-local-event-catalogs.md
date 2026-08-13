@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted and implemented
+Accepted and implemented; event-title evidence and admission enrichment are
+refined by ADR 0040
 
 ## Context
 
@@ -68,9 +69,9 @@ oversized daily section leaves the prior atomic snapshot intact. Giglon is
 treated only as a ticket platform; its unstable internal listing interface is
 not a municipal event feed.
 
-The same bounded Todo Cultura article may supply an explicit regular price only
-when that price paragraph links to the matching official Agenda Guardamar event
-page. Agenda Guardamar still supplies the occurrence-specific purchase URL.
+The same bounded Todo Cultura article may supply explicit admission facts under
+the event-local evidence and URL rules in ADR 0040. Agenda Guardamar still
+supplies the occurrence-specific purchase URL when its event is present.
 An explicit `Inscripciones:` or `Reservas:` row with a verified phone number
 may enrich only the matching dated event with its contact, audience note and
 capacity limit. Generic `Más información` text is not registration. These

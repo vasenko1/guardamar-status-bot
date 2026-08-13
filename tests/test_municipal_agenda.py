@@ -11,7 +11,7 @@ from telegrambot.municipal_agenda import (
     MunicipalAgendaError,
     SourceEvent,
     _current_events,
-    _enrich_todo_admissions,
+    _enrich_admissions,
     _enrich_todo_participation,
     _apply_reviewed_corrections,
     _apply_reviewed_daily_schedules,
@@ -140,6 +140,74 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(merged[0].title_es, text_event.title_es)
         self.assertEqual(merged[0].sources, ("turismo_html", "mupi"))
 
+    def test_corroborating_source_can_make_same_title_self_contained(self):
+        official = SourceEvent(
+            "TRIVOX (Tributo a Il Divo)",
+            date(2026, 8, 14), date(2026, 8, 14), "22:30", None,
+            "Parque Reina Sofía", "event", ("turismo_html",),
+        )
+        supplement = SourceEvent(
+            "Concierto benéfico TRIVOX, tributo a Il Divo, a favor de "
+            "Alicante contra el cáncer",
+            date(2026, 8, 14), date(2026, 8, 14), "22:30", None,
+            "Parque Reina Sofía", "event", ("todo_cultura",),
+        )
+
+        merged = merge_text_and_poster_events((official,), (supplement,))
+
+        self.assertEqual(merged[0].title_es, supplement.title_es)
+        self.assertEqual(
+            merged[0].sources, ("turismo_html", "todo_cultura")
+        )
+
+    def test_corroborating_source_cannot_replace_event_identity(self):
+        official = SourceEvent(
+            "TRIVOX", date(2026, 8, 14), date(2026, 8, 14), "22:30", None,
+            "Parque Reina Sofía", "event", ("turismo_html",),
+        )
+        conflicting = SourceEvent(
+            "Concierto de otra banda con repertorio clásico",
+            date(2026, 8, 14), date(2026, 8, 14), "22:30", None,
+            "Parque Reina Sofía", "event", ("todo_cultura",),
+        )
+
+        merged = merge_text_and_poster_events((official,), (conflicting,))
+
+        self.assertEqual(merged[0].title_es, "TRIVOX")
+
+    def test_mupi_cannot_enrich_primary_html_title(self):
+        official = SourceEvent(
+            "TRIVOX", date(2026, 8, 14), date(2026, 8, 14), "22:30", None,
+            "Parque Reina Sofía", "event", ("turismo_html",),
+        )
+        poster = SourceEvent(
+            "TRIVOX gran gala inventada solidaria",
+            date(2026, 8, 14), date(2026, 8, 14), "22:30", None,
+            "Parque Reina Sofía", "event", ("mupi",),
+        )
+
+        merged = merge_text_and_poster_events((official,), (poster,))
+
+        self.assertEqual(merged[0].title_es, "TRIVOX")
+
+    def test_unrelated_todo_event_at_same_slot_remains_distinct(self):
+        official = SourceEvent(
+            "Concierto Alpha", date(2026, 8, 30), date(2026, 8, 30),
+            "22:30", None, "Casa de Cultura", "event", ("turismo_html",),
+        )
+        supplement = SourceEvent(
+            "Teatro Beta", date(2026, 8, 30), date(2026, 8, 30),
+            "22:30", None, "Casa de Cultura", "event", ("todo_cultura",),
+            ticket_price_cents=1200,
+            ticket_url="https://www.giglon.com/event/beta",
+        )
+
+        merged = merge_text_and_poster_events((official,), (supplement,))
+
+        self.assertEqual(len(merged), 2)
+        self.assertIsNone(merged[0].ticket_price_cents)
+        self.assertEqual(merged[1].ticket_price_cents, 1200)
+
     def test_text_event_suppresses_conflicting_poster_at_same_place_time(self):
         text_event = SourceEvent(
             "SPANISH BRASS",
@@ -182,6 +250,21 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(len(merged), 2)
 
+    def test_same_title_and_time_at_different_places_are_not_merged(self):
+        first = SourceEvent(
+            "Actividad juvenil", date(2026, 8, 5), date(2026, 8, 5),
+            "19:00", None, "Centro Social Juvenil", "event",
+            ("turismo_html",),
+        )
+        second = SourceEvent(
+            "Actividad juvenil", date(2026, 8, 5), date(2026, 8, 5),
+            "19:00", None, "Castillo", "event", ("todo_cultura",),
+        )
+
+        merged = merge_text_and_poster_events((first,), (second,))
+
+        self.assertEqual(len(merged), 2)
+
     def test_todo_admission_enriches_matching_event_only(self):
         spanish_brass = SourceEvent(
             "Concierto Spanish Brass «Top secret»",
@@ -194,17 +277,96 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             "exhibition", ("todo_cultura",),
         )
         admissions = (TodoCulturaAdmission(
+            "Concierto Spanish Brass «Top secret»",
+            1500,
             "https://www.agendaguardamar.com/espectaculo/48/"
             "spanish-brass-top-secret.html",
-            1500,
         ),)
 
-        enriched = _enrich_todo_admissions(
+        enriched = _enrich_admissions(
             (spanish_brass, other), admissions
         )
 
         self.assertEqual(enriched[0].ticket_price_cents, 1500)
+        self.assertIn("spanish-brass", enriched[0].ticket_url)
+        self.assertIn("todo_cultura_detail", enriched[0].sources)
         self.assertIsNone(enriched[1].ticket_price_cents)
+
+    def test_generic_event_name_does_not_borrow_another_events_price(self):
+        generic = SourceEvent(
+            "Concierto", date(2026, 8, 5), date(2026, 8, 5), "22:00", None,
+            "Castillo", "event", ("todo_cultura",),
+        )
+        admissions = (TodoCulturaAdmission(
+            "22:30: Concierto benéfico de Trivox",
+            2000,
+            "https://www.giglon.com/todos?idEvent=trivox",
+            event_date=date(2026, 8, 5),
+        ),)
+
+        enriched = _enrich_admissions((generic,), admissions)
+
+        self.assertIsNone(enriched[0].ticket_price_cents)
+        self.assertIsNone(enriched[0].ticket_url)
+
+    def test_admission_date_prevents_cross_day_enrichment(self):
+        event = SourceEvent(
+            "Concierto benéfico de Trivox",
+            date(2026, 8, 14), date(2026, 8, 14), "22:30", None,
+            "Parque Reina Sofía", "event", ("todo_cultura",),
+        )
+        admission = TodoCulturaAdmission(
+            "22:30: Concierto benéfico de Trivox",
+            2000,
+            "https://www.giglon.com/todos?idEvent=trivox",
+            event_date=date(2026, 8, 15),
+        )
+
+        enriched = _enrich_admissions((event,), (admission,))
+
+        self.assertIsNone(enriched[0].ticket_price_cents)
+        self.assertIsNone(enriched[0].ticket_url)
+
+    def test_admission_time_selects_only_matching_session(self):
+        early = SourceEvent(
+            "Teatro Beta", date(2026, 8, 30), date(2026, 8, 30),
+            "18:00", None, "Casa de Cultura", "event", ("todo_cultura",),
+        )
+        late = SourceEvent(
+            "Teatro Beta", date(2026, 8, 30), date(2026, 8, 30),
+            "20:00", None, "Casa de Cultura", "event", ("todo_cultura",),
+        )
+        admission = TodoCulturaAdmission(
+            "20 h.: Teatro Beta", 800,
+            "https://www.giglon.com/event/beta-20",
+            event_date=date(2026, 8, 30), start_time="20:00",
+        )
+
+        enriched = _enrich_admissions((early, late), (admission,))
+
+        self.assertIsNone(enriched[0].ticket_price_cents)
+        self.assertEqual(enriched[1].ticket_price_cents, 800)
+
+    def test_timeless_admission_is_withheld_for_multiple_sessions(self):
+        sessions = tuple(
+            SourceEvent(
+                "Teatro Beta", date(2026, 8, 30), date(2026, 8, 30),
+                start_time, None, "Casa de Cultura", "event",
+                ("todo_cultura",),
+            )
+            for start_time in ("18:00", "20:00")
+        )
+        admission = TodoCulturaAdmission(
+            "Teatro Beta", 800,
+            "https://www.giglon.com/event/beta",
+            event_date=date(2026, 8, 30),
+        )
+
+        enriched = _enrich_admissions(sessions, (admission,))
+
+        self.assertTrue(all(
+            event.ticket_price_cents is None for event in enriched
+        ))
 
     def test_todo_registration_enriches_matching_occurrence_only(self):
         drums = SourceEvent(
@@ -364,6 +526,144 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             "Concierto confirmado"
         ])
 
+    def test_text_title_requires_exact_supporting_quotation(self):
+        source_text = (
+            "2026-08-14 22:30: Concierto benéfico de Trivox, tributo a Il "
+            "Divo, a favor de Alicante contra el cáncer. Parque Reina Sofía."
+        )
+        result = {
+            "month": "2026-08",
+            "events": [{
+                "title_es": (
+                    "Concierto benéfico Trivox, tributo a Il Divo, a favor "
+                    "de Alicante contra el cáncer"
+                ),
+                "start_date": "2026-08-14",
+                "end_date": "2026-08-14",
+                "start_time": "22:30",
+                "end_time": None,
+                "place": "Parque Reina Sofía",
+                "evidence_es": source_text,
+                "category": "event",
+            }],
+        }
+
+        events = normalize_extraction_candidates(
+            result, "2026-08", "todo_cultura", source_text
+        )
+
+        self.assertEqual(len(events), 1)
+
+    def test_text_title_with_unsupported_claim_is_rejected(self):
+        source_text = "2026-08-14 22:30: Concierto de Trivox."
+        result = {
+            "month": "2026-08",
+            "events": [{
+                "title_es": "Concierto benéfico gratuito de Trivox para UNICEF",
+                "start_date": "2026-08-14",
+                "end_date": "2026-08-14",
+                "start_time": "22:30",
+                "end_time": None,
+                "place": None,
+                "evidence_es": source_text,
+                "category": "event",
+            }],
+        }
+
+        with self.assertRaises(MunicipalAgendaError):
+            normalize_extraction_candidates(
+                result, "2026-08", "todo_cultura", source_text
+            )
+
+    def test_text_title_rejects_one_unsupported_material_word(self):
+        source_text = (
+            "30 de agosto 22:30 h. Concierto especial Trivox. "
+            "Casa de Cultura."
+        )
+        result = {
+            "month": "2026-08",
+            "events": [{
+                "title_es": "Concierto especial Trivox gratuito",
+                "start_date": "2026-08-30",
+                "end_date": "2026-08-30",
+                "start_time": "22:30",
+                "end_time": None,
+                "place": "Casa de Cultura",
+                "evidence_es": source_text,
+                "category": "event",
+            }],
+        }
+
+        with self.assertRaises(MunicipalAgendaError):
+            normalize_extraction_candidates(
+                result, "2026-08", "turismo_html", source_text
+            )
+
+    def test_text_title_rejects_unsupported_short_name(self):
+        source_text = (
+            "30 de agosto 22:30 h. Concierto Trivox. Casa de Cultura."
+        )
+        result = {
+            "month": "2026-08",
+            "events": [{
+                "title_es": "Concierto DJ Trivox",
+                "start_date": "2026-08-30",
+                "end_date": "2026-08-30",
+                "start_time": "22:30",
+                "end_time": None,
+                "place": "Casa de Cultura",
+                "evidence_es": source_text,
+                "category": "event",
+            }],
+        }
+
+        with self.assertRaises(MunicipalAgendaError):
+            normalize_extraction_candidates(
+                result, "2026-08", "turismo_html", source_text
+            )
+
+    def test_text_event_rejects_unsupported_schedule_and_place(self):
+        source_text = "30 de agosto. Concierto Trivox."
+        result = {
+            "month": "2026-08",
+            "events": [{
+                "title_es": "Concierto Trivox",
+                "start_date": "2026-08-30",
+                "end_date": "2026-08-30",
+                "start_time": "03:00",
+                "end_time": "05:00",
+                "place": "Aeropuerto de Alicante",
+                "evidence_es": source_text,
+                "category": "event",
+            }],
+        }
+
+        with self.assertRaises(MunicipalAgendaError):
+            normalize_extraction_candidates(
+                result, "2026-08", "turismo_html", source_text
+            )
+
+    def test_calendar_day_does_not_count_as_zero_minute_time_evidence(self):
+        source_text = "19 de agosto. Concierto Trivox. Casa de Cultura."
+        result = {
+            "month": "2026-08",
+            "events": [{
+                "title_es": "Concierto Trivox",
+                "start_date": "2026-08-19",
+                "end_date": "2026-08-19",
+                "start_time": "19:00",
+                "end_time": None,
+                "place": "Casa de Cultura",
+                "evidence_es": source_text,
+                "category": "event",
+            }],
+        }
+
+        with self.assertRaises(MunicipalAgendaError):
+            normalize_extraction_candidates(
+                result, "2026-08", "turismo_html", source_text
+            )
+
     def test_finds_only_official_mupi_poster(self):
         page = b"""
         <a href="https://example.com/MUPI-JULIO.jpg">bad</a>
@@ -413,6 +713,10 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             "Taller de baterías", date(2026, 8, 8), date(2026, 8, 8),
             "19:00", "21:00", "Centro Social Juvenil", "event",
             ("mupi", "todo_cultura_detail"),
+            ticket_price_cents=2000,
+            ticket_url=(
+                "https://www.giglon.com/todos?idEvent=taller-baterias"
+            ),
             participation_note="для молодёжи 12–30 лет",
             registration_contact=(
                 "Centro Social Juvenil или WhatsApp 609 00 67 54"
@@ -430,12 +734,53 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             loaded = _load_snapshot(path)["_events"][0]
 
         self.assertEqual(loaded.participation_note, "для молодёжи 12–30 лет")
+        self.assertEqual(loaded.ticket_price_cents, 2000)
+        self.assertEqual(
+            loaded.ticket_url,
+            "https://www.giglon.com/todos?idEvent=taller-baterias",
+        )
         self.assertEqual(
             loaded.registration_contact,
             "Centro Social Juvenil или WhatsApp 609 00 67 54",
         )
         self.assertTrue(loaded.capacity_limited)
         self.assertIn("todo_cultura_detail", loaded.sources)
+
+    def test_snapshot_round_trips_admission_evidence(self):
+        event = SourceEvent(
+            "Concierto Alpha", date(2026, 8, 30), date(2026, 8, 30),
+            "20:00", None, "Casa de Cultura", "event",
+            ("todo_cultura",), ticket_price_cents=800,
+            ticket_url="https://www.giglon.com/event/alpha",
+            admission_evidence="Concierto Alpha. Precio: 8 €.",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agenda.json"
+            _write_snapshot(path, _snapshot_data(
+                "", "", datetime(2026, 8, 13, tzinfo=TZ), (event,)
+            ))
+            loaded = _load_snapshot(path)["_events"][0]
+
+        self.assertEqual(
+            loaded.admission_evidence,
+            "Concierto Alpha. Precio: 8 €.",
+        )
+
+    def test_snapshot_rejects_ticket_url_with_userinfo(self):
+        event = SourceEvent(
+            "Concierto Alpha", date(2026, 8, 30), date(2026, 8, 30),
+            "20:00", None, "Casa de Cultura", "event",
+            ("todo_cultura",),
+            ticket_url="https://operator@giglon.com/event/alpha",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agenda.json"
+            _write_snapshot(path, _snapshot_data(
+                "", "", datetime(2026, 8, 13, tzinfo=TZ), (event,)
+            ))
+
+            with self.assertRaises(MunicipalAgendaError):
+                _load_snapshot(path)
 
     def test_snapshot_loader_skips_entries_removed_by_new_policy(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -512,7 +857,8 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             [(14, "22:15"), (21, "22:15"), (28, "22:15")],
         )
         self.assertFalse(any(
-            "ajedrez" in event.title_es.casefold() for event in corrected
+            "open de ajedrez" in event.title_es.casefold()
+            for event in corrected
         ))
         exhibitions = [
             event for event in corrected if event.category == "exhibition"
@@ -547,15 +893,57 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             [event.title_es for event in active],
             [
+                "Concierto benéfico: TRIVOX (Tributo a Il Divo) para la "
+                "lucha contra el cáncer",
                 "Exposición de pintura y escultura: "
                 "Mediterráneo, el lenguaje del agua",
                 "Exposición de pintura «Luz a pesar del dolor» "
                 "de Vira Degliarenko",
                 "Rutas nocturnas: senderismo y dinámica grupal",
+                "Feria de Comercio 2026: talleres, ajedrez gigante, "
+                "ELBOX GRM y Dirty Piks",
             ],
         )
-        self.assertEqual(active[0].start_time, "09:00")
-        self.assertEqual(active[0].end_time, "20:00")
+        self.assertEqual(active[0].ticket_price_cents, 2000)
+        self.assertIn("idEvent=concierto-benefico-trivox", active[0].ticket_url)
+        self.assertEqual(active[1].start_time, "09:00")
+        self.assertEqual(active[1].end_time, "20:00")
+
+    def test_replaces_sparse_fair_rows_with_one_reviewed_daily_summary(self):
+        extracted = (
+            SourceEvent(
+                "FERIA DEL COMERCIO",
+                date(2026, 8, 13), date(2026, 8, 16),
+                None, None, "Avda. Els Pins", "event", ("mupi",),
+            ),
+            SourceEvent(
+                "Espectáculo ‘Faüla’, por ‘Dos en vilo’",
+                date(2026, 8, 13), date(2026, 8, 13),
+                "21:30", None, "avenida de los Pinos", "event",
+                ("todo_cultura",),
+            ),
+        )
+
+        corrected = _apply_reviewed_corrections(
+            (
+                "https://www.guardamardelsegura.es/wp-content/uploads/"
+                "2026/07/MUPI-AGOSTO-2026-scaled.jpg"
+            ),
+            extracted,
+        )
+        active = [
+            event for event in corrected
+            if event.start_date <= date(2026, 8, 13) <= event.end_date
+            and "Feria de Comercio 2026" in event.title_es
+        ]
+
+        self.assertEqual(len(active), 1)
+        self.assertEqual(active[0].start_time, "18:00")
+        self.assertEqual(active[0].place, "Avenida de los Pinos")
+        self.assertIn("Faüla", active[0].title_es)
+        self.assertFalse(any(
+            event.title_es == "FERIA DEL COMERCIO" for event in corrected
+        ))
 
     def test_uses_published_mediterraneo_visiting_hours(self):
         event = SourceEvent(
@@ -725,6 +1113,32 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             ["Evento de agosto", "Fiestas de Barrio"],
         )
 
+    def test_transition_keeps_materialized_reviewed_admission_details(self):
+        prior = SourceEvent(
+            title_es="TRIVOX",
+            start_date=date(2026, 8, 14),
+            end_date=date(2026, 8, 14),
+            start_time="22:30",
+            end_time=None,
+            place="Parque Reina Sofía",
+            category="event",
+            sources=("mupi_reviewed",),
+            ticket_price_cents=2000,
+            ticket_url="https://www.giglon.com/event/trivox",
+            admission_evidence="Precio: 20 euros. Venta en Giglon.",
+        )
+
+        merged = _merge_transition_events(
+            (), (prior,), date(2026, 8, 10)
+        )
+
+        self.assertEqual(merged[0].ticket_price_cents, 2000)
+        self.assertEqual(
+            merged[0].ticket_url,
+            "https://www.giglon.com/event/trivox",
+        )
+        self.assertIn("20 euros", merged[0].admission_evidence)
+
     async def test_marks_only_last_day_of_multiday_event(self):
         source = SourceEvent(
             title_es="Exposición",
@@ -834,6 +1248,74 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(current), 2)
         ocr.assert_not_awaited()
 
+    async def test_old_html_extractor_version_forces_one_refresh(self):
+        prior = SourceEvent(
+            "Concierto Alpha", date(2026, 8, 30), date(2026, 8, 30),
+            "20:00", None, "Casa de Cultura", "event",
+            ("turismo_html",),
+        )
+        poster_url = (
+            "https://www.guardamardelsegura.es/wp-content/uploads/"
+            "2026/08/MUPI-AGOSTO-2026.jpg"
+        )
+        programme = (
+            "AGENDA CULTURAL AGOSTO 2026 30 de agosto 20 h. "
+            "Concierto Alpha. Casa de Cultura. " + "Programa oficial. " * 8
+        )
+        page = (
+            f'<h2>{programme}</h2><a href="{poster_url}">poster</a>'
+        ).encode()
+        page_text, _ = extract_official_agenda_text(page)
+        extraction_result = {
+            "month": "2026-08",
+            "events": [{
+                "title_es": "Concierto Alpha",
+                "start_date": "2026-08-30",
+                "end_date": "2026-08-30",
+                "start_time": "20:00",
+                "end_time": None,
+                "place": "Casa de Cultura",
+                "evidence_es": (
+                    "30 de agosto 20 h. Concierto Alpha. Casa de Cultura."
+                ),
+                "category": "event",
+            }],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agenda.json"
+            _write_snapshot(path, _snapshot_data(
+                poster_url, "poster-hash",
+                datetime(2026, 8, 13, tzinfo=TZ), (prior,), {
+                    "turismo_html": {
+                        "sha256": hashlib.sha256(
+                            page_text.encode("utf-8")
+                        ).hexdigest(),
+                        "extractor_version": 1,
+                    },
+                    "mupi": {"url": poster_url, "sha256": "poster-hash"},
+                },
+            ))
+            extract_text = AsyncMock(return_value=extraction_result)
+            with (
+                patch(
+                    "telegrambot.municipal_agenda._read_url",
+                    return_value=(page, "text/html"),
+                ),
+                patch(
+                    "telegrambot.municipal_agenda.extract_agenda_text_events",
+                    new=extract_text,
+                ),
+            ):
+                await _current_events(
+                    "key", datetime(2026, 8, 13, tzinfo=TZ), path
+                )
+            stored = json.loads(path.read_text(encoding="utf-8"))
+
+        extract_text.assert_awaited_once()
+        self.assertEqual(
+            stored["sources"]["turismo_html"]["extractor_version"], 2
+        )
+
     async def test_todo_cultura_adds_only_requested_daily_section(self):
         official = SourceEvent(
             title_es="Concierto oficial",
@@ -846,7 +1328,10 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             sources=("mupi",),
         )
         todo = TodoCulturaProgram(
-            text="Miércoles 5 de agosto\n19 h.: Taller juvenil.",
+            text=(
+                "Miércoles 5 de agosto\n19 h.: Taller juvenil. "
+                "Centro Social Juvenil."
+            ),
             sha256="todo-hash",
             source_url="https://todoculturavegabaja.es/eventos/guardamar/",
             modified="2026-08-04T22:40:40",
@@ -879,6 +1364,10 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                 "start_time": "19:00",
                 "end_time": None,
                 "place": "Centro Social Juvenil",
+                "evidence_es": (
+                    "Miércoles 5 de agosto 19 h.: Taller juvenil. "
+                    "Centro Social Juvenil."
+                ),
                 "category": "event",
             }],
         })
@@ -1139,7 +1628,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                 diagnostics[0].code,
                 "MUNI-AGENDA-SNAPSHOT-CORRUPT",
             )
-            self.assertEqual(json.loads(path.read_text())["version"], 3)
+            self.assertEqual(json.loads(path.read_text())["version"], 4)
 
     async def test_snapshot_write_failure_keeps_new_events(self):
         poster_url = (
