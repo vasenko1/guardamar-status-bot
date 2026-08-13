@@ -52,9 +52,21 @@
         ["desfile de moda"],
         ["noelia braceras"],
         ["bingo solidario", "virgen del rosario"],
-        ["40 duros"]
+        ["40 duros"],
+        ["trivox"]
       ],
       "events": [
+        {
+          "title_es": "Concierto benéfico: TRIVOX (Tributo a Il Divo) para la lucha contra el cáncer",
+          "start_date": "2026-08-14",
+          "end_date": "2026-08-14",
+          "start_time": "22:30",
+          "place": "Parque Reina Sofía",
+          "category": "event",
+          "sources": ["turismo_html", "todo_cultura_reviewed"],
+          "ticket_price_cents": 2000,
+          "ticket_url": "https://www.giglon.com/todos?idEvent=concierto-benefico-trivox--guardamar-del-segura-aacc"
+        },
         {
           "title_es": "Exposición de pintura y escultura: Mediterráneo, el lenguaje del agua",
           "start_date": "2026-06-19",

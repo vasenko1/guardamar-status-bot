@@ -126,6 +126,9 @@ class ValidationTests(unittest.TestCase):
             {"capacity_limited": "false"},
             {"participation_note": 123},
             {"registration_contact": []},
+            {"ticket_url": "http://www.giglon.com/event"},
+            {"ticket_url": "https://evil.example/event"},
+            {"ticket_url": 123},
         )
         for extra in cases:
             data = self._base()

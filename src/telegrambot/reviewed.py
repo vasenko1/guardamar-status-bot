@@ -10,6 +10,7 @@ instead of silently changing published output.
 
 import json
 import re
+import urllib.parse
 from dataclasses import dataclass
 from datetime import date, time
 from functools import lru_cache
@@ -165,7 +166,7 @@ def _validate_event(entry, index: int) -> dict:
         required={"title_es", "start_date", "end_date", "category"},
         optional={
             "start_time", "end_time", "place", "sources",
-            "ticket_price_cents", "participation_note",
+            "ticket_price_cents", "ticket_url", "participation_note",
             "registration_contact", "capacity_limited",
         },
     )
@@ -207,6 +208,27 @@ def _validate_event(entry, index: int) -> dict:
         or not 0 <= price <= 100_000
     ):
         raise ReviewedDataError(f"event {index} price is implausible")
+    ticket_url = entry.get("ticket_url")
+    if ticket_url is not None:
+        if not isinstance(ticket_url, str):
+            raise ReviewedDataError(
+                f"event {index} ticket_url is not an approved HTTPS URL"
+            )
+        parsed = urllib.parse.urlparse(ticket_url)
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname not in {
+                "agendaguardamar.com",
+                "www.agendaguardamar.com",
+                "giglon.com",
+                "www.giglon.com",
+            }
+            or parsed.username is not None
+            or parsed.password is not None
+        ):
+            raise ReviewedDataError(
+                f"event {index} ticket_url is not an approved HTTPS URL"
+            )
     return entry
 
 

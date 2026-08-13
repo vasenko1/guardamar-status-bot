@@ -679,6 +679,8 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             [event.title_es for event in active],
             [
+                "Concierto benéfico: TRIVOX (Tributo a Il Divo) para la "
+                "lucha contra el cáncer",
                 "Exposición de pintura y escultura: "
                 "Mediterráneo, el lenguaje del agua",
                 "Exposición de pintura «Luz a pesar del dolor» "
@@ -688,8 +690,10 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                 "ELBOX GRM y Dirty Piks",
             ],
         )
-        self.assertEqual(active[0].start_time, "09:00")
-        self.assertEqual(active[0].end_time, "20:00")
+        self.assertEqual(active[0].ticket_price_cents, 2000)
+        self.assertIn("idEvent=concierto-benefico-trivox", active[0].ticket_url)
+        self.assertEqual(active[1].start_time, "09:00")
+        self.assertEqual(active[1].end_time, "20:00")
 
     def test_replaces_sparse_fair_rows_with_one_reviewed_daily_summary(self):
         extracted = (
