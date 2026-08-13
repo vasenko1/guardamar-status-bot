@@ -23,11 +23,17 @@ was a multi-file code change for what is conceptually a data update.
   schedule rules (`match` substrings, equality `requires` with a `today`
   sentinel, optional weekday/saturday/sunday visit windows where `null`
   omits the day, and a whitelisted `set` of replacement fields).
-- `reviewed.py` validates the whole file strictly at load — types, ISO
-  dates, `HH:MM` times, bounded lengths, no unknown fields — and rejects
-  the entire file on any defect. Interpreters in `municipal_agenda` and
-  `event_translations` catch that rejection, log it, and behave as if no
-  corrections exist; source facts always survive.
+- `reviewed.py` validates strictly at load — types, ISO dates, real
+  zero-padded `HH:MM` times, bounded lengths, no unknown fields, and no
+  boolean smuggled in where a number or flag is expected. A structural
+  failure rejects everything, but each section is validated independently
+  so one defect stays contained: a translation typo must never switch off
+  a poster's known-bad-OCR filter.
+- Rejection is fail-closed per section rather than merely skipped. When a
+  poster's data cannot be read, its drop filter is unavailable, so
+  poster-only events are withheld — they cannot be told apart from the
+  rows the filter exists to remove — while text-corroborated facts
+  survive. When schedules cannot be read, uncorrected source facts stand.
 - The committed file itself is a test subject: the suite validates it on
   every run, so a malformed data commit fails CI and never reaches the
   device. Monthly poster review becomes a data-only commit.

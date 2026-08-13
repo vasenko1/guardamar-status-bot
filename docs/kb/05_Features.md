@@ -13,7 +13,9 @@ no message. Missing weekend title translations are prepared inline through
 the same bounded cache; a provider outage degrades titles to normalized
 Spanish. Publication runs Friday at `18:00` with bounded retries at `18:20`
 and `19:00`, guarded by one atomic success marker in `state/weekend.json`
-keyed to the target Saturday. `weekend-preview` prints the message without
+keyed to the target Saturday. Only the publishing command fills missing
+weekend translations; `weekend-preview` reads the existing cache and prints
+the message without
 Telegram or state changes. See ADR 0035.
 
 ## Next-day electricity prices

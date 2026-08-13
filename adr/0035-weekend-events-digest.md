@@ -35,6 +35,9 @@ from the two existing normalized catalogs plus the recurring market rules:
   feature. External Termux cron runs Friday `18:00` with bounded retries at
   `18:20` and `19:00`; a confirmed success makes later invocations no-ops.
 - `weekend-preview` prints the message without Telegram or state changes.
+  Like the morning preview, it is strictly read-only: it never fills the
+  translation cache and renders normalized Spanish for an absent entry,
+  matching the read-only preview rule in `docs/kb/07_AI_Guidelines.md`.
 
 ## Consequences
 

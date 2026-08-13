@@ -73,7 +73,7 @@ class ValidationTests(unittest.TestCase):
         data["translations"] = {"Ball D’Estiu": "Танцы"}
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaises(ReviewedDataError):
-                _load(_write(directory, data))
+                reviewed_translations(_write(directory, data))
 
     def test_rejects_malformed_poster_events_and_rules(self):
         bad_event = self._base()
@@ -90,31 +90,109 @@ class ValidationTests(unittest.TestCase):
         no_set = self._base()
         no_set["schedules"] = [{"match": ["x"], "set": {}}]
         with tempfile.TemporaryDirectory() as directory:
-            for index, data in enumerate((bad_event, bad_rule, no_set)):
+            for index, (data, read) in enumerate((
+                (bad_event, lambda p: reviewed_poster("poster.jpg", p)),
+                (bad_rule, schedule_rules),
+                (no_set, schedule_rules),
+            )):
                 path = Path(directory) / f"case{index}.json"
                 path.write_text(json.dumps(data), "utf-8")
                 with self.assertRaises(ReviewedDataError):
-                    _load(path)
+                    read(path)
+
+    def test_rejects_shaped_but_impossible_times(self):
+        for value in ("99:99", "88:88", "24:00", "12:60"):
+            data = self._base()
+            data["schedules"] = [{
+                "match": ["x"],
+                "requires": {"start_time": value},
+                "set": {"place": "Casa"},
+            }]
+            with tempfile.TemporaryDirectory() as directory:
+                with self.subTest(value=value):
+                    with self.assertRaises(ReviewedDataError):
+                        schedule_rules(_write(directory, data))
+
+    def test_rejects_wrongly_typed_optional_event_fields(self):
+        cases = (
+            {"ticket_price_cents": True},
+            {"capacity_limited": "false"},
+            {"participation_note": 123},
+            {"registration_contact": []},
+        )
+        for extra in cases:
+            data = self._base()
+            data["posters"] = {"p.jpg": {"upload_path": "/u/", "events": [{
+                "title_es": "X", "start_date": "2026-08-01",
+                "end_date": "2026-08-01", "category": "event", **extra,
+            }]}}
+            with tempfile.TemporaryDirectory() as directory:
+                with self.subTest(field=next(iter(extra))):
+                    with self.assertRaises(ReviewedDataError):
+                        reviewed_poster("p.jpg", _write(directory, data))
+
+    def test_one_bad_section_does_not_disable_the_others(self):
+        data = self._base()
+        data["translations"] = {"Not Normalized": "x"}
+        data["posters"] = {"p.jpg": {
+            "upload_path": "/u/",
+            "drop_titles": [["ajedrez"]],
+            "events": [],
+        }}
+        with tempfile.TemporaryDirectory() as directory:
+            path = _write(directory, data)
+
+            with self.assertRaises(ReviewedDataError):
+                reviewed_translations(path)
+            # The healthy sections keep working, so a translation typo
+            # cannot switch off a poster's known-bad-OCR filter.
+            self.assertEqual(
+                reviewed_poster("p.jpg", path).drop_titles,
+                (("ajedrez",),),
+            )
+            self.assertEqual(schedule_rules(path), ())
 
 
 class FailClosedTests(unittest.TestCase):
-    def test_rejected_data_skips_corrections_without_crashing(self):
-        event = SourceEvent(
-            "Rutas nocturnas: senderismo y dinámica grupal",
-            date(2026, 8, 14), date(2026, 8, 14),
-            "22:15", "00:15", None, "event",
+    def test_rejected_data_never_republishes_known_bad_ocr(self):
+        known_bad = SourceEvent(
+            "Exposición del 24 Open de ajedrez Villa de Guardamar",
+            date(2026, 8, 1), date(2026, 8, 8), None, None,
+            "Polideportivo", "exhibition", ("mupi",),
+        )
+        corroborated = SourceEvent(
+            "Concierto municipal", date(2026, 8, 1), date(2026, 8, 1),
+            "20:00", None, "Plaza", "event", ("turismo_html", "mupi"),
+        )
+        text_only = SourceEvent(
+            "Charla oficial", date(2026, 8, 1), date(2026, 8, 1),
+            "18:00", None, "Casa", "event", ("turismo_html",),
         )
         with patch(
             "telegrambot.municipal_agenda.reviewed_poster",
-            side_effect=ReviewedDataError("bad file"),
+            side_effect=ReviewedDataError("unrelated typo"),
         ):
             corrected = _apply_reviewed_corrections(
                 (
                     "https://www.guardamardelsegura.es/wp-content/uploads/"
                     "2026/07/MUPI-AGOSTO-2026-scaled.jpg"
                 ),
-                (event,),
+                (known_bad, corroborated, text_only),
             )
+
+        titles = [event.title_es for event in corrected]
+        # Without a readable drop filter the poster-only row cannot be
+        # told apart from a good one, so it is withheld rather than shown.
+        self.assertNotIn(known_bad.title_es, titles)
+        self.assertIn(corroborated.title_es, titles)
+        self.assertIn(text_only.title_es, titles)
+
+    def test_rejected_schedules_keep_uncorrected_source_facts(self):
+        event = SourceEvent(
+            "Rutas nocturnas: senderismo y dinámica grupal",
+            date(2026, 8, 14), date(2026, 8, 14),
+            "22:15", "00:15", None, "event",
+        )
         with patch(
             "telegrambot.municipal_agenda.schedule_rules",
             side_effect=ReviewedDataError("bad file"),
@@ -123,8 +201,6 @@ class FailClosedTests(unittest.TestCase):
                 (event,), date(2026, 8, 14)
             )
 
-        # Source facts survive untouched; only the corrections are skipped.
-        self.assertEqual(corrected, (event,))
         self.assertEqual(scheduled, (event,))
 
     def test_data_path_ships_inside_the_package(self):
