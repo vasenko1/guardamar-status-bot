@@ -421,7 +421,8 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 )
 
         if command == "weekend-preview":
-            await prepare_weekend_titles()
+            # Preview is read-only: it reads the existing translation cache
+            # and never fills it, matching the morning preview contract.
             message = await produce_weekend_message(
                 now,
                 gemini_key,

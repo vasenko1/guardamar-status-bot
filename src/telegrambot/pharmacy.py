@@ -30,10 +30,21 @@ ROTA_URL_TEMPLATE = (
 )
 REQUEST_TIMEOUT_SECONDS = 30
 WORKBOOK_LIMIT_BYTES = 4_000_000
+# The 2026 provincial sheet expands to roughly 22 MB; this bound leaves room
+# for legitimate growth while refusing a decompression bomb inside the cap.
+SHEET_UNCOMPRESSED_LIMIT_BYTES = 48_000_000
+# The college serves the workbook with a misspelled octet-stream type; the
+# standard spellings are accepted too in case the server is ever corrected.
+ACCEPTED_CONTENT_TYPES = frozenset({
+    "application/octetstream",
+    "application/octet-stream",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+})
 CATALOG_WINDOW_DAYS = 45
 CATALOG_VERSION = 1
 MUNICIPALITY = "guardamar del segura"
 _EXCEL_EPOCH = date(1899, 12, 30)
+_SHEET_ENTRY = "xl/worksheets/sheet.xml"
 _SHEET_NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 _HOURS_PATTERN = re.compile(
     r"^de\s+(\d{1,2}:\d{2})\s+a\s+(\d{1,2}:\d{2})$", re.IGNORECASE
@@ -79,11 +90,18 @@ def _title_case(value: str) -> str:
     return lowered
 
 
+def _padded(value: str) -> str:
+    """Render the published time as HH:MM so rows align in the digest."""
+
+    hour, minute = value.split(":")
+    return f"{int(hour):02d}:{minute}"
+
+
 def _display_hours(raw: str) -> Optional[str]:
     match = _HOURS_PATTERN.match(" ".join(raw.split()))
     if match is None:
         return None
-    start, end = match.group(1), match.group(2)
+    start, end = _padded(match.group(1)), _padded(match.group(2))
     if start == end:
         return f"круглосуточно (с {start})"
     return f"{start}–{end}"
@@ -95,9 +113,20 @@ def normalize_rota(payload: bytes, window_start: date) -> Tuple[dict, ...]:
     window_end = window_start + timedelta(days=CATALOG_WINDOW_DAYS)
     try:
         with zipfile.ZipFile(BytesIO(payload)) as archive:
-            sheet = ElementTree.fromstring(
-                archive.read("xl/worksheets/sheet.xml")
-            )
+            # The download cap bounds only the compressed archive, so the
+            # declared uncompressed size is checked before any extraction.
+            if (
+                archive.getinfo(_SHEET_ENTRY).file_size
+                > SHEET_UNCOMPRESSED_LIMIT_BYTES
+            ):
+                raise PharmacyError(
+                    "Pharmacy rota sheet exceeds the uncompressed limit",
+                    code="TOO-LARGE",
+                    description="официальный файл дежурств слишком большой",
+                )
+            sheet = ElementTree.fromstring(archive.read(_SHEET_ENTRY))
+    except PharmacyError:
+        raise
     except (
         zipfile.BadZipFile,
         KeyError,
@@ -196,6 +225,7 @@ async def refresh_pharmacy_catalog(
             lambda: fetch_bounded(
                 url,
                 is_allowed_url=_is_college_url,
+                accepted_types=ACCEPTED_CONTENT_TYPES,
                 limit_bytes=WORKBOOK_LIMIT_BYTES,
                 timeout_seconds=REQUEST_TIMEOUT_SECONDS,
                 headers={
@@ -216,6 +246,8 @@ async def refresh_pharmacy_catalog(
                 f"сервер вернул HTTP {exc.status}"
                 if exc.status is not None
                 else "официальный файл дежурств недоступен"
+                if exc.code != "CONTENT-TYPE"
+                else "сервер вернул неожиданный формат файла дежурств"
             ),
         ) from exc
     records = normalize_rota(payload, local_day)
