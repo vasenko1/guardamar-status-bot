@@ -22,6 +22,7 @@ from telegrambot.telegram import (
     edit_photo_media,
     pin_chat_message,
     send_message,
+    send_photo,
     send_poll,
 )
 
@@ -574,6 +575,88 @@ class TelegramDeliveryTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(pin.call_count, 1)
         self.assertEqual(delays, [])
+
+    async def test_new_message_retries_only_explicit_rate_limit(self):
+        delays = []
+
+        async def sleep(delay):
+            delays.append(delay)
+
+        rate_limited = TelegramError(
+            "rate limited", retryable=True, retry_after=5, status=429
+        )
+        with patch(
+            "telegrambot.telegram._post_message",
+            side_effect=(rate_limited, 42),
+        ) as post:
+            result = await send_message(
+                "secret-token",
+                "@destination",
+                "guide",
+                retry_only_rate_limits=True,
+                sleep=sleep,
+            )
+
+        self.assertEqual(result, 42)
+        self.assertEqual(post.call_count, 2)
+        self.assertEqual(delays, [5])
+
+    async def test_new_message_does_not_retry_ambiguous_failure(self):
+        transient = TelegramError("timeout", retryable=True, code="TIMEOUT")
+        with patch(
+            "telegrambot.telegram._post_message",
+            side_effect=transient,
+        ) as post:
+            with self.assertRaises(TelegramError):
+                await send_message(
+                    "secret-token",
+                    "@destination",
+                    "guide",
+                    retry_only_rate_limits=True,
+                )
+
+        self.assertEqual(post.call_count, 1)
+
+    async def test_new_photo_retries_only_explicit_rate_limit(self):
+        delays = []
+
+        async def sleep(delay):
+            delays.append(delay)
+
+        rate_limited = TelegramError(
+            "rate limited", retryable=True, retry_after=4, status=429
+        )
+        with patch(
+            "telegrambot.telegram._post_photo",
+            side_effect=(rate_limited, (43, "file-id")),
+        ) as post:
+            result = await send_photo(
+                "secret-token",
+                "@destination",
+                Path("schedule.png"),
+                "caption",
+                sleep=sleep,
+            )
+
+        self.assertEqual(result, (43, "file-id"))
+        self.assertEqual(post.call_count, 2)
+        self.assertEqual(delays, [4])
+
+    async def test_new_photo_does_not_retry_ambiguous_failure(self):
+        transient = TelegramError("timeout", retryable=True, code="TIMEOUT")
+        with patch(
+            "telegrambot.telegram._post_photo",
+            side_effect=transient,
+        ) as post:
+            with self.assertRaises(TelegramError):
+                await send_photo(
+                    "secret-token",
+                    "@destination",
+                    Path("schedule.png"),
+                    "caption",
+                )
+
+        self.assertEqual(post.call_count, 1)
 
 if __name__ == "__main__":
     unittest.main()

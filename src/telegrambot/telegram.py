@@ -604,6 +604,7 @@ async def send_message(
     disable_notification: bool = False,
     reply_to_message_id: Optional[int] = None,
     max_attempts: int = MAX_SEND_ATTEMPTS,
+    retry_only_rate_limits: bool = False,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> int:
     """Send one message, retrying only transient failures."""
@@ -617,13 +618,26 @@ async def send_message(
                 arguments += (reply_to_message_id,)
             return await asyncio.to_thread(_post_message, *arguments)
         except TelegramError as exc:
-            if not exc.retryable or attempt == max_attempts:
+            if (
+                not exc.retryable
+                or attempt == max_attempts
+                or (retry_only_rate_limits and exc.server_status != 429)
+            ):
                 raise
             backoff = 2 ** (attempt - 1)
             requested_delay = exc.retry_after or 0
+            if (
+                retry_only_rate_limits
+                and requested_delay > MAX_IDEMPOTENT_RETRY_DELAY_SECONDS
+            ):
+                raise
             delay = min(
                 max(backoff, requested_delay),
-                MAX_RETRY_DELAY_SECONDS,
+                (
+                    MAX_IDEMPOTENT_RETRY_DELAY_SECONDS
+                    if retry_only_rate_limits
+                    else MAX_RETRY_DELAY_SECONDS
+                ),
             )
             await sleep(delay)
     raise AssertionError("unreachable")
@@ -725,17 +739,31 @@ async def send_photo(
     caption: str,
     *,
     disable_notification: bool = True,
+    max_attempts: int = MAX_IDEMPOTENT_ATTEMPTS,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> tuple[int, str]:
-    """Send one photo exactly once so an uncertain response cannot duplicate it."""
+    """Send one photo, retrying only an explicit rate-limit rejection."""
 
-    return await asyncio.to_thread(
-        _post_photo,
-        bot_token,
-        chat_id,
-        path,
-        caption,
-        disable_notification,
-    )
+    if max_attempts < 1:
+        raise ValueError("max_attempts must be at least one")
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return await asyncio.to_thread(
+                _post_photo,
+                bot_token,
+                chat_id,
+                path,
+                caption,
+                disable_notification,
+            )
+        except TelegramError as exc:
+            if exc.server_status != 429 or attempt == max_attempts:
+                raise
+            requested_delay = exc.retry_after or 0
+            if requested_delay > MAX_IDEMPOTENT_RETRY_DELAY_SECONDS:
+                raise
+            await sleep(max(2 ** (attempt - 1), requested_delay))
+    raise AssertionError("unreachable")
 
 
 async def edit_photo_media(

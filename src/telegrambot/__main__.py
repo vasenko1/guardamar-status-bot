@@ -662,7 +662,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     chat_id,
                     message,
                     disable_notification=True,
-                    max_attempts=1,
+                    retry_only_rate_limits=True,
                 ),
                 lambda message_id, message: edit_message(
                     bot_token, chat_id, message_id, message
