@@ -17,12 +17,13 @@ from typing import (
     Sequence,
 )
 
-from .branding import with_footer
+from .branding import FOOTER, with_footer
 from .state import StateError
 from .telegram import TelegramError
 
 PINNED_CONTENT_VERSION = 1
 DEFAULT_PINNED_STATE_PATH = "state/pinned_guide.json"
+MAX_RECONCILIATION_PASSES = 3
 
 Send = Callable[[str], Awaitable[int]]
 Edit = Callable[[int, str], Awaitable[None]]
@@ -196,12 +197,52 @@ def _linked(label: str, key: str, links: Optional[Mapping[str, str]]) -> str:
     return f'<a href="{url}"><b>{label}</b></a>'
 
 
+def _with_back_link(
+    message: str,
+    label: str,
+    url: Optional[str],
+) -> str:
+    """Insert one visible return link immediately before the shared footer."""
+
+    suffix = f"\n\n{FOOTER}"
+    if not message.endswith(suffix):
+        raise ValueError("guide message must end with the shared footer")
+    target = f"<b>{label}</b>"
+    if url is not None:
+        target = f'<a href="{url}"><b>{label}</b></a>'
+    return with_footer(f"{message[:-len(suffix)]}\n\n⬅️ {target}")
+
+
+def build_leaf_message(
+    key: str,
+    transport_link: Optional[str] = None,
+) -> str:
+    """Build one route detail with a return to the transport navigator."""
+
+    return _with_back_link(
+        LEAF_MESSAGES[key],
+        "К списку транспорта",
+        transport_link,
+    )
+
+
+def build_cameras(root_link: Optional[str] = None) -> str:
+    """Build the camera list with a return to the compact root."""
+
+    return _with_back_link(
+        CAMERAS,
+        "К главному закрепу",
+        root_link,
+    )
+
+
 def build_transport_index(
     links: Optional[Mapping[str, str]] = None,
+    root_link: Optional[str] = None,
 ) -> str:
     """Build the transport navigator with live links or preview labels."""
 
-    return with_footer(
+    message = with_footer(
         f"""🧭 <b>Транспорт из Гуардамара</b>
 
 Только прямые маршруты, без пересадок. Нажмите на нужное направление, чтобы открыть расписание с остановками.
@@ -230,6 +271,11 @@ def build_transport_index(
 
 • {_linked('Universidad de Alicante', 'university', links)} · в учебный период, для членов ADEUGT"""
     )
+    return _with_back_link(
+        message,
+        "К главному закрепу",
+        root_link,
+    )
 
 
 def build_root(
@@ -257,8 +303,8 @@ def preview_messages() -> Sequence[str]:
     """Return the exact text sequence for a private operator preview."""
 
     return (
-        *LEAF_MESSAGES.values(),
-        CAMERAS,
+        *(build_leaf_message(key) for key in LEAF_MESSAGES),
+        build_cameras(),
         build_transport_index(),
         build_root(),
     )
@@ -362,12 +408,83 @@ async def _upsert(
             await edit(message_id, text)
             return message_id
         except TelegramError as exc:
-            if exc.server_status != 400:
+            if exc.diagnostic_code == "MESSAGE-NOT-MODIFIED":
+                return message_id
+            if exc.diagnostic_code != "MESSAGE-NOT-FOUND":
                 raise
     message_id = await send(text)
     messages[key] = message_id
     await asyncio.to_thread(state.write, chat_id, messages)
     return message_id
+
+
+def _known_link(
+    chat_id: str,
+    messages: Mapping[str, int],
+    key: str,
+) -> Optional[str]:
+    message_id = messages.get(key)
+    if message_id is None:
+        return None
+    return telegram_message_link(chat_id, message_id)
+
+
+def _render_messages(
+    chat_id: str,
+    messages: Mapping[str, int],
+) -> Dict[str, str]:
+    """Render the best complete link graph possible from known identifiers."""
+
+    transport_link = _known_link(chat_id, messages, "transport")
+    root_link = _known_link(chat_id, messages, "root")
+    leaf_links = None
+    if all(key in messages for key in LEAF_MESSAGES):
+        leaf_links = {
+            key: telegram_message_link(chat_id, messages[key])
+            for key in LEAF_MESSAGES
+        }
+    return {
+        **{
+            key: build_leaf_message(key, transport_link)
+            for key in LEAF_MESSAGES
+        },
+        "cameras": build_cameras(root_link),
+        "transport": build_transport_index(leaf_links, root_link),
+        "root": build_root(
+            _known_link(chat_id, messages, "cameras"),
+            transport_link,
+        ),
+    }
+
+
+async def _reconcile_messages(
+    chat_id: str,
+    messages: Dict[str, int],
+    state: PinnedGuideState,
+    send: Send,
+    edit: Edit,
+) -> None:
+    """Converge IDs and links after partial runs or deleted messages."""
+
+    keys = (*LEAF_MESSAGES, "cameras", "transport", "root")
+    for _ in range(MAX_RECONCILIATION_PASSES):
+        before = dict(messages)
+        rendered = _render_messages(chat_id, before)
+        for key in keys:
+            await _upsert(
+                key,
+                rendered[key],
+                messages,
+                state,
+                chat_id,
+                send,
+                edit,
+            )
+        if messages == before:
+            return
+    raise StateError(
+        "pinned guide messages changed during every recovery pass"
+    )
 
 
 async def publish_pinned_guide(
@@ -381,35 +498,14 @@ async def publish_pinned_guide(
 
     telegram_message_link(chat_id, 1)
     messages = await asyncio.to_thread(state.read, chat_id)
-    for key, text in LEAF_MESSAGES.items():
-        await _upsert(key, text, messages, state, chat_id, send, edit)
-    camera_id = await _upsert(
-        "cameras", CAMERAS, messages, state, chat_id, send, edit
-    )
-    leaf_links = {
-        key: telegram_message_link(chat_id, messages[key])
-        for key in LEAF_MESSAGES
-    }
-    transport_id = await _upsert(
-        "transport",
-        build_transport_index(leaf_links),
-        messages,
-        state,
-        chat_id,
-        send,
-        edit,
-    )
-    root_id = await _upsert(
-        "root",
-        build_root(
-            telegram_message_link(chat_id, camera_id),
-            telegram_message_link(chat_id, transport_id),
-        ),
-        messages,
-        state,
-        chat_id,
-        send,
-        edit,
-    )
-    await pin(root_id)
+    await _reconcile_messages(chat_id, messages, state, send, edit)
+    try:
+        await pin(messages["root"])
+    except TelegramError as exc:
+        if exc.diagnostic_code != "MESSAGE-NOT-FOUND":
+            raise
+        messages.pop("root", None)
+        await asyncio.to_thread(state.write, chat_id, messages)
+        await _reconcile_messages(chat_id, messages, state, send, edit)
+        await pin(messages["root"])
     return messages

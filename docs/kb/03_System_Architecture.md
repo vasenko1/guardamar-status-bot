@@ -116,10 +116,14 @@ Telegram and minimal file state; it does not depend on Morning Digest internals.
 ### Linked pinned guide
 
 One manual one-shot workflow maintains a static set of camera and transport
-messages. It upserts detailed messages, derives member-visible Telegram links,
-upserts the navigator and compact root, and pins the root. A small independent
-atomic state stores only chat and message IDs. It has no schedule, source
-collection, media conversion, or dependency on Morning Digest state.
+messages. It reconciles detailed messages, the navigator and compact root into
+a bidirectional link graph, then pins the root. Exact missing-message responses
+replace deleted bot-authored messages and bounded passes rewrite every affected
+forward and return link before success. Unchanged-message responses are treated
+as idempotent success; other HTTP 400 errors fail closed without duplicates. A
+small independent atomic state stores only chat and message IDs. It has no
+schedule, source collection, media conversion, or dependency on Morning Digest
+state.
 
 ## Operating model
 
