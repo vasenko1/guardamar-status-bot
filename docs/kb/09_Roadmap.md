@@ -70,6 +70,9 @@
   edits stable bot-authored messages on later runs, keeps only message IDs in
   atomic state, and pins one compact root after all links are ready. Private
   preview is allowlisted and changes no group state. See ADR 0041.
+- Done: refresh the Bus Sigüenza airport message at 05:00 for the actual date
+  and show the standard fare only after strict validation of the current
+  official tariff. See ADR 0043.
 - Parked idea: after the 10:10 beach update, optionally send one current beach
   camera still as a separate reply to the digest. Consider it only when the
   owner permits republication and exposes a stable direct JPEG/snapshot URL;

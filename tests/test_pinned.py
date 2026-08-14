@@ -101,6 +101,28 @@ class PinnedStateTests(unittest.TestCase):
 
 
 class PinnedPublicationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_explicitly_managed_leaf_is_not_overwritten(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = PinnedGuideState(Path(directory) / "pinned.json")
+            keys = [*LEAF_MESSAGES, "cameras", "transport", "root"]
+            messages = {
+                key: number for number, key in enumerate(keys, start=1)
+            }
+            state.write("-100123", messages)
+            edit = AsyncMock()
+
+            await publish_pinned_guide(
+                "-100123",
+                state,
+                AsyncMock(),
+                edit,
+                AsyncMock(),
+                skip_keys=("airport",),
+            )
+
+            edited_ids = {call.args[0] for call in edit.await_args_list}
+            self.assertNotIn(messages["airport"], edited_ids)
+
     async def test_invalid_group_id_is_rejected_before_any_send(self):
         with tempfile.TemporaryDirectory() as directory:
             send = AsyncMock()

@@ -22,6 +22,7 @@ from .agenda import (
     agenda_translation_items,
     refresh_agenda_catalog,
 )
+from .airport_schedule import AirportScheduleState, sync_airport_schedule
 from .commands import listen_for_preview, parse_allowed_user_ids
 from .delivery import publish_morning, publish_update
 from .diagnostics import render_diagnostics
@@ -654,6 +655,9 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             "PINNED_GUIDE_STATE_PATH", DEFAULT_PINNED_STATE_PATH
         )))
         with state.exclusive_run():
+            existing = await asyncio.to_thread(
+                state.read_payload, chat_id
+            )
             await publish_pinned_guide(
                 chat_id,
                 state,
@@ -672,6 +676,29 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     chat_id,
                     message_id,
                     disable_notification=True,
+                ),
+                skip_keys=(
+                    ("airport",)
+                    if "airport" in existing["messages"]
+                    else ()
+                ),
+            )
+            await sync_airport_schedule(
+                datetime.now(GUARDAMAR_TIMEZONE),
+                chat_id,
+                state,
+                AirportScheduleState(
+                    state.path.with_name("airport_schedule.json")
+                ),
+                lambda message: send_message(
+                    bot_token,
+                    chat_id,
+                    message,
+                    disable_notification=True,
+                    retry_only_rate_limits=True,
+                ),
+                lambda message_id, message: edit_message(
+                    bot_token, chat_id, message_id, message
                 ),
             )
             messages = await sync_transport_schedules(

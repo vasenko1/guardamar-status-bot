@@ -46,7 +46,9 @@ The linked pinned guide uses explicit one-shot operator commands plus one short
 daily urban-timetable synchronization. It may store one small message graph,
 two current and two previous timetable PNGs, and bounded source metadata. PDF
 rendering is allowed only after a stable changed official one-page document;
-no browser, OCR, resident collector, or background process is allowed.
+one strict normalized airport schedule and fare snapshot is also allowed.
+Fare text extraction is allowed only after a stable changed official tariff
+PDF. No browser, OCR, resident collector, or background process is allowed.
 
 ## Resource policy
 
@@ -134,6 +136,8 @@ no browser, OCR, resident collector, or background process is allowed.
 - Keep at most the current and previous accepted urban-timetable PNG for each
   municipal line. Temporary PDFs and candidate images are removed before the
   one-shot process exits.
+- Keep one current and one previous normalized airport schedule/fare snapshot.
+  Store no raw Bus Sigüenza HTML or PDF.
 - Do not archive raw responses by default.
 - Do not cache raw source responses or municipal information. Only normalized
   source-language event facts, bounded provenance, and the incremental Todo
@@ -146,6 +150,7 @@ no browser, OCR, resident collector, or background process is allowed.
 - Python `tzdata` package because some Termux builds do not expose the Android
   timezone database to `zoneinfo`
 - Termux `poppler` utilities only for changed one-page municipal timetable PDFs
+  and changed Bus Sigüenza tariff PDFs
 - `asyncio` for bounded network concurrency
 - standard-library HTTP for the current small source and delivery set
 - aiogram or aiohttp only if a later requirement clearly justifies them

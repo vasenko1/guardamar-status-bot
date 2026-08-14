@@ -476,6 +476,12 @@ only that message and rebuilds dependent links. Other failures stop
 publication. One external daily refresh and the Termux Poppler utilities are
 accepted by ADR 0042; no browser or resident collector is added.
 
+The same 05:00 command updates the airport leaf from the official Bus Sigüenza
+result for the current date. It shows both directions, exact operator map
+points and the standard fare only while a stable official tariff passes strict
+validation. One normalized snapshot preserves explicit dating and deleted-
+message recovery during source outages. See ADR 0043.
+
 The private `/pinned_preview` command and the one-shot CLI preview send the
 exact text sequence silently to the single allowlisted operator. They do not
 touch the group, pin messages, or write publication state.

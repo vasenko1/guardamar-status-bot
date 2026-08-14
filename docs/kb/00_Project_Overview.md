@@ -47,7 +47,8 @@ Digest and runs as another short-lived Termux process.
 One linked Telegram guide connects a compact pinned root to public cameras and
 direct transport messages. It is independent of the daily digest. Most content
 is static; one short daily job conditionally refreshes the two official urban
-timetable images and their current calendar captions.
+timetable images and their current calendar captions, plus the date-specific
+airport departures and verified standard fare.
 
 ## Out of scope
 
