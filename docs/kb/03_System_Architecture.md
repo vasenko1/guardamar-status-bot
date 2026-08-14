@@ -128,7 +128,9 @@ official PDF links conditionally and renders only a stable changed one-page
 document. The same invocation makes one bounded date-specific Bus Sigüenza
 request and conditionally checks its official fare PDF. It stores only one
 strict normalized airport snapshot and parses the PDF only after a stable
-change. It has no resident process or dependency on Morning Digest state.
+change. A narrowly allowlisted Let's Encrypt AIA recovery preserves full TLS
+and hostname verification when the operator omits its issuing intermediate.
+It has no resident process or dependency on Morning Digest state.
 
 ## Operating model
 

@@ -20,6 +20,23 @@ The server returned ETag `"349ae-64a60a18e365f"`, Last-Modified
 `Mon, 09 Feb 2026 09:19:08 GMT`, and `304 Not Modified` when both validators
 were sent on 14 August 2026.
 
+## TLS chain defect observed on Termux
+
+At 22:48 and 22:51 on 14 August 2026, the phone rejected the operator with
+OpenSSL verification error 20, `unable to get local issuer certificate`.
+Inspection showed a valid leaf for `bus-siguenza.com`, issued by Let's Encrypt
+E7 and valid from 28 May through 26 August 2026, followed by an unrelated Don
+Dominio / USERTrust chain instead of E7. The leaf AIA points to
+`http://e7.i.lencr.org/`; the same bounded DER is available through verified
+`https://e7.i.lencr.org/` as `application/pkix-cert`.
+
+The client must not use an unverified HTTP request or disable TLS. ADR 0043
+allows recovery only for this missing-issuer error: obtain the leaf solely to
+read AIA, strictly allow one HTTPS `*.i.lencr.org/` endpoint, fetch through the
+normal trust store, then retry Bus Sigüenza with certificate and hostname
+verification required. The intermediate stays only in process memory so a
+future issuer rotation is discovered rather than pinned to E7.
+
 ## Observed date-specific results
 
 The same outbound times appeared for every sampled date:
