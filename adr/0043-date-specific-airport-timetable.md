@@ -29,6 +29,15 @@ standard Guardamar-airport fare is shown. A future tariff is withheld before
 its effective date; an unknown changed layout removes the price without hiding
 the timetable.
 
+Bus Sigüenza currently serves a Let's Encrypt leaf certificate with an
+unrelated legacy intermediate chain. Default verification correctly rejects
+it on Termux. Only for missing-issuer verification errors on the exact operator
+host, read the leaf AIA without trusting application data, require one
+`*.i.lencr.org` issuer URL with no extra path or parameters, upgrade it to
+HTTPS, download a bounded DER intermediate through the normal system trust
+store, and retry with hostname and certificate verification still required.
+No other TLS error may enter this recovery path, and no certificate is stored.
+
 Store one small strict atomic normalized snapshot, with one previous
 generation, but no raw HTML or PDF. It supports exact-date labeling during a
 source outage and recovery of an accidentally deleted bot-authored airport
@@ -38,6 +47,8 @@ pinned-guide state.
 ## Consequences
 
 - Normal daily cost is one small POST and normally one conditional PDF `304`.
+- While the operator's chain remains incomplete, one bounded Let's Encrypt
+  intermediate fetch is shared in memory by the timetable and fare requests.
 - `pdfinfo` and `pdftotext` run only after a stable changed fare PDF; both are
   already supplied by the accepted Termux Poppler dependency.
 - No browser, image generation, OCR, AI, new cron row or resident process is

@@ -480,7 +480,10 @@ The same 05:00 command updates the airport leaf from the official Bus Sigüenza
 result for the current date. It shows both directions, exact operator map
 points and the standard fare only while a stable official tariff passes strict
 validation. One normalized snapshot preserves explicit dating and deleted-
-message recovery during source outages. See ADR 0043.
+message recovery during source outages. The adapter also repairs only the
+operator's documented missing-intermediate TLS fault through a strictly
+allowlisted, verified Let's Encrypt AIA fetch; it never disables TLS. See ADR
+0043.
 
 The private `/pinned_preview` command and the one-shot CLI preview send the
 exact text sequence silently to the single allowlisted operator. They do not

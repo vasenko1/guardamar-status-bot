@@ -1,10 +1,13 @@
 import json
+import ssl
 import subprocess
 import tempfile
 import unittest
+import urllib.error
+import urllib.request
 from datetime import date, datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
 from telegrambot.airport_schedule import (
@@ -14,6 +17,10 @@ from telegrambot.airport_schedule import (
     Fare,
     _DownloadedPdf,
     _SearchResult,
+    _allowed_intermediate_url,
+    _intermediate_url,
+    _missing_issuer,
+    _open_bounded,
     _refresh_fare,
     build_airport_message,
     parse_fare_pdf,
@@ -101,6 +108,88 @@ def _messages():
 
 
 class AirportSourceTests(unittest.TestCase):
+    def test_tls_repair_accepts_only_official_https_intermediate(self):
+        self.assertTrue(
+            _allowed_intermediate_url("https://e7.i.lencr.org/")
+        )
+        for url in (
+            "http://e7.i.lencr.org/",
+            "https://e7.i.lencr.org/extra",
+            "https://e7.i.lencr.org/?next=evil",
+            "https://e7.i.lencr.org.evil.example/",
+            "https://user@e7.i.lencr.org/",
+        ):
+            self.assertFalse(_allowed_intermediate_url(url))
+
+    def test_tls_aia_is_upgraded_to_strict_https(self):
+        completed = subprocess.CompletedProcess(
+            [], 0,
+            stdout=(
+                b"Authority Information Access:\n"
+                b" CA Issuers - URI:http://e7.i.lencr.org/\n"
+            ),
+        )
+        with patch(
+            "telegrambot.airport_schedule.subprocess.run",
+            return_value=completed,
+        ):
+            url = _intermediate_url(b"leaf")
+
+        self.assertEqual(url, "https://e7.i.lencr.org/")
+
+    def test_only_missing_issuer_error_can_trigger_tls_repair(self):
+        missing = ssl.SSLCertVerificationError(
+            1, "unable to get local issuer certificate"
+        )
+        expired = ssl.SSLCertVerificationError(
+            1, "certificate has expired"
+        )
+
+        self.assertTrue(_missing_issuer(urllib.error.URLError(missing)))
+        self.assertFalse(_missing_issuer(urllib.error.URLError(expired)))
+
+    def test_source_request_retries_once_with_repaired_context(self):
+        missing = ssl.SSLCertVerificationError(
+            1, "unable to get local issuer certificate"
+        )
+        first_opener = MagicMock()
+        first_opener.open.side_effect = urllib.error.URLError(missing)
+        response = MagicMock()
+        response.geturl.return_value = (
+            "https://www.bus-siguenza.com/wbus/procesa.php"
+        )
+        response.read.return_value = b"accepted"
+        response.status = 200
+        response.headers = MagicMock()
+        response.__enter__.return_value = response
+        second_opener = MagicMock()
+        second_opener.open.return_value = response
+        repaired = MagicMock(spec=ssl.SSLContext)
+
+        with (
+            patch(
+                "telegrambot.airport_schedule._BUS_TLS_CONTEXT", None
+            ),
+            patch(
+                "telegrambot.airport_schedule._repaired_tls_context",
+                return_value=repaired,
+            ) as repair,
+            patch(
+                "telegrambot.airport_schedule.urllib.request.build_opener",
+                side_effect=(first_opener, second_opener),
+            ),
+        ):
+            payload, _, _, status = _open_bounded(
+                urllib.request.Request(
+                    "https://www.bus-siguenza.com/wbus/procesa.php"
+                ),
+                100,
+            )
+
+        self.assertEqual(payload, b"accepted")
+        self.assertEqual(status, 200)
+        repair.assert_called_once_with()
+
     def test_parses_both_directions_stops_and_fare_link(self):
         result = parse_search_response(
             _search_html(), date(2026, 8, 14)

@@ -9,8 +9,10 @@ import logging
 import os
 import re
 import socket
+import ssl
 import subprocess
 import tempfile
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -31,6 +33,8 @@ HTML_LIMIT_BYTES = 160_000
 PDF_LIMIT_BYTES = 5_000_000
 REQUEST_TIMEOUT_SECONDS = 20
 PROCESS_TIMEOUT_SECONDS = 30
+TLS_CERT_LIMIT_BYTES = 16_384
+TLS_INTERMEDIATE_HOST = re.compile(r"^[a-z0-9-]+\.i\.lencr\.org$")
 STATE_VERSION = 1
 USER_AGENT = "GuardamarMorningDigest/0.13"
 TIME_PATTERN = re.compile(r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")
@@ -72,6 +76,17 @@ class _AllowedRedirectHandler(urllib.request.HTTPRedirectHandler):
         )
 
 
+class _IntermediateRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, msg, headers, newurl):
+        if not _allowed_intermediate_url(newurl):
+            raise AirportScheduleError(
+                "TLS intermediate redirected outside allowlist"
+            )
+        return super().redirect_request(
+            request, fp, code, msg, headers, newurl
+        )
+
+
 @dataclass(frozen=True)
 class Fare:
     cents: int
@@ -106,6 +121,10 @@ class _DownloadedPdf:
     last_modified: Optional[str]
 
 
+_BUS_TLS_CONTEXT: Optional[ssl.SSLContext] = None
+_BUS_TLS_LOCK = threading.Lock()
+
+
 def _allowed_url(url: str) -> bool:
     parsed = urllib.parse.urlparse(url)
     try:
@@ -131,6 +150,152 @@ def _allowed_fare_url(url: str) -> bool:
     )
 
 
+def _allowed_intermediate_url(url: str) -> bool:
+    parsed = urllib.parse.urlparse(url)
+    try:
+        port = parsed.port
+    except ValueError:
+        return False
+    return (
+        parsed.scheme == "https"
+        and parsed.hostname is not None
+        and TLS_INTERMEDIATE_HOST.fullmatch(parsed.hostname) is not None
+        and port in (None, 443)
+        and parsed.username is None
+        and parsed.password is None
+        and parsed.path == "/"
+        and not parsed.params
+        and not parsed.query
+        and not parsed.fragment
+    )
+
+
+def _missing_issuer(exc: urllib.error.URLError) -> bool:
+    reason = exc.reason
+    return isinstance(reason, ssl.SSLCertVerificationError) and (
+        getattr(reason, "verify_code", None) in (20, 21)
+        or "unable to get local issuer certificate" in str(reason).casefold()
+        or "unable to verify the first certificate" in str(reason).casefold()
+    )
+
+
+def _leaf_certificate() -> bytes:
+    unverified = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    unverified.check_hostname = False
+    unverified.verify_mode = ssl.CERT_NONE
+    try:
+        with socket.create_connection(
+            (ALLOWED_HOST, 443), timeout=REQUEST_TIMEOUT_SECONDS
+        ) as connection:
+            with unverified.wrap_socket(
+                connection, server_hostname=ALLOWED_HOST
+            ) as tls:
+                certificate = tls.getpeercert(binary_form=True)
+    except (OSError, ssl.SSLError, TimeoutError) as exc:
+        raise AirportScheduleError(
+            "airport TLS certificate is unavailable"
+        ) from exc
+    if not certificate or len(certificate) > TLS_CERT_LIMIT_BYTES:
+        raise AirportScheduleError("airport TLS certificate is invalid")
+    return certificate
+
+
+def _intermediate_url(certificate: bytes) -> str:
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "leaf.der"
+        path.write_bytes(certificate)
+        try:
+            result = subprocess.run(
+                [
+                    "openssl", "x509", "-inform", "DER", "-in", str(path),
+                    "-noout", "-ext", "authorityInfoAccess",
+                ],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=PROCESS_TIMEOUT_SECONDS,
+            )
+        except FileNotFoundError as exc:
+            raise AirportScheduleError(
+                "required TLS tool is missing: openssl"
+            ) from exc
+        except (subprocess.SubprocessError, OSError) as exc:
+            raise AirportScheduleError(
+                "airport TLS certificate could not be inspected"
+            ) from exc
+    urls = re.findall(
+        r"CA Issuers\s*-\s*URI:(https?://[^\s]+)",
+        result.stdout.decode("ascii", "replace"),
+        flags=re.I,
+    )
+    if len(urls) != 1:
+        raise AirportScheduleError("airport TLS issuer is ambiguous")
+    parsed = urllib.parse.urlparse(urls[0])
+    secure = urllib.parse.urlunparse(parsed._replace(scheme="https"))
+    if not _allowed_intermediate_url(secure):
+        raise AirportScheduleError("airport TLS issuer is not allowed")
+    return secure
+
+
+def _download_intermediate(url: str) -> bytes:
+    if not _allowed_intermediate_url(url):
+        raise AirportScheduleError("TLS intermediate URL is not allowed")
+    opener = urllib.request.build_opener(_IntermediateRedirectHandler())
+    request = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "application/pkix-cert",
+            "User-Agent": USER_AGENT,
+        },
+    )
+    try:
+        response = opener.open(request, timeout=REQUEST_TIMEOUT_SECONDS)
+    except (
+        urllib.error.HTTPError,
+        urllib.error.URLError,
+        TimeoutError,
+        socket.timeout,
+        OSError,
+        http.client.HTTPException,
+    ) as exc:
+        raise AirportScheduleError(
+            "TLS intermediate is unavailable"
+        ) from exc
+    with response:
+        final_url = response.geturl()
+        payload = response.read(TLS_CERT_LIMIT_BYTES + 1)
+        if (
+            response.status != 200
+            or not _allowed_intermediate_url(final_url)
+            or response.headers.get_content_type()
+            != "application/pkix-cert"
+            or not 1 <= len(payload) <= TLS_CERT_LIMIT_BYTES
+        ):
+            raise AirportScheduleError("TLS intermediate is invalid")
+        return payload
+
+
+def _repaired_tls_context() -> ssl.SSLContext:
+    global _BUS_TLS_CONTEXT
+    with _BUS_TLS_LOCK:
+        if _BUS_TLS_CONTEXT is not None:
+            return _BUS_TLS_CONTEXT
+        certificate = _leaf_certificate()
+        intermediate = _download_intermediate(
+            _intermediate_url(certificate)
+        )
+        try:
+            pem = ssl.DER_cert_to_PEM_cert(intermediate)
+            context = ssl.create_default_context()
+            context.load_verify_locations(cadata=pem)
+        except (ValueError, ssl.SSLError) as exc:
+            raise AirportScheduleError(
+                "TLS intermediate could not be loaded"
+            ) from exc
+        _BUS_TLS_CONTEXT = context
+        return context
+
+
 def _normalized_url(url: str) -> str:
     parsed = urllib.parse.urlparse(url)
     return urllib.parse.urlunparse(parsed._replace(
@@ -144,9 +309,22 @@ def _open_bounded(
 ) -> tuple[bytes, str, object, int]:
     if not _allowed_url(request.full_url):
         raise AirportScheduleError("airport source URL is not allowed")
-    opener = urllib.request.build_opener(_AllowedRedirectHandler())
+
+    def open_with(context: Optional[ssl.SSLContext]):
+        handlers = [_AllowedRedirectHandler()]
+        if context is not None:
+            handlers.append(urllib.request.HTTPSHandler(context=context))
+        return urllib.request.build_opener(*handlers).open(
+            request, timeout=REQUEST_TIMEOUT_SECONDS
+        )
+
     try:
-        response = opener.open(request, timeout=REQUEST_TIMEOUT_SECONDS)
+        try:
+            response = open_with(_BUS_TLS_CONTEXT)
+        except urllib.error.URLError as exc:
+            if not _missing_issuer(exc):
+                raise
+            response = open_with(_repaired_tls_context())
     except urllib.error.HTTPError as exc:
         if exc.code == 304:
             return b"", request.full_url, exc.headers, 304
