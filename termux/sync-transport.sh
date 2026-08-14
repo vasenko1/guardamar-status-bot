@@ -17,7 +17,9 @@ cd "$PROJECT_DIR"
 . ./.env
 export PYTHONPATH="$PROJECT_DIR/src"
 
-if ! command -v pdfinfo >/dev/null 2>&1 || ! command -v pdftoppm >/dev/null 2>&1; then
+if ! command -v pdfinfo >/dev/null 2>&1 \
+    || ! command -v pdftoppm >/dev/null 2>&1 \
+    || ! command -v pdftotext >/dev/null 2>&1; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') FAILURE Poppler is not installed"
     exit 1
 fi

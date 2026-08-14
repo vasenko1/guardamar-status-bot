@@ -187,11 +187,14 @@ Only an image file published by the operator is eligible as timetable media.
 Do not attach a PDF or publish a locally rendered picture of a PDF page.
 
 The Bus Sigüenza CE-714 airport service is a daily year-round route, not a
-summer-only service. Current Generalitat service levels distinguish winter
-from summer: winter has two outbound and three return journeys per day, while
-summer adds one journey in each direction. Its pinned copy must therefore send
-the reader to the date-specific operator search instead of treating one
-season's timetable as permanent.
+summer-only service. A later direct audit of the operator's date-specific
+results found three outbound journeys on every sampled date, four return
+journeys on sampled July-August dates, and an additional 10:00 return journey
+on sampled September-February dates. These observations supersede the earlier
+frequency summary but still do not establish an official calendar rule. ADR
+0043 therefore updates the pinned message from the actual date-specific result
+instead of treating one season's timetable as permanent. See
+`research/2026-08-14-bus-siguenza-airport.md`.
 
 ## Remaining interurban leaf facts
 

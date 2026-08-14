@@ -133,8 +133,9 @@ starred departures also pass Los Secanos and the cemetery.
   operators must not edit message IDs in state manually.
 - Do not add a `Проверено` line or a separate `Официальное расписание` link to
   a public transport message.
-- When a timetable changes by travel date, use one short functional link in
-  the copy: `Проверьте актуальное расписание`.
+- When a timetable changes by travel date, show times only when the bot has
+  validated the operator result for the explicitly displayed date. Keep one
+  short functional link for another date.
 - For municipal lines 1 and 2, attach the bounded PNG rendered from the exact
   official one-page PDF under ADR 0042 and keep a direct PDF link for full
   quality. Show only the currently applicable reviewed calendar period. An
@@ -149,7 +150,10 @@ starred departures also pass Los Secanos and the cemetery.
   as an exact boarding point.
 - Preserve the standard public-message footer.
 
-The accepted airport message links both endpoints on the map and sends the
-reader to the live date-specific timetable. Hospital de Torrevieja keeps the
+The airport message is refreshed by ADR 0043 at 05:00 from the operator result
+for the current date. It shows both directions, exact operator endpoint maps,
+the standard fare only after independent tariff validation, and a link for
+another date. A cached result always retains its explicit date and is never
+presented as current on a later day. Hospital de Torrevieja keeps the
 verified direction-specific stop links but omits fixed times, which can become
 stale independently of this guide.

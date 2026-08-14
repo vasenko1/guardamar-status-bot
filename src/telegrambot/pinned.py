@@ -83,9 +83,9 @@ Polideportivo ↔ Estación de Autobuses ↔ El Raso ↔ El Edén ↔ Pinomar
 
 🗓 <b>Каждый день</b>
 
-Зимой рейсов меньше, летом добавляются дополнительные.
+Сообщение с рейсами на текущую дату обновляется каждое утро.
 
-📍 <a href="https://www.google.com/maps/search/?api=1&amp;query=Estaci%C3%B3n+de+Autobuses%2C+Guardamar+del+Segura">Estación de Autobuses</a> ↔ <a href="https://www.google.com/maps/search/?api=1&amp;query=38.288404274%2C-0.552487159">автобусная зона терминала</a>
+📍 <a href="https://www.google.com/maps/search/?api=1&amp;query=38.087834%2C-0.655759">Estación de Autobuses</a> ↔ <a href="https://www.google.com/maps/search/?api=1&amp;query=38.282222222222%2C-0.55805555555556">остановка аэропорта</a>
 
 🔎 <a href="https://www.bus-siguenza.com/index.php?page=urbano">Проверьте расписание</a>"""
     ),
@@ -582,6 +582,7 @@ async def publish_pinned_guide(
     send: Send,
     edit: Edit,
     pin: Pin,
+    skip_keys: Sequence[str] = (),
 ) -> Dict[str, int]:
     """Create or update all linked messages, then pin the compact root."""
 
@@ -592,12 +593,12 @@ async def publish_pinned_guide(
             "a previous pinned guide delivery has an uncertain result"
         )
     messages = payload["messages"]
-    media_keys = tuple(
+    managed_elsewhere = tuple(
         key for key, value in payload["lines"].items()
         if value.get("media") is True and key in messages
-    )
+    ) + tuple(key for key in skip_keys if key in messages)
     await _reconcile_messages(
-        chat_id, messages, state, send, edit, media_keys
+        chat_id, messages, state, send, edit, managed_elsewhere
     )
     try:
         await pin(messages["root"])
@@ -607,7 +608,7 @@ async def publish_pinned_guide(
         messages.pop("root", None)
         await asyncio.to_thread(state.write, chat_id, messages)
         await _reconcile_messages(
-            chat_id, messages, state, send, edit, media_keys
+            chat_id, messages, state, send, edit, managed_elsewhere
         )
         await pin(messages["root"])
     return messages
