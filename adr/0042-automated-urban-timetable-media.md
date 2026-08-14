@@ -29,14 +29,17 @@ caption without carrying forward unverified notes or seasonal claims. The
 caption retains the direct PDF link for full-quality viewing.
 
 Each line becomes one Telegram photo message. Caption-only changes use
-`editMessageCaption`; changed images use `editMessageMedia`. A new photo is
-sent exactly once because Telegram has no idempotency key. A transient or
-ambiguous response is stored as `delivery_uncertain` and blocks another send.
+`editMessageCaption`; changed images use `editMessageMedia`. A new message is
+repeated only after an explicit HTTP 429 rejection, which confirms that
+Telegram did not accept it. A transient or ambiguous response is stored as
+`delivery_uncertain` and blocks another send because Telegram has no
+idempotency key.
 Known-message edits and pins are idempotent, so they retry transient failures
 at most twice, honor a Telegram `retry_after` of at most 60 seconds, and fail
-instead of waiting beyond that bound. An explicit HTTP 429 rejects a new
-message before delivery and therefore does not create uncertain-delivery
-state; transport and server failures remain ambiguous and do.
+instead of waiting beyond that bound. The same wait bound applies before a
+new-message retry after HTTP 429. Such a rejection does not create
+uncertain-delivery state; transport and server failures remain ambiguous and
+do.
 Confirmed missing messages are recreated, the transport navigator is updated,
 and obsolete text or photo messages are deleted only after the new graph is
 stored and linked.
