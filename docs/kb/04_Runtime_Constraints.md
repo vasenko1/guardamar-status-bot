@@ -154,6 +154,8 @@ or background process is allowed.
   timezone database to `zoneinfo`
 - Termux `poppler` utilities only for changed one-page municipal timetable PDFs
   and changed Bus Sigüenza tariff PDFs
+- Termux `openssl-tool` command only to read the Bus Sigüenza leaf AIA after
+  the documented missing-issuer verification failure
 - `asyncio` for bounded network concurrency
 - standard-library HTTP for the current small source and delivery set
 - aiogram or aiohttp only if a later requirement clearly justifies them

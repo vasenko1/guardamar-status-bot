@@ -238,11 +238,11 @@ After reviewing the private guide, publish or update it manually:
 PYTHONPATH=src python -m telegrambot pinned-publish
 ```
 
-Install Poppler once, then publish or automatically repair the two urban-line
-photo timetables with the same linked guide state:
+Install Poppler and the Termux OpenSSL command once, then publish or
+automatically repair the transport messages with the same linked guide state:
 
 ```sh
-pkg install poppler
+pkg install poppler openssl-tool
 PYTHONPATH=src python -m telegrambot sync-transport
 ./termux/install-transport-cron.sh
 ```

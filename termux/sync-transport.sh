@@ -21,7 +21,7 @@ if ! command -v pdfinfo >/dev/null 2>&1 \
     || ! command -v pdftoppm >/dev/null 2>&1 \
     || ! command -v pdftotext >/dev/null 2>&1 \
     || ! command -v openssl >/dev/null 2>&1; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') FAILURE Poppler or OpenSSL is not installed"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') FAILURE Run: pkg install poppler openssl-tool"
     exit 1
 fi
 
