@@ -135,10 +135,11 @@ starred departures also pass Los Secanos and the cemetery.
   a public transport message.
 - When a timetable changes by travel date, use one short functional link in
   the copy: `Проверьте актуальное расписание`.
-- Attach only a timetable image file published by the operator. Do not attach
-  a PDF or render a PDF page into an image for the public message. Use an
-  operator image only while its stated season or validity period is current.
-  Do not turn a date-specific search result into a long-lived pinned image.
+- For municipal lines 1 and 2, attach the bounded PNG rendered from the exact
+  official one-page PDF under ADR 0042 and keep a direct PDF link for full
+  quality. Show only the currently applicable reviewed calendar period. An
+  unknown revision receives a generic caption without old notes or seasonal
+  claims. Do not turn a date-specific search result into a pinned image.
 - Make the names of useful stops clickable map links. Do not repeat the map-pin
   icon on every timetable row.
 - Link an airport terminal stop directly rather than describing it only as an
@@ -148,8 +149,7 @@ starred departures also pass Los Secanos and the cemetery.
   as an exact boarding point.
 - Preserve the standard public-message footer.
 
-The accepted airport message uses the current Bus Sigüenza times in the body,
-links both endpoints on the map, and ends with a short link to check the live
-date-specific timetable. The accepted Hospital de Torrevieja design makes
-each stop name clickable, subject to a final direction-specific check for
-La Rosa, Pinomar, and La Mata.
+The accepted airport message links both endpoints on the map and sends the
+reader to the live date-specific timetable. Hospital de Torrevieja keeps the
+verified direction-specific stop links but omits fixed times, which can become
+stale independently of this guide.

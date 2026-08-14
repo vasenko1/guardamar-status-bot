@@ -44,9 +44,10 @@ Digest and runs as another short-lived Termux process.
 
 ### Linked pinned city guide
 
-One manually maintained Telegram guide links a compact pinned root to public
-cameras and direct transport messages. It is static, independent of the daily
-digest, and updated only by an explicit one-shot operator command.
+One linked Telegram guide connects a compact pinned root to public cameras and
+direct transport messages. It is independent of the daily digest. Most content
+is static; one short daily job conditionally refreshes the two official urban
+timetable images and their current calendar captions.
 
 ## Out of scope
 

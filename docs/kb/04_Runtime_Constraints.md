@@ -42,9 +42,11 @@ One short daily deployment check may fetch the tested GitHub `deploy` branch.
 It must exit immediately when no update exists and must not become a resident
 deployment agent or self-hosted CI runner.
 
-The linked pinned guide may run only as an explicit one-shot operator command.
-It may store one small mapping of Telegram message IDs, but it must not add a
-schedule, source collector, browser, media converter, or background process.
+The linked pinned guide uses explicit one-shot operator commands plus one short
+daily urban-timetable synchronization. It may store one small message graph,
+two current and two previous timetable PNGs, and bounded source metadata. PDF
+rendering is allowed only after a stable changed official one-page document;
+no browser, OCR, resident collector, or background process is allowed.
 
 ## Resource policy
 
@@ -127,6 +129,9 @@ schedule, source collector, browser, media converter, or background process.
   indicator and geographic scope, separately from the electricity publication
   marker. Replace it only after a complete validated response for another day.
 - Keep logs rotated or otherwise bounded.
+- Keep at most the current and previous accepted urban-timetable PNG for each
+  municipal line. Temporary PDFs and candidate images are removed before the
+  one-shot process exits.
 - Do not archive raw responses by default.
 - Do not cache raw source responses or municipal information. Only normalized
   source-language event facts, bounded provenance, and the incremental Todo
@@ -138,6 +143,7 @@ schedule, source collector, browser, media converter, or background process.
 - Python available in Termux
 - Python `tzdata` package because some Termux builds do not expose the Android
   timezone database to `zoneinfo`
+- Termux `poppler` utilities only for changed one-page municipal timetable PDFs
 - `asyncio` for bounded network concurrency
 - standard-library HTTP for the current small source and delivery set
 - aiogram or aiohttp only if a later requirement clearly justifies them

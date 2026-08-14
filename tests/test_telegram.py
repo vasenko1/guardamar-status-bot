@@ -1,9 +1,11 @@
 import json
 import io
 import socket
+import tempfile
 import unittest
 import urllib.error
 from email.message import Message
+from pathlib import Path
 from unittest.mock import patch
 
 from telegrambot.telegram import (
@@ -13,6 +15,8 @@ from telegrambot.telegram import (
     _delete_message,
     _edit_message,
     _pin_chat_message,
+    _post_photo,
+    _edit_photo_media,
     _response_error,
     send_message,
     send_poll,
@@ -62,6 +66,55 @@ class _Opener:
 
 
 class TelegramDeliveryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_photo_upload_is_multipart_and_returns_identifiers(self):
+        response = _SuccessfulResponse(
+            b'{"ok":true,"result":{"message_id":77,"photo":['
+            b'{"file_id":"small"},{"file_id":"largest"}]}}',
+            url="https://api.telegram.org/botsecret-token/sendPhoto",
+        )
+        opener = _Opener(response)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "schedule.png"
+            path.write_bytes(b"PNG schedule")
+            with patch(
+                "telegrambot.telegram.urllib.request.build_opener",
+                return_value=opener,
+            ):
+                result = _post_photo(
+                    "secret-token", "@destination", path,
+                    "Расписание", True,
+                )
+
+        self.assertEqual(result, (77, "largest"))
+        self.assertTrue(opener.request.full_url.endswith("/sendPhoto"))
+        content_type = opener.request.headers["Content-type"]
+        self.assertTrue(content_type.startswith("multipart/form-data; boundary="))
+        self.assertIn(b'name="photo"', opener.request.data)
+        self.assertIn("Расписание".encode(), opener.request.data)
+
+    async def test_photo_media_edit_uploads_caption_atomically(self):
+        response = _SuccessfulResponse(
+            b'{"ok":true,"result":{"message_id":42,"photo":['
+            b'{"file_id":"updated"}]}}',
+            url="https://api.telegram.org/botsecret-token/editMessageMedia",
+        )
+        opener = _Opener(response)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "schedule.png"
+            path.write_bytes(b"PNG schedule")
+            with patch(
+                "telegrambot.telegram.urllib.request.build_opener",
+                return_value=opener,
+            ):
+                file_id = _edit_photo_media(
+                    "secret-token", "@destination", 42, path,
+                    "Новая подпись",
+                )
+
+        self.assertEqual(file_id, "updated")
+        self.assertTrue(opener.request.full_url.endswith("/editMessageMedia"))
+        self.assertIn(b"attach://photo", opener.request.data)
+
     async def test_edit_conflicts_are_classified_without_broad_http_400(self):
         unchanged = _response_error(
             {"description": "Bad Request: message is not modified"}, 400

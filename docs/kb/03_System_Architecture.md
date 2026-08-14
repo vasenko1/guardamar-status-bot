@@ -115,15 +115,16 @@ Telegram and minimal file state; it does not depend on Morning Digest internals.
 
 ### Linked pinned guide
 
-One manual one-shot workflow maintains a static set of camera and transport
-messages. It reconciles detailed messages, the navigator and compact root into
+One one-shot workflow maintains the camera and transport messages. It
+reconciles detailed messages, the navigator and compact root into
 a bidirectional link graph, then pins the root. Exact missing-message responses
 replace deleted bot-authored messages and bounded passes rewrite every affected
 forward and return link before success. Unchanged-message responses are treated
 as idempotent success; other HTTP 400 errors fail closed without duplicates. A
-small independent atomic state stores only chat and message IDs. It has no
-schedule, source collection, media conversion, or dependency on Morning Digest
-state.
+small independent atomic state stores chat and message IDs plus bounded media
+metadata for the two urban lines. One external 05:00 invocation checks their
+official PDF links conditionally and renders only a stable changed one-page
+document. It has no resident process or dependency on Morning Digest state.
 
 ## Operating model
 
@@ -133,7 +134,7 @@ state.
   pending; three warning-only AEMET checks per day
 - Up to five short evening electricity attempts; success-only state makes
   later invocations no-ops after the first publication
-- One optional manual pinned-guide publication or update
+- One daily urban-timetable synchronization and optional manual guide update
 - Optional lightweight operator listener with one idle Telegram long poll
 - One event loop with bounded asynchronous I/O
 - One direct 07:30 collection; one later full collection only after an update

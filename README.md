@@ -40,9 +40,10 @@ with [docs/kb/00_Project_Overview.md](docs/kb/00_Project_Overview.md).
 - no internal scheduler, continuous polling, resident collectors, or generic
   cache layer
 
-The Python `tzdata` package is the only runtime dependency. It supplies the
-`Europe/Madrid` timezone on Termux builds that do not expose Android's system
-timezone database to Python.
+The Python `tzdata` package is the only Python runtime dependency. It supplies
+the `Europe/Madrid` timezone on Termux builds that do not expose Android's
+system timezone database to Python. The optional linked transport guide also
+uses the Termux `poppler` package for bounded one-page PDF rendering.
 
 ## Configuration
 
@@ -145,6 +146,7 @@ Recommended crontab entries:
 ```cron
 CRON_TZ=Europe/Madrid
 0 4 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/deploy.sh
+0 5 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-transport.sh
 10 5 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-municipal-events.sh
 30 5 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-agenda-events.sh
 0,30 6 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/prepare-events.sh
@@ -236,16 +238,26 @@ After reviewing the private guide, publish or update it manually:
 PYTHONPATH=src python -m telegrambot pinned-publish
 ```
 
+Install Poppler once, then publish or automatically repair the two urban-line
+photo timetables with the same linked guide state:
+
+```sh
+pkg install poppler
+PYTHONPATH=src python -m telegrambot sync-transport
+./termux/install-transport-cron.sh
+```
+
 The configured group must be public and addressed by `@username`, or a private
-supergroup addressed by its numeric `-100...` identifier. The command stores
-only bot-authored message IDs in `PINNED_GUIDE_STATE_PATH`, edits them on later
-runs, and pins the compact root without a notification. Detail messages link
-back to their navigator. If one or several managed messages were deleted, run
-the same command again: it recreates only missing messages and rewrites all
-affected links before reporting success.
+supergroup addressed by its numeric `-100...` identifier. State stores the
+bot-authored message graph and bounded metadata for the two urban timetable
+images. Later runs edit that graph and pin the compact root without a
+notification. Detail messages link back to their navigator. If one or several
+managed messages were deleted, run `sync-transport`: it reconciles text and
+media messages and rewrites all affected links before reporting success.
 
 State contains only the current local date, publication time, Telegram
-message IDs, cleanup result, the pinned-guide message-ID mapping, and the
+message IDs, cleanup result, the pinned-guide graph with bounded timetable
+metadata, and the
 isolated electricity publication marker plus one normalized 24-hour
 target-day snapshot. AEMET recovery retries only
 bounded transient failures and repeats the complete two-step product request.
