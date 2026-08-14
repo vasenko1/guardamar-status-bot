@@ -87,7 +87,8 @@ separate listener receives only private message updates for the allowlisted
 `/preview` operator command. Telegram details remain separate from source and
 digest rules. One shared standard-library client handles send, delete, and
 `getUpdates`; it accepts only HTTPS responses from `api.telegram.org`, requires
-bounded JSON, and retries only transient send failures.
+bounded JSON, retries transient sends under their delivery policy, and applies
+bounded recovery to idempotent edits and pins.
 
 ### Shared runtime
 

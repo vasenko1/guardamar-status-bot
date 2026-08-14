@@ -250,6 +250,56 @@ class TransportSyncTests(unittest.IsolatedAsyncioTestCase):
             saved = state.read_payload("-100123")
             self.assertTrue(saved["lines"]["line_1"]["delivery_uncertain"])
 
+    async def test_explicit_rate_limit_does_not_mark_photo_send_uncertain(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = PinnedGuideState(Path(directory) / "pinned.json")
+            state.write("-100123", _messages())
+
+            def download(url, etag, modified, force=False):
+                return DownloadedPdf(b"%PDF-stable", url, None, None)
+
+            def render(payload, destination):
+                destination.write_bytes(b"png")
+                return "image-sha"
+
+            rate_limited = TelegramError(
+                "rate limited", retryable=True, code="HTTP-429", status=429
+            )
+            with (
+                patch(
+                    "telegrambot.transport_schedules.discover_pdf_urls",
+                    return_value={
+                        key: definition.default_url
+                        for key, definition in LINES.items()
+                    },
+                ),
+                patch(
+                    "telegrambot.transport_schedules.download_pdf",
+                    side_effect=download,
+                ),
+                patch(
+                    "telegrambot.transport_schedules.render_pdf",
+                    side_effect=render,
+                ),
+            ):
+                with self.assertRaises(TelegramError):
+                    await sync_transport_schedules(
+                        datetime(2026, 8, 14, tzinfo=ZoneInfo("Europe/Madrid")),
+                        "-100123",
+                        state,
+                        AsyncMock(side_effect=rate_limited),
+                        AsyncMock(),
+                        AsyncMock(),
+                        AsyncMock(),
+                        AsyncMock(),
+                    )
+
+            saved = state.read_payload("-100123")
+            self.assertIsNot(
+                saved["lines"].get("line_1", {}).get("delivery_uncertain"),
+                True,
+            )
+
     async def test_failed_media_edit_keeps_the_last_accepted_local_image(self):
         with tempfile.TemporaryDirectory() as directory:
             state = PinnedGuideState(Path(directory) / "pinned.json")
