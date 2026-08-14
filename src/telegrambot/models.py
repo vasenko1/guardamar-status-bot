@@ -102,6 +102,7 @@ class PharmacyDuty:
     name: str
     address: str
     hours: str
+    municipality: str = "Guardamar del Segura"
 
 
 @dataclass(frozen=True)

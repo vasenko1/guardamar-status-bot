@@ -68,6 +68,14 @@ if ! PYTHONPATH=src ./.venv/bin/python -m unittest discover -s tests; then
     rollback
 fi
 
+# Refresh the small official rota after a successful code update so schema or
+# zone-selection fixes take effect immediately. Pharmacy data is optional; an
+# unreachable college must not roll back otherwise valid application code,
+# and the weekly job remains the bounded recovery path.
+if ! PYTHONPATH=src ./.venv/bin/python -m telegrambot sync-pharmacy; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') WARNING Pharmacy refresh failed; weekly sync will retry"
+fi
+
 if ! sv restart guardamar-preview; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') FAILURE Code updated but preview listener did not restart"
     exit 1

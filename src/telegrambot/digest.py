@@ -367,6 +367,27 @@ def _event_place_link(value: str) -> str:
     )
 
 
+def _pharmacy_address_link(address: str, municipality: str) -> str:
+    """Link the compact address while searching in its actual municipality."""
+
+    source_address = " ".join(address.split())
+    source_address = re.sub(
+        r"^C/\s*", "Calle ", source_address, flags=re.IGNORECASE
+    )
+    query = f"{source_address}, {' '.join(municipality.split())}"
+    map_url = "https://www.google.com/maps/search/?" + urllib.parse.urlencode({
+        "api": "1",
+        "query": query,
+    })
+    return (
+        '<a href="'
+        + html.escape(map_url, quote=True)
+        + '">'
+        + html.escape(source_address)
+        + "</a>"
+    )
+
+
 def _exhibition_title(value: str) -> str:
     """Give an explicitly separated exhibition name Russian typography."""
 
@@ -579,12 +600,23 @@ def build_message(
             lines.append(prefix + html.escape(notice.text))
 
     if digest.pharmacies:
-        lines.extend(["", "💊 <b>Дежурная аптека:</b>"])
-        for duty in digest.pharmacies[:2]:
+        heading = (
+            "💊 <b>Дежурная аптека:</b>"
+            if len(digest.pharmacies) == 1
+            else "💊 <b>Дежурные аптеки:</b>"
+        )
+        lines.extend(["", heading])
+        for index, duty in enumerate(digest.pharmacies[:2]):
+            if index:
+                lines.append("")
             lines.append(
-                f"• {html.escape(duty.name)} — {html.escape(duty.hours)}"
+                f"<b>{html.escape(duty.name)}, "
+                f"{html.escape(duty.municipality)}</b>"
             )
-            lines.append(f"  📍 {_event_place_link(duty.address)}")
+            lines.append(html.escape(duty.hours))
+            lines.append(
+                f"📍 {_pharmacy_address_link(duty.address, duty.municipality)}"
+            )
 
     if digest.holidays:
         scope_labels = {

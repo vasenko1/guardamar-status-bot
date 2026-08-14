@@ -63,15 +63,15 @@ def _workbook(rows) -> bytes:
     return buffer.getvalue()
 
 
-def _row(day, name, address, municipality, hours):
+def _row(day, name, address, municipality, hours, zone="61"):
     return (
-        _serial(day), "61", "", "02", "100596",
+        _serial(day), zone, "", "02", "100596",
         name, address, municipality, hours,
     )
 
 
 class RotaNormalizationTests(unittest.TestCase):
-    def test_keeps_only_guardamar_rows_inside_the_window(self):
+    def test_keeps_the_complete_guardamar_service_zone_inside_the_window(self):
         start = date(2026, 8, 12)
         payload = _workbook([
             ("FECHA", "ZONA", "NOMBRE ZONA", "TURNO", "Nº", "NOMBRE",
@@ -80,7 +80,9 @@ class RotaNormalizationTests(unittest.TestCase):
                  "AV. CERVANTES, Nº29 ", "Guardamar del Segura",
                  "De 9:00 a 9:00"),
             _row(start, "OTRA FARMACIA", "CALLE UNO, 1", "Elche/Elx",
-                 "De 9:00 a 9:00"),
+                 "De 9:00 a 9:00", zone="99"),
+            _row(start, "ZONA COMPARTIDA", "CALLE DOS, 2", "San Fulgencio",
+                 "De 22:00 a 9:00"),
             _row(start + timedelta(days=60), "FUTURA, LEJANA",
                  "CALLE DOS, 2", "Guardamar del Segura",
                  "De 9:00 a 9:00"),
@@ -91,11 +93,15 @@ class RotaNormalizationTests(unittest.TestCase):
 
         records = normalize_rota(payload, start)
 
-        self.assertEqual(len(records), 1)
+        self.assertEqual(len(records), 2)
         self.assertEqual(records[0]["name"], "Planelles Mas, Asuncion")
         self.assertEqual(records[0]["address"], "Av. Cervantes, 29")
-        self.assertEqual(records[0]["hours"], "круглосуточно (с 09:00)")
+        self.assertEqual(records[0]["municipality"], "Guardamar del Segura")
+        self.assertEqual(records[0]["hours"], "09:00–09:00")
+        self.assertEqual(records[0]["start_time"], "09:00")
+        self.assertEqual(records[0]["end_time"], "09:00")
         self.assertTrue(records[0]["all_day"])
+        self.assertEqual(records[1]["municipality"], "San Fulgencio")
 
     def test_night_and_reinforcement_hours_render_as_padded_ranges(self):
         start = date(2026, 8, 12)
@@ -141,6 +147,8 @@ class RotaNormalizationTests(unittest.TestCase):
         no_hours = _workbook([
             _row(start, "SIN HORARIO", "CALLE C, 3",
                  "Guardamar del Segura", "sin datos"),
+            _row(start, "HORA INVALIDA", "CALLE D, 4",
+                 "Guardamar del Segura", "De 25:00 a 9:00"),
         ])
         self.assertEqual(normalize_rota(no_hours, start), ())
         with self.assertRaises(PharmacyError) as raised:
@@ -168,6 +176,11 @@ class DutySelectionTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(duties[0].name, "Farmacia Mora")
         self.assertEqual(duties[0].address, "Av. Pais Valenciano, 29")
+        self.assertEqual(duties[0].municipality, "Guardamar del Segura")
+        self.assertEqual(
+            duties[0].hours,
+            "Дежурит с 09:00 13 августа до 00:00 14 августа",
+        )
 
     async def test_returns_all_day_duty_first_without_duplicates(self):
         now = datetime(2026, 8, 12, 7, 30, tzinfo=TZ)
@@ -190,12 +203,49 @@ class DutySelectionTests(unittest.IsolatedAsyncioTestCase):
             duties = await duty_pharmacies_on(now, path)
 
         self.assertEqual(
-            [(duty.name, duty.hours) for duty in duties],
+            [(duty.name, duty.hours, duty.municipality) for duty in duties],
             [
-                ("Круглосуточная", "круглосуточно (с 9:00)"),
-                ("Дневная", "9:00–22:00"),
+                (
+                    "Круглосуточная",
+                    "Круглосуточное дежурство с 09:00 12 августа "
+                    "до 09:00 13 августа",
+                    "Guardamar del Segura",
+                ),
+                (
+                    "Дневная",
+                    "Дежурит с 09:00 до 22:00",
+                    "Guardamar del Segura",
+                ),
             ],
         )
+
+    async def test_formats_every_supported_schedule_without_closure_claim(self):
+        now = datetime(2026, 8, 15, 7, 30, tzinfo=TZ)
+        records = (
+            {"date": "2026-08-15", "name": "Круглосуточная",
+             "address": "A, 1", "municipality": "Guardamar del Segura",
+             "start_time": "09:00", "end_time": "09:00",
+             "hours": "09:00–09:00", "all_day": True},
+            {"date": "2026-08-15", "name": "Ночная", "address": "B, 2",
+             "municipality": "San Fulgencio", "start_time": "22:00",
+             "end_time": "09:00", "hours": "22:00–09:00",
+             "all_day": False},
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "pharmacy.json"
+            _write_catalog(path, records, now)
+
+            duties = await duty_pharmacies_on(now, path)
+
+        self.assertEqual(
+            [duty.hours for duty in duties],
+            [
+                "Круглосуточное дежурство с 09:00 15 августа "
+                "до 09:00 16 августа",
+                "Дежурит с 22:00 15 августа до 09:00 16 августа",
+            ],
+        )
+        self.assertNotIn("закры", " ".join(duty.hours for duty in duties))
 
     async def test_missing_catalog_returns_no_rows(self):
         now = datetime(2026, 8, 12, 7, 30, tzinfo=TZ)
@@ -274,11 +324,11 @@ class RefreshTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(raised.exception.diagnostic_code, "CONTENT-TYPE")
         self.assertIn("формат", raised.exception.safe_description)
 
-    async def test_refresh_without_guardamar_rows_is_an_error(self):
+    async def test_refresh_without_guardamar_zone_rows_is_an_error(self):
         now = datetime(2026, 8, 12, 5, 40, tzinfo=TZ)
         payload = _workbook([
             _row(date(2026, 8, 12), "OTRA", "CALLE, 1", "Elche/Elx",
-                 "De 9:00 a 9:00"),
+                 "De 9:00 a 9:00", zone="99"),
         ])
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "pharmacy.json"
