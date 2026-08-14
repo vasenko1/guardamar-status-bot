@@ -30,9 +30,8 @@ allowlist. It sends the exact text sequence silently to that private chat but
 does not publish, pin, or write guide state. A one-shot CLI command provides the
 same private preview for the single configured operator.
 
-The first version is text-only. Attachments are allowed only when the carrier
-publishes a current image file. PDFs, locally rendered PDF pages, date-specific
-search screenshots, and generated timetable images are excluded.
+The first version is text-only. Its restriction on locally rendered PDF pages
+is superseded specifically for municipal lines 1 and 2 by ADR 0042.
 
 ## Consequences
 

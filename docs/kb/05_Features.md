@@ -469,16 +469,19 @@ Morning Digest. It is published only by an explicit operator command. Detailed
 messages are created or edited before the transport navigator and compact root;
 the root is pinned only after every required Telegram link is available.
 
-One small atomic state stores the configured destination and bot-authored
-message IDs. A repeated command edits those messages. If Telegram reports that
-one is missing, the command recreates only that message and rebuilds dependent
-links. Other failures stop publication. No scheduled refresh, browser, source
-collector, or additional dependency is added.
+One small atomic state stores the destination, bot-authored message graph and
+bounded source/media metadata for the two urban lines. Repeated commands edit
+those messages. If Telegram confirms one is missing, the workflow recreates
+only that message and rebuilds dependent links. Other failures stop
+publication. One external daily refresh and the Termux Poppler utilities are
+accepted by ADR 0042; no browser or resident collector is added.
 
 The private `/pinned_preview` command and the one-shot CLI preview send the
 exact text sequence silently to the single allowlisted operator. They do not
 touch the group, pin messages, or write publication state.
 
-The guide is text-only unless a carrier publishes a current timetable image
-file. A PDF, locally rendered PDF page, dynamic-search screenshot, or generated
-timetable image is never attached.
+The two municipal urban lines use PNG photos rendered from the exact official
+one-page PDFs under ADR 0042. A changed document is downloaded twice
+identically before rendering. Other routes remain text-only unless a suitable
+current operator image is available; dynamic-search screenshots and generated
+timetables remain excluded.

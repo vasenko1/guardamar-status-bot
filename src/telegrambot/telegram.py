@@ -2,7 +2,9 @@
 
 import asyncio
 import json
+import secrets
 import urllib.parse
+from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from ._transport import BoundedFetchError, fetch_bounded
@@ -13,7 +15,7 @@ RESPONSE_LIMIT_BYTES = 1_000_000
 MAX_SEND_ATTEMPTS = 3
 MAX_RETRY_DELAY_SECONDS = 10
 LONG_POLL_TIMEOUT_SECONDS = 30
-USER_AGENT = "GuardamarMorningDigest/0.12"
+USER_AGENT = "GuardamarMorningDigest/0.13"
 
 
 class TelegramError(RuntimeError):
@@ -180,6 +182,213 @@ def _call_api(
     if decoded.get("ok") is not True:
         raise _response_error(decoded, 200)
     return decoded
+
+
+def _multipart_body(
+    fields: Dict[str, str], file_field: str, path: Path
+) -> tuple[bytes, str]:
+    """Build one bounded multipart request without another dependency."""
+
+    boundary = f"GuardamarBot{secrets.token_hex(16)}"
+    chunks: List[bytes] = []
+    for name, value in fields.items():
+        chunks.extend((
+            f"--{boundary}\r\n".encode("ascii"),
+            (
+                f'Content-Disposition: form-data; name="{name}"\r\n\r\n'
+            ).encode("ascii"),
+            value.encode("utf-8"),
+            b"\r\n",
+        ))
+    filename = path.name.replace('"', "").replace("\r", "").replace("\n", "")
+    chunks.extend((
+        f"--{boundary}\r\n".encode("ascii"),
+        (
+            f'Content-Disposition: form-data; name="{file_field}"; '
+            f'filename="{filename}"\r\n'
+        ).encode("utf-8"),
+        b"Content-Type: image/png\r\n\r\n",
+        path.read_bytes(),
+        b"\r\n",
+        f"--{boundary}--\r\n".encode("ascii"),
+    ))
+    return b"".join(chunks), f"multipart/form-data; boundary={boundary}"
+
+
+def _call_api_multipart(
+    bot_token: str,
+    method: str,
+    fields: Dict[str, str],
+    file_field: str,
+    path: Path,
+) -> Dict[str, Any]:
+    body, content_type = _multipart_body(fields, file_field, path)
+    try:
+        payload, _, _ = fetch_bounded(
+            _api_url(bot_token, method),
+            is_allowed_url=_is_telegram_url,
+            accepted_types=frozenset({"application/json"}),
+            limit_bytes=RESPONSE_LIMIT_BYTES,
+            timeout_seconds=REQUEST_TIMEOUT_SECONDS,
+            headers={
+                "Accept": "application/json",
+                "Content-Type": content_type,
+                "User-Agent": USER_AGENT,
+            },
+            method="POST",
+            data=body,
+            read_error_body=True,
+        )
+    except BoundedFetchError as exc:
+        if exc.status is not None:
+            try:
+                decoded = _decode_response(exc.payload or b"")
+            except TelegramError:
+                decoded = {}
+            raise _response_error(decoded, exc.status) from None
+        retryable, description = _TRANSPORT_FAILURES.get(
+            exc.code, (True, None)
+        )
+        raise TelegramError(
+            "Telegram multipart request failed",
+            retryable=retryable,
+            code=exc.code,
+            description=description,
+        ) from None
+    decoded = _decode_response(payload)
+    if decoded.get("ok") is not True:
+        raise _response_error(decoded, 200)
+    return decoded
+
+
+def _photo_result(decoded: Dict[str, Any]) -> tuple[int, str]:
+    result = decoded.get("result")
+    message_id = result.get("message_id") if isinstance(result, dict) else None
+    photos = result.get("photo") if isinstance(result, dict) else None
+    file_id = None
+    if isinstance(photos, list):
+        for photo in photos:
+            if isinstance(photo, dict) and isinstance(photo.get("file_id"), str):
+                file_id = photo["file_id"]
+    if not isinstance(message_id, int) or not file_id:
+        raise TelegramError(
+            "Telegram returned no photo identifiers",
+            retryable=False,
+            code="INVALID-STRUCTURE",
+            description="Telegram не вернул идентификаторы фотографии",
+        )
+    return message_id, file_id
+
+
+def _post_photo(
+    bot_token: str,
+    chat_id: str,
+    path: Path,
+    caption: str,
+    disable_notification: bool,
+) -> tuple[int, str]:
+    if not path.is_file() or path.stat().st_size > 10_000_000:
+        raise TelegramError(
+            "Telegram photo is invalid",
+            retryable=False,
+            code="PHOTO",
+            description="файл расписания отсутствует или слишком велик",
+        )
+    if not 1 <= len(caption) <= 1024:
+        raise TelegramError(
+            "Telegram caption length is invalid",
+            retryable=False,
+            code="MESSAGE-LENGTH",
+            description="подпись фотографии слишком длинная",
+        )
+    decoded = _call_api_multipart(
+        bot_token,
+        "sendPhoto",
+        {
+            "chat_id": chat_id,
+            "caption": caption,
+            "parse_mode": "HTML",
+            "disable_notification": json.dumps(disable_notification),
+        },
+        "photo",
+        path,
+    )
+    return _photo_result(decoded)
+
+
+def _edit_photo_media(
+    bot_token: str,
+    chat_id: str,
+    message_id: int,
+    path: Path,
+    caption: str,
+) -> str:
+    if not path.is_file() or path.stat().st_size > 10_000_000:
+        raise TelegramError(
+            "Telegram photo is invalid",
+            retryable=False,
+            code="PHOTO",
+            description="файл расписания отсутствует или слишком велик",
+        )
+    if not 1 <= len(caption) <= 1024:
+        raise TelegramError(
+            "Telegram caption length is invalid",
+            retryable=False,
+            code="MESSAGE-LENGTH",
+            description="подпись фотографии слишком длинная",
+        )
+    media = {
+        "type": "photo",
+        "media": "attach://photo",
+        "caption": caption,
+        "parse_mode": "HTML",
+    }
+    decoded = _call_api_multipart(
+        bot_token,
+        "editMessageMedia",
+        {
+            "chat_id": chat_id,
+            "message_id": str(message_id),
+            "media": json.dumps(media, ensure_ascii=False),
+        },
+        "photo",
+        path,
+    )
+    returned_id, file_id = _photo_result(decoded)
+    if returned_id != message_id:
+        raise TelegramError(
+            "Telegram changed the edited message identifier",
+            retryable=False,
+            code="INVALID-STRUCTURE",
+            description="Telegram вернул неожиданный идентификатор сообщения",
+        )
+    return file_id
+
+
+def _edit_photo_caption(
+    bot_token: str,
+    chat_id: str,
+    message_id: int,
+    caption: str,
+) -> None:
+    if not 1 <= len(caption) <= 1024:
+        raise TelegramError(
+            "Telegram caption length is invalid",
+            retryable=False,
+            code="MESSAGE-LENGTH",
+            description="подпись фотографии слишком длинная",
+        )
+    _call_api(
+        bot_token,
+        "editMessageCaption",
+        {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "caption": caption,
+            "parse_mode": "HTML",
+        },
+        REQUEST_TIMEOUT_SECONDS,
+    )
 
 
 def _post_message(
@@ -466,4 +675,60 @@ async def edit_message(
 
     await asyncio.to_thread(
         _edit_message, bot_token, chat_id, message_id, text
+    )
+
+
+async def send_photo(
+    bot_token: str,
+    chat_id: str,
+    path: Path,
+    caption: str,
+    *,
+    disable_notification: bool = True,
+) -> tuple[int, str]:
+    """Send one photo exactly once so an uncertain response cannot duplicate it."""
+
+    return await asyncio.to_thread(
+        _post_photo,
+        bot_token,
+        chat_id,
+        path,
+        caption,
+        disable_notification,
+    )
+
+
+async def edit_photo_media(
+    bot_token: str,
+    chat_id: str,
+    message_id: int,
+    path: Path,
+    caption: str,
+) -> str:
+    """Replace one bot-authored photo and caption, returning its file ID."""
+
+    return await asyncio.to_thread(
+        _edit_photo_media,
+        bot_token,
+        chat_id,
+        message_id,
+        path,
+        caption,
+    )
+
+
+async def edit_photo_caption(
+    bot_token: str,
+    chat_id: str,
+    message_id: int,
+    caption: str,
+) -> None:
+    """Replace only the caption of one known photo message."""
+
+    await asyncio.to_thread(
+        _edit_photo_caption,
+        bot_token,
+        chat_id,
+        message_id,
+        caption,
     )

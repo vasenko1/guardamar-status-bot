@@ -21,7 +21,7 @@ from .branding import FOOTER, with_footer
 from .state import StateError
 from .telegram import TelegramError
 
-PINNED_CONTENT_VERSION = 1
+PINNED_CONTENT_VERSION = 2
 DEFAULT_PINNED_STATE_PATH = "state/pinned_guide.json"
 MAX_RECONCILIATION_PASSES = 3
 
@@ -91,26 +91,13 @@ Polideportivo ↔ Estación de Autobuses ↔ El Raso ↔ El Edén ↔ Pinomar
     ),
     "hospital": with_footer(
         """🏥 <b>Гуардамар ↔ Hospital de Torrevieja</b>
-Прямой автобус · с понедельника по пятницу
-
-Один рейс утром в больницу и один обратно после обеда.
+Прямой автобус · Costa Azul / Avanza
 
 <b>В больницу</b>
-07:30 · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0877707496%2C-0.6560185196">Guardamar</a>
-07:33 · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0583071959%2C-0.6569832033">La Rosa</a>
-07:36 · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.034828419%2C-0.6600459049">Pinomar</a>
-07:40 · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0241372606%2C-0.6570898059">La Mata</a>
-07:55 · <a href="https://www.google.com/maps/search/?api=1&amp;query=37.9643925369%2C-0.7172232255">Hospital de Torrevieja</a>
+<a href="https://www.google.com/maps/search/?api=1&amp;query=38.0877707496%2C-0.6560185196">Guardamar</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0583071959%2C-0.6569832033">La Rosa</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.034828419%2C-0.6600459049">Pinomar</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0241372606%2C-0.6570898059">La Mata</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=37.9643925369%2C-0.7172232255">Hospital de Torrevieja</a>
 
 <b>Обратно</b>
-13:00 · <a href="https://www.google.com/maps/search/?api=1&amp;query=37.9643925369%2C-0.7172232255">Hospital de Torrevieja</a>
-13:15 · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0262439991%2C-0.655954">La Mata</a>
-13:18 · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.034828419%2C-0.6600459049">Pinomar</a>
-13:22 · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0560738544%2C-0.6568971718">La Rosa</a>
-13:25 · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0877707496%2C-0.6560185196">Guardamar</a>
-
-⏱ Около 25 минут
-📍 <a href="https://www.google.com/maps/search/?api=1&amp;query=Estaci%C3%B3n+de+Autobuses%2C+Guardamar+del+Segura">Estación de Autobuses</a> ↔ <a href="https://www.google.com/maps/search/?api=1&amp;query=Hospital+Universitario+de+Torrevieja">Hospital de Torrevieja</a>
+<a href="https://www.google.com/maps/search/?api=1&amp;query=37.9643925369%2C-0.7172232255">Hospital de Torrevieja</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0262439991%2C-0.655954">La Mata</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.034828419%2C-0.6600459049">Pinomar</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0560738544%2C-0.6568971718">La Rosa</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0877707496%2C-0.6560185196">Guardamar</a>
 
 🔎 <a href="https://regular.autobusing.com/info?empresa=costa-azul&amp;locale=es">Проверьте расписание</a>"""
     ),
@@ -316,16 +303,31 @@ class PinnedGuideState:
     def __init__(self, path: Path) -> None:
         self.path = path
 
-    def read(self, chat_id: str) -> Dict[str, int]:
+    def read_payload(self, chat_id: str) -> dict:
         if not self.path.exists():
-            return {}
+            return {
+                "version": PINNED_CONTENT_VERSION,
+                "chat_id": chat_id,
+                "messages": {},
+                "lines": {},
+                "obsolete_messages": [],
+                "uncertain_messages": [],
+            }
         try:
             raw = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise StateError("pinned guide state is invalid") from exc
+            previous = self.path.with_name(
+                f"{self.path.stem}.previous.json"
+            )
+            try:
+                raw = json.loads(previous.read_text(encoding="utf-8"))
+            except (
+                OSError, UnicodeDecodeError, json.JSONDecodeError
+            ):
+                raise StateError("pinned guide state is invalid") from exc
         if (
             not isinstance(raw, dict)
-            or raw.get("version") != PINNED_CONTENT_VERSION
+            or raw.get("version") not in {1, PINNED_CONTENT_VERSION}
             or raw.get("chat_id") != chat_id
             or not isinstance(raw.get("messages"), dict)
         ):
@@ -338,17 +340,37 @@ class PinnedGuideState:
             for key, value in messages.items()
         ):
             raise StateError("pinned guide state is invalid")
-        return dict(messages)
-
-    def write(self, chat_id: str, messages: Mapping[str, int]) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
+        lines = raw.get("lines", {})
+        if not isinstance(lines, dict) or not all(
+            key in {"line_1", "line_2"} and isinstance(value, dict)
+            for key, value in lines.items()
+        ):
+            raise StateError("pinned guide state is invalid")
+        obsolete = raw.get("obsolete_messages", [])
+        if not isinstance(obsolete, list) or not all(
+            isinstance(value, int) and value > 0 for value in obsolete
+        ):
+            raise StateError("pinned guide state is invalid")
+        uncertain = raw.get("uncertain_messages", [])
+        if not isinstance(uncertain, list) or not all(
+            isinstance(value, str) for value in uncertain
+        ):
+            raise StateError("pinned guide state is invalid")
+        return {
             "version": PINNED_CONTENT_VERSION,
             "chat_id": chat_id,
             "messages": dict(messages),
+            "lines": {key: dict(value) for key, value in lines.items()},
+            "obsolete_messages": list(obsolete),
+            "uncertain_messages": list(uncertain),
         }
+
+    def read(self, chat_id: str) -> Dict[str, int]:
+        return dict(self.read_payload(chat_id)["messages"])
+
+    def _atomic_write(self, path: Path, payload: dict) -> None:
         descriptor, temporary = tempfile.mkstemp(
-            dir=str(self.path.parent), prefix=f".{self.path.name}."
+            dir=str(path.parent), prefix=f".{path.name}."
         )
         try:
             with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
@@ -356,13 +378,70 @@ class PinnedGuideState:
                 handle.flush()
                 os.fsync(handle.fileno())
             os.chmod(temporary, 0o600)
-            os.replace(temporary, self.path)
+            os.replace(temporary, path)
+            directory = os.open(str(path.parent), os.O_RDONLY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
         except Exception:
             try:
                 os.unlink(temporary)
             except OSError:
                 pass
             raise
+
+    def write_payload(self, chat_id: str, payload: dict) -> None:
+        if payload.get("chat_id") != chat_id:
+            raise StateError("pinned guide state is invalid")
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        normalized = {
+            "version": PINNED_CONTENT_VERSION,
+            "chat_id": chat_id,
+            "messages": dict(payload.get("messages", {})),
+            "lines": {
+                key: dict(value)
+                for key, value in payload.get("lines", {}).items()
+            },
+            "obsolete_messages": list(
+                payload.get("obsolete_messages", [])
+            ),
+            "uncertain_messages": list(
+                payload.get("uncertain_messages", [])
+            ),
+        }
+        previous = self.path.with_name(f"{self.path.stem}.previous.json")
+        if self.path.exists():
+            try:
+                existing = json.loads(self.path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                existing = None
+            if isinstance(existing, dict):
+                self._atomic_write(previous, existing)
+        self._atomic_write(self.path, normalized)
+
+    def write(self, chat_id: str, messages: Mapping[str, int]) -> None:
+        try:
+            payload = self.read_payload(chat_id)
+        except StateError:
+            if self.path.exists():
+                raise
+            payload = {
+                "version": PINNED_CONTENT_VERSION,
+                "chat_id": chat_id,
+                "messages": {},
+                "lines": {},
+                "obsolete_messages": [],
+                "uncertain_messages": [],
+            }
+        payload["messages"] = dict(messages)
+        self.write_payload(chat_id, payload)
+
+    def mark_uncertain(self, chat_id: str, key: str) -> None:
+        payload = self.read_payload(chat_id)
+        if key not in payload["uncertain_messages"]:
+            payload["uncertain_messages"].append(key)
+        self.write_payload(chat_id, payload)
 
     @contextmanager
     def exclusive_run(self) -> Iterator[None]:
@@ -412,7 +491,12 @@ async def _upsert(
                 return message_id
             if exc.diagnostic_code != "MESSAGE-NOT-FOUND":
                 raise
-    message_id = await send(text)
+    try:
+        message_id = await send(text)
+    except TelegramError as exc:
+        if exc.retryable:
+            await asyncio.to_thread(state.mark_uncertain, chat_id, key)
+        raise
     messages[key] = message_id
     await asyncio.to_thread(state.write, chat_id, messages)
     return message_id
@@ -463,10 +547,15 @@ async def _reconcile_messages(
     state: PinnedGuideState,
     send: Send,
     edit: Edit,
+    skip_keys: Sequence[str] = (),
 ) -> None:
     """Converge IDs and links after partial runs or deleted messages."""
 
-    keys = (*LEAF_MESSAGES, "cameras", "transport", "root")
+    skipped = frozenset(skip_keys)
+    keys = tuple(
+        key for key in (*LEAF_MESSAGES, "cameras", "transport", "root")
+        if key not in skipped
+    )
     for _ in range(MAX_RECONCILIATION_PASSES):
         before = dict(messages)
         rendered = _render_messages(chat_id, before)
@@ -497,8 +586,19 @@ async def publish_pinned_guide(
     """Create or update all linked messages, then pin the compact root."""
 
     telegram_message_link(chat_id, 1)
-    messages = await asyncio.to_thread(state.read, chat_id)
-    await _reconcile_messages(chat_id, messages, state, send, edit)
+    payload = await asyncio.to_thread(state.read_payload, chat_id)
+    if payload["uncertain_messages"]:
+        raise StateError(
+            "a previous pinned guide delivery has an uncertain result"
+        )
+    messages = payload["messages"]
+    media_keys = tuple(
+        key for key, value in payload["lines"].items()
+        if value.get("media") is True and key in messages
+    )
+    await _reconcile_messages(
+        chat_id, messages, state, send, edit, media_keys
+    )
     try:
         await pin(messages["root"])
     except TelegramError as exc:
@@ -506,6 +606,8 @@ async def publish_pinned_guide(
             raise
         messages.pop("root", None)
         await asyncio.to_thread(state.write, chat_id, messages)
-        await _reconcile_messages(chat_id, messages, state, send, edit)
+        await _reconcile_messages(
+            chat_id, messages, state, send, edit, media_keys
+        )
         await pin(messages["root"])
     return messages

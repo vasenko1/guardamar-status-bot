@@ -73,10 +73,14 @@ from .telegram import (
     TelegramError,
     delete_message,
     edit_message,
+    edit_photo_caption,
+    edit_photo_media,
     pin_chat_message,
     send_message,
+    send_photo,
     send_poll,
 )
+from .transport_schedules import sync_transport_schedules
 
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 DEFAULT_STATE_PATH = "state/delivery.json"
@@ -611,6 +615,14 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             "PINNED_GUIDE_STATE_PATH", DEFAULT_PINNED_STATE_PATH
         )))
         with state.exclusive_run():
+            payload = await asyncio.to_thread(state.read_payload, chat_id)
+            if any(
+                value.get("media") is True
+                for value in payload["lines"].values()
+            ):
+                raise ValueError(
+                    "media guide must be repaired with sync-transport"
+                )
             messages = await publish_pinned_guide(
                 chat_id,
                 state,
@@ -632,6 +644,60 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             )
         logging.info(
             "Pinned guide published with %d linked messages", len(messages)
+        )
+        return 0
+
+    if command == "sync-transport":
+        bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
+        chat_id = _required_environment("TELEGRAM_CHAT_ID")
+        state = PinnedGuideState(Path(os.environ.get(
+            "PINNED_GUIDE_STATE_PATH", DEFAULT_PINNED_STATE_PATH
+        )))
+        with state.exclusive_run():
+            await publish_pinned_guide(
+                chat_id,
+                state,
+                lambda message: send_message(
+                    bot_token,
+                    chat_id,
+                    message,
+                    disable_notification=True,
+                    max_attempts=1,
+                ),
+                lambda message_id, message: edit_message(
+                    bot_token, chat_id, message_id, message
+                ),
+                lambda message_id: pin_chat_message(
+                    bot_token,
+                    chat_id,
+                    message_id,
+                    disable_notification=True,
+                ),
+            )
+            messages = await sync_transport_schedules(
+                datetime.now(GUARDAMAR_TIMEZONE),
+                chat_id,
+                state,
+                lambda path, caption: send_photo(
+                    bot_token, chat_id, path, caption,
+                    disable_notification=True,
+                ),
+                lambda message_id, path, caption: edit_photo_media(
+                    bot_token, chat_id, message_id, path, caption
+                ),
+                lambda message_id, caption: edit_photo_caption(
+                    bot_token, chat_id, message_id, caption
+                ),
+                lambda message_id, message: edit_message(
+                    bot_token, chat_id, message_id, message
+                ),
+                lambda message_id: delete_message(
+                    bot_token, chat_id, message_id
+                ),
+            )
+        logging.info(
+            "Transport schedules synchronized with %d linked messages",
+            len(messages),
         )
         return 0
 
@@ -859,6 +925,7 @@ def main() -> None:
             "electricity", "electricity-preview",
             "electricity-update-explanation",
             "pinned-preview", "pinned-send-preview", "pinned-publish",
+            "sync-transport",
             "sync-municipal-events",
             "sync-agenda-events",
             "sync-pharmacy",

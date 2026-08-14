@@ -38,6 +38,12 @@ class PinnedContentTests(unittest.TestCase):
         self.assertIn("Транспорт из Гуардамара", messages[-2])
         self.assertIn("Полезное о Гуардамаре", messages[-1])
 
+    def test_date_specific_hospital_times_are_not_pinned(self):
+        hospital = build_leaf_message("hospital")
+        self.assertNotIn("07:30", hospital)
+        self.assertNotIn("13:00", hospital)
+        self.assertIn("Проверьте расписание", hospital)
+
     def test_internal_links_support_public_and_private_supergroups(self):
         self.assertEqual(
             telegram_message_link("@guardamar", 42),
@@ -410,6 +416,27 @@ class PinnedPublicationTests(unittest.IsolatedAsyncioTestCase):
                 )
 
             send.assert_not_awaited()
+
+    async def test_ambiguous_new_send_is_marked_and_not_retried(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = PinnedGuideState(Path(directory) / "pinned.json")
+            timeout = TelegramError(
+                "timeout", retryable=True, code="TIMEOUT"
+            )
+            send = AsyncMock(side_effect=timeout)
+
+            with self.assertRaises(TelegramError):
+                await publish_pinned_guide(
+                    "-100123", state, send, AsyncMock(), AsyncMock()
+                )
+
+            payload = state.read_payload("-100123")
+            self.assertEqual(payload["uncertain_messages"], ["line_1"])
+            with self.assertRaises(StateError):
+                await publish_pinned_guide(
+                    "-100123", state, send, AsyncMock(), AsyncMock()
+                )
+            self.assertEqual(send.await_count, 1)
 
 
 if __name__ == "__main__":
