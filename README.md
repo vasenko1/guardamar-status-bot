@@ -239,7 +239,10 @@ PYTHONPATH=src python -m telegrambot pinned-publish
 The configured group must be public and addressed by `@username`, or a private
 supergroup addressed by its numeric `-100...` identifier. The command stores
 only bot-authored message IDs in `PINNED_GUIDE_STATE_PATH`, edits them on later
-runs, and pins the compact root without a notification.
+runs, and pins the compact root without a notification. Detail messages link
+back to their navigator. If one or several managed messages were deleted, run
+the same command again: it recreates only missing messages and rewrites all
+affected links before reporting success.
 
 State contains only the current local date, publication time, Telegram
 message IDs, cleanup result, the pinned-guide message-ID mapping, and the

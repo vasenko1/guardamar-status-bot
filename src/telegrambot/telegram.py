@@ -64,20 +64,36 @@ def _decode_response(payload: bytes) -> Dict[str, Any]:
 
 def _response_error(payload: Any, status: int) -> TelegramError:
     retry_after = None
+    api_description = ""
     if isinstance(payload, dict):
+        raw_description = payload.get("description")
+        if isinstance(raw_description, str):
+            api_description = raw_description.casefold()
         parameters = payload.get("parameters")
         if isinstance(parameters, dict):
             raw_retry_after = parameters.get("retry_after")
             if isinstance(raw_retry_after, int) and raw_retry_after >= 0:
                 retry_after = raw_retry_after
     retryable = status == 429 or 500 <= status <= 599
+    code = f"HTTP-{status}"
+    description = f"Telegram API вернул HTTP {status}"
+    if status == 400 and "message is not modified" in api_description:
+        code = "MESSAGE-NOT-MODIFIED"
+        description = "сообщение Telegram уже содержит актуальный текст"
+    elif status == 400 and (
+        "message to edit not found" in api_description
+        or "message to pin not found" in api_description
+        or "message not found" in api_description
+    ):
+        code = "MESSAGE-NOT-FOUND"
+        description = "сообщение Telegram не найдено"
     return TelegramError(
         f"Telegram API returned HTTP {status}",
         retryable=retryable,
         retry_after=retry_after,
-        code=f"HTTP-{status}",
+        code=code,
         status=status,
-        description=f"Telegram API вернул HTTP {status}",
+        description=description,
     )
 
 

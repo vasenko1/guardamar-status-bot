@@ -125,6 +125,12 @@ starred departures also pass Los Secanos and the cemetery.
 
 ### Approved leaf-message presentation rules
 
+- End every transport detail with `⬅️ К списку транспорта`, linked to the
+  transport navigator. End the navigator and camera list with
+  `⬅️ К главному закрепу`, linked to the compact root.
+- Treat those links as one managed graph. If a managed message is deleted, the
+  next explicit publication recreates it and rewrites every affected link;
+  operators must not edit message IDs in state manually.
 - Do not add a `Проверено` line or a separate `Официальное расписание` link to
   a public transport message.
 - When a timetable changes by travel date, use one short functional link in

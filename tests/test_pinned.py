@@ -9,6 +9,8 @@ from telegrambot.pinned import (
     CAMERAS,
     LEAF_MESSAGES,
     PinnedGuideState,
+    build_cameras,
+    build_leaf_message,
     build_root,
     build_transport_index,
     preview_messages,
@@ -32,7 +34,7 @@ class PinnedContentTests(unittest.TestCase):
     def test_preview_contains_all_leaves_camera_index_and_root(self):
         messages = preview_messages()
         self.assertEqual(len(messages), len(LEAF_MESSAGES) + 3)
-        self.assertIn(CAMERAS, messages)
+        self.assertIn(build_cameras(), messages)
         self.assertIn("Транспорт из Гуардамара", messages[-2])
         self.assertIn("Полезное о Гуардамаре", messages[-1])
 
@@ -55,7 +57,7 @@ class PinnedContentTests(unittest.TestCase):
             key: f"https://t.me/c/1/{number}"
             for number, key in enumerate(LEAF_MESSAGES, start=1)
         }
-        index = build_transport_index(links)
+        index = build_transport_index(links, "https://t.me/c/1/22")
         root = build_root(
             "https://t.me/c/1/20", "https://t.me/c/1/21"
         )
@@ -63,6 +65,16 @@ class PinnedContentTests(unittest.TestCase):
             self.assertIn(link, index)
         self.assertIn("https://t.me/c/1/20", root)
         self.assertIn("https://t.me/c/1/21", root)
+        self.assertIn("https://t.me/c/1/22", index)
+
+    def test_detail_and_camera_messages_have_visible_return_navigation(self):
+        leaf = build_leaf_message("airport", "https://t.me/c/1/20")
+        cameras = build_cameras("https://t.me/c/1/21")
+
+        self.assertIn("К списку транспорта", leaf)
+        self.assertIn("https://t.me/c/1/20", leaf)
+        self.assertIn("К главному закрепу", cameras)
+        self.assertIn("https://t.me/c/1/21", cameras)
 
 
 class PinnedStateTests(unittest.TestCase):
@@ -107,21 +119,22 @@ class PinnedPublicationTests(unittest.IsolatedAsyncioTestCase):
 
             edit = AsyncMock()
             pin = AsyncMock()
+            edit_mock = AsyncMock(side_effect=edit)
             result = await publish_pinned_guide(
-                "-100123", state, send, edit, pin
+                "-100123", state, send, edit_mock, pin
             )
 
             self.assertEqual(len(sent), len(LEAF_MESSAGES) + 3)
             self.assertEqual(result["root"], len(sent))
             pin.assert_awaited_once_with(result["root"])
-            edit.assert_not_awaited()
+            self.assertEqual(edit.await_count, len(LEAF_MESSAGES) + 3)
             self.assertIn(
                 f"https://t.me/c/123/{result['line_1']}",
-                sent[-2],
+                edit.call_args_list[-2].args[1],
             )
             self.assertIn(
                 f"https://t.me/c/123/{result['transport']}",
-                sent[-1],
+                edit.call_args_list[0].args[1],
             )
 
     async def test_second_run_edits_without_duplicate_sends(self):
@@ -144,6 +157,34 @@ class PinnedPublicationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(edit.await_count, len(keys))
             pin.assert_awaited_once_with(result["root"])
 
+    async def test_unchanged_telegram_messages_do_not_create_duplicates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = PinnedGuideState(Path(directory) / "pinned.json")
+            keys = [*LEAF_MESSAGES, "cameras", "transport", "root"]
+            state.write(
+                "-100123",
+                {key: number for number, key in enumerate(keys, start=1)},
+            )
+            unchanged = TelegramError(
+                "unchanged",
+                retryable=False,
+                code="MESSAGE-NOT-MODIFIED",
+                status=400,
+            )
+            send = AsyncMock()
+            pin = AsyncMock()
+
+            result = await publish_pinned_guide(
+                "-100123",
+                state,
+                send,
+                AsyncMock(side_effect=unchanged),
+                pin,
+            )
+
+            send.assert_not_awaited()
+            pin.assert_awaited_once_with(result["root"])
+
     async def test_missing_message_is_recreated_and_links_follow_it(self):
         with tempfile.TemporaryDirectory() as directory:
             state = PinnedGuideState(Path(directory) / "pinned.json")
@@ -156,19 +197,219 @@ class PinnedPublicationTests(unittest.IsolatedAsyncioTestCase):
             async def edit(message_id, message):
                 if message_id == 1:
                     raise TelegramError(
-                        "missing", retryable=False, status=400
+                        "missing",
+                        retryable=False,
+                        code="MESSAGE-NOT-FOUND",
+                        status=400,
                     )
 
             send = AsyncMock(return_value=99)
             pin = AsyncMock()
+            edit_mock = AsyncMock(side_effect=edit)
             result = await publish_pinned_guide(
-                "-100123", state, send, edit, pin
+                "-100123", state, send, edit_mock, pin
             )
 
             send.assert_awaited_once()
             self.assertEqual(result["line_1"], 99)
             saved = json.loads(state.path.read_text(encoding="utf-8"))
             self.assertEqual(saved["messages"]["line_1"], 99)
+            transport_edits = [
+                call.args[1]
+                for call in edit_mock.await_args_list
+                if call.args[0] == result["transport"]
+            ]
+            self.assertIn(
+                "https://t.me/c/123/99", transport_edits[-1]
+            )
+
+    async def test_deleted_transport_updates_every_backlink(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = PinnedGuideState(Path(directory) / "pinned.json")
+            keys = [*LEAF_MESSAGES, "cameras", "transport", "root"]
+            state.write(
+                "-100123",
+                {key: number for number, key in enumerate(keys, start=1)},
+            )
+            old_transport = keys.index("transport") + 1
+
+            async def edit(message_id, message):
+                if message_id == old_transport:
+                    raise TelegramError(
+                        "missing",
+                        retryable=False,
+                        code="MESSAGE-NOT-FOUND",
+                        status=400,
+                    )
+
+            send = AsyncMock(return_value=99)
+            edit_mock = AsyncMock(side_effect=edit)
+            result = await publish_pinned_guide(
+                "-100123", state, send, edit_mock, AsyncMock()
+            )
+
+            self.assertEqual(result["transport"], 99)
+            leaf_edits = [
+                call.args[1]
+                for call in edit_mock.await_args_list
+                if call.args[0] == result["line_1"]
+            ]
+            self.assertIn("https://t.me/c/123/99", leaf_edits[-1])
+            root_edits = [
+                call.args[1]
+                for call in edit_mock.await_args_list
+                if call.args[0] == result["root"]
+            ]
+            self.assertIn("https://t.me/c/123/99", root_edits[-1])
+
+    async def test_deleted_camera_and_root_are_recreated_together(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = PinnedGuideState(Path(directory) / "pinned.json")
+            keys = [*LEAF_MESSAGES, "cameras", "transport", "root"]
+            stored = {key: number for number, key in enumerate(keys, start=1)}
+            state.write("-100123", stored)
+            deleted = {stored["cameras"], stored["root"]}
+            next_id = 90
+
+            async def edit(message_id, message):
+                if message_id in deleted:
+                    raise TelegramError(
+                        "missing",
+                        retryable=False,
+                        code="MESSAGE-NOT-FOUND",
+                        status=400,
+                    )
+
+            async def send(message):
+                nonlocal next_id
+                next_id += 1
+                return next_id
+
+            pin = AsyncMock()
+            edit_mock = AsyncMock(side_effect=edit)
+            result = await publish_pinned_guide(
+                "-100123", state, send, edit_mock, pin
+            )
+
+            self.assertEqual(result["cameras"], 91)
+            self.assertEqual(result["root"], 92)
+            pin.assert_awaited_once_with(92)
+            camera_edits = [
+                call.args[1]
+                for call in edit_mock.await_args_list
+                if call.args[0] == 91
+            ]
+            self.assertIn("https://t.me/c/123/92", camera_edits[-1])
+            root_edits = [
+                call.args[1]
+                for call in edit_mock.await_args_list
+                if call.args[0] == 92
+            ]
+            self.assertIn("https://t.me/c/123/91", root_edits[-1])
+
+    async def test_all_deleted_messages_are_recreated_as_one_valid_graph(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = PinnedGuideState(Path(directory) / "pinned.json")
+            keys = [*LEAF_MESSAGES, "cameras", "transport", "root"]
+            stored = {key: number for number, key in enumerate(keys, start=1)}
+            state.write("-100123", stored)
+            next_id = 100
+
+            async def edit(message_id, message):
+                if message_id in stored.values():
+                    raise TelegramError(
+                        "missing",
+                        retryable=False,
+                        code="MESSAGE-NOT-FOUND",
+                        status=400,
+                    )
+
+            async def send(message):
+                nonlocal next_id
+                next_id += 1
+                return next_id
+
+            edit_mock = AsyncMock(side_effect=edit)
+            pin = AsyncMock()
+            result = await publish_pinned_guide(
+                "-100123", state, send, edit_mock, pin
+            )
+
+            self.assertEqual(len(set(result.values())), len(keys))
+            self.assertTrue(set(result.values()).isdisjoint(stored.values()))
+            pin.assert_awaited_once_with(result["root"])
+            final_text = {
+                message_id: [
+                    call.args[1]
+                    for call in edit_mock.await_args_list
+                    if call.args[0] == message_id
+                ][-1]
+                for message_id in result.values()
+            }
+            transport_link = telegram_message_link(
+                "-100123", result["transport"]
+            )
+            root_link = telegram_message_link("-100123", result["root"])
+            for key in LEAF_MESSAGES:
+                self.assertIn(transport_link, final_text[result[key]])
+            self.assertIn(root_link, final_text[result["cameras"]])
+            self.assertIn(root_link, final_text[result["transport"]])
+            for key in LEAF_MESSAGES:
+                self.assertIn(
+                    telegram_message_link("-100123", result[key]),
+                    final_text[result["transport"]],
+                )
+
+    async def test_root_deleted_before_pin_is_recreated_and_relinked(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = PinnedGuideState(Path(directory) / "pinned.json")
+            keys = [*LEAF_MESSAGES, "cameras", "transport", "root"]
+            stored = {key: number for number, key in enumerate(keys, start=1)}
+            state.write("-100123", stored)
+            pin = AsyncMock(
+                side_effect=(
+                    TelegramError(
+                        "missing",
+                        retryable=False,
+                        code="MESSAGE-NOT-FOUND",
+                        status=400,
+                    ),
+                    None,
+                )
+            )
+            send = AsyncMock(return_value=99)
+
+            result = await publish_pinned_guide(
+                "-100123", state, send, AsyncMock(), pin
+            )
+
+            self.assertEqual(result["root"], 99)
+            self.assertEqual(pin.await_count, 2)
+            self.assertEqual(pin.await_args_list[-1].args, (99,))
+
+    async def test_unrelated_bad_request_never_creates_duplicate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = PinnedGuideState(Path(directory) / "pinned.json")
+            keys = [*LEAF_MESSAGES, "cameras", "transport", "root"]
+            state.write(
+                "-100123",
+                {key: number for number, key in enumerate(keys, start=1)},
+            )
+            error = TelegramError(
+                "bad html", retryable=False, code="HTTP-400", status=400
+            )
+            send = AsyncMock()
+
+            with self.assertRaises(TelegramError):
+                await publish_pinned_guide(
+                    "-100123",
+                    state,
+                    send,
+                    AsyncMock(side_effect=error),
+                    AsyncMock(),
+                )
+
+            send.assert_not_awaited()
 
 
 if __name__ == "__main__":

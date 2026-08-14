@@ -15,12 +15,15 @@ media converter, or recurring source collector.
 ## Decision
 
 Add one explicit operator-run publication command for a static linked guide.
-It sends or edits the detailed messages first, builds their Telegram links,
-then sends or edits the transport navigator and compact root, and finally pins
-the root without a service notification. One small atomic state stores only the
-destination and message IDs. Each ID is saved immediately after a successful
-send, so a later invocation resumes. A missing bot-authored message is replaced
-after Telegram returns HTTP 400; other errors fail closed.
+It reconciles the detailed messages, transport navigator and compact root into
+one bidirectional link graph, then pins the root without a service notification.
+Every route detail links back to the transport navigator; the camera list and
+transport navigator link back to the compact root. One small atomic state stores
+only the destination and message IDs. Each replacement ID is saved immediately,
+so a later invocation resumes. An exact Telegram `message not found` response
+recreates the deleted bot-authored message, then bounded reconciliation updates
+every dependent link. `message is not modified` is successful idempotence;
+unrelated HTTP 400 errors fail closed and never create a duplicate.
 
 The optional private listener also accepts `/pinned_preview` from the existing
 allowlist. It sends the exact text sequence silently to that private chat but
@@ -35,6 +38,9 @@ search screenshots, and generated timetable images are excluded.
 
 - The group receives one set of detailed messages on first publication.
 - Later copy changes edit that set instead of creating duplicates.
+- Accidental deletion of one or several managed messages is repaired on the
+  next manual publication; links and the pinned root converge to replacement
+  IDs before success is reported.
 - A private supergroup or public group username is required for internal links.
 - Publication is manual and independent of Morning Digest scheduling.
 - Static timetable facts still require source review before copy changes.

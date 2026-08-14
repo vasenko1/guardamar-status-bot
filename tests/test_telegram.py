@@ -13,6 +13,7 @@ from telegrambot.telegram import (
     _delete_message,
     _edit_message,
     _pin_chat_message,
+    _response_error,
     send_message,
     send_poll,
 )
@@ -61,6 +62,27 @@ class _Opener:
 
 
 class TelegramDeliveryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_edit_conflicts_are_classified_without_broad_http_400(self):
+        unchanged = _response_error(
+            {"description": "Bad Request: message is not modified"}, 400
+        )
+        missing = _response_error(
+            {"description": "Bad Request: message to edit not found"}, 400
+        )
+        missing_pin = _response_error(
+            {"description": "Bad Request: message to pin not found"}, 400
+        )
+        malformed = _response_error(
+            {"description": "Bad Request: can't parse entities"}, 400
+        )
+
+        self.assertEqual(
+            unchanged.diagnostic_code, "MESSAGE-NOT-MODIFIED"
+        )
+        self.assertEqual(missing.diagnostic_code, "MESSAGE-NOT-FOUND")
+        self.assertEqual(missing_pin.diagnostic_code, "MESSAGE-NOT-FOUND")
+        self.assertEqual(malformed.diagnostic_code, "HTTP-400")
+
     async def test_get_updates_requests_only_messages(self):
         response = _SuccessfulResponse(
             b'{"ok":true,"result":[{"update_id":10}]}',
