@@ -57,6 +57,7 @@ export ESIOS_API_KEY="your-personal-esios-key"
 export TELEGRAM_BOT_TOKEN="your-bot-token"
 export TELEGRAM_CHAT_ID="@your-channel-or-chat-id"
 export TELEGRAM_ALLOWED_USER_IDS="your-private-telegram-user-id"
+export PINNED_GUIDE_STATE_PATH="state/pinned_guide.json"
 export GEMINI_API_KEY="your-optional-gemini-key"
 export OPENROUTER_API_KEY="your-optional-fallback-key"
 ```
@@ -195,6 +196,7 @@ PYTHONPATH=src python -m telegrambot status
 PYTHONPATH=src python -m telegrambot electricity-preview
 PYTHONPATH=src python -m telegrambot weekend-preview
 PYTHONPATH=src python -m telegrambot refresh-current
+PYTHONPATH=src python -m telegrambot pinned-preview
 ```
 
 An occasional operator-triggered anonymous poll (never scheduled):
@@ -213,6 +215,8 @@ PYTHONPATH=src python -m telegrambot poll "Что добавить в дайдж
 - `refresh-current` is an explicit operator action that rebuilds today's
   digest and edits its one live Telegram message in place. It never creates a
   replacement message and refuses to act without a trusted current-day state.
+- `pinned-preview` prints the complete camera and transport guide without
+  contacting Telegram or changing publication state.
 
 To enable private Telegram previews, run the independent listener:
 
@@ -220,14 +224,27 @@ To enable private Telegram previews, run the independent listener:
 PYTHONPATH=src python -m telegrambot listen
 ```
 
-Send `/preview` to the bot in a private chat. Only IDs in
+Send `/preview` for the Morning Digest or `/pinned_preview` for the complete
+camera and transport guide. Only IDs in
 `TELEGRAM_ALLOWED_USER_IDS` are accepted. The reply is silent, is never sent
 to the configured group, and does not change publication state. The listener
 does not fetch any source until an authorized command arrives.
 
+After reviewing the private guide, publish or update it manually:
+
+```sh
+PYTHONPATH=src python -m telegrambot pinned-publish
+```
+
+The configured group must be public and addressed by `@username`, or a private
+supergroup addressed by its numeric `-100...` identifier. The command stores
+only bot-authored message IDs in `PINNED_GUIDE_STATE_PATH`, edits them on later
+runs, and pins the compact root without a notification.
+
 State contains only the current local date, publication time, Telegram
-message IDs, cleanup result, and the isolated electricity publication marker
-plus one normalized 24-hour target-day snapshot. AEMET recovery retries only
+message IDs, cleanup result, the pinned-guide message-ID mapping, and the
+isolated electricity publication marker plus one normalized 24-hour
+target-day snapshot. AEMET recovery retries only
 bounded transient failures and repeats the complete two-step product request.
 If AEMET remains unavailable during a later update, the same-day prepared
 AEMET snapshot supplies the weather blocks. No raw source cache is

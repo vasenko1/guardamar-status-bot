@@ -461,3 +461,24 @@ returned. Group publication never includes this diagnostics block.
 The approved electricity table fills the former future-feature slot. Do not
 add another product feature without a validated need and explicit decision.
 The electricity workflow must remain independent of Morning Digest collection.
+
+## Linked pinned city guide
+
+The approved camera and direct-transport reference is independent of the
+Morning Digest. It is published only by an explicit operator command. Detailed
+messages are created or edited before the transport navigator and compact root;
+the root is pinned only after every required Telegram link is available.
+
+One small atomic state stores the configured destination and bot-authored
+message IDs. A repeated command edits those messages. If Telegram reports that
+one is missing, the command recreates only that message and rebuilds dependent
+links. Other failures stop publication. No scheduled refresh, browser, source
+collector, or additional dependency is added.
+
+The private `/pinned_preview` command and the one-shot CLI preview send the
+exact text sequence silently to the single allowlisted operator. They do not
+touch the group, pin messages, or write publication state.
+
+The guide is text-only unless a carrier publishes a current timetable image
+file. A PDF, locally rendered PDF page, dynamic-search screenshot, or generated
+timetable image is never attached.

@@ -42,6 +42,12 @@ The approved second feature publishes one evening PVPC price table for the
 next local day from ESIOS / Red Eléctrica. It is independent of the Morning
 Digest and runs as another short-lived Termux process.
 
+### Linked pinned city guide
+
+One manually maintained Telegram guide links a compact pinned root to public
+cameras and direct transport messages. It is static, independent of the daily
+digest, and updated only by an explicit one-shot operator command.
+
 ## Out of scope
 
 - General news aggregation

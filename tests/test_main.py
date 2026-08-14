@@ -22,6 +22,38 @@ MADRID = ZoneInfo("Europe/Madrid")
 
 
 class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
+    async def test_pinned_preview_needs_no_weather_configuration(self):
+        with patch("builtins.print") as output:
+            result = await _run_command("pinned-preview")
+
+        self.assertEqual(result, 0)
+        self.assertIn("Полезное о Гуардамаре", output.call_args.args[0])
+
+    async def test_pinned_send_preview_targets_single_allowed_operator(self):
+        send = AsyncMock(return_value=1)
+        with (
+            patch.dict(os.environ, {
+                "TELEGRAM_BOT_TOKEN": "telegram",
+                "TELEGRAM_ALLOWED_USER_IDS": "123",
+            }),
+            patch("telegrambot.__main__.send_message", new=send),
+        ):
+            result = await _run_command("pinned-send-preview")
+
+        self.assertEqual(result, 0)
+        self.assertGreater(send.await_count, 1)
+        for item in send.await_args_list:
+            self.assertEqual(item.args[:2], ("telegram", "123"))
+            self.assertTrue(item.kwargs["disable_notification"])
+
+    async def test_pinned_send_preview_rejects_ambiguous_operator(self):
+        with patch.dict(os.environ, {
+            "TELEGRAM_BOT_TOKEN": "telegram",
+            "TELEGRAM_ALLOWED_USER_IDS": "123,456",
+        }):
+            with self.assertRaises(ValueError):
+                await _run_command("pinned-send-preview")
+
     async def test_late_event_catalogs_refresh_only_once_after_success(self):
         with tempfile.TemporaryDirectory() as directory:
             state = PublicationState(Path(directory) / "delivery.json")

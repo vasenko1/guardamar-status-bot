@@ -54,6 +54,12 @@ from .operational_updates import (
     seed_beaches,
     seed_warnings,
 )
+from .pinned import (
+    DEFAULT_PINNED_STATE_PATH,
+    PinnedGuideState,
+    preview_messages as pinned_preview_messages,
+    publish_pinned_guide,
+)
 from .safebeach import (
     SafeBeachError,
     fetch_beach_status,
@@ -67,6 +73,7 @@ from .telegram import (
     TelegramError,
     delete_message,
     edit_message,
+    pin_chat_message,
     send_message,
     send_poll,
 )
@@ -571,6 +578,63 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         logging.info("Electricity publication: %s", result)
         return 0
 
+    if command == "pinned-preview":
+        print("\n\n====================\n\n".join(
+            pinned_preview_messages()
+        ))
+        return 0
+
+    if command == "pinned-send-preview":
+        bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
+        allowed_user_ids = parse_allowed_user_ids(
+            _required_environment("TELEGRAM_ALLOWED_USER_IDS")
+        )
+        if len(allowed_user_ids) != 1:
+            raise ValueError(
+                "pinned preview requires exactly one allowed user ID"
+            )
+        private_chat_id = str(next(iter(allowed_user_ids)))
+        for message in pinned_preview_messages():
+            await send_message(
+                bot_token,
+                private_chat_id,
+                message,
+                disable_notification=True,
+            )
+        logging.info("Pinned guide preview sent to the private operator")
+        return 0
+
+    if command == "pinned-publish":
+        bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
+        chat_id = _required_environment("TELEGRAM_CHAT_ID")
+        state = PinnedGuideState(Path(os.environ.get(
+            "PINNED_GUIDE_STATE_PATH", DEFAULT_PINNED_STATE_PATH
+        )))
+        with state.exclusive_run():
+            messages = await publish_pinned_guide(
+                chat_id,
+                state,
+                lambda message: send_message(
+                    bot_token,
+                    chat_id,
+                    message,
+                    disable_notification=True,
+                ),
+                lambda message_id, message: edit_message(
+                    bot_token, chat_id, message_id, message
+                ),
+                lambda message_id: pin_chat_message(
+                    bot_token,
+                    chat_id,
+                    message_id,
+                    disable_notification=True,
+                ),
+            )
+        logging.info(
+            "Pinned guide published with %d linked messages", len(messages)
+        )
+        return 0
+
     api_key = _required_environment("AEMET_API_KEY")
     if command == "preview":
         print(
@@ -589,6 +653,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             bot_token,
             allowed_user_ids,
             lambda now: _produce_message(api_key, now),
+            pinned_preview_messages,
         )
         return 0
 
@@ -793,6 +858,7 @@ def main() -> None:
             "status", "listen",
             "electricity", "electricity-preview",
             "electricity-update-explanation",
+            "pinned-preview", "pinned-send-preview", "pinned-publish",
             "sync-municipal-events",
             "sync-agenda-events",
             "sync-pharmacy",

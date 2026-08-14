@@ -12,6 +12,7 @@ from telegrambot.telegram import (
     _post_message,
     _delete_message,
     _edit_message,
+    _pin_chat_message,
     send_message,
     send_poll,
 )
@@ -222,6 +223,34 @@ class TelegramDeliveryTests(unittest.IsolatedAsyncioTestCase):
             },
         )
         self.assertTrue(request.full_url.endswith("/editMessageText"))
+
+    async def test_pin_message_suppresses_service_notification(self):
+        opener = _Opener(
+            _SuccessfulResponse(
+                b'{"ok":true,"result":true}',
+                url=(
+                    "https://api.telegram.org/"
+                    "botsecret-token/pinChatMessage"
+                ),
+            )
+        )
+        with patch(
+            "telegrambot.telegram.urllib.request.build_opener",
+            return_value=opener,
+        ):
+            _pin_chat_message("secret-token", "@destination", 42)
+
+        self.assertEqual(
+            json.loads(opener.request.data.decode("utf-8")),
+            {
+                "chat_id": "@destination",
+                "message_id": 42,
+                "disable_notification": True,
+            },
+        )
+        request = opener.request
+        self.assertIsNotNone(request)
+        self.assertTrue(request.full_url.endswith("/pinChatMessage"))
 
     async def test_reply_uses_telegram_reply_parameters(self):
         opener = _Opener(_SuccessfulResponse())
