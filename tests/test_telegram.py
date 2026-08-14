@@ -18,6 +18,9 @@ from telegrambot.telegram import (
     _post_photo,
     _edit_photo_media,
     _response_error,
+    edit_message,
+    edit_photo_media,
+    pin_chat_message,
     send_message,
     send_poll,
 )
@@ -499,6 +502,78 @@ class TelegramDeliveryTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(delays, [10])
+
+    async def test_known_message_edit_honors_rate_limit_and_retries(self):
+        delays = []
+
+        async def sleep(delay):
+            delays.append(delay)
+
+        rate_limited = TelegramError(
+            "rate limited", retryable=True, retry_after=7, status=429
+        )
+        with patch(
+            "telegrambot.telegram._edit_message",
+            side_effect=(rate_limited, None),
+        ) as edit:
+            await edit_message(
+                "secret-token",
+                "@destination",
+                42,
+                "updated",
+                sleep=sleep,
+            )
+
+        self.assertEqual(edit.call_count, 2)
+        self.assertEqual(delays, [7])
+
+    async def test_known_media_edit_returns_result_after_retry(self):
+        delays = []
+
+        async def sleep(delay):
+            delays.append(delay)
+
+        transient = TelegramError("temporary", retryable=True, status=503)
+        with patch(
+            "telegrambot.telegram._edit_photo_media",
+            side_effect=(transient, "file-id"),
+        ) as edit:
+            result = await edit_photo_media(
+                "secret-token",
+                "@destination",
+                42,
+                Path("schedule.png"),
+                "caption",
+                sleep=sleep,
+            )
+
+        self.assertEqual(result, "file-id")
+        self.assertEqual(edit.call_count, 2)
+        self.assertEqual(delays, [1])
+
+    async def test_idempotent_retry_refuses_excessive_server_wait(self):
+        delays = []
+
+        async def sleep(delay):
+            delays.append(delay)
+
+        rate_limited = TelegramError(
+            "rate limited", retryable=True, retry_after=61, status=429
+        )
+        with patch(
+            "telegrambot.telegram._pin_chat_message",
+            side_effect=rate_limited,
+        ) as pin:
+            with self.assertRaises(TelegramError):
+                await pin_chat_message(
+                    "secret-token",
+                    "@destination",
+                    42,
+                    sleep=sleep,
+                )
+
+        self.assertEqual(pin.call_count, 1)
+        self.assertEqual(delays, [])
 
 if __name__ == "__main__":
     unittest.main()

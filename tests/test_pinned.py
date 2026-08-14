@@ -438,6 +438,25 @@ class PinnedPublicationTests(unittest.IsolatedAsyncioTestCase):
                 )
             self.assertEqual(send.await_count, 1)
 
+    async def test_explicit_rate_limit_does_not_mark_send_uncertain(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = PinnedGuideState(Path(directory) / "pinned.json")
+            rate_limited = TelegramError(
+                "rate limited", retryable=True, code="HTTP-429", status=429
+            )
+
+            with self.assertRaises(TelegramError):
+                await publish_pinned_guide(
+                    "-100123",
+                    state,
+                    AsyncMock(side_effect=rate_limited),
+                    AsyncMock(),
+                    AsyncMock(),
+                )
+
+            payload = state.read_payload("-100123")
+            self.assertEqual(payload["uncertain_messages"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

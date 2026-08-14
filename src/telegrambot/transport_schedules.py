@@ -495,7 +495,11 @@ async def sync_transport_schedules(
                 messages[key] = new_id
                 line_state["file_id"] = file_id
         except TelegramError as exc:
-            if exc.retryable and creating_message:
+            if (
+                exc.retryable
+                and creating_message
+                and exc.server_status != 429
+            ):
                 line_state["delivery_uncertain"] = True
                 payload["lines"][key] = line_state
                 await asyncio.to_thread(state.write_payload, chat_id, payload)

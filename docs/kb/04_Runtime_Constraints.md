@@ -103,7 +103,9 @@ no browser, OCR, resident collector, or background process is allowed.
   covered dates cause no full-detail or LLM work. The 10:10–10:40 invocations
   attempt each event catalog at most once per local day.
 - Telegram operations share one bounded JSON client restricted to the official
-  API host. Only sends retry, and only after transient failures.
+  API host. Sends retain their workflow-specific delivery policy. Idempotent
+  known-message edits and pins retry transient failures at most twice and
+  honor only server delays that fit a 60-second per-wait bound.
 - Electricity checks confirmed publication before any source access. The first
   complete ESIOS response for a target date is atomically normalized to one
   private local snapshot; later invocations reuse it instead of repeating the

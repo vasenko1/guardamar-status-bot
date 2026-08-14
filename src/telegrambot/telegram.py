@@ -5,7 +5,7 @@ import json
 import secrets
 import urllib.parse
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, TypeVar
 
 from ._transport import BoundedFetchError, fetch_bounded
 
@@ -14,8 +14,12 @@ REQUEST_TIMEOUT_SECONDS = 15
 RESPONSE_LIMIT_BYTES = 1_000_000
 MAX_SEND_ATTEMPTS = 3
 MAX_RETRY_DELAY_SECONDS = 10
+MAX_IDEMPOTENT_ATTEMPTS = 3
+MAX_IDEMPOTENT_RETRY_DELAY_SECONDS = 60
 LONG_POLL_TIMEOUT_SECONDS = 30
 USER_AGENT = "GuardamarMorningDigest/0.13"
+
+T = TypeVar("T")
 
 
 class TelegramError(RuntimeError):
@@ -545,21 +549,50 @@ async def get_updates(
     )
 
 
+async def _retry_idempotent(
+    operation: Callable[[], Awaitable[T]],
+    *,
+    max_attempts: int = MAX_IDEMPOTENT_ATTEMPTS,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+) -> T:
+    """Retry a known-message mutation without exceeding the runtime budget."""
+
+    if max_attempts < 1:
+        raise ValueError("max_attempts must be at least one")
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return await operation()
+        except TelegramError as exc:
+            if not exc.retryable or attempt == max_attempts:
+                raise
+            requested_delay = exc.retry_after or 0
+            if requested_delay > MAX_IDEMPOTENT_RETRY_DELAY_SECONDS:
+                raise
+            await sleep(max(2 ** (attempt - 1), requested_delay))
+    raise AssertionError("unreachable")
+
+
 async def pin_chat_message(
     bot_token: str,
     chat_id: str,
     message_id: int,
     *,
     disable_notification: bool = True,
+    max_attempts: int = MAX_IDEMPOTENT_ATTEMPTS,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> None:
-    """Pin one known message without retrying a state-changing request."""
+    """Pin one known message with bounded transient recovery."""
 
-    await asyncio.to_thread(
-        _pin_chat_message,
-        bot_token,
-        chat_id,
-        message_id,
-        disable_notification,
+    await _retry_idempotent(
+        lambda: asyncio.to_thread(
+            _pin_chat_message,
+            bot_token,
+            chat_id,
+            message_id,
+            disable_notification,
+        ),
+        max_attempts=max_attempts,
+        sleep=sleep,
     )
 
 
@@ -670,11 +703,18 @@ async def edit_message(
     chat_id: str,
     message_id: int,
     text: str,
+    *,
+    max_attempts: int = MAX_IDEMPOTENT_ATTEMPTS,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> None:
-    """Replace one known bot-authored message."""
+    """Replace one known bot-authored message with bounded recovery."""
 
-    await asyncio.to_thread(
-        _edit_message, bot_token, chat_id, message_id, text
+    await _retry_idempotent(
+        lambda: asyncio.to_thread(
+            _edit_message, bot_token, chat_id, message_id, text
+        ),
+        max_attempts=max_attempts,
+        sleep=sleep,
     )
 
 
@@ -704,16 +744,23 @@ async def edit_photo_media(
     message_id: int,
     path: Path,
     caption: str,
+    *,
+    max_attempts: int = MAX_IDEMPOTENT_ATTEMPTS,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> str:
-    """Replace one bot-authored photo and caption, returning its file ID."""
+    """Replace known photo media with bounded transient recovery."""
 
-    return await asyncio.to_thread(
-        _edit_photo_media,
-        bot_token,
-        chat_id,
-        message_id,
-        path,
-        caption,
+    return await _retry_idempotent(
+        lambda: asyncio.to_thread(
+            _edit_photo_media,
+            bot_token,
+            chat_id,
+            message_id,
+            path,
+            caption,
+        ),
+        max_attempts=max_attempts,
+        sleep=sleep,
     )
 
 
@@ -722,13 +769,20 @@ async def edit_photo_caption(
     chat_id: str,
     message_id: int,
     caption: str,
+    *,
+    max_attempts: int = MAX_IDEMPOTENT_ATTEMPTS,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> None:
-    """Replace only the caption of one known photo message."""
+    """Replace a known photo caption with bounded transient recovery."""
 
-    await asyncio.to_thread(
-        _edit_photo_caption,
-        bot_token,
-        chat_id,
-        message_id,
-        caption,
+    await _retry_idempotent(
+        lambda: asyncio.to_thread(
+            _edit_photo_caption,
+            bot_token,
+            chat_id,
+            message_id,
+            caption,
+        ),
+        max_attempts=max_attempts,
+        sleep=sleep,
     )

@@ -494,7 +494,7 @@ async def _upsert(
     try:
         message_id = await send(text)
     except TelegramError as exc:
-        if exc.retryable:
+        if exc.retryable and exc.server_status != 429:
             await asyncio.to_thread(state.mark_uncertain, chat_id, key)
         raise
     messages[key] = message_id
