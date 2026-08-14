@@ -66,6 +66,10 @@
 - Add sources only where they increase daily value.
 - Improve localization or personalization only if demand is clear.
 - Optimize measured bottlenecks rather than anticipated ones.
+- Done: add an explicit operator-run linked camera and transport guide. It
+  edits stable bot-authored messages on later runs, keeps only message IDs in
+  atomic state, and pins one compact root after all links are ready. Private
+  preview is allowlisted and changes no group state. See ADR 0041.
 - Parked idea: after the 10:10 beach update, optionally send one current beach
   camera still as a separate reply to the digest. Consider it only when the
   owner permits republication and exposes a stable direct JPEG/snapshot URL;

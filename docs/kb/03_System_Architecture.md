@@ -113,6 +113,14 @@ snapshot;
 the personal ESIOS token and raw response are never stored. It reuses only
 Telegram and minimal file state; it does not depend on Morning Digest internals.
 
+### Linked pinned guide
+
+One manual one-shot workflow maintains a static set of camera and transport
+messages. It upserts detailed messages, derives member-visible Telegram links,
+upserts the navigator and compact root, and pins the root. A small independent
+atomic state stores only chat and message IDs. It has no schedule, source
+collection, media conversion, or dependency on Morning Digest state.
+
 ## Operating model
 
 - One 07:30 process plus up to seven short update checks in season
@@ -121,6 +129,7 @@ Telegram and minimal file state; it does not depend on Morning Digest internals.
   pending; three warning-only AEMET checks per day
 - Up to five short evening electricity attempts; success-only state makes
   later invocations no-ops after the first publication
+- One optional manual pinned-guide publication or update
 - Optional lightweight operator listener with one idle Telegram long poll
 - One event loop with bounded asynchronous I/O
 - One direct 07:30 collection; one later full collection only after an update

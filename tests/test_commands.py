@@ -5,6 +5,7 @@ from telegrambot.aemet import AemetError
 from telegrambot.commands import (
     _produce_preview,
     parse_allowed_user_ids,
+    pinned_preview_destination,
     preview_failure_message,
     preview_destination,
 )
@@ -44,6 +45,17 @@ class PreviewCommandTests(unittest.TestCase):
                 1_030,
             ),
             "123",
+        )
+
+    def test_accepts_pinned_preview_only_in_private_allowlisted_chat(self):
+        self.assertEqual(
+            pinned_preview_destination(
+                update(text="/pinned_preview"), {123}, 1_030
+            ),
+            "123",
+        )
+        self.assertIsNone(
+            pinned_preview_destination(update(), {123}, 1_030)
         )
 
     def test_rejects_group_unauthorized_stale_and_other_commands(self):

@@ -42,6 +42,10 @@ One short daily deployment check may fetch the tested GitHub `deploy` branch.
 It must exit immediately when no update exists and must not become a resident
 deployment agent or self-hosted CI runner.
 
+The linked pinned guide may run only as an explicit one-shot operator command.
+It may store one small mapping of Telegram message IDs, but it must not add a
+schedule, source collector, browser, media converter, or background process.
+
 ## Resource policy
 
 ### CPU and battery

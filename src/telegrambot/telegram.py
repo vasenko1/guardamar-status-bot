@@ -250,6 +250,31 @@ def _edit_message(
     )
 
 
+def _pin_chat_message(
+    bot_token: str,
+    chat_id: str,
+    message_id: int,
+    disable_notification: bool = True,
+) -> None:
+    if message_id <= 0:
+        raise TelegramError(
+            "Telegram message identifier is invalid",
+            retryable=False,
+            code="MESSAGE-ID",
+            description="идентификатор сообщения Telegram некорректен",
+        )
+    _call_api(
+        bot_token,
+        "pinChatMessage",
+        {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "disable_notification": disable_notification,
+        },
+        REQUEST_TIMEOUT_SECONDS,
+    )
+
+
 def _get_updates(
     bot_token: str,
     offset: Optional[int],
@@ -292,6 +317,24 @@ async def get_updates(
         bot_token,
         offset,
         timeout,
+    )
+
+
+async def pin_chat_message(
+    bot_token: str,
+    chat_id: str,
+    message_id: int,
+    *,
+    disable_notification: bool = True,
+) -> None:
+    """Pin one known message without retrying a state-changing request."""
+
+    await asyncio.to_thread(
+        _pin_chat_message,
+        bot_token,
+        chat_id,
+        message_id,
+        disable_notification,
     )
 
 

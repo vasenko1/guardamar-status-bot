@@ -4,7 +4,15 @@ import asyncio
 import logging
 import time
 from datetime import datetime
-from typing import Any, Awaitable, Callable, Dict, Optional, Set
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    Optional,
+    Sequence,
+    Set,
+)
 from zoneinfo import ZoneInfo
 
 from .aemet import AemetError
@@ -33,12 +41,13 @@ def parse_allowed_user_ids(value: str) -> Set[int]:
     return result
 
 
-def preview_destination(
+def _private_command_destination(
     update: Dict[str, Any],
     allowed_user_ids: Set[int],
     now_timestamp: int,
+    expected_command: str,
 ) -> Optional[str]:
-    """Return the private chat ID for one fresh authorized /preview."""
+    """Return the private chat ID for one fresh authorized command."""
 
     message = update.get("message")
     if not isinstance(message, dict):
@@ -59,10 +68,34 @@ def preview_destination(
     ):
         return None
     command = text.strip().split(maxsplit=1)[0].casefold()
-    if command.split("@", 1)[0] != "/preview":
+    if command.split("@", 1)[0] != expected_command:
         return None
     chat_id = chat.get("id")
     return str(chat_id) if isinstance(chat_id, int) else None
+
+
+def preview_destination(
+    update: Dict[str, Any],
+    allowed_user_ids: Set[int],
+    now_timestamp: int,
+) -> Optional[str]:
+    """Return the private chat ID for one fresh authorized /preview."""
+
+    return _private_command_destination(
+        update, allowed_user_ids, now_timestamp, "/preview"
+    )
+
+
+def pinned_preview_destination(
+    update: Dict[str, Any],
+    allowed_user_ids: Set[int],
+    now_timestamp: int,
+) -> Optional[str]:
+    """Return the private chat ID for an authorized guide preview."""
+
+    return _private_command_destination(
+        update, allowed_user_ids, now_timestamp, "/pinned_preview"
+    )
 
 
 async def _produce_preview(
@@ -104,8 +137,9 @@ async def listen_for_preview(
     bot_token: str,
     allowed_user_ids: Set[int],
     produce: Callable[[datetime], Awaitable[str]],
+    produce_pinned: Optional[Callable[[], Sequence[str]]] = None,
 ) -> None:
-    """Serve only fresh allowlisted private /preview commands."""
+    """Serve only the two fresh allowlisted private preview commands."""
 
     offset: Optional[int] = None
     LOGGER.info("Preview command listener started")
@@ -121,28 +155,50 @@ async def listen_for_preview(
             update_id = update.get("update_id")
             if isinstance(update_id, int):
                 offset = max(offset or 0, update_id + 1)
+            now_timestamp = int(time.time())
             chat_id = preview_destination(
                 update,
                 allowed_user_ids,
-                int(time.time()),
+                now_timestamp,
             )
-            if chat_id is None:
+            pinned_chat_id = pinned_preview_destination(
+                update,
+                allowed_user_ids,
+                now_timestamp,
+            )
+            if chat_id is None and pinned_chat_id is None:
                 continue
             try:
-                message = await _produce_preview(produce)
-                await send_message(
-                    bot_token,
-                    chat_id,
-                    message,
-                    disable_notification=True,
-                )
-                LOGGER.info("Preview sent to an authorized private chat")
+                if pinned_chat_id is not None:
+                    if produce_pinned is None:
+                        continue
+                    for message in produce_pinned():
+                        await send_message(
+                            bot_token,
+                            pinned_chat_id,
+                            message,
+                            disable_notification=True,
+                        )
+                    LOGGER.info(
+                        "Pinned guide preview sent to an authorized chat"
+                    )
+                else:
+                    message = await _produce_preview(produce)
+                    await send_message(
+                        bot_token,
+                        chat_id,
+                        message,
+                        disable_notification=True,
+                    )
+                    LOGGER.info(
+                        "Preview sent to an authorized private chat"
+                    )
             except Exception as exc:
                 LOGGER.error("Preview command failed: %s", exc)
                 try:
                     await send_message(
                         bot_token,
-                        chat_id,
+                        chat_id or pinned_chat_id,
                         preview_failure_message(exc),
                         disable_notification=True,
                     )
