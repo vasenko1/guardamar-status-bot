@@ -113,8 +113,9 @@ This exact visual structure is the product contract:
 • Автобусы следуют по временному маршруту.
 
 💊 **Дежурная аптека:**
-• Planelles Mas, Asuncion — круглосуточно (с 9:00)
-  📍 Av. Cervantes, Nº29
+**Planelles Mas, Asuncion, Guardamar del Segura**
+Круглосуточное дежурство с 09:00 16 августа до 09:00 17 августа
+📍 Av. Cervantes, 29
 
 🎉 **Праздник сегодня:**
 • Канун Дня святого Иакова — официальный городской праздник
@@ -140,7 +141,8 @@ The order never changes:
 8. Available flags for all six known Guardamar beach zones, grouped by color
 9. Jellyfish beaches, only when explicitly reported
 10. Traffic or closure
-11. On-call pharmacy from the weekly-synced official rota catalog
+11. On-call pharmacies for Guardamar's complete official service zone from the
+    weekly-synced rota catalog
 12. Official holiday applicable in Guardamar today
 13. Today's events
 

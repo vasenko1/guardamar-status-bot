@@ -132,10 +132,12 @@ The validated Android deployment uses the scripts in `termux/`:
 The deployment check is a short daily process, not a resident agent. It
 requires a Git checkout with the repository configured as `origin`. It refuses
 tracked local changes and non-fast-forward history, installs declared Python
-dependencies, reruns the test suite on the phone, and restarts only the
-private preview listener. On installation or test failure it restores the
-previous commit. `.env`, `state/`, logs, and the virtual environment remain
-local and are never pulled from GitHub.
+dependencies, reruns the test suite on the phone, makes one best-effort refresh
+of the small official pharmacy catalog, and restarts only the private preview
+listener. A pharmacy-source failure is logged and left to the weekly retry; it
+does not invalidate tested code. On installation or test failure the deploy
+restores the previous commit. `.env`, `state/`, logs, and the virtual
+environment remain local and are never pulled from GitHub.
 
 Recommended crontab entries:
 

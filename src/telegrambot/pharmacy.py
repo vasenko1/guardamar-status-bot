@@ -42,12 +42,22 @@ ACCEPTED_CONTENT_TYPES = frozenset({
 })
 CATALOG_WINDOW_DAYS = 45
 CATALOG_VERSION = 1
-MUNICIPALITY = "guardamar del segura"
+# Guardamar and San Fulgencio share the official pharmacy service zone.  The
+# duty must therefore be selected by the published zone, not by the pharmacy's
+# postal municipality; reinforcement rows in Guardamar can otherwise hide the
+# pharmacy that covers the full night.
+SERVICE_ZONE = "61"
 _EXCEL_EPOCH = date(1899, 12, 30)
 _SHEET_ENTRY = "xl/worksheets/sheet.xml"
 _SHEET_NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 _HOURS_PATTERN = re.compile(
     r"^de\s+(\d{1,2}:\d{2})\s+a\s+(\d{1,2}:\d{2})$", re.IGNORECASE
+)
+_NORMALIZED_HOURS_PATTERN = re.compile(
+    r"^(\d{1,2}:\d{2})[–-](\d{1,2}:\d{2})$"
+)
+_LEGACY_ALL_DAY_PATTERN = re.compile(
+    r"^круглосуточно\s*\(с\s*(\d{1,2}:\d{2})\)$", re.IGNORECASE
 )
 _COMMUNITY_PROPERTY_SUFFIX = re.compile(
     r"\s*,?\s+C\.?\s*B\.?\s*$", re.IGNORECASE
@@ -98,7 +108,10 @@ def _padded(value: str) -> str:
     """Render the published time as HH:MM so rows align in the digest."""
 
     hour, minute = value.split(":")
-    return f"{int(hour):02d}:{minute}"
+    hour_value, minute_value = int(hour), int(minute)
+    if not 0 <= hour_value <= 23 or not 0 <= minute_value <= 59:
+        raise ValueError("Invalid pharmacy duty clock")
+    return f"{hour_value:02d}:{minute_value:02d}"
 
 
 def _public_name(value: str) -> str:
@@ -113,14 +126,75 @@ def _public_address(value: str) -> str:
     return _STREET_NUMBER_MARKER.sub("", value)
 
 
-def _display_hours(raw: str) -> Optional[str]:
+def _normalized_hours(raw: str) -> Optional[Tuple[str, str]]:
     match = _HOURS_PATTERN.match(" ".join(raw.split()))
     if match is None:
         return None
-    start, end = _padded(match.group(1)), _padded(match.group(2))
+    try:
+        start, end = _padded(match.group(1)), _padded(match.group(2))
+    except ValueError:
+        return None
+    return start, end
+
+
+_MONTHS_GENITIVE = (
+    "", "января", "февраля", "марта", "апреля", "мая", "июня",
+    "июля", "августа", "сентября", "октября", "ноября", "декабря",
+)
+
+
+def _day_label(value: date) -> str:
+    return f"{value.day} {_MONTHS_GENITIVE[value.month]}"
+
+
+def _duty_hours_text(duty_date: date, start: str, end: str) -> str:
+    """Describe every accepted shift without implying pharmacy closure."""
+
     if start == end:
-        return f"круглосуточно (с {start})"
-    return f"{start}–{end}"
+        next_day = duty_date + timedelta(days=1)
+        return (
+            f"Круглосуточное дежурство с {start} {_day_label(duty_date)} "
+            f"до {end} {_day_label(next_day)}"
+        )
+    if end <= start:
+        next_day = duty_date + timedelta(days=1)
+        return (
+            f"Дежурит с {start} {_day_label(duty_date)} "
+            f"до {end} {_day_label(next_day)}"
+        )
+    return f"Дежурит с {start} до {end}"
+
+
+def _record_hours(record: dict, duty_date: date) -> str:
+    """Render new structured records and catalogs made by older releases."""
+
+    start = record.get("start_time")
+    end = record.get("end_time")
+    if isinstance(start, str) and isinstance(end, str):
+        try:
+            return _duty_hours_text(
+                duty_date, _padded(start), _padded(end)
+            )
+        except ValueError:
+            pass
+
+    legacy = record.get("hours", "")
+    match = _NORMALIZED_HOURS_PATTERN.match(legacy)
+    if match is not None:
+        try:
+            return _duty_hours_text(
+                duty_date, _padded(match.group(1)), _padded(match.group(2))
+            )
+        except ValueError:
+            return legacy
+    match = _LEGACY_ALL_DAY_PATTERN.match(legacy)
+    if match is not None:
+        try:
+            start = _padded(match.group(1))
+            return _duty_hours_text(duty_date, start, start)
+        except ValueError:
+            return legacy
+    return legacy
 
 
 def normalize_rota(payload: bytes, window_start: date) -> Tuple[dict, ...]:
@@ -160,23 +234,32 @@ def normalize_rota(payload: bytes, window_start: date) -> Tuple[dict, ...]:
         cells = [_cell_value(cell) for cell in row.iter(f"{_SHEET_NS}c")]
         if len(cells) < 9:
             continue
-        serial, _, _, _, _, name, address, municipality, hours = cells[:9]
-        if municipality.strip().casefold() != MUNICIPALITY:
+        serial, zone, _, _, _, name, address, municipality, hours = cells[:9]
+        if zone.strip() != SERVICE_ZONE:
             continue
         if not serial.isdigit():
             continue
         duty_date = _EXCEL_EPOCH + timedelta(days=int(serial))
         if not window_start <= duty_date <= window_end:
             continue
-        display_hours = _display_hours(hours)
-        if not name.strip() or not address.strip() or display_hours is None:
+        normalized_hours = _normalized_hours(hours)
+        if (
+            not name.strip()
+            or not address.strip()
+            or not municipality.strip()
+            or normalized_hours is None
+        ):
             continue
+        start_time, end_time = normalized_hours
         records.append({
             "date": duty_date.isoformat(),
             "name": _public_name(_title_case(name)),
             "address": _public_address(_title_case(address)).rstrip(" ,"),
-            "hours": display_hours,
-            "all_day": display_hours.startswith("круглосуточно"),
+            "municipality": _title_case(municipality),
+            "start_time": start_time,
+            "end_time": end_time,
+            "hours": f"{start_time}–{end_time}",
+            "all_day": start_time == end_time,
         })
     return tuple(records)
 
@@ -269,9 +352,9 @@ async def refresh_pharmacy_catalog(
     records = normalize_rota(payload, local_day)
     if not records:
         raise PharmacyError(
-            "Pharmacy rota contained no Guardamar rows in the window",
+            "Pharmacy rota contained no service-zone rows in the window",
             code="NO-ROWS",
-            description="в официальном файле нет дежурств Гуардамара",
+            description="в официальном файле нет дежурств зоны Гуардамара",
         )
     await asyncio.to_thread(_write_catalog, state_path, records, now)
     return len(records)
@@ -283,7 +366,8 @@ async def duty_pharmacies_on(
 ) -> Tuple[PharmacyDuty, ...]:
     """Return today's duty rows from the local catalog, 24-hour duty first."""
 
-    local_day = now.astimezone(GUARDAMAR_TIMEZONE).date().isoformat()
+    duty_date = now.astimezone(GUARDAMAR_TIMEZONE).date()
+    local_day = duty_date.isoformat()
     records = await asyncio.to_thread(_load_catalog, state_path)
     todays: List[PharmacyDuty] = []
     seen = set()
@@ -291,7 +375,9 @@ async def duty_pharmacies_on(
         (record for record in records if record["date"] == local_day),
         key=lambda record: (not record.get("all_day", False), record["name"]),
     ):
-        key = (record["name"], record["hours"])
+        municipality = record.get("municipality", "Guardamar del Segura")
+        hours = _record_hours(record, duty_date)
+        key = (record["name"], municipality, hours)
         if key in seen:
             continue
         seen.add(key)
@@ -300,6 +386,7 @@ async def duty_pharmacies_on(
             # become user-friendly immediately, before the next weekly sync.
             name=_public_name(record["name"]),
             address=_public_address(record["address"]),
-            hours=record["hours"],
+            hours=hours,
+            municipality=municipality,
         ))
     return tuple(todays[:2])

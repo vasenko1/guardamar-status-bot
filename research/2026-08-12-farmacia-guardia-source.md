@@ -30,8 +30,13 @@ authoritative source with one bounded request and no browser automation?
   so the standard-library `zipfile` + `ElementTree` parse it without any
   dependency. `FECHA` is an Excel serial day number
   (`date(1899, 12, 30) + serial`).
-- Filtering `MUNICIPIO == "Guardamar del Segura"` yields 343 rows for
-  2026. Observed shift patterns: `De 9:00 a 9:00` (24-hour duty),
+- Guardamar belongs to published service zone `61`, which also assigns
+  pharmacies in San Fulgencio. Filtering only `MUNICIPIO == "Guardamar del
+  Segura"` is incomplete. On 2026-08-13 the workbook lists a Guardamar
+  reinforcement (`Farmacia Mora`, `De 9:00 a 0:00`) and the zone's 24-hour
+  duty in San Fulgencio (`Ruiz Lozano`, `De 9:00 a 9:00`). Both are required
+  to explain the official coverage.
+- Observed shift patterns include `De 9:00 a 9:00` (24-hour duty),
   `De 21:00 a 9:00` (night), and `RF*` reinforcement rows
   `De 9:00 a 22:00` (daytime). Names and street addresses are complete,
   e.g. `PLANELLES MAS, ASUNCION · AV. CERVANTES, Nº29`.
@@ -40,9 +45,12 @@ authoritative source with one bounded request and no browser automation?
 
 Feasible with high confidence. Collect through a pre-morning sync command,
 never at 07:30: one bounded fetch of the annual XLSX (exact host, 4 MB
-cap), normalization of only Guardamar rows in a bounded forward window
-into a small atomic local catalog, and a read-only morning row from that
-catalog. The raw workbook is never stored. The yearly filename changes
+cap), normalization of the complete published service zone `61` in a bounded
+forward window into a small atomic local catalog, and a read-only morning row
+from that catalog. Store the municipality and structured start/end times so
+the digest can distinguish same-day, overnight and 24-hour periods without
+implying that the pharmacy closes when its duty ends. The raw workbook is
+never stored. The yearly filename changes
 (`guardias2027.xlsx`); the sync derives it from the current local year and
 fails closed in an unpublished January until the new file appears.
 Open question: whether the college updates the annual file mid-year for

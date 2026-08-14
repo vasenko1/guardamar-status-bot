@@ -85,7 +85,11 @@ class DigestMessageTests(unittest.TestCase):
             pharmacies=(PharmacyDuty(
                 name="Planelles Mas, Asuncion",
                 address="Av. Cervantes, 29",
-                hours="круглосуточно (с 9:00)",
+                hours=(
+                    "Круглосуточное дежурство с 09:00 16 августа "
+                    "до 09:00 17 августа"
+                ),
+                municipality="Guardamar del Segura",
             ),),
         )
 
@@ -93,11 +97,58 @@ class DigestMessageTests(unittest.TestCase):
 
         self.assertIn(
             "💊 <b>Дежурная аптека:</b>\n"
-            "• Planelles Mas, Asuncion — круглосуточно (с 9:00)",
+            "<b>Planelles Mas, Asuncion, Guardamar del Segura</b>\n"
+            "Круглосуточное дежурство с 09:00 16 августа "
+            "до 09:00 17 августа",
             message,
         )
-        self.assertIn("query=Av.+Cervantes%2C+29", message)
+        self.assertIn(
+            "query=Av.+Cervantes%2C+29%2C+Guardamar+del+Segura",
+            message,
+        )
         self.assertNotIn("%C2%BA", message)
+        self.assertNotIn("🏘", message)
+        self.assertNotIn("🕐", message)
+        self.assertNotIn("🕘", message)
+
+    def test_renders_two_pharmacies_with_plural_heading_and_real_cities(self):
+        digest = self._routine_digest(
+            pharmacies=(
+                PharmacyDuty(
+                    name="Farmacia Ruiz Lozano",
+                    address="C/ Amsterdam, 14",
+                    hours=(
+                        "Круглосуточное дежурство с 09:00 13 августа "
+                        "до 09:00 14 августа"
+                    ),
+                    municipality="San Fulgencio",
+                ),
+                PharmacyDuty(
+                    name="Farmacia Mora",
+                    address="Av. Pais Valenciano, 29",
+                    hours=(
+                        "Дежурит с 09:00 13 августа "
+                        "до 00:00 14 августа"
+                    ),
+                    municipality="Guardamar del Segura",
+                ),
+            ),
+        )
+
+        message = build_message(digest)
+
+        self.assertIn("💊 <b>Дежурные аптеки:</b>", message)
+        self.assertIn(
+            "<b>Farmacia Ruiz Lozano, San Fulgencio</b>", message
+        )
+        self.assertIn(
+            "query=Calle+Amsterdam%2C+14%2C+San+Fulgencio", message
+        )
+        self.assertIn(">Calle Amsterdam, 14</a>", message)
+        self.assertIn(
+            "<b>Farmacia Mora, Guardamar del Segura</b>", message
+        )
+        self.assertNotIn("• Farmacia", message)
 
     def test_renders_weekday_holiday_before_events(self):
         digest = self._routine_digest(
