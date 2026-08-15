@@ -147,7 +147,8 @@ Polideportivo ↔ Estación de Autobuses ↔ El Raso ↔ El Edén ↔ Pinomar
 
 📍 <a href="https://www.google.com/maps/search/?api=1&amp;query=Carrer+Molivent%2C+Guardamar+del+Segura">Guardamar</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=Calle+del+Mar+40%2C+Torrevieja">Torrevieja</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=Calle+Emilio+Tarraga+18%2C+Pilar+de+la+Horadada">Pilar de la Horadada</a>
 
-🔎 <a href="https://regular.autobusing.com/info?empresa=costa-azul&amp;locale=es">Проверьте расписание</a>"""
+🔎 <a href="https://regular.autobusing.com/info?empresa=costa-azul&amp;locale=es">Проверьте расписание</a>
+🛒 <a href="https://regular.autobusing.com/info/horarios?empresa=costa-azul&amp;venta%5Borigen_nombre%5D=GUARDAMAR&amp;venta%5Bdestino_nombre%5D=C.C.%20BOULEVAR%20ZENIA">Расписание до ТЦ Zenia Boulevard</a>"""
     ),
     "inland": with_footer(
         """🚌 <b>Гуардамар ↔ Orihuela</b>
@@ -249,31 +250,24 @@ def build_transport_index(
 
     message = f"""🧭 <b>Транспорт из Гуардамара</b>
 
-Только прямые маршруты, без пересадок. Нажмите на нужное направление, чтобы открыть расписание с остановками.
+🏙 <b>Городские маршруты:</b> {_linked('Линия 1', 'line_1', links)} · {_linked('Линия 2', 'line_2', links)}
 
-🏙 <b>По городу</b>
+✈️ {_linked('Аэропорт Alicante-Elche', 'airport', links)}
 
-• {_linked('Линия 1', 'line_1', links)} · Puerto Deportivo ↔ центр ↔ Campomar
-• {_linked('Линия 2', 'line_2', links)} · Polideportivo ↔ El Raso ↔ El Edén ↔ Pinomar
-
-✈️ <b>Аэропорт</b>
-
-• {_linked('Alicante-Elche', 'airport', links)} · Bus Sigüenza
-
-🏥 <b>Больница</b>
-
-• {_linked('Hospital de Torrevieja', 'hospital', links)}
+🏥 {_linked('Больница в Торревьехе', 'hospital', links)}
 
 🚌 <b>Другие направления</b>
 
-• {_linked('Alicante', 'alicante', links)} · через La Marina, Santa Pola и El Altet
-• {_linked('Elche', 'elche', links)} · через San Fulgencio, Dolores, Catral и Crevillente
-• {_linked('Torrevieja и Pilar de la Horadada', 'south', links)}
-• {_linked('Rojales, Formentera del Segura, Almoradí и Orihuela', 'inland', links)}
+• {_linked('Аликанте', 'alicante', links)}
+• {_linked('Эльче', 'elche', links)}
+• {_linked('Ла-Мата', 'south', links)}
+• {_linked('Торревьеха', 'south', links)}
+• {_linked('ТЦ Zenia Boulevard', 'south', links)}
+• {_linked('Рохалес', 'inland', links)}
+• {_linked('Ориуэла', 'inland', links)}
 
-🎓 <b>Учёба</b>
-
-• {_linked('Universidad de Alicante', 'university', links)} · в учебный период, для членов ADEUGT"""
+🎓 {_linked('Университет Аликанте', 'university', links)}
+Только в учебный период · для членов ADEUGT"""
     target = "<b>Полезное о Гуардамаре</b>"
     if root_link is not None:
         target = (
