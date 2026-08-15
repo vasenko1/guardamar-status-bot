@@ -35,8 +35,9 @@ from ever being read.
 
 ## Resolution boundary
 
-Parser version 7 keeps the three-page request ceiling but prioritizes
-actionable metadata and records completion per candidate. The current
-occurrence also has an evidence-backed reviewed correction so a live in-place
-refresh does not depend on the supplemental site being available at that
-moment.
+Parser version 7 introduced the three-page priority and per-candidate
+completion. Version 8 additionally binds participation to its explicit date
+and time, preserves bounded beginner and group-format facts, and resumes large
+sections through bounded content hashes. The current occurrence also has an
+evidence-backed reviewed correction so a live in-place refresh does not depend
+on the supplemental site being available at that moment.

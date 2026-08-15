@@ -540,19 +540,64 @@ def _enrich_todo_participation(
 ) -> Tuple[SourceEvent, ...]:
     """Attach explicit event-local registration facts to one occurrence."""
 
+    def matches(
+        detail: TodoCulturaParticipation,
+        event: SourceEvent,
+    ) -> Optional[float]:
+        if detail.event_dates and not any(
+            event.start_date <= candidate <= event.end_date
+            for candidate in detail.event_dates
+        ):
+            return None
+        if (
+            detail.start_time is not None
+            and event.start_time != detail.start_time
+        ):
+            return None
+        overlap = _word_overlap(event.title_es, detail.title_hint)
+        return overlap if overlap >= 0.5 else None
+
     enriched = []
     for event in events:
         if not event.start_date <= target_date <= event.end_date:
             enriched.append(event)
             continue
-        best = None
-        best_overlap = 0.0
+        ranked = []
         for detail in details:
-            candidate_overlap = _word_overlap(event.title_es, detail.title_hint)
-            if candidate_overlap > best_overlap:
-                best = detail
-                best_overlap = candidate_overlap
-        if best is None or best_overlap < 0.5:
+            candidate_overlap = matches(detail, event)
+            if candidate_overlap is not None:
+                ranked.append((candidate_overlap, detail))
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        best = ranked[0][1] if ranked else None
+        if best is not None:
+            tied = [
+                detail for overlap, detail in ranked
+                if overlap == ranked[0][0]
+            ]
+            facts = {
+                (
+                    detail.registration_contact,
+                    detail.participation_note,
+                    detail.capacity_limited,
+                    detail.start_time,
+                )
+                for detail in tied
+            }
+            matching_sessions = {
+                candidate.start_time
+                for candidate in events
+                if candidate.start_date == event.start_date
+                and matches(best, candidate) is not None
+            }
+            if (
+                len(facts) > 1
+                or (
+                    best.start_time is None
+                    and len(matching_sessions) > 1
+                )
+            ):
+                best = None
+        if best is None:
             enriched.append(event)
             continue
         enriched.append(replace(
