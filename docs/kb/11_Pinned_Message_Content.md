@@ -154,6 +154,8 @@ The airport message is refreshed by ADR 0043 at 05:00 from the operator result
 for the current date. It shows both directions, exact operator endpoint maps,
 the standard fare only after independent tariff validation, and a link for
 another date. A cached result always retains its explicit date and is never
-presented as current on a later day. Hospital de Torrevieja keeps the
-verified direction-specific stop links but omits fixed times, which can become
-stale independently of this guide.
+presented as current on a later day. Hospital de Torrevieja is shown as line 6
+with the all-year weekday and weekend/holiday departures defined by the signed
+CE-704 service project. Its source link points to the current Generalitat
+concession notice, not to the retired Autobusing search page. Keep the verified
+direction-specific stop links.

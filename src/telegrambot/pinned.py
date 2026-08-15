@@ -91,7 +91,25 @@ Polideportivo ↔ Estación de Autobuses ↔ El Raso ↔ El Edén ↔ Pinomar
     ),
     "hospital": with_footer(
         """🏥 <b>Гуардамар ↔ Hospital de Torrevieja</b>
-Прямой автобус · Costa Azul / Avanza
+Линия 6 · Costa Azul / Avanza
+
+🗓 <b>С понедельника по пятницу, в рабочие дни</b>
+
+<b>Гуардамар → Hospital de Torrevieja</b>
+07:30 · 09:00 · 11:00 · 13:00 · 15:00 · 17:30
+
+<b>Hospital de Torrevieja → Гуардамар</b>
+08:00 · 09:30 · 11:30 · 13:30 · 15:30 · 18:00
+
+🗓 <b>Суббота, воскресенье и праздники</b>
+
+<b>Гуардамар → Hospital de Torrevieja</b>
+07:30 · 09:00 · 13:00 · 16:30
+
+<b>Hospital de Torrevieja → Гуардамар</b>
+08:00 · 09:30 · 13:30 · 17:00
+
+⏱ Около 30 минут
 
 <b>В больницу</b>
 <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0877707496%2C-0.6560185196">Guardamar</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0583071959%2C-0.6569832033">La Rosa</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.034828419%2C-0.6600459049">Pinomar</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0241372606%2C-0.6570898059">La Mata</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=37.9643925369%2C-0.7172232255">Hospital de Torrevieja</a>
@@ -99,7 +117,7 @@ Polideportivo ↔ Estación de Autobuses ↔ El Raso ↔ El Edén ↔ Pinomar
 <b>Обратно</b>
 <a href="https://www.google.com/maps/search/?api=1&amp;query=37.9643925369%2C-0.7172232255">Hospital de Torrevieja</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0262439991%2C-0.655954">La Mata</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.034828419%2C-0.6600459049">Pinomar</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0560738544%2C-0.6568971718">La Rosa</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0877707496%2C-0.6560185196">Guardamar</a>
 
-🔎 <a href="https://regular.autobusing.com/info?empresa=costa-azul&amp;locale=es">Проверьте расписание</a>"""
+🔎 <a href="https://www.gva.es/es/web/arees/infraestructures-i-transports/-/asset_publisher/21dbI2RUgqwC/content/nuevas-concesiones-de-atuob%25C3%259As-en-la-comarca-de-la-vega-baja/20081096?_com_liferay_asset_publisher_web_portlet_AssetPublisherPortlet_INSTANCE_21dbI2RUgqwC_assetEntryId=412097993">Информация о линии</a>"""
     ),
     "alicante": with_footer(
         """🚌 <b>Гуардамар ↔ Alicante</b>
