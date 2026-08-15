@@ -290,16 +290,16 @@ def build_root(
     """Build the compact message intended to remain pinned."""
 
     if camera_link is None or transport_link is None:
-        cameras = "<b>Камеры Гуардамара</b>"
-        transport = "<b>Транспорт из Гуардамара</b>"
+        cameras = "<b>Онлайн-камеры</b>"
+        transport = "<b>Транспорт в Гуардамаре</b>"
     else:
-        cameras = f'<a href="{camera_link}"><b>Камеры Гуардамара</b></a>'
+        cameras = f'<a href="{camera_link}"><b>Онлайн-камеры</b></a>'
         transport = (
-            f'<a href="{transport_link}"><b>Транспорт из Гуардамара</b></a>'
+            f'<a href="{transport_link}"><b>Транспорт в Гуардамаре</b></a>'
         )
-    return with_footer(
+    return (
         "📌 <b>Полезное о Гуардамаре</b>\n\n"
-        f"📹 {cameras}\n"
+        f"📹 {cameras}\n\n"
         f"🚌 {transport}"
     )
 

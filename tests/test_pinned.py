@@ -22,14 +22,17 @@ from telegrambot.telegram import TelegramError
 
 
 class PinnedContentTests(unittest.TestCase):
-    def test_every_message_is_telegram_safe_and_has_footer(self):
-        for message in preview_messages():
+    def test_guide_messages_are_safe_and_only_root_omits_footer(self):
+        messages = preview_messages()
+        for message in messages[:-1]:
             with self.subTest(message=message[:40]):
                 self.assertLessEqual(len(message), 4096)
                 self.assertEqual(message.count(FOOTER), 1)
                 self.assertNotIn("—", message)
                 self.assertNotIn("Проверено:", message)
                 self.assertNotIn("Официальное расписание", message)
+        self.assertLessEqual(len(messages[-1]), 4096)
+        self.assertNotIn(FOOTER, messages[-1])
 
     def test_preview_contains_all_leaves_camera_index_and_root(self):
         messages = preview_messages()
@@ -37,6 +40,19 @@ class PinnedContentTests(unittest.TestCase):
         self.assertIn(build_cameras(), messages)
         self.assertIn("Транспорт из Гуардамара", messages[-2])
         self.assertIn("Полезное о Гуардамаре", messages[-1])
+
+    def test_root_is_a_compact_static_navigator_without_footer(self):
+        root = build_root(
+            "https://t.me/c/1/20", "https://t.me/c/1/21"
+        )
+
+        self.assertEqual(
+            root,
+            '📌 <b>Полезное о Гуардамаре</b>\n\n'
+            '📹 <a href="https://t.me/c/1/20"><b>Онлайн-камеры</b></a>\n\n'
+            '🚌 <a href="https://t.me/c/1/21"><b>Транспорт в Гуардамаре</b></a>',
+        )
+        self.assertNotIn(FOOTER, root)
 
     def test_hospital_message_has_year_round_timetable_and_live_source(self):
         hospital = build_leaf_message("hospital")

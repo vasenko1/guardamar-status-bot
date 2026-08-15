@@ -6,6 +6,24 @@ This page stores the approved copy and editorial rules for the linked pinned
 city guide implemented by ADR 0041. Publication is an explicit operator action;
 it is not scheduled and does not interact with the Morning Digest.
 
+## Compact root
+
+Use the root only as a quiet two-item navigator:
+
+```markdown
+📌 **Полезное о Гуардамаре**
+
+📹 **Онлайн-камеры**
+
+🚌 **Транспорт в Гуардамаре**
+```
+
+Both item names link to their managed detail messages. The root has no shared
+promotional footer: it is permanently pinned, already belongs to the group and
+should contain only navigation. Keep one blank line between the two links so
+they remain separate touch targets on a phone. Write `Онлайн-камеры` with one
+hyphen; do not use `Он-лайн камеры`.
+
 ## Live cameras
 
 Use the following Russian copy as the approved camera section:
