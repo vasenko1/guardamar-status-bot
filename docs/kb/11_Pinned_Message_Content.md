@@ -88,10 +88,17 @@ reviewed before later copy changes.
 ### Information design
 
 - Put city routes first in the transport index.
-- Use `Автобусы Гуардамара` for the overall heading and
-  `Междугородние направления` for services leaving the municipality.
-- Keep hospitals outside the list of cities. Show `Hospital de Torrevieja`
-  under a separate `Больница` heading.
+- Keep the transport index as a destination menu rather than a route summary:
+  omit its introductory instructions and intermediate-stop descriptions.
+- Put both municipal routes on one `Городские маршруты` line.
+- Make the single airport, hospital and university destinations directly
+  linked rows instead of headings followed by one-item lists.
+- Keep the hospital outside the city list and label it `Больница в
+  Торревьехе`.
+- Give La Mata, Torrevieja and Zenia Boulevard separate menu entries that
+  point to the same verified south-coast route detail. Give Rojales and
+  Orihuela separate entries pointing to the inland route detail. Do not
+  create duplicate leaf messages for those destinations.
 - Lead with the place a resident recognizes, such as an urbanization or beach,
   and show route numbers second.
 - For every residential area, show all confirmed routes, not only the municipal
@@ -180,3 +187,10 @@ with the all-year weekday and weekend/holiday departures defined by the signed
 CE-704 service project. Its source link points to the current Generalitat
 concession notice, not to the retired Autobusing search page. Keep the verified
 direction-specific stop links.
+
+The south-coast detail keeps the general operator planner and one stable
+prefilled Guardamar-to-`C.C. BOULEVAR ZENIA` search link. The latter
+deliberately omits a date: the user selects the travel date and submits the
+form, so the pinned link does not become stale the next day. Preserve the
+operator's misspelled internal stop value only in the URL; display `ТЦ Zenia
+Boulevard`.

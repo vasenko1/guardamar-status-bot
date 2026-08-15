@@ -207,6 +207,14 @@ Torrevieja, Playa Flamenca, Zenia Boulevard, Campoamor, Mil Palmeras, and
 Pilar de la Horadada. Public copy should use the date-specific Costa Azul /
 Avanza planner rather than reproduce a large seasonal timetable.
 
+On 2026-08-15 the operator form was tested with `GUARDAMAR` as origin and its
+internal `C.C. BOULEVAR ZENIA` stop as destination. A GET URL carrying those
+two form fields reliably prefills both endpoints without cookies. Results are
+still submitted by POST and require an explicit travel date, so a portable
+Telegram link cannot open the final results directly. The public guide uses
+the stable prefilled URL without a date; the user chooses a date and presses
+`Continuar`.
+
 ### Vega Baja inland corridor
 
 Current Bus Sigüenza CE-714 line 1 directly connects Guardamar with Daya Vieja,

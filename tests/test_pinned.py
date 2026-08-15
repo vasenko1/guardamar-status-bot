@@ -65,6 +65,45 @@ class PinnedContentTests(unittest.TestCase):
         self.assertIn("https://t.me/c/1/22", index)
         self.assertNotIn(FOOTER, index)
 
+    def test_transport_navigator_is_a_compact_destination_menu(self):
+        links = {
+            key: f"https://t.me/c/1/{number}"
+            for number, key in enumerate(LEAF_MESSAGES, start=1)
+        }
+        index = build_transport_index(links)
+
+        self.assertNotIn("Только прямые маршруты", index)
+        self.assertIn("<b>Городские маршруты:</b>", index)
+        self.assertNotIn("Puerto Deportivo ↔", index)
+        self.assertIn("Аэропорт Alicante-Elche", index)
+        self.assertIn("Больница в Торревьехе", index)
+        for destination in (
+            "Аликанте",
+            "Эльче",
+            "Ла-Мата",
+            "Торревьеха",
+            "ТЦ Zenia Boulevard",
+            "Рохалес",
+            "Ориуэла",
+            "Университет Аликанте",
+        ):
+            with self.subTest(destination=destination):
+                self.assertIn(destination, index)
+
+        self.assertEqual(index.count(links["south"]), 3)
+        self.assertEqual(index.count(links["inland"]), 2)
+
+    def test_south_route_has_stable_prefilled_zenia_search(self):
+        south = build_leaf_message("south")
+
+        self.assertIn("Расписание до ТЦ Zenia Boulevard", south)
+        self.assertIn("venta%5Borigen_nombre%5D=GUARDAMAR", south)
+        self.assertIn(
+            "venta%5Bdestino_nombre%5D=C.C.%20BOULEVAR%20ZENIA",
+            south,
+        )
+        self.assertNotIn("venta%5Bfecha_ida%5D", south)
+
     def test_hospital_message_has_year_round_timetable_and_live_source(self):
         hospital = build_leaf_message("hospital")
         self.assertIn("Линия 6", hospital)
