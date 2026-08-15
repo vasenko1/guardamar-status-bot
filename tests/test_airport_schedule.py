@@ -425,7 +425,13 @@ class AirportMessageTests(unittest.TestCase):
         self.assertIn("Обычный билет: 2,95 €", message)
         self.assertIn("38.087834%2C-0.655759", message)
         self.assertIn("38.282222222222%2C-0.55805555555556", message)
-        self.assertIn("Проверить расписание на другую дату", message)
+        self.assertIn("Найти расписание на другую дату", message)
+        self.assertIn(
+            "До аэропорта можно доехать без пересадок", message
+        )
+        self.assertIn("📍 <b>Откуда и куда</b>", message)
+        self.assertIn("автовокзал Гуардамара", message)
+        self.assertIn("остановка у терминала аэропорта", message)
         self.assertIn("https://t.me/c/123/20", message)
         self.assertEqual(message.count(FOOTER), 1)
         self.assertNotIn("—", message)
