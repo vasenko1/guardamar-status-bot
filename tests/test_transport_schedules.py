@@ -29,34 +29,50 @@ class TransportCaptionTests(unittest.TestCase):
         summer = build_line_caption(
             LINES["line_1"],
             datetime(2026, 8, 14, tzinfo=ZoneInfo("Europe/Madrid")),
-            LINES["line_1"].default_url,
             link,
             True,
         )
         regular = build_line_caption(
             LINES["line_1"],
             datetime(2026, 9, 1, tzinfo=ZoneInfo("Europe/Madrid")),
-            LINES["line_1"].default_url,
             link,
             True,
         )
         unknown = build_line_caption(
             LINES["line_1"],
             datetime(2027, 7, 1, tzinfo=ZoneInfo("Europe/Madrid")),
-            LINES["line_1"].default_url,
             link,
             False,
         )
 
-        self.assertIn("июль и август, каждый день", summer)
+        self.assertIn("В июле и августе", summer)
+        self.assertIn("автобус ходит ежедневно", summer)
+        self.assertIn("центр Гуардамара", summer)
+        self.assertIn("обычно по средам утром", summer)
         self.assertNotIn("сентябрь-июнь", summer)
-        self.assertIn("сентябрь-июнь", regular)
+        self.assertIn("С сентября по июнь", regular)
         self.assertNotIn("июль и август", regular)
-        self.assertIn("Актуальное расписание", unknown)
+        self.assertIn("Актуальные дни и время", unknown)
         self.assertNotIn("Los Secanos", unknown)
         for caption in (summer, regular, unknown):
             self.assertLessEqual(len(caption), 1024)
             self.assertNotIn("—", caption)
+            self.assertNotIn("Открыть расписание", caption)
+            self.assertNotIn(".pdf", caption)
+
+    def test_line_two_explains_served_areas_and_market_stop(self):
+        caption = build_line_caption(
+            LINES["line_2"],
+            datetime(2026, 8, 14, tzinfo=ZoneInfo("Europe/Madrid")),
+            "https://t.me/c/1/20",
+            True,
+        )
+
+        self.assertIn("Pórtico Mediterráneo", caption)
+        self.assertIn("Los Estaños", caption)
+        self.assertIn("По средам", caption)
+        self.assertIn("La Redona, 56", caption)
+        self.assertNotIn("Открыть расписание", caption)
 
 
 class TransportStateMigrationTests(unittest.TestCase):

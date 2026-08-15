@@ -165,10 +165,17 @@ starred departures also pass Los Secanos and the cemetery.
   validated the operator result for the explicitly displayed date. Keep one
   short functional link for another date.
 - For municipal lines 1 and 2, attach the bounded PNG rendered from the exact
-  official one-page PDF under ADR 0042 and keep a direct PDF link for full
-  quality. Show only the currently applicable reviewed calendar period. An
-  unknown revision receives a generic caption without old notes or seasonal
-  claims. Do not turn a date-specific search result into a pinned image.
+  official one-page PDF under ADR 0042. The image is the complete timetable;
+  do not repeat it with a PDF link in the caption. For a reviewed PDF, describe
+  the served areas and exceptions in plain Russian while preserving official
+  place names. Show only the currently applicable reviewed calendar period.
+  An unknown revision receives the official route line and a generic caption
+  without old notes or seasonal claims. Do not turn a date-specific search
+  result into a pinned image.
+- Explain route symbols as passenger outcomes: which trips add an area and
+  when the market stop is used. Do not write source-oriented phrases such as
+  `используется утром по рыночным дням` without explaining the practical day
+  and stop.
 - Make the names of useful stops clickable map links. Do not repeat the map-pin
   icon on every timetable row.
 - Link an airport terminal stop directly rather than describing it only as an
