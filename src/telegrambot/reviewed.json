@@ -120,7 +120,9 @@
           "end_time": "21:00",
           "place": "Centro Social Juvenil",
           "category": "event",
-          "sources": ["mupi_reviewed", "todo_cultura_reviewed"]
+          "sources": ["mupi_reviewed", "todo_cultura_reviewed"],
+          "participation_note": "для молодёжи 12–30 лет; можно начать с нуля или улучшить технику и игру в группе",
+          "registration_contact": "Centro Social Juvenil или WhatsApp 609 00 67 54"
         },
         {
           "title_es": "Taller de música electrónica",

@@ -69,6 +69,24 @@ class TodoCulturaTests(unittest.TestCase):
 
         self.assertEqual(candidate["dates"], ["2026-08-12"])
         self.assertFalse(candidate["detail_checked"])
+        self.assertEqual(candidate["detail_priority"], 0)
+
+    def test_metadata_prioritizes_event_local_participation_facts(self):
+        candidate = _metadata_candidate({
+            "id": 128582,
+            "modified_gmt": "2026-08-10T16:50:52",
+            "link": "https://todoculturavegabaja.es/eventos/guitarras/",
+            "title": {"rendered": (
+                "Taller de guitarras eléctricas para jóvenes "
+                "de 12 a 30 años"
+            )},
+            "excerpt": {"rendered": (
+                "Sábado 15 de agosto. Inscripciones en el centro."
+            )},
+        }, date(2026, 8, 15))
+
+        self.assertEqual(candidate["dates"], ["2026-08-15"])
+        self.assertEqual(candidate["detail_priority"], 3)
 
     def test_metadata_without_date_is_not_selected_for_full_download(self):
         metadata = [{
@@ -129,7 +147,7 @@ class TodoCulturaTests(unittest.TestCase):
 
     def test_processes_only_new_edge_date_from_saved_candidate(self):
         prior = {
-            "parser_version": 6,
+            "parser_version": 7,
             "cursor_modified_gmt": "2026-08-07T10:00:00",
             "candidates": [{
                 "id": 128245,
@@ -170,7 +188,7 @@ class TodoCulturaTests(unittest.TestCase):
 
     def test_unchanged_complete_window_makes_no_detail_request(self):
         prior = {
-            "parser_version": 6,
+            "parser_version": 7,
             "cursor_modified_gmt": "2026-08-07T10:00:00",
             "candidates": [{
                 "id": 128245,
@@ -225,11 +243,11 @@ class TodoCulturaTests(unittest.TestCase):
 
         details.assert_called_once_with([128245])
         self.assertEqual(window.programs[0].dates, (date(2026, 8, 9),))
-        self.assertEqual(window.source_state["parser_version"], 6)
+        self.assertEqual(window.source_state["parser_version"], 7)
 
-    def test_covering_date_marks_older_duplicate_candidate_processed(self):
+    def test_same_date_candidates_are_each_processed(self):
         prior = {
-            "parser_version": 6,
+            "parser_version": 7,
             "cursor_modified_gmt": "2026-08-07T10:00:00",
             "candidates": [
                 {
@@ -274,16 +292,149 @@ class TodoCulturaTests(unittest.TestCase):
 
         self.assertEqual(len(window.programs), 1)
         self.assertIn("Evento 2", window.programs[0].text)
-        self.assertNotIn("Evento 1", window.programs[0].text)
+        self.assertIn("Evento 1", window.programs[0].text)
         self.assertTrue(all(
             "2026-08-09" in candidate["processed_dates"]
             for candidate in window.source_state["candidates"]
         ))
         self.assertIn("2026-08-09", window.source_state["covered_dates"])
 
+    def test_actionable_older_candidate_wins_one_of_three_bounded_slots(self):
+        metadata = []
+        for identifier, modified, title in (
+            (4, "2026-08-14T12:00:00", "Concierto cuatro"),
+            (3, "2026-08-14T11:00:00", "Concierto tres"),
+            (2, "2026-08-14T10:00:00", "Concierto dos"),
+            (
+                1,
+                "2026-08-10T10:00:00",
+                "Taller de guitarra para jóvenes de 12 a 30 años",
+            ),
+        ):
+            metadata.append({
+                "id": identifier,
+                "modified_gmt": modified,
+                "link": (
+                    "https://todoculturavegabaja.es/eventos/"
+                    f"{identifier}/"
+                ),
+                "title": {"rendered": title},
+                "excerpt": {"rendered": "Sábado 15 de agosto"},
+            })
+        documents = [{
+            "id": item["id"],
+            "modified_gmt": item["modified_gmt"],
+            "link": item["link"],
+            "content": {"rendered": (
+                "<p>El Ayuntamiento de Guardamar publica la agenda "
+                "municipal.</p><p>Sábado 15 de agosto</p>"
+                f"<p>19:00: Evento {item['id']}.</p>"
+            )},
+        } for item in metadata]
+        selected_ids = []
+
+        def selected_documents(identifiers):
+            selected_ids.extend(identifiers)
+            return [
+                item for item in documents if item["id"] in identifiers
+            ]
+
+        with (
+            patch(
+                "telegrambot.todo_cultura._read_metadata",
+                return_value=metadata,
+            ),
+            patch(
+                "telegrambot.todo_cultura._read_documents",
+                side_effect=selected_documents,
+            ),
+        ):
+            _read_program_window(date(2026, 8, 15), {})
+
+        self.assertEqual(len(selected_ids), 3)
+        self.assertIn(1, selected_ids)
+        self.assertNotIn(2, selected_ids)
+
+    def test_parser_upgrade_refreshes_priority_for_unchanged_candidates(self):
+        metadata = []
+        prior_candidates = []
+        for identifier, modified, title in (
+            (4, "2026-08-14T12:00:00", "Concierto cuatro"),
+            (3, "2026-08-14T11:00:00", "Concierto tres"),
+            (2, "2026-08-14T10:00:00", "Concierto dos"),
+            (
+                1,
+                "2026-08-10T10:00:00",
+                "Taller de guitarra para jóvenes de 12 a 30 años",
+            ),
+        ):
+            link = f"https://todoculturavegabaja.es/eventos/{identifier}/"
+            metadata.append({
+                "id": identifier,
+                "modified_gmt": modified,
+                "link": link,
+                "title": {"rendered": title},
+                "excerpt": {"rendered": "Sábado 15 de agosto"},
+            })
+            prior_candidates.append({
+                "id": identifier,
+                "modified_gmt": modified,
+                "link": link,
+                "dates": ["2026-08-15"],
+                "processed_dates": ["2026-08-15"],
+                "detail_checked": True,
+            })
+        selected_ids = []
+
+        def selected_documents(identifiers):
+            selected_ids.extend(identifiers)
+            return [{
+                "id": identifier,
+                "modified_gmt": next(
+                    item["modified_gmt"] for item in metadata
+                    if item["id"] == identifier
+                ),
+                "link": (
+                    "https://todoculturavegabaja.es/eventos/"
+                    f"{identifier}/"
+                ),
+                "content": {"rendered": (
+                    "<p>El Ayuntamiento de Guardamar publica la agenda "
+                    "municipal.</p><p>Sábado 15 de agosto</p>"
+                    f"<p>19:00: Evento {identifier}.</p>"
+                )},
+            } for identifier in identifiers]
+
+        with (
+            patch(
+                "telegrambot.todo_cultura._read_metadata",
+                return_value=metadata,
+            ),
+            patch(
+                "telegrambot.todo_cultura._read_documents",
+                side_effect=selected_documents,
+            ),
+        ):
+            window = _read_program_window(date(2026, 8, 15), {
+                "parser_version": 6,
+                "cursor_modified_gmt": "2026-08-14T12:00:00",
+                "covered_dates": ["2026-08-15"],
+                "candidates": prior_candidates,
+            })
+
+        self.assertEqual(len(selected_ids), 3)
+        self.assertIn(1, selected_ids)
+        self.assertNotIn(2, selected_ids)
+        guitar = next(
+            candidate for candidate in window.source_state["candidates"]
+            if candidate["id"] == 1
+        )
+        self.assertEqual(guitar["detail_priority"], 2)
+        self.assertIn("2026-08-15", guitar["processed_dates"])
+
     def test_changed_publication_reopens_already_processed_date(self):
         prior = {
-            "parser_version": 6,
+            "parser_version": 7,
             "cursor_modified_gmt": "2026-08-07T10:00:00",
             "covered_dates": ["2026-08-09"],
             "candidates": [{
@@ -356,6 +507,38 @@ class TodoCulturaTests(unittest.TestCase):
         )
 
         self.assertEqual(details, ())
+
+    def test_binds_email_only_registration_age_and_flexible_capacity(self):
+        details = _participation(
+            "Sábado 22 de agosto\n"
+            "08:00: Ruta para niños entre 6 y 14 años.\n"
+            "Las plazas están limitadas.\n"
+            "Inscripciones: actividades@example.es"
+        )
+
+        self.assertEqual(len(details), 1)
+        self.assertEqual(
+            details[0].registration_contact,
+            "actividades@example.es",
+        )
+        self.assertEqual(
+            details[0].participation_note,
+            "для участников 6–14 лет",
+        )
+        self.assertTrue(details[0].capacity_limited)
+
+    def test_binds_minimum_age_from_registration_row(self):
+        details = _participation(
+            "Jueves 20 de agosto\n"
+            "11:30: Taller para edades a partir de 4 años.\n"
+            "Reservas: 966 72 71 70"
+        )
+
+        self.assertEqual(len(details), 1)
+        self.assertEqual(
+            details[0].participation_note,
+            "для участников от 4 лет",
+        )
 
     def test_reads_explicit_price_linked_to_official_event(self):
         rendered = (
