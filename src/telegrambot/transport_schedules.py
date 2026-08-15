@@ -67,6 +67,7 @@ class LineDefinition:
     key: str
     label: str
     route: str
+    reviewed_summary: str
     default_url: str
     filename_marker: str
     reviewed_sha256: str
@@ -81,6 +82,11 @@ LINES: Dict[str, LineDefinition] = {
             "Puerto Deportivo ↔ Plaza Constitución ↔ "
             "Av. del Mediterráneo ↔ Campomar"
         ),
+        reviewed_summary=(
+            "Маршрут соединяет Puerto Deportivo (порт), центр Гуардамара, "
+            "автовокзал, пляжную зону, Hotel Playas de Guardamar и "
+            "Campomar. Автобус ходит в обоих направлениях."
+        ),
         default_url=(
             "https://www.guardamardelsegura.es/wp-content/uploads/"
             "2026/04/L01_v6-Guardamar.pdf"
@@ -90,8 +96,10 @@ LINES: Dict[str, LineDefinition] = {
             "8ca65b756b78575060290f8ccd8917fd87e09bb48c7d3d9120ae2505432f8e33"
         ),
         reviewed_note=(
-            "Рейсы со звёздочкой проходят через Los Secanos. "
-            "La Redona, 56 используется утром по рыночным дням."
+            "⭐ Рейсы, отмеченные звёздочкой, дополнительно заезжают "
+            "в Los Secanos.\n\n"
+            "🛍 В дни работы рынка, обычно по средам утром, автобус "
+            "останавливается рядом с рынком: La Redona, 56."
         ),
     ),
     "line_2": LineDefinition(
@@ -101,6 +109,12 @@ LINES: Dict[str, LineDefinition] = {
             "Polideportivo ↔ Estación de Autobuses ↔ El Raso ↔ "
             "El Edén ↔ Pinomar"
         ),
+        reviewed_summary=(
+            "Маршрут соединяет Polideportivo (спортивный комплекс) и "
+            "автовокзал с районами Pórtico Mediterráneo, El Raso, "
+            "Campico, El Edén, Los Estaños, La Rosa и Pinomar. Автобус "
+            "ходит в обоих направлениях."
+        ),
         default_url=(
             "https://www.guardamardelsegura.es/wp-content/uploads/"
             "2026/04/L02_v3-Guardamar.pdf"
@@ -109,7 +123,10 @@ LINES: Dict[str, LineDefinition] = {
         reviewed_sha256=(
             "088c21040b10a18e87ecfd353b1474d9ef1cc07d925a33fd4ac6d4f583ea9425"
         ),
-        reviewed_note="La Redona, 56 используется только по средам.",
+        reviewed_note=(
+            "🛍 По средам автобус также останавливается рядом с рынком: "
+            "La Redona, 56."
+        ),
     ),
 }
 
@@ -284,27 +301,24 @@ def render_pdf(payload: bytes, destination: Path) -> str:
 def build_line_caption(
     definition: LineDefinition,
     now: datetime,
-    pdf_url: str,
     transport_link: str,
     reviewed: bool,
 ) -> str:
     if reviewed and now.month in {7, 8}:
-        period = "🗓 <b>Сейчас:</b> расписание на июль и август, каждый день"
+        period = "🗓 <b>В июле и августе:</b> автобус ходит ежедневно."
     elif reviewed:
         period = (
-            "🗓 <b>Сейчас:</b> расписание на сентябрь-июнь\n"
-            "С понедельника по субботу; по воскресеньям действует "
-            "отдельное расписание"
+            "🗓 <b>С сентября по июнь:</b> с понедельника по субботу. "
+            "По воскресеньям действует отдельное расписание."
         )
     else:
-        period = "🗓 Актуальное расписание находится на изображении"
-    note = f"\n\nℹ️ {definition.reviewed_note}" if reviewed else ""
+        period = "🗓 Актуальные дни и время отправления указаны на изображении."
+    summary = definition.reviewed_summary if reviewed else definition.route
+    note = f"\n\n{definition.reviewed_note}" if reviewed else ""
     message = with_footer(
         f"🚌 <b>Городской автобус · {definition.label}</b>\n"
-        f"{definition.route}\n\n"
+        f"{summary}\n\n"
         f"{period}{note}\n\n"
-        f'🔎 <a href="{html.escape(pdf_url, quote=True)}">'
-        "Открыть расписание с остановками в полном качестве</a>\n\n"
         f'⬅️ <a href="{transport_link}"><b>К списку транспорта</b></a>'
     )
     if len(message) > 1024 or message.count(FOOTER) != 1 or "—" in message:
@@ -432,7 +446,6 @@ async def sync_transport_schedules(
         caption = build_line_caption(
             definition,
             now,
-            line_state["source_url"],
             transport_link,
             line_state.get("reviewed") is True,
         )
