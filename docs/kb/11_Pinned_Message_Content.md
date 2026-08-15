@@ -152,6 +152,24 @@ starred departures also pass Los Secanos and the cemetery.
 
 ### Approved leaf-message presentation rules
 
+- Write intercity leaves for a passenger rather than as a source extract.
+  After the destination heading, state in one natural sentence whether the
+  trip is direct, name the current operator once, and summarize only the key
+  intermediate places a resident is likely to recognize.
+- Use the current public operator name `Avanza` in passenger copy. Keep the
+  legacy `costa-azul` value only inside an official planner URL when the
+  operator site requires it; do not render `Costa Azul / Avanza` as two
+  competing passenger brands.
+- Group endpoint maps under `📍 Откуда и куда`, a multi-stop route under
+  `📍 Основные остановки`, and direction-specific boarding points under one
+  equally explicit map heading. Translate generic place types in visible
+  labels, such as `автовокзал`, `проспект`, and `улица`, while preserving
+  proper names such as `Alicante`, `Elche`, and `Pintor Sorolla`.
+- A link label must describe the passenger outcome. Use `Найти расписание на
+  нужную дату` for a planner form, `Найти расписание на другую дату` when the
+  current dated timetable is already displayed, and a destination-specific
+  label for a useful prefilled search. Do not use the source-oriented command
+  `Проверьте расписание`.
 - End every transport detail with `⬅️ К списку транспорта`, linked to the
   transport navigator. End the navigator and camera list with
   `⬅️ Полезное о Гуардамаре`, linked to the compact root. This names
@@ -188,7 +206,9 @@ starred departures also pass Los Secanos and the cemetery.
 The airport message is refreshed by ADR 0043 at 05:00 from the operator result
 for the current date. It shows both directions, exact operator endpoint maps,
 the standard fare only after independent tariff validation, and a link for
-another date. A cached result always retains its explicit date and is never
+another date. Its static recovery copy follows the same passenger-first style,
+so an unavailable dated result does not restore old terminology. A cached
+result always retains its explicit date and is never
 presented as current on a later day. Hospital de Torrevieja is shown as line 6
 with the all-year weekday and weekend/holiday departures defined by the signed
 CE-704 service project. Its source link points to the current Generalitat

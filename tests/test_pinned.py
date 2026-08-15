@@ -96,7 +96,7 @@ class PinnedContentTests(unittest.TestCase):
     def test_south_route_has_stable_prefilled_zenia_search(self):
         south = build_leaf_message("south")
 
-        self.assertIn("Расписание до ТЦ Zenia Boulevard", south)
+        self.assertIn("Посмотреть рейсы до Zenia Boulevard", south)
         self.assertIn("venta%5Borigen_nombre%5D=GUARDAMAR", south)
         self.assertIn(
             "venta%5Bdestino_nombre%5D=C.C.%20BOULEVAR%20ZENIA",
@@ -106,12 +106,44 @@ class PinnedContentTests(unittest.TestCase):
 
     def test_hospital_message_has_year_round_timetable_and_live_source(self):
         hospital = build_leaf_message("hospital")
-        self.assertIn("Линия 6", hospital)
+        self.assertIn("линии 6 Avanza", hospital)
         self.assertIn("07:30 · 09:00 · 11:00", hospital)
         self.assertIn("08:00 · 09:30 · 13:30 · 17:00", hospital)
-        self.assertIn("Суббота, воскресенье и праздники", hospital)
+        self.assertIn("По выходным и праздникам", hospital)
         self.assertIn("www.gva.es", hospital)
         self.assertNotIn("regular.autobusing.com", hospital)
+
+    def test_intercity_leaves_use_one_human_passenger_first_style(self):
+        route_keys = (
+            "airport", "hospital", "alicante", "elche", "south",
+            "inland", "university",
+        )
+        for key in route_keys:
+            with self.subTest(key=key):
+                message = build_leaf_message(key)
+                self.assertNotIn("Проверьте расписание", message)
+                self.assertNotIn("Costa Azul / Avanza", message)
+                self.assertNotIn("Прямой автобус ·", message)
+                self.assertIn("📍 <b>", message)
+
+        for key in ("airport", "alicante", "elche", "south", "inland"):
+            with self.subTest(schedule_key=key):
+                self.assertIn(
+                    "Найти расписание на нужную дату",
+                    build_leaf_message(key),
+                )
+        self.assertIn(
+            "Доехать можно без пересадок на автобусе Avanza",
+            build_leaf_message("alicante"),
+        )
+        self.assertIn(
+            "остановка на проспекте Vicente Quiles в Elche",
+            build_leaf_message("elche"),
+        )
+        self.assertIn(
+            "Для поездки нужно быть членом ADEUGT",
+            build_leaf_message("university"),
+        )
 
     def test_internal_links_support_public_and_private_supergroups(self):
         self.assertEqual(

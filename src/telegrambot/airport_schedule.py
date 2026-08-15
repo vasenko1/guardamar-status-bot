@@ -872,7 +872,8 @@ def build_airport_message(
         )
     message = with_footer(
         "✈️ <b>Гуардамар ↔ аэропорт Alicante-Elche</b>\n"
-        "Прямой автобус · Bus Sigüenza\n\n"
+        "До аэропорта можно доехать без пересадок на автобусе "
+        "Bus Sigüenza.\n\n"
         f"🗓 <b>{date_label}</b>\n\n"
         "<b>Гуардамар → аэропорт</b>\n"
         + " · ".join(schedule.to_airport)
@@ -880,12 +881,12 @@ def build_airport_message(
         + " · ".join(schedule.from_airport)
         + "\n\n⏱ Около 35 минут"
         + fare_line
-        + "\n📍 <a href=\""
+        + "\n\n📍 <b>Откуда и куда</b>\n<a href=\""
         + guardamar_map
-        + "\">Estación de Autobuses</a> ↔ <a href=\""
+        + "\">автовокзал Гуардамара</a> ↔ <a href=\""
         + airport_map
-        + "\">остановка аэропорта</a>\n\n"
-        + f'🔎 <a href="{PLANNER_URL}">Проверить расписание на другую дату</a>'
+        + "\">остановка у терминала аэропорта</a>\n\n"
+        + f'🕒 <a href="{PLANNER_URL}">Найти расписание на другую дату</a>'
         + "\n\n⬅️ <a href=\""
         + transport_link
         + "\"><b>К списку транспорта</b></a>"
