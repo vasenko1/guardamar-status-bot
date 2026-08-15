@@ -247,8 +247,7 @@ def build_transport_index(
 ) -> str:
     """Build the transport navigator with live links or preview labels."""
 
-    message = with_footer(
-        f"""🧭 <b>Транспорт из Гуардамара</b>
+    message = f"""🧭 <b>Транспорт из Гуардамара</b>
 
 Только прямые маршруты, без пересадок. Нажмите на нужное направление, чтобы открыть расписание с остановками.
 
@@ -275,12 +274,12 @@ def build_transport_index(
 🎓 <b>Учёба</b>
 
 • {_linked('Universidad de Alicante', 'university', links)} · в учебный период, для членов ADEUGT"""
-    )
-    return _with_back_link(
-        message,
-        "К главному закрепу",
-        root_link,
-    )
+    target = "<b>К главному закрепу</b>"
+    if root_link is not None:
+        target = (
+            f'<a href="{root_link}"><b>К главному закрепу</b></a>'
+        )
+    return f"{message}\n\n⬅️ {target}"
 
 
 def build_root(
@@ -290,16 +289,16 @@ def build_root(
     """Build the compact message intended to remain pinned."""
 
     if camera_link is None or transport_link is None:
-        cameras = "<b>Камеры Гуардамара</b>"
-        transport = "<b>Транспорт из Гуардамара</b>"
+        cameras = "<b>Онлайн-камеры</b>"
+        transport = "<b>Транспорт в Гуардамаре</b>"
     else:
-        cameras = f'<a href="{camera_link}"><b>Камеры Гуардамара</b></a>'
+        cameras = f'<a href="{camera_link}"><b>Онлайн-камеры</b></a>'
         transport = (
-            f'<a href="{transport_link}"><b>Транспорт из Гуардамара</b></a>'
+            f'<a href="{transport_link}"><b>Транспорт в Гуардамаре</b></a>'
         )
-    return with_footer(
+    return (
         "📌 <b>Полезное о Гуардамаре</b>\n\n"
-        f"📹 {cameras}\n"
+        f"📹 {cameras}\n\n"
         f"🚌 {transport}"
     )
 
