@@ -22,17 +22,19 @@ from telegrambot.telegram import TelegramError
 
 
 class PinnedContentTests(unittest.TestCase):
-    def test_guide_messages_are_safe_and_only_root_omits_footer(self):
+    def test_only_final_guide_messages_have_footer(self):
         messages = preview_messages()
-        for message in messages[:-1]:
+        for message in messages[:-2]:
             with self.subTest(message=message[:40]):
                 self.assertLessEqual(len(message), 4096)
                 self.assertEqual(message.count(FOOTER), 1)
                 self.assertNotIn("—", message)
                 self.assertNotIn("Проверено:", message)
                 self.assertNotIn("Официальное расписание", message)
-        self.assertLessEqual(len(messages[-1]), 4096)
-        self.assertNotIn(FOOTER, messages[-1])
+        for message in messages[-2:]:
+            with self.subTest(message=message[:40]):
+                self.assertLessEqual(len(message), 4096)
+                self.assertNotIn(FOOTER, message)
 
     def test_preview_contains_all_leaves_camera_index_and_root(self):
         messages = preview_messages()
@@ -53,6 +55,15 @@ class PinnedContentTests(unittest.TestCase):
             '🚌 <a href="https://t.me/c/1/21"><b>Транспорт в Гуардамаре</b></a>',
         )
         self.assertNotIn(FOOTER, root)
+
+    def test_transport_navigator_has_navigation_but_no_footer(self):
+        index = build_transport_index(
+            root_link="https://t.me/c/1/22"
+        )
+
+        self.assertIn("К главному закрепу", index)
+        self.assertIn("https://t.me/c/1/22", index)
+        self.assertNotIn(FOOTER, index)
 
     def test_hospital_message_has_year_round_timetable_and_live_source(self):
         hospital = build_leaf_message("hospital")

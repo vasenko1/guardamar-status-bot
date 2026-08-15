@@ -247,8 +247,7 @@ def build_transport_index(
 ) -> str:
     """Build the transport navigator with live links or preview labels."""
 
-    message = with_footer(
-        f"""🧭 <b>Транспорт из Гуардамара</b>
+    message = f"""🧭 <b>Транспорт из Гуардамара</b>
 
 Только прямые маршруты, без пересадок. Нажмите на нужное направление, чтобы открыть расписание с остановками.
 
@@ -275,12 +274,12 @@ def build_transport_index(
 🎓 <b>Учёба</b>
 
 • {_linked('Universidad de Alicante', 'university', links)} · в учебный период, для членов ADEUGT"""
-    )
-    return _with_back_link(
-        message,
-        "К главному закрепу",
-        root_link,
-    )
+    target = "<b>К главному закрепу</b>"
+    if root_link is not None:
+        target = (
+            f'<a href="{root_link}"><b>К главному закрепу</b></a>'
+        )
+    return f"{message}\n\n⬅️ {target}"
 
 
 def build_root(

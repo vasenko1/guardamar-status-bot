@@ -18,11 +18,13 @@ Use the root only as a quiet two-item navigator:
 🚌 **Транспорт в Гуардамаре**
 ```
 
-Both item names link to their managed detail messages. The root has no shared
-promotional footer: it is permanently pinned, already belongs to the group and
-should contain only navigation. Keep one blank line between the two links so
-they remain separate touch targets on a phone. Write `Онлайн-камеры` with one
-hyphen; do not use `Он-лайн камеры`.
+Both item names link to their managed detail messages. Intermediate navigation
+messages have no shared promotional footer: this applies to the compact root
+and the transport navigator. The footer remains in final messages where the
+reader finishes: the camera list and every individual transport detail. Keep
+one blank line between the root links so they remain separate touch targets on
+a phone. Write `Онлайн-камеры` with one hyphen; do not use
+`Он-лайн камеры`.
 
 ## Live cameras
 
