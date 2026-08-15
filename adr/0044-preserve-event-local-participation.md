@@ -35,10 +35,22 @@ Social Juvenil or WhatsApp.
 - Leave candidates beyond the three-page limit pending so subsequent scheduled
   refreshes can collect them without increasing the per-run request burst.
 - Accept an explicit registration row only when it contains a phone or email
-  contact, bind it to a nearby event row, and preserve explicit age ranges,
-  minimum ages, and limited-capacity wording. Never invent missing conditions.
-- Reopen the bounded current candidate index once through parser version 7 so
-  deployed catalogs can recover details hidden by the former date-wide gate.
+  contact. Persist its explicit event date and start time, require those facts
+  when matching an occurrence, and withhold a timeless contact when several
+  same-title sessions could receive it.
+- Preserve explicit age ranges, minimum ages, limited-capacity wording, and a
+  compact deterministic note for beginner suitability, skill improvement, or
+  group practice. Never invent a missing condition or copy an unrestricted
+  free-form description.
+- Split an individual oversized dated section into model inputs no larger than
+  12,000 characters. Process at most three inputs per refresh, persist bounded
+  content-hash progress only after successful normalization, and resume the
+  remaining chunks on the next scheduled run. When several normal sections
+  exceed the combined input, retain accepted work and leave the overflow page
+  pending instead of rejecting the whole source window.
+- Reopen the bounded current candidate index once through parser version 8 so
+  deployed catalogs recover both details hidden by the former date-wide gate
+  and occurrence identity absent from version 7.
 - Keep one exact reviewed correction for the current guitar workshop so an
   in-place refresh can repair today's message even during a supplemental-source
   outage.
@@ -47,9 +59,10 @@ Social Juvenil or WhatsApp.
 
 Future same-day event pages are collected over one or more normal refreshes
 instead of being permanently skipped. Useful participation facts become more
-likely to occupy the three available detail slots, while network burst, model
-input, dependencies, cron frequency, and public message bounds remain
-unchanged.
+likely to occupy the three available detail slots. The network burst,
+dependencies, cron frequency, per-model-input size, and public message bounds
+remain unchanged. A large source can use up to three bounded model calls across
+one refresh instead of blocking the queue.
 
 The complete candidate set may take several scheduled runs when more than
 three distinct pages are pending. This is intentional back-pressure. The

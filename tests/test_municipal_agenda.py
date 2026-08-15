@@ -404,6 +404,54 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("todo_cultura_detail", enriched[0].sources)
         self.assertIsNone(enriched[1].registration_contact)
 
+    def test_todo_registration_does_not_leak_to_same_title_other_time(self):
+        sessions = tuple(
+            SourceEvent(
+                "Taller de guitarra", date(2026, 8, 20),
+                date(2026, 8, 20), start_time, None,
+                "Centro Social Juvenil", "event", ("todo_cultura",),
+            )
+            for start_time in ("17:00", "19:00")
+        )
+        detail = TodoCulturaParticipation(
+            title_hint="19:00: Taller de guitarra",
+            registration_contact="WhatsApp 600 00 00 00",
+            event_dates=(date(2026, 8, 20),),
+            start_time="19:00",
+        )
+
+        enriched = _enrich_todo_participation(
+            sessions, (detail,), date(2026, 8, 20)
+        )
+
+        self.assertIsNone(enriched[0].registration_contact)
+        self.assertEqual(
+            enriched[1].registration_contact, "WhatsApp 600 00 00 00"
+        )
+
+    def test_timeless_registration_is_withheld_for_multiple_sessions(self):
+        sessions = tuple(
+            SourceEvent(
+                "Taller de guitarra", date(2026, 8, 20),
+                date(2026, 8, 20), start_time, None,
+                "Centro Social Juvenil", "event", ("todo_cultura",),
+            )
+            for start_time in ("17:00", "19:00")
+        )
+        detail = TodoCulturaParticipation(
+            title_hint="Taller de guitarra",
+            registration_contact="WhatsApp 600 00 00 00",
+            event_dates=(date(2026, 8, 20),),
+        )
+
+        enriched = _enrich_todo_participation(
+            sessions, (detail,), date(2026, 8, 20)
+        )
+
+        self.assertTrue(all(
+            event.registration_contact is None for event in enriched
+        ))
+
     def test_routine_youth_hours_and_vague_campaign_are_omitted(self):
         result = normalize_extraction_candidates({
             "month": "2026-08",

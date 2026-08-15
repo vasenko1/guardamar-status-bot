@@ -6,7 +6,7 @@ import html
 import json
 import re
 import urllib.parse
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from html.parser import HTMLParser
 from typing import Any, Dict, List, Optional, Tuple
@@ -20,12 +20,13 @@ REQUEST_TIMEOUT_SECONDS = 20
 RESPONSE_LIMIT_BYTES = 300_000
 PROGRAM_TEXT_LIMIT = 12_000
 MAX_CANDIDATES = 3
+MAX_PROGRAMS_PER_WINDOW = 3
 MAX_INDEX_CANDIDATES = 100
 METADATA_PAGE_SIZE = 100
 METADATA_LIMIT_BYTES = 150_000
 ROLLING_WINDOW_DAYS = 7
 CURSOR_OVERLAP_MINUTES = 5
-PARSER_VERSION = 7
+PARSER_VERSION = 8
 API_URL = "https://todoculturavegabaja.es/wp-json/wp/v2/mec-events"
 
 
@@ -59,6 +60,8 @@ class TodoCulturaParticipation:
     participation_note: Optional[str] = None
     capacity_limited: bool = False
     evidence: str = ""
+    event_dates: Tuple[date, ...] = ()
+    start_time: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -229,7 +232,9 @@ def _participation(text: str) -> Tuple[TodoCulturaParticipation, ...]:
         if (phone is None and email is None) or len(contact) > 180:
             continue
         anchors = []
-        for candidate in lines[max(0, index - 4):index]:
+        first_anchor_index = max(0, index - 6)
+        for candidate_index in range(first_anchor_index, index):
+            candidate = lines[candidate_index]
             normalized = candidate.casefold()
             if (
                 any(word in normalized for word in (
@@ -238,13 +243,15 @@ def _participation(text: str) -> Tuple[TodoCulturaParticipation, ...]:
                 ))
                 and "actividades del centro social juvenil" not in normalized
             ):
-                anchors.append(candidate)
+                anchors.append((candidate_index, candidate))
         if not anchors:
             continue
-        anchor = next((
+        anchor_index, anchor = next((
             candidate
             for candidate in reversed(anchors)
-            if re.search(r"\b\d{1,2}\s*(?:a|:)\s*\d{1,2}\b", candidate)
+            if re.search(
+                r"\b\d{1,2}\s*(?:a|:)\s*\d{1,2}\b", candidate[1]
+            )
         ), anchors[-1])
         contact = re.sub(r"\bwasap\b", "WhatsApp", contact, flags=re.IGNORECASE)
         contact = re.sub(
@@ -263,23 +270,52 @@ def _participation(text: str) -> Tuple[TodoCulturaParticipation, ...]:
             anchor,
             re.IGNORECASE,
         )
+        context_lines = lines[anchor_index:index + 1]
+        context = " ".join(context_lines)
+        beginner_friendly = bool(re.search(
+            r"\b(?:desde\s+cero|sin\s+experiencia|principiantes?)\b",
+            context,
+            re.IGNORECASE,
+        ))
+        improves_skills = bool(re.search(
+            r"\b(?:mejorar|perfeccionar)(?:\s+\w+){0,5}\s+"
+            r"(?:t[eé]cnica|acordes|escalas|ritmos|solos|habilidades)\b",
+            context,
+            re.IGNORECASE,
+        ))
+        group_practice = bool(re.search(
+            r"\b(?:pr[aá]ctica\s+en\s+grupo|tocar\s+en\s+grupo|"
+            r"jam\s+sessions?)\b",
+            context,
+            re.IGNORECASE,
+        ))
+        note_parts = []
         if age is not None:
             audience = (
                 "молодёжи"
                 if re.search(r"\bjóvenes\b|\bjovenes\b", anchor, re.I)
                 else "участников"
             )
-            participation_note = (
+            note_parts.append(
                 f"для {audience} {age.group(1)}–{age.group(2)} лет"
             )
         elif minimum_age is not None:
-            participation_note = (
+            note_parts.append(
                 f"для участников от {minimum_age.group(1)} лет"
             )
-        else:
-            participation_note = None
-        evidence_lines = lines[max(0, index - 2):index + 1]
-        evidence = " ".join(evidence_lines)[:600]
+        skill_parts = []
+        if beginner_friendly:
+            skill_parts.append("можно начать с нуля")
+        if improves_skills and group_practice:
+            skill_parts.append("улучшить технику и игру в группе")
+        elif improves_skills:
+            skill_parts.append("улучшить технику")
+        elif group_practice:
+            skill_parts.append("практика игры в группе")
+        if skill_parts:
+            note_parts.append(" или ".join(skill_parts))
+        participation_note = "; ".join(note_parts) or None
+        evidence = context[:600]
         key = (anchor.casefold(), contact.casefold())
         if key in seen:
             continue
@@ -294,6 +330,7 @@ def _participation(text: str) -> Tuple[TodoCulturaParticipation, ...]:
                 re.IGNORECASE,
             )),
             evidence=evidence,
+            start_time=_event_time(anchor),
         ))
         if len(result) == 12:
             break
@@ -822,6 +859,20 @@ def _bounded_candidates(
             for day in _candidate_dates(candidate, "processed_dates")
             if day >= local_day
         )
+        raw_chunks = candidate.get("processed_chunks", {})
+        candidate["processed_chunks"] = {
+            day: hashes
+            for day, hashes in raw_chunks.items()
+            if (
+                isinstance(day, str)
+                and isinstance(hashes, list)
+                and len(hashes) <= 32
+                and all(isinstance(value, str) for value in hashes)
+                and _candidate_dates({"dates": [day]}, "dates")
+                and local_day <= date.fromisoformat(day)
+                <= local_day + timedelta(days=44)
+            )
+        } if isinstance(raw_chunks, dict) else {}
     ordered = sorted(
         unique.values(),
         key=lambda candidate: (
@@ -829,11 +880,51 @@ def _bounded_candidates(
                 day >= local_day
                 for day in _candidate_dates(candidate, "dates")
             ),
+            not bool(candidate.get("processed_chunks")),
             bool(candidate.get("detail_checked")),
             str(candidate.get("modified_gmt", "")),
         ),
     )
     return ordered[:MAX_INDEX_CANDIDATES]
+
+
+def _section_chunks(section: str) -> Tuple[str, ...]:
+    """Split one dated section without exceeding one model input."""
+
+    if len(section) <= PROGRAM_TEXT_LIMIT:
+        return (section,)
+    lines = section.splitlines()
+    if not lines:
+        return ()
+    heading = lines[0].strip()
+    available = PROGRAM_TEXT_LIMIT - len(heading) - 1
+    if not heading or available < 100:
+        return ()
+    fragments = []
+    for raw_line in lines[1:]:
+        line = raw_line.strip()
+        while len(line) > available:
+            split_at = line.rfind(" ", 0, available + 1)
+            if split_at < available // 2:
+                split_at = available
+            fragments.append(line[:split_at].strip())
+            line = line[split_at:].strip()
+        if line:
+            fragments.append(line)
+    chunks = []
+    current = []
+    current_length = len(heading)
+    for fragment in fragments:
+        addition = len(fragment) + 1
+        if current and current_length + addition > PROGRAM_TEXT_LIMIT:
+            chunks.append("\n".join((heading, *current)))
+            current = []
+            current_length = len(heading)
+        current.append(fragment)
+        current_length += addition
+    if current:
+        chunks.append("\n".join((heading, *current)))
+    return tuple(chunks)
 
 
 def _read_program_window(
@@ -855,6 +946,7 @@ def _read_program_window(
                 {
                     **candidate,
                     "processed_dates": [],
+                    "processed_chunks": {},
                     "detail_checked": False,
                 }
                 for candidate in prior.get("candidates", [])
@@ -904,6 +996,9 @@ def _read_program_window(
             incoming["detail_checked"] = existing.get(
                 "detail_checked", False
             )
+            incoming["processed_chunks"] = existing.get(
+                "processed_chunks", {}
+            )
         else:
             covered_dates.difference_update(
                 _candidate_dates(incoming, "dates")
@@ -941,6 +1036,7 @@ def _read_program_window(
     seen_sections = set()
     admissions_by_month: Dict[str, List[TodoCulturaAdmission]] = {}
     sources_by_month: Dict[str, List[Tuple[str, str]]] = {}
+    standalone_programs = []
     for candidate in selected:
         item = documents_by_id.get(candidate["id"])
         if item is None:
@@ -1000,14 +1096,65 @@ def _read_program_window(
             addition = len(section) + (
                 1 if sections_by_month.get(month) else 0
             )
-            if section_lengths.get(month, 0) + addition > PROGRAM_TEXT_LIMIT:
-                raise TodoCulturaError(
-                    "Todo Cultura rolling section was too large",
-                    code="DAILY-SIZE",
-                    description=(
-                        "разделы скользящего окна превысили допустимый размер"
-                    ),
+            if len(section) > PROGRAM_TEXT_LIMIT:
+                chunks = _section_chunks(section)
+                if not chunks:
+                    continue
+                raw_progress = candidate.get("processed_chunks", {})
+                progress = (
+                    dict(raw_progress) if isinstance(raw_progress, dict) else {}
                 )
+                completed = {
+                    value for value in progress.get(day.isoformat(), [])
+                    if isinstance(value, str)
+                }
+                chunk_values = list(dict.fromkeys(
+                    (
+                        hashlib.sha256(chunk.encode("utf-8")).hexdigest(),
+                        chunk,
+                    )
+                    for chunk in chunks
+                ))
+                pending_chunks = [
+                    value for value in chunk_values if value[0] not in completed
+                ]
+                available_slots = max(0, (
+                    MAX_PROGRAMS_PER_WINDOW
+                    - len(standalone_programs)
+                    - len(sections_by_month)
+                ))
+                for chunk_hash, chunk in pending_chunks[:available_slots]:
+                    standalone_programs.append((
+                        month,
+                        day,
+                        chunk,
+                        link,
+                        modified,
+                        tuple(document_admissions),
+                    ))
+                    completed.add(chunk_hash)
+                progress[day.isoformat()] = sorted(completed)
+                candidate["processed_chunks"] = progress
+                if not all(
+                    chunk_hash in completed
+                    for chunk_hash, _ in chunk_values
+                ):
+                    continue
+                progress.pop(day.isoformat(), None)
+                included.append(day)
+                covered_dates.add(day)
+                seen_sections.add(section_key)
+                continue
+            if section_lengths.get(month, 0) + addition > PROGRAM_TEXT_LIMIT:
+                # Preserve already accepted work and retry this distinct page
+                # after earlier candidates have advanced out of the queue.
+                continue
+            if (
+                month not in sections_by_month
+                and len(sections_by_month) + len(standalone_programs)
+                >= MAX_PROGRAMS_PER_WINDOW
+            ):
+                continue
             sections_by_month.setdefault(month, []).append((day, section))
             seen_sections.add(section_key)
             section_lengths[month] = section_lengths.get(month, 0) + addition
@@ -1031,8 +1178,32 @@ def _read_program_window(
             source_url=source_values[0][0],
             modified=max(value[1] for value in source_values),
             admissions=tuple(dict.fromkeys(admissions_by_month[month])),
-            participation=_participation(text),
+            participation=tuple(dict.fromkeys(
+                replace(detail, event_dates=(day,))
+                for day, section in dated_sections
+                for detail in _participation(section)
+            )),
             dates=tuple(dict.fromkeys(day for day, _ in dated_sections)),
+        ))
+    for (
+        month,
+        day,
+        text,
+        link,
+        modified,
+        document_admissions,
+    ) in standalone_programs:
+        programs.append(TodoCulturaProgram(
+            text=text,
+            sha256=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            source_url=link,
+            modified=modified,
+            admissions=document_admissions,
+            participation=tuple(
+                replace(detail, event_dates=(day,))
+                for detail in _participation(text)
+            ),
+            dates=(day,),
         ))
     state = {
         "parser_version": PARSER_VERSION,

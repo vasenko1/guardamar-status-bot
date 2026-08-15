@@ -350,7 +350,12 @@ as complete. Remaining candidates stay pending for a later scheduled refresh;
 the request, text-size, and seven-day limits do not change. Explicit
 registration contacts are accepted only when the event-local row contains a
 phone, WhatsApp number, or email, and are matched conservatively to one
-occurrence before rendering.
+occurrence by explicit date and time before rendering. A missing time is
+withheld when multiple same-title sessions are possible. Explicit beginner
+suitability, skill improvement, and group practice become one short
+deterministic participation note. Oversized dated text is processed in at most
+three 12,000-character inputs per refresh with bounded resumable hash progress;
+an overflowing page no longer discards accepted pages or blocks the queue.
 For the verified `Sand Memories` guided tour, show the official meeting point
 as `место встречи — Castillo de Guardamar`; do not substitute the organizer's
 contact address.
