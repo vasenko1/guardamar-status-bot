@@ -147,7 +147,8 @@ starred departures also pass Los Secanos and the cemetery.
 
 - End every transport detail with `⬅️ К списку транспорта`, linked to the
   transport navigator. End the navigator and camera list with
-  `⬅️ К главному закрепу`, linked to the compact root.
+  `⬅️ Полезное о Гуардамаре`, linked to the compact root. This names
+  the destination instead of exposing the Telegram pinning mechanism.
 - Treat those links as one managed graph. If a managed message is deleted, the
   next explicit publication recreates it and rewrites every affected link;
   operators must not edit message IDs in state manually.

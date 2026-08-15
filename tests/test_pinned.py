@@ -61,7 +61,7 @@ class PinnedContentTests(unittest.TestCase):
             root_link="https://t.me/c/1/22"
         )
 
-        self.assertIn("К главному закрепу", index)
+        self.assertIn("Полезное о Гуардамаре", index)
         self.assertIn("https://t.me/c/1/22", index)
         self.assertNotIn(FOOTER, index)
 
@@ -109,7 +109,7 @@ class PinnedContentTests(unittest.TestCase):
 
         self.assertIn("К списку транспорта", leaf)
         self.assertIn("https://t.me/c/1/20", leaf)
-        self.assertIn("К главному закрепу", cameras)
+        self.assertIn("Полезное о Гуардамаре", cameras)
         self.assertIn("https://t.me/c/1/21", cameras)
 
 

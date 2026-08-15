@@ -236,7 +236,7 @@ def build_cameras(root_link: Optional[str] = None) -> str:
 
     return _with_back_link(
         CAMERAS,
-        "К главному закрепу",
+        "Полезное о Гуардамаре",
         root_link,
     )
 
@@ -274,10 +274,10 @@ def build_transport_index(
 🎓 <b>Учёба</b>
 
 • {_linked('Universidad de Alicante', 'university', links)} · в учебный период, для членов ADEUGT"""
-    target = "<b>К главному закрепу</b>"
+    target = "<b>Полезное о Гуардамаре</b>"
     if root_link is not None:
         target = (
-            f'<a href="{root_link}"><b>К главному закрепу</b></a>'
+            f'<a href="{root_link}"><b>Полезное о Гуардамаре</b></a>'
         )
     return f"{message}\n\n⬅️ {target}"
 
