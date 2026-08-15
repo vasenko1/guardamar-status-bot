@@ -38,11 +38,14 @@ class PinnedContentTests(unittest.TestCase):
         self.assertIn("Транспорт из Гуардамара", messages[-2])
         self.assertIn("Полезное о Гуардамаре", messages[-1])
 
-    def test_date_specific_hospital_times_are_not_pinned(self):
+    def test_hospital_message_has_year_round_timetable_and_live_source(self):
         hospital = build_leaf_message("hospital")
-        self.assertNotIn("07:30", hospital)
-        self.assertNotIn("13:00", hospital)
-        self.assertIn("Проверьте расписание", hospital)
+        self.assertIn("Линия 6", hospital)
+        self.assertIn("07:30 · 09:00 · 11:00", hospital)
+        self.assertIn("08:00 · 09:30 · 13:30 · 17:00", hospital)
+        self.assertIn("Суббота, воскресенье и праздники", hospital)
+        self.assertIn("www.gva.es", hospital)
+        self.assertNotIn("regular.autobusing.com", hospital)
 
     def test_internal_links_support_public_and_private_supergroups(self):
         self.assertEqual(
