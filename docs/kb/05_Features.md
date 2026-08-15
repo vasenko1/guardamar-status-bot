@@ -340,6 +340,17 @@ The heading is rendered as `📅 События дня:` to make its daily scope
 When an official text agenda publishes event-specific visiting hours, those
 hours take precedence over missing poster OCR times. General venue opening
 hours are never substituted for an event schedule.
+The rolling Todo Cultura supplement treats distinct event pages for the same
+date independently. Its bounded three-page selection first considers the
+nearest unprocessed dates and then prioritizes metadata that advertises
+actionable participation facts such as an audience or age, registration,
+limited capacity, admission, a workshop, course, route, or guided visit. One
+generic daily-programme page must not mark a separate event page for that date
+as complete. Remaining candidates stay pending for a later scheduled refresh;
+the request, text-size, and seven-day limits do not change. Explicit
+registration contacts are accepted only when the event-local row contains a
+phone, WhatsApp number, or email, and are matched conservatively to one
+occurrence before rendering.
 For the verified `Sand Memories` guided tour, show the official meeting point
 as `место встречи — Castillo de Guardamar`; do not substitute the organizer's
 contact address.

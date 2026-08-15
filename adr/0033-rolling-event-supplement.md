@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted and implemented
+Accepted and implemented; same-date candidate selection amended by ADR 0044
 
 ## Context
 
@@ -26,8 +26,9 @@ calls, state and recovery simple.
   Ignore metadata without a discoverable date and send only newly covered
   dated sections, capped by the existing text limit, to structured extraction.
 - Treat the newest candidate as authoritative among duplicate programme
-  reproductions for the same date. A later `modified_gmt` reopens its hinted
-  dates; unchanged copies do not repeat full downloads or model work.
+  reproductions for the same date. This date-wide shortcut is superseded by
+  ADR 0044: distinct same-date candidates are processed independently and
+  exact section hashes, rather than the date alone, identify duplicates.
 - Advance the cursor and covered dates only after all selected sections have
   normalized successfully and the atomic catalog is written. On any source,
   model, validation or write failure, preserve the previous facts and state.

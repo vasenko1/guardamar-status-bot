@@ -25,7 +25,7 @@ METADATA_PAGE_SIZE = 100
 METADATA_LIMIT_BYTES = 150_000
 ROLLING_WINDOW_DAYS = 7
 CURSOR_OVERLAP_MINUTES = 5
-PARSER_VERSION = 6
+PARSER_VERSION = 7
 API_URL = "https://todoculturavegabaja.es/wp-json/wp/v2/mec-events"
 
 
@@ -221,7 +221,12 @@ def _participation(text: str) -> Tuple[TodoCulturaParticipation, ...]:
             continue
         contact = " ".join(match.group(1).split())
         phone = re.search(r"(?:\+34\s*)?(?:\d[\s.-]*){9}", contact)
-        if phone is None or len(contact) > 180:
+        email = re.search(
+            r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b",
+            contact,
+            re.IGNORECASE,
+        )
+        if (phone is None and email is None) or len(contact) > 180:
             continue
         anchors = []
         for candidate in lines[max(0, index - 4):index]:
@@ -247,16 +252,32 @@ def _participation(text: str) -> Tuple[TodoCulturaParticipation, ...]:
         )
         contact = re.sub(r"\s+y\s+WhatsApp\b", " или WhatsApp", contact)
         age = re.search(
-            r"(?:jóvenes|personas)\s+de\s+(\d{1,2})\s+a\s+"
+            r"(?:jóvenes|jovenes|personas|niños|niñas)"
+            r"(?:\s+de|\s+entre)?\s+(\d{1,2})\s+(?:a|y)\s+"
             r"(\d{1,2})\s+años",
             anchor,
             re.IGNORECASE,
         )
-        participation_note = (
-            f"для молодёжи {age.group(1)}–{age.group(2)} лет"
-            if age is not None
-            else None
+        minimum_age = re.search(
+            r"(?:edades?\s+)?a\s+partir\s+de\s+(\d{1,2})\s+años",
+            anchor,
+            re.IGNORECASE,
         )
+        if age is not None:
+            audience = (
+                "молодёжи"
+                if re.search(r"\bjóvenes\b|\bjovenes\b", anchor, re.I)
+                else "участников"
+            )
+            participation_note = (
+                f"для {audience} {age.group(1)}–{age.group(2)} лет"
+            )
+        elif minimum_age is not None:
+            participation_note = (
+                f"для участников от {minimum_age.group(1)} лет"
+            )
+        else:
+            participation_note = None
         evidence_lines = lines[max(0, index - 2):index + 1]
         evidence = " ".join(evidence_lines)[:600]
         key = (anchor.casefold(), contact.casefold())
@@ -267,10 +288,11 @@ def _participation(text: str) -> Tuple[TodoCulturaParticipation, ...]:
             title_hint=anchor,
             registration_contact=contact,
             participation_note=participation_note,
-            capacity_limited=any(
-                phrase in evidence.casefold()
-                for phrase in ("plazas limitadas", "aforo limitado")
-            ),
+            capacity_limited=bool(re.search(
+                r"\b(?:plazas|aforo)\b.{0,24}\blimitad[oa]s?\b",
+                evidence,
+                re.IGNORECASE,
+            )),
             evidence=evidence,
         ))
         if len(result) == 12:
@@ -653,8 +675,10 @@ def _metadata_candidate(
         or not isinstance(excerpt, str)
     ):
         raise ValueError
+    metadata_lines = _plain_lines(f"{title}\n{excerpt}")
+    metadata_text = " ".join(metadata_lines).casefold()
     hinted = _date_sections(
-        _plain_lines(f"{title}\n{excerpt}"),
+        metadata_lines,
         reference_date.year,
         reference_date,
     )
@@ -662,6 +686,22 @@ def _metadata_candidate(
         " ".join(_plain_lines(f"{title}\n{excerpt}")), reference_date
     )
     hinted_dates = set(hinted) | mentioned
+    detail_priority = 0
+    if any(word in metadata_text for word in (
+        "taller", "curso", "ruta", "visita", "escape room",
+        "actividad juvenil",
+    )):
+        detail_priority += 1
+    if re.search(
+        r"\b(?:para\s+(?:jóvenes|jovenes|niños|ninas|niñas)|"
+        r"edades?|años?)\b",
+        metadata_text,
+    ):
+        detail_priority += 1
+    if any(word in metadata_text for word in (
+        "inscrip", "reserv", "aforo", "plazas", "entrada", "precio",
+    )):
+        detail_priority += 1
     return {
         "id": identifier,
         "modified_gmt": modified,
@@ -669,6 +709,7 @@ def _metadata_candidate(
         "dates": sorted(day.isoformat() for day in hinted_dates),
         "processed_dates": [],
         "detail_checked": not hinted_dates,
+        "detail_priority": detail_priority,
     }
 
 
@@ -692,21 +733,43 @@ def _candidate_priority(
     start: date,
     end: date,
     horizon: date,
-) -> Tuple[int, float]:
+) -> Tuple[int, int, int, float]:
     dates = _candidate_dates(candidate, "dates")
     processed = _candidate_dates(candidate, "processed_dates")
-    if any(start <= day <= end and day not in processed for day in dates):
+    pending_window = sorted(
+        day for day in dates
+        if start <= day <= end and day not in processed
+    )
+    pending_horizon = sorted(
+        day for day in dates
+        if start <= day <= horizon and day not in processed
+    )
+    if pending_window:
         rank = 0
+        day_distance = (pending_window[0] - start).days
     elif not candidate.get("detail_checked") and any(
         start <= day <= horizon for day in dates
     ):
         rank = 1
+        day_distance = (
+            (pending_horizon[0] - start).days if pending_horizon else 999
+        )
     elif not candidate.get("detail_checked"):
         rank = 2
+        day_distance = 999
     else:
         rank = 3
+        day_distance = 999
+    detail_priority = candidate.get("detail_priority", 0)
+    if not isinstance(detail_priority, int) or not 0 <= detail_priority <= 3:
+        detail_priority = 0
     modified = _parse_modified(candidate.get("modified_gmt"))
-    return rank, -(modified.timestamp() if modified is not None else 0.0)
+    return (
+        rank,
+        day_distance,
+        -detail_priority,
+        -(modified.timestamp() if modified is not None else 0.0),
+    )
 
 
 def _read_documents(identifiers: List[int]) -> List[Dict[str, Any]]:
@@ -786,6 +849,7 @@ def _read_program_window(
         # richer event-local facts from being collected.
         prior = {
             **prior,
+            "cursor_modified_gmt": None,
             "covered_dates": [],
             "candidates": [
                 {
@@ -829,7 +893,17 @@ def _read_program_window(
             existing is not None
             and existing.get("modified_gmt") == incoming["modified_gmt"]
         ):
-            incoming = existing
+            # Keep full-page progress and discovered dates, but always refresh
+            # metadata-derived selection fields. Parser migrations deliberately
+            # reopen progress while the upstream modified timestamp may stay
+            # unchanged.
+            incoming["dates"] = existing.get("dates", incoming["dates"])
+            incoming["processed_dates"] = existing.get(
+                "processed_dates", []
+            )
+            incoming["detail_checked"] = existing.get(
+                "detail_checked", False
+            )
         else:
             covered_dates.difference_update(
                 _candidate_dates(incoming, "dates")
@@ -841,15 +915,6 @@ def _read_program_window(
         ):
             newest_cursor = modified
 
-    for candidate in by_id.values():
-        shared = _candidate_dates(candidate, "dates") & covered_dates
-        if shared:
-            processed = (
-                _candidate_dates(candidate, "processed_dates") | shared
-            )
-            candidate["processed_dates"] = sorted(
-                day.isoformat() for day in processed
-            )
     candidates = _bounded_candidates(list(by_id.values()), local_day)
     start = local_day
     end = local_day + timedelta(days=ROLLING_WINDOW_DAYS - 1)
@@ -922,13 +987,6 @@ def _read_program_window(
             if not start <= day <= end or day in processed:
                 continue
             month = day.strftime("%Y-%m")
-            if day in covered_dates:
-                admissions_by_month.setdefault(month, []).extend(
-                    document_admissions
-                )
-                sources_by_month.setdefault(month, []).append((link, modified))
-                included.append(day)
-                continue
             section_key = (day, hashlib.sha256(
                 section.encode("utf-8")
             ).digest())
@@ -961,19 +1019,6 @@ def _read_program_window(
             covered_dates.add(day)
         processed.update(included)
         candidate["processed_dates"] = sorted(day.isoformat() for day in processed)
-
-    # A newer candidate is processed first. Mark the same covered dates on
-    # older candidates as well, so the next run does not download duplicate
-    # programme reproductions. A later modified_gmt resets the incoming
-    # candidate and intentionally reopens its dates.
-    for candidate in candidates:
-        shared = _candidate_dates(candidate, "dates") & covered_dates
-        if not shared:
-            continue
-        processed = _candidate_dates(candidate, "processed_dates") | shared
-        candidate["processed_dates"] = sorted(
-            day.isoformat() for day in processed
-        )
 
     programs = []
     for month, dated_sections in sorted(sections_by_month.items()):

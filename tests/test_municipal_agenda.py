@@ -872,6 +872,15 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             [(event.start_date.day, event.start_time) for event in workshops],
             [(15, "19:00"), (22, "19:00"), (29, "19:00")],
         )
+        guitar = next(
+            event for event in workshops if event.start_date.day == 15
+        )
+        self.assertIn("12–30 лет", guitar.participation_note)
+        self.assertIn("игру в группе", guitar.participation_note)
+        self.assertEqual(
+            guitar.registration_contact,
+            "Centro Social Juvenil или WhatsApp 609 00 67 54",
+        )
 
     def test_reviewed_active_events_for_current_day(self):
         corrected = _apply_reviewed_corrections(
