@@ -208,7 +208,12 @@ The official municipal HTML text is primary; a changed MUPI is supplementary.
 Its second structured reading receives only the image, never the first result,
 and deterministic intersection keeps agreeing facts. A MUPI failure cannot
 erase valid text facts. Narrow corrections may be pinned to one reviewed
-official poster when a documented OCR error is discovered.
+official poster when a documented OCR error is discovered. Their drop filters
+apply only to poster-only rows; a same-dated text occurrence keeps its identity
+and may inherit only missing bounded reviewed details. A non-exhibition date
+range is never treated as proof of daily activity. Event places are compacted
+before persistence and rendering, and prose or instructions remain unlinked
+when they are not safe map locations.
 
 The Mayor-channel event path reuses the existing bounded public-page request.
 Besides its dedicated market, bathing and Fiestas de Barrio rules, it accepts

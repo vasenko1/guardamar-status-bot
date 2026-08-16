@@ -41,6 +41,10 @@ class ShippedDataTests(unittest.TestCase):
                 "para la lucha contra el cáncer"
             ].casefold(),
         )
+        self.assertEqual(
+            translations["actuación musical del grupo 40 duros y cierre"],
+            "Концерт группы 40 Duros и закрытие торговой ярмарки",
+        )
         self.assertTrue(rules)
         self.assertIsNotNone(reviewed_poster("MUPI-AGOSTO-2026-scaled.jpg"))
         for rule in rules:
@@ -310,6 +314,20 @@ class ValidationTests(unittest.TestCase):
             "title_es": "X", "start_date": "2026-09-01",
             "end_date": "2026-08-01", "category": "event",
         }]}}
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(ReviewedDataError):
+                reviewed_poster("p.jpg", _write(directory, data))
+
+    def test_rejects_a_non_exhibition_range_as_daily_occurrences(self):
+        data = self._base()
+        data["posters"] = {"p.jpg": {
+            "upload_path": "/u/", "drop_titles": [], "events": [{
+                "title_es": "Voluntariado medioambiental",
+                "start_date": "2026-08-01",
+                "end_date": "2026-08-31",
+                "category": "event",
+            }],
+        }}
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaises(ReviewedDataError):
                 reviewed_poster("p.jpg", _write(directory, data))

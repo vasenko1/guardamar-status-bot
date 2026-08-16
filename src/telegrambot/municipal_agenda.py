@@ -26,6 +26,7 @@ from .gemini import (
 )
 from .event_translations import cached_title
 from .event_urls import normalize_ticket_url
+from .event_places import canonical_event_place
 from .reviewed import (
     ReviewedDataError,
     normalized_title,
@@ -812,15 +813,14 @@ def normalize_extraction(
                 raise MunicipalAgendaError(
                     "event facts have no exact source evidence"
                 )
+        if place is not None:
+            place = canonical_event_place(place)
         normalized_title = title_es.casefold()
         if "actividades del centro social juvenil" in normalized_title:
             continue
-        if (
-            "campaña" in normalized_title
-            and start_date != end_date
-            and start_time is None
-            and place is None
-        ):
+        if category != "exhibition" and start_date != end_date:
+            # A date range does not prove that an activity happens every day.
+            # Dated programme rows must be expanded into separate occurrences.
             continue
         ticket_price_cents = raw.get("ticket_price_cents")
         if ticket_price_cents is not None and (
@@ -1049,52 +1049,6 @@ def _load_snapshot(path: Path) -> Optional[Dict[str, Any]]:
         ) from exc
 
 
-def _inherit_reviewed_details(
-    reviewed: Tuple[SourceEvent, ...],
-    existing: Tuple[SourceEvent, ...],
-) -> Tuple[SourceEvent, ...]:
-    """Keep optional verified details when structural corrections replace facts."""
-
-    result = []
-    for corrected in reviewed:
-        candidate = next((
-            event
-            for event in existing
-            if event.start_date == corrected.start_date
-            and event.start_time == corrected.start_time
-            and _word_overlap(event.title_es, corrected.title_es) >= 0.5
-        ), None)
-        if candidate is None:
-            result.append(corrected)
-            continue
-        result.append(replace(
-            corrected,
-            sources=tuple(dict.fromkeys(
-                corrected.sources + candidate.sources
-            )),
-            ticket_price_cents=(
-                corrected.ticket_price_cents
-                if corrected.ticket_price_cents is not None
-                else candidate.ticket_price_cents
-            ),
-            ticket_url=corrected.ticket_url or candidate.ticket_url,
-            participation_note=(
-                corrected.participation_note or candidate.participation_note
-            ),
-            registration_contact=(
-                corrected.registration_contact
-                or candidate.registration_contact
-            ),
-            capacity_limited=(
-                corrected.capacity_limited or candidate.capacity_limited
-            ),
-            admission_evidence=(
-                corrected.admission_evidence or candidate.admission_evidence
-            ),
-        ))
-    return tuple(result)
-
-
 _POSTER_SOURCES = frozenset({"mupi", "mupi_reviewed"})
 _TEXT_SOURCES = frozenset({"turismo_html", "todo_cultura",
                            "todo_cultura_reviewed"})
@@ -1105,6 +1059,75 @@ def _is_poster_only(event: SourceEvent) -> bool:
 
     sources = set(event.sources)
     return bool(sources & _POSTER_SOURCES) and not (sources & _TEXT_SOURCES)
+
+
+def _reviewed_matches_text(
+    current: SourceEvent,
+    correction: SourceEvent,
+) -> bool:
+    """Match one reviewed recovery fact without collapsing distinct acts."""
+
+    if (
+        not set(current.sources) & _TEXT_SOURCES
+        or current.start_date != correction.start_date
+        or current.end_date != correction.end_date
+        or (
+            current.start_time is not None
+            and correction.start_time is not None
+            and current.start_time != correction.start_time
+        )
+    ):
+        return False
+    title_overlap = _word_overlap(current.title_es, correction.title_es)
+    place_compatible = (
+        current.place is None
+        or correction.place is None
+        or _word_overlap(current.place, correction.place) >= 0.5
+    )
+    if title_overlap >= 0.5 and place_compatible:
+        return True
+    return bool(
+        current.start_time == correction.start_time
+        and current.place is not None
+        and correction.place is not None
+        and _word_overlap(current.place, correction.place) >= 0.5
+        and title_overlap >= 0.2
+    )
+
+
+def _merge_reviewed_details(
+    current: SourceEvent,
+    correction: SourceEvent,
+) -> SourceEvent:
+    """Fill absent bounded facts while preserving the text event identity."""
+
+    return replace(
+        current,
+        start_time=current.start_time or correction.start_time,
+        end_time=current.end_time or correction.end_time,
+        place=current.place or correction.place,
+        sources=tuple(dict.fromkeys(
+            current.sources + correction.sources
+        )),
+        ticket_price_cents=(
+            current.ticket_price_cents
+            if current.ticket_price_cents is not None
+            else correction.ticket_price_cents
+        ),
+        ticket_url=current.ticket_url or correction.ticket_url,
+        participation_note=(
+            current.participation_note or correction.participation_note
+        ),
+        registration_contact=(
+            current.registration_contact or correction.registration_contact
+        ),
+        capacity_limited=(
+            current.capacity_limited or correction.capacity_limited
+        ),
+        admission_evidence=(
+            current.admission_evidence or correction.admission_evidence
+        ),
+    )
 
 
 def _reviewed_source_event(entry: dict) -> SourceEvent:
@@ -1163,15 +1186,32 @@ def _apply_reviewed_corrections(
     filtered = [
         event
         for event in events
-        if not any(
-            all(
-                term in normalized_title(event.title_es)
-                for term in clause
+        if not (
+            _is_poster_only(event)
+            and any(
+                all(
+                    term in normalized_title(event.title_es)
+                    for term in clause
+                )
+                for clause in poster.drop_titles
             )
-            for clause in poster.drop_titles
         )
     ]
-    return tuple(filtered) + _inherit_reviewed_details(reviewed, events)
+
+    result = list(filtered)
+    for correction in reviewed:
+        match_index = next((
+            index
+            for index, current in enumerate(result)
+            if _reviewed_matches_text(current, correction)
+        ), None)
+        if match_index is None:
+            result.append(correction)
+            continue
+        result[match_index] = _merge_reviewed_details(
+            result[match_index], correction
+        )
+    return tuple(result[:MAX_EVENTS])
 
 
 def _rule_matches(rule, event: SourceEvent, local_day: date) -> bool:

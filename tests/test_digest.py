@@ -803,6 +803,44 @@ class DigestMessageTests(unittest.TestCase):
         self.assertIn("query=Parque+Reina+Sof", message)
         self.assertIn("🎟 Бесплатно", message)
 
+    def test_event_context_is_removed_before_building_map_link(self):
+        digest = MorningDigest(
+            weather=None,
+            warnings=(),
+            warnings_available=True,
+            events=(Event(
+                title="Занятие по керамике",
+                starts_at=None,
+                place=(
+                    "Feria de comercio Guardamar 2026 de la "
+                    "avenida de los Pinos"
+                ),
+            ),),
+        )
+
+        message = build_message(digest)
+
+        self.assertIn(">Avenida de los Pinos</a>", message)
+        self.assertIn("query=Avenida+de+los+Pinos%2C+Guardamar", message)
+        self.assertNotIn("Feria+de+comercio", message)
+
+    def test_unrecognized_event_prose_is_not_linked_as_a_place(self):
+        digest = MorningDigest(
+            weather=None,
+            warnings=(),
+            warnings_available=True,
+            events=(Event(
+                title="Городская встреча",
+                starts_at=None,
+                place="Evento municipal, lugar por confirmar",
+            ),),
+        )
+
+        message = build_message(digest)
+
+        self.assertIn("📍 Evento municipal, lugar por confirmar", message)
+        self.assertNotIn("query=Evento+municipal", message)
+
     def test_placa_dels_llauradors_uses_coordinates_not_ambiguous_search(self):
         digest = MorningDigest(
             weather=None,
