@@ -9,6 +9,7 @@ from typing import List, Optional, Sequence
 from zoneinfo import ZoneInfo
 
 from .branding import with_footer
+from .event_places import canonical_event_place, event_place_is_map_safe
 from .models import BeachNotice, BeachStatus, MorningDigest, Warning
 
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
@@ -312,7 +313,7 @@ def _event_title(value: str) -> str:
 
 
 def _event_place(value: str) -> str:
-    value = " ".join(value.split())
+    value = canonical_event_place(value)
     if value.casefold() in {
         "sala de exposiciones casa de cultura",
         "sala de exposiciones de la casa de cultura",
@@ -341,9 +342,11 @@ def _event_place(value: str) -> str:
 def _event_place_link(value: str) -> str:
     """Render one fixed-host Google Maps search for a verified place."""
 
-    source_place = " ".join(value.split())
+    source_place = canonical_event_place(value)
     if source_place == "Место старта сообщит инструктор":
         return html.escape(source_place)
+    if not event_place_is_map_safe(source_place):
+        return html.escape(_event_place(source_place))
     if source_place.casefold() in {
         "plaça dels llauradors",
         "plaça llauradors",

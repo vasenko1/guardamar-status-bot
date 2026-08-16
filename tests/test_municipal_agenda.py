@@ -452,7 +452,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             event.registration_contact is None for event in enriched
         ))
 
-    def test_routine_youth_hours_and_vague_campaign_are_omitted(self):
+    def test_range_without_dated_occurrences_is_not_a_daily_event(self):
         result = normalize_extraction_candidates({
             "month": "2026-08",
             "events": [
@@ -466,7 +466,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                     "category": "event",
                 },
                 {
-                    "title_es": "Campaña de voluntariado medioambiental",
+                    "title_es": "Voluntariado medioambiental de verano",
                     "start_date": "2026-08-01",
                     "end_date": "2026-08-31",
                     "start_time": None,
@@ -483,11 +483,21 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                     "place": "Castell de Guardamar",
                     "category": "event",
                 },
+                {
+                    "title_es": "Exposición de pintura Luz mediterránea",
+                    "start_date": "2026-08-01",
+                    "end_date": "2026-08-31",
+                    "start_time": None,
+                    "end_time": None,
+                    "place": "Casa de Cultura",
+                    "category": "exhibition",
+                },
             ],
         }, "2026-08", "todo_cultura")
 
         self.assertEqual([event.title_es for event in result], [
-            "Concierto Spanish Brass"
+            "Concierto Spanish Brass",
+            "Exposición de pintura Luz mediterránea",
         ])
 
     def test_poster_fact_requires_independent_agreement(self):
@@ -966,7 +976,33 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(active[1].start_time, "09:00")
         self.assertEqual(active[1].end_time, "20:00")
 
-    def test_replaces_sparse_fair_rows_with_one_reviewed_daily_summary(self):
+    def test_reviewed_fallback_keeps_each_fair_act_at_its_own_time(self):
+        corrected = _apply_reviewed_corrections(
+            (
+                "https://www.guardamardelsegura.es/wp-content/uploads/"
+                "2026/07/MUPI-AGOSTO-2026-scaled.jpg"
+            ),
+            (),
+        )
+        fair = [
+            event for event in corrected
+            if event.start_date == date(2026, 8, 16)
+            and event.place == "Avenida de los Pinos"
+        ]
+
+        self.assertEqual(
+            [(event.start_time, event.end_time) for event in fair],
+            [
+                ("18:30", None),
+                ("18:30", "21:30"),
+                ("19:30", None),
+                ("22:00", None),
+            ],
+        )
+        self.assertTrue(any("galletas" in event.title_es for event in fair))
+        self.assertTrue(any("40 Duros" in event.title_es for event in fair))
+
+    def test_reviewed_poster_filter_never_erases_richer_text_events(self):
         extracted = (
             SourceEvent(
                 "FERIA DEL COMERCIO",
@@ -974,9 +1010,27 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                 None, None, "Avda. Els Pins", "event", ("mupi",),
             ),
             SourceEvent(
-                "Espectáculo ‘Faüla’, por ‘Dos en vilo’",
-                date(2026, 8, 13), date(2026, 8, 13),
-                "21:30", None, "avenida de los Pinos", "event",
+                "Taller de galletas a cargo de Magia en azúcar",
+                date(2026, 8, 16), date(2026, 8, 16),
+                "18:30", None, "Avenida de los Pinos", "event",
+                ("todo_cultura",),
+            ),
+            SourceEvent(
+                "Bingo solidario a beneficio de Virgen del Rosario",
+                date(2026, 8, 16), date(2026, 8, 16),
+                "18:30", "21:30", "Avenida de los Pinos", "event",
+                ("todo_cultura",),
+            ),
+            SourceEvent(
+                "Clase de cerámica a cargo de Atmósfera",
+                date(2026, 8, 16), date(2026, 8, 16),
+                "19:30", None, "Avenida de los Pinos", "event",
+                ("todo_cultura",),
+            ),
+            SourceEvent(
+                "Actuación musical del grupo 40 Duros",
+                date(2026, 8, 16), date(2026, 8, 16),
+                "22:00", None, "Avenida de los Pinos", "event",
                 ("todo_cultura",),
             ),
         )
@@ -990,14 +1044,27 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         )
         active = [
             event for event in corrected
-            if event.start_date <= date(2026, 8, 13) <= event.end_date
-            and "Feria de Comercio 2026" in event.title_es
+            if event.start_date <= date(2026, 8, 16) <= event.end_date
+            and "todo_cultura" in event.sources
         ]
 
-        self.assertEqual(len(active), 1)
-        self.assertEqual(active[0].start_time, "18:00")
-        self.assertEqual(active[0].place, "Avenida de los Pinos")
-        self.assertIn("Faüla", active[0].title_es)
+        self.assertEqual(len(active), 4)
+        self.assertEqual(
+            [(event.start_time, event.end_time) for event in active],
+            [
+                ("18:30", None),
+                ("18:30", "21:30"),
+                ("19:30", None),
+                ("22:00", None),
+            ],
+        )
+        self.assertTrue(all(
+            event.place == "Avenida de los Pinos" for event in active
+        ))
+        self.assertFalse(any(
+            "bingo solidario y concierto" in event.title_es.casefold()
+            for event in active
+        ))
         self.assertFalse(any(
             event.title_es == "FERIA DEL COMERCIO" for event in corrected
         ))

@@ -180,6 +180,10 @@ def _validate_event(entry, index: int) -> dict:
         raise ReviewedDataError(
             f"event {index} ends before it starts"
         )
+    if entry["category"] != "exhibition" and start != end:
+        raise ReviewedDataError(
+            f"event {index} needs separate dated occurrences"
+        )
     for field in ("start_time", "end_time"):
         if entry.get(field) is not None:
             _time(entry[field], f"event {index} {field}")
