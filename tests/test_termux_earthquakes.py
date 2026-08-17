@@ -81,6 +81,13 @@ class EarthquakeTermuxTests(unittest.TestCase):
         self.assertIn(
             'if ! acquire_runtime_lock "$RUNTIME_LOCK_DIR"', script
         )
+        self.assertIn(
+            '"$PROJECT_DIR/termux/install-earthquake-cron.sh"', script
+        )
+        self.assertLess(
+            script.index("install_runtime_jobs || exit 1"),
+            script.index("INFO Already up to date"),
+        )
 
     def test_runtime_lock_recovers_only_a_stale_pid_owner(self):
         script = (

@@ -249,7 +249,10 @@ Deployment is also external to the application. GitHub Actions promotes a
 `main` commit to the `deploy` branch only after the complete test suite passes.
 A short Termux cron job checks that branch once at 04:00 before the morning run,
 accepts fast-forward updates only, validates them on the phone, and restarts
-the optional preview listener. Secrets and runtime state remain local.
+the optional preview listener. It idempotently reconciles the managed
+earthquake cron block both after an update and on later no-op checks, allowing
+automatic recovery from a temporary scheduler failure. Secrets and runtime
+state remain local.
 
 The optional `listen` process is independent of publication. It accepts only
 fresh `/preview` commands in private chats from configured user IDs, fetches

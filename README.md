@@ -144,7 +144,9 @@ does not invalidate tested code. On installation or test failure the deploy
 restores the previous commit. `.env`, `state/`, logs, and the virtual
 environment remain local and are never pulled from GitHub.
 Deployment and the earthquake monitor share one short-lived runtime lock, so a
-manual update cannot replace code while that monitor is running.
+manual update cannot replace code while that monitor is running. Deployment
+also reconciles the earthquake monitor's idempotent cron block after an update
+and on later no-op checks, so a temporary scheduler failure is retried.
 
 Recommended crontab entries:
 
