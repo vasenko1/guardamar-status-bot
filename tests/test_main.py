@@ -43,6 +43,54 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
         monitor.assert_awaited_once()
         self.assertEqual(monitor.await_args.args[1].path, state_path)
 
+    async def test_earthquake_new_message_retries_only_explicit_rate_limit(self):
+        sent = AsyncMock(return_value=123)
+
+        async def monitor(now, state, fetcher, publisher):
+            self.assertEqual(await publisher("alert", None), 123)
+            return 1
+
+        with (
+            patch.dict(os.environ, {
+                "TELEGRAM_BOT_TOKEN": "telegram",
+                "TELEGRAM_CHAT_ID": "@group",
+            }),
+            patch("telegrambot.__main__.monitor_earthquakes", new=monitor),
+            patch("telegrambot.__main__.send_message", new=sent),
+        ):
+            result = await _run_command("monitor-earthquakes")
+
+        self.assertEqual(result, 0)
+        self.assertTrue(sent.await_args.kwargs["retry_only_rate_limits"])
+
+    async def test_earthquake_series_recreates_deleted_message(self):
+        edited = AsyncMock(side_effect=TelegramError(
+            "missing",
+            retryable=False,
+            code="MESSAGE-NOT-FOUND",
+            status=400,
+        ))
+        sent = AsyncMock(return_value=456)
+
+        async def monitor(now, state, fetcher, publisher):
+            self.assertEqual(await publisher("series", 123), 456)
+            return 1
+
+        with (
+            patch.dict(os.environ, {
+                "TELEGRAM_BOT_TOKEN": "telegram",
+                "TELEGRAM_CHAT_ID": "@group",
+            }),
+            patch("telegrambot.__main__.monitor_earthquakes", new=monitor),
+            patch("telegrambot.__main__.edit_message", new=edited),
+            patch("telegrambot.__main__.send_message", new=sent),
+        ):
+            result = await _run_command("monitor-earthquakes")
+
+        self.assertEqual(result, 0)
+        edited.assert_awaited_once()
+        sent.assert_awaited_once()
+
     async def test_pinned_preview_needs_no_weather_configuration(self):
         with patch("builtins.print") as output:
             result = await _run_command("pinned-preview")

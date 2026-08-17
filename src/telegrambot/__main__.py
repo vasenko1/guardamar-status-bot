@@ -34,6 +34,7 @@ from .electricity import (
     publish_prices,
 )
 from .earthquakes import (
+    EarthquakeDeliveryUncertain,
     EarthquakeError,
     EarthquakeState,
     fetch_earthquakes,
@@ -366,16 +367,41 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         earthquake_state = EarthquakeState(Path(os.environ.get(
             "EARTHQUAKE_STATE_PATH", DEFAULT_EARTHQUAKE_STATE_PATH
         )))
+        async def publish_earthquake(
+            message: str, message_id: Optional[int]
+        ) -> int:
+            if message_id is not None:
+                try:
+                    await edit_message(
+                        bot_token, chat_id, message_id, message
+                    )
+                    return message_id
+                except TelegramError as exc:
+                    if exc.diagnostic_code == "MESSAGE-NOT-MODIFIED":
+                        return message_id
+                    if exc.diagnostic_code != "MESSAGE-NOT-FOUND":
+                        raise
+            try:
+                return await send_message(
+                    bot_token,
+                    chat_id,
+                    message,
+                    disable_notification=False,
+                    retry_only_rate_limits=True,
+                )
+            except TelegramError as exc:
+                if exc.server_status == 429 or (
+                    exc.server_status is not None
+                    and exc.server_status < 500
+                ):
+                    raise
+                raise EarthquakeDeliveryUncertain() from exc
+
         delivered = await monitor_earthquakes(
             now,
             earthquake_state,
             fetch_earthquakes,
-            lambda message: send_message(
-                bot_token,
-                chat_id,
-                message,
-                disable_notification=False,
-            ),
+            publish_earthquake,
         )
         if delivered:
             logging.info(

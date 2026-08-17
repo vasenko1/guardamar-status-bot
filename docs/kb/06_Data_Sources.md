@@ -49,9 +49,11 @@ only and supplies no earthquake fact. IGN's interactive maps and later
 intensity products are not downloaded or screenshotted.
 
 The feed is checked once per hour at minute 55, away from the known project
-schedule. The first valid read seeds deduplication state silently. State holds
-only event identifiers and timestamps, with a 14-day and 256-record cap. Raw
-XML, map tiles, screenshots, and event histories are not retained.
+schedule. The first valid read seeds qualifying events silently. Fresh records
+below the threshold remain eligible for a later IGN revision. State holds only
+the latest normalized event parameters, delivery status, and current-series
+message reference, with a 14-day and 256-record cap. Raw XML, map tiles,
+screenshots, and unbounded event histories are not retained.
 
 ## Approved ESIOS product
 

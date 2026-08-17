@@ -22,8 +22,9 @@ can be processed with the Python standard library.
 - Run one short process at minute 55 of every hour. This avoids the 04:00
   deployment and every known morning, beach, transport, pharmacy, weekend, and
   electricity cron slot.
-- Skip the invocation if a scheduled or manual deployment still holds the
-  deployment lock. The following hour is the bounded recovery path.
+- Make the monitor and deployment acquire the same runtime lock. A conflict
+  skips the monitor or deployment before code can change underneath a running
+  process. The following scheduled invocation is the recovery path.
 - Make one HTTPS request to the exact official IGN GeoRSS endpoint, with a
   ten-second timeout, 256 KiB body limit, no redirect outside the allowlist,
   and no internal retry.
@@ -32,16 +33,26 @@ can be processed with the Python standard library.
   wholly unrecognized non-empty feed.
 - Use unrounded great-circle distance from Guardamar. An event qualifies only
   at magnitude 2.7 or greater and no farther than 10 km.
-- Seed the first valid feed silently. On later runs, publish only a newly seen
-  qualifying event no more than three hours old. Remember nonqualifying and
-  old identifiers silently so they are not reconsidered.
-- Commit an eligible identifier only after Telegram confirms the send. A
-  failed send is retried on the next hourly invocation. Limit one invocation
-  to three public notices to bound accidental bursts.
-- Store only identifier and occurrence time, atomically, with a 14-day and
-  256-record cap. Keep no raw XML, map image, tiles, or source history. Rotate
-  the monitor log at 1 MiB and retain one prior file.
-- Render one Russian message with `📈`, local time, decimal-comma magnitude,
+- Seed existing qualifying events silently. Keep a fresh lower-magnitude event
+  observable for six hours so a later IGN revision across the threshold can
+  produce the notice. Revisions of a current published series update its
+  rendered parameters without another notification.
+- Combine qualifying events occurring within one rolling six-hour window in
+  one Telegram message. Show at most the latest five, retain a bounded count,
+  and edit the stored message for later events. Recreate it only after an
+  explicit `MESSAGE-NOT-FOUND` result.
+- Retry a new `sendMessage` automatically only after explicit HTTP 429. An
+  explicit rejection leaves the event eligible for the next hourly invocation;
+  an ambiguous transport result is recorded as uncertain to avoid an automatic
+  duplicate. Telegram has no idempotency key, so perfect exactly-once delivery
+  is impossible after a lost success response.
+- Store the latest normalized event parameters, status, and current series
+  message reference atomically, with a 14-day and 256-record cap. Quarantine at
+  most one corrupt state file and seed the current feed silently. Keep no raw
+  XML, map image, tiles, or unbounded source history. Rotate the monitor log at
+  1 MiB and retain one prior file.
+- Render one Russian message headed `📈 Землетрясение рядом`, with local time,
+  decimal-comma magnitude,
   rounded distance and one of eight directions. Link the epicenter label to
   exact decimal coordinates in Google Maps and leave one blank line before the
   standard footer. Do not add an IGN link, advice, or preliminary-data text.
@@ -54,6 +65,9 @@ which is appropriate for an informational group and explicitly not emergency
 alerting. A source or network failure produces no message and recovers at the
 next hour. A deployment can postpone a check by one hour without losing a
 still-fresh qualifying event.
+
+A group of nearby recorded events does not prove a seismological relationship,
+so the message says `Несколько толчков рядом` and never infers `афтершок`.
 
 The map link is convenient but not a factual source. Distance, direction,
 magnitude, and time are derived only from the official feed. No static map is

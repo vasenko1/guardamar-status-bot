@@ -7,6 +7,10 @@ PROJECT_DIR=$(dirname "$SCRIPT_DIR")
 STATE_DIR="$PROJECT_DIR/state"
 LOG="$STATE_DIR/deploy.log"
 LOCK_DIR="$STATE_DIR/deploy.lock"
+RUNTIME_LOCK_DIR="$STATE_DIR/code-runtime.lock"
+RUNTIME_LOCK_HELD=0
+
+. "$SCRIPT_DIR/runtime-lock.sh"
 
 mkdir -p "$STATE_DIR"
 if [ -f "$LOG" ] && [ "$(wc -c < "$LOG")" -gt 1048576 ]; then
@@ -20,7 +24,19 @@ if ! mkdir "$LOCK_DIR" 2>/dev/null; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') SKIP Another deployment is running"
     exit 0
 fi
-trap 'rmdir "$LOCK_DIR"' EXIT HUP INT TERM
+cleanup() {
+    if [ "$RUNTIME_LOCK_HELD" -eq 1 ]; then
+        release_runtime_lock "$RUNTIME_LOCK_DIR"
+    fi
+    rmdir "$LOCK_DIR" 2>/dev/null || true
+}
+trap cleanup EXIT HUP INT TERM
+
+if ! acquire_runtime_lock "$RUNTIME_LOCK_DIR"; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') SKIP Application task is running"
+    exit 0
+fi
+RUNTIME_LOCK_HELD=1
 
 cd "$PROJECT_DIR" || exit 1
 

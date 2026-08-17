@@ -105,4 +105,5 @@ when a beach flag, explicit jellyfish status, or official AEMET warning has
 actually changed. They remain silent when verified state is unchanged.
 An independent hourly one-shot process may publish a compact local earthquake
 notice from IGN. It retains only a bounded identifier set for deduplication and
+the latest normalized parameters needed for revisions and series editing. It
 does not keep a raw feed or a resident process.

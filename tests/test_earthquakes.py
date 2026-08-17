@@ -8,10 +8,12 @@ from zoneinfo import ZoneInfo
 from telegrambot.branding import FOOTER
 from telegrambot.earthquakes import (
     Earthquake,
+    EarthquakeDeliveryUncertain,
     EarthquakeError,
     EarthquakeState,
     MAX_STATE_EVENTS,
     build_earthquake_message,
+    build_earthquake_series_message,
     distance_and_bearing,
     monitor_earthquakes,
     parse_earthquakes,
@@ -112,7 +114,7 @@ class EarthquakePolicyTests(unittest.TestCase):
     def test_message_uses_one_fact_line_map_and_blank_line_before_footer(self):
         message = build_earthquake_message(_event())
 
-        self.assertIn("📈 <b>Землетрясение рядом с Гуардамаром</b>", message)
+        self.assertIn("📈 <b>Землетрясение рядом</b>", message)
         self.assertIn(
             "🕒 14:32 - зарегистрировано землетрясение "
             "магнитудой <b>2,8</b>",
@@ -130,8 +132,51 @@ class EarthquakePolicyTests(unittest.TestCase):
         self.assertNotIn("Информация IGN", message)
         self.assertNotIn("предваритель", message.casefold())
 
+    def test_series_is_one_bounded_message_with_map_links(self):
+        events = tuple(
+            _event(
+                event_id=f"esseries{index}",
+                occurred_at=datetime(
+                    2026, 8, 18, 12, 30 + index, tzinfo=timezone.utc
+                ),
+                magnitude=2.7 + index / 10,
+            )
+            for index in range(6)
+        )
+
+        message = build_earthquake_series_message(events)
+
+        self.assertIn("📈 <b>Несколько толчков рядом</b>", message)
+        self.assertIn("IGN зарегистрировал 6 землетрясений рядом", message)
+        self.assertIn("Ещё событий ранее: 1", message)
+        self.assertEqual(message.count("https://maps.google.com/?q="), 5)
+        self.assertTrue(message.endswith("\n\n" + FOOTER))
+
+    def test_series_shows_dates_when_it_crosses_local_midnight(self):
+        before = _event(
+            event_id="esbefore",
+            occurred_at=datetime(2026, 8, 18, 21, 50, tzinfo=timezone.utc),
+        )
+        after = _event(
+            event_id="esafter",
+            occurred_at=datetime(2026, 8, 18, 22, 20, tzinfo=timezone.utc),
+        )
+
+        message = build_earthquake_series_message((before, after))
+
+        self.assertIn("18.08, 23:50", message)
+        self.assertIn("19.08, 00:20", message)
+
 
 class EarthquakeStateTests(unittest.IsolatedAsyncioTestCase):
+    @staticmethod
+    def _publisher(messages, message_id=101):
+        async def publish(message, existing_id):
+            messages.append((message, existing_id))
+            return existing_id or message_id
+
+        return publish
+
     async def test_first_run_seeds_silently_then_new_event_is_sent_once(self):
         now = datetime(2026, 8, 18, 15, 0, tzinfo=MADRID)
         old = _event(
@@ -142,28 +187,55 @@ class EarthquakeStateTests(unittest.IsolatedAsyncioTestCase):
             event_id="esnew",
             occurred_at=now.astimezone(timezone.utc) - timedelta(minutes=20),
         )
-        sender = AsyncMock(return_value=101)
+        messages = []
+        publisher = self._publisher(messages)
         with tempfile.TemporaryDirectory() as directory:
             state = EarthquakeState(Path(directory) / "earthquakes.json")
             first = await monitor_earthquakes(
-                now, state, AsyncMock(return_value=(old,)), sender
+                now, state, AsyncMock(return_value=(old,)), publisher
             )
             second = await monitor_earthquakes(
-                now, state, AsyncMock(return_value=(old, new)), sender
+                now, state, AsyncMock(return_value=(old, new)), publisher
             )
             third = await monitor_earthquakes(
-                now, state, AsyncMock(return_value=(old, new)), sender
+                now, state, AsyncMock(return_value=(old, new)), publisher
             )
 
         self.assertEqual((first, second, third), (0, 1, 0))
-        sender.assert_awaited_once()
+        self.assertEqual(len(messages), 1)
+        self.assertIsNone(messages[0][1])
 
-    async def test_old_or_out_of_scope_event_is_remembered_without_send(self):
+    async def test_first_run_record_can_alert_after_fresh_revision(self):
         now = datetime(2026, 8, 18, 15, 0, tzinfo=MADRID)
-        sender = AsyncMock(return_value=101)
+        initial = _event(event_id="esseeded", magnitude=2.6)
+        revised = _event(event_id="esseeded", magnitude=2.8)
+        messages = []
         with tempfile.TemporaryDirectory() as directory:
             state = EarthquakeState(Path(directory) / "earthquakes.json")
-            state.write({"version": 1, "initialized": True, "events": []})
+            await monitor_earthquakes(
+                now,
+                state,
+                AsyncMock(return_value=(initial,)),
+                self._publisher(messages),
+            )
+            delivered = await monitor_earthquakes(
+                now + timedelta(minutes=30),
+                state,
+                AsyncMock(return_value=(revised,)),
+                self._publisher(messages),
+            )
+
+        self.assertEqual(delivered, 1)
+        self.assertEqual(len(messages), 1)
+
+    async def test_old_event_closes_but_fresh_low_magnitude_can_be_revised(self):
+        now = datetime(2026, 8, 18, 15, 0, tzinfo=MADRID)
+        messages = []
+        with tempfile.TemporaryDirectory() as directory:
+            state = EarthquakeState(Path(directory) / "earthquakes.json")
+            value = state.empty()
+            value["initialized"] = True
+            state.write(value)
             result = await monitor_earthquakes(
                 now,
                 state,
@@ -171,20 +243,90 @@ class EarthquakeStateTests(unittest.IsolatedAsyncioTestCase):
                     _event(
                         event_id="esold",
                         occurred_at=now.astimezone(timezone.utc)
-                        - timedelta(hours=4),
+                        - timedelta(hours=7),
                     ),
-                    _event(event_id="esfar", latitude=38.3),
+                    _event(event_id="esrevised", magnitude=2.6),
                 )),
-                sender,
+                self._publisher(messages),
+            )
+            revised = await monitor_earthquakes(
+                now + timedelta(hours=1),
+                state,
+                AsyncMock(return_value=(
+                    _event(event_id="esrevised", magnitude=2.8),
+                )),
+                self._publisher(messages),
+            )
+            stored = {item["id"]: item for item in state.read()["events"]}
+
+        self.assertEqual((result, revised), (0, 1))
+        self.assertEqual(stored["esold"]["status"], "closed")
+        self.assertEqual(stored["esrevised"]["status"], "alerted")
+        self.assertEqual(len(messages), 1)
+
+    async def test_four_events_are_combined_without_loss(self):
+        now = datetime(2026, 8, 18, 15, 0, tzinfo=MADRID)
+        events = tuple(
+            _event(
+                event_id=f"esburst{index}",
+                occurred_at=now.astimezone(timezone.utc)
+                - timedelta(minutes=10 - index),
+            )
+            for index in range(4)
+        )
+        messages = []
+        with tempfile.TemporaryDirectory() as directory:
+            state = EarthquakeState(Path(directory) / "earthquakes.json")
+            value = state.empty()
+            value["initialized"] = True
+            state.write(value)
+
+            delivered = await monitor_earthquakes(
+                now,
+                state,
+                AsyncMock(return_value=events),
+                self._publisher(messages),
             )
             stored = state.read()
 
-        self.assertEqual(result, 0)
-        sender.assert_not_awaited()
+        self.assertEqual(delivered, 4)
+        self.assertEqual(len(messages), 1)
+        self.assertIn("4 землетрясения", messages[0][0])
         self.assertEqual(
-            {item["id"] for item in stored["events"]},
-            {"esold", "esfar"},
+            {item["status"] for item in stored["events"]}, {"alerted"}
         )
+
+    async def test_later_tremor_edits_active_series(self):
+        now = datetime(2026, 8, 18, 15, 0, tzinfo=MADRID)
+        first = _event(
+            event_id="esfirst",
+            occurred_at=now.astimezone(timezone.utc) - timedelta(minutes=20),
+        )
+        second = _event(
+            event_id="essecond",
+            occurred_at=now.astimezone(timezone.utc) + timedelta(minutes=20),
+        )
+        messages = []
+        with tempfile.TemporaryDirectory() as directory:
+            state = EarthquakeState(Path(directory) / "earthquakes.json")
+            value = state.empty()
+            value["initialized"] = True
+            state.write(value)
+            await monitor_earthquakes(
+                now, state, AsyncMock(return_value=(first,)),
+                self._publisher(messages),
+            )
+            await monitor_earthquakes(
+                now + timedelta(hours=1),
+                state,
+                AsyncMock(return_value=(first, second)),
+                self._publisher(messages),
+            )
+
+        self.assertEqual(len(messages), 2)
+        self.assertIsNone(messages[0][1])
+        self.assertEqual(messages[1][1], 101)
+        self.assertIn("Несколько толчков рядом", messages[1][0])
 
     async def test_failed_send_leaves_event_eligible_for_next_run(self):
         now = datetime(2026, 8, 18, 15, 0, tzinfo=MADRID)
@@ -194,7 +336,9 @@ class EarthquakeStateTests(unittest.IsolatedAsyncioTestCase):
         )
         with tempfile.TemporaryDirectory() as directory:
             state = EarthquakeState(Path(directory) / "earthquakes.json")
-            state.write({"version": 1, "initialized": True, "events": []})
+            value = state.empty()
+            value["initialized"] = True
+            state.write(value)
             with self.assertRaises(RuntimeError):
                 await monitor_earthquakes(
                     now,
@@ -204,6 +348,29 @@ class EarthquakeStateTests(unittest.IsolatedAsyncioTestCase):
                 )
 
             self.assertEqual(state.read()["events"], [])
+
+    async def test_uncertain_send_is_remembered_without_automatic_duplicate(self):
+        now = datetime(2026, 8, 18, 15, 0, tzinfo=MADRID)
+        event = _event(
+            event_id="esuncertain",
+            occurred_at=now.astimezone(timezone.utc) - timedelta(minutes=20),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state = EarthquakeState(Path(directory) / "earthquakes.json")
+            value = state.empty()
+            value["initialized"] = True
+            state.write(value)
+            with self.assertRaises(EarthquakeDeliveryUncertain):
+                await monitor_earthquakes(
+                    now,
+                    state,
+                    AsyncMock(return_value=(event,)),
+                    AsyncMock(side_effect=EarthquakeDeliveryUncertain()),
+                )
+
+            stored = state.read()
+
+        self.assertEqual(stored["events"][0]["status"], "uncertain")
 
     def test_concurrent_run_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -219,22 +386,45 @@ class EarthquakeStateTests(unittest.IsolatedAsyncioTestCase):
             {
                 "id": f"es{index}",
                 "occurred_at": (now - timedelta(minutes=index)).isoformat(),
+                "magnitude": 2.0,
+                "latitude": 38.0,
+                "longitude": -0.6,
+                "status": "closed",
             }
             for index in range(MAX_STATE_EVENTS + 4)
         ]
         events.append({
             "id": "esexpired",
             "occurred_at": (now - timedelta(days=15)).isoformat(),
+            "magnitude": 2.0,
+            "latitude": 38.0,
+            "longitude": -0.6,
+            "status": "closed",
         })
-        value = {"version": 1, "initialized": True, "events": events}
+        value = {
+            "version": 2,
+            "initialized": True,
+            "events": events,
+            "series": None,
+        }
 
         self.assertTrue(prune_state(value, now))
         self.assertEqual(len(value["events"]), MAX_STATE_EVENTS)
         self.assertNotIn("esexpired", {item["id"] for item in value["events"]})
 
-    def test_corrupt_state_fails_closed(self):
+    async def test_corrupt_state_is_quarantined_and_reseeded_silently(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "earthquakes.json"
             path.write_text("{}", encoding="utf-8")
-            with self.assertRaises(EarthquakeError):
-                EarthquakeState(path).read()
+            state = EarthquakeState(path)
+
+            delivered = await monitor_earthquakes(
+                datetime(2026, 8, 18, 15, 0, tzinfo=MADRID),
+                state,
+                AsyncMock(return_value=(_event(),)),
+                AsyncMock(),
+            )
+
+            self.assertEqual(delivered, 0)
+            self.assertTrue(path.with_name("earthquakes.json.invalid").exists())
+            self.assertTrue(state.read()["initialized"])

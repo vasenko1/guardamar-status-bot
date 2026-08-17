@@ -143,6 +143,8 @@ listener. A pharmacy-source failure is logged and left to the weekly retry; it
 does not invalidate tested code. On installation or test failure the deploy
 restores the previous commit. `.env`, `state/`, logs, and the virtual
 environment remain local and are never pulled from GitHub.
+Deployment and the earthquake monitor share one short-lived runtime lock, so a
+manual update cannot replace code while that monitor is running.
 
 Recommended crontab entries:
 
@@ -200,9 +202,10 @@ cd ~/bots/guardamar-status
 This idempotent installer owns only its marked block and saves the original
 crontab once as `~/.cache/crontab/crontab.before-earthquakes`. Minute `:55`
 avoids the deployment, morning preparation, digest, beach-monitor, transport,
-electricity, weekend, and pharmacy slots listed above. If a manual deployment
-is still active, that hour is skipped and the next invocation catches any
-still-fresh event.
+electricity, weekend, and pharmacy slots listed above. The installer aborts on
+a crontab read error or malformed managed markers rather than risk replacing
+unrelated jobs. A runtime-lock conflict skips that invocation; the next hour
+is the bounded recovery path.
 
 Install `cronie`, `termux-services`, and the Python `tzdata` dependency before
 enabling the services. Open Termux:Boot once after installation. On Android,

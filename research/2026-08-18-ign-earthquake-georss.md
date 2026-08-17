@@ -38,6 +38,6 @@ degrees, minutes and seconds; that conversion does not change the location.
 
 One hourly read is about 24 small XML requests per day. The implementation
 uses a ten-second request timeout, 256 KiB response cap, 128-item parse cap, no
-internal retry, no raw cache, and bounded identifier-only state. Minute `:55`
+internal retry, no raw cache, and bounded normalized event state. Minute `:55`
 does not overlap the currently documented cron entries, including the 04:00
 deployment.

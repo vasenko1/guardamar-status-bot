@@ -234,11 +234,16 @@ An independent earthquake command runs at minute 55 of every hour. Each
 invocation performs one bounded request to the official IGN GeoRSS endpoint,
 parses at most 128 records with the standard library, filters them to magnitude
 2.7 or greater within 10 km of Guardamar, and exits. Its first successful run
-seeds state silently. Later fresh qualifying identifiers are sent once; a
-Telegram failure leaves the identifier uncommitted so the next hourly run can
-retry. The state keeps at most 256 identifiers for 14 days, and the raw XML is
-never stored. The wrapper skips a run while the 04:00 or a manual deployment
-holds the deployment lock.
+seeds existing qualifying events silently while keeping fresh lower-magnitude
+records eligible for an IGN revision. Later qualifying events within a
+six-hour recovery window are sent once. Events observed within the same
+six-hour series share one Telegram message; later events and source revisions
+edit it in place, with at most five events visible. A missing series message is
+recreated. An explicit Telegram rejection remains eligible for the next hour;
+an ambiguous network result is recorded as uncertain instead of risking an
+automatic duplicate. The state keeps at most 256 normalized records for 14
+days, and the raw XML is never stored. The monitor and deployment acquire the
+same runtime lock, so neither can change code underneath the other.
 
 Deployment is also external to the application. GitHub Actions promotes a
 `main` commit to the `deploy` branch only after the complete test suite passes.
