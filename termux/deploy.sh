@@ -53,7 +53,18 @@ fi
 CURRENT_SHA=$(git rev-parse HEAD) || exit 1
 DEPLOY_SHA=$(git rev-parse FETCH_HEAD) || exit 1
 
+install_runtime_jobs() {
+    if [ ! -x "$PROJECT_DIR/termux/install-earthquake-cron.sh" ]; then
+        return 0
+    fi
+    if ! "$PROJECT_DIR/termux/install-earthquake-cron.sh"; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') FAILURE Could not install earthquake schedule"
+        return 1
+    fi
+}
+
 if [ "$CURRENT_SHA" = "$DEPLOY_SHA" ]; then
+    install_runtime_jobs || exit 1
     echo "$(date '+%Y-%m-%d %H:%M:%S') INFO Already up to date"
     exit 0
 fi
@@ -83,6 +94,11 @@ if ! PYTHONPATH=src ./.venv/bin/python -m unittest discover -s tests; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') FAILURE Device tests failed"
     rollback
 fi
+
+# Reconcile the idempotent managed cron block after every code update. The
+# no-op path above also retries this step, so a temporary crond failure cannot
+# leave a successfully deployed feature permanently inactive.
+install_runtime_jobs || exit 1
 
 # Refresh the small official rota after a successful code update so schema or
 # zone-selection fixes take effect immediately. Pharmacy data is optional; an
