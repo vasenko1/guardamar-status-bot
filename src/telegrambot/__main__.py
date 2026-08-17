@@ -33,6 +33,12 @@ from .electricity import (
     load_or_fetch_prices,
     publish_prices,
 )
+from .earthquakes import (
+    EarthquakeError,
+    EarthquakeState,
+    fetch_earthquakes,
+    monitor_earthquakes,
+)
 from .mayor import latest_beach_notice
 from .municipal_agenda import (
     MunicipalAgendaError,
@@ -94,6 +100,7 @@ DEFAULT_AEMET_SNAPSHOT_PATH = "state/aemet.json"
 DEFAULT_OPERATIONAL_UPDATE_STATE_PATH = "state/operational_updates.json"
 DEFAULT_WEEKEND_STATE_PATH = "state/weekend.json"
 DEFAULT_PHARMACY_STATE_PATH = "state/pharmacy.json"
+DEFAULT_EARTHQUAKE_STATE_PATH = "state/earthquakes.json"
 
 
 def _beach_ready_for_update(status, now: datetime, final_attempt: bool) -> bool:
@@ -353,6 +360,31 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             monitor_state.write(value)
             logging.info("SUCCESS: operational update delivered")
             return 0
+    if command == "monitor-earthquakes":
+        bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
+        chat_id = _required_environment("TELEGRAM_CHAT_ID")
+        earthquake_state = EarthquakeState(Path(os.environ.get(
+            "EARTHQUAKE_STATE_PATH", DEFAULT_EARTHQUAKE_STATE_PATH
+        )))
+        delivered = await monitor_earthquakes(
+            now,
+            earthquake_state,
+            fetch_earthquakes,
+            lambda message: send_message(
+                bot_token,
+                chat_id,
+                message,
+                disable_notification=False,
+            ),
+        )
+        if delivered:
+            logging.info(
+                "SUCCESS: %d local earthquake alert(s) delivered",
+                delivered,
+            )
+        else:
+            logging.info("SKIP: no new local earthquake")
+        return 0
     if command == "sync-municipal-events":
         gemini_key = _required_environment("GEMINI_API_KEY")
         state_path = Path(os.environ.get(
@@ -959,6 +991,7 @@ def main() -> None:
             "prepare-event-translations",
             "prepare-aemet",
             "monitor-updates",
+            "monitor-earthquakes",
             "weekend", "weekend-preview",
             "poll",
         ),
@@ -1006,7 +1039,8 @@ def main() -> None:
         )
         raise SystemExit(2) from exc
     except (
-        AemetError, AgendaError, MunicipalAgendaError, PharmacyError,
+        AemetError, AgendaError, EarthquakeError, MunicipalAgendaError,
+        PharmacyError,
         TelegramError, StateError, OperationalUpdateStateError, ValueError
     ) as exc:
         print(f"Command failed: {exc}", file=sys.stderr)

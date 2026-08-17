@@ -22,6 +22,27 @@ MADRID = ZoneInfo("Europe/Madrid")
 
 
 class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
+    async def test_earthquake_monitor_needs_only_telegram_configuration(self):
+        monitor = AsyncMock(return_value=0)
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "earthquakes.json"
+            with (
+                patch.dict(os.environ, {
+                    "TELEGRAM_BOT_TOKEN": "telegram",
+                    "TELEGRAM_CHAT_ID": "@group",
+                    "EARTHQUAKE_STATE_PATH": str(state_path),
+                }),
+                patch(
+                    "telegrambot.__main__.monitor_earthquakes",
+                    new=monitor,
+                ),
+            ):
+                result = await _run_command("monitor-earthquakes")
+
+        self.assertEqual(result, 0)
+        monitor.assert_awaited_once()
+        self.assertEqual(monitor.await_args.args[1].path, state_path)
+
     async def test_pinned_preview_needs_no_weather_configuration(self):
         with patch("builtins.print") as output:
             result = await _run_command("pinned-preview")

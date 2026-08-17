@@ -230,6 +230,16 @@ are retained for later publications and do not alone trigger replacement.
 The electricity command runs at 20:30, then after 5, 15 and 30 minutes, with a
 final 21:20 attempt. It publishes at most once for the next local date.
 
+An independent earthquake command runs at minute 55 of every hour. Each
+invocation performs one bounded request to the official IGN GeoRSS endpoint,
+parses at most 128 records with the standard library, filters them to magnitude
+2.7 or greater within 10 km of Guardamar, and exits. Its first successful run
+seeds state silently. Later fresh qualifying identifiers are sent once; a
+Telegram failure leaves the identifier uncommitted so the next hourly run can
+retry. The state keeps at most 256 identifiers for 14 days, and the raw XML is
+never stored. The wrapper skips a run while the 04:00 or a manual deployment
+holds the deployment lock.
+
 Deployment is also external to the application. GitHub Actions promotes a
 `main` commit to the `deploy` branch only after the complete test suite passes.
 A short Termux cron job checks that branch once at 04:00 before the morning run,
@@ -250,6 +260,8 @@ the message ID is stored remains an unavoidable duplicate edge.
 - Prefer structured official feeds or APIs over page scraping.
 - Collect sources only in bounded scheduled runs; never continuously.
 - Bound network time, retries, response sizes, concurrency, and stored history.
+- Keep the local earthquake monitor hourly and one-shot; it is informational,
+  never a replacement for official emergency alerts.
 - Keep domain rules independent from transport and source formats.
 - Do not add a generic cache layer for municipal or event information. ADR
   0033 permits only a bounded Todo Cultura cursor, candidate index and covered

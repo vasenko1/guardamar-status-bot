@@ -1,5 +1,33 @@
 # Features
 
+## Local earthquake notices
+
+Once per hour the bot reads the official IGN GeoRSS feed and looks only within
+10 km of Guardamar. It publishes a standalone group message when all of the
+following are true: the event is new, no more than three hours old, magnitude
+2.7 or greater, and inside the radius. The first successful run records the
+current feed without publishing old events. Each later event is delivered at
+most once; a failed Telegram send is retried on the next hourly run rather
+than marked successful.
+
+The compact message contract is:
+
+```text
+📈 Землетрясение рядом с Гуардамаром
+
+🕒 14:32 - зарегистрировано землетрясение магнитудой 2,8
+
+📍 Эпицентр: примерно в 4 км к юго-западу от Гуардамара
+
+📣 обЪявления Гуардамар
+```
+
+The epicenter row links the exact decimal coordinates in Google Maps. The
+distance is rounded only for display; eligibility uses the unrounded
+great-circle distance. Direction uses one of eight compass sectors. No IGN
+link, generic advice, preliminary-data disclaimer, map screenshot, or raw
+source location is added. The normal footer is separated by one blank line.
+
 ## Weekend events digest
 
 One optional Friday-evening message, «Афиша выходных», previews Saturday and

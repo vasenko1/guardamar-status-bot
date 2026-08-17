@@ -50,10 +50,17 @@ is static; one short daily job conditionally refreshes the two official urban
 timetable images and their current calendar captions, plus the date-specific
 airport departures and verified standard fare.
 
+### Local earthquake notices
+
+One short hourly Termux invocation checks the official IGN GeoRSS feed. It
+publishes only a newly observed event of magnitude 2.7 or greater whose
+epicenter is no farther than 10 km from Guardamar. The monitor is a quiet
+informational feature, not an emergency-warning service.
+
 ## Out of scope
 
 - General news aggregation
-- Continuous alerts or real-time emergency monitoring
+- Continuous or real-time emergency monitoring
 - Replacing official emergency or municipal channels
 - Conversational AI or generated advice
 - General AI summarization, classification, or ranking outside the approved
@@ -96,3 +103,6 @@ private `/preview`; it never publishes or changes publication state.
 After the later digest phase, bounded one-shot checks may publish a new reply
 when a beach flag, explicit jellyfish status, or official AEMET warning has
 actually changed. They remain silent when verified state is unchanged.
+An independent hourly one-shot process may publish a compact local earthquake
+notice from IGN. It retains only a bounded identifier set for deduplication and
+does not keep a raw feed or a resident process.

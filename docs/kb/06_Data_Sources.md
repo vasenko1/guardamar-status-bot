@@ -19,6 +19,7 @@ official endpoints and lightweight access methods are validated.
 | Official marine service | Sea state and relevant marine warnings | High for its jurisdiction | API or published feed | Yes |
 | SafeBeach public Guardamar page | Active beach flags and sea temperature | High when municipal lifeguards actively maintain it | Small structured payload embedded in the public page | Yes |
 | Civil protection or emergency authority | Safety warnings | Highest priority | Alert feed or official publication | Yes |
+| Instituto Geografico Nacional (IGN) GeoRSS | Nearby recorded earthquakes | High; official Spanish seismic authority | One bounded public XML feed request per hour; deterministic 10 km and magnitude 2.7 filter | Yes, narrow standalone notice |
 | Policía Local Guardamar | Explicit mobility restrictions | High for direct official notices; publication is irregular | One bounded official HTML page and reviewed linked document | Yes |
 | Agenda Guardamar | Official ticketed events occurring today | High for listed Ayuntamiento events | 05:30 bounded HTML/Schema.org catalog refresh | Yes |
 | Turismo Guardamar municipal agenda | Broader official monthly cultural text plus supplementary MUPI | High for text; image facts require agreement | 05:10 text-first catalog refresh; MUPI only after URL change | Yes |
@@ -27,6 +28,30 @@ official endpoints and lightweight access methods are validated.
 | Colegio Oficial de Farmacéuticos de Alicante | Legally authoritative on-call pharmacy rota | High; the provincial college responsible for the service | One weekly bounded fetch of the linked annual XLSX with compressed and uncompressed size bounds; normalized 45-day catalog for Guardamar's complete published service zone `61`, including duties assigned in San Fulgencio; no morning request | Yes, ADR 0038 |
 | Campo de Guardamar market website | Sunday market at Camino del Raso, 15 | Operator-published schedule; no authoritative cancellation feed found | Local Sunday rule, `07:00–16:00` | Yes, explicit product exception |
 | Community or commercial sources | Gap filling only | Variable | Varies | No by default |
+
+## Approved IGN earthquake feed
+
+Use the official public GeoRSS document at
+`https://www.ign.es/ign/RssTools/sismologia.xml`. This is a machine-readable
+public feed, not a separately documented REST API. The adapter permits only
+that exact HTTPS host and path, accepts XML/RSS content, limits the response to
+256 KiB, times out after ten seconds, and makes no internal retry. It parses at
+most 128 items and cross-checks the coordinates repeated in the official item
+description and GeoRSS fields. Malformed or ambiguous records are omitted; a
+non-empty feed with no valid records is rejected.
+
+The monitor uses Guardamar coordinates `38.0896, -0.6553` as its stable local
+reference. It publishes only a new event with magnitude at least 2.7 and an
+unrounded great-circle distance no greater than 10 km. Event time supplied by
+IGN in UTC is converted to `Europe/Madrid`. The user-facing map link points to
+the exact decimal coordinates through Google Maps; Google Maps is presentation
+only and supplies no earthquake fact. IGN's interactive maps and later
+intensity products are not downloaded or screenshotted.
+
+The feed is checked once per hour at minute 55, away from the known project
+schedule. The first valid read seeds deduplication state silently. State holds
+only event identifiers and timestamps, with a 14-day and 256-record cap. Raw
+XML, map tiles, screenshots, and event histories are not retained.
 
 ## Approved ESIOS product
 
