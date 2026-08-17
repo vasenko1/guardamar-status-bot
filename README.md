@@ -106,6 +106,7 @@ CRON_TZ=Europe/Madrid
 0,20 18 * * 5 /path/to/TelegramBot/termux/run-weekend.sh
 0 19 * * 5 /path/to/TelegramBot/termux/run-weekend.sh
 50 5 * * 0 /path/to/TelegramBot/termux/sync-pharmacy.sh
+55 * * * * /path/to/TelegramBot/termux/monitor-earthquakes.sh
 ```
 
 Keep the Android device timezone set to `Europe/Madrid` as an additional
@@ -128,6 +129,8 @@ The validated Android deployment uses the scripts in `termux/`:
   normalized same-day weather snapshot;
 - `termux/deploy.sh` at `04:00` to apply only commits promoted to the
   GitHub `deploy` branch after successful CI;
+- `termux/monitor-earthquakes.sh` at minute 55 of every hour to check the
+  official IGN GeoRSS feed for a new qualifying local event;
 - `termux/start-services` copied to `~/.termux/boot/start-services` for the
   F-Droid Termux:Boot add-on.
 
@@ -140,6 +143,8 @@ listener. A pharmacy-source failure is logged and left to the weekly retry; it
 does not invalidate tested code. On installation or test failure the deploy
 restores the previous commit. `.env`, `state/`, logs, and the virtual
 environment remain local and are never pulled from GitHub.
+Deployment and the earthquake monitor share one short-lived runtime lock, so a
+manual update cannot replace code while that monitor is running.
 
 Recommended crontab entries:
 
@@ -167,6 +172,7 @@ CRON_TZ=Europe/Madrid
 0,20 18 * * 5 /data/data/com.termux/files/home/bots/guardamar-status/termux/run-weekend.sh
 0 19 * * 5 /data/data/com.termux/files/home/bots/guardamar-status/termux/run-weekend.sh
 50 5 * * 0 /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-pharmacy.sh
+55 * * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-earthquakes.sh
 ```
 
 After deployment, install only the operational-monitor entries without
@@ -184,6 +190,22 @@ that block and removes exact legacy copies of its eight jobs. A final scoped
 `CRON_TZ=Europe/Madrid` prevents another bot's timezone setting from changing
 this schedule. The installer does not install or modify the other Morning
 Digest and electricity entries listed above.
+
+Install the independent hourly earthquake row without replacing existing cron
+jobs:
+
+```sh
+cd ~/bots/guardamar-status
+./termux/install-earthquake-cron.sh
+```
+
+This idempotent installer owns only its marked block and saves the original
+crontab once as `~/.cache/crontab/crontab.before-earthquakes`. Minute `:55`
+avoids the deployment, morning preparation, digest, beach-monitor, transport,
+electricity, weekend, and pharmacy slots listed above. The installer aborts on
+a crontab read error or malformed managed markers rather than risk replacing
+unrelated jobs. A runtime-lock conflict skips that invocation; the next hour
+is the bounded recovery path.
 
 Install `cronie`, `termux-services`, and the Python `tzdata` dependency before
 enabling the services. Open Termux:Boot once after installation. On Android,
