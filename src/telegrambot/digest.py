@@ -206,9 +206,19 @@ def _warning_blocks(
         if warning.ends_at is None
         or warning.ends_at.astimezone(GUARDAMAR_TIMEZONE) > now
     ]
+
+    def display_day(warning: Warning) -> date:
+        if warning.starts_at is None:
+            return today
+        start_day = warning.starts_at.astimezone(
+            GUARDAMAR_TIMEZONE
+        ).date()
+        return max(start_day, today)
+
     ordered = sorted(
         active,
         key=lambda warning: (
+            display_day(warning),
             priority.get(warning.level, 3),
             warning.starts_at or datetime.min.replace(
                 tzinfo=GUARDAMAR_TIMEZONE
@@ -226,6 +236,7 @@ def _warning_blocks(
             else None
         )
         key = (
+            display_day(warning),
             warning.level,
             _warning_text(warning.event),
             description_identity,
@@ -239,6 +250,7 @@ def _warning_blocks(
 
     blocks = []
     for (
+        _display_day,
         level,
         event,
         _description_identity,
@@ -247,37 +259,11 @@ def _warning_blocks(
     ), items in grouped:
         dot = WARNING_DOTS.get(level, "⚠️")
         blocks.append(f"{dot} <b>{html.escape(event.capitalize())}</b>")
-        intervals = []
-        if (
-            len(items) == 2
-            and items[0].starts_at
-            and items[0].ends_at
-            and items[1].starts_at
-            and items[1].ends_at
-        ):
-            first_start = items[0].starts_at.astimezone(GUARDAMAR_TIMEZONE)
-            first_end = items[0].ends_at.astimezone(GUARDAMAR_TIMEZONE)
-            second_start = items[1].starts_at.astimezone(GUARDAMAR_TIMEZONE)
-            second_end = items[1].ends_at.astimezone(GUARDAMAR_TIMEZONE)
-            if (
-                first_start.date() == today
-                and second_start.date() == today + timedelta(days=1)
-                and first_start.time() == second_start.time()
-                and first_end.time() == second_end.time()
-                and first_start.date() == first_end.date()
-                and second_start.date() == second_end.date()
-            ):
-                intervals.append(
-                    "Сегодня и завтра · "
-                    f"{_warning_clock(first_start)}–"
-                    f"{_warning_clock(first_end)}"
-                )
-        if not intervals:
-            intervals = [
-                interval
-                for item in items
-                if (interval := _warning_interval(item, today))
-            ]
+        intervals = [
+            interval
+            for item in items
+            if (interval := _warning_interval(item, today))
+        ]
         if probability:
             if intervals:
                 intervals = [
