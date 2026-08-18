@@ -316,9 +316,10 @@ row layout.
 All current, today, and tomorrow yellow, orange, and red warnings for the
 Guardamar zone are shown; later warnings wait for a subsequent digest. Safety
 warnings are not capped by a message-item limit. Matching level, hazard,
-probability, and description may share one block; equal today/tomorrow hours
-render as `Сегодня и завтра`. Different facts remain separate. The fixed zone
-is named once, hazards are ordered red, orange, yellow, and each name is bold.
+probability, description, and local start day may share one block. Different
+facts remain separate. The fixed zone is named once. Today's hazards precede
+tomorrow's; within each day they are ordered red, orange, yellow, and each name
+is bold.
 Hazards have no empty lines between them; their time and recognized detail
 lines use one consistent indentation so the section reads as one list.
 Spanish/English CAP duplicates and green `Minor` records are omitted. Unknown

@@ -527,7 +527,7 @@ class DigestMessageTests(unittest.TestCase):
             message,
         )
 
-    def test_groups_identical_warning_for_today_and_tomorrow(self):
+    def test_keeps_today_before_tomorrow_for_identical_warning(self):
         madrid = timezone(timedelta(hours=2))
         warnings = tuple(
             Warning(
@@ -550,11 +550,57 @@ class DigestMessageTests(unittest.TestCase):
             now=datetime(2026, 8, 3, 7, 30, tzinfo=madrid),
         )
 
-        self.assertEqual(message.count("<b>Высокая температура</b>"), 1)
+        self.assertEqual(message.count("<b>Высокая температура</b>"), 2)
         self.assertIn(
-            "   Сегодня и завтра · 13:00–20:59 · вероятность 40–70%",
+            "   Сегодня · 13:00–20:59 · вероятность 40–70%",
             message,
         )
+        self.assertIn(
+            "   Завтра · 13:00–20:59 · вероятность 40–70%",
+            message,
+        )
+
+    def test_orders_warning_day_before_color_and_color_within_day(self):
+        madrid = timezone(timedelta(hours=2))
+        today = date(2026, 8, 18)
+
+        def warning(event, level, day, hour):
+            return Warning(
+                event,
+                level,
+                datetime(day.year, day.month, day.day, 20, 59, tzinfo=madrid),
+                starts_at=datetime(
+                    day.year, day.month, day.day, hour, 0, tzinfo=madrid
+                ),
+                probability="40–70%",
+            )
+
+        digest = MorningDigest(
+            weather=Weather(None, 24, 33, None, None, None),
+            warnings=(
+                warning(
+                    "Temperaturas maximas", "orange",
+                    today + timedelta(days=1), 13,
+                ),
+                warning("Viento", "yellow", today, 14),
+                warning("Lluvias", "orange", today, 13),
+                warning("Tormentas", "red", today, 12),
+            ),
+            warnings_available=True,
+        )
+
+        message = build_message(
+            digest,
+            now=datetime(2026, 8, 18, 7, 30, tzinfo=madrid),
+        )
+
+        red_today = message.index("🔴 <b>Грозы</b>")
+        orange_today = message.index("🟠 <b>Сильный дождь</b>")
+        yellow_today = message.index("🟡 <b>Сильный ветер</b>")
+        orange_tomorrow = message.index("🟠 <b>Высокая температура</b>")
+        self.assertLess(red_today, orange_today)
+        self.assertLess(orange_today, yellow_today)
+        self.assertLess(yellow_today, orange_tomorrow)
 
     def test_keeps_different_warning_intervals_separate(self):
         madrid = timezone(timedelta(hours=2))
@@ -586,6 +632,7 @@ class DigestMessageTests(unittest.TestCase):
 
         self.assertIn(
             "   Сегодня · 13:00–20:59 · вероятность 40–70%\n"
+            "🟡 <b>Высокая температура</b>\n"
             "   Завтра · 14:00–20:59 · вероятность 40–70%",
             message,
         )
