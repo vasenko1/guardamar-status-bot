@@ -134,6 +134,36 @@ class PreparationTests(unittest.IsolatedAsyncioTestCase):
             reviewed_translation("Taller de guitarras eléctricas"),
             "Мастер-класс по электрогитаре",
         )
+        self.assertEqual(
+            reviewed_translation(
+                "Labores a la fresca: ‘Yo te enseño, tú me enseñas’"
+            ),
+            "Встреча по рукоделию на свежем воздухе "
+            "«Я научу тебя, ты научишь меня»",
+        )
+        self.assertEqual(
+            reviewed_translation(
+                'BAILE FLAMENCO. CEPA Y VERDAD. '
+                'José Luis Santiago "El Lías"'
+            ),
+            "Фламенко-шоу «Cepa y Verdad» с "
+            "José Luis Santiago «El Lías»",
+        )
+
+    def test_library_hall_uses_one_consistent_label(self):
+        message = build_message(MorningDigest(
+            weather=None,
+            warnings=(),
+            warnings_available=False,
+            events=(Event(
+                "Exposición",
+                self.now,
+                place="Hall de la biblioteca municipal",
+            ),),
+        ), now=self.now)
+
+        self.assertIn("Biblioteca Municipal (Hall)", message)
+        self.assertNotIn("Hall de la biblioteca municipal", message)
 
     def test_reviewed_title_overrides_empty_cache(self):
         with tempfile.TemporaryDirectory() as directory:

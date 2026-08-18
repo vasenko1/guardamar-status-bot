@@ -193,13 +193,15 @@ programming page, follows at most twelve same-host event links with three
 concurrent reads, parses only complete `application/ld+json` documents, and
 stores every valid event in the next 45 days from those bounded pages. The
 morning run selects records whose local date is today. It
-recovers the venue from the page's official calendar link when broken JSON-LD
-contains only the publisher identifier, and translates the bounded daily title
+recovers the title, start time and venue from the page's official calendar link
+when broken JSON-LD contains an unescaped quoted stage name, or only recovers
+the venue when JSON-LD contains the publisher identifier, and translates the bounded daily title
 set into Russian. It accepts only bounded HTML from the official HTTPS hosts,
 performs no media processing, and stores one small atomic normalized catalog,
 not a history. A narrow repair
-handles the site's observed extra property
-quote and trailing JSON commas; any other malformed structured data is omitted.
+handles the site's observed extra property quote and trailing JSON commas. The
+same-page calendar fallback is accepted only when it contains a bounded title
+and exact local start timestamp; any other malformed structured data is omitted.
 Only Schema.org event types are accepted, and the site's technical publisher
 identifier is never rendered as a venue.
 For `Sand Memories`, the recovered `Castell` venue is rendered as the
