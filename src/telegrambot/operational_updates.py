@@ -540,11 +540,14 @@ def build_update_message(state: dict, now: datetime) -> Optional[str]:
             warning_lines.append(build_warning_section(current, now))
         for item in warning_ready.get("cancelled", ()):
             warning = _warning_from_dict(item)
+            warning_label = _warning_text(warning.event)
+            if warning_label is None:
+                continue
             warning_lines.extend([
                 "⚠️ <b>Обновление AEMET:</b>",
                 "Зона: южное побережье Аликанте",
                 "✅ Досрочно отменено: "
-                f"{html.escape(_warning_text(warning.event))}",
+                f"{html.escape(warning_label)}",
             ])
         if warning_lines:
             sections.append("\n".join(warning_lines))

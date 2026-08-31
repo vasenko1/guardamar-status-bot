@@ -91,6 +91,11 @@ size bounds. Warnings starting after tomorrow's Madrid date are deferred.
 Matching daily CAP records may share one user-facing hazard block, but
 different severity, probability, source description, or validity hours are
 never merged.
+The CAP `event` value must identify a known hazard before it is rendered.
+Source-only labels such as `Aviso AEMET`, unknown labels, and future
+unrecognized hazard names are omitted and logged; deterministic Spanish
+aliases are normalized through the renderer allowlist rather than replaced by
+a generic hazard name.
 
 The nearby Rojales origin remains explicit in project documentation, but its
 location label is omitted from the compact message. AEMET forecast wind may
@@ -116,6 +121,19 @@ treated as measurements for a missing beach. The adapter reads only name,
 activity state, service-ended state, update time, and flag color, plus
 jellyfish presence, and Centre water temperature, sea state, wind speed, and
 wind direction.
+
+EULEN Sport is the current operational lifeguard contractor for Guardamar's
+beaches, but no separate official public EULEN endpoint for Guardamar beach
+conditions has been verified. The operator and the public data interface are
+therefore distinct concepts: the implemented and approved source remains the
+municipality-linked SafeBeach page. Current records appearing there may be
+entered by the operating lifeguard service, but the public page does not expose
+provenance that allows the bot to attribute an individual update to EULEN.
+Do not describe EULEN as a second provider, combine SafeBeach with an assumed
+EULEN feed, or use third-party beach aggregators as a fallback. Re-evaluate
+only if EULEN or the Ayuntamiento publishes a Guardamar-specific official
+endpoint with adequate freshness and source guarantees. See
+`research/2026-08-14-eulen-sport-beach-status-source.md`.
 
 Only active, non-ended lifeguard records are eligible. Before the final 10:40
 attempt, a replacement requires plausible current flags for all six known

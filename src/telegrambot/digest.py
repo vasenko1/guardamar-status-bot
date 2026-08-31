@@ -1,6 +1,7 @@
 """Deterministic formatting for one concise Telegram message."""
 
 import html
+import logging
 import re
 import unicodedata
 import urllib.parse
@@ -77,6 +78,19 @@ WARNING_EVENTS = {
     "niebla": "туман",
     "polvo en suspension": "пыль в воздухе",
 }
+WARNING_EVENT_ALIASES = {
+    "temperatura maxima": "высокая температура",
+    "temperaturas maxima": "высокая температура",
+    "altas temperaturas": "высокая температура",
+    "temperatura minima": "низкая температура",
+    "temperaturas minima": "низкая температура",
+    "bajas temperaturas": "низкая температура",
+    "lluvia": "сильный дождь",
+    "tormenta": "грозы",
+    "fenomeno costero": "опасные прибрежные явления",
+    "polvo": "пыль в воздухе",
+}
+LOGGER = logging.getLogger(__name__)
 WARNING_DESCRIPTIONS = {
     (
         "posibles rachas muy fuertes de viento, granizo y chubascos "
@@ -122,8 +136,8 @@ def _uv_label(uv_index: int) -> str:
     return "высокий"
 
 
-def _warning_text(event: str) -> str:
-    normalized = unicodedata.normalize("NFKD", event.strip().casefold())
+def _warning_text(event: str) -> Optional[str]:
+    normalized = unicodedata.normalize("NFKD", (event or "").strip().casefold())
     key = "".join(
         character
         for character in normalized
@@ -132,10 +146,16 @@ def _warning_text(event: str) -> str:
     exact = WARNING_EVENTS.get(key)
     if exact is not None:
         return exact
+    alias = WARNING_EVENT_ALIASES.get(key)
+    if alias is not None:
+        return alias
     for event_name, label in WARNING_EVENTS.items():
         if event_name in key:
             return label
-    return "предупреждение AEMET"
+    # AEMET occasionally publishes source-only labels (for example,
+    # "Aviso AEMET") instead of the actual hazard.  Never expose that as a
+    # hazard in the public digest; fail closed until a known event is supplied.
+    return None
 
 
 def _warning_description(warning: Warning) -> Optional[str]:
@@ -206,14 +226,23 @@ def _warning_blocks(
         if warning.ends_at is None
         or warning.ends_at.astimezone(GUARDAMAR_TIMEZONE) > now
     ]
+    recognized = []
+    for warning in active:
+        if _warning_text(warning.event) is None:
+            LOGGER.warning(
+                "Omitting AEMET warning with unknown event label: %r",
+                warning.event,
+            )
+            continue
+        recognized.append(warning)
     ordered = sorted(
-        active,
+        recognized,
         key=lambda warning: (
             priority.get(warning.level, 3),
             warning.starts_at or datetime.min.replace(
                 tzinfo=GUARDAMAR_TIMEZONE
             ),
-            _warning_text(warning.event),
+            _warning_text(warning.event) or "",
         ),
     )
     grouped = []
@@ -227,7 +256,7 @@ def _warning_blocks(
         )
         key = (
             warning.level,
-            _warning_text(warning.event),
+            _warning_text(warning.event) or "",
             description_identity,
             description,
             warning.probability,
