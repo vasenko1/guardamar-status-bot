@@ -30,6 +30,10 @@ The bot will:
 The bot is a convenience layer over official information, not an emergency
 service. Users should follow the responsible authority for urgent instructions.
 
+Rare standalone notices are acceptable when an official source reports a
+material event in Guardamar's immediate area. They must be geographically
+narrow, deduplicated, compact, and quiet when nothing qualifies.
+
 ## Product experience
 
 A good digest is calm and predictable:

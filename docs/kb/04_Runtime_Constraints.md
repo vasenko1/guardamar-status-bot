@@ -42,6 +42,14 @@ One short daily deployment check may fetch the tested GitHub `deploy` branch.
 It must exit immediately when no update exists and must not become a resident
 deployment agent or self-hosted CI runner.
 
+The local earthquake feature may make one bounded official IGN GeoRSS request
+at minute 55 of each hour. It has no internal retry, browser, screenshot,
+resident worker, or raw-response cache. The process exits after parsing and
+possible delivery. Normalized revision and delivery state is capped at 256
+events and 14 days; its log rotates at 1 MiB with one previous file. The monitor
+and deployment use one mutually exclusive runtime lock. A conflicting
+invocation exits successfully without a request.
+
 The linked pinned guide uses explicit one-shot operator commands plus one short
 daily urban-timetable synchronization. It may store one small message graph,
 two current and two previous timetable PNGs, and bounded source metadata. PDF

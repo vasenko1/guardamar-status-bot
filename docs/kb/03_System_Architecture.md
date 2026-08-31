@@ -230,11 +230,29 @@ are retained for later publications and do not alone trigger replacement.
 The electricity command runs at 20:30, then after 5, 15 and 30 minutes, with a
 final 21:20 attempt. It publishes at most once for the next local date.
 
+An independent earthquake command runs at minute 55 of every hour. Each
+invocation performs one bounded request to the official IGN GeoRSS endpoint,
+parses at most 128 records with the standard library, filters them to magnitude
+2.7 or greater within 10 km of Guardamar, and exits. Its first successful run
+seeds existing qualifying events silently while keeping fresh lower-magnitude
+records eligible for an IGN revision. Later qualifying events within a
+six-hour recovery window are sent once. Events observed within the same
+six-hour series share one Telegram message; later events and source revisions
+edit it in place, with at most five events visible. A missing series message is
+recreated. An explicit Telegram rejection remains eligible for the next hour;
+an ambiguous network result is recorded as uncertain instead of risking an
+automatic duplicate. The state keeps at most 256 normalized records for 14
+days, and the raw XML is never stored. The monitor and deployment acquire the
+same runtime lock, so neither can change code underneath the other.
+
 Deployment is also external to the application. GitHub Actions promotes a
 `main` commit to the `deploy` branch only after the complete test suite passes.
 A short Termux cron job checks that branch once at 04:00 before the morning run,
 accepts fast-forward updates only, validates them on the phone, and restarts
-the optional preview listener. Secrets and runtime state remain local.
+the optional preview listener. It idempotently reconciles the managed
+earthquake cron block both after an update and on later no-op checks, allowing
+automatic recovery from a temporary scheduler failure. Secrets and runtime
+state remain local.
 
 The optional `listen` process is independent of publication. It accepts only
 fresh `/preview` commands in private chats from configured user IDs, fetches
@@ -250,6 +268,8 @@ the message ID is stored remains an unavoidable duplicate edge.
 - Prefer structured official feeds or APIs over page scraping.
 - Collect sources only in bounded scheduled runs; never continuously.
 - Bound network time, retries, response sizes, concurrency, and stored history.
+- Keep the local earthquake monitor hourly and one-shot; it is informational,
+  never a replacement for official emergency alerts.
 - Keep domain rules independent from transport and source formats.
 - Do not add a generic cache layer for municipal or event information. ADR
   0033 permits only a bounded Todo Cultura cursor, candidate index and covered

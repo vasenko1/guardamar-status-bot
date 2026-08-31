@@ -1,5 +1,48 @@
 # Features
 
+## Local earthquake notices
+
+Once per hour the bot reads the official IGN GeoRSS feed and looks only within
+10 km of Guardamar. It publishes a standalone group message when all of the
+following are true: the event is new, no more than six hours old, magnitude
+2.7 or greater, and inside the radius. The first successful run records the
+current feed without publishing old events. Each later event is delivered at
+most once; a failed Telegram send is retried on the next hourly run rather
+than marked successful.
+
+The compact message contract is:
+
+```text
+📈 Землетрясение рядом
+
+🕒 14:32 - зарегистрировано землетрясение магнитудой 2,8
+
+📍 Эпицентр: примерно в 4 км к юго-западу от Гуардамара
+
+📣 обЪявления Гуардамар
+```
+
+The epicenter row links the exact decimal coordinates in Google Maps. The
+distance is rounded only for display; eligibility uses the unrounded
+great-circle distance. Direction uses one of eight compass sectors. No IGN
+link, generic advice, preliminary-data disclaimer, map screenshot, or raw
+source location is added. The normal footer is separated by one blank line.
+
+Several qualifying events observed within six hours use one Telegram message
+headed `📈 Несколько толчков рядом`. New events and revised IGN parameters edit
+that message in place. It shows at most the five latest events with individual
+map links, a count of hidden earlier events, and the strongest magnitude.
+`Афтершок` is never inferred. After six hours without another qualifying event,
+the next event starts a new message.
+
+The state retains the latest normalized parameters and delivery status rather
+than ID alone. A fresh event initially below 2.7 remains eligible if IGN revises
+it across the threshold. A corrupt state is replaced only after one bounded
+`.invalid` copy is saved, then the current feed is seeded silently. A failed
+explicit send remains eligible; an ambiguous result is marked uncertain to
+avoid an automatic duplicate because Telegram provides no idempotency key for
+`sendMessage`.
+
 ## Weekend events digest
 
 One optional Friday-evening message, «Афиша выходных», previews Saturday and
@@ -273,9 +316,10 @@ row layout.
 All current, today, and tomorrow yellow, orange, and red warnings for the
 Guardamar zone are shown; later warnings wait for a subsequent digest. Safety
 warnings are not capped by a message-item limit. Matching level, hazard,
-probability, and description may share one block; equal today/tomorrow hours
-render as `Сегодня и завтра`. Different facts remain separate. The fixed zone
-is named once, hazards are ordered red, orange, yellow, and each name is bold.
+probability, description, and local start day may share one block. Different
+facts remain separate. The fixed zone is named once. Today's hazards precede
+tomorrow's; within each day they are ordered red, orange, yellow, and each name
+is bold.
 Hazards have no empty lines between them; their time and recognized detail
 lines use one consistent indentation so the section reads as one list.
 Spanish/English CAP duplicates and green `Minor` records are omitted. Unknown

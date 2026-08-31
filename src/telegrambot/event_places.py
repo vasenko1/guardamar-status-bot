@@ -32,12 +32,19 @@ _TYPE_LABELS = {
     "paseo": "Paseo",
     "passeig": "Passeig",
 }
+_LIBRARY_HALL = re.compile(
+    r"^(?:hall\s+(?:de\s+la\s+)?biblioteca(?:\s+p[uú]blica)?\s+municipal|"
+    r"biblioteca(?:\s+p[uú]blica)?\s+municipal\s*\(?hall\)?)$",
+    re.IGNORECASE,
+)
 
 
 def canonical_event_place(value: str) -> str:
     """Return a compact venue without treating event prose as an address."""
 
     compact = " ".join(value.split()).strip(" ,.;")
+    if _LIBRARY_HALL.fullmatch(compact):
+        return "Biblioteca Municipal (Hall)"
     match = _EMBEDDED_STREET.search(compact)
     if match is None or not _CONTEXT_WORDS.search(compact[:match.start()]):
         return compact

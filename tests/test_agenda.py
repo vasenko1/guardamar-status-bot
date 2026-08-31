@@ -146,6 +146,30 @@ class AgendaNormalizationTests(unittest.TestCase):
         self.assertEqual(event.ticket_price_cents, 2500)
         self.assertIn("webfecha=07/08/2026", event.ticket_url)
 
+    def test_calendar_fallback_recovers_event_with_quoted_stage_name(self):
+        payload = """
+        <script type="application/ld+json">
+        {"@type":"Event","name":"BAILE FLAMENCO. CEPA Y VERDAD.
+         José Luis Santiago "El Lías"","startDate":"2026-08-18T20:30"}
+        </script>
+        <a href="https://www.google.com/calendar/render?action=TEMPLATE&amp;text=BAILE+FLAMENCO.+CEPA+Y+VERDAD.+Jos%C3%A9+Luis+Santiago+%22El+L%C3%ADas%22&amp;dates=20260818T203000/20260818T235959&amp;location=CASA+DE+CULTURA%2C+C%2FColon%2C60%2C+03140%2C+Guardamar+del+Segura"></a>
+        <p>Preu: 5 &euro;</p>
+        <a href=//www.agendaguardamar.com/entradas/1/flamenco.html?webfecha=18/08/2026&amp;webhora=20:30&amp;websala=1>
+        """.encode("cp1252")
+
+        event = normalize_event_page(payload, date(2026, 8, 18))
+
+        self.assertIsNotNone(event)
+        self.assertEqual(
+            event.title,
+            'BAILE FLAMENCO. CEPA Y VERDAD. José Luis Santiago "El Lías"',
+        )
+        self.assertEqual(event.starts_at.hour, 20)
+        self.assertEqual(event.starts_at.minute, 30)
+        self.assertEqual(event.place, "Casa de Cultura")
+        self.assertEqual(event.ticket_price_cents, 500)
+        self.assertIn("webfecha=18/08/2026", event.ticket_url)
+
     def test_cross_catalog_duplicate_prefers_richer_municipal_fact(self):
         starts_at = datetime(2026, 8, 1, 10, 0, tzinfo=TZ)
         municipal = Event(

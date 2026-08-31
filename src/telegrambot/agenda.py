@@ -36,6 +36,7 @@ _CALENDAR_LINK_PATTERN = re.compile(
     rb'href="([^"]*google\.com/calendar/render[^"]*)"',
     re.IGNORECASE,
 )
+_CALENDAR_DATE_PATTERN = re.compile(r"^(\d{8}T\d{6})(?:/|$)")
 
 
 class AgendaError(RuntimeError):
@@ -362,6 +363,43 @@ def _calendar_place(payload: bytes) -> Optional[str]:
     return place
 
 
+def _calendar_base_event(payload: bytes) -> Optional[Event]:
+    """Recover core facts from the page's official calendar action.
+
+    Agenda Guardamar occasionally emits invalid JSON-LD when a title contains
+    unescaped quotation marks.  Its same-page Google Calendar action still
+    carries a URL-encoded title, start time and venue, so it is a bounded,
+    deterministic fallback rather than a second source.
+    """
+
+    match = _CALENDAR_LINK_PATTERN.search(payload)
+    if match is None:
+        return None
+    raw_url = html.unescape(
+        match.group(1).decode("utf-8", "replace")
+    )
+    query = urllib.parse.parse_qs(urllib.parse.urlparse(raw_url).query)
+    raw_title = (query.get("text") or [None])[0]
+    raw_dates = (query.get("dates") or [None])[0]
+    if not isinstance(raw_title, str) or not isinstance(raw_dates, str):
+        return None
+    title = " ".join(raw_title.split())
+    date_match = _CALENDAR_DATE_PATTERN.match(raw_dates)
+    if not 1 <= len(title) <= 120 or date_match is None:
+        return None
+    try:
+        starts_at = datetime.strptime(
+            date_match.group(1), "%Y%m%dT%H%M%S"
+        ).replace(tzinfo=GUARDAMAR_TIMEZONE)
+    except ValueError:
+        return None
+    return Event(
+        title=title,
+        starts_at=starts_at,
+        place=_calendar_place(payload),
+    )
+
+
 def _ticket_url(value: str, starts_at: datetime) -> Optional[str]:
     """Accept only an occurrence-specific ticket URL on the official host."""
 
@@ -493,6 +531,8 @@ def normalize_event_pages(
                 break
         if base_event is not None:
             break
+    if base_event is None:
+        base_event = _calendar_base_event(payload)
     if base_event is None:
         return ()
 
