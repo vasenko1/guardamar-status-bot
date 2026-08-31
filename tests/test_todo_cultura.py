@@ -374,9 +374,9 @@ class TodoCulturaTests(unittest.TestCase):
         ):
             _read_program_window(date(2026, 8, 15), {})
 
-        self.assertEqual(len(selected_ids), 3)
+        self.assertEqual(len(selected_ids), 4)
         self.assertIn(1, selected_ids)
-        self.assertNotIn(2, selected_ids)
+        self.assertIn(2, selected_ids)
 
     def test_parser_upgrade_refreshes_priority_for_unchanged_candidates(self):
         metadata = []
@@ -445,9 +445,9 @@ class TodoCulturaTests(unittest.TestCase):
                 "candidates": prior_candidates,
             })
 
-        self.assertEqual(len(selected_ids), 3)
+        self.assertEqual(len(selected_ids), 4)
         self.assertIn(1, selected_ids)
-        self.assertNotIn(2, selected_ids)
+        self.assertIn(2, selected_ids)
         guitar = next(
             candidate for candidate in window.source_state["candidates"]
             if candidate["id"] == 1
