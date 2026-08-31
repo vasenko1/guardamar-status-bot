@@ -3,6 +3,7 @@ from datetime import date, datetime, time, timedelta, timezone
 
 from telegrambot.digest import (
     GUARDAMAR_TIMEZONE,
+    _warning_text,
     build_message,
 )
 from telegrambot.models import (
@@ -35,6 +36,23 @@ class DigestMessageTests(unittest.TestCase):
         }
         values.update(changes)
         return MorningDigest(**values)
+
+    def test_aemet_source_only_event_is_not_rendered_as_hazard(self):
+        self.assertIsNone(_warning_text("Aviso AEMET"))
+        digest = self._routine_digest(
+            warnings=(Warning("Aviso AEMET", "yellow", None),),
+        )
+
+        message = build_message(digest)
+
+        self.assertNotIn("Предупреждения AEMET", message)
+        self.assertNotIn("предупреждение AEMET", message)
+
+    def test_aemet_temperature_alias_is_rendered(self):
+        self.assertEqual(
+            _warning_text("Temperatura máxima"),
+            "высокая температура",
+        )
 
     def test_renders_high_uv_and_sun_rows_inside_weather_block(self):
         digest = self._routine_digest(
