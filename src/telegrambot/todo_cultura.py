@@ -19,7 +19,7 @@ API_HOSTS = {"todoculturavegabaja.es", "www.todoculturavegabaja.es"}
 REQUEST_TIMEOUT_SECONDS = 20
 RESPONSE_LIMIT_BYTES = 300_000
 PROGRAM_TEXT_LIMIT = 12_000
-MAX_CANDIDATES = 3
+MAX_CANDIDATES = 6
 MAX_PROGRAMS_PER_WINDOW = 3
 MAX_INDEX_CANDIDATES = 100
 METADATA_PAGE_SIZE = 100
@@ -725,8 +725,9 @@ def _metadata_candidate(
     hinted_dates = set(hinted) | mentioned
     detail_priority = 0
     if any(word in metadata_text for word in (
-        "taller", "curso", "ruta", "visita", "escape room",
-        "actividad juvenil",
+        "taller", "curso", "ruta", "visita", "escape room", "museo",
+        "actividad juvenil", "infantil", "niños", "ninas", "niñas",
+        "educativ",
     )):
         detail_priority += 1
     if re.search(

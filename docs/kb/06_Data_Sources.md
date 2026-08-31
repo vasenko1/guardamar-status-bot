@@ -360,9 +360,10 @@ state a price, so the digest makes no free-admission claim.
 
 Todo Cultura is queried through its bounded public WordPress REST API during
 the municipal refresh. One metadata page advances a five-minute-overlap cursor
-and maintains a rolling window from today through six days ahead. At most
-three dated municipal-programme candidates are downloaded in one batch; only
-new date sections enter the existing structured extractor. Already covered
+and maintains a rolling window from today through six days ahead. Up to six
+dated programme candidates are downloaded in one batch, with extra priority
+for explicit museum, child, youth, educational, workshop, and guided-visit
+signals; only new date sections enter the existing structured extractor. Already covered
 dates are shared across duplicate programme reproductions, while a later
 `modified_gmt` reopens the affected date. Metadata without a discoverable date
 does not trigger a full download. The adapter rejects unattributed articles,

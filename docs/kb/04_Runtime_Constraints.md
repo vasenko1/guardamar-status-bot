@@ -110,8 +110,9 @@ or background process is allowed.
   URL changes. Neither stores downloaded pages or media. Today's bounded title
   set is translated only by the 06:00/06:30/07:00 preparation commands and
   stored in a bounded atomic cache. The 07:30 digest never calls Gemini.
-- The 05:10 municipal refresh may read one Todo Cultura metadata page and one
-  batch of at most three selected details. It keeps a five-minute cursor
+- The 05:10 municipal refresh may read one Todo Cultura metadata page and up to
+  six bounded detail pages, while sending at most three selected programme
+  sections to extraction. It keeps a five-minute cursor
   overlap, at most 100 lightweight candidates and 45 covered dates. Unchanged
   covered dates cause no full-detail or LLM work. The 10:10–10:40 invocations
   attempt each event catalog at most once per local day.
