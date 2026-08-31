@@ -396,8 +396,11 @@ generic information contact is not registration, and missing price is not
 interpreted as free admission. Registration, participation, capacity and
 bounded admission-evidence facts are stored in the small normalized catalog so
 reviewed occurrence corrections and month transitions do not discard them.
-Routine Centro Social Juvenil opening sessions and undated, placeless campaigns
-are not Morning Digest events.
+Routine Centro Social Juvenil opening sessions remain excluded. Dated
+multi-day campaigns and public service activities are retained as active
+entries through their verified end date, even without a daily start time; an
+undated or placeless record is still omitted. Ticket-sale windows are retained
+when the source supplies their dates, hours, venue, price, or purchase details.
 
 Text extraction also returns one exact source quotation for every event. The
 quotation must occur in the bounded input and support every meaningful title
