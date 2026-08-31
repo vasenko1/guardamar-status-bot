@@ -78,6 +78,19 @@ class DigestMessageTests(unittest.TestCase):
             message,
         )
 
+    def test_renders_ongoing_activity_end_date(self):
+        digest = self._routine_digest(events=(Event(
+            title="Экологическая волонтёрская кампания",
+            starts_at=None,
+            active_until=date(2026, 8, 31),
+            place="Guardamar",
+        ),))
+
+        message = build_message(digest)
+
+        self.assertIn("Экологическая волонтёрская кампания", message)
+        self.assertIn("📅 До 31 августа", message)
+
     def test_moderate_uv_is_omitted_and_sun_needs_both_times(self):
         digest = self._routine_digest(
             weather=Weather(

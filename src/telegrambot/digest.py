@@ -380,6 +380,10 @@ def _event_place_link(value: str) -> str:
     )
 
 
+def _event_active_until_label(value: date) -> str:
+    return f"До {value.day} {MONTHS_GENITIVE[value.month]}"
+
+
 def _pharmacy_address_link(address: str, municipality: str) -> str:
     """Link the compact address while searching in its actual municipality."""
 
@@ -718,6 +722,10 @@ def build_event_section(
                 time_prefix += f"–{end_time}"
             time_prefix += "</b> — "
         event_lines.append(f"• {time_prefix}{title}")
+        if event.active_until is not None and event.starts_at is None:
+            event_lines.append(
+                "  📅 " + _event_active_until_label(event.active_until)
+            )
         if event.place:
             event_lines.append(f"  📍 {_event_place_link(event.place)}")
         has_ticket_row = (
@@ -758,7 +766,12 @@ def build_event_section(
             if details:
                 event_lines.append("  🎟 " + " · ".join(details))
         if prefix_length + 1 + len("\n".join(event_lines)) > 3900:
-            rows = 1 + int(bool(event.place)) + int(has_ticket_row)
+            rows = (
+                1
+                + int(event.active_until is not None and event.starts_at is None)
+                + int(bool(event.place))
+                + int(has_ticket_row)
+            )
             event_lines = event_lines[:-rows]
             if event_lines and event_lines[-1] == "":
                 event_lines.pop()

@@ -746,7 +746,7 @@ def normalize_extraction(
             "opening_hours",
         }:
             raise MunicipalAgendaError("invalid poster event category")
-        if category in {"municipal_service", "opening_hours"}:
+        if category == "opening_hours":
             continue
         start_raw = raw.get("start_date")
         end_raw = raw.get("end_date") or start_raw
@@ -818,7 +818,10 @@ def normalize_extraction(
         normalized_title = title_es.casefold()
         if "actividades del centro social juvenil" in normalized_title:
             continue
-        if category != "exhibition" and start_date != end_date:
+        if (
+            category not in {"exhibition", "municipal_service"}
+            and start_date != end_date
+        ):
             # A date range does not prove that an activity happens every day.
             # Dated programme rows must be expanded into separate occurrences.
             continue
@@ -861,6 +864,11 @@ def normalize_extraction(
             admission_evidence=admission_evidence,
         )
         key = (event.title_es.casefold(), event.start_date, event.start_time)
+        if category == "municipal_service" and start_date == end_date:
+            # One-day routine services (for example, a generic youth-centre
+            # opening row) are not useful event entries. Keep dated ranges,
+            # which represent an activity or campaign active today.
+            continue
         if key not in seen:
             seen.add(key)
             events.append(event)

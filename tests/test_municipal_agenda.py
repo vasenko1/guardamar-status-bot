@@ -736,6 +736,26 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             "Entropía",
         ])
 
+    def test_keeps_multiday_municipal_campaign(self):
+        result = {
+            "month": "2026-07",
+            "events": [{
+                "title_es": "Campaña de voluntariado medioambiental",
+                "start_date": "2026-07-01",
+                "end_date": "2026-08-31",
+                "start_time": None,
+                "end_time": None,
+                "place": "Guardamar",
+                "category": "municipal_service",
+            }],
+        }
+
+        events = normalize_extraction(result, "2026-07")
+
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].category, "municipal_service")
+        self.assertEqual(events[0].end_date, date(2026, 8, 31))
+
     def test_rejects_ocr_month_different_from_poster(self):
         with self.assertRaises(MunicipalAgendaError) as raised:
             normalize_extraction(extraction(), "2026-08")
