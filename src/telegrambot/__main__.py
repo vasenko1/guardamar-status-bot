@@ -47,6 +47,7 @@ from .municipal_agenda import (
     refresh_municipal_catalog,
 )
 from .event_translations import prepare_translations
+from .hidraqua import HidraquaError, HidraquaState, monitor_once
 from .gemini import GeminiError
 from .pharmacy import PharmacyError, refresh_pharmacy_catalog
 from .morning import _safebeach_is_in_season, produce_message
@@ -102,6 +103,7 @@ DEFAULT_OPERATIONAL_UPDATE_STATE_PATH = "state/operational_updates.json"
 DEFAULT_WEEKEND_STATE_PATH = "state/weekend.json"
 DEFAULT_PHARMACY_STATE_PATH = "state/pharmacy.json"
 DEFAULT_EARTHQUAKE_STATE_PATH = "state/earthquakes.json"
+DEFAULT_HIDRAQUA_STATE_PATH = "state/hidraqua.json"
 
 
 def _beach_ready_for_update(status, now: datetime, final_attempt: bool) -> bool:
@@ -263,6 +265,26 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
     aemet_snapshot_path = Path(os.environ.get(
         "AEMET_SNAPSHOT_PATH", DEFAULT_AEMET_SNAPSHOT_PATH
     ))
+    if command == "monitor-hidraqua":
+        state = HidraquaState(Path(os.environ.get(
+            "HIDRAQUA_STATE_PATH", DEFAULT_HIDRAQUA_STATE_PATH
+        )))
+        bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
+        chat_id = _required_environment("TELEGRAM_CHAT_ID")
+        publish_current = os.environ.get(
+            "HIDRAQUA_PUBLISH_CURRENT_ON_BOOTSTRAP", ""
+        ).strip().casefold() == "true"
+        with state.exclusive_run():
+            sent = await monitor_once(
+                state, now,
+                lambda message: send_message(
+                    bot_token, chat_id, message, disable_notification=False,
+                    max_attempts=1, retry_only_rate_limits=True,
+                ),
+                publish_current_on_bootstrap=publish_current,
+            )
+        logging.info("Hidraqua monitor delivered: %d", sent)
+        return 0
     if command == "monitor-updates":
         schedule = scheduled_run(now)
         if schedule.beach_phase is None and not schedule.check_aemet:
@@ -1018,6 +1040,7 @@ def main() -> None:
             "prepare-aemet",
             "monitor-updates",
             "monitor-earthquakes",
+            "monitor-hidraqua",
             "weekend", "weekend-preview",
             "poll",
         ),
@@ -1066,7 +1089,8 @@ def main() -> None:
         raise SystemExit(2) from exc
     except (
         AemetError, AgendaError, EarthquakeError, MunicipalAgendaError,
-        PharmacyError,
+        AemetError, AgendaError, EarthquakeError, HidraquaError,
+        MunicipalAgendaError, PharmacyError,
         TelegramError, StateError, OperationalUpdateStateError, ValueError
     ) as exc:
         print(f"Command failed: {exc}", file=sys.stderr)
