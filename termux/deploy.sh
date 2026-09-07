@@ -54,13 +54,18 @@ CURRENT_SHA=$(git rev-parse HEAD) || exit 1
 DEPLOY_SHA=$(git rev-parse FETCH_HEAD) || exit 1
 
 install_runtime_jobs() {
-    if [ ! -x "$PROJECT_DIR/termux/install-earthquake-cron.sh" ]; then
-        return 0
-    fi
-    if ! "$PROJECT_DIR/termux/install-earthquake-cron.sh"; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S') FAILURE Could not install earthquake schedule"
-        return 1
-    fi
+    for installer in \
+        "$PROJECT_DIR/termux/install-earthquake-cron.sh" \
+        "$PROJECT_DIR/termux/install-hidraqua-cron.sh"
+    do
+        if [ ! -e "$installer" ]; then
+            continue
+        fi
+        if [ ! -x "$installer" ] || ! "$installer"; then
+            echo "$(date '+%Y-%m-%d %H:%M:%S') FAILURE Could not install runtime schedule: $installer"
+            return 1
+        fi
+    done
 }
 
 if [ "$CURRENT_SHA" = "$DEPLOY_SHA" ]; then
