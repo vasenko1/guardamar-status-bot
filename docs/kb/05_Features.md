@@ -297,6 +297,13 @@ discarded solely to preserve that visual limit.
 
 The first MVP slice covers Guardamar weather and AEMET warnings:
 
+- a later AEMET change is one self-contained update: cancelled warnings are
+  grouped first, and the complete remaining set follows under
+  `Сейчас действует`;
+- when a valid response contains no other active warning, the update says so
+  explicitly; unknown labels remain fail-closed and cannot produce that
+  conclusion;
+
 - current temperature and wind from AEMET's nearby Rojales observation
   station;
 - today's minimum and maximum temperature from AEMET's Guardamar municipal
