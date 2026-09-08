@@ -49,9 +49,10 @@ beach and field, held briefly when necessary, and combined into one message.
   silently.
 - A source failure, malformed response or unavailable warning product never
   means cancellation.
-- Reuse the approved full AEMET warning layout. When a beach confirmation is
-  pending in the same window, hold the AEMET change and send both sections in
-  one notification.
+- Make each update self-contained as specified by ADR 0054: cancellations
+  appear first, followed by the complete currently active warning set. When a
+  beach confirmation is pending in the same window, hold the AEMET change and
+  send both sections in one notification.
 
 Air-quality monitoring is not part of this decision. The official open source
 available for the area is station-based and does not provide a trustworthy

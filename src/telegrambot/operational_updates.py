@@ -6,7 +6,7 @@ import json
 import os
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Iterator, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
@@ -15,9 +15,10 @@ from .branding import with_footer
 from .digest import (
     BEACH_NAMES,
     FLAG_DOTS,
+    MONTHS_GENITIVE,
     _beach_operational_lines,
+    _warning_blocks,
     _warning_text,
-    build_warning_section,
 )
 from .models import BeachStatus, Warning
 from .safebeach import BEACH_ORDER, KNOWN_BEACHES
@@ -497,6 +498,75 @@ def _beach_change_lines(changes: Sequence[dict]) -> list[str]:
     return lines
 
 
+def _cancelled_warning_period(warning: Warning, now: datetime) -> str:
+    """Return a compact Russian target period for a cancelled warning."""
+
+    if warning.starts_at is None:
+        return ""
+    local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
+    warning_day = warning.starts_at.astimezone(
+        GUARDAMAR_TIMEZONE
+    ).date()
+    if warning_day == local_day:
+        return "На сегодня"
+    if warning_day == local_day + timedelta(days=1):
+        return "На завтра"
+    return f"На {warning_day.day} {MONTHS_GENITIVE[warning_day.month]}"
+
+
+def _joined_warning_labels(labels: Sequence[str]) -> str:
+    unique = tuple(dict.fromkeys(labels))
+    if len(unique) <= 1:
+        return unique[0] if unique else ""
+    return ", ".join(unique[:-1]) + " и " + unique[-1]
+
+
+def _warning_update_lines(
+    warning_ready: dict,
+    now: datetime,
+) -> list[str]:
+    """Render one self-contained current AEMET status update."""
+
+    current = tuple(
+        _warning_from_dict(item)
+        for item in warning_ready.get("current", ())
+    )
+    cancelled_by_period: Dict[str, list[str]] = {}
+    for item in warning_ready.get("cancelled", ()):
+        warning = _warning_from_dict(item)
+        warning_label = _warning_text(warning.event)
+        if warning_label is None:
+            continue
+        period = _cancelled_warning_period(warning, now)
+        cancelled_by_period.setdefault(period, []).append(warning_label)
+
+    current_blocks = _warning_blocks(current, now)
+    if not cancelled_by_period and not current_blocks:
+        return []
+
+    lines = [
+        "⚠️ <b>Обновление AEMET:</b>",
+        "Зона: южное побережье Аликанте",
+    ]
+    for period, labels in cancelled_by_period.items():
+        joined = html.escape(_joined_warning_labels(labels))
+        if len(tuple(dict.fromkeys(labels))) == 1:
+            status = "отменено предупреждение"
+        else:
+            status = "отменены предупреждения"
+        prefix = f"{period} " if period else ""
+        lines.append(f"✅ {prefix}{status}: {joined}.")
+
+    if current_blocks:
+        lines.extend(["", "<b>Сейчас действует:</b>", *current_blocks])
+    elif not current:
+        lines.extend([
+            "",
+            "Других действующих предупреждений сейчас нет.",
+        ])
+    return lines
+
+
 def build_update_message(state: dict, now: datetime) -> Optional[str]:
     sections = []
     beach_ready = state.get("beach_ready") or []
@@ -531,24 +601,7 @@ def build_update_message(state: dict, now: datetime) -> Optional[str]:
 
     warning_ready = state.get("warning_ready")
     if isinstance(warning_ready, dict):
-        warning_lines = []
-        current = tuple(
-            _warning_from_dict(item)
-            for item in warning_ready.get("current", ())
-        )
-        if current:
-            warning_lines.append(build_warning_section(current, now))
-        for item in warning_ready.get("cancelled", ()):
-            warning = _warning_from_dict(item)
-            warning_label = _warning_text(warning.event)
-            if warning_label is None:
-                continue
-            warning_lines.extend([
-                "⚠️ <b>Обновление AEMET:</b>",
-                "Зона: южное побережье Аликанте",
-                "✅ Досрочно отменено: "
-                f"{html.escape(warning_label)}",
-            ])
+        warning_lines = _warning_update_lines(warning_ready, now)
         if warning_lines:
             sections.append("\n".join(warning_lines))
 
