@@ -21,12 +21,14 @@ from telegrambot.municipal_agenda import (
     _write_snapshot,
     extract_poster_url,
     extract_official_agenda_text,
+    extract_official_exhibitions,
     intersect_verified_poster_events,
     merge_text_and_poster_events,
     _poster_month,
     fetch_today_municipal_events,
     normalize_extraction,
     normalize_extraction_candidates,
+    refresh_municipal_catalog,
 )
 from telegrambot.gemini import GeminiError
 from telegrambot.todo_cultura import (
@@ -452,7 +454,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             event.registration_contact is None for event in enriched
         ))
 
-    def test_range_without_dated_occurrences_is_not_a_daily_event(self):
+    def test_keeps_dated_youth_activity_but_not_undated_range(self):
         result = normalize_extraction_candidates({
             "month": "2026-08",
             "events": [
@@ -496,9 +498,73 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         }, "2026-08", "todo_cultura")
 
         self.assertEqual([event.title_es for event in result], [
+            "Actividades del Centro Social Juvenil",
             "Concierto Spanish Brass",
             "Exposición de pintura Luz mediterránea",
         ])
+
+    def test_official_exhibition_ranges_have_deterministic_fallback(self):
+        programme = (
+            "AGENDA CULTURAL SEPTIEMBRE 2026 EXPOSICIONES "
+            "Hasta el 16 de octubre. Sala de exposiciones de Casa de "
+            "Cultura. IMBORRABLE Exposición pictórica de Jaime Aniorte. "
+            "Horario: De lunes a viernes de 10:00 h a 14:00 h. "
+            "Del 7 al 23 de septiembre. Hall de la Biblioteca Pública "
+            "Municipal. AMIGOS Y CONOCIDOS Exposición de dibujos de José "
+            "Luis Narbaiza. TEATRO 2 de septiembre, a las 20:00h."
+        )
+
+        events = extract_official_exhibitions(programme, "2026-09")
+
+        self.assertEqual(len(events), 2)
+        self.assertEqual(events[0].title_es, "IMBORRABLE")
+        self.assertEqual(events[0].start_date, date(2026, 9, 1))
+        self.assertEqual(events[0].end_date, date(2026, 10, 16))
+        self.assertEqual(events[1].title_es, "AMIGOS Y CONOCIDOS")
+        self.assertEqual(events[1].start_date, date(2026, 9, 7))
+        self.assertEqual(events[1].end_date, date(2026, 9, 23))
+        self.assertTrue(all(event.category == "exhibition" for event in events))
+
+    async def test_invalid_structured_text_keeps_official_exhibitions(self):
+        page = b"""
+        <h2>AGENDA CULTURAL SEPTIEMBRE 2026</h2>
+        <p>EXPOSICIONES Del 7 al 23 de septiembre. Hall de la Biblioteca
+        Publica Municipal. AMIGOS Y CONOCIDOS Exposicion de dibujos.</p>
+        <p>TEATRO</p><p>Ver Agenda</p>
+        """
+        invalid_result = {
+            "month": "2026-09",
+            "events": [{
+                "title_es": "Dato inventado",
+                "start_date": "2026-09-08",
+                "end_date": "2026-09-08",
+                "start_time": None,
+                "end_time": None,
+                "place": "Lugar inexistente",
+                "category": "event",
+                "evidence_es": "texto que no aparece en la fuente",
+            }],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agenda.json"
+            with (
+                patch(
+                    "telegrambot.municipal_agenda._read_url",
+                    return_value=(page, "text/html"),
+                ),
+                patch(
+                    "telegrambot.municipal_agenda.extract_agenda_text_events",
+                    new=AsyncMock(return_value=invalid_result),
+                ),
+            ):
+                events = await refresh_municipal_catalog(
+                    "key", datetime(2026, 9, 8, tzinfo=TZ), path
+                )
+
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].title_es, "AMIGOS Y CONOCIDOS")
+        self.assertEqual(events[0].start_date, date(2026, 9, 7))
+        self.assertEqual(events[0].end_date, date(2026, 9, 23))
 
     def test_poster_fact_requires_independent_agreement(self):
         first = SourceEvent(
@@ -860,7 +926,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(MunicipalAgendaError):
                 _load_snapshot(path)
 
-    def test_snapshot_loader_skips_entries_removed_by_new_policy(self):
+    def test_snapshot_loader_keeps_dated_youth_activity(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "agenda.json"
             path.write_text(json.dumps({
@@ -892,8 +958,11 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
 
             loaded = _load_snapshot(path)
 
-        self.assertEqual(len(loaded["_events"]), 1)
-        self.assertEqual(loaded["_events"][0].title_es, "SPANISH BRASS")
+        self.assertEqual(len(loaded["_events"]), 2)
+        self.assertEqual(
+            [event.title_es for event in loaded["_events"]],
+            ["Actividades del Centro Social Juvenil", "SPANISH BRASS"],
+        )
 
     def test_repairs_reviewed_august_poster_facts(self):
         incorrect = (
@@ -1457,7 +1526,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
 
         extract_text.assert_awaited_once()
         self.assertEqual(
-            stored["sources"]["turismo_html"]["extractor_version"], 2
+            stored["sources"]["turismo_html"]["extractor_version"], 3
         )
 
     async def test_todo_cultura_adds_only_requested_daily_section(self):

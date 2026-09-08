@@ -55,9 +55,152 @@ REQUEST_TIMEOUT_SECONDS = 15
 MAX_EVENTS = 100
 MAX_INDIVIDUAL_TRANSLATION_RECOVERY = 12
 TRANSITION_HORIZON_DAYS = 7
-TEXT_EXTRACTOR_VERSION = 2
+TEXT_EXTRACTOR_VERSION = 3
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 _TIME_PATTERN = re.compile(r"^\d{2}:\d{2}$")
+
+_SPANISH_MONTHS = {
+    "enero": 1,
+    "febrero": 2,
+    "marzo": 3,
+    "abril": 4,
+    "mayo": 5,
+    "junio": 6,
+    "julio": 7,
+    "agosto": 8,
+    "septiembre": 9,
+    "setiembre": 9,
+    "octubre": 10,
+    "noviembre": 11,
+    "diciembre": 12,
+}
+
+_EXHIBITION_DATE = re.compile(
+    r"\b(?:(?:Hasta\s+el\s+(?P<until_day>\d{1,2})\s+de\s+"
+    r"(?P<until_month>[a-záéíóúñ]+))|"
+    r"(?:Del\s+(?P<start_day>\d{1,2})(?:\s+de\s+"
+    r"(?P<start_month>[a-záéíóúñ]+))?\s+al\s+"
+    r"(?P<end_day>\d{1,2})\s+de\s+"
+    r"(?P<end_month>[a-záéíóúñ]+)))\s*\.",
+    re.IGNORECASE,
+)
+
+
+def _month_date(year: int, month_name: str, day: str) -> Optional[date]:
+    month = _SPANISH_MONTHS.get(month_name.casefold())
+    if month is None:
+        return None
+    try:
+        return date(year, month, int(day))
+    except ValueError:
+        return None
+
+
+def extract_official_exhibitions(
+    programme: str,
+    expected_month: str,
+) -> Tuple["SourceEvent", ...]:
+    """Recover explicit exhibition ranges from the official text agenda.
+
+    The official page is compact and stable enough for a deterministic
+    fallback.  This keeps current exhibitions when the optional structured
+    reader omits a block or returns only invalid candidates.
+    """
+
+    try:
+        agenda_month = date.fromisoformat(f"{expected_month}-01")
+    except ValueError:
+        return ()
+    section_match = re.search(
+        r"\bEXPOSICIONES\b(?P<body>.*?)(?=\bTEATRO\b|\bCINE\b|"
+        r"\bCONCIERTO\b|\bFIESTAS\b|\bTALLERES\b|"
+        r"\bBALL\s+D[’']ESTIU\b|\bVISITAS\s+GUIADAS\b|$)",
+        programme,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if section_match is None:
+        return ()
+    section = section_match.group("body")
+    markers = list(_EXHIBITION_DATE.finditer(section))
+    events = []
+    for index, marker in enumerate(markers):
+        block_end = (
+            markers[index + 1].start()
+            if index + 1 < len(markers)
+            else len(section)
+        )
+        block = " ".join(section[marker.end():block_end].split())
+        identity = re.match(
+            r"(?P<place>[^.]{3,160})\.\s+"
+            r"(?P<title>[^.]{2,120}?)\s+"
+            r"(?:Exposición|Exposicion|Muestra)\b",
+            block,
+            re.IGNORECASE,
+        )
+        if identity is None:
+            continue
+        if marker.group("until_day"):
+            until_month = marker.group("until_month")
+            until_month_number = _SPANISH_MONTHS.get(
+                until_month.casefold()
+            )
+            until_year = agenda_month.year + (
+                1
+                if until_month_number is not None
+                and until_month_number < agenda_month.month
+                else 0
+            )
+            end_date = _month_date(
+                until_year,
+                until_month,
+                marker.group("until_day"),
+            )
+            start_date = agenda_month
+        else:
+            end_month = marker.group("end_month")
+            start_month = marker.group("start_month") or end_month
+            end_month_number = _SPANISH_MONTHS.get(end_month.casefold())
+            start_month_number = _SPANISH_MONTHS.get(start_month.casefold())
+            end_year = agenda_month.year + (
+                1
+                if end_month_number is not None
+                and end_month_number < agenda_month.month
+                else 0
+            )
+            start_year = agenda_month.year + (
+                1
+                if start_month_number is not None
+                and start_month_number < agenda_month.month
+                else 0
+            )
+            start_date = _month_date(
+                start_year, start_month, marker.group("start_day")
+            )
+            end_date = _month_date(
+                end_year, end_month, marker.group("end_day")
+            )
+        if (
+            start_date is None
+            or end_date is None
+            or start_date > end_date
+            or (end_date - start_date).days > 62
+            or end_date < agenda_month
+            or start_date > agenda_month + timedelta(days=62)
+        ):
+            continue
+        events.append(SourceEvent(
+            title_es=" ".join(identity.group("title").split()),
+            start_date=start_date,
+            end_date=end_date,
+            start_time=None,
+            end_time=None,
+            place=canonical_event_place(identity.group("place")),
+            category="exhibition",
+            sources=("turismo_html",),
+        ))
+    return tuple(events)
+
+
 class MunicipalAgendaError(RuntimeError):
     """An operator-safe municipal agenda failure."""
 
@@ -815,9 +958,6 @@ def normalize_extraction(
                 )
         if place is not None:
             place = canonical_event_place(place)
-        normalized_title = title_es.casefold()
-        if "actividades del centro social juvenil" in normalized_title:
-            continue
         if (
             category not in {"exhibition", "municipal_service"}
             and start_date != end_date
@@ -1367,15 +1507,30 @@ async def refresh_municipal_catalog(
         ):
             text_events = old_text_events
         else:
+            deterministic_exhibitions = extract_official_exhibitions(
+                page_text, text_month
+            )
             extracted_text = await extract_agenda_text_events(
                 api_key, page_text
             )
             extracted_text = {**extracted_text, "month": text_month}
-            text_events = normalize_extraction_candidates(
-                extracted_text,
-                text_month,
-                "turismo_html",
-                page_text,
+            try:
+                text_events = normalize_extraction_candidates(
+                    extracted_text,
+                    text_month,
+                    "turismo_html",
+                    page_text,
+                )
+            except MunicipalAgendaError:
+                if not deterministic_exhibitions:
+                    raise
+                LOGGER.warning(
+                    "Structured official agenda was invalid; using "
+                    "deterministic exhibition facts"
+                )
+                text_events = ()
+            text_events = merge_text_and_poster_events(
+                text_events, deterministic_exhibitions
             )
             if not text_events:
                 raise MunicipalAgendaError(
