@@ -282,6 +282,121 @@ class WarningChangeTests(unittest.TestCase):
 
 
 class StateAndMessageTests(unittest.TestCase):
+    def test_warning_cancellations_precede_complete_current_status(self):
+        now = datetime(2026, 9, 8, 16, 0, tzinfo=MADRID)
+        state = OperationalUpdateState.empty("2026-09-08")
+        active = Warning(
+            event="Temperaturas máximas",
+            level="yellow",
+            starts_at=now - timedelta(hours=3),
+            ends_at=now + timedelta(hours=5),
+            probability="40–70%",
+        )
+        cancelled = (
+            Warning(
+                event="Tormentas",
+                level="orange",
+                starts_at=now + timedelta(days=1),
+                ends_at=now + timedelta(days=1, hours=8),
+                probability="40–70%",
+            ),
+            Warning(
+                event="Lluvias",
+                level="orange",
+                starts_at=now + timedelta(days=1),
+                ends_at=now + timedelta(days=1, hours=8),
+                probability="40–70%",
+            ),
+        )
+        state["warning_ready"] = {
+            "current": [
+                {
+                    "event": active.event,
+                    "level": active.level,
+                    "starts_at": active.starts_at.isoformat(),
+                    "ends_at": active.ends_at.isoformat(),
+                    "description": None,
+                    "probability": active.probability,
+                }
+            ],
+            "cancelled": [
+                {
+                    "event": item.event,
+                    "level": item.level,
+                    "starts_at": item.starts_at.isoformat(),
+                    "ends_at": item.ends_at.isoformat(),
+                    "description": None,
+                    "probability": item.probability,
+                }
+                for item in cancelled
+            ],
+        }
+
+        message = build_update_message(state, now)
+
+        self.assertIn(
+            "✅ На завтра отменены предупреждения: грозы и сильный дождь.",
+            message,
+        )
+        self.assertIn("<b>Сейчас действует:</b>", message)
+        self.assertIn("Высокая температура", message)
+        self.assertEqual(message.count("Обновление AEMET"), 1)
+        self.assertEqual(message.count("Зона:"), 1)
+        self.assertLess(message.index("✅"), message.index("Сейчас действует"))
+        self.assertNotIn("Досрочно отменено", message)
+
+    def test_all_cancelled_states_that_no_other_warning_is_active(self):
+        now = datetime(2026, 9, 8, 16, 0, tzinfo=MADRID)
+        state = OperationalUpdateState.empty("2026-09-08")
+        state["warning_ready"] = {
+            "current": [],
+            "cancelled": [{
+                "event": "Tormentas",
+                "level": "orange",
+                "starts_at": (now + timedelta(days=1)).isoformat(),
+                "ends_at": (now + timedelta(days=1, hours=8)).isoformat(),
+                "description": None,
+                "probability": "40–70%",
+            }],
+        }
+
+        message = build_update_message(state, now)
+
+        self.assertIn(
+            "✅ На завтра отменено предупреждение: грозы.", message
+        )
+        self.assertIn(
+            "Других действующих предупреждений сейчас нет.", message
+        )
+        self.assertNotIn("Сейчас действует", message)
+
+    def test_unknown_remaining_warning_does_not_claim_none_are_active(self):
+        now = datetime(2026, 9, 8, 16, 0, tzinfo=MADRID)
+        state = OperationalUpdateState.empty("2026-09-08")
+        state["warning_ready"] = {
+            "current": [{
+                "event": "Aviso AEMET",
+                "level": "yellow",
+                "starts_at": now.isoformat(),
+                "ends_at": (now + timedelta(hours=4)).isoformat(),
+                "description": None,
+                "probability": None,
+            }],
+            "cancelled": [{
+                "event": "Tormentas",
+                "level": "orange",
+                "starts_at": (now + timedelta(days=1)).isoformat(),
+                "ends_at": (now + timedelta(days=1, hours=8)).isoformat(),
+                "description": None,
+                "probability": "40–70%",
+            }],
+        }
+
+        message = build_update_message(state, now)
+
+        self.assertIn("отменено предупреждение: грозы", message)
+        self.assertNotIn("Других действующих предупреждений", message)
+
     def test_state_round_trip_and_daily_reset(self):
         with tempfile.TemporaryDirectory() as directory:
             store = OperationalUpdateState(Path(directory) / "updates.json")

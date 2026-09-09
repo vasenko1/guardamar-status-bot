@@ -242,17 +242,19 @@ edit it in place, with at most five events visible. A missing series message is
 recreated. An explicit Telegram rejection remains eligible for the next hour;
 an ambiguous network result is recorded as uncertain instead of risking an
 automatic duplicate. The state keeps at most 256 normalized records for 14
-days, and the raw XML is never stored. The monitor and deployment acquire the
-same runtime lock, so neither can change code underneath the other.
+The state keeps at most 256 normalized records for 14 days, and the raw XML is
+never stored. The monitor uses a short-lived local lock so a manual duplicate
+invocation cannot overlap it.
 
-Deployment is also external to the application. GitHub Actions promotes a
-`main` commit to the `deploy` branch only after the complete test suite passes.
-A short Termux cron job checks that branch once at 04:00 before the morning run,
-accepts fast-forward updates only, validates them on the phone, and restarts
-the optional preview listener. It idempotently reconciles the managed
-earthquake cron block both after an update and on later no-op checks, allowing
-automatic recovery from a temporary scheduler failure. Secrets and runtime
-state remain local.
+Code deployment is external to the application and operator-driven over private
+Tailscale SSH. The operator reviews Git state, runs relevant tests, commits the
+completed change, and restarts only an affected resident service; one-shot cron
+commands use changed code on their next run. There is no GitHub Actions
+promotion, `deploy` branch, self-update cron task, resident deployment agent,
+or inbound public port. Secrets and runtime state remain local.
+
+After a device reboot, Android requires the first user unlock before Termux app
+storage and its boot-started services become available to the remote operator.
 
 The optional `listen` process is independent of publication. It accepts only
 fresh `/preview` commands in private chats from configured user IDs, fetches

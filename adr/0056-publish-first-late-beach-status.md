@@ -1,4 +1,4 @@
-# ADR 0054: Publish the first verified late beach status
+# ADR 0056: Publish the first verified late beach status
 
 - Status: Accepted
 - Date: 2026-09-09

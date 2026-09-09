@@ -1,6 +1,6 @@
 # ADR 0031: Bounded operational change monitoring
 
-- Status: Accepted (partially superseded by ADR 0054)
+- Status: Accepted (partially superseded by ADR 0056)
 - Date: 2026-08-07
 
 ## Context
@@ -29,7 +29,7 @@ uses a separate atomically replaced daily JSON state.
   unknown and never becomes a transition.
 - A newly available flag creates a silent baseline once a public beach
   baseline exists. The first usable status without one is governed by ADR
-  0054. A first explicit positive jellyfish report remains a safety candidate.
+  0056. A first explicit positive jellyfish report remains a safety candidate.
 
 Each possible change is checked again after five minutes. If the second sample
 contains another new explicit state, that state receives one final check after
@@ -50,9 +50,10 @@ beach and field, held briefly when necessary, and combined into one message.
   silently.
 - A source failure, malformed response or unavailable warning product never
   means cancellation.
-- Reuse the approved full AEMET warning layout. When a beach confirmation is
-  pending in the same window, hold the AEMET change and send both sections in
-  one notification.
+- Make each update self-contained as specified by ADR 0054: cancellations
+  appear first, followed by the complete currently active warning set. When a
+  beach confirmation is pending in the same window, hold the AEMET change and
+  send both sections in one notification.
 
 Air-quality monitoring is not part of this decision. The official open source
 available for the area is station-based and does not provide a trustworthy
@@ -85,7 +86,7 @@ Seed the AEMET baseline from the same-day prepared morning snapshot only when
 a daily digest record exists. Otherwise a valid active warning found later is
 eligible for notification. The first valid beach response establishes the
 flag baseline silently only when a public beach baseline already exists; ADR
-0054 governs the first late status.
+0056 governs the first late status.
 
 ## Consequences
 

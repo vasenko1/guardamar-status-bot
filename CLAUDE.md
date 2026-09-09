@@ -128,10 +128,11 @@ its own state file and lock and must not reach into digest internals.
 - Adding a runtime dependency requires passing the five-question decision test
   at the end of `docs/kb/04_Runtime_Constraints.md`.
 
-## Deployment
+## Operations
 
-CI (`.github/workflows/tests.yml`) runs the suite on every push and, on `main`
-only, fast-forwards the `deploy` branch to the tested commit. `termux/deploy.sh`
-pulls that branch at 04:00 on the phone, refuses dirty or non-fast-forward
-checkouts, reruns the tests on-device, and rolls back on failure. So `main` is
-the release trigger — a broken commit on `main` reaches the device.
+Operate the phone directly over private Tailscale SSH. Before a code change,
+inspect Git state, run relevant tests, and commit the completed change. Restart
+only an affected resident service; one-shot cron tasks use the changed checkout
+on their next invocation. Do not add a GitHub promotion branch, scheduled
+self-update, resident deployment agent, or public inbound port. After an Android
+reboot, first unlock the phone once before remote operations.
