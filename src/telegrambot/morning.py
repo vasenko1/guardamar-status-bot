@@ -29,6 +29,7 @@ from .municipal_agenda import (
     MunicipalAgendaError,
     fetch_today_municipal_events,
 )
+from .library_agenda import LibraryAgendaError, fetch_today_library_events
 from .pharmacy import duty_pharmacies_on
 from .police import PoliceTrafficError, fetch_traffic_notices
 from .safebeach import SafeBeachError, fetch_beach_status
@@ -128,6 +129,7 @@ def _merge_events(*groups):
                     capacity_limited=(
                         current.capacity_limited or event.capacity_limited
                     ),
+                    teaser=current.teaser or event.teaser,
                 )
                 continue
             result.append(event)
@@ -152,6 +154,7 @@ async def produce_message(
     ),
     *,
     agenda_state_path: Path = Path("state/agenda_guardamar.json"),
+    library_agenda_state_path: Path = Path("state/library_agenda.json"),
     collect_beach: bool = True,
     beach_status: Optional[BeachStatus] = None,
     beach_notice: Optional[BeachNotice] = None,
@@ -196,6 +199,13 @@ async def produce_message(
             municipal_agenda_state_path,
             diagnostics,
             translation_cache_path,
+        )
+    )
+    library_agenda_task = asyncio.create_task(
+        fetch_today_library_events(
+            now,
+            library_agenda_state_path,
+            translation_cache_path or Path("state/event_translations.json"),
         )
     )
     traffic_task = asyncio.create_task(
@@ -329,6 +339,11 @@ async def produce_message(
                 )
             )
         municipal_events = ()
+    try:
+        library_events = await library_agenda_task
+    except LibraryAgendaError as exc:
+        LOGGER.warning("Library agenda unavailable; omitting events: %s", exc)
+        library_events = ()
 
     try:
         traffic_notices = await traffic_task
@@ -390,6 +405,7 @@ async def produce_message(
                 mayor_events,
                 municipal_events,
                 events,
+                library_events,
             ),
         ),
         now=now,

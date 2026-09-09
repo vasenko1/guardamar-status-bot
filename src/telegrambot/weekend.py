@@ -14,6 +14,7 @@ from .municipal_agenda import (
     MunicipalAgendaError,
     fetch_today_municipal_events,
 )
+from .library_agenda import LibraryAgendaError, fetch_today_library_events
 
 LOGGER = logging.getLogger(__name__)
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
@@ -34,6 +35,7 @@ async def _day_events(
     gemini_api_key: str,
     municipal_agenda_state_path: Path,
     agenda_state_path: Path,
+    library_agenda_state_path: Path,
     translation_cache_path: Path,
 ):
     """Collect one weekend day from the two catalogs and recurring rules."""
@@ -66,10 +68,18 @@ async def _day_events(
             exc,
         )
         municipal_events = ()
+    try:
+        library_events = await fetch_today_library_events(
+            day, library_agenda_state_path, translation_cache_path
+        )
+    except LibraryAgendaError as exc:
+        LOGGER.warning("Library agenda unavailable for %s; omitting: %s", day.date(), exc)
+        library_events = ()
     return _merge_events(
         recurring_events(day),
         municipal_events,
         agenda_events,
+        library_events,
     )
 
 
@@ -79,7 +89,8 @@ async def produce_weekend_message(
     municipal_agenda_state_path: Path,
     *,
     agenda_state_path: Path,
-    translation_cache_path: Path,
+    library_agenda_state_path: Path = Path("state/library_agenda.json"),
+    translation_cache_path: Path = Path("state/event_translations.json"),
 ) -> Optional[str]:
     """Return the weekend digest, or None when no verified event exists."""
 
@@ -93,6 +104,7 @@ async def produce_weekend_message(
             gemini_api_key,
             municipal_agenda_state_path,
             agenda_state_path,
+            library_agenda_state_path,
             translation_cache_path,
         )
         if not events:

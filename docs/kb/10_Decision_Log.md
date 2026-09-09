@@ -5,6 +5,7 @@ Detailed decisions belong in `adr/`.
 
 | Date | Decision | Context and reason | Record |
 | --- | --- | --- | --- |
+| 2026-09-09 | Add the official library agenda as a compact cached event source | The library publishes authoritative event dates, venues and sometimes a useful factual detail sentence. Refresh one small seven-day list before publication, request no more than one current detail page, and retain neither raw pages nor a separate history. | `adr/0057-library-agenda-compact-teaser.md`, `docs/kb/06_Data_Sources.md` |
 | 2026-09-09 | Operate the Termux host directly through Tailscale SSH | The working Mac-to-phone key-only private connection makes a daily GitHub promotion branch and self-deploy cron unnecessary. Keep Git and each service explicit; after reboot, first unlock Android before remote operations. | `adr/0055-direct-tailscale-ssh-operations.md`, `docs/kb/03_System_Architecture.md`, `docs/kb/04_Runtime_Constraints.md` |
 | 2026-09-09 | Publish the first verified late beach status | A silent first monitoring baseline hid valid flags when the morning digest had no beach block. | `adr/0056-publish-first-late-beach-status.md` |
 | 2026-09-08 | Make each AEMET update show the current outcome | Repeating active warnings before separate cancellation headings made the history look contradictory. Group cancellations first, then show the complete remaining set under `Сейчас действует`; use one heading and never imply that the weather itself was cancelled. | `adr/0054-self-contained-aemet-updates.md`, `adr/0031-bounded-beach-change-monitoring.md` |

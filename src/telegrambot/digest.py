@@ -730,6 +730,8 @@ def build_event_section(
                 time_prefix += f"–{end_time}"
             time_prefix += "</b> — "
         event_lines.append(f"• {time_prefix}{title}")
+        if event.teaser:
+            event_lines.append("  " + html.escape(event.teaser))
         if event.active_until is not None and event.starts_at is None:
             event_lines.append(
                 "  📅 " + _event_active_until_label(event.active_until)
@@ -778,6 +780,7 @@ def build_event_section(
                 1
                 + int(event.active_until is not None and event.starts_at is None)
                 + int(bool(event.place))
+                + int(bool(event.teaser))
                 + int(has_ticket_row)
             )
             event_lines = event_lines[:-rows]
