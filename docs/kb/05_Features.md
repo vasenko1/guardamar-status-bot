@@ -387,8 +387,9 @@ policy-versioned cache defined by ADR 0029; source facts remain Spanish in the
 catalogs. Poster and Agenda
 Guardamar records are merged and deduplicated; routine opening hours and
 municipal services such as the mobile ecopark are excluded from `📅 События`.
-An explicitly dated Centro Social Juvenil activity with a verified time and
-place is an event, not generic opening hours, and remains eligible. A
+Routine Centro Social Juvenil opening and generic activity rows remain
+excluded; a separately named activity with a verified date, time and place is
+eligible. A
 deterministic fallback also preserves explicit exhibition titles, date ranges
 and venues from the official Turismo text when structured extraction omits or
 rejects that block.
