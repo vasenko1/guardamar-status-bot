@@ -257,9 +257,12 @@ async def refresh_am_guardamar_catalog(
         else:
             result = await extract_agenda_text_events(api_key, post["text"])
             result = {**result, "month": expected_month}
-            extracted = normalize_extraction_candidates(
-                result, expected_month, "am_guardamar", post["text"]
-            )
+            try:
+                extracted = normalize_extraction_candidates(
+                    result, expected_month, "am_guardamar", post["text"]
+                )
+            except MunicipalAgendaError:
+                continue
         local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
         extracted = tuple(
             event for event in extracted
