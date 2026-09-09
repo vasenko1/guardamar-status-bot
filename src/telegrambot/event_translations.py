@@ -101,6 +101,13 @@ def _exclusive(path: Path):
 
 
 def cached_title(path: Path, source: str, title: str) -> str:
+    translated = cached_translation(path, source, title)
+    return translated if translated is not None else spanish_fallback(title)
+
+
+def cached_translation(path: Path, source: str, title: str) -> Optional[str]:
+    """Return a reviewed or prepared translation, never a source fallback."""
+
     reviewed = reviewed_translation(title)
     if reviewed is not None:
         return reviewed
@@ -109,7 +116,7 @@ def cached_title(path: Path, source: str, title: str) -> str:
         translated = entry.get("translation")
         if isinstance(translated, str) and translated.strip():
             return translated.strip()
-    return spanish_fallback(title)
+    return None
 
 
 async def prepare_translations(

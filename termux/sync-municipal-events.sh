@@ -12,4 +12,7 @@ if [ -f "$LOG" ] && [ "$(wc -c < "$LOG")" -gt 1048576 ]; then
 fi
 
 exec >>"$LOG" 2>&1
-exec ./.venv/bin/python -m telegrambot sync-municipal-events
+status=0
+./.venv/bin/python -m telegrambot sync-municipal-events || status=$?
+./.venv/bin/python -m telegrambot sync-library-events || status=$?
+exit "$status"

@@ -2,8 +2,9 @@
 
 The implemented providers are AEMET, Guardamar's public SafeBeach page,
 Agenda Guardamar, the official Policía Local traffic page, and the public
-`@AlcaldeGuardamar` channel. The 07:30 run requests current operational data
-directly and reads events from two pre-morning local catalogs. A later
+`@AlcaldeGuardamar` channel, and the Biblioteca Pública Municipal de
+Guardamar. The 07:30 run requests current operational data directly and reads
+events from three pre-morning local catalogs. A later
 verified beach update permits one fresh complete collection; no raw
 source-response cache is used.
 
@@ -23,6 +24,7 @@ official endpoints and lightweight access methods are validated.
 | Policía Local Guardamar | Explicit mobility restrictions | High for direct official notices; publication is irregular | One bounded official HTML page and reviewed linked document | Yes |
 | Agenda Guardamar | Official ticketed events occurring today | High for listed Ayuntamiento events | 05:30 bounded HTML/Schema.org catalog refresh | Yes |
 | Turismo Guardamar municipal agenda | Broader official monthly cultural text plus supplementary MUPI | High for text; image facts require agreement | 05:10 text-first catalog refresh; MUPI only after URL change | Yes |
+| Biblioteca Pública Municipal de Guardamar agenda | Library exhibitions, films and other library activities | High; first-party library agenda | One bounded 05:10 list refresh, plus at most one detail page for a current event | Yes |
 | BOE, DOGV, and official Guardamar holiday calendar | Official national, regional, and local days off applicable in Guardamar; Wednesday-market holiday moves | High; legally authoritative annual publications | Small reviewed annual in-code calendar; no morning request | Yes |
 | `@AlcaldeGuardamar` public channel | Explicit market exceptions, bathing-status transitions, Fiestas de Barrio, and complete invited same-day municipal announcements | Operational municipal channel; text must be mechanically grounded | One bounded morning event check, market check when relevant, or one check after SafeBeach retries | Yes, narrow role |
 | Colegio Oficial de Farmacéuticos de Alicante | Legally authoritative on-call pharmacy rota | High; the provincial college responsible for the service | One weekly bounded fetch of the linked annual XLSX with compressed and uncompressed size bounds; normalized 45-day catalog for Guardamar's complete published service zone `61`, including duties assigned in San Fulgencio; no morning request | Yes, ADR 0038 |

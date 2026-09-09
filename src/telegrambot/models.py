@@ -62,6 +62,7 @@ class Event:
     participation_note: Optional[str] = None
     registration_contact: Optional[str] = None
     capacity_limited: bool = False
+    teaser: Optional[str] = None
 
 
 @dataclass(frozen=True)

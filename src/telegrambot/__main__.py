@@ -22,6 +22,11 @@ from .agenda import (
     agenda_translation_items,
     refresh_agenda_catalog,
 )
+from .library_agenda import (
+    LibraryAgendaError,
+    library_translation_items,
+    refresh_library_catalog,
+)
 from .airport_schedule import AirportScheduleState, sync_airport_schedule
 from .commands import listen_for_preview, parse_allowed_user_ids
 from .delivery import publish_morning, publish_update
@@ -95,6 +100,7 @@ GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 DEFAULT_STATE_PATH = "state/delivery.json"
 DEFAULT_MUNICIPAL_AGENDA_STATE_PATH = "state/municipal_agenda.json"
 DEFAULT_AGENDA_STATE_PATH = "state/agenda_guardamar.json"
+DEFAULT_LIBRARY_AGENDA_STATE_PATH = "state/library_agenda.json"
 DEFAULT_ELECTRICITY_STATE_PATH = "state/electricity.json"
 DEFAULT_ELECTRICITY_SNAPSHOT_PATH = "state/electricity_prices.json"
 DEFAULT_EVENT_TRANSLATIONS_PATH = "state/event_translations.json"
@@ -197,6 +203,9 @@ async def _produce_message(api_key: str, now: datetime) -> str:
         agenda_state_path=Path(os.environ.get(
             "AGENDA_STATE_PATH", DEFAULT_AGENDA_STATE_PATH
         )),
+        library_agenda_state_path=Path(os.environ.get(
+            "LIBRARY_AGENDA_STATE_PATH", DEFAULT_LIBRARY_AGENDA_STATE_PATH
+        )),
         diagnostics=diagnostics,
         translation_cache_path=Path(os.environ.get(
             "EVENT_TRANSLATIONS_PATH", DEFAULT_EVENT_TRANSLATIONS_PATH
@@ -216,7 +225,7 @@ async def _refresh_event_catalogs_once(
 ) -> None:
     """Persist one bounded late event refresh independently of SafeBeach."""
 
-    sources = (
+    sources = [
         (
             "municipal",
             lambda: refresh_municipal_catalog(
@@ -226,7 +235,7 @@ async def _refresh_event_catalogs_once(
             ),
         ),
         ("agenda", lambda: refresh_agenda_catalog(now, agenda_path)),
-    )
+    ]
     try:
         with state.exclusive_run():
             if state.morning_record(now.date()) is None:
@@ -255,6 +264,9 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
     ))
     agenda_path = Path(os.environ.get(
         "AGENDA_STATE_PATH", DEFAULT_AGENDA_STATE_PATH
+    ))
+    library_path = Path(os.environ.get(
+        "LIBRARY_AGENDA_STATE_PATH", DEFAULT_LIBRARY_AGENDA_STATE_PATH
     ))
     translations_path = Path(os.environ.get(
         "EVENT_TRANSLATIONS_PATH", DEFAULT_EVENT_TRANSLATIONS_PATH
@@ -449,6 +461,11 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         )
         return 0
 
+    if command == "sync-library-events":
+        events = await refresh_library_catalog(now, library_path)
+        logging.info("Library agenda catalog synchronized: %d facts", len(events))
+        return 0
+
     if command == "sync-pharmacy":
         count = await refresh_pharmacy_catalog(now, pharmacy_path)
         logging.info("Pharmacy rota synchronized: %d duty rows", count)
@@ -498,6 +515,9 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 items.extend(
                     await agenda_translation_items(moment, agenda_path)
                 )
+                items.extend(
+                    await library_translation_items(moment, library_path)
+                )
             try:
                 await prepare_translations(
                     gemini_key, items, translations_path, now
@@ -520,6 +540,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 gemini_key,
                 municipal_path,
                 agenda_state_path=agenda_path,
+                library_agenda_state_path=library_path,
                 translation_cache_path=translations_path,
             )
             print(message or "No verified weekend events are available")
@@ -541,6 +562,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 gemini_key,
                 municipal_path,
                 agenda_state_path=agenda_path,
+                library_agenda_state_path=library_path,
                 translation_cache_path=translations_path,
             )
             if message is None:
@@ -565,6 +587,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         items = [
             *await municipal_translation_items(now, municipal_path),
             *await agenda_translation_items(now, agenda_path),
+            *await library_translation_items(now, library_path),
         ]
         translated = await prepare_translations(
             gemini_key, items, translations_path, now
@@ -850,6 +873,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             os.environ.get("GEMINI_API_KEY", "").strip(),
             municipal_path,
             agenda_state_path=agenda_path,
+            library_agenda_state_path=library_path,
             translation_cache_path=translations_path,
             aemet_fallback=fallback,
             aemet_observer=refreshed_aemet.append,
@@ -884,6 +908,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 agenda_state_path=Path(os.environ.get(
                     "AGENDA_STATE_PATH", DEFAULT_AGENDA_STATE_PATH
                 )),
+                library_agenda_state_path=library_path,
                 collect_beach=False,
                 translation_cache_path=translations_path,
                 aemet_digest=prepared,
@@ -1035,6 +1060,7 @@ def main() -> None:
             "sync-transport",
             "sync-municipal-events",
             "sync-agenda-events",
+            "sync-library-events",
             "sync-pharmacy",
             "prepare-event-translations",
             "prepare-aemet",
@@ -1089,6 +1115,7 @@ def main() -> None:
         raise SystemExit(2) from exc
     except (
         AemetError, AgendaError, EarthquakeError, MunicipalAgendaError,
+        LibraryAgendaError,
         AemetError, AgendaError, EarthquakeError, HidraquaError,
         MunicipalAgendaError, PharmacyError,
         TelegramError, StateError, OperationalUpdateStateError, ValueError
