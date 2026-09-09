@@ -30,6 +30,7 @@ from .municipal_agenda import (
     fetch_today_municipal_events,
 )
 from .library_agenda import LibraryAgendaError, fetch_today_library_events
+from .am_guardamar import AmGuardamarError, fetch_today_am_guardamar_events
 from .pharmacy import duty_pharmacies_on
 from .police import PoliceTrafficError, fetch_traffic_notices
 from .safebeach import SafeBeachError, fetch_beach_status
@@ -155,6 +156,7 @@ async def produce_message(
     *,
     agenda_state_path: Path = Path("state/agenda_guardamar.json"),
     library_agenda_state_path: Path = Path("state/library_agenda.json"),
+    am_guardamar_state_path: Path = Path("state/am_guardamar.json"),
     collect_beach: bool = True,
     beach_status: Optional[BeachStatus] = None,
     beach_notice: Optional[BeachNotice] = None,
@@ -205,6 +207,13 @@ async def produce_message(
         fetch_today_library_events(
             now,
             library_agenda_state_path,
+            translation_cache_path or Path("state/event_translations.json"),
+        )
+    )
+    am_guardamar_task = asyncio.create_task(
+        fetch_today_am_guardamar_events(
+            now,
+            am_guardamar_state_path,
             translation_cache_path or Path("state/event_translations.json"),
         )
     )
@@ -344,6 +353,11 @@ async def produce_message(
     except LibraryAgendaError as exc:
         LOGGER.warning("Library agenda unavailable; omitting events: %s", exc)
         library_events = ()
+    try:
+        am_guardamar_events = await am_guardamar_task
+    except AmGuardamarError as exc:
+        LOGGER.warning("AM Guardamar unavailable; omitting events: %s", exc)
+        am_guardamar_events = ()
 
     try:
         traffic_notices = await traffic_task
@@ -406,6 +420,7 @@ async def produce_message(
                 municipal_events,
                 events,
                 library_events,
+                am_guardamar_events,
             ),
         ),
         now=now,
