@@ -12,6 +12,7 @@ from telegrambot.am_guardamar import (
     fetch_today_am_guardamar_events,
     refresh_am_guardamar_catalog,
 )
+from telegrambot.municipal_agenda import MunicipalAgendaError
 
 
 TZ = ZoneInfo("Europe/Madrid")
@@ -107,6 +108,27 @@ class AmGuardamarTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('"categories":[1]', stored)
         self.assertEqual(today[0].title, "Concierto de otoño")
         self.assertEqual(today[0].starts_at.hour, 20)
+
+    async def test_invalid_one_post_does_not_block_the_catalog(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "am.json"
+            with (
+                patch("telegrambot.am_guardamar._read_posts", return_value=[_post()]),
+                patch(
+                    "telegrambot.am_guardamar.extract_agenda_text_events",
+                    new=AsyncMock(return_value=_extraction()),
+                ),
+                patch(
+                    "telegrambot.am_guardamar.normalize_extraction_candidates",
+                    side_effect=MunicipalAgendaError("invalid candidate"),
+                ),
+            ):
+                events = await refresh_am_guardamar_catalog("key", NOW, state)
+
+            stored = state.read_text(encoding="utf-8")
+
+        self.assertEqual(events, ())
+        self.assertIn('"posts":[]', stored)
 
 
 if __name__ == "__main__":
