@@ -27,6 +27,11 @@ from .library_agenda import (
     library_translation_items,
     refresh_library_catalog,
 )
+from .am_guardamar import (
+    AmGuardamarError,
+    am_guardamar_translation_items,
+    refresh_am_guardamar_catalog,
+)
 from .airport_schedule import AirportScheduleState, sync_airport_schedule
 from .commands import listen_for_preview, parse_allowed_user_ids
 from .delivery import publish_morning, publish_update
@@ -101,6 +106,7 @@ DEFAULT_STATE_PATH = "state/delivery.json"
 DEFAULT_MUNICIPAL_AGENDA_STATE_PATH = "state/municipal_agenda.json"
 DEFAULT_AGENDA_STATE_PATH = "state/agenda_guardamar.json"
 DEFAULT_LIBRARY_AGENDA_STATE_PATH = "state/library_agenda.json"
+DEFAULT_AM_GUARDAMAR_STATE_PATH = "state/am_guardamar.json"
 DEFAULT_ELECTRICITY_STATE_PATH = "state/electricity.json"
 DEFAULT_ELECTRICITY_SNAPSHOT_PATH = "state/electricity_prices.json"
 DEFAULT_EVENT_TRANSLATIONS_PATH = "state/event_translations.json"
@@ -206,6 +212,9 @@ async def _produce_message(api_key: str, now: datetime) -> str:
         library_agenda_state_path=Path(os.environ.get(
             "LIBRARY_AGENDA_STATE_PATH", DEFAULT_LIBRARY_AGENDA_STATE_PATH
         )),
+        am_guardamar_state_path=Path(os.environ.get(
+            "AM_GUARDAMAR_STATE_PATH", DEFAULT_AM_GUARDAMAR_STATE_PATH
+        )),
         diagnostics=diagnostics,
         translation_cache_path=Path(os.environ.get(
             "EVENT_TRANSLATIONS_PATH", DEFAULT_EVENT_TRANSLATIONS_PATH
@@ -267,6 +276,9 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
     ))
     library_path = Path(os.environ.get(
         "LIBRARY_AGENDA_STATE_PATH", DEFAULT_LIBRARY_AGENDA_STATE_PATH
+    ))
+    am_guardamar_path = Path(os.environ.get(
+        "AM_GUARDAMAR_STATE_PATH", DEFAULT_AM_GUARDAMAR_STATE_PATH
     ))
     translations_path = Path(os.environ.get(
         "EVENT_TRANSLATIONS_PATH", DEFAULT_EVENT_TRANSLATIONS_PATH
@@ -466,6 +478,13 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         logging.info("Library agenda catalog synchronized: %d facts", len(events))
         return 0
 
+    if command == "sync-am-guardamar-events":
+        events = await refresh_am_guardamar_catalog(
+            _required_environment("GEMINI_API_KEY"), now, am_guardamar_path
+        )
+        logging.info("AM Guardamar catalog synchronized: %d facts", len(events))
+        return 0
+
     if command == "sync-pharmacy":
         count = await refresh_pharmacy_catalog(now, pharmacy_path)
         logging.info("Pharmacy rota synchronized: %d duty rows", count)
@@ -518,6 +537,9 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 items.extend(
                     await library_translation_items(moment, library_path)
                 )
+                items.extend(
+                    await am_guardamar_translation_items(moment, am_guardamar_path)
+                )
             try:
                 await prepare_translations(
                     gemini_key, items, translations_path, now
@@ -541,6 +563,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 municipal_path,
                 agenda_state_path=agenda_path,
                 library_agenda_state_path=library_path,
+                am_guardamar_state_path=am_guardamar_path,
                 translation_cache_path=translations_path,
             )
             print(message or "No verified weekend events are available")
@@ -563,6 +586,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 municipal_path,
                 agenda_state_path=agenda_path,
                 library_agenda_state_path=library_path,
+                am_guardamar_state_path=am_guardamar_path,
                 translation_cache_path=translations_path,
             )
             if message is None:
@@ -588,6 +612,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             *await municipal_translation_items(now, municipal_path),
             *await agenda_translation_items(now, agenda_path),
             *await library_translation_items(now, library_path),
+            *await am_guardamar_translation_items(now, am_guardamar_path),
         ]
         translated = await prepare_translations(
             gemini_key, items, translations_path, now
@@ -874,6 +899,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             municipal_path,
             agenda_state_path=agenda_path,
             library_agenda_state_path=library_path,
+            am_guardamar_state_path=am_guardamar_path,
             translation_cache_path=translations_path,
             aemet_fallback=fallback,
             aemet_observer=refreshed_aemet.append,
@@ -909,6 +935,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     "AGENDA_STATE_PATH", DEFAULT_AGENDA_STATE_PATH
                 )),
                 library_agenda_state_path=library_path,
+                am_guardamar_state_path=am_guardamar_path,
                 collect_beach=False,
                 translation_cache_path=translations_path,
                 aemet_digest=prepared,
@@ -939,6 +966,8 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 items = [
                     *await municipal_translation_items(now, municipal_path),
                     *await agenda_translation_items(now, agenda_path),
+                    *await library_translation_items(now, library_path),
+                    *await am_guardamar_translation_items(now, am_guardamar_path),
                 ]
                 await prepare_translations(
                     gemini_key, items, translations_path, now
@@ -959,6 +988,8 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             os.environ.get("GEMINI_API_KEY", "").strip(),
             municipal_path,
             agenda_state_path=agenda_path,
+            library_agenda_state_path=library_path,
+            am_guardamar_state_path=am_guardamar_path,
             collect_beach=False,
             beach_status=status,
             beach_notice=notice,
@@ -1061,6 +1092,7 @@ def main() -> None:
             "sync-municipal-events",
             "sync-agenda-events",
             "sync-library-events",
+            "sync-am-guardamar-events",
             "sync-pharmacy",
             "prepare-event-translations",
             "prepare-aemet",
@@ -1116,6 +1148,7 @@ def main() -> None:
     except (
         AemetError, AgendaError, EarthquakeError, MunicipalAgendaError,
         LibraryAgendaError,
+        AmGuardamarError,
         AemetError, AgendaError, EarthquakeError, HidraquaError,
         MunicipalAgendaError, PharmacyError,
         TelegramError, StateError, OperationalUpdateStateError, ValueError

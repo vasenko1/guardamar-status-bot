@@ -15,6 +15,7 @@ from .municipal_agenda import (
     fetch_today_municipal_events,
 )
 from .library_agenda import LibraryAgendaError, fetch_today_library_events
+from .am_guardamar import AmGuardamarError, fetch_today_am_guardamar_events
 
 LOGGER = logging.getLogger(__name__)
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
@@ -36,6 +37,7 @@ async def _day_events(
     municipal_agenda_state_path: Path,
     agenda_state_path: Path,
     library_agenda_state_path: Path,
+    am_guardamar_state_path: Path,
     translation_cache_path: Path,
 ):
     """Collect one weekend day from the two catalogs and recurring rules."""
@@ -75,11 +77,19 @@ async def _day_events(
     except LibraryAgendaError as exc:
         LOGGER.warning("Library agenda unavailable for %s; omitting: %s", day.date(), exc)
         library_events = ()
+    try:
+        am_guardamar_events = await fetch_today_am_guardamar_events(
+            day, am_guardamar_state_path, translation_cache_path
+        )
+    except AmGuardamarError as exc:
+        LOGGER.warning("AM Guardamar unavailable for %s; omitting: %s", day.date(), exc)
+        am_guardamar_events = ()
     return _merge_events(
         recurring_events(day),
         municipal_events,
         agenda_events,
         library_events,
+        am_guardamar_events,
     )
 
 
@@ -90,6 +100,7 @@ async def produce_weekend_message(
     *,
     agenda_state_path: Path,
     library_agenda_state_path: Path = Path("state/library_agenda.json"),
+    am_guardamar_state_path: Path = Path("state/am_guardamar.json"),
     translation_cache_path: Path = Path("state/event_translations.json"),
 ) -> Optional[str]:
     """Return the weekend digest, or None when no verified event exists."""
@@ -105,6 +116,7 @@ async def produce_weekend_message(
             municipal_agenda_state_path,
             agenda_state_path,
             library_agenda_state_path,
+            am_guardamar_state_path,
             translation_cache_path,
         )
         if not events:
