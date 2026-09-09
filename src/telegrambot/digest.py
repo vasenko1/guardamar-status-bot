@@ -327,8 +327,16 @@ def _event_place(value: str) -> str:
     if value.casefold() in {
         "sala de exposiciones casa de cultura",
         "sala de exposiciones de la casa de cultura",
+        "sala de exposiciones de casa de cultura",
     }:
-        return "Casa de Cultura (Sala de exposiciones)"
+        return "Casa de Cultura (Sala de Exposiciones)"
+    if value.casefold() in {
+        "hall biblioteca municipal",
+        "hall de la biblioteca municipal",
+        "hall de la biblioteca pública municipal",
+        "hall biblioteca pública municipal",
+    }:
+        return "Biblioteca Municipal (Hall)"
     value = re.sub(r"\bC/\s*", "улица ", value, flags=re.IGNORECASE)
     value = re.sub(
         r"^parque\s+улица\s+",

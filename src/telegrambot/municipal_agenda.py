@@ -958,6 +958,13 @@ def normalize_extraction(
                 )
         if place is not None:
             place = canonical_event_place(place)
+        if title_es.casefold() in {
+            "actividades del centro social juvenil",
+            "apertura csj",
+            "apertura centro social juvenil",
+        }:
+            # These rows state ordinary centre availability, not a named event.
+            continue
         if (
             category not in {"exhibition", "municipal_service"}
             and start_date != end_date

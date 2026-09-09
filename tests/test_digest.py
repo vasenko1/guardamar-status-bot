@@ -847,12 +847,49 @@ class DigestMessageTests(unittest.TestCase):
             message,
         )
         self.assertIn(
-            ">Casa de Cultura (Sala de exposiciones)</a>", message
+            ">Casa de Cultura (Sala de Exposiciones)</a>", message
         )
         self.assertNotIn(
             "скульптуры: Средиземноморье",
             message,
         )
+
+    def test_current_exhibitions_keep_verified_artist_and_canonical_venue(self):
+        digest = MorningDigest(
+            weather=None,
+            warnings=(),
+            warnings_available=True,
+            events=(
+                Event(
+                    title=(
+                        "Выставка рисунков José Luis Narbaiza "
+                        "«Друзья и знакомые»"
+                    ),
+                    starts_at=None,
+                    active_until=date(2026, 9, 23),
+                    place="Hall de la Biblioteca Pública Municipal",
+                    category="exhibition",
+                ),
+                Event(
+                    title=(
+                        "Выставка живописи Jaime Aniorte «Неизгладимый»"
+                    ),
+                    starts_at=None,
+                    active_until=date(2026, 10, 16),
+                    place="Sala de exposiciones de Casa de Cultura",
+                    category="exhibition",
+                ),
+            ),
+        )
+
+        message = build_message(digest)
+
+        self.assertIn(
+            "Выставка рисунков José Luis Narbaiza «Друзья и знакомые»",
+            message,
+        )
+        self.assertIn(">Biblioteca Municipal (Hall)</a>", message)
+        self.assertIn(">Casa de Cultura (Sala de Exposiciones)</a>", message)
 
     def test_ball_venue_keeps_park_first_in_map_label_and_query(self):
         digest = MorningDigest(

@@ -179,6 +179,16 @@ cd ~/bots/guardamar-status
 ./termux/install-monitor-cron.sh
 ```
 
+Install or update just the Friday `Афиша выходных` jobs in the same safe way:
+
+```sh
+cd ~/bots/guardamar-status
+./termux/install-weekend-cron.sh
+```
+
+The installer retains unrelated cron entries and owns only its marked weekend
+block.
+
 The installer saves the original crontab once as
 `~/.cache/crontab/crontab.before-monitor`, preserves unrelated lines, and owns
 only its clearly marked operational-monitor block. Repeated execution replaces

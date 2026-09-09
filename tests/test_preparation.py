@@ -118,6 +118,14 @@ class PreparationTests(unittest.IsolatedAsyncioTestCase):
             "Выставка живописи «Свет вопреки боли» — Вира Дегляренко",
         )
         self.assertEqual(
+            reviewed_translation("AMIGOS Y CONOCIDOS"),
+            "Выставка рисунков José Luis Narbaiza «Друзья и знакомые»",
+        )
+        self.assertEqual(
+            reviewed_translation("IMBORRABLE"),
+            "Выставка живописи Jaime Aniorte «Неизгладимый»",
+        )
+        self.assertEqual(
             reviewed_translation(
                 "Feria de Comercio 2026: inauguración, talleres, "
                 "Faüla y DJ Jesús"

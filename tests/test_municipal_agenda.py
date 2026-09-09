@@ -454,7 +454,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             event.registration_contact is None for event in enriched
         ))
 
-    def test_keeps_dated_youth_activity_but_not_undated_range(self):
+    def test_omits_generic_youth_centre_opening_but_keeps_named_events(self):
         result = normalize_extraction_candidates({
             "month": "2026-08",
             "events": [
@@ -498,7 +498,6 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         }, "2026-08", "todo_cultura")
 
         self.assertEqual([event.title_es for event in result], [
-            "Actividades del Centro Social Juvenil",
             "Concierto Spanish Brass",
             "Exposición de pintura Luz mediterránea",
         ])
@@ -926,7 +925,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(MunicipalAgendaError):
                 _load_snapshot(path)
 
-    def test_snapshot_loader_keeps_dated_youth_activity(self):
+    def test_snapshot_loader_omits_generic_youth_centre_opening(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "agenda.json"
             path.write_text(json.dumps({
@@ -958,10 +957,9 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
 
             loaded = _load_snapshot(path)
 
-        self.assertEqual(len(loaded["_events"]), 2)
         self.assertEqual(
             [event.title_es for event in loaded["_events"]],
-            ["Actividades del Centro Social Juvenil", "SPANISH BRASS"],
+            ["SPANISH BRASS"],
         )
 
     def test_repairs_reviewed_august_poster_facts(self):
