@@ -7,10 +7,11 @@ import os
 import re
 import tempfile
 import urllib.parse
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
+from html.parser import HTMLParser
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from ._transport import BoundedFetchError, fetch_bounded
@@ -34,30 +35,121 @@ _MONTHS = {
     "septiembre": 9, "octubre": 10, "noviembre": 11,
     "diciembre": 12,
 }
-_RECORD = re.compile(
-    r'<div class="registro\b.*?(?=<div class="registro\b|</ul>\s*'
-    r'<div class="row numActividades")', re.IGNORECASE | re.DOTALL
-)
 _DATE = re.compile(
-    r"(?:(?:Lunes,\s*)?(\d{1,2})\s+de\s+([a-záéíóú]+)\s+de\s+(\d{4})|"
+    r"(?:(?:(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|"
+    r"domingo),?\s*)?(\d{1,2})\s+de\s+([a-záéíóú]+)\s+de\s+(\d{4})|"
     r"(\d{1,2})\s+de\s+([a-záéíóú]+)\s*-\s*(\d{1,2})\s+de\s+"
     r"([a-záéíóú]+)\s+de\s+(\d{4}))",
     re.IGNORECASE,
 )
 _TIME = re.compile(r"\b([0-2]?\d:[0-5]\d)\s*-\s*([0-2]?\d:[0-5]\d)\b")
-_LINK = re.compile(r'<a\s+href="([^"]+)"[^>]*>\s*<li class="titulo">\s*'
-                   r"<h3>(.*?)</h3>", re.IGNORECASE | re.DOTALL)
-_PLACE = re.compile(
-    r'list-opc.*?<li[^>]*>(?:\s*<[^>]+>)*\s*(.*?)</li>',
-    re.IGNORECASE | re.DOTALL,
-)
-_DESCRIPTION = re.compile(
-    r'<div class="column detalle">\s*(.*?)</div>', re.IGNORECASE | re.DOTALL
-)
+
+
+class _AgendaListParser(HTMLParser):
+    """Read only the repeating official activity cards from the agenda page."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.records: List[Dict[str, str]] = []
+        self._current: Optional[Dict[str, object]] = None
+        self._title_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
+        attributes = dict(attrs)
+        classes = set((attributes.get("class") or "").split())
+        if tag == "div" and self._current is None and {"row", "actividades"} <= classes:
+            self._current = {
+                "depth": 1,
+                "text": [],
+                "title": [],
+                "place": [],
+                "place_depth": None,
+                "link": None,
+            }
+            return
+        if self._current is None:
+            return
+        if tag == "div":
+            self._current["depth"] = int(self._current["depth"]) + 1
+            if "list-opc" in classes:
+                self._current["place_depth"] = self._current["depth"]
+        elif tag == "a" and self._current["link"] is None:
+            href = attributes.get("href")
+            if href:
+                self._current["link"] = href
+        elif tag == "h3":
+            self._title_depth += 1
+
+    def handle_data(self, data: str) -> None:
+        if self._current is None:
+            return
+        self._current["text"].append(data)  # type: ignore[union-attr]
+        if self._title_depth:
+            self._current["title"].append(data)  # type: ignore[union-attr]
+        if self._current["place_depth"] is not None:
+            self._current["place"].append(data)  # type: ignore[union-attr]
+
+    def handle_endtag(self, tag: str) -> None:
+        if self._current is None:
+            return
+        if tag == "h3" and self._title_depth:
+            self._title_depth -= 1
+        if tag != "div":
+            return
+        depth = int(self._current["depth"])
+        if self._current["place_depth"] == depth:
+            self._current["place_depth"] = None
+        depth -= 1
+        self._current["depth"] = depth
+        if depth:
+            return
+        title = " ".join(" ".join(self._current["title"]).split())
+        link = self._current["link"]
+        if title and isinstance(link, str):
+            self.records.append({
+                "text": " ".join(" ".join(self._current["text"]).split()),
+                "title": title,
+                "place": " ".join(" ".join(self._current["place"]).split()),
+                "link": link,
+            })
+        self._current = None
+
+
+class _DetailTextParser(HTMLParser):
+    """Collect the detail column without retaining a page or its media."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._depth = 0
+        self.parts: List[str] = []
+
+    def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
+        if tag != "div":
+            return
+        classes = set((dict(attrs).get("class") or "").split())
+        if self._depth:
+            self._depth += 1
+        elif {"column", "detalle"} <= classes:
+            self._depth = 1
+
+    def handle_data(self, data: str) -> None:
+        if self._depth:
+            self.parts.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "div" and self._depth:
+            self._depth -= 1
 
 
 class LibraryAgendaError(RuntimeError):
     """Operator-safe failure from the official library agenda."""
+
+
+@dataclass(frozen=True)
+class _LibraryRecord:
+    event: Event
+    detail_url: str
+    detail_loaded: bool
 
 
 def _is_library_url(url: str) -> bool:
@@ -86,8 +178,10 @@ def _read_page(url: str) -> bytes:
     return payload
 
 
-def _text(value: str) -> str:
-    return " ".join(html.unescape(re.sub(r"<[^>]+>", " ", value)).split())
+def _activity_records(page: str) -> Tuple[Dict[str, str], ...]:
+    parser = _AgendaListParser()
+    parser.feed(page)
+    return tuple(parser.records)
 
 
 def _date(value: str) -> Optional[date]:
@@ -119,19 +213,15 @@ def extract_events(payload: bytes, now: datetime) -> Tuple[Tuple[Event, str], ..
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
     horizon = local_day + timedelta(days=HORIZON_DAYS)
     events = []
-    for record in _RECORD.findall(page):
-        date_text = _text(record)
+    for record in _activity_records(page):
+        date_text = record["text"]
         start_day = _date(date_text)
         if start_day is None:
             continue
         end_day = _range_end(date_text)
         if (end_day or start_day) < local_day or start_day > horizon:
             continue
-        link = _LINK.search(record)
-        place = _PLACE.search(record)
-        if link is None:
-            continue
-        title = _text(link.group(2))
+        title = record["title"]
         if not 1 <= len(title) <= 160:
             continue
         time_match = _TIME.search(date_text)
@@ -152,7 +242,7 @@ def extract_events(payload: bytes, now: datetime) -> Tuple[Tuple[Event, str], ..
         else:
             starts_at = None
             ends_at = None
-        place_text = _text(place.group(1)) if place else None
+        place_text = record["place"] or None
         if place_text is not None:
             place_text = re.sub(r"^location_on\s*", "", place_text)
         events.append((Event(
@@ -162,7 +252,7 @@ def extract_events(payload: bytes, now: datetime) -> Tuple[Tuple[Event, str], ..
             place=place_text,
             active_until=end_day,
             category="exhibition" if end_day else "event",
-        ), urllib.parse.urljoin(LIBRARY_AGENDA_URL, html.unescape(link.group(1)))))
+        ), urllib.parse.urljoin(LIBRARY_AGENDA_URL, html.unescape(record["link"]))))
         if len(events) == MAX_EVENTS:
             break
     return tuple(events)
@@ -171,10 +261,11 @@ def extract_events(payload: bytes, now: datetime) -> Tuple[Tuple[Event, str], ..
 def extract_teaser(payload: bytes) -> Optional[str]:
     """Return one complete factual sentence, never a generated summary."""
 
-    match = _DESCRIPTION.search(payload.decode("utf-8", "replace"))
-    if match is None:
+    parser = _DetailTextParser()
+    parser.feed(payload.decode("utf-8", "replace"))
+    text = " ".join(" ".join(parser.parts).split())
+    if not text:
         return None
-    text = _text(match.group(1))
     factual = re.search(
         r"(?:Esta colección|Este ciclo|Esta exposición).*?[.!?]",
         text,
@@ -189,14 +280,23 @@ def extract_teaser(payload: bytes) -> Optional[str]:
     return None
 
 
-def _write_snapshot(path: Path, now: datetime, events: Tuple[Event, ...]) -> None:
+def _write_snapshot(
+    path: Path, now: datetime, records: Tuple[_LibraryRecord, ...]
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = {"version": 1, "fetched_at": now.isoformat(), "events": [
-        {"title": event.title, "starts_at": event.starts_at.isoformat() if event.starts_at else None,
-         "ends_at": event.ends_at.isoformat() if event.ends_at else None, "place": event.place,
-         "active_until": event.active_until.isoformat() if event.active_until else None,
-         "category": event.category, "teaser": event.teaser}
-        for event in events
+    data = {"version": 2, "fetched_at": now.isoformat(), "events": [
+        {
+            "title": record.event.title,
+            "starts_at": record.event.starts_at.isoformat() if record.event.starts_at else None,
+            "ends_at": record.event.ends_at.isoformat() if record.event.ends_at else None,
+            "place": record.event.place,
+            "active_until": record.event.active_until.isoformat() if record.event.active_until else None,
+            "category": record.event.category,
+            "teaser": record.event.teaser,
+            "detail_url": record.detail_url,
+            "detail_loaded": record.detail_loaded,
+        }
+        for record in records
     ]}
     descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     try:
@@ -214,15 +314,15 @@ def _write_snapshot(path: Path, now: datetime, events: Tuple[Event, ...]) -> Non
             pass
 
 
-def _load_snapshot(path: Path) -> Tuple[Event, ...]:
+def _load_snapshot(path: Path) -> Tuple[_LibraryRecord, ...]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict) or data.get("version") != 1:
+        if not isinstance(data, dict) or data.get("version") not in {1, 2}:
             raise ValueError
         raw_events = data.get("events")
         if not isinstance(raw_events, list) or len(raw_events) > MAX_EVENTS:
             raise ValueError
-        events = []
+        records = []
         for raw in raw_events:
             if not isinstance(raw, dict) or not isinstance(raw.get("title"), str):
                 raise ValueError
@@ -231,35 +331,59 @@ def _load_snapshot(path: Path) -> Tuple[Event, ...]:
             active_until = date.fromisoformat(raw["active_until"]) if isinstance(raw.get("active_until"), str) else None
             if (starts_at and starts_at.tzinfo is None) or (ends_at and ends_at.tzinfo is None):
                 raise ValueError
-            events.append(Event(raw["title"], starts_at, ends_at, raw.get("place"), active_until,
-                                raw.get("category", "event"), teaser=raw.get("teaser")))
-        return tuple(events)
+            event = Event(
+                raw["title"], starts_at, ends_at, raw.get("place"), active_until,
+                raw.get("category", "event"), teaser=raw.get("teaser"),
+            )
+            if data["version"] == 1:
+                records.append(_LibraryRecord(event, "", False))
+                continue
+            detail_url = raw.get("detail_url")
+            detail_loaded = raw.get("detail_loaded")
+            if (
+                not isinstance(detail_url, str)
+                or not _is_library_url(detail_url)
+                or not isinstance(detail_loaded, bool)
+            ):
+                raise ValueError
+            records.append(_LibraryRecord(event, detail_url, detail_loaded))
+        return tuple(records)
     except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
         raise LibraryAgendaError("Library agenda snapshot is invalid") from exc
 
 
 async def refresh_library_catalog(now: datetime, state_path: Path) -> Tuple[Event, ...]:
     records = extract_events(await asyncio.to_thread(_read_page, LIBRARY_AGENDA_URL), now)
-    local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
-    events = []
+    previous = await asyncio.to_thread(_load_snapshot, state_path) if state_path.exists() else ()
+    previous_by_url = {
+        record.detail_url: record for record in previous if record.detail_url
+    }
+    refreshed = []
     for event, link in records:
+        old = previous_by_url.get(link)
+        same_card = old is not None and replace(old.event, teaser=None) == event
+        if same_card and old.detail_loaded:
+            refreshed.append(old)
+            continue
         teaser = None
-        if (event.starts_at and event.starts_at.date() == local_day) or (
-            event.starts_at is None and event.active_until and event.active_until >= local_day
-        ):
-            try:
-                teaser = extract_teaser(await asyncio.to_thread(_read_page, link))
-            except LibraryAgendaError:
-                pass
-        events.append(replace(event, teaser=teaser))
-    await asyncio.to_thread(_write_snapshot, state_path, now, tuple(events))
-    return tuple(events)
+        detail_loaded = False
+        try:
+            teaser = extract_teaser(await asyncio.to_thread(_read_page, link))
+            detail_loaded = True
+        except LibraryAgendaError:
+            pass
+        refreshed.append(_LibraryRecord(
+            replace(event, teaser=teaser), link, detail_loaded
+        ))
+    await asyncio.to_thread(_write_snapshot, state_path, now, tuple(refreshed))
+    return tuple(record.event for record in refreshed)
 
 
 async def fetch_today_library_events(now: datetime, state_path: Path, translation_cache_path: Path) -> Tuple[Event, ...]:
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
     result = []
-    for event in await asyncio.to_thread(_load_snapshot, state_path):
+    for record in await asyncio.to_thread(_load_snapshot, state_path):
+        event = record.event
         active = ((event.starts_at is not None and event.starts_at.date() == local_day) or
                   (event.starts_at is None and event.active_until is not None and event.active_until >= local_day))
         if not active:
@@ -274,7 +398,8 @@ async def fetch_today_library_events(now: datetime, state_path: Path, translatio
 async def library_translation_items(now: datetime, state_path: Path) -> Tuple[Tuple[str, str], ...]:
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
     items = []
-    for event in await asyncio.to_thread(_load_snapshot, state_path):
+    for record in await asyncio.to_thread(_load_snapshot, state_path):
+        event = record.event
         active = ((event.starts_at is not None and event.starts_at.date() == local_day) or
                   (event.starts_at is None and event.active_until is not None and event.active_until >= local_day))
         if active:
