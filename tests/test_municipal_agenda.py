@@ -13,6 +13,7 @@ from telegrambot.municipal_agenda import (
     _current_events,
     _enrich_admissions,
     _enrich_todo_participation,
+    _facebook_fingerprint,
     _apply_reviewed_corrections,
     _apply_reviewed_daily_schedules,
     _load_snapshot,
@@ -31,6 +32,7 @@ from telegrambot.municipal_agenda import (
     refresh_municipal_catalog,
 )
 from telegrambot.gemini import GeminiError
+from telegrambot.facebook import FacebookError, FacebookPost
 from telegrambot.todo_cultura import (
     TodoCulturaAdmission,
     TodoCulturaError,
@@ -89,6 +91,12 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         )
         patcher.start()
         self.addCleanup(patcher.stop)
+        facebook_patcher = patch(
+            "telegrambot.municipal_agenda.fetch_facebook_posts",
+            new=AsyncMock(return_value=()),
+        )
+        facebook_patcher.start()
+        self.addCleanup(facebook_patcher.stop)
 
     def test_extracts_declared_month_and_only_programme_section(self):
         payload = b"""
@@ -1458,6 +1466,79 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                 )
         self.assertEqual(len(current), 2)
         ocr.assert_not_awaited()
+
+    async def test_facebook_event_survives_unchanged_missing_post_and_failure(self):
+        official = SourceEvent(
+            "Programa municipal", date(2026, 8, 5), date(2026, 8, 5),
+            "18:00", None, "Casa de Cultura", "event", ("mupi",),
+        )
+        poster_url = (
+            "https://www.guardamardelsegura.es/wp-content/uploads/"
+            "2026/08/MUPI-AGOSTO-2026.jpg"
+        )
+        page = f'<a href="{poster_url}">poster</a>'.encode()
+        post = FacebookPost(
+            source_id="https://www.facebook.com/GuardamarAyuntamiento/posts/pfbid-test",
+            permalink="https://www.facebook.com/GuardamarAyuntamiento/posts/pfbid-test",
+            published_at=datetime(2026, 8, 1, tzinfo=TZ),
+            text=(
+                "5 de agosto 20:00 Concierto de verano. "
+                "Parque Reina Sofía. Entrada libre."
+            ),
+            image_urls=("https://cdn.example.test/poster.jpg",),
+        )
+        extracted = {
+            "month": "2026-08",
+            "events": [{
+                "title_es": "Concierto de verano",
+                "start_date": "2026-08-05",
+                "end_date": "2026-08-05",
+                "start_time": "20:00",
+                "end_time": None,
+                "place": "Parque Reina Sofía",
+                "evidence_es": (
+                    "5 de agosto 20:00 Concierto de verano. "
+                    "Parque Reina Sofía."
+                ),
+                "category": "event",
+            }],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agenda.json"
+            _write_snapshot(path, _snapshot_data(
+                poster_url, "poster-hash", datetime(2026, 8, 1, tzinfo=TZ),
+                (official,), {"mupi": {"url": poster_url, "sha256": "poster-hash"}},
+            ))
+            fetch = AsyncMock(side_effect=(
+                (post,), (post,), (), FacebookError("offline", code="NETWORK"),
+            ))
+            extract_text = AsyncMock(return_value=extracted)
+            with (
+                patch("telegrambot.municipal_agenda._read_url", return_value=(page, "text/html")),
+                patch("telegrambot.municipal_agenda.fetch_facebook_posts", new=fetch),
+                patch("telegrambot.municipal_agenda.extract_agenda_text_events", new=extract_text),
+            ):
+                first = await _current_events("key", datetime(2026, 8, 5, tzinfo=TZ), path)
+                second = await _current_events("key", datetime(2026, 8, 5, 6, tzinfo=TZ), path)
+                third = await _current_events("key", datetime(2026, 8, 5, 7, tzinfo=TZ), path)
+                fourth = await _current_events("key", datetime(2026, 8, 5, 8, tzinfo=TZ), path)
+
+        self.assertEqual(extract_text.await_count, 1)
+        self.assertIn("Concierto de verano", [event.title_es for event in first])
+        self.assertEqual([event.title_es for event in first], [event.title_es for event in second])
+        self.assertEqual([event.title_es for event in second], [event.title_es for event in third])
+        self.assertEqual([event.title_es for event in third], [event.title_es for event in fourth])
+
+    def test_facebook_fingerprint_ignores_ephemeral_image_query(self):
+        first = FacebookPost(
+            "id", "https://www.facebook.com/page/posts/id", None, "Texto",
+            ("https://cdn.example.test/poster.jpg?token=old",),
+        )
+        second = FacebookPost(
+            "id", "https://www.facebook.com/page/posts/id", None, "Texto",
+            ("https://cdn.example.test/poster.jpg?token=new",),
+        )
+        self.assertEqual(_facebook_fingerprint(first), _facebook_fingerprint(second))
 
     async def test_old_html_extractor_version_forces_one_refresh(self):
         prior = SourceEvent(
