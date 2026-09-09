@@ -38,17 +38,18 @@ long poll solely for allowlisted private `/preview`. It must not schedule
 publication, poll data sources until a command arrives, use a webhook, or
 persist update history.
 
-One short daily deployment check may fetch the tested GitHub `deploy` branch.
-It must exit immediately when no update exists and must not become a resident
-deployment agent or self-hosted CI runner.
+Deployment is a deliberate Tailscale SSH operation: inspect Git state, test,
+commit, and restart only the affected resident service. It must not add a
+GitHub promotion branch, scheduled self-update, resident deployment agent,
+self-hosted CI runner, or public inbound port.
 
 The local earthquake feature may make one bounded official IGN GeoRSS request
 at minute 55 of each hour. It has no internal retry, browser, screenshot,
 resident worker, or raw-response cache. The process exits after parsing and
 possible delivery. Normalized revision and delivery state is capped at 256
-events and 14 days; its log rotates at 1 MiB with one previous file. The monitor
-and deployment use one mutually exclusive runtime lock. A conflicting
-invocation exits successfully without a request.
+events and 14 days; its log rotates at 1 MiB with one previous file.
+The monitor uses one mutually exclusive runtime lock. A conflicting invocation
+exits successfully without a request.
 
 The linked pinned guide uses explicit one-shot operator commands plus one short
 daily urban-timetable synchronization. It may store one small message graph,

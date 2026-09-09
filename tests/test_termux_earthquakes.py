@@ -60,7 +60,7 @@ class EarthquakeTermuxTests(unittest.TestCase):
         self.assertIn("# END guardamar-status earthquake monitor", script)
         self.assertIn('crontab -l >"$CURRENT"', script)
 
-    def test_monitor_skips_during_deployment_and_rotates_its_log(self):
+    def test_monitor_skips_when_locked_and_rotates_its_log(self):
         script = (
             ROOT / "termux" / "monitor-earthquakes.sh"
         ).read_text(encoding="utf-8")
@@ -71,23 +71,6 @@ class EarthquakeTermuxTests(unittest.TestCase):
         self.assertIn('if ! acquire_runtime_lock "$RUNTIME_LOCK"', script)
         self.assertIn('"$(wc -c < "$LOG")" -gt 1048576', script)
         self.assertIn("python -m telegrambot monitor-earthquakes", script)
-
-    def test_deploy_uses_the_same_runtime_lock(self):
-        script = (ROOT / "termux" / "deploy.sh").read_text(encoding="utf-8")
-
-        self.assertIn(
-            'RUNTIME_LOCK_DIR="$STATE_DIR/code-runtime.lock"', script
-        )
-        self.assertIn(
-            'if ! acquire_runtime_lock "$RUNTIME_LOCK_DIR"', script
-        )
-        self.assertIn(
-            '"$PROJECT_DIR/termux/install-earthquake-cron.sh"', script
-        )
-        self.assertLess(
-            script.index("install_runtime_jobs || exit 1"),
-            script.index("INFO Already up to date"),
-        )
 
     def test_runtime_lock_recovers_only_a_stale_pid_owner(self):
         script = (

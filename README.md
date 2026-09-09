@@ -127,32 +127,26 @@ The validated Android deployment uses the scripts in `termux/`:
 - `termux/prepare-events.sh` at 06:00, 06:30, and 07:00 to fill only missing
   title translations, and `termux/prepare-aemet.sh` at 07:15 to store one
   normalized same-day weather snapshot;
-- `termux/deploy.sh` at `04:00` to apply only commits promoted to the
-  GitHub `deploy` branch after successful CI;
 - `termux/monitor-earthquakes.sh` at minute 55 of every hour to check the
   official IGN GeoRSS feed for a new qualifying local event;
 - `termux/start-services` copied to `~/.termux/boot/start-services` for the
   F-Droid Termux:Boot add-on.
 
-The deployment check is a short daily process, not a resident agent. It
-requires a Git checkout with the repository configured as `origin`. It refuses
-tracked local changes and non-fast-forward history, installs declared Python
-dependencies, reruns the test suite on the phone, makes one best-effort refresh
-of the small official pharmacy catalog, and restarts only the private preview
-listener. A pharmacy-source failure is logged and left to the weekly retry; it
-does not invalidate tested code. On installation or test failure the deploy
-restores the previous commit. `.env`, `state/`, logs, and the virtual
-environment remain local and are never pulled from GitHub.
-Deployment and the earthquake monitor share one short-lived runtime lock, so a
-manual update cannot replace code while that monitor is running. Deployment
-also reconciles the earthquake monitor's idempotent cron block after an update
-and on later no-op checks, so a temporary scheduler failure is retried.
+Code changes are operator-driven over private Tailscale SSH. Review the Git
+working tree, run the relevant tests, commit the completed change, then restart
+only the affected resident service. One-shot cron commands use the changed code
+on their next invocation. There is no GitHub Actions promotion, `deploy`
+branch, or scheduled self-update. `.env`, `state/`, logs, and the virtual
+environment remain local.
+
+After an Android reboot, first unlock the phone once. Android makes Termux app
+storage available then; within roughly half a minute Tailscale, Termux:Boot,
+and the supervised services become reachable again.
 
 Recommended crontab entries:
 
 ```cron
 CRON_TZ=Europe/Madrid
-0 4 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/deploy.sh
 0 5 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-transport.sh
 10 5 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-municipal-events.sh
 30 5 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-agenda-events.sh
@@ -203,7 +197,7 @@ cd ~/bots/guardamar-status
 
 This idempotent installer owns only its marked block and saves the original
 crontab once as `~/.cache/crontab/crontab.before-earthquakes`. Minute `:55`
-avoids the deployment, morning preparation, digest, beach-monitor, transport,
+avoids the scheduled code changes, morning preparation, digest, beach-monitor, transport,
 electricity, weekend, and pharmacy slots listed above. The installer aborts on
 a crontab read error or malformed managed markers rather than risk replacing
 unrelated jobs. A runtime-lock conflict skips that invocation; the next hour
