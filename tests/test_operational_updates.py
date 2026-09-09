@@ -78,18 +78,21 @@ class ScheduleTests(unittest.TestCase):
 class BeachConfirmationTests(unittest.TestCase):
     def setUp(self):
         self.state = OperationalUpdateState.empty("2026-08-07")
-        observe_beaches(
-            self.state,
-            _status(
-                {"Centre": "green", "Roqueta": "yellow"},
-                {"Centre": False, "Roqueta": False},
-            ),
-            1,
-        )
+        seed_beaches(self.state, {
+            "Centre": {"flag": "green", "jellyfish": False},
+            "Roqueta": {"flag": "yellow", "jellyfish": False},
+        })
 
-    def test_first_sample_is_a_silent_baseline(self):
-        self.assertIsNone(self.state["beach_pending"])
-        self.assertEqual(self.state["beaches"]["Centre"]["flag"], "green")
+    def test_first_sample_is_a_confirmed_initial_status(self):
+        state = OperationalUpdateState.empty("2026-08-07")
+        sample = _status({"Centre": "green"}, {"Centre": False})
+        observe_beaches(state, sample, 1)
+        self.assertEqual(state["beaches"], {})
+        self.assertTrue(state["beach_pending"]["initial"])
+        observe_beaches(state, sample, 2)
+        self.assertTrue(state["beach_ready"][0]["initial"])
+        finalize_delivery(state)
+        self.assertEqual(state["beaches"]["Centre"]["flag"], "green")
 
     def test_published_full_digest_can_seed_beach_baseline(self):
         state = OperationalUpdateState.empty("2026-08-07")
@@ -198,6 +201,7 @@ class BeachConfirmationTests(unittest.TestCase):
 
     def test_first_positive_jellyfish_value_is_confirmed(self):
         state = OperationalUpdateState.empty("2026-08-07")
+        seed_beaches(state, {"Centre": {"flag": "green", "jellyfish": None}})
         positive = _status({"Centre": "green"}, {"Centre": True})
         observe_beaches(state, positive, 1)
         self.assertEqual(
@@ -206,6 +210,22 @@ class BeachConfirmationTests(unittest.TestCase):
         )
         observe_beaches(state, positive, 2)
         self.assertTrue(state["beach_ready"][0]["new"])
+
+    def test_initial_status_has_no_change_arrow(self):
+        state = OperationalUpdateState.empty("2026-08-07")
+        state["beach_ready"] = [{
+            "beach": "Roqueta",
+            "field": "flag",
+            "old": None,
+            "new": "red",
+            "initial": True,
+        }]
+        message = build_update_message(
+            state, datetime(2026, 8, 7, 13, 5, tzinfo=MADRID)
+        )
+        self.assertIn("<b>Пляжи Guardamar:</b>", message)
+        self.assertIn("• Roqueta: 🔴", message)
+        self.assertNotIn("→", message)
 
 
 class WarningChangeTests(unittest.TestCase):

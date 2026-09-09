@@ -231,6 +231,21 @@ def _field_changes(baseline: dict, current: dict) -> list[dict]:
     return changes
 
 
+def _initial_flag_changes(current: dict) -> list[dict]:
+    """Represent the first usable flag status as a public initial snapshot."""
+    return [
+        {
+            "beach": name,
+            "field": "flag",
+            "old": None,
+            "new": values["flag"],
+            "initial": True,
+        }
+        for name, values in current.items()
+        if values.get("flag") is not None
+    ]
+
+
 def _change_key(change: dict) -> Tuple[str, str]:
     return change["beach"], change["field"]
 
@@ -274,33 +289,40 @@ def observe_beaches(
     if not current:
         return
 
-    # A newly seen flag is availability, not a transition. An explicit
-    # negative jellyfish value is also a safe baseline; first positive remains
-    # a candidate so a newly reported hazard is not silently swallowed.
-    for name, values in current.items():
-        if name not in baseline:
-            baseline[name] = {
-                "flag": values["flag"],
-                "jellyfish": (
-                    False if values.get("jellyfish") is False else None
-                ),
-            }
-        elif (
-            baseline[name].get("jellyfish") is None
-            and values.get("jellyfish") is False
-        ):
-            baseline[name]["jellyfish"] = False
+    initial_status = not baseline
+    # Once a public beach baseline exists, a newly seen beach is availability,
+    # not a transition. The first status of the day uses the confirmed
+    # initial-status path below.
+    if not initial_status:
+        for name, values in current.items():
+            if name not in baseline:
+                baseline[name] = {
+                    "flag": values["flag"],
+                    "jellyfish": (
+                        False if values.get("jellyfish") is False else None
+                    ),
+                }
+            elif (
+                baseline[name].get("jellyfish") is None
+                and values.get("jellyfish") is False
+            ):
+                baseline[name]["jellyfish"] = False
 
     pending = state.get("beach_pending")
     if phase == 1:
         if pending is not None or state.get("beach_ready"):
             return
-        candidates = _field_changes(baseline, current)
+        candidates = (
+            _initial_flag_changes(current)
+            if initial_status
+            else _field_changes(baseline, current)
+        )
         if candidates:
             state["beach_pending"] = {
                 "stage": 1,
                 "candidates": candidates,
                 "held": [],
+                "initial": initial_status,
             }
         return
 
@@ -310,9 +332,14 @@ def observe_beaches(
     if stage not in {1, 2} or phase != stage + 1:
         return
 
+    changes = (
+        _initial_flag_changes(current)
+        if pending.get("initial")
+        else _field_changes(baseline, current)
+    )
     observed = {
         _change_key(item): item
-        for item in _field_changes(baseline, current)
+        for item in changes
     }
     held = list(pending.get("held", ()))
     rolled = []
@@ -483,13 +510,20 @@ def _warning_from_dict(value: dict) -> Warning:
 
 
 def _beach_change_lines(changes: Sequence[dict]) -> list[str]:
-    lines = ["🏖 <b>Изменения на пляжах:</b>"]
+    initial = bool(changes) and all(change.get("initial") for change in changes)
+    lines = [
+        "🏖 <b>Пляжи Guardamar:</b>"
+        if initial else "🏖 <b>Изменения на пляжах:</b>"
+    ]
     for change in changes:
         name = html.escape(BEACH_NAMES.get(change["beach"], change["beach"]))
         if change["field"] == "flag":
             old = FLAG_DOTS.get(change.get("old"), "—")
             new = FLAG_DOTS.get(change.get("new"), "—")
-            lines.append(f"• {name}: {old} → {new}")
+            lines.append(
+                f"• {name}: {new}"
+                if initial else f"• {name}: {old} → {new}"
+            )
         elif change.get("new") is True:
             lines.append(f"• 🪼 Медузы: {name}")
         else:
@@ -524,7 +558,7 @@ def build_update_message(state: dict, now: datetime) -> Optional[str]:
             ),
         )
         context = _beach_operational_lines(status, None)
-        if context:
+        if context and not all(change.get("initial") for change in beach_ready):
             context[0] = "<b>Последние подтверждённые флаги:</b>"
             beach_lines.extend(["", *context])
         sections.append("\n".join(beach_lines))
