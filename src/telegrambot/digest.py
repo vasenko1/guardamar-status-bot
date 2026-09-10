@@ -392,6 +392,19 @@ def _event_active_until_label(value: date) -> str:
     return f"До {value.day} {MONTHS_GENITIVE[value.month]}"
 
 
+def _event_teaser_is_redundant(title: str, teaser: str) -> bool:
+    """Reject only a teaser which repeats the displayed event title verbatim.
+
+    This is deliberately conservative: facts are never rewritten or inferred
+    during rendering.  Less obvious repetition is handled in the reviewed
+    source translation where the compact wording can be checked by a person.
+    """
+
+    normalized_title = re.sub(r"\W+", "", title.casefold())
+    normalized_teaser = re.sub(r"\W+", "", teaser.casefold())
+    return bool(normalized_teaser) and normalized_teaser in normalized_title
+
+
 def _pharmacy_address_link(address: str, municipality: str) -> str:
     """Link the compact address while searching in its actual municipality."""
 
@@ -399,7 +412,18 @@ def _pharmacy_address_link(address: str, municipality: str) -> str:
     source_address = re.sub(
         r"^C/\s*", "Calle ", source_address, flags=re.IGNORECASE
     )
-    query = f"{source_address}, {' '.join(municipality.split())}"
+    # The official rota abbreviates this El Raso address.  Without the district
+    # Google Maps resolves the similarly named square elsewhere in Guardamar.
+    known_location_queries = {
+        "plaza de la figuera, 5 local 19": (
+            "Plaza de la Figuera, 5 Local 19, Urbanización El Raso, "
+            "Guardamar del Segura"
+        ),
+    }
+    query = known_location_queries.get(
+        source_address.casefold(),
+        f"{source_address}, {' '.join(municipality.split())}",
+    )
     map_url = "https://www.google.com/maps/search/?" + urllib.parse.urlencode({
         "api": "1",
         "query": query,
@@ -730,12 +754,12 @@ def build_event_section(
                 time_prefix += f"–{end_time}"
             time_prefix += "</b> — "
         event_lines.append(f"• {time_prefix}{title}")
-        if event.teaser:
+        if event.teaser and not _event_teaser_is_redundant(
+            event.title, event.teaser
+        ):
             event_lines.append("  " + html.escape(event.teaser))
         if event.active_until is not None and event.starts_at is None:
-            event_lines.append(
-                "  📅 " + _event_active_until_label(event.active_until)
-            )
+            event_lines.append("  " + _event_active_until_label(event.active_until))
         if event.place:
             event_lines.append(f"  📍 {_event_place_link(event.place)}")
         has_ticket_row = (

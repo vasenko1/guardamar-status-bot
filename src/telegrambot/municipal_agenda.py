@@ -24,7 +24,7 @@ from .gemini import (
     translate_event_titles,
     verify_agenda_poster_events,
 )
-from .event_translations import cached_title
+from .event_translations import cached_title, cached_translation
 from .event_urls import normalize_ticket_url
 from .event_places import canonical_event_place
 from .facebook import FacebookError, FacebookPost, fetch_facebook_posts
@@ -59,6 +59,7 @@ TRANSITION_HORIZON_DAYS = 7
 TEXT_EXTRACTOR_VERSION = 3
 FACEBOOK_SOURCE_PREFIX = "facebook:"
 MAX_FACEBOOK_POSTS = 12
+CULTURA_GUARDAMAR_PAGE_URL = "https://www.facebook.com/culturaguardamar"
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 _TIME_PATTERN = re.compile(r"^\d{2}:\d{2}$")
 
@@ -237,6 +238,7 @@ class SourceEvent:
     registration_contact: Optional[str] = None
     capacity_limited: bool = False
     admission_evidence: Optional[str] = None
+    teaser_es: Optional[str] = None
 
 
 def _facebook_source(post: FacebookPost) -> str:
@@ -275,6 +277,41 @@ def _facebook_source_events(events: Tuple[SourceEvent, ...]) -> Tuple[SourceEven
         event for event in events
         if any(source.startswith(FACEBOOK_SOURCE_PREFIX) for source in event.sources)
     )
+
+
+def _cultura_teaser(title: str, text: str) -> Optional[str]:
+    """Keep one short explicit sentence after a matching event title."""
+    words = _normalized_words(title)
+    if not words or not words <= _normalized_words(text):
+        return None
+    sentences = re.split(r"(?<=[.!?])\s+", " ".join(text.split()))
+    title_index = next((i for i, sentence in enumerate(sentences)
+                        if words <= _normalized_words(sentence)), None)
+    if title_index is None:
+        return None
+    for sentence in sentences[title_index + 1:]:
+        candidate = sentence.strip()
+        if 35 <= len(candidate) <= 220 and not re.search(r"\d{1,2}[:/]\d{2}", candidate):
+            return candidate
+    return None
+
+
+def _enrich_cultura_teasers(events, posts, prior):
+    """Attach Cultura prose only to an already-confirmed event identity."""
+    result = []
+    for event in events:
+        teaser = event.teaser_es or next((old.teaser_es for old in prior
+            if _same_occurrence(event, old) and old.teaser_es), None)
+        if teaser is None:
+            for post in posts:
+                if post.text:
+                    teaser = _cultura_teaser(event.title_es, post.text)
+                    if teaser:
+                        break
+        result.append(replace(event, teaser_es=teaser, sources=tuple(dict.fromkeys(
+            event.sources + (("cultura_guardamar",) if teaser else ())
+        ))))
+    return tuple(result)
 
 
 class _PosterParser(HTMLParser):
@@ -1129,6 +1166,7 @@ def _snapshot_data(
                 "registration_contact": event.registration_contact,
                 "capacity_limited": event.capacity_limited,
                 "admission_evidence": event.admission_evidence,
+                "teaser_es": event.teaser_es,
             }
             for event in events
         ],
@@ -1212,6 +1250,8 @@ def _load_snapshot(path: Path) -> Optional[Dict[str, Any]]:
             if not normalized_events:
                 continue
             normalized = normalized_events[0]
+            if isinstance(raw, dict) and isinstance(raw.get("teaser_es"), str):
+                normalized = replace(normalized, teaser_es=raw["teaser_es"])
             raw_sources = raw.get("sources") if isinstance(raw, dict) else None
             if (
                 isinstance(raw_sources, list)
@@ -1843,6 +1883,12 @@ async def refresh_municipal_catalog(
         events = merge_text_and_poster_events(text_events, poster_events)
         events = merge_text_and_poster_events(events, todo_events)
         events = merge_text_and_poster_events(events, facebook_events)
+        try:
+            cultura_posts = await fetch_facebook_posts(CULTURA_GUARDAMAR_PAGE_URL)
+            events = _enrich_cultura_teasers(events, cultura_posts, old_events)
+        except FacebookError as exc:
+            LOGGER.info("Cultura Guardamar timeline unavailable; retaining prior teasers: %s", exc)
+            events = _enrich_cultura_teasers(events, (), old_events)
         if not events:
             if isinstance(poster_failure, GeminiError):
                 raise MunicipalAgendaError(
@@ -2138,6 +2184,12 @@ async def fetch_today_municipal_events(
                 participation_note=source.participation_note,
                 registration_contact=source.registration_contact,
                 capacity_limited=source.capacity_limited,
+                teaser=(
+                    cached_translation(
+                        translation_cache_path, "municipal_agenda_teaser", source.teaser_es
+                    )
+                    if translation_cache_path is not None and source.teaser_es else None
+                ),
                 is_final_day=(
                     source.start_date != source.end_date
                     and local_day == source.end_date
@@ -2154,4 +2206,7 @@ async def municipal_translation_items(
     """Return source identities and exact titles from the local catalog."""
 
     events = await _cached_current_events(now, state_path)
-    return tuple(("municipal_agenda", event.title_es) for event in events)
+    items = [("municipal_agenda", event.title_es) for event in events]
+    items.extend(("municipal_agenda_teaser", event.teaser_es)
+                 for event in events if event.teaser_es)
+    return tuple(items)

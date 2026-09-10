@@ -175,7 +175,7 @@ class LibraryAgendaTests(unittest.IsolatedAsyncioTestCase):
             weather=None, warnings=(), warnings_available=False, events=events
         ), now=NOW)
         self.assertIn("Выставка рисунков José Luis Narbaiza", message)
-        self.assertIn("Портреты José Luis Narbaiza, выполненные углём и карандашом.", message)
+        self.assertIn("Портреты, выполненные углём и карандашом.", message)
         self.assertIn("Biblioteca Municipal (Hall)", message)
 
 

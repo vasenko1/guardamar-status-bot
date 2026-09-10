@@ -25,9 +25,10 @@ RENDERER_CONTENT_TYPES = frozenset({
     "application/javascript",
     "text/javascript",
 })
+DEFAULT_PAGE_URL = "https://www.facebook.com/253742187973912"
 PAGE_CONFIG = {
     "app_id": "776730922422337",
-    "href": "https://www.facebook.com/253742187973912",
+    "href": DEFAULT_PAGE_URL,
     "width": 500,
     "height": 800,
     "has_cta": False,
@@ -227,19 +228,19 @@ def _is_facebook_renderer_url(url: str) -> bool:
     )
 
 
-def _renderer_url() -> str:
+def _renderer_url(page_url: str = DEFAULT_PAGE_URL) -> str:
     query = urllib.parse.urlencode({
         "key": "timeline",
         "__a": "1",
-        "config_json": json.dumps(PAGE_CONFIG, separators=(",", ":")),
+        "config_json": json.dumps({**PAGE_CONFIG, "href": page_url}, separators=(",", ":")),
     })
     return f"{FACEBOOK_RENDERER_URL}?{query}"
 
 
-def _read_renderer() -> bytes:
+def _read_renderer(page_url: str = DEFAULT_PAGE_URL) -> bytes:
     try:
         payload, final_url, _ = fetch_bounded(
-            _renderer_url(),
+            _renderer_url(page_url),
             is_allowed_url=lambda url: urllib.parse.urlparse(url).hostname in FACEBOOK_HOSTS,
             accepted_types=RENDERER_CONTENT_TYPES,
             limit_bytes=RESPONSE_LIMIT_BYTES,
@@ -255,10 +256,10 @@ def _read_renderer() -> bytes:
     return payload
 
 
-async def fetch_facebook_posts() -> Tuple[FacebookPost, ...]:
+async def fetch_facebook_posts(page_url: str = DEFAULT_PAGE_URL) -> Tuple[FacebookPost, ...]:
     """Fetch the recent public timeline without session or cookie state."""
 
     import asyncio
 
-    payload = await asyncio.to_thread(_read_renderer)
+    payload = await asyncio.to_thread(_read_renderer, page_url)
     return parse_renderer_response(payload)

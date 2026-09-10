@@ -3,6 +3,7 @@ from datetime import date, datetime, time, timedelta, timezone
 
 from telegrambot.digest import (
     GUARDAMAR_TIMEZONE,
+    _event_teaser_is_redundant,
     _warning_text,
     build_message,
 )
@@ -89,7 +90,25 @@ class DigestMessageTests(unittest.TestCase):
         message = build_message(digest)
 
         self.assertIn("Экологическая волонтёрская кампания", message)
-        self.assertIn("📅 До 31 августа", message)
+        self.assertIn("  До 31 августа", message)
+        self.assertNotIn("📅 До 31 августа", message)
+
+    def test_drops_teaser_that_only_repeats_event_title(self):
+        digest = self._routine_digest(events=(Event(
+            title="Концерт в парке",
+            starts_at=None,
+            teaser="Концерт в парке",
+        ),))
+
+        message = build_message(digest)
+
+        self.assertEqual(message.count("Концерт в парке"), 1)
+        self.assertTrue(_event_teaser_is_redundant(
+            "Концерт в парке", "Концерт в парке"
+        ))
+        self.assertFalse(_event_teaser_is_redundant(
+            "Концерт в парке", "Музыка под открытым небом."
+        ))
 
     def test_moderate_uv_is_omitted_and_sun_needs_both_times(self):
         digest = self._routine_digest(
@@ -180,6 +199,25 @@ class DigestMessageTests(unittest.TestCase):
             "<b>Farmacia Mora, Guardamar del Segura</b>", message
         )
         self.assertNotIn("• Farmacia", message)
+
+    def test_el_raso_pharmacy_map_link_keeps_its_actual_district(self):
+        digest = self._routine_digest(
+            pharmacies=(PharmacyDuty(
+                name="Rodriguez Nieto, Julian",
+                address="Plaza de la Figuera, 5 Local 19",
+                hours="Дежурит с 21:00 до 09:00",
+                municipality="Guardamar del Segura",
+            ),),
+        )
+
+        message = build_message(digest)
+
+        self.assertIn(
+            "query=Plaza+de+la+Figuera%2C+5+Local+19%2C+Urbanizaci%C3%B3n+"
+            "El+Raso%2C+Guardamar+del+Segura",
+            message,
+        )
+        self.assertIn(">Plaza de la Figuera, 5 Local 19</a>", message)
 
     def test_renders_weekday_holiday_before_events(self):
         digest = self._routine_digest(

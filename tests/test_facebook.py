@@ -83,7 +83,7 @@ class FacebookParserTests(unittest.IsolatedAsyncioTestCase):
             posts = await fetch_facebook_posts()
 
         self.assertEqual(len(posts), 2)
-        reader.assert_called_once_with()
+        reader.assert_called_once_with("https://www.facebook.com/253742187973912")
 
     def test_renderer_url_has_no_dynamic_or_session_parameters(self):
         url = _renderer_url()
