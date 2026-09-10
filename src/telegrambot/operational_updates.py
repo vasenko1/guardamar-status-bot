@@ -574,7 +574,7 @@ def _warning_update_lines(
         period = _cancelled_warning_period(warning, now)
         cancelled_by_period.setdefault(period, []).append(warning_label)
 
-    current_blocks = _warning_blocks(current, now)
+    current_blocks, _, _ = _warning_blocks(current, now)
     if not cancelled_by_period and not current_blocks:
         return []
 

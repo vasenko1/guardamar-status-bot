@@ -40,10 +40,11 @@ with [docs/kb/00_Project_Overview.md](docs/kb/00_Project_Overview.md).
 - no internal scheduler, continuous polling, resident collectors, or generic
   cache layer
 
-The Python `tzdata` package is the only Python runtime dependency. It supplies
-the `Europe/Madrid` timezone on Termux builds that do not expose Android's
-system timezone database to Python. The optional linked transport guide also
-uses the Termux `poppler` package for bounded one-page PDF rendering.
+The `tzdata` package supplies the `Europe/Madrid` timezone on Termux builds
+that do not expose Android's system timezone database to Python. `netCDF4` is
+loaded only when optional CAMS enrichment is configured, to read ADS NetCDF
+responses without a broader data-analysis stack. The optional linked transport
+guide also uses the Termux `poppler` package for bounded one-page PDF rendering.
 
 ## Configuration
 
@@ -61,6 +62,7 @@ export TELEGRAM_ALLOWED_USER_IDS="your-private-telegram-user-id"
 export PINNED_GUIDE_STATE_PATH="state/pinned_guide.json"
 export GEMINI_API_KEY="your-optional-gemini-key"
 export OPENROUTER_API_KEY="your-optional-fallback-key"
+export CAMS_ADS_TOKEN="your-optional-ECMWF-ADS-personal-access-token"
 ```
 
 Morning state defaults to `state/delivery.json`; override it with
@@ -69,6 +71,11 @@ to `state/electricity.json`, and its private normalized target-day data defaults
 to `state/electricity_prices.json`; override the latter with
 `ELECTRICITY_SNAPSHOT_PATH` if needed. The state and snapshot paths must remain
 different. Secrets must not be committed.
+
+`CAMS_ADS_TOKEN` is optional and requires an ECMWF ADS account that has
+accepted the CAMS European Air Quality Forecasts licence. If it is missing or
+ADS fails, optional air-quality and pollen lines are omitted; the morning
+digest continues. Meteosalud requires no credential.
 
 ## Run
 

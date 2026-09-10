@@ -107,6 +107,33 @@ class PharmacyDuty:
 
 
 @dataclass(frozen=True)
+class HeatHealthRisk:
+    """Today's official Meteosalud risk level (never a forecast history)."""
+
+    level: int
+
+
+@dataclass(frozen=True)
+class AirQualitySummary:
+    """Compact, display-ready result of today's CAMS forecast."""
+
+    pollutants: Tuple[str, ...]
+    period: str
+    dust_related: bool = False
+    wildfire_possible: bool = False
+
+
+@dataclass(frozen=True)
+class PollenSummary:
+    """Compact, display-ready result of today's CAMS pollen forecast."""
+
+    allergens: Tuple[str, ...] = ()
+    period: Optional[str] = None
+    ragweed_present: bool = False
+    ragweed_period: Optional[str] = None
+
+
+@dataclass(frozen=True)
 class BeachNotice:
     text: str
     bathing_prohibited: bool
@@ -127,3 +154,6 @@ class MorningDigest:
     events: Tuple[Event, ...] = ()
     beach_notice: Optional[BeachNotice] = None
     pharmacies: Tuple[PharmacyDuty, ...] = ()
+    heat_health_risk: Optional[HeatHealthRisk] = None
+    air_quality: Optional[AirQualitySummary] = None
+    pollen: Optional[PollenSummary] = None

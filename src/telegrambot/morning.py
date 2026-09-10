@@ -35,6 +35,7 @@ from .pharmacy import duty_pharmacies_on
 from .police import PoliceTrafficError, fetch_traffic_notices
 from .safebeach import SafeBeachError, fetch_beach_status
 from .sun import sun_times
+from .environment import EnvironmentError, fetch_cams, fetch_meteosalud
 from .models import BeachNotice, BeachStatus, MorningDigest
 
 LOGGER = logging.getLogger(__name__)
@@ -167,6 +168,8 @@ async def produce_message(
     aemet_fallback: Optional[MorningDigest] = None,
     aemet_observer: Optional[Callable[[MorningDigest], None]] = None,
     pharmacy_state_path: Optional[Path] = None,
+    cams_token: str = "",
+    fetch_environment: bool = True,
 ) -> str:
     """Build a digest; SafeBeach failure must not block AEMET delivery."""
 
@@ -219,6 +222,14 @@ async def produce_message(
     )
     traffic_task = asyncio.create_task(
         fetch_traffic_notices(now, gemini_api_key or None)
+    )
+    meteosalud_task = (
+        asyncio.create_task(fetch_meteosalud(now)) if fetch_environment else None
+    )
+    cams_task = (
+        asyncio.create_task(fetch_cams(cams_token, now))
+        if fetch_environment and cams_token
+        else None
     )
     beach_failed = False
     digest = aemet_digest
@@ -301,6 +312,19 @@ async def produce_message(
                 digest.weather, sunrise=sunrise, sunset=sunset
             ),
         )
+
+    heat_health_risk = None
+    if meteosalud_task is not None:
+        try:
+            heat_health_risk = await meteosalud_task
+        except EnvironmentError as exc:
+            LOGGER.warning("Meteosalud unavailable; omitting health risk: %s", exc)
+    air_quality = pollen = None
+    if cams_task is not None:
+        try:
+            air_quality, pollen = await cams_task
+        except EnvironmentError as exc:
+            LOGGER.warning("CAMS unavailable; omitting air and pollen: %s", exc)
 
     try:
         events = await agenda_task
@@ -422,6 +446,9 @@ async def produce_message(
                 library_events,
                 am_guardamar_events,
             ),
+            heat_health_risk=heat_health_risk,
+            air_quality=air_quality,
+            pollen=pollen,
         ),
         now=now,
     )

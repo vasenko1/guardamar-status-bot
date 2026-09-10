@@ -222,6 +222,7 @@ async def _produce_message(api_key: str, now: datetime) -> str:
         pharmacy_state_path=Path(os.environ.get(
             "PHARMACY_STATE_PATH", DEFAULT_PHARMACY_STATE_PATH
         )),
+        cams_token=os.environ.get("CAMS_ADS_TOKEN", "").strip(),
     )
     return message + render_diagnostics(diagnostics)
 
@@ -904,6 +905,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             aemet_fallback=fallback,
             aemet_observer=refreshed_aemet.append,
             pharmacy_state_path=pharmacy_path,
+            fetch_environment=False,
         )
         await edit_message(bot_token, chat_id, message_id, message)
         if refreshed_aemet:
@@ -942,6 +944,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 fetch_aemet=fetch_live,
                 aemet_observer=morning_aemet.append,
                 pharmacy_state_path=pharmacy_path,
+                cams_token=os.environ.get("CAMS_ADS_TOKEN", "").strip(),
             ),
             lambda message: send_message(
                 bot_token,
@@ -997,6 +1000,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             aemet_fallback=fallback,
             aemet_observer=update_aemet.append,
             pharmacy_state_path=pharmacy_path,
+            fetch_environment=False,
         )
 
     async def deliver_update(message: str) -> int:

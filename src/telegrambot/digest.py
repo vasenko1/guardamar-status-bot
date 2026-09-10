@@ -11,7 +11,10 @@ from zoneinfo import ZoneInfo
 
 from .branding import with_footer
 from .event_places import canonical_event_place, event_place_is_map_safe
-from .models import BeachNotice, BeachStatus, MorningDigest, Warning
+from .models import (
+    AirQualitySummary, BeachNotice, BeachStatus, HeatHealthRisk,
+    MorningDigest, PollenSummary, Warning,
+)
 
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 
@@ -216,6 +219,8 @@ def _warning_interval(warning: Warning, today: date) -> str:
 def _warning_blocks(
     warnings: Sequence[Warning],
     now: datetime,
+    heat_health_risk: Optional[HeatHealthRisk] = None,
+    air_quality: Optional[AirQualitySummary] = None,
 ) -> list[str]:
     """Render scan-friendly AEMET warnings without merging unlike facts."""
 
@@ -273,6 +278,8 @@ def _warning_blocks(
         grouped[positions[key]][1].append(warning)
 
     blocks = []
+    heat_nested = False
+    air_nested = False
     for (
         _display_day,
         level,
@@ -299,16 +306,77 @@ def _warning_blocks(
         blocks.extend(f"   {interval}" for interval in intervals)
         if description:
             blocks.append(f"   {description}")
-    return blocks
+        today_block = _display_day == today
+        if (
+            today_block and event == "высокая температура"
+            and heat_health_risk is not None and heat_health_risk.level > 0
+        ):
+            blocks.append("   " + _heat_health_line(heat_health_risk))
+            heat_nested = True
+        if (
+            today_block and event == "пыль в воздухе"
+            and air_quality is not None and any(
+                pollutant in {"PM10", "PM2.5"}
+                for pollutant in air_quality.pollutants
+            )
+        ):
+            blocks.append("   " + _air_quality_line(air_quality, dust_warning=True))
+            air_nested = True
+    return blocks, heat_nested, air_nested
+
+
+def _join_ru(values: Sequence[str]) -> str:
+    if len(values) < 2:
+        return values[0]
+    if len(values) == 2:
+        return " и ".join(values)
+    return ", ".join(values[:-1]) + " и " + values[-1]
+
+
+def _heat_health_line(value: HeatHealthRisk) -> str:
+    labels = {1: "низкий", 2: "средний", 3: "высокий"}
+    return f"❤️‍🩹 Риск жары для здоровья: {labels[value.level]}"
+
+
+def _air_quality_line(value: AirQualitySummary, *, dust_warning: bool = False) -> str:
+    reason = " из-за пыли" if dust_warning and value.dust_related else ""
+    text = (
+        f"😷 <b>Качество воздуха:</b> {value.period} ожидается ухудшение"
+        f"{reason} — повышен{'ы' if len(value.pollutants) > 1 else ''} "
+        f"{_join_ru(value.pollutants)}."
+    )
+    if value.wildfire_possible:
+        text = text[:-1] + "; возможно влияние дыма от пожаров."
+    return text
+
+
+def _pollen_line(value: PollenSummary) -> str:
+    if value.allergens:
+        text = (
+            "🌿 <b>Пыльца:</b> высокий уровень "
+            f"{_join_ru(value.allergens)} ожидается {value.period}"
+        )
+        if value.ragweed_present:
+            if value.ragweed_period == value.period:
+                return text + "; также присутствует амброзия."
+            return text + f"; амброзия ожидается {value.ragweed_period}."
+        return text + "."
+    if value.ragweed_period == "в течение дня":
+        return "🌿 <b>Пыльца:</b> в воздухе присутствует амброзия."
+    return f"🌿 <b>Пыльца:</b> {value.ragweed_period} в воздухе ожидается амброзия."
 
 
 def build_warning_section(
     warnings: Sequence[Warning],
     now: datetime,
+    heat_health_risk: Optional[HeatHealthRisk] = None,
+    air_quality: Optional[AirQualitySummary] = None,
 ) -> str:
     """Render the approved complete AEMET warning section."""
 
-    blocks = _warning_blocks(warnings, now)
+    blocks, _, _ = _warning_blocks(
+        warnings, now, heat_health_risk, air_quality
+    )
     if not blocks:
         return ""
     return "\n".join([
@@ -406,12 +474,16 @@ def _event_teaser_is_redundant(title: str, teaser: str) -> bool:
 
 
 _PHARMACY_MAP_POINTS = {
+    ("martinez perello, pedro luis", "calle madrid, 1 b", "guardamar del segura"): "38.0942352,-0.6566556",
     ("escudero ortiz, maria dolores", "av. de londres, 1 ed.marina centro l-13", "san fulgencio"): "38.1382065,-0.6752966",
     ("planelles mas, asuncion", "av. cervantes, 29", "guardamar del segura"): "38.0857693,-0.6491500",
+    ("rodriguez nieto, julian", "plaza de la figuera, 5 local 19", "guardamar del segura"): "38.0612823,-0.6839423",
     ("farmacia mora", "av. pais valenciano, 29", "guardamar del segura"): "38.0884644,-0.6541501",
     ("farmacia ruiz lozano", "calle amsterdam, 14", "san fulgencio"): "38.1339172,-0.6842980",
     ("rodriguez macia, raquel", "av. pais valenciano, 123", "guardamar del segura"): "38.0832455,-0.6546076",
+    ("quiles martinez, farmacia", "calle jose antonio, 8", "san fulgencio"): "38.1132766,-0.7184098",
     ("funes esquinas, maria teresa", "calle mayor, 9", "guardamar del segura"): "38.0907585,-0.6548401",
+    ("perez garcia, maria mercedes", "calle plaza sierra de castilla,2 l.9 urb. la marina", "san fulgencio"): "38.1415131,-0.6751306",
 }
 
 
@@ -632,9 +704,31 @@ def build_message(
             )
 
     warning_now = now or datetime.now(GUARDAMAR_TIMEZONE)
-    warning_section = build_warning_section(digest.warnings, warning_now)
-    if warning_section:
-        lines.extend(["", *warning_section.splitlines()])
+    warning_blocks, heat_nested, air_nested = _warning_blocks(
+        digest.warnings,
+        warning_now,
+        digest.heat_health_risk,
+        digest.air_quality,
+    )
+    if warning_blocks:
+        lines.extend([
+            "", "⚠️ <b>Предупреждения AEMET:</b>",
+            "Зона: южное побережье Аликанте", *warning_blocks,
+        ])
+
+    standalone_environment = []
+    if (
+        digest.heat_health_risk is not None
+        and digest.heat_health_risk.level > 0
+        and not heat_nested
+    ):
+        standalone_environment.append(_heat_health_line(digest.heat_health_risk))
+    if digest.air_quality is not None and not air_nested:
+        standalone_environment.append(_air_quality_line(digest.air_quality))
+    if digest.pollen is not None:
+        standalone_environment.append(_pollen_line(digest.pollen))
+    if standalone_environment:
+        lines.extend(["", *standalone_environment])
 
     beach_lines = _beach_operational_lines(
         digest.beach,
