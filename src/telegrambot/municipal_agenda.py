@@ -27,6 +27,7 @@ from .gemini import (
 from .event_translations import cached_title
 from .event_urls import normalize_ticket_url
 from .event_places import canonical_event_place
+from .facebook import FacebookError, FacebookPost, fetch_facebook_posts
 from .reviewed import (
     ReviewedDataError,
     normalized_title,
@@ -56,6 +57,8 @@ MAX_EVENTS = 100
 MAX_INDIVIDUAL_TRANSLATION_RECOVERY = 12
 TRANSITION_HORIZON_DAYS = 7
 TEXT_EXTRACTOR_VERSION = 3
+FACEBOOK_SOURCE_PREFIX = "facebook:"
+MAX_FACEBOOK_POSTS = 12
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 _TIME_PATTERN = re.compile(r"^\d{2}:\d{2}$")
 
@@ -234,6 +237,44 @@ class SourceEvent:
     registration_contact: Optional[str] = None
     capacity_limited: bool = False
     admission_evidence: Optional[str] = None
+
+
+def _facebook_source(post: FacebookPost) -> str:
+    return FACEBOOK_SOURCE_PREFIX + post.source_id
+
+
+def _facebook_fingerprint(post: FacebookPost) -> str:
+    stable_images = []
+    for image in post.image_urls:
+        parsed = urllib.parse.urlparse(image)
+        stable_images.append(urllib.parse.urlunparse(
+            parsed._replace(query="", fragment="")
+        ))
+    value = "\n".join((post.text or "", *stable_images))
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _facebook_prior_posts(value: Any) -> Dict[str, Dict[str, str]]:
+    """Read only bounded post metadata from the municipal snapshot."""
+
+    if not isinstance(value, dict) or not isinstance(value.get("posts"), list):
+        return {}
+    result = {}
+    for raw in value["posts"][:MAX_FACEBOOK_POSTS]:
+        if not isinstance(raw, dict):
+            continue
+        source_id = raw.get("source_id")
+        fingerprint = raw.get("fingerprint")
+        if isinstance(source_id, str) and isinstance(fingerprint, str):
+            result[source_id] = {"fingerprint": fingerprint}
+    return result
+
+
+def _facebook_source_events(events: Tuple[SourceEvent, ...]) -> Tuple[SourceEvent, ...]:
+    return tuple(
+        event for event in events
+        if any(source.startswith(FACEBOOK_SOURCE_PREFIX) for source in event.sources)
+    )
 
 
 class _PosterParser(HTMLParser):
@@ -1502,6 +1543,7 @@ async def refresh_municipal_catalog(
                 for source in ("turismo_html", "mupi", "mupi_reviewed")
             )
         )
+        old_facebook_events = _facebook_source_events(old_events)
 
         text_source = old_sources.get("turismo_html", {})
         if not page_text:
@@ -1711,8 +1753,96 @@ async def refresh_municipal_catalog(
                     ),
                 ))
 
+        facebook_source = old_sources.get("facebook", {})
+        prior_facebook_posts = _facebook_prior_posts(facebook_source)
+        prior_facebook_by_source = {
+            source: tuple(
+                event
+                for event in old_facebook_events
+                if source in event.sources
+            )
+            for source in {
+                source
+                for event in old_facebook_events
+                for source in event.sources
+                if source.startswith(FACEBOOK_SOURCE_PREFIX)
+            }
+        }
+        facebook_events = old_facebook_events
+        facebook_state = facebook_source if isinstance(facebook_source, dict) else {}
+        try:
+            posts = await fetch_facebook_posts()
+            current_sources = set()
+            next_facebook_events: List[SourceEvent] = []
+            next_facebook_posts = []
+            local_month = local_now.strftime("%Y-%m")
+            for post in posts[:MAX_FACEBOOK_POSTS]:
+                source = _facebook_source(post)
+                current_sources.add(source)
+                fingerprint = _facebook_fingerprint(post)
+                prior = prior_facebook_posts.get(post.source_id)
+                if prior is not None and prior.get("fingerprint") == fingerprint:
+                    next_facebook_events.extend(
+                        prior_facebook_by_source.get(source, ())
+                    )
+                elif post.text:
+                    try:
+                        extracted = await extract_agenda_text_events(
+                            api_key, post.text
+                        )
+                        extracted = {**extracted, "month": local_month}
+                        next_facebook_events.extend(
+                            normalize_extraction_candidates(
+                                extracted,
+                                local_month,
+                                source,
+                                post.text,
+                            )
+                        )
+                    except (GeminiError, MunicipalAgendaError) as exc:
+                        LOGGER.warning(
+                            "Facebook post analysis failed; retaining prior facts: %s",
+                            exc,
+                        )
+                        next_facebook_events.extend(
+                            prior_facebook_by_source.get(source, ())
+                        )
+                        if prior is not None:
+                            next_facebook_posts.append({
+                                "source_id": post.source_id,
+                                "fingerprint": prior["fingerprint"],
+                            })
+                        continue
+                next_facebook_posts.append({
+                    "source_id": post.source_id,
+                    "fingerprint": fingerprint,
+                })
+            # A card may fall out of Facebook's short timeline before its
+            # explicitly dated event has happened. Keep only such active facts.
+            for source, prior_events in prior_facebook_by_source.items():
+                if source not in current_sources:
+                    next_facebook_events.extend(
+                        event for event in prior_events
+                        if event.end_date >= local_now.date()
+                    )
+            facebook_events = tuple(next_facebook_events[:MAX_EVENTS])
+            facebook_state = {
+                "checked_at": now.isoformat(),
+                "posts": next_facebook_posts[:MAX_FACEBOOK_POSTS],
+            }
+        except FacebookError as exc:
+            LOGGER.warning("Facebook timeline unavailable; retaining prior facts: %s", exc)
+            if diagnostics is not None:
+                diagnostics.append(source_error(
+                    "FACEBOOK",
+                    "Ajuntament de Guardamar Facebook",
+                    exc,
+                    stage="SUPPLEMENTAL",
+                ))
+
         events = merge_text_and_poster_events(text_events, poster_events)
         events = merge_text_and_poster_events(events, todo_events)
+        events = merge_text_and_poster_events(events, facebook_events)
         if not events:
             if isinstance(poster_failure, GeminiError):
                 raise MunicipalAgendaError(
@@ -1788,6 +1918,8 @@ async def refresh_municipal_catalog(
             }
         elif isinstance(todo_source, dict) and todo_source:
             source_state["todo_cultura"] = todo_source
+        if facebook_state:
+            source_state["facebook"] = facebook_state
         try:
             await asyncio.to_thread(
                 _write_snapshot,
