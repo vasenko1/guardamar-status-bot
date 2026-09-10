@@ -153,7 +153,7 @@ class DigestMessageTests(unittest.TestCase):
             message,
         )
         self.assertIn(
-            "query=Av.+Cervantes%2C+29%2C+Guardamar+del+Segura",
+            "query=38.0857693%2C-0.6491500",
             message,
         )
         self.assertNotIn("%C2%BA", message)
@@ -192,7 +192,7 @@ class DigestMessageTests(unittest.TestCase):
             "<b>Farmacia Ruiz Lozano, San Fulgencio</b>", message
         )
         self.assertIn(
-            "query=Calle+Amsterdam%2C+14%2C+San+Fulgencio", message
+            "query=38.1339172%2C-0.6842980", message
         )
         self.assertIn(">Calle Amsterdam, 14</a>", message)
         self.assertIn(
@@ -200,7 +200,7 @@ class DigestMessageTests(unittest.TestCase):
         )
         self.assertNotIn("• Farmacia", message)
 
-    def test_el_raso_pharmacy_map_link_keeps_its_actual_district(self):
+    def test_unverified_pharmacy_address_is_not_linked_to_a_guess(self):
         digest = self._routine_digest(
             pharmacies=(PharmacyDuty(
                 name="Rodriguez Nieto, Julian",
@@ -212,12 +212,8 @@ class DigestMessageTests(unittest.TestCase):
 
         message = build_message(digest)
 
-        self.assertIn(
-            "query=Plaza+de+la+Figuera%2C+5+Local+19%2C+Urbanizaci%C3%B3n+"
-            "El+Raso%2C+Guardamar+del+Segura",
-            message,
-        )
-        self.assertIn(">Plaza de la Figuera, 5 Local 19</a>", message)
+        self.assertNotIn("google.com/maps", message)
+        self.assertIn("📍 Plaza de la Figuera, 5 Local 19", message)
 
     def test_renders_weekday_holiday_before_events(self):
         digest = self._routine_digest(
