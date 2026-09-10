@@ -12,6 +12,7 @@ from telegrambot.municipal_agenda import (
     SourceEvent,
     _current_events,
     _enrich_admissions,
+    _enrich_cultura_teasers,
     _enrich_todo_participation,
     _facebook_fingerprint,
     _apply_reviewed_corrections,
@@ -1510,7 +1511,8 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                 (official,), {"mupi": {"url": poster_url, "sha256": "poster-hash"}},
             ))
             fetch = AsyncMock(side_effect=(
-                (post,), (post,), (), FacebookError("offline", code="NETWORK"),
+                (post,), (), (post,), (), (), (),
+                FacebookError("offline", code="NETWORK"), FacebookError("offline", code="NETWORK"),
             ))
             extract_text = AsyncMock(return_value=extracted)
             with (
@@ -1539,6 +1541,15 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             ("https://cdn.example.test/poster.jpg?token=new",),
         )
         self.assertEqual(_facebook_fingerprint(first), _facebook_fingerprint(second))
+
+    def test_cultura_post_enriches_only_matching_existing_event(self):
+        event = SourceEvent("IMBORRABLE", date(2026, 9, 1), date(2026, 10, 16), None, None, "Casa de Cultura", "exhibition")
+        other = SourceEvent("Otro evento", date(2026, 9, 1), date(2026, 9, 1), None, None, None, "event")
+        post = FacebookPost("id", "https://www.facebook.com/culturaguardamar/posts/id", None,
+            "IMBORRABLE. Una muestra que reúne su particular mirada a través del color, las formas y diferentes composiciones que no dejan indiferente.")
+        enriched = _enrich_cultura_teasers((event, other), (post,), ())
+        self.assertEqual(enriched[0].teaser_es, "Una muestra que reúne su particular mirada a través del color, las formas y diferentes composiciones que no dejan indiferente.")
+        self.assertIsNone(enriched[1].teaser_es)
 
     async def test_old_html_extractor_version_forces_one_refresh(self):
         prior = SourceEvent(
