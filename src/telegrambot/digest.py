@@ -405,25 +405,27 @@ def _event_teaser_is_redundant(title: str, teaser: str) -> bool:
     return bool(normalized_teaser) and normalized_teaser in normalized_title
 
 
-def _pharmacy_address_link(address: str, municipality: str) -> str:
-    """Link the compact address while searching in its actual municipality."""
+_PHARMACY_MAP_POINTS = {
+    ("escudero ortiz, maria dolores", "av. de londres, 1 ed.marina centro l-13", "san fulgencio"): "38.1382065,-0.6752966",
+    ("planelles mas, asuncion", "av. cervantes, 29", "guardamar del segura"): "38.0857693,-0.6491500",
+    ("farmacia mora", "av. pais valenciano, 29", "guardamar del segura"): "38.0884644,-0.6541501",
+    ("farmacia ruiz lozano", "calle amsterdam, 14", "san fulgencio"): "38.1339172,-0.6842980",
+    ("rodriguez macia, raquel", "av. pais valenciano, 123", "guardamar del segura"): "38.0832455,-0.6546076",
+    ("funes esquinas, maria teresa", "calle mayor, 9", "guardamar del segura"): "38.0907585,-0.6548401",
+}
+
+
+def _pharmacy_address_link(name: str, address: str, municipality: str) -> str:
+    """Link only a reviewed exact pharmacy point; never guess a map result."""
 
     source_address = " ".join(address.split())
     source_address = re.sub(
         r"^C/\s*", "Calle ", source_address, flags=re.IGNORECASE
     )
-    # The official rota abbreviates this El Raso address.  Without the district
-    # Google Maps resolves the similarly named square elsewhere in Guardamar.
-    known_location_queries = {
-        "plaza de la figuera, 5 local 19": (
-            "Plaza de la Figuera, 5 Local 19, Urbanización El Raso, "
-            "Guardamar del Segura"
-        ),
-    }
-    query = known_location_queries.get(
-        source_address.casefold(),
-        f"{source_address}, {' '.join(municipality.split())}",
-    )
+    key = (name.casefold(), source_address.casefold(), municipality.casefold())
+    query = _PHARMACY_MAP_POINTS.get(key)
+    if query is None:
+        return html.escape(source_address)
     map_url = "https://www.google.com/maps/search/?" + urllib.parse.urlencode({
         "api": "1",
         "query": query,
@@ -664,7 +666,7 @@ def build_message(
             )
             lines.append(html.escape(duty.hours))
             lines.append(
-                f"📍 {_pharmacy_address_link(duty.address, duty.municipality)}"
+                f"📍 {_pharmacy_address_link(duty.name, duty.address, duty.municipality)}"
             )
 
     if digest.holidays:
