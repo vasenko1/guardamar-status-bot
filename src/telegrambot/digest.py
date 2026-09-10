@@ -17,6 +17,7 @@ from .models import (
 )
 
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
+CAMS_ATTRIBUTION_URL = "https://github.com/vasenko1/guardamar-cams-data"
 
 WIND_DIRECTIONS = {
     "N": "С",
@@ -364,6 +365,13 @@ def _pollen_line(value: PollenSummary) -> str:
     if value.ragweed_period == "в течение дня":
         return "🌿 <b>Пыльца:</b> в воздухе присутствует амброзия."
     return f"🌿 <b>Пыльца:</b> {value.ragweed_period} в воздухе ожидается амброзия."
+
+
+def _cams_attribution(year: int) -> str:
+    return (
+        f'Источник: <a href="{CAMS_ATTRIBUTION_URL}">изменённые данные CAMS '
+        f'(Copernicus), {year}</a>. ЕС и ECMWF не отвечают за их использование.'
+    )
 
 
 def build_warning_section(
@@ -729,6 +737,8 @@ def build_message(
         standalone_environment.append(_pollen_line(digest.pollen))
     if standalone_environment:
         lines.extend(["", *standalone_environment])
+    if digest.air_quality is not None or digest.pollen is not None:
+        lines.append(_cams_attribution(warning_now.year))
 
     beach_lines = _beach_operational_lines(
         digest.beach,

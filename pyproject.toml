@@ -7,9 +7,7 @@ name = "guardamar-telegram-bot"
 version = "0.1.0"
 description = "Lightweight Guardamar morning digest for Termux"
 requires-python = ">=3.9"
-# netCDF4 reads both classic and HDF5-backed NetCDF returned by ADS; importing
-# it is deferred until CAMS is configured.
-dependencies = ["tzdata>=2024.1", "netCDF4>=1.6,<2"]
+dependencies = ["tzdata>=2024.1"]
 
 [project.scripts]
 morning-digest = "telegrambot.__main__:main"

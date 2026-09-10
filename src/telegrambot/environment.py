@@ -6,15 +6,15 @@ operational state nor exposes hourly CAMS fields to the formatter.
 
 import asyncio
 import html
-import io
 import json
 import logging
 import math
+import os
 import re
 import urllib.parse
-import zipfile
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
+from pathlib import Path
 from typing import Dict, Iterable, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
@@ -29,10 +29,9 @@ METEOSALUD_URL = (
     "https://www.sanidad.gob.es/excesoTemperaturas/meteosalud.do?"
     "idComarca=770303&metodo=cargarComarca"
 )
-ADS_HOST = "ads.atmosphere.copernicus.eu"
-ADS_PROCESS_URL = (
-    f"https://{ADS_HOST}/api/retrieve/v1/processes/"
-    "cams-europe-air-quality-forecasts/execution"
+CAMS_DATA_URL = (
+    "https://raw.githubusercontent.com/vasenko1/guardamar-cams-data/"
+    "main/data/latest.json"
 )
 CAM_VARIABLES = (
     "particulate_matter_2.5um", "particulate_matter_10um", "ozone",
@@ -72,10 +71,13 @@ def _allowed_meteosalud(url: str) -> bool:
     return parsed.scheme == "https" and parsed.hostname == "www.sanidad.gob.es"
 
 
-def _allowed_ads(url: str) -> bool:
+def _allowed_cams_data(url: str) -> bool:
     parsed = urllib.parse.urlparse(url)
-    return parsed.scheme == "https" and (
-        parsed.hostname == ADS_HOST or (parsed.hostname or "").endswith(".ecmwf.int")
+    return (
+        parsed.scheme == "https"
+        and parsed.hostname == "raw.githubusercontent.com"
+        and parsed.path
+        == "/vasenko1/guardamar-cams-data/main/data/latest.json"
     )
 
 
@@ -179,68 +181,190 @@ def summarize_cams(
     return air, pollen
 
 
-def _cams_request() -> dict:
-    return {"inputs": {"variable": list(CAM_VARIABLES), "model": ["ensemble"], "level": ["0"], "type": ["analysis", "forecast"], "time": ["00:00"], "leadtime_hour": [str(value) for value in range(97)], "data_format": "netcdf_zip", "area": [38.15, -0.72, 38.05, -0.60]}}
-
-
-async def fetch_cams(token: str, now: datetime) -> Tuple[Optional[AirQualitySummary], Optional[PollenSummary]]:
-    """Make one bounded ADS retrieve request; absence of a token is optional."""
-    if not token:
-        return None, None
+def _parse_timestamp(value: object, label: str) -> datetime:
+    if not isinstance(value, str):
+        raise EnvironmentError(f"CAMS {label} is invalid")
     try:
-        body = json.dumps(_cams_request()).encode("utf-8")
-        payload, _, _ = await asyncio.to_thread(fetch_bounded, ADS_PROCESS_URL, is_allowed_url=_allowed_ads, limit_bytes=128_000, timeout_seconds=20, headers={"PRIVATE-TOKEN": token, "Content-Type": "application/json", "Accept": "application/json", "User-Agent": "GuardamarMorningDigest/0.12"}, accepted_types=frozenset({"application/json"}), method="POST", data=body)
-        job = json.loads(payload.decode("utf-8"))
-        monitor = next((link.get("href") for link in job.get("links", []) if link.get("rel") == "monitor"), None)
-        if not isinstance(monitor, str):
-            raise EnvironmentError("ADS response has no monitor URL")
-        for _ in range(10):
-            await asyncio.sleep(3)
-            payload, _, _ = await asyncio.to_thread(fetch_bounded, monitor, is_allowed_url=_allowed_ads, limit_bytes=128_000, timeout_seconds=15, headers={"PRIVATE-TOKEN": token, "Accept": "application/json", "User-Agent": "GuardamarMorningDigest/0.12"}, accepted_types=frozenset({"application/json"}))
-            job = json.loads(payload.decode("utf-8"))
-            asset = job.get("asset", {}).get("value", {}).get("href")
-            if isinstance(asset, str):
-                archive, _, _ = await asyncio.to_thread(fetch_bounded, asset, is_allowed_url=_allowed_ads, limit_bytes=8_000_000, timeout_seconds=30, headers={"Accept": "application/zip", "User-Agent": "GuardamarMorningDigest/0.12"}, accepted_types=frozenset({"application/zip", "application/octet-stream"}))
-                return summarize_cams(_read_netcdf_zip(archive), now)
-            if job.get("status") in {"failed", "dismissed"}:
-                raise EnvironmentError("ADS job failed")
-        raise EnvironmentError("ADS job did not finish in the morning budget")
-    except (BoundedFetchError, EnvironmentError, UnicodeDecodeError, ValueError, json.JSONDecodeError, zipfile.BadZipFile) as exc:
-        raise EnvironmentError("CAMS unavailable") from exc
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise EnvironmentError(f"CAMS {label} is invalid") from exc
+    if parsed.tzinfo is None:
+        raise EnvironmentError(f"CAMS {label} has no timezone")
+    return parsed.astimezone(timezone.utc)
 
 
-def _read_netcdf_zip(payload: bytes) -> Iterable[Tuple[datetime, Dict[str, float]]]:
-    """Read the tiny subset returned by ADS; netCDF4 is loaded only for CAMS."""
+def _required_utc_hours(now: datetime) -> Tuple[datetime, ...]:
+    local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
+    local_start = datetime.combine(local_day, time.min, GUARDAMAR_TIMEZONE)
+    local_end = datetime.combine(
+        local_day + timedelta(days=1), time.min, GUARDAMAR_TIMEZONE
+    )
+    start = local_start.astimezone(timezone.utc) - timedelta(hours=23)
+    end = local_end.astimezone(timezone.utc)
+    return tuple(
+        start + timedelta(hours=offset)
+        for offset in range(int((end - start).total_seconds() // 3600))
+    )
+
+
+def parse_cams_payload(
+    payload: bytes, now: datetime
+) -> Tuple[Tuple[Tuple[datetime, Dict[str, float]], ...], datetime]:
+    """Validate the public producer contract and today's rolling coverage."""
+
     try:
-        from netCDF4 import Dataset  # type: ignore[import-not-found]
-    except ImportError as exc:
-        raise EnvironmentError("netCDF4 is required for CAMS NetCDF") from exc
-    rows = defaultdict(dict)
-    with zipfile.ZipFile(io.BytesIO(payload)) as archive:
-        for name in archive.namelist():
-            variable = next((item for item in CAM_VARIABLES if item in name), None)
-            if variable is None:
-                continue
-            with archive.open(name) as source, Dataset("inmemory.nc", memory=source.read()) as document:
-                data_name = next((key for key in document.variables if key not in {
-                    "time", "latitude", "longitude", "lat", "lon", "level",
-                    "forecast_reference_time",
-                }), None)
-                if data_name is None:
-                    continue
-                values = document.variables[data_name]
-                time_key = "time" if "time" in document.variables else next(key for key in document.variables if "time" in key.casefold())
-                raw_times = document.variables[time_key][:]
-                units = getattr(document.variables[time_key], "units", "")
-                match = re.search(r"hours since (.+)", str(units))
-                if not match:
-                    raise EnvironmentError("CAMS NetCDF has unsupported time units")
-                origin = datetime.fromisoformat(match.group(1).replace("Z", "+00:00")).replace(tzinfo=timezone.utc)
-                lat_key = "latitude" if "latitude" in document.variables else "lat"
-                lon_key = "longitude" if "longitude" in document.variables else "lon"
-                latitudes, longitudes = document.variables[lat_key][:], document.variables[lon_key][:]
-                nearest = min(((float(latitudes[i]) - GUARDAMAR_LATITUDE) ** 2 + (float(longitudes[j]) - GUARDAMAR_LONGITUDE) ** 2, i, j) for i in range(len(latitudes)) for j in range(len(longitudes)))
-                _, lat_index, lon_index = nearest
-                for index, raw_time in enumerate(raw_times):
-                    rows[origin + timedelta(hours=float(raw_time))][variable] = float(values[index, lat_index, lon_index])
-    return tuple(rows.items())
+        document = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise EnvironmentError("CAMS data is not valid JSON") from exc
+    if not isinstance(document, dict) or document.get("schema_version") != 1:
+        raise EnvironmentError("CAMS data has an unsupported schema")
+    if (
+        document.get("provider")
+        != "Copernicus Atmosphere Monitoring Service (CAMS)"
+        or document.get("product") != "cams-europe-air-quality-forecasts"
+        or document.get("model") != "ensemble"
+    ):
+        raise EnvironmentError("CAMS data has invalid provenance")
+    forecast_base = _parse_timestamp(
+        document.get("forecast_base_utc"), "forecast base"
+    )
+    local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
+    if forecast_base.date() not in {
+        local_day,
+        local_day - timedelta(days=1),
+    }:
+        raise EnvironmentError("CAMS forecast is stale or premature")
+    units = document.get("units")
+    if not isinstance(units, dict):
+        raise EnvironmentError("CAMS units are missing")
+    expected_units = {
+        **{
+            name: "µg/m3"
+            for name in (
+                "particulate_matter_2.5um",
+                "particulate_matter_10um",
+                "ozone",
+                "nitrogen_dioxide",
+                "sulphur_dioxide",
+                "dust",
+                "pm10_wildfires",
+            )
+        },
+        **{
+            name: "grains/m3"
+            for name in (
+                "alder_pollen",
+                "birch_pollen",
+                "grass_pollen",
+                "mugwort_pollen",
+                "olive_pollen",
+                "ragweed_pollen",
+            )
+        },
+    }
+    rows = document.get("hourly")
+    if not isinstance(rows, list):
+        raise EnvironmentError("CAMS hourly data is missing")
+    parsed_rows: Dict[datetime, Dict[str, float]] = {}
+    for row in rows:
+        if not isinstance(row, dict) or row.get("kind") not in {
+            "analysis",
+            "forecast",
+        }:
+            raise EnvironmentError("CAMS hourly row is invalid")
+        timestamp = _parse_timestamp(row.get("timestamp_utc"), "timestamp")
+        raw_values = row.get("values")
+        if not isinstance(raw_values, dict):
+            raise EnvironmentError("CAMS hourly values are invalid")
+        values: Dict[str, float] = {}
+        for name, raw_value in raw_values.items():
+            if name not in CAM_VARIABLES or units.get(name) != expected_units[name]:
+                raise EnvironmentError("CAMS variable metadata is invalid")
+            if (
+                not isinstance(raw_value, (int, float))
+                or isinstance(raw_value, bool)
+                or not math.isfinite(raw_value)
+                or raw_value < 0
+            ):
+                raise EnvironmentError("CAMS hourly value is invalid")
+            values[name] = float(raw_value)
+        existing = parsed_rows.get(timestamp)
+        if existing is not None and existing != values:
+            raise EnvironmentError("CAMS data has conflicting timestamps")
+        parsed_rows[timestamp] = values
+    core = set(ICA_BANDS)
+    for timestamp in _required_utc_hours(now):
+        if not core.issubset(parsed_rows.get(timestamp, {})):
+            raise EnvironmentError("CAMS data does not cover today's windows")
+    return tuple(sorted(parsed_rows.items())), forecast_base
+
+
+def _load_cams_cache(
+    cache_path: Path, now: datetime
+) -> Optional[Tuple[Tuple[Tuple[datetime, Dict[str, float]], ...], datetime]]:
+    try:
+        return parse_cams_payload(cache_path.read_bytes(), now)
+    except (OSError, EnvironmentError):
+        return None
+
+
+def _write_cams_cache(cache_path: Path, payload: bytes) -> None:
+    temporary = cache_path.with_name(f".{cache_path.name}.tmp")
+    try:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary.write_bytes(payload)
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, cache_path)
+    except OSError as exc:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise EnvironmentError("CAMS cache could not be saved") from exc
+
+
+async def fetch_cams(
+    data_url: str,
+    cache_path: Path,
+    now: datetime,
+    *,
+    allow_remote: bool = True,
+) -> Tuple[Optional[AirQualitySummary], Optional[PollenSummary], datetime]:
+    """Use the newest valid public JSON or a covering local last-good copy."""
+
+    cached = await asyncio.to_thread(_load_cams_cache, cache_path, now)
+    remote = None
+    remote_payload = None
+    if allow_remote and data_url:
+        try:
+            remote_payload, _, _ = await asyncio.to_thread(
+                fetch_bounded,
+                data_url,
+                is_allowed_url=_allowed_cams_data,
+                limit_bytes=128_000,
+                timeout_seconds=12,
+                headers={
+                    "Accept": "application/json,text/plain",
+                    "User-Agent": "GuardamarMorningDigest/0.13",
+                },
+                accepted_types=frozenset(
+                    {"application/json", "text/plain", "application/octet-stream"}
+                ),
+            )
+            remote = parse_cams_payload(remote_payload, now)
+        except (BoundedFetchError, EnvironmentError) as exc:
+            LOGGER.warning("Remote CAMS JSON unavailable; trying cache: %s", exc)
+    selected = cached
+    if remote is not None and (
+        selected is None or remote[1] >= selected[1]
+    ):
+        selected = remote
+        assert remote_payload is not None
+        try:
+            await asyncio.to_thread(_write_cams_cache, cache_path, remote_payload)
+        except EnvironmentError as exc:
+            LOGGER.warning("CAMS cache update failed: %s", exc)
+    if selected is None:
+        raise EnvironmentError("CAMS unavailable")
+    air, pollen = summarize_cams(selected[0], now)
+    return air, pollen, selected[1]

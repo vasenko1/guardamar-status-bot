@@ -226,6 +226,41 @@ class DeliveryRunTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result, "waiting")
             self.assertEqual(mayor_calls, 0)
 
+    async def test_new_environment_data_can_trigger_update_without_beach(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = PublicationState(Path(directory) / "delivery.json")
+            morning = datetime(2026, 7, 29, 7, 30, tzinfo=MADRID)
+            state.mark_morning(morning.date(), 10, morning)
+            delivered = []
+
+            async def deliver(message):
+                delivered.append(message)
+                return 20
+
+            async def no_notice(since):
+                return None
+
+            async def produce(beach, notice):
+                return "updated environment"
+
+            async def delete(message_id):
+                return None
+
+            result = await publish_update(
+                datetime(2026, 7, 29, 10, 10, tzinfo=MADRID),
+                state,
+                None,
+                False,
+                no_notice,
+                produce,
+                deliver,
+                delete,
+                force_update=True,
+            )
+
+            self.assertEqual(result, "success")
+            self.assertEqual(delivered, ["updated environment"])
+
     async def test_update_sends_first_then_deletes_and_does_not_resend(self):
         with tempfile.TemporaryDirectory() as directory:
             state = PublicationState(Path(directory) / "delivery.json")

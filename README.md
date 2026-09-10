@@ -41,10 +41,10 @@ with [docs/kb/00_Project_Overview.md](docs/kb/00_Project_Overview.md).
   cache layer
 
 The `tzdata` package supplies the `Europe/Madrid` timezone on Termux builds
-that do not expose Android's system timezone database to Python. `netCDF4` is
-loaded only when optional CAMS enrichment is configured, to read ADS NetCDF
-responses without a broader data-analysis stack. The optional linked transport
-guide also uses the Termux `poppler` package for bounded one-page PDF rendering.
+that do not expose Android's system timezone database to Python. CAMS NetCDF
+processing runs off-device in GitHub Actions; Android reads only a small public
+JSON and needs no scientific Python stack. The optional linked transport guide
+also uses the Termux `poppler` package for bounded one-page PDF rendering.
 
 ## Configuration
 
@@ -62,7 +62,8 @@ export TELEGRAM_ALLOWED_USER_IDS="your-private-telegram-user-id"
 export PINNED_GUIDE_STATE_PATH="state/pinned_guide.json"
 export GEMINI_API_KEY="your-optional-gemini-key"
 export OPENROUTER_API_KEY="your-optional-fallback-key"
-export CAMS_ADS_TOKEN="your-optional-ECMWF-ADS-personal-access-token"
+export CAMS_DATA_URL="https://raw.githubusercontent.com/vasenko1/guardamar-cams-data/main/data/latest.json"
+export CAMS_CACHE_PATH="state/cams.json"
 ```
 
 Morning state defaults to `state/delivery.json`; override it with
@@ -72,10 +73,11 @@ to `state/electricity_prices.json`; override the latter with
 `ELECTRICITY_SNAPSHOT_PATH` if needed. The state and snapshot paths must remain
 different. Secrets must not be committed.
 
-`CAMS_ADS_TOKEN` is optional and requires an ECMWF ADS account that has
-accepted the CAMS European Air Quality Forecasts licence. If it is missing or
-ADS fails, optional air-quality and pollen lines are omitted; the morning
-digest continues. Meteosalud requires no credential.
+`CAMS_DATA_URL` and `CAMS_CACHE_PATH` have the defaults shown above and normally
+need not be configured. The phone never receives an ADS credential. Invalid,
+stale, non-covering, or unavailable remote data falls back to the valid local
+last-good JSON; without either, optional air-quality and pollen lines are
+omitted and the morning digest continues. Meteosalud requires no credential.
 
 ## Run
 
@@ -139,12 +141,14 @@ The validated Android deployment uses the scripts in `termux/`:
 - `termux/start-services` copied to `~/.termux/boot/start-services` for the
   F-Droid Termux:Boot add-on.
 
-Code changes are operator-driven over private Tailscale SSH. Review the Git
+Application deployments are operator-driven over private Tailscale SSH. Review the Git
 working tree, run the relevant tests, commit the completed change, then restart
 only the affected resident service. One-shot cron commands use the changed code
-on their next invocation. There is no GitHub Actions promotion, `deploy`
-branch, or scheduled self-update. `.env`, `state/`, logs, and the virtual
-environment remain local.
+on their next invocation. The separate public `guardamar-cams-data` repository
+uses one daily GitHub Action only to publish normalized CAMS data; it does not
+deploy this application. There is no GitHub Actions promotion, `deploy` branch,
+or scheduled self-update. `.env`, `state/`, logs, and the virtual environment
+remain local.
 
 After an Android reboot, first unlock the phone once. Android makes Termux app
 storage available then; within roughly half a minute Tailscale, Termux:Boot,

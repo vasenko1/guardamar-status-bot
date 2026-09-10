@@ -36,7 +36,7 @@ from .police import PoliceTrafficError, fetch_traffic_notices
 from .safebeach import SafeBeachError, fetch_beach_status
 from .sun import sun_times
 from .environment import EnvironmentError, fetch_cams, fetch_meteosalud
-from .models import BeachNotice, BeachStatus, MorningDigest
+from .models import BeachNotice, BeachStatus, HeatHealthRisk, MorningDigest
 
 LOGGER = logging.getLogger(__name__)
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
@@ -168,7 +168,14 @@ async def produce_message(
     aemet_fallback: Optional[MorningDigest] = None,
     aemet_observer: Optional[Callable[[MorningDigest], None]] = None,
     pharmacy_state_path: Optional[Path] = None,
-    cams_token: str = "",
+    cams_data_url: str = "",
+    cams_cache_path: Path = Path("state/cams.json"),
+    fetch_cams_remote: bool = True,
+    fetch_meteosalud_data: bool = True,
+    heat_health_fallback: Optional[HeatHealthRisk] = None,
+    environment_observer: Optional[
+        Callable[[Optional[HeatHealthRisk], Optional[datetime]], None]
+    ] = None,
     fetch_environment: bool = True,
 ) -> str:
     """Build a digest; SafeBeach failure must not block AEMET delivery."""
@@ -224,11 +231,22 @@ async def produce_message(
         fetch_traffic_notices(now, gemini_api_key or None)
     )
     meteosalud_task = (
-        asyncio.create_task(fetch_meteosalud(now)) if fetch_environment else None
+        asyncio.create_task(fetch_meteosalud(now))
+        if fetch_environment
+        and fetch_meteosalud_data
+        and heat_health_fallback is None
+        else None
     )
     cams_task = (
-        asyncio.create_task(fetch_cams(cams_token, now))
-        if fetch_environment and cams_token
+        asyncio.create_task(
+            fetch_cams(
+                cams_data_url,
+                cams_cache_path,
+                now,
+                allow_remote=fetch_cams_remote,
+            )
+        )
+        if fetch_environment and (cams_data_url or not fetch_cams_remote)
         else None
     )
     beach_failed = False
@@ -313,18 +331,24 @@ async def produce_message(
             ),
         )
 
-    heat_health_risk = None
+    heat_health_risk = heat_health_fallback
     if meteosalud_task is not None:
         try:
             heat_health_risk = await meteosalud_task
         except EnvironmentError as exc:
             LOGGER.warning("Meteosalud unavailable; omitting health risk: %s", exc)
     air_quality = pollen = None
+    cams_forecast_base = None
     if cams_task is not None:
         try:
-            air_quality, pollen = await cams_task
+            air_quality, pollen, cams_forecast_base = await cams_task
         except EnvironmentError as exc:
             LOGGER.warning("CAMS unavailable; omitting air and pollen: %s", exc)
+    if environment_observer is not None:
+        try:
+            environment_observer(heat_health_risk, cams_forecast_base)
+        except (OSError, ValueError) as exc:
+            LOGGER.warning("Morning environment state could not be saved: %s", exc)
 
     try:
         events = await agenda_task

@@ -73,6 +73,14 @@ class DigestMessageTests(unittest.TestCase):
         self.assertIn("❤️‍🩹 Риск жары для здоровья: средний", message)
         self.assertIn("ожидается ухудшение из-за пыли", message)
         self.assertIn("🌿 <b>Пыльца:</b> высокий уровень оливы", message)
+        self.assertIn("изменённые данные CAMS (Copernicus), 2026", message)
+        self.assertIn("ЕС и ECMWF не отвечают за их использование", message)
+
+    def test_cams_attribution_is_absent_without_cams_content(self):
+        message = build_message(self._routine_digest())
+
+        self.assertNotIn("CAMS", message)
+        self.assertNotIn("ECMWF", message)
 
     def test_tomorrow_warning_does_not_capture_today_environment(self):
         now = datetime(2026, 8, 4, 7, tzinfo=GUARDAMAR_TIMEZONE)
