@@ -65,6 +65,10 @@ responses permit only bounded instance discovery, never another create call.
   separately. On 2026-09-12 that duplicate condition was removed from
   `INSTANCE_CREATE`; the exact-image read grant remains mandatory, so the
   identity did not gain effective launch access to any other image.
+- The separately approved third request passed both preflights, made exactly
+  one create call, and returned `Out of host capacity`. It returned no instance
+  identifier, made no retry, and a fresh Compute check remained empty. The
+  workflow is therefore active for the authorized bounded scheduled search.
 - The OCI policy cannot constrain shape, display name, or subnet on
   `LaunchInstance`; repository gates and the immutable launch manifest cover
   those fields.

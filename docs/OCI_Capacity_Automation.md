@@ -56,8 +56,16 @@ Oracle's official single-image policy template applies `target.image.id` only
 to `INSTANCE_IMAGE_READ`, while granting instance creation separately. On
 2026-09-12 the duplicate target condition was removed from `INSTANCE_CREATE`;
 the exact-image read grant remains mandatory, so effective launch access is
-still limited to the sole readable image. No permission was added. The workflow
-remains disabled until another attempt is separately approved.
+still limited to the sole readable image. No permission was added.
+
+The separately approved third dispatch then passed both preflights with no
+target instances and zero A1 OCPU, A1 RAM, and free-storage usage. Its one SDK
+launch call reached the capacity check and returned `Out of host capacity`.
+There was no retry, no instance identifier, and a fresh Console check showed no
+instance or partial resource. This confirms the IAM and launch path. The
+workflow is active and continues the bounded search at minutes 7, 22, 37, and
+52; scheduled attempts no longer require individual approval under the Phase 2
+authorization.
 
 ## Execution gates
 
