@@ -16,7 +16,7 @@ The exact active policy is:
 
 ```text
 Allow group Default/guardamar-capacity-automation to read instances in tenancy where request.region = 'eu-madrid-3'
-Allow group Default/guardamar-capacity-automation to {INSTANCE_CREATE} in tenancy where all {request.region = 'eu-madrid-3', request.ad = 'OhIQ:EU-MADRID-3-AD-1', target.image.id = 'ocid1.image.oc1.eu-madrid-3.aaaaaaaaurntbnbuaaicth3wbgs77lkqcb6giko55bl6tfkqjk472gvvl6yq'}
+Allow group Default/guardamar-capacity-automation to {INSTANCE_CREATE} in tenancy where all {request.region = 'eu-madrid-3', request.ad = 'OhIQ:EU-MADRID-3-AD-1'}
 Allow group Default/guardamar-capacity-automation to read instance-images in tenancy where all {request.region = 'eu-madrid-3', target.image.id = 'ocid1.image.oc1.eu-madrid-3.aaaaaaaaurntbnbuaaicth3wbgs77lkqcb6giko55bl6tfkqjk472gvvl6yq'}
 Allow group Default/guardamar-capacity-automation to {VNIC_CREATE, VNIC_ATTACH} in tenancy where request.region = 'eu-madrid-3'
 Allow group Default/guardamar-capacity-automation to {SUBNET_ATTACH} in tenancy where request.region = 'eu-madrid-3'
@@ -53,12 +53,11 @@ received the same `404 NotAuthorizedOrNotFound`; no retry occurred and the
 workflow disabled itself again.
 
 Oracle's official single-image policy template applies `target.image.id` only
-to `INSTANCE_IMAGE_READ`, while granting instance creation separately. The
-active policy already restricts image read to the exact image, but also repeats
-that target condition on `INSTANCE_CREATE`. Removing only that duplicate is the
-next minimal correction: effective launch access remains limited to the sole
-readable image. It requires no new permission. The workflow remains disabled
-until the policy is corrected and another attempt is separately approved.
+to `INSTANCE_IMAGE_READ`, while granting instance creation separately. On
+2026-09-12 the duplicate target condition was removed from `INSTANCE_CREATE`;
+the exact-image read grant remains mandatory, so effective launch access is
+still limited to the sole readable image. No permission was added. The workflow
+remains disabled until another attempt is separately approved.
 
 ## Execution gates
 
