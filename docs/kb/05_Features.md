@@ -525,6 +525,11 @@ Examples include `AEMET-DAY-HTTP-503`, `AEMET-WARN-INVALID-XML`,
 `SB-NO-ACTIVE`, `POLICE-NETWORK`, and `MUNI-AGENDA-NO-POSTER`. Raw URLs,
 credentials, response bodies, transport internals, and tracebacks are never
 returned. Group publication never includes this diagnostics block.
+Cached Cultura enrichment preserves a safe technical failure marker so a
+private preview distinguishes an unavailable or malformed timeline from a
+successful check with no matching event. Direct Meteosalud, CAMS, library,
+AM Guardamar and pharmacy omissions use the same private diagnostics path;
+successful empty optional results remain quiet where emptiness is normal.
 
 ### Boundaries
 

@@ -20,13 +20,14 @@ REQUEST_TIMEOUT_SECONDS = 20
 RESPONSE_LIMIT_BYTES = 300_000
 PROGRAM_TEXT_LIMIT = 12_000
 MAX_CANDIDATES = 6
+MAX_DOCUMENTS_PER_REQUEST = 4
 MAX_PROGRAMS_PER_WINDOW = 3
 MAX_INDEX_CANDIDATES = 100
 METADATA_PAGE_SIZE = 100
 METADATA_LIMIT_BYTES = 300_000
 ROLLING_WINDOW_DAYS = 7
 CURSOR_OVERLAP_MINUTES = 5
-PARSER_VERSION = 8
+PARSER_VERSION = 9
 API_URL = "https://todoculturavegabaja.es/wp-json/wp/v2/mec-events"
 
 
@@ -216,13 +217,15 @@ def _participation(text: str) -> Tuple[TodoCulturaParticipation, ...]:
     seen = set()
     for index, line in enumerate(lines):
         match = re.match(
-            r"^(?:inscripci(?:ón|on|ones)|reservas?)\s*:\s*(.+)$",
+            r"^(inscripci(?:ón|on|ones)|reservas?|más información)"
+            r"\s*:\s*(.+)$",
             line,
             re.IGNORECASE,
         )
         if match is None:
             continue
-        contact = " ".join(match.group(1).split())
+        contact_label = match.group(1).casefold()
+        contact = " ".join(match.group(2).split())
         phone = re.search(r"(?:\+34\s*)?(?:\d[\s.-]*){9}", contact)
         email = re.search(
             r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b",
@@ -236,13 +239,10 @@ def _participation(text: str) -> Tuple[TodoCulturaParticipation, ...]:
         for candidate_index in range(first_anchor_index, index):
             candidate = lines[candidate_index]
             normalized = candidate.casefold()
-            if (
-                any(word in normalized for word in (
-                    "taller", "ruta", "visita", "concierto", "curso",
-                    "actividad", "sesión", "sesion",
-                ))
-                and "actividades del centro social juvenil" not in normalized
-            ):
+            if any(word in normalized for word in (
+                "taller", "ruta", "visita", "concierto", "curso",
+                "actividad", "sesión", "sesion",
+            )):
                 anchors.append((candidate_index, candidate))
         if not anchors:
             continue
@@ -258,6 +258,9 @@ def _participation(text: str) -> Tuple[TodoCulturaParticipation, ...]:
             r"\bwhatsapp\b", "WhatsApp", contact, flags=re.IGNORECASE
         )
         contact = re.sub(r"\s+y\s+WhatsApp\b", " или WhatsApp", contact)
+        contact = re.sub(
+            r"\s+y\s+email\b", " или email", contact, flags=re.IGNORECASE
+        )
         age = re.search(
             r"(?:jóvenes|jovenes|personas|niños|niñas)"
             r"(?:\s+de|\s+entre)?\s+(\d{1,2})\s+(?:a|y)\s+"
@@ -314,6 +317,20 @@ def _participation(text: str) -> Tuple[TodoCulturaParticipation, ...]:
             skill_parts.append("практика игры в группе")
         if skill_parts:
             note_parts.append(" или ".join(skill_parts))
+        available_activities = []
+        for pattern, label in (
+            (r"\bjuegos?\s+de\s+mesa\b", "настольные игры"),
+            (r"\bfutbol[ií]n\b", "настольный футбол"),
+            (r"\bping[- ]pong\b", "пинг-понг"),
+            (r"\bair[- ]hockey\b", "аэрохоккей"),
+            (r"\bm[aá]quina\s+recreativa\b", "игровой автомат"),
+        ):
+            if re.search(pattern, context, re.IGNORECASE):
+                available_activities.append(label)
+        if available_activities:
+            note_parts.append("доступны " + ", ".join(available_activities))
+        if contact_label.startswith("más información") and not available_activities:
+            continue
         participation_note = "; ".join(note_parts) or None
         evidence = context[:600]
         key = (anchor.casefold(), contact.casefold())
@@ -813,29 +830,32 @@ def _candidate_priority(
 def _read_documents(identifiers: List[int]) -> List[Dict[str, Any]]:
     if not identifiers:
         return []
-    query = urllib.parse.urlencode({
-        "include": ",".join(str(value) for value in identifiers),
-        "per_page": len(identifiers),
-        "orderby": "include",
-        "_fields": "id,modified_gmt,link,title,content",
-    })
-    try:
-        payload = json.loads(_read_api_payload(
-            f"{API_URL}?{query}", RESPONSE_LIMIT_BYTES
-        ))
-    except (TypeError, ValueError, json.JSONDecodeError) as exc:
-        raise TodoCulturaError(
-            "Todo Cultura detail JSON was invalid",
-            code="INVALID",
-            description="источник вернул неполные тексты мероприятий",
-        ) from exc
-    if not isinstance(payload, list) or len(payload) != len(identifiers):
-        raise TodoCulturaError(
-            "Todo Cultura detail JSON was invalid",
-            code="INVALID",
-            description="источник вернул неполные тексты мероприятий",
-        )
-    documents = [item for item in payload if isinstance(item, dict)]
+    documents = []
+    for offset in range(0, len(identifiers), MAX_DOCUMENTS_PER_REQUEST):
+        batch = identifiers[offset:offset + MAX_DOCUMENTS_PER_REQUEST]
+        query = urllib.parse.urlencode({
+            "include": ",".join(str(value) for value in batch),
+            "per_page": len(batch),
+            "orderby": "include",
+            "_fields": "id,modified_gmt,link,title,content",
+        })
+        try:
+            payload = json.loads(_read_api_payload(
+                f"{API_URL}?{query}", RESPONSE_LIMIT_BYTES
+            ))
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise TodoCulturaError(
+                "Todo Cultura detail JSON was invalid",
+                code="INVALID",
+                description="источник вернул неполные тексты мероприятий",
+            ) from exc
+        if not isinstance(payload, list) or len(payload) != len(batch):
+            raise TodoCulturaError(
+                "Todo Cultura detail JSON was invalid",
+                code="INVALID",
+                description="источник вернул неполные тексты мероприятий",
+            )
+        documents.extend(item for item in payload if isinstance(item, dict))
     returned_ids = [item.get("id") for item in documents]
     if (
         not all(isinstance(value, int) for value in returned_ids)

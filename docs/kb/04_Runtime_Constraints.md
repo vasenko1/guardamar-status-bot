@@ -129,7 +129,8 @@ or background process is allowed.
   future public-event facts and reuses an unchanged post's `id` and `modified`
   facts without another extraction. The 05:10 refresh may read one Todo Cultura metadata page, bounded
   to 100 records and 300 KiB, and up to
-  six bounded detail pages, while sending at most three selected programme
+  six bounded detail records in at most two REST reads of four records and
+  300 KiB each, while sending at most three selected programme
   sections to extraction. It keeps a five-minute cursor
   overlap, at most 100 lightweight candidates and 45 covered dates. Unchanged
   covered dates cause no full-detail or LLM work. The 10:10–10:40 invocations

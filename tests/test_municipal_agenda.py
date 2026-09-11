@@ -34,6 +34,7 @@ from telegrambot.municipal_agenda import (
 )
 from telegrambot.gemini import GeminiError
 from telegrambot.facebook import FacebookError, FacebookPost
+from telegrambot.digest import build_event_section
 from telegrambot.todo_cultura import (
     TodoCulturaAdmission,
     TodoCulturaError,
@@ -507,6 +508,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         }, "2026-08", "todo_cultura")
 
         self.assertEqual([event.title_es for event in result], [
+            "Actividades del Centro Social Juvenil",
             "Concierto Spanish Brass",
             "Exposición de pintura Luz mediterránea",
         ])
@@ -942,7 +944,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                 "fetched_at": datetime(2026, 8, 5, tzinfo=TZ).isoformat(),
                 "events": [
                     {
-                        "title_es": "Actividades del Centro Social Juvenil",
+                        "title_es": "Actividades del Centro Social Juvenil (CSJ)",
                         "start_date": "2026-08-05",
                         "end_date": "2026-08-05",
                         "start_time": "08:30",
@@ -970,6 +972,96 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             [event.title_es for event in loaded["_events"]],
             ["SPANISH BRASS"],
         )
+
+    def test_snapshot_keeps_generic_title_after_specific_enrichment(self):
+        event = SourceEvent(
+            "Actividades del Centro Social Juvenil (CSJ)",
+            date(2026, 9, 11), date(2026, 9, 11), "08:30", "14:00",
+            "calle Molivent", "event", ("todo_cultura",),
+            participation_note=(
+                "для молодёжи 12–30 лет; доступны настольные игры, "
+                "пинг-понг и аэрохоккей"
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agenda.json"
+            _write_snapshot(path, _snapshot_data(
+                "", "", datetime(2026, 9, 11, tzinfo=TZ), (event,)
+            ))
+
+            loaded = _load_snapshot(path)
+
+        self.assertEqual(loaded["_events"], (event,))
+
+    async def test_cached_cultura_failure_is_visible_but_successful_no_match_is_quiet(self):
+        event = SourceEvent(
+            "IMBORRABLE", date(2026, 9, 1), date(2026, 10, 16),
+            None, None, "Casa de Cultura", "exhibition",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agenda.json"
+            translations = Path(directory) / "translations.json"
+            sources = {"cultura_guardamar": {
+                "checked_at": datetime(2026, 9, 11, tzinfo=TZ).isoformat(),
+                "diagnostic": {
+                    "code": "CULTURA-ENRICHMENT-MARKUP",
+                    "source": "Cultura Guardamar",
+                    "description": "лента Facebook временно недоступна",
+                },
+            }}
+            _write_snapshot(path, _snapshot_data(
+                "", "", datetime(2026, 9, 11, tzinfo=TZ), (event,), sources
+            ))
+            diagnostics = []
+            await fetch_today_municipal_events(
+                datetime(2026, 9, 11, tzinfo=TZ), "", path, diagnostics,
+                translations,
+            )
+            self.assertEqual(
+                [item.code for item in diagnostics],
+                ["CULTURA-ENRICHMENT-MARKUP"],
+            )
+
+            _write_snapshot(path, _snapshot_data(
+                "", "", datetime(2026, 9, 11, tzinfo=TZ), (event,),
+                {"cultura_guardamar": {"checked_at": "2026-09-11T05:10:00+02:00"}},
+            ))
+            diagnostics = []
+            await fetch_today_municipal_events(
+                datetime(2026, 9, 11, tzinfo=TZ), "", path, diagnostics,
+                translations,
+            )
+            self.assertEqual(diagnostics, [])
+
+    async def test_cultura_teaser_reaches_final_event_rendering(self):
+        event = SourceEvent(
+            "IMBORRABLE", date(2026, 9, 1), date(2026, 10, 16),
+            None, None, "Casa de Cultura", "exhibition",
+            ("turismo_html", "cultura_guardamar"),
+            teaser_es="El paisaje conserva las huellas de todo lo que ha sido.",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agenda.json"
+            translations = Path(directory) / "translations.json"
+            _write_snapshot(path, _snapshot_data(
+                "", "", datetime(2026, 9, 11, tzinfo=TZ), (event,)
+            ))
+            with (
+                patch(
+                    "telegrambot.municipal_agenda.cached_title",
+                    return_value="Неизгладимый",
+                ),
+                patch(
+                    "telegrambot.municipal_agenda.cached_translation",
+                    return_value="Пейзаж хранит следы всего, чем он был.",
+                ),
+            ):
+                events = await fetch_today_municipal_events(
+                    datetime(2026, 9, 11, tzinfo=TZ), "", path,
+                    translation_cache_path=translations,
+                )
+        rendered = "\n".join(build_event_section(events, "События"))
+        self.assertIn("Пейзаж хранит следы всего, чем он был.", rendered)
 
     def test_repairs_reviewed_august_poster_facts(self):
         incorrect = (

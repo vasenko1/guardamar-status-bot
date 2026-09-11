@@ -6,7 +6,8 @@ Date: 2026-08-31
 
 Keep Todo Cultura's public WordPress REST API as an automated discovery source
 for Guardamar events, and download up to six bounded detail candidates per
-refresh. Candidate ranking gives explicit museum, child, youth, educational,
+refresh in batches of at most four records and 300 KiB. Candidate ranking gives
+explicit museum, child, youth, educational,
 workshop and guided-visit signals priority. The existing cap of three extracted
 programme sections and strict source/date/place/admission validation remains.
 
@@ -21,3 +22,6 @@ selection could leave such pages unprocessed until after their date.
 Discovery coverage improves without increasing the number of LLM extraction
 sections or allowing unverified facts into the digest. The bounded HTTP work is
 larger but remains suitable for the phone and retains incremental cursor state.
+The source's live six-record payload exceeded the response cap, so at most two
+bounded REST reads preserve the coverage without accepting an oversized
+response.

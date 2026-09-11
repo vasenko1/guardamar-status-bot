@@ -211,7 +211,7 @@ class TodoCulturaTests(unittest.TestCase):
 
     def test_unchanged_complete_window_makes_no_detail_request(self):
         prior = {
-            "parser_version": 8,
+            "parser_version": 9,
             "cursor_modified_gmt": "2026-08-07T10:00:00",
             "candidates": [{
                 "id": 128245,
@@ -266,7 +266,7 @@ class TodoCulturaTests(unittest.TestCase):
 
         details.assert_called_once_with([128245])
         self.assertEqual(window.programs[0].dates, (date(2026, 8, 9),))
-        self.assertEqual(window.source_state["parser_version"], 8)
+        self.assertEqual(window.source_state["parser_version"], 9)
 
     def test_same_date_candidates_are_each_processed(self):
         prior = {
@@ -587,6 +587,23 @@ class TodoCulturaTests(unittest.TestCase):
 
         self.assertEqual(details, ())
 
+    def test_csj_information_enriches_concrete_available_activities(self):
+        details = _participation(
+            "Viernes 11 de septiembre\n"
+            "8:30 a 14 horas: Actividades del Centro Social Juvenil (CSJ) "
+            "para jóvenes de 12 a 30 años.\n"
+            "En el centro se podrá disfrutar de juegos de mesa, futbolín, "
+            "mesas de ping-pong, air-hockey, máquina recreativa y mucho más.\n"
+            "Más información: Wasap 609 00 67 54 y email "
+            "juventudguardamar@gmail.com"
+        )
+
+        self.assertEqual(len(details), 1)
+        self.assertIn("для молодёжи 12–30 лет", details[0].participation_note)
+        self.assertIn("настольные игры", details[0].participation_note)
+        self.assertIn("аэрохоккей", details[0].participation_note)
+        self.assertIn("juventudguardamar@gmail.com", details[0].registration_contact)
+
     def test_binds_email_only_registration_age_and_flexible_capacity(self):
         details = _participation(
             "Sábado 22 de agosto\n"
@@ -791,6 +808,22 @@ class TodoCulturaTests(unittest.TestCase):
                 _read_documents([1, 2])
 
         self.assertEqual(raised.exception.diagnostic_code, "INVALID")
+
+    def test_six_detail_documents_use_two_bounded_requests(self):
+        calls = []
+
+        def payload(url, limit):
+            calls.append((url, limit))
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+            identifiers = [int(value) for value in query["include"][0].split(",")]
+            return json.dumps([{"id": value} for value in identifiers]).encode()
+
+        with patch("telegrambot.todo_cultura._read_api_payload", side_effect=payload):
+            documents = _read_documents([1, 2, 3, 4, 5, 6])
+
+        self.assertEqual([item["id"] for item in documents], [1, 2, 3, 4, 5, 6])
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(all(limit == 300_000 for _, limit in calls))
 
     def test_oversized_section_is_split_and_advances_state(self):
         prior = {

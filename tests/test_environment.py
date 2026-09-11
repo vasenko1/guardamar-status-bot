@@ -177,14 +177,18 @@ class CamsCacheTests(unittest.IsolatedAsyncioTestCase):
                 "telegrambot.environment.fetch_bounded",
                 side_effect=BoundedFetchError("offline", code="TEST"),
             ):
+                diagnostics = []
                 air, pollen, base = await fetch_cams(
                     "https://raw.githubusercontent.com/vasenko1/guardamar-cams-data/main/data/latest.json",
                     cache,
                     now,
+                    diagnostics=diagnostics,
                 )
         self.assertIsNone(air)
         self.assertIsNone(pollen)
         self.assertEqual(base, datetime(2026, 8, 4, tzinfo=timezone.utc))
+        self.assertEqual(diagnostics[0].code, "CAMS-REMOTE-TEST")
+        self.assertIn("локальный снимок", diagnostics[0].description)
 
     async def test_invalid_cache_and_remote_fail_closed(self):
         now = datetime(2026, 8, 4, 7, 30, tzinfo=MADRID)

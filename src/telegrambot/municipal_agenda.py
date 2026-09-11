@@ -241,6 +241,32 @@ class SourceEvent:
     teaser_es: Optional[str] = None
 
 
+def _is_contentless_generic_event(event: SourceEvent) -> bool:
+    """Reject only institutional placeholders with no event-specific fact."""
+
+    words = _normalized_words(event.title_es)
+    generic_words = {
+        "actividad", "actividades", "apertura", "centro", "csj", "del",
+        "cultural", "culturales", "juvenil", "jovenes", "programa",
+        "programacion", "social",
+    }
+    if not words or words.isdisjoint({"actividad", "actividades", "apertura"}):
+        return False
+    if not words <= generic_words:
+        return False
+    detail = " ".join((event.participation_note or "").split()).casefold()
+    specific_participation = any(term in detail for term in (
+        "настольн", "пинг-понг", "аэрохоккей", "игровой автомат",
+    ))
+    return not (
+        event.teaser_es
+        or specific_participation
+        or event.ticket_price_cents is not None
+        or event.ticket_url
+        or event.admission_evidence
+    )
+
+
 def _facebook_source(post: FacebookPost) -> str:
     return FACEBOOK_SOURCE_PREFIX + post.source_id
 
@@ -1036,13 +1062,6 @@ def normalize_extraction(
                 )
         if place is not None:
             place = canonical_event_place(place)
-        if title_es.casefold() in {
-            "actividades del centro social juvenil",
-            "apertura csj",
-            "apertura centro social juvenil",
-        }:
-            # These rows state ordinary centre availability, not a named event.
-            continue
         if (
             category not in {"exhibition", "municipal_service"}
             and start_date != end_date
@@ -1264,6 +1283,8 @@ def _load_snapshot(path: Path) -> Optional[Dict[str, Any]]:
                         "sources": tuple(dict.fromkeys(raw_sources)),
                     }
                 )
+            if _is_contentless_generic_event(normalized):
+                continue
             events.append(normalized)
         return {
             **data,
@@ -1883,12 +1904,27 @@ async def refresh_municipal_catalog(
         events = merge_text_and_poster_events(text_events, poster_events)
         events = merge_text_and_poster_events(events, todo_events)
         events = merge_text_and_poster_events(events, facebook_events)
+        cultura_state: Dict[str, Any] = {"checked_at": now.isoformat()}
         try:
             cultura_posts = await fetch_facebook_posts(CULTURA_GUARDAMAR_PAGE_URL)
             events = _enrich_cultura_teasers(events, cultura_posts, old_events)
         except FacebookError as exc:
             LOGGER.info("Cultura Guardamar timeline unavailable; retaining prior teasers: %s", exc)
             events = _enrich_cultura_teasers(events, (), old_events)
+            failure = source_error(
+                "CULTURA", "Cultura Guardamar", exc, stage="ENRICHMENT"
+            )
+            cultura_state["diagnostic"] = {
+                "code": failure.code,
+                "source": failure.source,
+                "description": failure.description,
+            }
+            if diagnostics is not None:
+                diagnostics.append(failure)
+        events = tuple(
+            event for event in events
+            if not _is_contentless_generic_event(event)
+        )
         if not events:
             if isinstance(poster_failure, GeminiError):
                 raise MunicipalAgendaError(
@@ -1966,6 +2002,7 @@ async def refresh_municipal_catalog(
             source_state["todo_cultura"] = todo_source
         if facebook_state:
             source_state["facebook"] = facebook_state
+        source_state["cultura_guardamar"] = cultura_state
         try:
             await asyncio.to_thread(
                 _write_snapshot,
@@ -2031,6 +2068,7 @@ async def refresh_municipal_catalog(
 async def _cached_current_events(
     now: datetime,
     state_path: Path,
+    diagnostics: Optional[List[SourceDiagnostic]] = None,
 ) -> Tuple[SourceEvent, ...]:
     """Read current events from the last atomic catalog without network I/O."""
 
@@ -2041,6 +2079,25 @@ async def _cached_current_events(
             code="NO-SNAPSHOT",
             description="локальный каталог мероприятий ещё не создан",
         )
+    if diagnostics is not None:
+        source_state = snapshot.get("sources", {}).get(
+            "cultura_guardamar", {}
+        )
+        raw = (
+            source_state.get("diagnostic")
+            if isinstance(source_state, dict)
+            else None
+        )
+        if (
+            isinstance(raw, dict)
+            and isinstance(raw.get("code"), str)
+            and raw["code"].startswith("CULTURA-")
+            and raw.get("source") == "Cultura Guardamar"
+            and isinstance(raw.get("description"), str)
+        ):
+            diagnostics.append(SourceDiagnostic(
+                raw["code"], raw["source"], raw["description"][:240]
+            ))
     events = snapshot["_events"]
     poster_url = str(snapshot.get("poster_url", ""))
     events = _apply_reviewed_corrections(poster_url, events)
@@ -2089,7 +2146,7 @@ async def fetch_today_municipal_events(
             code="CONFIG",
             description="не настроен ключ Gemini для муниципальной афиши",
         )
-    source_events = await _cached_current_events(now, state_path)
+    source_events = await _cached_current_events(now, state_path, diagnostics)
     if not source_events:
         return ()
     translated_events = []
