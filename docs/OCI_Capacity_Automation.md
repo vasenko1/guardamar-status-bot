@@ -29,26 +29,36 @@ Allow group Default/guardamar-capacity-automation to read app-catalog-listing in
 
 The mutating permissions are the exact low-level set required by the OCI
 `LaunchInstance` permission matrix: `INSTANCE_CREATE`, `VNIC_CREATE`,
-`VNIC_ATTACH`, and `SUBNET_ATTACH`. The first production request showed that
-conditioning dependent resource verbs on `request.operation` did not authorize
-the compound launch consistently, so those verbs were replaced by their
-smaller permission sets. The identity has no `INSTANCE_DELETE`,
+`VNIC_ATTACH`, and `SUBNET_ATTACH`. Dependent resource verbs were replaced by
+their smaller permission sets after the first authorization rejection. A
+second request proved that this change alone did not resolve authorization.
+The identity has no `INSTANCE_DELETE`,
 `INSTANCE_UPDATE`, `INSTANCE_POWER_ACTIONS`, `VNIC_DELETE`, `VNIC_UPDATE`, or
 `SUBNET_DETACH`; it has no NSG permission and no create, update, or delete
 permission for subnet, VCN, block volume, or boot volume resources.
 
-## First production attempt
+## Production authorization attempts
 
 The explicitly approved first production dispatch ran on 2026-09-11. Both
 preflights passed and the process made exactly one SDK `LaunchInstance` call.
 OCI returned `404 NotAuthorizedOrNotFound`. OCI Audit recorded only
 `LaunchInstance.begin`, with `resourceId` null, and the Compute instance list
 remained empty. The workflow then disabled itself as designed. No same-run or
-follow-up launch was attempted.
+follow-up launch was attempted in that run.
 
-The active policy was subsequently narrowed to the exact permissions above.
-The workflow remains disabled until a separately approved validation attempt;
-neither a schedule nor a manual dispatch can launch while it is disabled.
+After the policy was narrowed, the separately approved second dispatch ran on
+2026-09-11. Both preflights again passed with no target instances and zero A1
+OCPU, A1 RAM, and free-storage usage. It made exactly one SDK launch call and
+received the same `404 NotAuthorizedOrNotFound`; no retry occurred and the
+workflow disabled itself again.
+
+Oracle's official single-image policy template applies `target.image.id` only
+to `INSTANCE_IMAGE_READ`, while granting instance creation separately. The
+active policy already restricts image read to the exact image, but also repeats
+that target condition on `INSTANCE_CREATE`. Removing only that duplicate is the
+next minimal correction: effective launch access remains limited to the sole
+readable image. It requires no new permission. The workflow remains disabled
+until the policy is corrected and another attempt is separately approved.
 
 ## Execution gates
 
