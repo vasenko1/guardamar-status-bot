@@ -1,9 +1,8 @@
 # OCI Capacity Automation
 
-This off-device automation audits whether the Resource Manager Stack-derived
-`guardamar-bot` target would fit the strict OCI Always Free ceilings. The
-current GitHub workflow is intentionally audit-only. It must not be enabled for
-launch without a separate explicit owner approval and a reviewed code change.
+This off-device automation makes at most one bounded attempt per run to create
+the Resource Manager Stack-derived `guardamar-bot` target within strict OCI
+Always Free ceilings. Phase 2 was explicitly approved on 2026-09-11.
 
 ## Dedicated identity
 
@@ -26,6 +25,8 @@ Allow group Default/guardamar-capacity-automation to inspect vnics in tenancy wh
 Allow group Default/guardamar-capacity-automation to inspect volumes in tenancy where request.region = 'eu-madrid-3'
 Allow group Default/guardamar-capacity-automation to read resource-availability in tenancy
 Allow group Default/guardamar-capacity-automation to use network-security-groups in tenancy where all {request.operation = 'LaunchInstance', request.region = 'eu-madrid-3'}
+Allow group Default/guardamar-capacity-automation to inspect subnets in tenancy where request.region = 'eu-madrid-3'
+Allow group Default/guardamar-capacity-automation to read app-catalog-listing in tenancy where all {request.operation = 'LaunchInstance', request.region = 'eu-madrid-3'}
 ```
 
 The broad-looking `manage instances` verb is narrowed to only the
@@ -34,23 +35,28 @@ image. The identity has no `INSTANCE_DELETE`, `INSTANCE_UPDATE`, or
 `INSTANCE_POWER_ACTIONS`; it also has no create, update, or delete permission
 for subnet, VCN, NSG, block volume, or boot volume resources.
 
-## Current lock
+## Execution gates
 
-`.github/workflows/guardamar-capacity.yml` runs only:
+Scheduled runs and an explicitly selected manual `launch` execute:
 
 ```text
-python -m automation.guardamar_capacity audit
+python -m automation.guardamar_capacity launch --allow-launch
 ```
 
-The Python launch command also checks a committed `LAUNCH_BUILD_ENABLED =
-False` before constructing the OCI client. Merely setting an environment value,
-manually dispatching the workflow, merging this revision, or waiting for the
-schedule therefore cannot submit `LaunchInstance`.
+The command still requires the compiled Phase 2 gate and the exact workflow
+switch. Before its single SDK request it performs two complete OCI-state audits.
+It identifies a target by display name or either of two freeform tags, and any
+non-terminated target causes zero launch calls. OCI SDK automatic retries are
+disabled at both client and request level.
 
-## Revalidation before a future enablement
+`Out of host capacity` and HTTP 429 end the current run without retry. An
+ambiguous response starts only bounded read-after-write discovery; it never
+repeats `LaunchInstance`. A permanent rejection or unresolved ambiguous result
+requests workflow disablement. An accepted or previously discovered instance
+is polled conservatively and must match image, shape, OCPU, RAM, AD, subnet, and
+public IPv4 before the result becomes `READY`.
 
-After explicit owner approval, a later change must keep all existing tests and
-must re-check the exact active policy, target inventory, image, shape, A1 OCPU,
-A1 RAM, and storage usage. It must preserve GitHub concurrency, the final
-immediate re-audit, a stable OCI retry token for one workflow attempt, and a
-single SDK request with automatic retries disabled.
+Manual dispatch defaults to `audit`; `launch` must be deliberately selected.
+The workflow has one concurrency group and runs at minutes 7, 22, 37, and 52.
+After `READY` it asks GitHub to disable this workflow. If that request fails,
+future runs still find the OCI instance and make zero launch calls.
