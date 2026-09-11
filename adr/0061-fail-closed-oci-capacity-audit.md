@@ -56,7 +56,15 @@ responses permit only bounded instance discovery, never another create call.
   `404 NotAuthorizedOrNotFound`; Audit showed no resource ID and Compute stayed
   empty. The workflow disabled itself and was not retried. Dependent-resource
   `use` verbs conditioned on `request.operation` were replaced by the smaller
-  explicit permission set before any future validation attempt.
+  explicit permission set. A separately approved second request passed both
+  preflights, made one create call, received the same rejection, and disabled
+  the workflow again. This disproved the dependent-operation condition as the
+  sole cause.
+- OCI's official policy template constrains a launch to one image by applying
+  `target.image.id` to `INSTANCE_IMAGE_READ`, with instance creation granted
+  separately. The next minimal correction removes that duplicate condition
+  from `INSTANCE_CREATE`; the exact-image read grant remains mandatory, so the
+  identity does not gain effective launch access to any other image.
 - The OCI policy cannot constrain shape, display name, or subnet on
   `LaunchInstance`; repository gates and the immutable launch manifest cover
   those fields.
