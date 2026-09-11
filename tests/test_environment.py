@@ -143,6 +143,27 @@ class EnvironmentTests(unittest.TestCase):
 
 
 class CamsCacheTests(unittest.IsolatedAsyncioTestCase):
+    async def test_previous_covering_cycle_is_logged_as_fallback(self):
+        now = datetime(2026, 8, 4, 7, 30, tzinfo=MADRID)
+        previous = _cams_payload(
+            now, base=datetime(2026, 8, 3, tzinfo=timezone.utc)
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory) / "cams.json"
+            with (
+                patch(
+                    "telegrambot.environment.fetch_bounded",
+                    return_value=(previous, "url", "text/plain"),
+                ),
+                self.assertLogs("telegrambot.environment", level="INFO") as logs,
+            ):
+                await fetch_cams(
+                    "https://raw.githubusercontent.com/vasenko1/guardamar-cams-data/main/data/latest.json",
+                    cache,
+                    now,
+                )
+        self.assertIn("previous forecast cycle", "\n".join(logs.output))
+
     async def test_newer_remote_replaces_older_covering_cache(self):
         now = datetime(2026, 8, 4, 7, 30, tzinfo=MADRID)
         old = _cams_payload(
