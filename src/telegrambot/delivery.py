@@ -55,8 +55,10 @@ async def publish_update(
     ],
     deliver_message: Callable[[str], Awaitable[int]],
     delete_message: Callable[[int], Awaitable[None]],
+    *,
+    force_update: bool = False,
 ) -> str:
-    """Replace the early message only after a confirmed beach update."""
+    """Replace the early message after a confirmed beach or data update."""
 
     local_day = now.date()
     try:
@@ -80,7 +82,7 @@ async def publish_update(
                 return "duplicate"
 
             beach_ready = beach_status is not None
-            if not beach_ready and not final_attempt:
+            if not beach_ready and not final_attempt and not force_update:
                 LOGGER.info("WAIT: SafeBeach has no eligible current flag yet")
                 return "waiting"
 
@@ -92,7 +94,7 @@ async def publish_update(
             except Exception as exc:
                 LOGGER.warning("Mayor channel update check failed: %s", exc)
                 mayor_notice = None
-            if not beach_ready and mayor_notice is None:
+            if not beach_ready and mayor_notice is None and not force_update:
                 LOGGER.info("SKIP: no beach update became available")
                 return "no_update"
 

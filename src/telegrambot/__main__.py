@@ -50,6 +50,7 @@ from .earthquakes import (
     fetch_earthquakes,
     monitor_earthquakes,
 )
+from .environment import CAMS_DATA_URL, EnvironmentError, fetch_cams
 from .mayor import latest_beach_notice
 from .municipal_agenda import (
     MunicipalAgendaError,
@@ -86,7 +87,7 @@ from .safebeach import (
     is_current_status,
 )
 from .weekend import produce_weekend_message, weekend_dates
-from .models import BeachStatus
+from .models import BeachStatus, HeatHealthRisk
 from .state import PublicationState, StateError
 from .telegram import (
     TelegramError,
@@ -116,6 +117,7 @@ DEFAULT_WEEKEND_STATE_PATH = "state/weekend.json"
 DEFAULT_PHARMACY_STATE_PATH = "state/pharmacy.json"
 DEFAULT_EARTHQUAKE_STATE_PATH = "state/earthquakes.json"
 DEFAULT_HIDRAQUA_STATE_PATH = "state/hidraqua.json"
+DEFAULT_CAMS_CACHE_PATH = "state/cams.json"
 
 
 def _beach_ready_for_update(status, now: datetime, final_attempt: bool) -> bool:
@@ -222,6 +224,10 @@ async def _produce_message(api_key: str, now: datetime) -> str:
         pharmacy_state_path=Path(os.environ.get(
             "PHARMACY_STATE_PATH", DEFAULT_PHARMACY_STATE_PATH
         )),
+        cams_data_url=os.environ.get("CAMS_DATA_URL", CAMS_DATA_URL).strip(),
+        cams_cache_path=Path(os.environ.get(
+            "CAMS_CACHE_PATH", DEFAULT_CAMS_CACHE_PATH
+        )),
     )
     return message + render_diagnostics(diagnostics)
 
@@ -288,6 +294,10 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
     ))
     aemet_snapshot_path = Path(os.environ.get(
         "AEMET_SNAPSHOT_PATH", DEFAULT_AEMET_SNAPSHOT_PATH
+    ))
+    cams_data_url = os.environ.get("CAMS_DATA_URL", CAMS_DATA_URL).strip()
+    cams_cache_path = Path(os.environ.get(
+        "CAMS_CACHE_PATH", DEFAULT_CAMS_CACHE_PATH
     ))
     if command == "monitor-hidraqua":
         state = HidraquaState(Path(os.environ.get(
@@ -892,6 +902,8 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         message_id = _current_morning_message_id(record)
         fallback = load_snapshot(aemet_snapshot_path, now)
         refreshed_aemet = []
+        heat_level, _ = state.morning_environment(now.date())
+        refreshed_environment = []
         message = await produce_message(
             api_key,
             now,
@@ -904,14 +916,29 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             aemet_fallback=fallback,
             aemet_observer=refreshed_aemet.append,
             pharmacy_state_path=pharmacy_path,
+            cams_data_url=cams_data_url,
+            cams_cache_path=cams_cache_path,
+            fetch_meteosalud_data=False,
+            heat_health_fallback=(
+                HeatHealthRisk(heat_level) if heat_level is not None else None
+            ),
+            environment_observer=lambda heat, base: refreshed_environment.append(
+                (heat, base)
+            ),
         )
         await edit_message(bot_token, chat_id, message_id, message)
         if refreshed_aemet:
             write_snapshot(aemet_snapshot_path, refreshed_aemet[-1], now)
+        if refreshed_environment:
+            heat, base = refreshed_environment[-1]
+            state.mark_morning_environment(
+                now.date(), heat.level if heat is not None else None, base
+            )
         logging.info("Current morning message %s refreshed", message_id)
         return 0
     if command in {"run", "morning"}:
         morning_aemet = []
+        morning_environment = []
         prepared = load_snapshot(
             aemet_snapshot_path, now, max_age=timedelta(minutes=60)
         )
@@ -942,6 +969,11 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 fetch_aemet=fetch_live,
                 aemet_observer=morning_aemet.append,
                 pharmacy_state_path=pharmacy_path,
+                cams_data_url=cams_data_url,
+                cams_cache_path=cams_cache_path,
+                environment_observer=lambda heat, base: morning_environment.append(
+                    (heat, base)
+                ),
             ),
             lambda message: send_message(
                 bot_token,
@@ -952,12 +984,59 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         )
         if result == "success" and morning_aemet:
             write_snapshot(aemet_snapshot_path, morning_aemet[-1], now)
+        if result == "success" and morning_environment:
+            heat, base = morning_environment[-1]
+            state.mark_morning_environment(
+                now.date(), heat.level if heat is not None else None, base
+            )
         return 0 if result in {"success", "duplicate"} else 1
 
     async def find_notice(since: datetime):
         return await latest_beach_notice(now, since)
 
+    existing = state.morning_record(now.date())
+    if existing is None:
+        logging.info("SKIP: no morning message exists for %s", now.date())
+        return 0
+    if isinstance(existing.get("update_message_id"), int):
+        await _refresh_event_catalogs_once(
+            now, state, municipal_path, agenda_path
+        )
+        result = await publish_update(
+            now,
+            state,
+            None,
+            False,
+            find_notice,
+            lambda status, notice: produce_message(
+                api_key, now, collect_beach=False, fetch_environment=False
+            ),
+            lambda message: send_message(
+                bot_token, chat_id, message, disable_notification=False
+            ),
+            lambda message_id: delete_message(bot_token, chat_id, message_id),
+        )
+        return 0 if result == "duplicate" else 1
+
+    heat_level, morning_cams_base = state.morning_environment(now.date())
+    cams_update = False
+    if not state.cams_refresh_attempted(now.date()):
+        try:
+            _, _, available_base = await fetch_cams(
+                cams_data_url, cams_cache_path, now
+            )
+            cams_update = (
+                morning_cams_base is None
+                or available_base > morning_cams_base
+            )
+            if not cams_update:
+                state.mark_cams_refresh_attempted(now.date())
+        except EnvironmentError as exc:
+            logging.warning("CAMS refresh unavailable; preserving morning data: %s", exc)
+            state.mark_cams_refresh_attempted(now.date())
+
     update_aemet = []
+    update_environment = []
 
     async def produce_update(status, notice):
         gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
@@ -997,6 +1076,16 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             aemet_fallback=fallback,
             aemet_observer=update_aemet.append,
             pharmacy_state_path=pharmacy_path,
+            cams_data_url=cams_data_url,
+            cams_cache_path=cams_cache_path,
+            fetch_cams_remote=False,
+            fetch_meteosalud_data=False,
+            heat_health_fallback=(
+                HeatHealthRisk(heat_level) if heat_level is not None else None
+            ),
+            environment_observer=lambda heat, base: update_environment.append(
+                (heat, base)
+            ),
         )
 
     async def deliver_update(message: str) -> int:
@@ -1009,26 +1098,6 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
 
     async def delete_old(message_id: int) -> None:
         await delete_message(bot_token, chat_id, message_id)
-
-    existing = state.morning_record(now.date())
-    if existing is None:
-        logging.info("SKIP: no morning message exists for %s", now.date())
-        return 0
-    if isinstance(existing.get("update_message_id"), int):
-        await _refresh_event_catalogs_once(
-            now, state, municipal_path, agenda_path
-        )
-        result = await publish_update(
-            now,
-            state,
-            None,
-            False,
-            find_notice,
-            produce_update,
-            deliver_update,
-            delete_old,
-        )
-        return 0 if result == "duplicate" else 1
 
     in_beach_season = _safebeach_is_in_season(now)
     final_attempt = (now.hour, now.minute) >= (10, 40)
@@ -1051,7 +1120,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
     await _refresh_event_catalogs_once(
         now, state, municipal_path, agenda_path
     )
-    if not in_beach_season:
+    if not in_beach_season and not cams_update:
         logging.info("SKIP: SafeBeach update phase is out of season")
         return 0
     result = await publish_update(
@@ -1063,9 +1132,16 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         produce_update,
         deliver_update,
         delete_old,
+        force_update=cams_update,
     )
     if result in {"success", "cleanup_failure"} and update_aemet:
         write_snapshot(aemet_snapshot_path, update_aemet[-1], now)
+    if result in {"success", "cleanup_failure"} and update_environment:
+        heat, base = update_environment[-1]
+        state.mark_morning_environment(
+            now.date(), heat.level if heat is not None else None, base
+        )
+        state.mark_cams_refresh_attempted(now.date())
     return 0 if result in {
         "success",
         "duplicate",

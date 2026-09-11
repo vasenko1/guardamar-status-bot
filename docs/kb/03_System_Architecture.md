@@ -15,8 +15,9 @@ schemas, and library choices belong in later design work or ADRs.
    05:10 and 05:30, including a bounded rolling supplemental event window,
    then exit.
 2. **External 07:30 trigger** starts one short-lived digest process.
-3. **Source collection** requests current data from approved official sources
-   and reads event facts from the local catalogs.
+3. **Source collection** requests current data from approved official sources,
+   reads event facts from local catalogs, and reads one small public CAMS JSON
+   produced off-device by a daily GitHub Action.
 4. **Normalization** converts source-specific responses into small, consistent
    records while preserving source, place, and time.
 5. **Validation and relevance filtering** rejects stale, incomplete,
@@ -24,7 +25,9 @@ schemas, and library choices belong in later design work or ADRs.
 6. **Digest building** orders the remaining facts and formats one short
    message.
 7. **Telegram delivery** sends the early message and stores its message ID.
-8. **External beach checks** run at 10:10–10:40 in five-minute steps. Each
+8. **External update checks** run at 10:10–10:40 in five-minute steps. The
+   first invocation checks once for a newer CAMS forecast; a newer base may
+   replace the morning message through the existing update path. Each
    process checks SafeBeach first, retains at most the best whole normalized
    partial response for this window, and attempts each event catalog at most
    once that day so later event facts are saved without seven repeat calls.
@@ -143,7 +146,8 @@ It has no resident process or dependency on Morning Digest state.
 - One daily urban-timetable synchronization and optional manual guide update
 - Optional lightweight operator listener with one idle Telegram long poll
 - One event loop with bounded asynchronous I/O
-- One direct 07:30 collection; one later full collection only after an update
+- One direct 07:30 collection; one later full collection only after a beach or
+  newer-CAMS update
 - No webhook or public server
 - No resident scheduler, source polling, or watcher; only bounded one-shot
   event refresh, digest, electricity and operational-change commands
@@ -153,6 +157,8 @@ It has no resident process or dependency on Morning Digest state.
 ## Failure boundaries
 
 - **Source unavailable:** omit that source's contribution.
+- **CAMS JSON unavailable:** use a covering last-good local JSON; otherwise
+  omit air quality and pollen without blocking publication.
 - **Stale or invalid data:** reject it; do not substitute a normal-looking
   default.
 - **Partial collection:** build a digest only from independently valid facts.

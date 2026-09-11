@@ -33,15 +33,25 @@ published date and one bounded normalized target-day snapshot, requires a
 complete 24-hour response, and never waits in memory for ESIOS to publish later
 data.
 
+CAMS ADS access and NetCDF decoding run only in the separate GitHub-hosted data
+producer. Android performs one bounded JSON read at 07:30 and at most one
+newer-base check during the existing update window, stores one atomic last-good
+JSON, and has no ADS credential, scientific Python dependency, or CAMS monitor.
+
 The optional operator listener may keep one bounded Telegram `getUpdates`
 long poll solely for allowlisted private `/preview`. It must not schedule
 publication, poll data sources until a command arrives, use a webhook, or
 persist update history.
 
-Deployment is a deliberate Tailscale SSH operation: inspect Git state, test,
-commit, and restart only the affected resident service. It must not add a
-GitHub promotion branch, scheduled self-update, resident deployment agent,
-self-hosted CI runner, or public inbound port.
+Deployment is a deliberate Tailscale SSH operation after tests, push, pull
+request, and merge to canonical `origin/main`. A production target must pass an
+ancestor check against the fetched `origin/main`; restart only the affected
+resident service. A temporary `DEVICE TEST ONLY` commit may run on Android only
+for necessary Termux-specific verification and must restore the recorded clean
+production commit and service afterward. It never becomes a production release
+without merging to `main`. Deployment must not add a GitHub promotion branch,
+scheduled self-update, resident deployment agent, self-hosted CI runner, or
+public inbound port.
 
 The local earthquake feature may make one bounded official IGN GeoRSS request
 at minute 55 of each hour. It has no internal retry, browser, screenshot,
@@ -89,6 +99,9 @@ or background process is allowed.
 - Assume requests can time out, disconnect, or return incomplete data.
 - Make only the bounded requests required by scheduled collection, the morning
   collection, or an authorized on-demand preview.
+- CAMS uses one public JSON response capped at 128 KiB. A validated local copy
+  may be reused when the remote file is unavailable; raw NetCDF never reaches
+  or persists on Android.
 - Reuse connections when simple and safe.
 - Never retry indefinitely.
 - AEMET recovery is bounded inside the adapter: three attempts for the
@@ -146,6 +159,8 @@ or background process is allowed.
   catalogs accepted in ADRs 0012 and 0028. The municipal catalog may retain
   unexpired prior-poster events
   for at most the next seven days during a month transition.
+- Store at most one validated CAMS JSON last-good copy; replace it atomically
+  only with an equally fresh or newer covering forecast.
 - Store at most one complete normalized ESIOS target day with its official
   indicator and geographic scope, separately from the electricity publication
   marker. Replace it only after a complete validated response for another day.

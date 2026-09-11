@@ -100,6 +100,20 @@ class PublicationStateTests(unittest.TestCase):
                 ["municipal"],
             )
 
+    def test_stores_morning_environment_and_one_late_refresh_attempt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = PublicationState(Path(directory) / "delivery.json")
+            local_day = date(2026, 8, 7)
+            morning = datetime.fromisoformat("2026-08-07T07:30:00+02:00")
+            base = datetime.fromisoformat("2026-08-06T00:00:00+00:00")
+            state.mark_morning(local_day, 101, morning)
+
+            state.mark_morning_environment(local_day, 2, base)
+            self.assertEqual(state.morning_environment(local_day), (2, base))
+            self.assertFalse(state.cams_refresh_attempted(local_day))
+            state.mark_cams_refresh_attempted(local_day)
+            self.assertTrue(state.cams_refresh_attempted(local_day))
+
     def test_keeps_most_complete_beach_candidate_across_processes(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "delivery.json"

@@ -115,6 +115,8 @@ Reduce the effort needed to plan the day and notice important changes.
 - Sea conditions
 - Beach flag status
 - Official warnings
+- Meteosalud heat-health risk
+- Forecast air quality and pollen from the normalized CAMS subset
 - Important municipal updates
 - Events relevant today
 
@@ -122,7 +124,8 @@ Reduce the effort needed to plan the day and notice important changes.
 
 One compact Telegram message containing only current, reliable, useful items.
 The user-facing message is fully Russian. AEMET attribution appears in the
-weather heading rather than as a source footer.
+weather heading. When a CAMS-derived air-quality or pollen line is visible, a
+compact modified-data attribution and responsibility disclaimer follows it.
 
 ### Canonical layout
 
@@ -181,13 +184,15 @@ The order never changes:
 5. AEMET sea temperature and optional sea-state forecast
 6. UV index, only at 6 or above, and the computed sunrise/sunset span
 7. Warning
-8. Available flags for all six known Guardamar beach zones, grouped by color
-9. Jellyfish beaches, only when explicitly reported
-10. Traffic or closure
-11. On-call pharmacies for Guardamar's complete official service zone from the
+8. Standalone health, air-quality, and pollen lines not nested in today's
+   matching warning; pollen is always standalone
+9. Available flags for all six known Guardamar beach zones, grouped by color
+10. Jellyfish beaches, only when explicitly reported
+11. Traffic or closure
+12. On-call pharmacies for Guardamar's complete official service zone from the
     weekly-synced rota catalog
-12. Official holiday applicable in Guardamar today
-13. Today's events
+13. Official holiday applicable in Guardamar today
+14. Today's events
 
 Each event is one bullet. Its official place, when available, is rendered on
 the following indented `📍` line. Events are separated by one blank line;

@@ -145,6 +145,70 @@ class PublicationState:
             }
         self._write(value)
 
+    def morning_environment(
+        self, local_day: date
+    ) -> tuple[Optional[int], Optional[datetime]]:
+        value = self.morning_record(local_day)
+        if value is None:
+            return None, None
+        heat_level = value.get("heat_health_level")
+        if heat_level is not None and (
+            not isinstance(heat_level, int)
+            or isinstance(heat_level, bool)
+            or heat_level not in range(4)
+        ):
+            raise StateError("publication state has an invalid heat level")
+        raw_base = value.get("cams_forecast_base")
+        if raw_base is None:
+            return heat_level, None
+        if not isinstance(raw_base, str):
+            raise StateError("publication state has an invalid CAMS base")
+        try:
+            forecast_base = datetime.fromisoformat(raw_base)
+        except ValueError as exc:
+            raise StateError("publication state has an invalid CAMS base") from exc
+        if forecast_base.tzinfo is None:
+            raise StateError("publication state has an invalid CAMS base")
+        return heat_level, forecast_base
+
+    def mark_morning_environment(
+        self,
+        local_day: date,
+        heat_level: Optional[int],
+        cams_forecast_base: Optional[datetime],
+    ) -> None:
+        if heat_level is not None and (
+            not isinstance(heat_level, int)
+            or isinstance(heat_level, bool)
+            or heat_level not in range(4)
+        ):
+            raise StateError("morning heat level is invalid")
+        if cams_forecast_base is not None and cams_forecast_base.tzinfo is None:
+            raise StateError("morning CAMS base is invalid")
+        value = self.morning_record(local_day)
+        if value is None:
+            raise StateError("morning publication record is missing")
+        if heat_level is not None:
+            value["heat_health_level"] = heat_level
+        else:
+            value.pop("heat_health_level", None)
+        if cams_forecast_base is not None:
+            value["cams_forecast_base"] = cams_forecast_base.isoformat()
+        else:
+            value.pop("cams_forecast_base", None)
+        self._write(value)
+
+    def cams_refresh_attempted(self, local_day: date) -> bool:
+        value = self.morning_record(local_day)
+        return value is not None and value.get("cams_refresh_attempted") is True
+
+    def mark_cams_refresh_attempted(self, local_day: date) -> None:
+        value = self.morning_record(local_day)
+        if value is None:
+            raise StateError("morning publication record is missing")
+        value["cams_refresh_attempted"] = True
+        self._write(value)
+
     def remember_beach_candidate(
         self,
         local_day: date,

@@ -17,6 +17,9 @@ from telegrambot.models import (
     TrafficNotice,
     Warning,
     Weather,
+    HeatHealthRisk,
+    AirQualitySummary,
+    PollenSummary,
 )
 
 
@@ -54,6 +57,40 @@ class DigestMessageTests(unittest.TestCase):
             _warning_text("Temperatura máxima"),
             "высокая температура",
         )
+
+    def test_environment_lines_nest_only_in_today_matching_warnings(self):
+        now = datetime(2026, 8, 4, 7, tzinfo=GUARDAMAR_TIMEZONE)
+        digest = self._routine_digest(
+            warnings=(
+                Warning("Temperaturas máximas", "yellow", now + timedelta(hours=12), now + timedelta(hours=5)),
+                Warning("Polvo en suspensión", "yellow", now + timedelta(hours=12), now + timedelta(hours=5)),
+            ),
+            heat_health_risk=HeatHealthRisk(2),
+            air_quality=AirQualitySummary(("PM10",), "во второй половине дня", dust_related=True),
+            pollen=PollenSummary(("оливы",), "во второй половине дня"),
+        )
+        message = build_message(digest, now=now)
+        self.assertIn("❤️‍🩹 Риск жары для здоровья: средний", message)
+        self.assertIn("ожидается ухудшение из-за пыли", message)
+        self.assertIn("🌿 <b>Пыльца:</b> высокий уровень оливы", message)
+        self.assertIn("изменённые данные CAMS (Copernicus), 2026", message)
+        self.assertIn("ЕС и ECMWF не отвечают за их использование", message)
+
+    def test_cams_attribution_is_absent_without_cams_content(self):
+        message = build_message(self._routine_digest())
+
+        self.assertNotIn("CAMS", message)
+        self.assertNotIn("ECMWF", message)
+
+    def test_tomorrow_warning_does_not_capture_today_environment(self):
+        now = datetime(2026, 8, 4, 7, tzinfo=GUARDAMAR_TIMEZONE)
+        digest = self._routine_digest(
+            warnings=(Warning("Temperaturas máximas", "yellow", now + timedelta(days=1, hours=12), now + timedelta(days=1, hours=5)),),
+            heat_health_risk=HeatHealthRisk(1),
+        )
+        message = build_message(digest, now=now)
+        self.assertIn("❤️‍🩹 Риск жары для здоровья: низкий", message)
+        self.assertLess(message.index("Предупреждения AEMET"), message.index("❤️‍🩹"))
 
     def test_renders_high_uv_and_sun_rows_inside_weather_block(self):
         digest = self._routine_digest(
@@ -200,7 +237,7 @@ class DigestMessageTests(unittest.TestCase):
         )
         self.assertNotIn("• Farmacia", message)
 
-    def test_unverified_pharmacy_address_is_not_linked_to_a_guess(self):
+    def test_verified_el_raso_pharmacy_uses_exact_point(self):
         digest = self._routine_digest(
             pharmacies=(PharmacyDuty(
                 name="Rodriguez Nieto, Julian",
@@ -212,8 +249,8 @@ class DigestMessageTests(unittest.TestCase):
 
         message = build_message(digest)
 
-        self.assertNotIn("google.com/maps", message)
-        self.assertIn("📍 Plaza de la Figuera, 5 Local 19", message)
+        self.assertIn("query=38.0612823%2C-0.6839423", message)
+        self.assertIn(">Plaza de la Figuera, 5 Local 19</a>", message)
 
     def test_renders_weekday_holiday_before_events(self):
         digest = self._routine_digest(

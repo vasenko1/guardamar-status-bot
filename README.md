@@ -40,10 +40,11 @@ with [docs/kb/00_Project_Overview.md](docs/kb/00_Project_Overview.md).
 - no internal scheduler, continuous polling, resident collectors, or generic
   cache layer
 
-The Python `tzdata` package is the only Python runtime dependency. It supplies
-the `Europe/Madrid` timezone on Termux builds that do not expose Android's
-system timezone database to Python. The optional linked transport guide also
-uses the Termux `poppler` package for bounded one-page PDF rendering.
+The `tzdata` package supplies the `Europe/Madrid` timezone on Termux builds
+that do not expose Android's system timezone database to Python. CAMS NetCDF
+processing runs off-device in GitHub Actions; Android reads only a small public
+JSON and needs no scientific Python stack. The optional linked transport guide
+also uses the Termux `poppler` package for bounded one-page PDF rendering.
 
 ## Configuration
 
@@ -61,6 +62,8 @@ export TELEGRAM_ALLOWED_USER_IDS="your-private-telegram-user-id"
 export PINNED_GUIDE_STATE_PATH="state/pinned_guide.json"
 export GEMINI_API_KEY="your-optional-gemini-key"
 export OPENROUTER_API_KEY="your-optional-fallback-key"
+export CAMS_DATA_URL="https://raw.githubusercontent.com/vasenko1/guardamar-cams-data/main/data/latest.json"
+export CAMS_CACHE_PATH="state/cams.json"
 ```
 
 Morning state defaults to `state/delivery.json`; override it with
@@ -69,6 +72,12 @@ to `state/electricity.json`, and its private normalized target-day data defaults
 to `state/electricity_prices.json`; override the latter with
 `ELECTRICITY_SNAPSHOT_PATH` if needed. The state and snapshot paths must remain
 different. Secrets must not be committed.
+
+`CAMS_DATA_URL` and `CAMS_CACHE_PATH` have the defaults shown above and normally
+need not be configured. The phone never receives an ADS credential. Invalid,
+stale, non-covering, or unavailable remote data falls back to the valid local
+last-good JSON; without either, optional air-quality and pollen lines are
+omitted and the morning digest continues. Meteosalud requires no credential.
 
 ## Run
 
@@ -132,12 +141,31 @@ The validated Android deployment uses the scripts in `termux/`:
 - `termux/start-services` copied to `~/.termux/boot/start-services` for the
   F-Droid Termux:Boot add-on.
 
-Code changes are operator-driven over private Tailscale SSH. Review the Git
-working tree, run the relevant tests, commit the completed change, then restart
-only the affected resident service. One-shot cron commands use the changed code
-on their next invocation. There is no GitHub Actions promotion, `deploy`
-branch, or scheduled self-update. `.env`, `state/`, logs, and the virtual
-environment remain local.
+Application deployments are operator-driven over private Tailscale SSH. The
+canonical flow is feature branch, local tests, commit, push, pull request,
+merge to `main`, then production rollout. Before rollout, fetch `origin`, set
+`TARGET_SHA` to the validated current `origin/main` commit, and require:
+
+```sh
+git merge-base --is-ancestor "$TARGET_SHA" origin/main
+```
+
+Stop if this command fails. Production must not remain on a feature-only
+branch. Restart only the affected resident service; one-shot cron commands use
+the changed code on their next invocation. The separate public
+`guardamar-cams-data` repository uses one daily GitHub Action only to publish
+normalized CAMS data; it does not deploy this application. There is no GitHub
+Actions promotion, `deploy` branch, or scheduled self-update. `.env`, `state/`,
+logs, and the virtual environment remain local.
+
+`DEVICE TEST ONLY` is the narrow exception for behavior that genuinely needs
+Android or Termux. Record the clean production commit, branch, and relevant
+service state; prefer a manual command without Telegram delivery or service
+replacement. If a feature commit must temporarily run through the production
+service, restore the recorded production commit and service immediately after
+the bounded test, then verify the original version and a clean working tree.
+The feature still proceeds through a pull request and `main` before production
+rollout.
 
 After an Android reboot, first unlock the phone once. Android makes Termux app
 storage available then; within roughly half a minute Tailscale, Termux:Boot,

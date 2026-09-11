@@ -1,6 +1,7 @@
 # Data Sources
 
-The implemented providers are AEMET, Guardamar's public SafeBeach page,
+The implemented providers are AEMET, Ministerio de Sanidad Meteosalud,
+Copernicus CAMS through a normalized public data product, Guardamar's public SafeBeach page,
 Agenda Guardamar, the official Policía Local traffic page, and the public
 `@AlcaldeGuardamar` channel, the Biblioteca Pública Municipal de Guardamar,
 and Agrupación Musical Guardamar. The 07:30 run requests current operational
@@ -16,6 +17,8 @@ official endpoints and lightweight access methods are validated.
 | Source category | Purpose | Expected reliability | Update style | MVP |
 | --- | --- | --- | --- | --- |
 | AEMET OpenData | Guardamar forecast, nearby observation, official weather warnings | High; responsible Spanish authority | Structured API; API key required | Yes, first slice |
+| Ministerio de Sanidad Meteosalud | Today's heat-health risk for `Litoral sur de Alicante`, `idComarca=770303` | High; official national health source | One bounded morning HTML read; stale date omitted | Yes, optional |
+| CAMS European Air Quality Forecasts | Forecast pollutants, mineral dust, wildfire PM10 contribution and six pollen types | High for model forecast; not an observation or official measured ICA | Separate public GitHub producer makes two ADS retrieves once daily and publishes one validated JSON | Yes, optional |
 | ESIOS / Red Eléctrica | Next-day PVPC 2.0TD hourly active-energy term | High; official system operator publication | Indicator API `1001`; personal API key required | Yes, evening feature |
 | Official marine service | Sea state and relevant marine warnings | High for its jurisdiction | API or published feed | Yes |
 | SafeBeach public Guardamar page | Active beach flags and sea temperature | High when municipal lifeguards actively maintain it | Small structured payload embedded in the public page | Yes |
@@ -31,6 +34,43 @@ official endpoints and lightweight access methods are validated.
 | Colegio Oficial de Farmacéuticos de Alicante | Legally authoritative on-call pharmacy rota | High; the provincial college responsible for the service | One weekly bounded fetch of the linked annual XLSX with compressed and uncompressed size bounds; normalized 45-day catalog for Guardamar's complete published service zone `61`, including duties assigned in San Fulgencio; no morning request | Yes, ADR 0038 |
 | Campo de Guardamar market website | Sunday market at Camino del Raso, 15 | Operator-published schedule; no authoritative cancellation feed found | Local Sunday rule, `07:00–16:00` | Yes, explicit product exception |
 | Community or commercial sources | Gap filling only | Variable | Varies | No by default |
+
+## Approved morning health and atmosphere data
+
+Meteosalud is read once during the 07:30 run from the Ministerio de Sanidad
+page for `Litoral sur de Alicante`, `idComarca=770303`. Only a level explicitly
+dated for today's `Europe/Madrid` date is eligible. Level zero and stale data
+are silent; source failure does not block the digest.
+
+The bot does not call ADS or decode scientific files. The separate public
+[`vasenko1/guardamar-cams-data`](https://github.com/vasenko1/guardamar-cams-data)
+repository runs one GitHub Action at 07:05 UTC. It makes two small official ADS
+retrieves: two UTC days of ensemble analysis for the five ICA pollutants and
+the current 00 UTC ensemble forecast at lead hours 0–48 for those pollutants,
+mineral dust, PM10 wildfire contribution, and alder, birch, grass, mugwort,
+olive, and ragweed pollen. It selects the nearest CAMS cell to Guardamar and
+publishes only validated UTC hourly values in a versioned JSON. Producer
+failure preserves the previous file.
+
+At 07:30 the bot reads that JSON once and keeps one atomic last-good local
+copy. The first existing 10:10 update invocation checks once for a newer
+forecast base and uses the existing full-message replacement path only when
+one exists. A stale, malformed, non-covering, or unavailable response is
+silent and cannot remove a valid cached enrichment or block the morning
+message. AEMET `Polvo en suspensión` remains an independent CAP warning; CAMS
+dust may affect only conservative explanatory wording.
+
+The bot applies the MITECO 2020 ICA bands locally: latest hour for NO2/SO2,
+trailing eight-hour mean for O3, and trailing 24-hour mean for PM10/PM2.5. It
+shows only `Desfavorable` or worse and identifies the worst pollutant(s). CAMS
+is a forecast, not a measured official ICA. Pollen is shown only above the
+documented high thresholds (>50 grains/m³ for alder, birch, grass, mugwort;
+>200 for olive), while ragweed uses presence-only `>=3 grains/m³` wording.
+
+Visible CAMS-derived Telegram content carries a compact modified-data
+attribution and responsibility disclaimer. The public producer also records
+the full attribution and licence context. Neither project claims endorsement
+by the European Commission, ECMWF, or Copernicus.
 
 ## Approved IGN earthquake feed
 
