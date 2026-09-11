@@ -25,6 +25,8 @@ def _paths(directory):
     return {
         "municipal_agenda_state_path": base / "municipal.json",
         "agenda_state_path": base / "agenda.json",
+        "library_agenda_state_path": base / "library.json",
+        "am_guardamar_state_path": base / "am_guardamar.json",
         "translation_cache_path": base / "translations.json",
     }
 
@@ -85,6 +87,8 @@ class WeekendMessageTests(unittest.IsolatedAsyncioTestCase):
             message = await produce_weekend_message(
                 now, "", paths["municipal_agenda_state_path"],
                 agenda_state_path=paths["agenda_state_path"],
+                library_agenda_state_path=paths["library_agenda_state_path"],
+                am_guardamar_state_path=paths["am_guardamar_state_path"],
                 translation_cache_path=paths["translation_cache_path"],
             )
 
@@ -114,6 +118,8 @@ class WeekendMessageTests(unittest.IsolatedAsyncioTestCase):
             message = await produce_weekend_message(
                 now, "", paths["municipal_agenda_state_path"],
                 agenda_state_path=paths["agenda_state_path"],
+                library_agenda_state_path=paths["library_agenda_state_path"],
+                am_guardamar_state_path=paths["am_guardamar_state_path"],
                 translation_cache_path=paths["translation_cache_path"],
             )
 
@@ -130,6 +136,8 @@ class WeekendMessageTests(unittest.IsolatedAsyncioTestCase):
             message = await produce_weekend_message(
                 now, "", paths["municipal_agenda_state_path"],
                 agenda_state_path=paths["agenda_state_path"],
+                library_agenda_state_path=paths["library_agenda_state_path"],
+                am_guardamar_state_path=paths["am_guardamar_state_path"],
                 translation_cache_path=paths["translation_cache_path"],
             )
 
@@ -148,6 +156,8 @@ class WeekendMessageTests(unittest.IsolatedAsyncioTestCase):
             message = await produce_weekend_message(
                 now, "", paths["municipal_agenda_state_path"],
                 agenda_state_path=paths["agenda_state_path"],
+                library_agenda_state_path=paths["library_agenda_state_path"],
+                am_guardamar_state_path=paths["am_guardamar_state_path"],
                 translation_cache_path=paths["translation_cache_path"],
             )
         # The Sunday market guarantees at least one verified item, so the
