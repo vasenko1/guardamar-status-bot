@@ -1,4 +1,4 @@
-# 0061: Fail-closed OCI capacity audit before any VM launch
+# 0061: Bounded fail-closed OCI capacity search
 
 - Status: Accepted
 - Date: 2026-09-11
@@ -29,22 +29,27 @@ prove there is no non-terminated instance with the target name and that adding
 the 2 OCPU, 12 GB RAM, and 200 GB Always Free ceilings. Trial service limits do
 not replace these ceilings.
 
-In this accepted revision the workflow executes only `audit`; the launch
-command is also guarded by a committed build-time false constant before it
-loads credentials. Enabling it requires a later owner-authorized code change.
-No retry loop, Terraform apply, Resource Manager mutation, Telegram credential,
-or Telegram delivery is part of this phase.
+After explicit Phase 2 owner approval, scheduled executions and a deliberately
+selected manual launch perform two complete preflight audits and at most one
+physical `LaunchInstance` request. The boot volume is pinned to 50 GB to prevent
+API-default drift, and two freeform tags supplement—without replacing—name and
+full configuration checks. SDK retry is disabled at client and request level.
+Capacity and rate-limit responses are not retried in the same run. Ambiguous
+responses permit only bounded instance discovery, never another create call.
 
 ## Consequences
 
-- A schedule or manual dispatch in this revision performs read-only OCI calls.
+- Manual dispatch defaults to a read-only audit; scheduled runs may make one
+  launch request only after every gate passes.
 - Pull requests never receive these OCI secrets because this workflow has no
   pull-request trigger.
 - GitHub concurrency prevents overlapping audits, and OCI SDK automatic retries
   are disabled.
-- A future launch-enabling change must retain the duplicate and free-tier gates,
-  re-audit immediately before one idempotent request, and receive separate
-  explicit owner approval.
+- Every run re-audits immediately before the idempotent request. Existing or
+  newly accepted targets are verified through RUNNING and public IPv4.
+- READY, permanent configuration errors, and unresolved ambiguous results ask
+  GitHub to disable the workflow. OCI-state checks remain authoritative if
+  disablement fails.
 - The OCI policy cannot constrain shape, display name, or subnet on
   `LaunchInstance`; repository gates and the immutable launch manifest cover
   those fields.

@@ -40,14 +40,13 @@ existing operational windows until today's UTC cycle is accepted. It stores one
 atomic last-good JSON and has no ADS credential, scientific Python dependency,
 or CAMS polling process.
 
-The OCI capacity audit also runs only on a GitHub-hosted runner. Each invocation
-is short-lived and read-only, has no SDK automatic retry, uses one concurrency
-group, and exits after checking the exact image/shape, target duplicates, and
-regional resource availability. The Android installation receives no OCI SDK or
+The OCI capacity search also runs only on a GitHub-hosted runner. Each invocation
+is short-lived, has no SDK automatic retry, uses one concurrency group, and may
+make at most one `LaunchInstance` request after two complete OCI-state checks.
+It never loops on host capacity. The Android installation receives no OCI SDK or
 credential. A larger trial service limit must never override the explicit 2
-OCPU, 12 GB RAM, and 200 GB Always Free cost ceilings. Until a separately
-approved change, both the workflow path and the launch entry point remain
-disabled for resource creation.
+OCPU, 12 GB RAM, and 200 GB Always Free cost ceilings. Any existing
+non-terminated target makes subsequent runs read-only.
 
 The optional operator listener may keep one bounded Telegram `getUpdates`
 long poll solely for allowlisted private `/preview`. It must not schedule

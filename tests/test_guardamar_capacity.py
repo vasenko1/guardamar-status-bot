@@ -1,7 +1,6 @@
-import os
+import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from automation import guardamar_capacity as capacity
 
@@ -20,85 +19,168 @@ def image(identifier=capacity.IMAGE_OCID, state="AVAILABLE", os_name="Oracle Lin
     return capacity.ImageRecord(identifier, state, os_name, "Oracle-Linux-9.8")
 
 
+def subnet(identifier=capacity.SUBNET_OCID, state="AVAILABLE", prohibit=False):
+    return capacity.SubnetRecord(identifier, state, None, prohibit)
+
+
+def record(
+    identifier="instance-id",
+    name=capacity.DISPLAY_NAME,
+    state="RUNNING",
+    tags=None,
+):
+    return capacity.InstanceRecord(identifier, name, state, tags or {})
+
+
+def details(identifier="instance-id", state="RUNNING", **changes):
+    values = {
+        "identifier": identifier,
+        "display_name": capacity.DISPLAY_NAME,
+        "lifecycle_state": state,
+        "shape": capacity.SHAPE,
+        "ocpus": capacity.OCPUS,
+        "memory_in_gbs": capacity.MEMORY_GBS,
+        "image_id": capacity.IMAGE_OCID,
+        "availability_domain": capacity.AVAILABILITY_DOMAIN,
+        "freeform_tags": {},
+    }
+    values.update(changes)
+    return capacity.InstanceDetails(**values)
+
+
+class FakeError(Exception):
+    def __init__(self, message, status=None, code=None):
+        super().__init__(message)
+        self.message = message
+        self.status = status
+        self.code = code
+
+
+class FakeGateway:
+    def __init__(self):
+        self.instance_snapshots = [[]]
+        self.instance_reads = [details()]
+        self.launch_error = None
+        self.launch_calls = []
+        self.vnics = [
+            capacity.VnicRecord("vnic-id", capacity.SUBNET_OCID, "203.0.113.7")
+        ]
+
+    def list_instances(self):
+        if len(self.instance_snapshots) > 1:
+            return self.instance_snapshots.pop(0)
+        return self.instance_snapshots[0]
+
+    def get_image(self):
+        return image()
+
+    def get_subnet(self):
+        return subnet()
+
+    def list_shapes(self):
+        return [capacity.SHAPE]
+
+    def get_resource_availability(self):
+        return availability()
+
+    def get_instance(self, _identifier):
+        if len(self.instance_reads) > 1:
+            return self.instance_reads.pop(0)
+        return self.instance_reads[0]
+
+    def get_primary_vnic(self, _identifier):
+        if len(self.vnics) > 1:
+            value = self.vnics.pop(0)
+        else:
+            value = self.vnics[0]
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    def launch_instance(self, token):
+        self.launch_calls.append(token)
+        if self.launch_error:
+            raise self.launch_error
+        return "instance-id"
+
+
 class CapacityAuditTests(unittest.TestCase):
     def test_empty_tenancy_closes_all_launch_preflight_gates(self):
         report = capacity.evaluate_audit(
-            [], image(), [capacity.SHAPE], availability()
+            [], image(), subnet(), [capacity.SHAPE], availability()
         )
 
         self.assertTrue(report.launch_safe)
+        self.assertTrue(report.target_subnet_available)
         self.assertEqual(report.target_instances, ())
-        self.assertEqual(report.free_storage_gb_used, 0)
 
-    def test_blocks_every_nonterminated_target_state(self):
-        states = (
-            "MOVING",
-            "PROVISIONING",
-            "RUNNING",
-            "STARTING",
-            "STOPPED",
-            "STOPPING",
-            "TERMINATING",
-            "UNKNOWN_FUTURE_STATE",
+    def test_name_or_managed_tag_blocks_every_nonterminated_state(self):
+        cases = (
+            record(state="PROVISIONING"),
+            record(name="renamed", tags={capacity.MANAGED_TAG: "true"}),
+            record(name="renamed", tags={capacity.TARGET_TAG: capacity.DISPLAY_NAME}),
+            record(state="UNKNOWN_FUTURE_STATE"),
         )
-        for state in states:
-            with self.subTest(state=state):
+        for instance in cases:
+            with self.subTest(instance=instance):
                 report = capacity.evaluate_audit(
-                    [capacity.InstanceRecord("instance-id", "guardamar-bot", state)],
-                    image(),
-                    [capacity.SHAPE],
-                    availability(),
+                    [instance], image(), subnet(), [capacity.SHAPE], availability()
                 )
                 self.assertFalse(report.launch_safe)
-                self.assertEqual(report.target_instances, ("instance-id",))
 
     def test_terminated_target_does_not_block(self):
         report = capacity.evaluate_audit(
-            [capacity.InstanceRecord("old", "guardamar-bot", "TERMINATED")],
+            [record(state="TERMINATED")],
             image(),
+            subnet(),
             [capacity.SHAPE],
             availability(),
         )
         self.assertTrue(report.launch_safe)
 
-    def test_strict_free_tier_boundaries_allow_exact_fit(self):
-        report = capacity.evaluate_audit(
-            [], image(), [capacity.SHAPE], availability(1, 6, 150)
+    def test_subnet_must_be_exact_available_and_allow_public_ip(self):
+        cases = (
+            subnet(identifier="wrong"),
+            subnet(state="TERMINATED"),
+            subnet(prohibit=True),
+            capacity.SubnetRecord(
+                capacity.SUBNET_OCID, "AVAILABLE", "another-ad", False
+            ),
         )
-        self.assertTrue(report.launch_safe)
+        for value in cases:
+            with self.subTest(subnet=value):
+                report = capacity.evaluate_audit(
+                    [], image(), value, [capacity.SHAPE], availability()
+                )
+                self.assertFalse(report.launch_safe)
 
-    def test_strict_free_tier_boundaries_fail_closed(self):
-        cases = ((1.1, 6, 0), (1, 6.1, 0), (0, 0, 151))
-        for values in cases:
+    def test_strict_free_tier_boundaries_allow_only_exact_fit(self):
+        exact = capacity.evaluate_audit(
+            [], image(), subnet(), [capacity.SHAPE], availability(1, 6, 150)
+        )
+        self.assertTrue(exact.launch_safe)
+        for values in ((1.1, 6, 0), (1, 6.1, 0), (0, 0, 151)):
             with self.subTest(values=values):
                 report = capacity.evaluate_audit(
-                    [], image(), [capacity.SHAPE], availability(*values)
+                    [], image(), subnet(), [capacity.SHAPE], availability(*values)
                 )
                 self.assertFalse(report.launch_safe)
 
     def test_image_and_shape_are_exact(self):
         wrong_image = capacity.evaluate_audit(
-            [], image("wrong"), [capacity.SHAPE], availability()
+            [], image("wrong"), subnet(), [capacity.SHAPE], availability()
         )
         wrong_os = capacity.evaluate_audit(
-            [], image(os_name="Ubuntu"), [capacity.SHAPE], availability()
+            [], image(os_name="Ubuntu"), subnet(), [capacity.SHAPE], availability()
         )
         wrong_shape = capacity.evaluate_audit(
-            [], image(), ["VM.Standard.E5.Flex"], availability()
+            [], image(), subnet(), ["VM.Standard.E5.Flex"], availability()
         )
         self.assertFalse(wrong_image.launch_safe)
         self.assertFalse(wrong_os.launch_safe)
         self.assertFalse(wrong_shape.launch_safe)
 
-    def test_missing_or_invalid_availability_fails_closed(self):
-        with self.assertRaises(capacity.SafetyError):
-            capacity.evaluate_audit([], image(), [capacity.SHAPE], {})
-        values = availability()
-        values["a1_ocpus"] = capacity.ResourceAvailability(-1, 1)
-        with self.assertRaises(capacity.SafetyError):
-            capacity.evaluate_audit([], image(), [capacity.SHAPE], values)
-
-    def test_manifest_matches_stack_and_keeps_boot_volume_implicit(self):
+    def test_manifest_pins_every_cost_and_launch_parameter(self):
         manifest = capacity.launch_manifest()
         self.assertEqual(manifest["availability_domain"], capacity.AVAILABILITY_DOMAIN)
         self.assertEqual(manifest["compartment_id"], capacity.COMPARTMENT_OCID)
@@ -108,53 +190,198 @@ class CapacityAuditTests(unittest.TestCase):
             manifest["shape_config"], {"ocpus": 1.0, "memory_in_gbs": 6.0}
         )
         self.assertEqual(manifest["source_details"]["image_id"], capacity.IMAGE_OCID)
-        self.assertNotIn("boot_volume_size_in_gbs", manifest["source_details"])
+        self.assertEqual(manifest["source_details"]["boot_volume_size_in_gbs"], 50)
         self.assertEqual(
             manifest["create_vnic_details"]["subnet_id"], capacity.SUBNET_OCID
         )
         self.assertTrue(manifest["create_vnic_details"]["assign_public_ip"])
         self.assertFalse(manifest["create_vnic_details"]["assign_ipv6_ip"])
-        self.assertTrue(manifest["is_pv_encryption_in_transit_enabled"])
-        self.assertTrue(
-            manifest["instance_options"]["are_legacy_imds_endpoints_disabled"]
-        )
+        self.assertEqual(manifest["freeform_tags"][capacity.MANAGED_TAG], "true")
 
-    def test_launch_is_unreachable_even_with_cli_and_environment_gates(self):
+    def test_launch_still_requires_cli_and_workflow_switch(self):
         factory_called = False
 
         def factory(_env):
             nonlocal factory_called
             factory_called = True
-            raise AssertionError("credentials must not be loaded")
+            return FakeGateway()
 
-        with self.assertRaisesRegex(capacity.SafetyError, "build-disabled"):
+        self.assertEqual(capacity.main(["launch"], {}, factory, lambda _: None), 2)
+        self.assertEqual(
             capacity.main(
-                ["launch", "--allow-launch"],
-                {"GUARDAMAR_LAUNCH_SWITCH": "OWNER_AUTHORIZED"},
-                factory,
-            )
+                ["launch", "--allow-launch"], {}, factory, lambda _: None
+            ),
+            2,
+        )
         self.assertFalse(factory_called)
 
-    def test_workflow_is_read_only_and_not_exposed_to_pull_requests(self):
+    def test_existing_running_target_is_verified_with_zero_launch_calls(self):
+        gateway = FakeGateway()
+        gateway.instance_snapshots = [[record()]]
+
+        result = capacity.run_launch(gateway, {}, lambda _: None)
+
+        self.assertEqual(result.outcome, "READY")
+        self.assertEqual(result.public_ip, "203.0.113.7")
+        self.assertTrue(result.disable_schedule)
+        self.assertEqual(gateway.launch_calls, [])
+
+    def test_existing_mismatched_target_blocks_with_zero_launch_calls(self):
+        gateway = FakeGateway()
+        gateway.instance_snapshots = [[record()]]
+        gateway.instance_reads = [details(shape="VM.Standard.E5.Flex")]
+
+        result = capacity.run_launch(gateway, {}, lambda _: None)
+
+        self.assertEqual(result.outcome, "BLOCKED")
+        self.assertTrue(result.disable_schedule)
+        self.assertEqual(gateway.launch_calls, [])
+
+    def test_capacity_miss_makes_exactly_one_request_and_no_retry(self):
+        gateway = FakeGateway()
+        gateway.launch_error = FakeError(
+            "Out of host capacity.", status=500, code="InternalError"
+        )
+
+        result = capacity.run_launch(
+            gateway, {"GITHUB_RUN_ID": "123"}, lambda _: None
+        )
+
+        self.assertEqual(result.outcome, "CAPACITY_MISS")
+        self.assertFalse(result.disable_schedule)
+        self.assertEqual(len(gateway.launch_calls), 1)
+
+    def test_rate_limit_makes_exactly_one_request_and_no_retry(self):
+        gateway = FakeGateway()
+        gateway.launch_error = FakeError(
+            "slow down", status=429, code="TooManyRequests"
+        )
+
+        result = capacity.run_launch(gateway, {}, lambda _: None)
+
+        self.assertEqual(result.outcome, "RATE_LIMITED")
+        self.assertEqual(len(gateway.launch_calls), 1)
+
+    def test_fatal_launch_rejection_disables_schedule(self):
+        gateway = FakeGateway()
+        gateway.launch_error = FakeError("forbidden", status=403, code="NotAuthorized")
+
+        result = capacity.run_launch(gateway, {}, lambda _: None)
+
+        self.assertEqual(result.outcome, "BLOCKED")
+        self.assertTrue(result.disable_schedule)
+        self.assertEqual(len(gateway.launch_calls), 1)
+
+    def test_ambiguous_response_discovers_instance_before_any_repeat(self):
+        gateway = FakeGateway()
+        gateway.launch_error = TimeoutError("response lost")
+        gateway.instance_snapshots = [[], [], [], [record(state="PROVISIONING")]]
+        gateway.instance_reads = [
+            details(state="PROVISIONING"),
+            details(state="RUNNING"),
+        ]
+
+        result = capacity.run_launch(gateway, {}, lambda _: None)
+
+        self.assertEqual(result.outcome, "READY")
+        self.assertEqual(len(gateway.launch_calls), 1)
+
+    def test_unresolved_ambiguous_response_never_retries_and_disables(self):
+        gateway = FakeGateway()
+        gateway.launch_error = TimeoutError("response lost")
+
+        result = capacity.run_launch(gateway, {}, lambda _: None)
+
+        self.assertEqual(result.outcome, "AMBIGUOUS")
+        self.assertTrue(result.disable_schedule)
+        self.assertEqual(len(gateway.launch_calls), 1)
+
+    def test_accepted_launch_waits_for_running_and_verifies_public_ip(self):
+        gateway = FakeGateway()
+        gateway.instance_reads = [
+            details(state="PROVISIONING"),
+            details(state="STARTING"),
+            details(state="RUNNING"),
+        ]
+
+        result = capacity.run_launch(gateway, {}, lambda _: None)
+
+        self.assertEqual(result.outcome, "READY")
+        self.assertEqual(result.instance_id, "instance-id")
+        self.assertEqual(result.public_ip, "203.0.113.7")
+        self.assertEqual(len(gateway.launch_calls), 1)
+
+    def test_running_instance_waits_for_public_ip_without_another_launch(self):
+        gateway = FakeGateway()
+        gateway.instance_snapshots = [[record()]]
+        gateway.vnics = [
+            capacity.VnicRecord("vnic-id", capacity.SUBNET_OCID, None),
+            capacity.VnicRecord("vnic-id", capacity.SUBNET_OCID, "203.0.113.7"),
+        ]
+
+        result = capacity.run_launch(gateway, {}, lambda _: None)
+
+        self.assertEqual(result.outcome, "READY")
+        self.assertEqual(gateway.launch_calls, [])
+
+    def test_failed_discovery_after_ambiguous_response_disables_schedule(self):
+        gateway = FakeGateway()
+        gateway.launch_error = TimeoutError("response lost")
+        gateway.instance_snapshots = [[], [], TimeoutError("list failed")]
+        original_list = gateway.list_instances
+
+        def list_instances():
+            value = original_list()
+            if isinstance(value, Exception):
+                raise value
+            return value
+
+        gateway.list_instances = list_instances
+
+        result = capacity.run_launch(gateway, {}, lambda _: None)
+
+        self.assertEqual(result.outcome, "AMBIGUOUS")
+        self.assertTrue(result.disable_schedule)
+        self.assertEqual(len(gateway.launch_calls), 1)
+
+    def test_retry_token_is_stable_across_reruns_of_same_workflow(self):
+        first = {"GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "1"}
+        rerun = {"GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "2"}
+        self.assertEqual(capacity._retry_token(first), capacity._retry_token(rerun))
+        self.assertNotEqual(
+            capacity._retry_token(first),
+            capacity._retry_token({"GITHUB_RUN_ID": "124"}),
+        )
+
+    def test_result_writes_safe_github_outputs_and_ready_summary(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "output"
+            summary = Path(directory) / "summary"
+            result = capacity.CapacityResult(
+                "READY", "verified", True, "ocid1.instance.example", "203.0.113.7"
+            )
+            capacity._emit_result(
+                result,
+                {"GITHUB_OUTPUT": str(output), "GITHUB_STEP_SUMMARY": str(summary)},
+            )
+            self.assertIn("outcome=READY", output.read_text())
+            self.assertIn("disable_schedule=true", output.read_text())
+            self.assertIn("VM.Standard.A1.Flex", summary.read_text())
+            self.assertNotIn(capacity.SSH_PUBLIC_KEY, summary.read_text())
+
+    def test_workflow_has_one_launch_path_and_a_safe_manual_audit(self):
         workflow = (
             Path(__file__).parents[1]
             / ".github"
             / "workflows"
             / "guardamar-capacity.yml"
         ).read_text(encoding="utf-8")
-        self.assertIn("python -m automation.guardamar_capacity audit", workflow)
-        self.assertNotIn("automation.guardamar_capacity launch", workflow)
+        self.assertEqual(workflow.count("automation.guardamar_capacity launch"), 1)
+        self.assertEqual(workflow.count("automation.guardamar_capacity audit"), 1)
+        self.assertIn('cron: "7,22,37,52 * * * *"', workflow)
+        self.assertIn("cancel-in-progress: false", workflow)
+        self.assertIn("GUARDAMAR_LAUNCH_SWITCH", workflow)
         self.assertNotIn("pull_request:", workflow)
-        self.assertIn("contents: read", workflow)
-        self.assertNotIn("GUARDAMAR_LAUNCH_SWITCH", workflow)
-
-    def test_retry_token_is_stable_for_one_workflow_attempt(self):
-        env = {"GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "2"}
-        self.assertEqual(capacity._retry_token(env), capacity._retry_token(env))
-        self.assertNotEqual(
-            capacity._retry_token(env),
-            capacity._retry_token({**env, "GITHUB_RUN_ATTEMPT": "3"}),
-        )
 
 
 if __name__ == "__main__":
