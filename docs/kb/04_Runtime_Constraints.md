@@ -43,10 +43,15 @@ long poll solely for allowlisted private `/preview`. It must not schedule
 publication, poll data sources until a command arrives, use a webhook, or
 persist update history.
 
-Deployment is a deliberate Tailscale SSH operation: inspect Git state, test,
-commit, and restart only the affected resident service. It must not add a
-GitHub promotion branch, scheduled self-update, resident deployment agent,
-self-hosted CI runner, or public inbound port.
+Deployment is a deliberate Tailscale SSH operation after tests, push, pull
+request, and merge to canonical `origin/main`. A production target must pass an
+ancestor check against the fetched `origin/main`; restart only the affected
+resident service. A temporary `DEVICE TEST ONLY` commit may run on Android only
+for necessary Termux-specific verification and must restore the recorded clean
+production commit and service afterward. It never becomes a production release
+without merging to `main`. Deployment must not add a GitHub promotion branch,
+scheduled self-update, resident deployment agent, self-hosted CI runner, or
+public inbound port.
 
 The local earthquake feature may make one bounded official IGN GeoRSS request
 at minute 55 of each hour. It has no internal retry, browser, screenshot,

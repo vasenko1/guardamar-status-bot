@@ -141,14 +141,31 @@ The validated Android deployment uses the scripts in `termux/`:
 - `termux/start-services` copied to `~/.termux/boot/start-services` for the
   F-Droid Termux:Boot add-on.
 
-Application deployments are operator-driven over private Tailscale SSH. Review the Git
-working tree, run the relevant tests, commit the completed change, then restart
-only the affected resident service. One-shot cron commands use the changed code
-on their next invocation. The separate public `guardamar-cams-data` repository
-uses one daily GitHub Action only to publish normalized CAMS data; it does not
-deploy this application. There is no GitHub Actions promotion, `deploy` branch,
-or scheduled self-update. `.env`, `state/`, logs, and the virtual environment
-remain local.
+Application deployments are operator-driven over private Tailscale SSH. The
+canonical flow is feature branch, local tests, commit, push, pull request,
+merge to `main`, then production rollout. Before rollout, fetch `origin`, set
+`TARGET_SHA` to the validated current `origin/main` commit, and require:
+
+```sh
+git merge-base --is-ancestor "$TARGET_SHA" origin/main
+```
+
+Stop if this command fails. Production must not remain on a feature-only
+branch. Restart only the affected resident service; one-shot cron commands use
+the changed code on their next invocation. The separate public
+`guardamar-cams-data` repository uses one daily GitHub Action only to publish
+normalized CAMS data; it does not deploy this application. There is no GitHub
+Actions promotion, `deploy` branch, or scheduled self-update. `.env`, `state/`,
+logs, and the virtual environment remain local.
+
+`DEVICE TEST ONLY` is the narrow exception for behavior that genuinely needs
+Android or Termux. Record the clean production commit, branch, and relevant
+service state; prefer a manual command without Telegram delivery or service
+replacement. If a feature commit must temporarily run through the production
+service, restore the recorded production commit and service immediately after
+the bounded test, then verify the original version and a clean working tree.
+The feature still proceeds through a pull request and `main` before production
+rollout.
 
 After an Android reboot, first unlock the phone once. Android makes Termux app
 storage available then; within roughly half a minute Tailscale, Termux:Boot,
