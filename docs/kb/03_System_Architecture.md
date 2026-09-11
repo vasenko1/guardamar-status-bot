@@ -263,6 +263,13 @@ commands use changed code on their next run. There is no GitHub Actions
 promotion, `deploy` branch, self-update cron task, resident deployment agent,
 or inbound public port. Secrets and runtime state remain local.
 
+An independent GitHub Actions workflow performs a short read-only OCI capacity
+audit four times per hour. It is not an application deployment path and adds no
+Android runtime dependency. Its launch manifest is recovered from the OCI
+Resource Manager Stack, while duplicate detection and strict Always Free usage
+ceilings fail closed. The accepted workflow invokes only audit, and its launch
+entry point remains build-disabled until a separate owner-approved change.
+
 After a device reboot, Android requires the first user unlock before Termux app
 storage and its boot-started services become available to the remote operator.
 

@@ -21,6 +21,7 @@ festival traffic restriction from Policía Local Guardamar.
 - `docs/kb/` — stable project knowledge for people and coding agents
 - `research/` — source investigations and time-sensitive findings
 - `adr/` — architecture decision records
+- `automation/` — isolated off-device operational checks
 - `src/` — application code
 - `tests/` — automated tests
 
