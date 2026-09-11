@@ -18,8 +18,10 @@ GitHub Actions audit at minutes 7, 22, 37, and 52. It uses a dedicated OCI API
 identity whose policy can read only the relevant state and submit
 `LaunchInstance` only for the fixed Madrid region, AD, and image. It cannot
 terminate, update, or power instances and cannot modify existing network or
-storage resources. Subnet, VNIC, and network-security-group `use` permissions
-are each restricted to the `LaunchInstance` operation.
+storage resources. Grant only the low-level mutating permissions required by
+the OCI launch matrix: `INSTANCE_CREATE`, `VNIC_CREATE`, `VNIC_ATTACH`, and
+`SUBNET_ATTACH`. Do not grant NSG permissions because this launch does not
+specify an NSG.
 
 The repository applies stricter gates that OCI IAM cannot express: exact
 display name, `VM.Standard.A1.Flex`, 1 OCPU, 6 GB RAM, fixed subnet, public IPv4,
@@ -50,6 +52,11 @@ responses permit only bounded instance discovery, never another create call.
 - READY, permanent configuration errors, and unresolved ambiguous results ask
   GitHub to disable the workflow. OCI-state checks remain authoritative if
   disablement fails.
+- The first approved production request was rejected by OCI authorization with
+  `404 NotAuthorizedOrNotFound`; Audit showed no resource ID and Compute stayed
+  empty. The workflow disabled itself and was not retried. Dependent-resource
+  `use` verbs conditioned on `request.operation` were replaced by the smaller
+  explicit permission set before any future validation attempt.
 - The OCI policy cannot constrain shape, display name, or subnet on
   `LaunchInstance`; repository gates and the immutable launch manifest cover
   those fields.
