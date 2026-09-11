@@ -138,7 +138,10 @@ async def prepare_translations(
     current = _read(path)
     missing = [
         item for item in unique
-        if _key(*item) not in current["entries"]
+        if (
+            reviewed_translation(item[1]) is None
+            and _key(*item) not in current["entries"]
+        )
     ]
     translations = (
         await translate_event_titles(api_key, [title for _, title in missing])

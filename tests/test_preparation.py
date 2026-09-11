@@ -90,6 +90,26 @@ class PreparationTests(unittest.IsolatedAsyncioTestCase):
                 "Праздник районов",
             )
 
+    async def test_translation_cache_skips_reviewed_text(self):
+        source = (
+            "Esta colección reúne una selección de retratos realizados "
+            "por José Luis Narbaiza, pintor amateur con un especial dominio "
+            "del dibujo a carboncillo y a lápiz."
+        )
+        with tempfile.TemporaryDirectory() as directory, patch(
+            "telegrambot.event_translations.translate_event_titles",
+            new_callable=AsyncMock,
+        ) as translator:
+            translated = await prepare_translations(
+                "key",
+                [("library_agenda_teaser", source)],
+                Path(directory) / "translations.json",
+                self.now,
+            )
+
+        self.assertEqual(translated, 0)
+        translator.assert_not_awaited()
+
     def test_spanish_fallback_only_normalizes_all_caps(self):
         self.assertEqual(
             spanish_fallback("  RUTAS   NOCTURNAS  "),
