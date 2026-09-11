@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from .agenda import AgendaError, fetch_today_events, recurring_events
 from .branding import with_footer
 from .digest import MONTHS_GENITIVE, build_event_section
+from .diagnostics import SourceDiagnostic, source_error
 from .morning import _merge_events
 from .municipal_agenda import (
     MunicipalAgendaError,
@@ -39,6 +40,7 @@ async def _day_events(
     library_agenda_state_path: Path,
     am_guardamar_state_path: Path,
     translation_cache_path: Path,
+    diagnostics: Optional[List[SourceDiagnostic]] = None,
 ):
     """Collect one weekend day from the two catalogs and recurring rules."""
 
@@ -55,6 +57,10 @@ async def _day_events(
             day.date(),
             exc,
         )
+        if diagnostics is not None:
+            diagnostics.append(source_error(
+                "AGENDA", "Agenda Guardamar", exc
+            ))
         agenda_events = ()
     try:
         municipal_events = await fetch_today_municipal_events(
@@ -62,6 +68,7 @@ async def _day_events(
             gemini_api_key,
             municipal_agenda_state_path,
             translation_cache_path=translation_cache_path,
+            diagnostics=diagnostics,
         )
     except MunicipalAgendaError as exc:
         LOGGER.warning(
@@ -69,6 +76,10 @@ async def _day_events(
             day.date(),
             exc,
         )
+        if diagnostics is not None:
+            diagnostics.append(source_error(
+                "MUNI-AGENDA", "Agenda municipal", exc
+            ))
         municipal_events = ()
     try:
         library_events = await fetch_today_library_events(
@@ -76,6 +87,10 @@ async def _day_events(
         )
     except LibraryAgendaError as exc:
         LOGGER.warning("Library agenda unavailable for %s; omitting: %s", day.date(), exc)
+        if diagnostics is not None:
+            diagnostics.append(source_error(
+                "LIBRARY", "Biblioteca Municipal", exc
+            ))
         library_events = ()
     try:
         am_guardamar_events = await fetch_today_am_guardamar_events(
@@ -83,6 +98,10 @@ async def _day_events(
         )
     except AmGuardamarError as exc:
         LOGGER.warning("AM Guardamar unavailable for %s; omitting: %s", day.date(), exc)
+        if diagnostics is not None:
+            diagnostics.append(source_error(
+                "AM-GUARDAMAR", "AM Guardamar", exc
+            ))
         am_guardamar_events = ()
     return _merge_events(
         recurring_events(day),
@@ -102,6 +121,7 @@ async def produce_weekend_message(
     library_agenda_state_path: Path = Path("state/library_agenda.json"),
     am_guardamar_state_path: Path = Path("state/am_guardamar.json"),
     translation_cache_path: Path = Path("state/event_translations.json"),
+    diagnostics: Optional[List[SourceDiagnostic]] = None,
 ) -> Optional[str]:
     """Return the weekend digest, or None when no verified event exists."""
 
@@ -118,6 +138,7 @@ async def produce_weekend_message(
             library_agenda_state_path,
             am_guardamar_state_path,
             translation_cache_path,
+            diagnostics,
         )
         if not events:
             continue

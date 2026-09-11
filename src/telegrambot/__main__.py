@@ -237,6 +237,7 @@ async def _refresh_event_catalogs_once(
     state: PublicationState,
     municipal_path: Path,
     agenda_path: Path,
+    translations_path: Optional[Path] = None,
 ) -> None:
     """Persist one bounded late event refresh independently of SafeBeach."""
 
@@ -251,6 +252,7 @@ async def _refresh_event_catalogs_once(
         ),
         ("agenda", lambda: refresh_agenda_catalog(now, agenda_path)),
     ]
+    refreshed = False
     try:
         with state.exclusive_run():
             if state.morning_record(now.date()) is None:
@@ -260,6 +262,7 @@ async def _refresh_event_catalogs_once(
                     continue
                 try:
                     await refresh()
+                    refreshed = True
                 except Exception as exc:
                     logging.warning(
                         "Late event catalog sync failed for %s: %s",
@@ -267,8 +270,25 @@ async def _refresh_event_catalogs_once(
                         exc,
                     )
                 state.mark_event_catalog_sync_attempted(now.date(), name)
+            if (
+                refreshed
+                and translations_path is not None
+                and os.environ.get("GEMINI_API_KEY", "").strip()
+            ):
+                items = [
+                    *await municipal_translation_items(now, municipal_path),
+                    *await agenda_translation_items(now, agenda_path),
+                ]
+                await prepare_translations(
+                    os.environ["GEMINI_API_KEY"].strip(),
+                    items,
+                    translations_path,
+                    now,
+                )
     except StateError as exc:
         logging.info("Late event catalog sync deferred: %s", exc)
+    except (AgendaError, GeminiError, MunicipalAgendaError, ValueError) as exc:
+        logging.warning("Late event translation preparation failed: %s", exc)
 
 
 async def _run_command(command: str, extra: tuple = ()) -> int:
@@ -567,6 +587,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         if command == "weekend-preview":
             # Preview is read-only: it reads the existing translation cache
             # and never fills it, matching the morning preview contract.
+            diagnostics = []
             message = await produce_weekend_message(
                 now,
                 gemini_key,
@@ -575,8 +596,12 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 library_agenda_state_path=library_path,
                 am_guardamar_state_path=am_guardamar_path,
                 translation_cache_path=translations_path,
+                diagnostics=diagnostics,
             )
-            print(message or "No verified weekend events are available")
+            print(
+                (message or "No verified weekend events are available")
+                + render_diagnostics(diagnostics)
+            )
             return 0
         bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
         chat_id = _required_environment("TELEGRAM_CHAT_ID")
@@ -1000,7 +1025,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         return 0
     if isinstance(existing.get("update_message_id"), int):
         await _refresh_event_catalogs_once(
-            now, state, municipal_path, agenda_path
+            now, state, municipal_path, agenda_path, translations_path
         )
         result = await publish_update(
             now,
@@ -1118,7 +1143,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     state, None, now, final_attempt=True
                 )
     await _refresh_event_catalogs_once(
-        now, state, municipal_path, agenda_path
+        now, state, municipal_path, agenda_path, translations_path
     )
     if not in_beach_season and not cams_update:
         logging.info("SKIP: SafeBeach update phase is out of season")

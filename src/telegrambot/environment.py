@@ -15,10 +15,11 @@ import urllib.parse
 from collections import defaultdict
 from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
-from typing import Dict, Iterable, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
 from ._transport import BoundedFetchError, fetch_bounded
+from .diagnostics import SourceDiagnostic, source_error
 from .models import AirQualitySummary, HeatHealthRisk, PollenSummary
 
 LOGGER = logging.getLogger(__name__)
@@ -63,7 +64,18 @@ POLLUTANT_LABELS = {
 
 
 class EnvironmentError(RuntimeError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: Optional[str] = None,
+        description: Optional[str] = None,
+        status: Optional[int] = None,
+    ) -> None:
+        super().__init__(message)
+        self.diagnostic_code = code
+        self.safe_description = description
+        self.server_status = status
 
 
 def _allowed_meteosalud(url: str) -> bool:
@@ -113,7 +125,16 @@ async def fetch_meteosalud(now: datetime) -> Optional[HeatHealthRisk]:
         )
         return parse_meteosalud_level(payload, now)
     except (BoundedFetchError, EnvironmentError) as exc:
-        raise EnvironmentError("Meteosalud unavailable") from exc
+        raise EnvironmentError(
+            "Meteosalud unavailable",
+            code=exc.code if isinstance(exc, BoundedFetchError) else "PARSE",
+            status=exc.status if isinstance(exc, BoundedFetchError) else None,
+            description=(
+                "страница Meteosalud временно недоступна"
+                if isinstance(exc, BoundedFetchError)
+                else "страница Meteosalud не прошла проверку формата"
+            ),
+        ) from exc
 
 
 def _ica_category(pollutant: str, value: float) -> int:
@@ -329,12 +350,14 @@ async def fetch_cams(
     now: datetime,
     *,
     allow_remote: bool = True,
+    diagnostics: Optional[List[SourceDiagnostic]] = None,
 ) -> Tuple[Optional[AirQualitySummary], Optional[PollenSummary], datetime]:
     """Use the newest valid public JSON or a covering local last-good copy."""
 
     cached = await asyncio.to_thread(_load_cams_cache, cache_path, now)
     remote = None
     remote_payload = None
+    remote_failure = None
     if allow_remote and data_url:
         try:
             remote_payload, _, _ = await asyncio.to_thread(
@@ -353,6 +376,16 @@ async def fetch_cams(
             )
             remote = parse_cams_payload(remote_payload, now)
         except (BoundedFetchError, EnvironmentError) as exc:
+            remote_failure = EnvironmentError(
+                "Remote CAMS JSON unavailable",
+                code=exc.code if isinstance(exc, BoundedFetchError) else "PAYLOAD",
+                status=exc.status if isinstance(exc, BoundedFetchError) else None,
+                description=(
+                    "публичный прогноз CAMS временно недоступен"
+                    if isinstance(exc, BoundedFetchError)
+                    else "публичный прогноз CAMS не прошёл проверку формата"
+                ),
+            )
             LOGGER.warning("Remote CAMS JSON unavailable; trying cache: %s", exc)
     selected = cached
     if remote is not None and (
@@ -364,7 +397,24 @@ async def fetch_cams(
             await asyncio.to_thread(_write_cams_cache, cache_path, remote_payload)
         except EnvironmentError as exc:
             LOGGER.warning("CAMS cache update failed: %s", exc)
+            if diagnostics is not None:
+                diagnostics.append(source_error(
+                    "CAMS", "CAMS", exc, stage="CACHE"
+                ))
     if selected is None:
-        raise EnvironmentError("CAMS unavailable")
+        raise EnvironmentError(
+            "CAMS unavailable",
+            code="UNAVAILABLE",
+            description="нет корректного свежего прогноза или локального снимка",
+        )
+    if remote_failure is not None and diagnostics is not None:
+        failure = source_error(
+            "CAMS", "CAMS", remote_failure, stage="REMOTE"
+        )
+        diagnostics.append(SourceDiagnostic(
+            failure.code,
+            failure.source,
+            f"{failure.description}; использован локальный снимок",
+        ))
     air, pollen = summarize_cams(selected[0], now)
     return air, pollen, selected[1]

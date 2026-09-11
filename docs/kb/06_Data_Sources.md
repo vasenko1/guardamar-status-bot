@@ -404,7 +404,8 @@ state a price, so the digest makes no free-admission claim.
 Todo Cultura is queried through its bounded public WordPress REST API during
 the municipal refresh. One metadata page advances a five-minute-overlap cursor
 and maintains a rolling window from today through six days ahead. Up to six
-dated programme candidates are downloaded in one batch, with extra priority
+dated programme candidates are downloaded in at most two size-bounded batches
+of four records, with extra priority
 for explicit museum, child, youth, educational, workshop, and guided-visit
 signals; only new date sections enter the existing structured extractor. Already covered
 dates are shared across duplicate programme reproductions, while a later

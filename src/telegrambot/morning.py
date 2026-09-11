@@ -244,6 +244,7 @@ async def produce_message(
                 cams_cache_path,
                 now,
                 allow_remote=fetch_cams_remote,
+                diagnostics=diagnostics,
             )
         )
         if fetch_environment and (cams_data_url or not fetch_cams_remote)
@@ -337,6 +338,10 @@ async def produce_message(
             heat_health_risk = await meteosalud_task
         except EnvironmentError as exc:
             LOGGER.warning("Meteosalud unavailable; omitting health risk: %s", exc)
+            if diagnostics is not None:
+                diagnostics.append(source_error(
+                    "METEOSALUD", "Meteosalud", exc
+                ))
     air_quality = pollen = None
     cams_forecast_base = None
     if cams_task is not None:
@@ -344,6 +349,8 @@ async def produce_message(
             air_quality, pollen, cams_forecast_base = await cams_task
         except EnvironmentError as exc:
             LOGGER.warning("CAMS unavailable; omitting air and pollen: %s", exc)
+            if diagnostics is not None:
+                diagnostics.append(source_error("CAMS", "CAMS", exc))
     if environment_observer is not None:
         try:
             environment_observer(heat_health_risk, cams_forecast_base)
@@ -400,11 +407,19 @@ async def produce_message(
         library_events = await library_agenda_task
     except LibraryAgendaError as exc:
         LOGGER.warning("Library agenda unavailable; omitting events: %s", exc)
+        if diagnostics is not None:
+            diagnostics.append(source_error(
+                "LIBRARY", "Biblioteca Municipal", exc
+            ))
         library_events = ()
     try:
         am_guardamar_events = await am_guardamar_task
     except AmGuardamarError as exc:
         LOGGER.warning("AM Guardamar unavailable; omitting events: %s", exc)
+        if diagnostics is not None:
+            diagnostics.append(source_error(
+                "AM-GUARDAMAR", "AM Guardamar", exc
+            ))
         am_guardamar_events = ()
 
     try:
@@ -447,10 +462,20 @@ async def produce_message(
     if pharmacy_state_path is not None:
         try:
             pharmacies = await duty_pharmacies_on(now, pharmacy_state_path)
+            if not pharmacies and diagnostics is not None:
+                diagnostics.append(SourceDiagnostic(
+                    "PHARMACY-NO-TODAY",
+                    "Дежурные аптеки",
+                    "в локальном каталоге нет дежурства на текущую дату",
+                ))
         except OSError as exc:
             LOGGER.warning(
                 "Pharmacy catalog unavailable; omitting the row: %s", exc
             )
+            if diagnostics is not None:
+                diagnostics.append(source_error(
+                    "PHARMACY", "Дежурные аптеки", exc
+                ))
 
     return build_message(
         replace(

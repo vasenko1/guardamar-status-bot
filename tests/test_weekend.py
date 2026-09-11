@@ -133,17 +133,23 @@ class WeekendMessageTests(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as directory:
             paths = _paths(directory)
             # Neither catalog file exists: both readers fail closed.
+            diagnostics = []
             message = await produce_weekend_message(
                 now, "", paths["municipal_agenda_state_path"],
                 agenda_state_path=paths["agenda_state_path"],
                 library_agenda_state_path=paths["library_agenda_state_path"],
                 am_guardamar_state_path=paths["am_guardamar_state_path"],
                 translation_cache_path=paths["translation_cache_path"],
+                diagnostics=diagnostics,
             )
 
         self.assertNotIn("Суббота", message or "")
         self.assertIn("Воскресенье, 16 августа", message)
         self.assertIn("Рынок Campo de Guardamar", message)
+        self.assertEqual(
+            {item.source for item in diagnostics},
+            {"Agenda Guardamar", "Agenda municipal", "Biblioteca Municipal"},
+        )
 
     async def test_no_verified_events_returns_no_message(self):
         # A Monday-start week in January: no catalogs, and the recurring

@@ -156,6 +156,41 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
         municipal.assert_awaited_once()
         agenda.assert_awaited_once()
 
+    async def test_late_event_refresh_prepares_new_translations(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = PublicationState(Path(directory) / "delivery.json")
+            now = datetime(2026, 9, 11, 10, 10, tzinfo=MADRID)
+            state.mark_morning(now.date(), 10, now)
+            prepared = AsyncMock(return_value=2)
+            with (
+                patch.dict(os.environ, {"GEMINI_API_KEY": "key"}),
+                patch(
+                    "telegrambot.__main__.refresh_municipal_catalog",
+                    new=AsyncMock(return_value=()),
+                ),
+                patch(
+                    "telegrambot.__main__.refresh_agenda_catalog",
+                    new=AsyncMock(return_value=()),
+                ),
+                patch(
+                    "telegrambot.__main__.municipal_translation_items",
+                    new=AsyncMock(return_value=(("municipal", "teaser"),)),
+                ),
+                patch(
+                    "telegrambot.__main__.agenda_translation_items",
+                    new=AsyncMock(return_value=()),
+                ),
+                patch("telegrambot.__main__.prepare_translations", new=prepared),
+            ):
+                translations = Path(directory) / "translations.json"
+                await _refresh_event_catalogs_once(
+                    now, state, Path(directory) / "municipal.json",
+                    Path(directory) / "agenda.json", translations,
+                )
+
+        prepared.assert_awaited_once()
+        self.assertEqual(prepared.await_args.args[2], translations)
+
     def test_current_message_prefers_published_update(self):
         self.assertEqual(
             _current_morning_message_id({
