@@ -62,9 +62,9 @@ responses permit only bounded instance discovery, never another create call.
   sole cause.
 - OCI's official policy template constrains a launch to one image by applying
   `target.image.id` to `INSTANCE_IMAGE_READ`, with instance creation granted
-  separately. The next minimal correction removes that duplicate condition
-  from `INSTANCE_CREATE`; the exact-image read grant remains mandatory, so the
-  identity does not gain effective launch access to any other image.
+  separately. On 2026-09-12 that duplicate condition was removed from
+  `INSTANCE_CREATE`; the exact-image read grant remains mandatory, so the
+  identity did not gain effective launch access to any other image.
 - The OCI policy cannot constrain shape, display name, or subnet on
   `LaunchInstance`; repository gates and the immutable launch manifest cover
   those fields.
