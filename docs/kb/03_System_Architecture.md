@@ -25,9 +25,10 @@ schemas, and library choices belong in later design work or ADRs.
 6. **Digest building** orders the remaining facts and formats one short
    message.
 7. **Telegram delivery** sends the early message and stores its message ID.
-8. **External update checks** run at 10:10–10:40 in five-minute steps. The
-   first invocation checks once for a newer CAMS forecast; a newer base may
-   replace the morning message through the existing update path. Each
+8. **External update checks** run at 10:10–10:40 in five-minute steps. Three
+   bounded checkpoints (10:10, 10:25 and 10:40) may check for a newer CAMS
+   forecast until today's UTC cycle is accepted; a newer base may replace the
+   morning message through the existing update path. Each
    process checks SafeBeach first, retains at most the best whole normalized
    partial response for this window, and attempts each event catalog at most
    once that day so later event facts are saved without seven repeat calls.
@@ -43,7 +44,9 @@ After the later full digest is settled, externally scheduled operational
 checks compare current SafeBeach and AEMET warning state with one small daily
 snapshot. Beach candidates use at most two scheduled confirmations. Confirmed
 changes are sent as replies to the current full digest; older updates remain
-unchanged.
+unchanged. While the digest still uses the previous valid CAMS cycle, only the
+first invocation of each existing operational window checks again and edits the
+current digest if today's cycle has appeared.
 
 If nothing trustworthy and useful remains after filtering, the run may produce
 no message.
@@ -147,7 +150,8 @@ It has no resident process or dependency on Morning Digest state.
 - Optional lightweight operator listener with one idle Telegram long poll
 - One event loop with bounded asynchronous I/O
 - One direct 07:30 collection; one later full collection only after a beach or
-  newer-CAMS update
+  newer-CAMS update, plus a bounded in-place refresh if CAMS arrives after the
+  replacement window
 - No webhook or public server
 - No resident scheduler, source polling, or watcher; only bounded one-shot
   event refresh, digest, electricity and operational-change commands

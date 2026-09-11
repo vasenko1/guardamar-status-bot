@@ -198,17 +198,6 @@ class PublicationState:
             value.pop("cams_forecast_base", None)
         self._write(value)
 
-    def cams_refresh_attempted(self, local_day: date) -> bool:
-        value = self.morning_record(local_day)
-        return value is not None and value.get("cams_refresh_attempted") is True
-
-    def mark_cams_refresh_attempted(self, local_day: date) -> None:
-        value = self.morning_record(local_day)
-        if value is None:
-            raise StateError("morning publication record is missing")
-        value["cams_refresh_attempted"] = True
-        self._write(value)
-
     def remember_beach_candidate(
         self,
         local_day: date,

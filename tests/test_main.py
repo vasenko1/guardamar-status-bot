@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import unittest
@@ -7,6 +8,9 @@ from unittest.mock import AsyncMock, call, patch
 from zoneinfo import ZoneInfo
 
 from telegrambot.__main__ import (
+    _cams_cycle_is_current,
+    _cams_monitor_checkpoint,
+    _cams_update_checkpoint,
     _current_morning_message_id,
     _refresh_event_catalogs_once,
     _send_operational_update,
@@ -14,6 +18,8 @@ from telegrambot.__main__ import (
     _run_command,
 )
 from telegrambot.diagnostics import SourceDiagnostic
+from telegrambot.environment import EnvironmentError
+from telegrambot.operational_updates import MonitorRun
 from telegrambot.state import PublicationState, StateError
 from telegrambot.telegram import TelegramError
 
@@ -22,6 +28,140 @@ MADRID = ZoneInfo("Europe/Madrid")
 
 
 class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
+    def test_cams_refresh_uses_only_bounded_existing_checkpoints(self):
+        self.assertTrue(_cams_update_checkpoint(
+            datetime(2026, 9, 11, 10, 10, tzinfo=MADRID)
+        ))
+        self.assertTrue(_cams_update_checkpoint(
+            datetime(2026, 9, 11, 10, 25, tzinfo=MADRID)
+        ))
+        self.assertTrue(_cams_update_checkpoint(
+            datetime(2026, 9, 11, 10, 40, tzinfo=MADRID)
+        ))
+        self.assertFalse(_cams_update_checkpoint(
+            datetime(2026, 9, 11, 10, 15, tzinfo=MADRID)
+        ))
+        self.assertTrue(_cams_monitor_checkpoint(MonitorRun(1, False)))
+        self.assertTrue(_cams_monitor_checkpoint(MonitorRun(None, True)))
+        self.assertFalse(_cams_monitor_checkpoint(MonitorRun(2, False)))
+
+    def test_cams_refresh_stops_after_current_utc_cycle(self):
+        now = datetime(2026, 10, 25, 10, 10, tzinfo=MADRID)
+        self.assertTrue(_cams_cycle_is_current(
+            datetime.fromisoformat("2026-10-25T00:00:00+00:00"), now
+        ))
+        self.assertFalse(_cams_cycle_is_current(
+            datetime.fromisoformat("2026-10-24T00:00:00+00:00"), now
+        ))
+
+    async def test_cams_refresh_retries_after_transient_miss(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "delivery.json"
+            first = datetime(2026, 9, 11, 10, 10, tzinfo=MADRID)
+            second = datetime(2026, 9, 11, 10, 25, tzinfo=MADRID)
+            state = PublicationState(state_path)
+            state.mark_morning(first.date(), 10, first)
+            state.mark_morning_environment(
+                first.date(), None,
+                datetime.fromisoformat("2026-09-10T00:00:00+00:00"),
+            )
+            # A marker written by the old release must not suppress retries.
+            legacy = json.loads(state_path.read_text(encoding="utf-8"))
+            legacy["cams_refresh_attempted"] = True
+            state_path.write_text(json.dumps(legacy), encoding="utf-8")
+            fetch = AsyncMock(side_effect=[
+                EnvironmentError("not published yet"),
+                (None, None, datetime.fromisoformat(
+                    "2026-09-11T00:00:00+00:00"
+                )),
+            ])
+            publish = AsyncMock(return_value="waiting")
+            common = {
+                "AEMET_API_KEY": "aemet",
+                "TELEGRAM_BOT_TOKEN": "telegram",
+                "TELEGRAM_CHAT_ID": "group",
+                "MORNING_DIGEST_STATE_PATH": str(state_path),
+            }
+            with (
+                patch.dict(os.environ, common),
+                patch("telegrambot.__main__.datetime") as clock,
+                patch("telegrambot.__main__.fetch_cams", new=fetch),
+                patch(
+                    "telegrambot.__main__.fetch_beach_status",
+                    new=AsyncMock(return_value=None),
+                ),
+                patch(
+                    "telegrambot.__main__._refresh_event_catalogs_once",
+                    new=AsyncMock(),
+                ),
+                patch("telegrambot.__main__.publish_update", new=publish),
+            ):
+                clock.now.side_effect = [first, second]
+                self.assertEqual(await _run_command("update"), 0)
+                self.assertEqual(await _run_command("update"), 0)
+
+        self.assertEqual(fetch.await_count, 2)
+        self.assertFalse(publish.await_args_list[0].kwargs["force_update"])
+        self.assertTrue(publish.await_args_list[1].kwargs["force_update"])
+
+    async def test_operational_checkpoint_accepts_late_cams_cycle(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "delivery.json"
+            monitor_path = Path(directory) / "operational.json"
+            now = datetime(2026, 9, 11, 12, 0, tzinfo=MADRID)
+            old_base = datetime.fromisoformat("2026-09-10T00:00:00+00:00")
+            new_base = datetime.fromisoformat("2026-09-11T00:00:00+00:00")
+            state = PublicationState(state_path)
+            state.mark_morning(now.date(), 10, now)
+            state.mark_morning_environment(now.date(), None, old_base)
+
+            async def produce(*args, **kwargs):
+                kwargs["environment_observer"](None, new_base)
+                return "unchanged visible digest"
+
+            unchanged = TelegramError(
+                "unchanged",
+                retryable=False,
+                code="MESSAGE-NOT-MODIFIED",
+                status=400,
+            )
+            with (
+                patch.dict(os.environ, {
+                    "AEMET_API_KEY": "aemet",
+                    "TELEGRAM_BOT_TOKEN": "telegram",
+                    "TELEGRAM_CHAT_ID": "group",
+                    "MORNING_DIGEST_STATE_PATH": str(state_path),
+                    "OPERATIONAL_UPDATE_STATE_PATH": str(monitor_path),
+                }),
+                patch("telegrambot.__main__.datetime") as clock,
+                patch(
+                    "telegrambot.__main__.fetch_cams",
+                    new=AsyncMock(return_value=(None, None, new_base)),
+                ) as fetch,
+                patch("telegrambot.__main__.produce_message", new=produce),
+                patch(
+                    "telegrambot.__main__.edit_message",
+                    new=AsyncMock(side_effect=unchanged),
+                ),
+                patch("telegrambot.__main__.load_snapshot", return_value=None),
+                patch(
+                    "telegrambot.__main__.fetch_beach_status",
+                    new=AsyncMock(return_value=None),
+                ),
+                patch(
+                    "telegrambot.__main__.fetch_warnings",
+                    new=AsyncMock(return_value=()),
+                ),
+            ):
+                clock.now.return_value = now
+                self.assertEqual(await _run_command("monitor-updates"), 0)
+
+            self.assertEqual(fetch.await_count, 1)
+            self.assertEqual(
+                PublicationState(state_path).morning_environment(now.date()),
+                (None, new_base),
+            )
+
     async def test_earthquake_monitor_needs_only_telegram_configuration(self):
         monitor = AsyncMock(return_value=0)
         with tempfile.TemporaryDirectory() as directory:

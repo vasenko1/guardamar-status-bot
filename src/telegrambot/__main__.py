@@ -5,7 +5,7 @@ import asyncio
 import logging
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 from zoneinfo import ZoneInfo
@@ -118,6 +118,7 @@ DEFAULT_PHARMACY_STATE_PATH = "state/pharmacy.json"
 DEFAULT_EARTHQUAKE_STATE_PATH = "state/earthquakes.json"
 DEFAULT_HIDRAQUA_STATE_PATH = "state/hidraqua.json"
 DEFAULT_CAMS_CACHE_PATH = "state/cams.json"
+CAMS_UPDATE_CHECKPOINTS = frozenset({(10, 10), (10, 25), (10, 40)})
 
 
 def _beach_ready_for_update(status, now: datetime, final_attempt: bool) -> bool:
@@ -146,6 +147,30 @@ def _select_beach_for_update(
     if is_current_status(stored, now):
         return stored
     return None
+
+
+def _cams_cycle_is_current(
+    forecast_base: Optional[datetime], now: datetime
+) -> bool:
+    """Stop late checks once today's UTC CAMS cycle is accepted."""
+
+    return forecast_base is not None and (
+        forecast_base.astimezone(timezone.utc).date()
+        >= now.astimezone(GUARDAMAR_TIMEZONE).date()
+    )
+
+
+def _cams_update_checkpoint(now: datetime) -> bool:
+    local = now.astimezone(GUARDAMAR_TIMEZONE)
+    return (local.hour, local.minute) in CAMS_UPDATE_CHECKPOINTS
+
+
+def _cams_monitor_checkpoint(schedule) -> bool:
+    """Use only the first invocation of an existing monitor window."""
+
+    return schedule.beach_phase == 1 or (
+        schedule.beach_phase is None and schedule.check_aemet
+    )
 
 
 def _required_environment(name: str) -> str:
@@ -319,6 +344,87 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
     cams_cache_path = Path(os.environ.get(
         "CAMS_CACHE_PATH", DEFAULT_CAMS_CACHE_PATH
     ))
+
+    async def newer_cams_base(
+        state: PublicationState,
+    ) -> Optional[datetime]:
+        if state.morning_record(now.date()) is None:
+            return None
+        _, current_base = state.morning_environment(now.date())
+        if _cams_cycle_is_current(current_base, now):
+            return None
+        try:
+            _, _, available_base = await fetch_cams(
+                cams_data_url, cams_cache_path, now
+            )
+        except EnvironmentError as exc:
+            logging.warning(
+                "CAMS refresh unavailable; preserving current digest: %s", exc
+            )
+            return None
+        if current_base is not None and available_base <= current_base:
+            logging.info(
+                "CAMS refresh pending: digest uses forecast base %s",
+                current_base.isoformat(),
+            )
+            return None
+        return available_base
+
+    async def edit_current_digest(
+        state: PublicationState,
+        api_key: str,
+        bot_token: str,
+        chat_id: str,
+        *,
+        fetch_cams_remote: bool,
+    ) -> None:
+        record = state.morning_record(now.date())
+        if record is None:
+            raise StateError(
+                f"no morning message exists for {now.date().isoformat()}"
+            )
+        message_id = _current_morning_message_id(record)
+        fallback = load_snapshot(aemet_snapshot_path, now)
+        refreshed_aemet = []
+        heat_level, _ = state.morning_environment(now.date())
+        refreshed_environment = []
+        message = await produce_message(
+            api_key,
+            now,
+            os.environ.get("GEMINI_API_KEY", "").strip(),
+            municipal_path,
+            agenda_state_path=agenda_path,
+            library_agenda_state_path=library_path,
+            am_guardamar_state_path=am_guardamar_path,
+            translation_cache_path=translations_path,
+            aemet_fallback=fallback,
+            aemet_observer=refreshed_aemet.append,
+            pharmacy_state_path=pharmacy_path,
+            cams_data_url=cams_data_url,
+            cams_cache_path=cams_cache_path,
+            fetch_cams_remote=fetch_cams_remote,
+            fetch_meteosalud_data=False,
+            heat_health_fallback=(
+                HeatHealthRisk(heat_level) if heat_level is not None else None
+            ),
+            environment_observer=lambda heat, base: refreshed_environment.append(
+                (heat, base)
+            ),
+        )
+        try:
+            await edit_message(bot_token, chat_id, message_id, message)
+        except TelegramError as exc:
+            if exc.diagnostic_code != "MESSAGE-NOT-MODIFIED":
+                raise
+        if refreshed_aemet:
+            write_snapshot(aemet_snapshot_path, refreshed_aemet[-1], now)
+        if refreshed_environment:
+            heat, base = refreshed_environment[-1]
+            state.mark_morning_environment(
+                now.date(), heat.level if heat is not None else None, base
+            )
+        logging.info("Current morning message %s refreshed", message_id)
+
     if command == "monitor-hidraqua":
         state = HidraquaState(Path(os.environ.get(
             "HIDRAQUA_STATE_PATH", DEFAULT_HIDRAQUA_STATE_PATH
@@ -353,6 +459,26 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         publication_state = PublicationState(Path(os.environ.get(
             "MORNING_DIGEST_STATE_PATH", DEFAULT_STATE_PATH
         )))
+        if _cams_monitor_checkpoint(schedule):
+            try:
+                available_base = await newer_cams_base(publication_state)
+                if available_base is not None:
+                    await edit_current_digest(
+                        publication_state,
+                        _required_environment("AEMET_API_KEY"),
+                        bot_token,
+                        chat_id,
+                        fetch_cams_remote=False,
+                    )
+                    logging.info(
+                        "CAMS digest refresh accepted forecast base %s",
+                        available_base.isoformat(),
+                    )
+            except (StateError, TelegramError, ValueError) as exc:
+                logging.warning(
+                    "CAMS digest refresh deferred to a later checkpoint: %s",
+                    exc,
+                )
         monitor_state = OperationalUpdateState(Path(os.environ.get(
             "OPERATIONAL_UPDATE_STATE_PATH",
             DEFAULT_OPERATIONAL_UPDATE_STATE_PATH,
@@ -919,47 +1045,13 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
     )
     state = PublicationState(state_path)
     if command == "refresh-current":
-        record = state.morning_record(now.date())
-        if record is None:
-            raise StateError(
-                f"no morning message exists for {now.date().isoformat()}"
-            )
-        message_id = _current_morning_message_id(record)
-        fallback = load_snapshot(aemet_snapshot_path, now)
-        refreshed_aemet = []
-        heat_level, _ = state.morning_environment(now.date())
-        refreshed_environment = []
-        message = await produce_message(
+        await edit_current_digest(
+            state,
             api_key,
-            now,
-            os.environ.get("GEMINI_API_KEY", "").strip(),
-            municipal_path,
-            agenda_state_path=agenda_path,
-            library_agenda_state_path=library_path,
-            am_guardamar_state_path=am_guardamar_path,
-            translation_cache_path=translations_path,
-            aemet_fallback=fallback,
-            aemet_observer=refreshed_aemet.append,
-            pharmacy_state_path=pharmacy_path,
-            cams_data_url=cams_data_url,
-            cams_cache_path=cams_cache_path,
-            fetch_meteosalud_data=False,
-            heat_health_fallback=(
-                HeatHealthRisk(heat_level) if heat_level is not None else None
-            ),
-            environment_observer=lambda heat, base: refreshed_environment.append(
-                (heat, base)
-            ),
+            bot_token,
+            chat_id,
+            fetch_cams_remote=True,
         )
-        await edit_message(bot_token, chat_id, message_id, message)
-        if refreshed_aemet:
-            write_snapshot(aemet_snapshot_path, refreshed_aemet[-1], now)
-        if refreshed_environment:
-            heat, base = refreshed_environment[-1]
-            state.mark_morning_environment(
-                now.date(), heat.level if heat is not None else None, base
-            )
-        logging.info("Current morning message %s refreshed", message_id)
         return 0
     if command in {"run", "morning"}:
         morning_aemet = []
@@ -1023,7 +1115,36 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
     if existing is None:
         logging.info("SKIP: no morning message exists for %s", now.date())
         return 0
+
+    heat_level, morning_cams_base = state.morning_environment(now.date())
+    cams_update = False
+    available_base = None
+    if (
+        _cams_update_checkpoint(now)
+        and not _cams_cycle_is_current(morning_cams_base, now)
+    ):
+        available_base = await newer_cams_base(state)
+        cams_update = available_base is not None
+
     if isinstance(existing.get("update_message_id"), int):
+        if cams_update:
+            try:
+                await edit_current_digest(
+                    state,
+                    api_key,
+                    bot_token,
+                    chat_id,
+                    fetch_cams_remote=False,
+                )
+                logging.info(
+                    "CAMS digest refresh accepted forecast base %s",
+                    available_base.isoformat(),
+                )
+            except (StateError, TelegramError, ValueError) as exc:
+                logging.warning(
+                    "CAMS digest refresh deferred to a later checkpoint: %s",
+                    exc,
+                )
         await _refresh_event_catalogs_once(
             now, state, municipal_path, agenda_path, translations_path
         )
@@ -1042,23 +1163,6 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             lambda message_id: delete_message(bot_token, chat_id, message_id),
         )
         return 0 if result == "duplicate" else 1
-
-    heat_level, morning_cams_base = state.morning_environment(now.date())
-    cams_update = False
-    if not state.cams_refresh_attempted(now.date()):
-        try:
-            _, _, available_base = await fetch_cams(
-                cams_data_url, cams_cache_path, now
-            )
-            cams_update = (
-                morning_cams_base is None
-                or available_base > morning_cams_base
-            )
-            if not cams_update:
-                state.mark_cams_refresh_attempted(now.date())
-        except EnvironmentError as exc:
-            logging.warning("CAMS refresh unavailable; preserving morning data: %s", exc)
-            state.mark_cams_refresh_attempted(now.date())
 
     update_aemet = []
     update_environment = []
@@ -1166,7 +1270,6 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         state.mark_morning_environment(
             now.date(), heat.level if heat is not None else None, base
         )
-        state.mark_cams_refresh_attempted(now.date())
     return 0 if result in {
         "success",
         "duplicate",

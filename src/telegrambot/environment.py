@@ -416,5 +416,12 @@ async def fetch_cams(
             failure.source,
             f"{failure.description}; использован локальный снимок",
         ))
+    local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
+    if selected[1].astimezone(timezone.utc).date() < local_day:
+        LOGGER.info(
+            "CAMS previous forecast cycle %s covers local day %s",
+            selected[1].isoformat(),
+            local_day.isoformat(),
+        )
     air, pollen = summarize_cams(selected[0], now)
     return air, pollen, selected[1]

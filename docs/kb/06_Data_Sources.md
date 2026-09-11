@@ -53,9 +53,10 @@ publishes only validated UTC hourly values in a versioned JSON. Producer
 failure preserves the previous file.
 
 At 07:30 the bot reads that JSON once and keeps one atomic last-good local
-copy. The first existing 10:10 update invocation checks once for a newer
-forecast base and uses the existing full-message replacement path only when
-one exists. A stale, malformed, non-covering, or unavailable response is
+copy. Checks at 10:10, 10:25 and 10:40, followed only by the first invocation
+of already scheduled operational windows, continue until today's UTC forecast
+base is accepted. A newer base refreshes the current full message. A stale,
+malformed, non-covering, or unavailable response is
 silent and cannot remove a valid cached enrichment or block the morning
 message. AEMET `Polvo en suspensión` remains an independent CAP warning; CAMS
 dust may affect only conservative explanatory wording.
