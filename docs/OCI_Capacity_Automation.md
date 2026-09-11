@@ -16,24 +16,39 @@ The exact active policy is:
 
 ```text
 Allow group Default/guardamar-capacity-automation to read instances in tenancy where request.region = 'eu-madrid-3'
-Allow group Default/guardamar-capacity-automation to manage instances in tenancy where all {request.operation = 'LaunchInstance', request.permission = 'INSTANCE_CREATE', request.region = 'eu-madrid-3', request.ad = 'OhIQ:EU-MADRID-3-AD-1', target.image.id = 'ocid1.image.oc1.eu-madrid-3.aaaaaaaaurntbnbuaaicth3wbgs77lkqcb6giko55bl6tfkqjk472gvvl6yq'}
+Allow group Default/guardamar-capacity-automation to {INSTANCE_CREATE} in tenancy where all {request.region = 'eu-madrid-3', request.ad = 'OhIQ:EU-MADRID-3-AD-1', target.image.id = 'ocid1.image.oc1.eu-madrid-3.aaaaaaaaurntbnbuaaicth3wbgs77lkqcb6giko55bl6tfkqjk472gvvl6yq'}
 Allow group Default/guardamar-capacity-automation to read instance-images in tenancy where all {request.region = 'eu-madrid-3', target.image.id = 'ocid1.image.oc1.eu-madrid-3.aaaaaaaaurntbnbuaaicth3wbgs77lkqcb6giko55bl6tfkqjk472gvvl6yq'}
-Allow group Default/guardamar-capacity-automation to use vnics in tenancy where all {request.operation = 'LaunchInstance', request.region = 'eu-madrid-3'}
-Allow group Default/guardamar-capacity-automation to use subnets in tenancy where all {request.operation = 'LaunchInstance', request.region = 'eu-madrid-3'}
+Allow group Default/guardamar-capacity-automation to {VNIC_CREATE, VNIC_ATTACH} in tenancy where request.region = 'eu-madrid-3'
+Allow group Default/guardamar-capacity-automation to {SUBNET_ATTACH} in tenancy where request.region = 'eu-madrid-3'
 Allow group Default/guardamar-capacity-automation to inspect vnic-attachments in tenancy where request.region = 'eu-madrid-3'
 Allow group Default/guardamar-capacity-automation to inspect vnics in tenancy where request.region = 'eu-madrid-3'
-Allow group Default/guardamar-capacity-automation to inspect volumes in tenancy where request.region = 'eu-madrid-3'
-Allow group Default/guardamar-capacity-automation to read resource-availability in tenancy
-Allow group Default/guardamar-capacity-automation to use network-security-groups in tenancy where all {request.operation = 'LaunchInstance', request.region = 'eu-madrid-3'}
 Allow group Default/guardamar-capacity-automation to inspect subnets in tenancy where request.region = 'eu-madrid-3'
-Allow group Default/guardamar-capacity-automation to read app-catalog-listing in tenancy where all {request.operation = 'LaunchInstance', request.region = 'eu-madrid-3'}
+Allow group Default/guardamar-capacity-automation to read resource-availability in tenancy
+Allow group Default/guardamar-capacity-automation to read app-catalog-listing in tenancy where request.region = 'eu-madrid-3'
 ```
 
-The broad-looking `manage instances` verb is narrowed to only the
-`INSTANCE_CREATE` permission of `LaunchInstance`, in the exact region, AD, and
-image. The identity has no `INSTANCE_DELETE`, `INSTANCE_UPDATE`, or
-`INSTANCE_POWER_ACTIONS`; it also has no create, update, or delete permission
-for subnet, VCN, NSG, block volume, or boot volume resources.
+The mutating permissions are the exact low-level set required by the OCI
+`LaunchInstance` permission matrix: `INSTANCE_CREATE`, `VNIC_CREATE`,
+`VNIC_ATTACH`, and `SUBNET_ATTACH`. The first production request showed that
+conditioning dependent resource verbs on `request.operation` did not authorize
+the compound launch consistently, so those verbs were replaced by their
+smaller permission sets. The identity has no `INSTANCE_DELETE`,
+`INSTANCE_UPDATE`, `INSTANCE_POWER_ACTIONS`, `VNIC_DELETE`, `VNIC_UPDATE`, or
+`SUBNET_DETACH`; it has no NSG permission and no create, update, or delete
+permission for subnet, VCN, block volume, or boot volume resources.
+
+## First production attempt
+
+The explicitly approved first production dispatch ran on 2026-09-11. Both
+preflights passed and the process made exactly one SDK `LaunchInstance` call.
+OCI returned `404 NotAuthorizedOrNotFound`. OCI Audit recorded only
+`LaunchInstance.begin`, with `resourceId` null, and the Compute instance list
+remained empty. The workflow then disabled itself as designed. No same-run or
+follow-up launch was attempted.
+
+The active policy was subsequently narrowed to the exact permissions above.
+The workflow remains disabled until a separately approved validation attempt;
+neither a schedule nor a manual dispatch can launch while it is disabled.
 
 ## Execution gates
 
