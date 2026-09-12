@@ -27,6 +27,7 @@ official endpoints and lightweight access methods are validated.
 | Policía Local Guardamar | Explicit mobility restrictions | High for direct official notices; publication is irregular | One bounded official HTML page and reviewed linked document | Yes |
 | Agenda Guardamar | Official ticketed events occurring today | High for listed Ayuntamiento events | 05:30 bounded HTML/Schema.org catalog refresh | Yes |
 | Turismo Guardamar municipal agenda | Broader official monthly cultural text plus supplementary MUPI | High for text; image facts require agreement | 05:10 text-first catalog refresh; MUPI only after URL change | Yes |
+| Turismo Guardamar public WordPress festival article | Full dated programme when the monthly MUPI contains only a small inset | High; primary municipal tourism publication | Bounded public REST posts search, then linked full-size poster; explicit dated article facts survive poster/model failure | Yes, narrow Campo programme |
 | Biblioteca Pública Municipal de Guardamar agenda | Library exhibitions, films and other library activities | High; first-party library agenda | One bounded 05:10 list refresh; details only for new, visibly changed, or previously failed cards | Yes |
 | Agrupación Musical Guardamar WordPress posts | Its future public musical events in Guardamar | High for its own published events | One bounded 05:10 REST list refresh of twelve recent posts; changed posts only are extracted | Yes, ADR 0058 |
 | BOE, DOGV, and official Guardamar holiday calendar | Official national, regional, and local days off applicable in Guardamar; Wednesday-market holiday moves | High; legally authoritative annual publications | Small reviewed annual in-code calendar; no morning request | Yes |
@@ -415,6 +416,28 @@ does not trigger a full download. The adapter rejects unattributed articles,
 oversized sections, redirects outside the source hosts and malformed JSON.
 Supplemental results have lower merge priority than official municipal HTML
 and Agenda Guardamar; absence from Todo Cultura never means cancellation.
+
+A nonempty model response is no longer sufficient to mark a programme date
+covered: each independent timed row must have a normalized occurrence. A
+strict quoted-activity fallback covers plainly dated youth cards. When a
+source row itself names later same-weekday dates, those dates are expanded
+within the 44-day catalog horizon after validating month and weekday. This
+preserves the 19/26 September Punto Geodésico routes even though the ordinary
+collection window is only seven days. The row-level evidence is retained
+without advancing a failed programme cursor.
+
+The September 2026 Campo festival exposed a separate gap: the monthly poster
+only gave a tiny inset, while the official Turismo WordPress article and its
+full-size poster gave the exact 12–13 September programme. The bounded public
+article reader records the explicitly dated items; its text wins over a vision
+candidate that conflates the 19:00 parade with untimed fireworks. A model or
+poster failure may omit supplementary venue detail but cannot remove the
+complete article-stated programme.
+
+Multi-day library exhibitions are eligible only on weekdays when the official
+library opening-hours page says the venue is open. A date span alone is not
+evidence of Saturday or Sunday access. See the dated source audit in
+`research/2026-09-12-guardamar-event-coverage.md`.
 
 The cursor, at most 100 lightweight candidates and at most 45 covered dates
 are stored inside the existing atomic municipal catalog. They advance only

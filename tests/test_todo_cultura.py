@@ -16,6 +16,7 @@ from telegrambot.todo_cultura import (
     _participation,
     _read_documents,
     _read_program_window,
+    _event_rows,
     _ticket_url,
 )
 
@@ -50,6 +51,23 @@ class _Opener:
 
 
 class TodoCulturaTests(unittest.TestCase):
+    def test_dated_programme_rows_keep_distinct_same_time_events(self):
+        section = """2026-09-12
+– 10 h.: Visita guiada Castillo y Molino.
+– 10 a 14,30 h.: Torneo de tenis de mesa en Pabellón Sant Jaume.
+– 10,30 a 12,30 h.: Actividad Disney.
+– 11 a 12 h.: Visita guiada al Molino de San Antonio con entrada libre.
+– 11 a 13 h.: Aprender a dibujar de cero a realista.
+– 17 a 22 h.: Actividades del Centro Social Juvenil.
+"""
+        rows = _event_rows(section)
+        self.assertEqual(
+            [time for time, _ in rows],
+            ["10:00", "10:00", "10:30", "11:00"],
+        )
+        self.assertIn("Torneo", rows[1][1])
+        self.assertNotIn("Actividades del Centro", rows[-1][1])
+
     def test_event_time_does_not_read_compact_date_list_as_clock(self):
         self.assertEqual(
             _event_time("5,6 y 7 de agosto a las 22:00 h"),
@@ -211,7 +229,7 @@ class TodoCulturaTests(unittest.TestCase):
 
     def test_unchanged_complete_window_makes_no_detail_request(self):
         prior = {
-            "parser_version": 9,
+            "parser_version": 10,
             "cursor_modified_gmt": "2026-08-07T10:00:00",
             "candidates": [{
                 "id": 128245,
@@ -266,7 +284,7 @@ class TodoCulturaTests(unittest.TestCase):
 
         details.assert_called_once_with([128245])
         self.assertEqual(window.programs[0].dates, (date(2026, 8, 9),))
-        self.assertEqual(window.source_state["parser_version"], 9)
+        self.assertEqual(window.source_state["parser_version"], 10)
 
     def test_same_date_candidates_are_each_processed(self):
         prior = {

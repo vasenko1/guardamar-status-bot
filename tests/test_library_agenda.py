@@ -1,6 +1,7 @@
 import asyncio
 import tempfile
 import unittest
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
@@ -11,6 +12,7 @@ from telegrambot.library_agenda import (
     LibraryAgendaError,
     _LibraryRecord,
     _write_snapshot,
+    _published_open_weekdays,
     extract_events,
     extract_teaser,
     fetch_today_library_events,
@@ -41,6 +43,50 @@ SECOND_ACTIVE = b'''<div class="registro pagina1"><div class="row actividades">
 
 
 class LibraryAgendaTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        hours_patcher = patch(
+            "telegrambot.library_agenda._read_published_open_weekdays",
+            return_value=(0, 1, 2, 3, 4),
+        )
+        hours_patcher.start()
+        self.addCleanup(hours_patcher.stop)
+
+    def test_official_weekly_hours_exclude_closed_weekend(self):
+        page = (
+            "<h2>Horario</h2><p>Lunes a viernes: 9:00 a 13:30h y "
+            "de 17:00 a 20:00h.</p><h2>Festivos 2026</h2>"
+        ).encode()
+        self.assertEqual(_published_open_weekdays(page), (0, 1, 2, 3, 4))
+
+    async def test_range_exhibition_is_not_a_weekend_visit_when_library_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "library.json"
+            event, link = extract_events(LIST, NOW)[0]
+            _write_snapshot(
+                path, NOW, (_LibraryRecord(event, link, True),),
+                (0, 1, 2, 3, 4),
+            )
+            saturday = datetime(2026, 9, 12, 12, tzinfo=TZ)
+            self.assertEqual(
+                await fetch_today_library_events(
+                    saturday, path, Path(directory) / "translations.json"
+                ),
+                (),
+            )
+
+    async def test_offsite_exhibition_not_hidden_by_library_hours(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "library.json"
+            event, link = extract_events(LIST, NOW)[0]
+            _write_snapshot(path, NOW, (
+                _LibraryRecord(replace(event, place="Casa de Cultura"), link, True),
+            ), (0, 1, 2, 3, 4))
+            result = await fetch_today_library_events(
+                datetime(2026, 9, 12, 12, tzinfo=TZ), path,
+                Path(directory) / "translations.json",
+            )
+            self.assertEqual(len(result), 1)
+
     def test_extracts_active_exhibition_from_list(self):
         records = extract_events(LIST, NOW)
         event, link = records[0]

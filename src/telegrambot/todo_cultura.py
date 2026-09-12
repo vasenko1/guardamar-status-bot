@@ -27,7 +27,7 @@ METADATA_PAGE_SIZE = 100
 METADATA_LIMIT_BYTES = 300_000
 ROLLING_WINDOW_DAYS = 7
 CURSOR_OVERLAP_MINUTES = 5
-PARSER_VERSION = 9
+PARSER_VERSION = 10
 API_URL = "https://todoculturavegabaja.es/wp-json/wp/v2/mec-events"
 
 
@@ -74,6 +74,7 @@ class TodoCulturaProgram:
     admissions: Tuple[TodoCulturaAdmission, ...] = ()
     participation: Tuple[TodoCulturaParticipation, ...] = ()
     dates: Tuple[date, ...] = ()
+    event_rows: Tuple[Tuple[date, str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -82,6 +83,53 @@ class TodoCulturaWindow:
 
     programs: Tuple[TodoCulturaProgram, ...]
     source_state: Dict[str, Any]
+
+
+_PROGRAMME_ROW_TIME = re.compile(
+    r"^\s*[–—-]\s*(?:de\s+)?([0-2]?\d)(?:[,:.]([0-5]\d))?\s*"
+    r"(?:h(?:oras?)?\.?|a\b)",
+    re.IGNORECASE,
+)
+
+
+def _event_rows(section: str) -> Tuple[Tuple[str, str], ...]:
+    """Identify independently verifiable rows in a dated programme.
+
+    Todo Cultura republishes whole municipal programmes.  Advancing a date
+    after a merely non-empty model response made partial extractions sticky.
+    These row-level hints form a small deterministic completeness gate while
+    deliberately excluding routine opening-hours rows.
+    """
+
+    rows = []
+    current = []
+    current_time = None
+    for raw_line in section.splitlines()[1:]:
+        line = " ".join(raw_line.split())
+        match = _PROGRAMME_ROW_TIME.match(line)
+        if match is not None and current_time is not None:
+            rows.append((current_time, "\n".join((section.splitlines()[0], *current))))
+            current = []
+            current_time = None
+        if match is None:
+            if current_time is not None:
+                current.append(line)
+            continue
+        folded = line.casefold()
+        if (
+            "actividades del centro social juvenil" in folded
+            or (
+                "molino de san antonio" in folded
+                and "entrada libre" in folded
+            )
+            or "horario de apertura" in folded
+        ):
+            continue
+        current_time = f"{int(match.group(1)):02d}:{match.group(2) or '00'}"
+        current.append(line)
+    if current_time is not None:
+        rows.append((current_time, "\n".join((section.splitlines()[0], *current))))
+    return tuple(rows)
 
 
 class _TextParser(HTMLParser):
@@ -1205,6 +1253,11 @@ def _read_program_window(
                 for detail in _participation(section)
             )),
             dates=tuple(dict.fromkeys(day for day, _ in dated_sections)),
+            event_rows=tuple(
+                (day, start_time, row)
+                for day, section in dated_sections
+                for start_time, row in _event_rows(section)
+            ),
         ))
     for (
         month,
@@ -1225,6 +1278,10 @@ def _read_program_window(
                 for detail in _participation(text)
             ),
             dates=(day,),
+            event_rows=tuple(
+                (day, start_time, row)
+                for start_time, row in _event_rows(text)
+            ),
         ))
     state = {
         "parser_version": PARSER_VERSION,

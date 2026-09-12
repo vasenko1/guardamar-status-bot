@@ -1,5 +1,7 @@
 """Monthly official municipal agenda poster with a small local snapshot."""
 
+from __future__ import annotations
+
 import asyncio
 import hashlib
 import html
@@ -59,6 +61,17 @@ TRANSITION_HORIZON_DAYS = 7
 TEXT_EXTRACTOR_VERSION = 3
 FACEBOOK_SOURCE_PREFIX = "facebook:"
 MAX_FACEBOOK_POSTS = 12
+MAX_TODO_ROW_RECOVERIES = 8
+_SPANISH_MONTHS = {
+    "enero": 1, "febrero": 2, "marzo": 3, "abril": 4,
+    "mayo": 5, "junio": 6, "julio": 7, "agosto": 8,
+    "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12,
+}
+TURISMO_POSTS_URL = (
+    "https://guardamarturismo.com/wp-json/wp/v2/posts"
+    "?search=Fiestas%20del%20Campo&per_page=10"
+    "&_fields=id,date,modified,link,title,content"
+)
 CULTURA_GUARDAMAR_PAGE_URL = "https://www.facebook.com/culturaguardamar"
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 _TIME_PATTERN = re.compile(r"^\d{2}:\d{2}$")
@@ -412,6 +425,442 @@ def _read_url(
     return payload, mime_type
 
 
+def _expand_explicit_todo_dates(
+    events: Tuple[SourceEvent, ...],
+    rows: Tuple[Tuple[date, str, str], ...],
+) -> Tuple[SourceEvent, ...]:
+    """Keep future occurrences explicitly named inside a dated source row.
+
+    Some municipal programme rows describe one Saturday and then name the
+    remaining Saturdays in the same paragraph. The rolling collector need not
+    fetch those distant sections, but the explicit dates must survive now.
+    """
+
+    expanded = list(events)
+    for source_day, start_time, row in rows:
+        match = re.search(
+            r"el resto de las fechas ser[aá]n los (s[aá]bados|domingos) "
+            r"([0-9, y]+) de ([a-záéíóú]+)",
+            row.casefold(),
+        )
+        if match is None:
+            continue
+        month = _SPANISH_MONTHS.get(match.group(3))
+        if month is None:
+            continue
+        weekday = 5 if match.group(1).startswith("s") else 6
+        candidates = [
+            event for event in events
+            if event.start_date == source_day
+            and event.end_date == source_day
+            and event.start_time == start_time
+            and _word_overlap(event.title_es, row) >= 0.5
+        ]
+        if len(candidates) != 1:
+            continue
+        source = candidates[0]
+        for day_number in re.findall(r"\d{1,2}", match.group(2)):
+            try:
+                target_day = date(source_day.year, month, int(day_number))
+            except ValueError:
+                continue
+            if not (
+                source_day < target_day <= source_day + timedelta(days=44)
+                and target_day.weekday() == weekday
+            ):
+                continue
+            if any(
+                event.start_date == target_day
+                and event.start_time == source.start_time
+                and _word_overlap(event.title_es, source.title_es) >= 0.8
+                for event in expanded
+            ):
+                continue
+            expanded.append(replace(
+                source, start_date=target_day, end_date=target_day
+            ))
+    return tuple(expanded)
+
+
+def _strict_quoted_todo_activity(
+    source_day: date, start_time: str, row: str
+) -> Optional[SourceEvent]:
+    """Recover an explicitly dated, quoted activity when model parsing fails."""
+
+    lines = row.splitlines()
+    if len(lines) < 2 or lines[0] != source_day.isoformat():
+        return None
+    first = lines[1]
+    title = re.search(
+        r"\bActividad (?:con el t[ií]tulo )?[‘'\"]([^’'\"]{5,120})[’'\"]",
+        first,
+        re.IGNORECASE,
+    )
+    if title is None:
+        return None
+    interval = re.match(
+        r"\s*[–—-]\s*\d{1,2}(?:[,:.]\d{2})?\s+a\s+"
+        r"(\d{1,2})(?:[,:.]([0-5]\d))?\s*h",
+        first,
+        re.IGNORECASE,
+    )
+    end_time = (
+        f"{int(interval.group(1)):02d}:{interval.group(2) or '00'}"
+        if interval is not None else None
+    )
+    if end_time is not None and end_time <= start_time:
+        return None
+    place = next((
+        value for value in (
+            "Centro Social Juvenil", "Auditorio del Parque Reina Sofía"
+        ) if value.casefold() in first.casefold()
+    ), None)
+    if place is None:
+        return None
+    return SourceEvent(
+        title_es=title.group(1).strip(),
+        start_date=source_day,
+        end_date=source_day,
+        start_time=start_time,
+        end_time=end_time,
+        place=place,
+        category="event",
+        sources=("todo_cultura",),
+    )
+
+
+def _unmatched_todo_rows(
+    rows: Tuple[Tuple[date, str, str], ...],
+    events: Tuple[SourceEvent, ...],
+) -> Tuple[Tuple[date, str, str], ...]:
+    """Require a distinct evidence-matching occurrence for each timed row."""
+
+    available = set(range(len(events)))
+    missing = []
+    for day, start_time, row in rows:
+        matches = sorted(
+            (
+                (_word_overlap(event.title_es, row), index)
+                for index, event in enumerate(events)
+                if index in available
+                and event.start_date == day
+                and event.start_time == start_time
+            ),
+            reverse=True,
+        )
+        if matches and matches[0][0] >= 0.5:
+            available.remove(matches[0][1])
+        else:
+            missing.append((day, start_time, row))
+    return tuple(missing)
+
+
+def _read_turismo_programme(local_day: date) -> Optional[Tuple[str, str, str]]:
+    """Find the current official festival article and its full-size poster.
+
+    The monthly agenda only links a tiny inset of this programme.  WordPress
+    exposes the primary article and the linked poster through a bounded public
+    JSON endpoint, without a new credential or persistent raw cache.
+    """
+
+    try:
+        payload, _, _ = fetch_bounded(
+            TURISMO_POSTS_URL,
+            is_allowed_url=lambda value: _is_allowed_url(value, PAGE_HOSTS),
+            accepted_types=frozenset({"application/json"}),
+            limit_bytes=500_000,
+            timeout_seconds=REQUEST_TIMEOUT_SECONDS,
+            headers={"Accept": "application/json", "User-Agent": "GuardamarMorningDigest/0.12"},
+        )
+        posts = json.loads(payload)
+    except (BoundedFetchError, ValueError, UnicodeDecodeError):
+        return None
+    if not isinstance(posts, list):
+        return None
+    for post in posts[:10]:
+        if not isinstance(post, dict):
+            continue
+        title = post.get("title", {}).get("rendered", "")
+        content = post.get("content", {}).get("rendered", "")
+        link = post.get("link")
+        if not all(isinstance(value, str) for value in (title, content, link)):
+            continue
+        if (
+            "fiestas del campo" not in html.unescape(title).casefold()
+            or str(local_day.year) not in title
+            or not _is_allowed_url(link, PAGE_HOSTS)
+        ):
+            continue
+        decoded = urllib.parse.unquote(html.unescape(content))
+        poster_urls = re.findall(
+            r"https://(?:www\.)?guardamarturismo\.com/"
+            r"wp-content/uploads/[^\s\"'<>]+?\.(?:jpe?g|png)"
+            r"(?=[\s\"'<>?|»)]|$)",
+            decoded,
+            re.IGNORECASE,
+        )
+        poster_url = next(
+            (
+                url for url in poster_urls
+                if "cartel" in url.casefold()
+                and "fiestas-del-campo" in url.casefold()
+                and str(local_day.year) in url
+            ),
+            None,
+        )
+        if poster_url is None:
+            continue
+        article_text = " ".join(html.unescape(re.sub(r"<[^>]+>", " ", content)).split())
+        return link, poster_url, article_text[:12_000]
+    return None
+
+
+def _explicit_fiesta_article_events(
+    article_text: str, year: int
+) -> Tuple[SourceEvent, ...]:
+    """Read the complete dated finale printed in the official article text.
+
+    The linked poster is useful corroboration, but its OCR is not a reliable
+    prerequisite for these facts already stated verbatim in the HTML article.
+    If the source wording changes, return nothing rather than infer a date.
+    """
+
+    saturday = re.search(
+        r"El s[aá]bado (\d{1,2}) de septiembre\b(.*?)El domingo",
+        article_text, re.IGNORECASE,
+    )
+    sunday = re.search(
+        r"El domingo (\d{1,2}) habr[aá]\b(.*?)(?:Es importante|$)",
+        article_text, re.IGNORECASE,
+    )
+    if saturday is None or sunday is None:
+        return ()
+    try:
+        saturday_day = date(year, 9, int(saturday.group(1)))
+        sunday_day = date(year, 9, int(sunday.group(1)))
+    except ValueError:
+        return ()
+    if sunday_day != saturday_day + timedelta(days=1):
+        return ()
+    sat_text, sun_text = saturday.group(2), sunday.group(2)
+    evidence = (
+        (saturday_day, sat_text, r"disparo de cohetes de las (\d{1,2}:\d{2})", "Disparo de cohetes"),
+        (saturday_day, sat_text, r"entrada de bandas comenzar[aá] a las (\d{1,2}:\d{2})", "Entrada de bandas"),
+        (saturday_day, sat_text, r"Desfile Multicolor saldr[aá] a las (\d{1,2}:\d{2})", "Desfile Multicolor"),
+        (saturday_day, sat_text, r"fuegos artificiales", "Fuegos artificiales"),
+        (saturday_day, sat_text, r"Fiesta del Vino a las (\d{1,2}:\d{2})", "Fiesta del Vino"),
+        (saturday_day, sat_text, r"actuaciones desde las (\d{1,2}:\d{2})", "Actuaciones nocturnas de las Fiestas del Campo"),
+        (sunday_day, sun_text, r"chocolate con mona de madrugada", "Chocolate con mona de madrugada"),
+        (sunday_day, sun_text, r"Despert[aà] a las (\d{1,2}:\d{2})", "Despertà"),
+        (sunday_day, sun_text, r"Charanga a las (\d{1,2}:\d{2})", "Charanga"),
+    )
+    events = []
+    for event_day, section, pattern, title in evidence:
+        match = re.search(pattern, section, re.IGNORECASE)
+        if match is None:
+            return ()
+        raw_time = match.group(1) if match.lastindex else None
+        start_time = (
+            f"{int(raw_time.split(':')[0]):02d}:{raw_time.split(':')[1]}"
+            if raw_time is not None else None
+        )
+        teaser = None
+        if title.startswith("Actuaciones nocturnas"):
+            roster = re.search(
+                r"(Participar[aá]n\s+[^.]{30,240}\.)", section,
+                re.IGNORECASE,
+            )
+            if roster is None:
+                return ()
+            teaser = roster.group(1)
+        events.append(SourceEvent(
+            title_es=title,
+            start_date=event_day,
+            end_date=event_day,
+            start_time=start_time,
+            end_time=None,
+            place=None,
+            category="event",
+            sources=("turismo_programme",),
+            teaser_es=teaser,
+        ))
+    return tuple(events)
+
+
+async def _turismo_programme_events(
+    api_key: str,
+    local_day: date,
+    previous: Tuple[SourceEvent, ...],
+    previous_state: Dict[str, Any],
+) -> Tuple[Tuple[SourceEvent, ...], Dict[str, Any]]:
+    programme = await asyncio.to_thread(_read_turismo_programme, local_day)
+    if programme is None:
+        return previous, previous_state
+    article_url, poster_url, article_text = programme
+    explicit_events = _explicit_fiesta_article_events(
+        article_text, local_day.year
+    )
+    fingerprint = hashlib.sha256(article_text.encode("utf-8")).hexdigest()
+    try:
+        image, _, mime_type = await asyncio.to_thread(
+            fetch_bounded,
+            poster_url,
+            is_allowed_url=lambda value: _is_allowed_url(value, PAGE_HOSTS),
+            accepted_types=frozenset({"image/jpeg", "image/png"}),
+            limit_bytes=POSTER_LIMIT_BYTES,
+            timeout_seconds=REQUEST_TIMEOUT_SECONDS,
+            headers={"Accept": "image/jpeg,image/png", "User-Agent": "GuardamarMorningDigest/0.12"},
+        )
+        poster_fingerprint = hashlib.sha256(image).hexdigest()
+        if (
+            previous
+            and previous_state.get("article_url") == article_url
+            and previous_state.get("poster_url") == poster_url
+            and previous_state.get("sha256") == fingerprint
+            and previous_state.get("poster_sha256") == poster_fingerprint
+            and previous_state.get("extractor_version") == 2
+        ):
+            return previous, previous_state
+        month = local_day.strftime("%Y-%m")
+        first = await extract_agenda_events(api_key, image, mime_type)
+        second = await verify_agenda_poster_events(api_key, image, mime_type)
+        first_events = normalize_extraction_candidates(
+            {**first, "month": month}, month, "turismo_programme"
+        )
+        second_events = normalize_extraction_candidates(
+            {**second, "month": month}, month, "turismo_programme"
+        )
+        verified = intersect_verified_poster_events(first_events, second_events)
+        article_result = await extract_agenda_text_events(api_key, article_text)
+        article_events = normalize_extraction_candidates(
+            {**article_result, "month": month},
+            month,
+            "turismo_programme",
+            article_text,
+        )
+        # A primary article can corroborate a detail that one visual reading
+        # missed.  Require the actual words and time to exist in its text.
+        corroborated = tuple(
+            event for event in (*first_events, *second_events)
+            if (
+                _word_overlap(event.title_es, article_text) >= 0.5
+                and (event.start_time is None or _evidence_supports_time(
+                    event.start_time, article_text
+                ))
+            )
+        )
+        events = merge_text_and_poster_events(verified, article_events)
+        events = merge_text_and_poster_events(events, corroborated)
+        saturday = re.search(
+            r"El s[aá]bado\s+(\d{1,2})\s+de septiembre.*?"
+            r"actuaciones desde las 23:00 horas\s*\.\s*"
+            r"(Participar[aá]n\s+[^.]{30,240}\.)",
+            article_text,
+            re.IGNORECASE,
+        )
+        if saturday is not None:
+            festival_day = date(local_day.year, 9, int(saturday.group(1)))
+            events = tuple(
+                event for event in events
+                if not (
+                    event.start_date == festival_day
+                    and event.start_time == "23:00"
+                )
+            ) + (SourceEvent(
+                title_es="Actuaciones nocturnas de las Fiestas del Campo",
+                start_date=festival_day,
+                end_date=festival_day,
+                start_time="23:00",
+                end_time=None,
+                place=None,
+                category="event",
+                sources=("turismo_programme",),
+                teaser_es=saturday.group(2),
+            ),)
+        sunday = re.search(
+            r"El domingo\s+(\d{1,2})\s+habr[aá]\s+"
+            r"chocolate con mona de madrugada",
+            article_text,
+            re.IGNORECASE,
+        )
+        if sunday is not None:
+            festival_day = date(local_day.year, 9, int(sunday.group(1)))
+            events = tuple(
+                event for event in events
+                if not (
+                    event.start_date == festival_day
+                    and "chocolate con mona" in normalized_title(event.title_es)
+                )
+            ) + (SourceEvent(
+                title_es="Chocolate con mona de madrugada",
+                start_date=festival_day,
+                end_date=festival_day,
+                start_time=None,
+                end_time=None,
+                place=None,
+                category="event",
+                sources=("turismo_programme",),
+            ),)
+        cleaned = []
+        seen_charanga = set()
+        for event in events:
+            title = normalized_title(event.title_es)
+            if "fuegos artificiales" in title or "chocolate con mona" in title:
+                # The official programme says "after the parade" and
+                # "during the night", not an exact clock time.
+                event = replace(event, start_time=None, end_time=None)
+            if "charanga" in title:
+                key = (event.start_date, event.start_time)
+                if key in seen_charanga:
+                    continue
+                seen_charanga.add(key)
+            cleaned.append(event)
+        events = tuple(cleaned)
+        if explicit_events:
+            # The article states the parade time but leaves the fireworks
+            # untimed. A vision candidate sometimes combines both under
+            # 19:00; the article's separate facts take precedence.
+            charanga_place = next((
+                event.place for event in events
+                if "charanga" in normalized_title(event.title_es)
+                and event.place is not None
+            ), None)
+            events = tuple(
+                replace(event, place=charanga_place)
+                if event.title_es == "Charanga" and charanga_place else event
+                for event in explicit_events
+            )
+        events = tuple(
+            event for event in events
+            if local_day <= event.end_date <= local_day + timedelta(days=44)
+        )
+        if not events:
+            return previous, previous_state
+        return events, {
+            "article_url": article_url,
+            "poster_url": poster_url,
+            "sha256": fingerprint,
+            "poster_sha256": poster_fingerprint,
+            "extractor_version": 2,
+        }
+    except (BoundedFetchError, GeminiError, MunicipalAgendaError) as exc:
+        LOGGER.warning("Official Turismo programme unavailable: %s", exc)
+        if (
+            previous and previous_state.get("sha256") == fingerprint
+            and previous_state.get("article_url") == article_url
+        ):
+            return previous, previous_state
+        if explicit_events:
+            return explicit_events, {
+                "article_url": article_url,
+                "poster_url": poster_url,
+                "sha256": fingerprint,
+                # Try the poster again on a later run for venue/details.
+                "extractor_version": 1,
+            }
+        return previous, previous_state
+
+
 def extract_poster_url(payload: bytes) -> str:
     """Find the official MUPI monthly poster linked by the tourism page."""
 
@@ -582,16 +1031,25 @@ def _same_occurrence(left: SourceEvent, right: SourceEvent) -> bool:
     if (
         left.start_date != right.start_date
         or left.end_date != right.end_date
-        or left.start_time != right.start_time
+        or (
+            left.start_time is not None
+            and right.start_time is not None
+            and left.start_time != right.start_time
+        )
     ):
         return False
     if (
         left.place is not None
         and right.place is not None
+        and left.place.casefold() != "guardamar del segura"
+        and right.place.casefold() != "guardamar del segura"
         and _word_overlap(left.place, right.place) < 0.5
     ):
         return False
-    return _word_overlap(left.title_es, right.title_es) >= 0.5
+    required_overlap = (
+        0.8 if left.start_time is None or right.start_time is None else 0.5
+    )
+    return _word_overlap(left.title_es, right.title_es) >= required_overlap
 
 
 def _poster_conflicts_with_text(
@@ -660,6 +1118,16 @@ def merge_text_and_poster_events(
                     _richer_title(current.title_es, poster_event.title_es)
                     if same_occurrence and candidate_is_text
                     else current.title_es
+                ),
+                "start_time": current.start_time or poster_event.start_time,
+                "end_time": current.end_time or poster_event.end_time,
+                "place": (
+                    poster_event.place
+                    if current.place is None or (
+                        current.place.casefold() == "guardamar del segura"
+                        and poster_event.place is not None
+                    )
+                    else current.place
                 ),
                 "sources": tuple(dict.fromkeys(
                     current.sources + poster_event.sources
@@ -1605,6 +2073,10 @@ async def refresh_municipal_catalog(
             )
         )
         old_facebook_events = _facebook_source_events(old_events)
+        old_programme_events = tuple(
+            event for event in old_events
+            if "turismo_programme" in event.sources
+        )
 
         text_source = old_sources.get("turismo_html", {})
         if not page_text:
@@ -1737,12 +2209,14 @@ async def refresh_municipal_catalog(
         )
         todo_events = prior_todo_events
         todo_window = None
+        todo_explicit_rows: Tuple[Tuple[date, str, str], ...] = ()
         try:
             todo_window = await fetch_program_window(
                 local_now.date(),
                 todo_source if isinstance(todo_source, dict) else None,
             )
             for todo_program in todo_window.programs:
+                todo_explicit_rows += todo_program.event_rows
                 todo_result = await extract_agenda_text_events(
                     api_key,
                     todo_program.text,
@@ -1753,11 +2227,76 @@ async def refresh_municipal_catalog(
                     else local_now.strftime("%Y-%m")
                 )
                 todo_result = {**todo_result, "month": todo_month}
-                new_todo_events = normalize_extraction_candidates(
-                    todo_result,
-                    todo_month,
-                    "todo_cultura",
-                    todo_program.text,
+                try:
+                    new_todo_events = normalize_extraction_candidates(
+                        todo_result,
+                        todo_month,
+                        "todo_cultura",
+                        todo_program.text,
+                    )
+                except MunicipalAgendaError as exc:
+                    if exc.diagnostic_code != "NO-VALID-EVENTS":
+                        raise
+                    new_todo_events = ()
+                corroborating_events = (
+                    *text_events, *poster_events, *prior_todo_events
+                )
+                pending_rows = _unmatched_todo_rows(
+                    todo_program.event_rows,
+                    (*new_todo_events, *corroborating_events),
+                )
+                if pending_rows:
+                    if len(pending_rows) <= MAX_TODO_ROW_RECOVERIES:
+                        for row_day, row_time, row in pending_rows:
+                            row_result = await extract_agenda_text_events(
+                                api_key, row
+                            )
+                            try:
+                                recovered = normalize_extraction_candidates(
+                                    {**row_result, "month": todo_month},
+                                    todo_month,
+                                    "todo_cultura",
+                                    row,
+                                )
+                            except MunicipalAgendaError as exc:
+                                if exc.diagnostic_code != "NO-VALID-EVENTS":
+                                    raise
+                                recovered = ()
+                            new_todo_events = merge_text_and_poster_events(
+                                new_todo_events, recovered
+                            )
+                            if not any(
+                                event.start_date == row_day
+                                and event.start_time == row_time
+                                and _word_overlap(event.title_es, row) >= 0.5
+                                for event in new_todo_events
+                            ):
+                                strict = _strict_quoted_todo_activity(
+                                    row_day, row_time, row
+                                )
+                                if strict is not None:
+                                    new_todo_events = merge_text_and_poster_events(
+                                        new_todo_events, (strict,)
+                                    )
+                    pending_rows = _unmatched_todo_rows(
+                        todo_program.event_rows,
+                        (*new_todo_events, *corroborating_events),
+                    )
+                if pending_rows:
+                    missing = ", ".join(
+                        f"{day.isoformat()} {start_time}"
+                        for day, start_time, _ in pending_rows
+                    )
+                    raise MunicipalAgendaError(
+                        "Todo Cultura extraction was incomplete",
+                        code="TODO-INCOMPLETE",
+                        description=(
+                            "не все строки программы распознаны; "
+                            f"не подтверждено время {missing}"
+                        ),
+                    )
+                new_todo_events = _expand_explicit_todo_dates(
+                    new_todo_events, todo_program.event_rows
                 )
                 new_todo_events = _enrich_admissions(
                     new_todo_events,
@@ -1813,6 +2352,15 @@ async def refresh_municipal_catalog(
                         "дополнительный снимок"
                     ),
                 ))
+
+        # A previously verified occurrence can still carry source-explicit
+        # future dates when an unrelated programme row fails model parsing.
+        # Keep the cursor unchanged, but do not discard those deterministic
+        # recurring dates from the newly fetched official-attributed text.
+        if todo_explicit_rows:
+            todo_events = _expand_explicit_todo_dates(
+                todo_events, todo_explicit_rows
+            )
 
         facebook_source = old_sources.get("facebook", {})
         prior_facebook_posts = _facebook_prior_posts(facebook_source)
@@ -1901,7 +2449,15 @@ async def refresh_municipal_catalog(
                     stage="SUPPLEMENTAL",
                 ))
 
+        programme_source = old_sources.get("turismo_programme", {})
+        programme_events, programme_state = await _turismo_programme_events(
+            api_key,
+            local_now.date(),
+            old_programme_events,
+            programme_source if isinstance(programme_source, dict) else {},
+        )
         events = merge_text_and_poster_events(text_events, poster_events)
+        events = merge_text_and_poster_events(events, programme_events)
         events = merge_text_and_poster_events(events, todo_events)
         events = merge_text_and_poster_events(events, facebook_events)
         cultura_state: Dict[str, Any] = {"checked_at": now.isoformat()}
@@ -2000,6 +2556,8 @@ async def refresh_municipal_catalog(
             }
         elif isinstance(todo_source, dict) and todo_source:
             source_state["todo_cultura"] = todo_source
+        if programme_state:
+            source_state["turismo_programme"] = programme_state
         if facebook_state:
             source_state["facebook"] = facebook_state
         source_state["cultura_guardamar"] = cultura_state
@@ -2234,7 +2792,10 @@ async def fetch_today_municipal_events(
                 starts_at=starts_at,
                 ends_at=ends_at,
                 place=source.place,
-                active_until=source.end_date,
+                active_until=(
+                    source.end_date
+                    if source.start_date != source.end_date else None
+                ),
                 category=source.category,
                 ticket_price_cents=source.ticket_price_cents,
                 ticket_url=source.ticket_url,
