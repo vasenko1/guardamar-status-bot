@@ -11,6 +11,12 @@ from telegrambot.municipal_agenda import (
     MunicipalAgendaError,
     SourceEvent,
     _current_events,
+    _expand_explicit_todo_dates,
+    _explicit_fiesta_article_events,
+    _strict_quoted_todo_activity,
+    _turismo_programme_events,
+    _unmatched_todo_rows,
+    _read_turismo_programme,
     _enrich_admissions,
     _enrich_cultura_teasers,
     _enrich_todo_participation,
@@ -44,6 +50,172 @@ from telegrambot.todo_cultura import (
 )
 
 TZ = ZoneInfo("Europe/Madrid")
+
+
+class ExplicitTodoDatesTest(unittest.TestCase):
+    def test_same_time_different_event_does_not_cover_missing_row(self):
+        tour = SourceEvent(
+            title_es="Visita guiada Castillo y Molino",
+            start_date=date(2026, 9, 12),
+            end_date=date(2026, 9, 12),
+            start_time="10:00",
+            end_time=None,
+            place=None,
+            category="event",
+            sources=("todo_cultura",),
+        )
+        rows = (
+            (date(2026, 9, 12), "10:00", "2026-09-12\n– 10 h.: Visita guiada Castillo y Molino"),
+            (date(2026, 9, 12), "10:00", "2026-09-12\n– 10 a 14 h.: Torneo de Tenis de Mesa"),
+        )
+        self.assertEqual(_unmatched_todo_rows(rows, (tour,)), rows[1:])
+
+    def test_official_fiesta_article_has_dated_programme_without_ocr(self):
+        text = (
+            "El sábado 12 de septiembre concentra los actos. Tras el disparo "
+            "de cohetes de las 13:00 horas, la entrada de bandas comenzará "
+            "a las 18:30 y el Desfile Multicolor saldrá a las 19:00 horas. "
+            "Continuará con fuegos artificiales, Fiesta del Vino a las "
+            "21:00 horas y actuaciones desde las 23:00 horas. Participarán "
+            "la Escuela Chari Candela, Retropop, DJ y Hora Loca, además de "
+            "Gamburrino para mayores y Gamburrino Juvenil para jóvenes. "
+            "El domingo 13 habrá chocolate con mona de madrugada, "
+            "Despertà a las 6:00 horas y cierre con Charanga a las 10:00 "
+            "horas. Es importante consultar cambios."
+        )
+        events = _explicit_fiesta_article_events(text, 2026)
+        self.assertEqual(len(events), 9)
+        self.assertEqual(events[2].start_time, "19:00")
+        self.assertIsNone(events[3].start_time)
+        self.assertEqual(events[-1].start_date, date(2026, 9, 13))
+
+    def test_strict_activity_recovery_uses_only_row_facts(self):
+        row = (
+            "2026-09-12\n"
+            "– 11 a 13 h.: Actividad con el título ‘Aprender a dibujar de cero "
+            "a realista’ para jóvenes en el Centro Social Juvenil."
+        )
+        event = _strict_quoted_todo_activity(
+            date(2026, 9, 12), "11:00", row
+        )
+        self.assertIsNotNone(event)
+        self.assertEqual(event.title_es, "Aprender a dibujar de cero a realista")
+        self.assertEqual(event.end_time, "13:00")
+        self.assertEqual(event.place, "Centro Social Juvenil")
+
+    def test_future_named_saturdays_survive_rolling_window(self):
+        route = SourceEvent(
+            title_es="Ruta gratuita al punto geodésico",
+            start_date=date(2026, 9, 12),
+            end_date=date(2026, 9, 12),
+            start_time="08:30",
+            end_time=None,
+            place="Guardamar",
+            category="event",
+            sources=("todo_cultura",),
+        )
+        row = (
+            "Sábado 12 de septiembre\n"
+            "– 8,30 horas: Ruta gratuita al punto geodésico.\n"
+            "El resto de las fechas serán los sábados 19 y 26 de septiembre."
+        )
+        result = _expand_explicit_todo_dates(
+            (route,), ((date(2026, 9, 12), "08:30", row),)
+        )
+        self.assertEqual(
+            [event.start_date for event in result],
+            [date(2026, 9, 12), date(2026, 9, 19), date(2026, 9, 26)],
+        )
+
+    def test_does_not_invent_non_matching_weekday(self):
+        event = SourceEvent(
+            title_es="Ruta gratuita al punto geodésico",
+            start_date=date(2026, 9, 12),
+            end_date=date(2026, 9, 12),
+            start_time="08:30",
+            end_time=None,
+            place=None,
+            category="event",
+            sources=("todo_cultura",),
+        )
+        row = (
+            "Sábado 12 de septiembre\n"
+            "– 8,30 horas: Ruta gratuita al punto geodésico.\n"
+            "El resto de las fechas serán los sábados 18 de septiembre."
+        )
+        self.assertEqual(
+            _expand_explicit_todo_dates(
+                (event,), ((date(2026, 9, 12), "08:30", row),)
+            ),
+            (event,),
+        )
+
+
+class TurismoProgrammeFallbackTest(unittest.IsolatedAsyncioTestCase):
+    async def test_same_url_replaced_poster_is_read_again(self):
+        text = (
+            "El sábado 12 de septiembre: disparo de cohetes de las 13:00 "
+            "horas, la entrada de bandas comenzará a las 18:30 y el "
+            "Desfile Multicolor saldrá a las 19:00 horas. Después fuegos "
+            "artificiales, Fiesta del Vino a las 21:00 horas y actuaciones "
+            "desde las 23:00 horas. Participarán la Escuela Chari Candela, "
+            "Retropop, DJ y Hora Loca, además de Gamburrino para mayores "
+            "y Gamburrino Juvenil para jóvenes. El domingo 13 habrá "
+            "chocolate con mona de madrugada, Despertà a las 6:00 horas "
+            "y cierre con Charanga a las 10:00 horas. Es importante."
+        )
+        existing = _explicit_fiesta_article_events(text, 2026)
+        prior = {
+            "article_url": "https://guardamarturismo.com/article",
+            "poster_url": "https://guardamarturismo.com/poster.jpg",
+            "sha256": hashlib.sha256(text.encode()).hexdigest(),
+            "poster_sha256": hashlib.sha256(b"old-image").hexdigest(),
+            "extractor_version": 2,
+        }
+        extraction = AsyncMock(side_effect=GeminiError("offline"))
+        with patch(
+            "telegrambot.municipal_agenda._read_turismo_programme",
+            return_value=(prior["article_url"], prior["poster_url"], text),
+        ), patch(
+            "telegrambot.municipal_agenda.fetch_bounded",
+            return_value=(b"new-image", prior["poster_url"], "image/jpeg"),
+        ), patch(
+            "telegrambot.municipal_agenda.extract_agenda_events",
+            new=extraction,
+        ):
+            await _turismo_programme_events(
+                "test", date(2026, 9, 12), existing, prior
+            )
+        extraction.assert_awaited_once()
+
+    async def test_official_article_survives_image_extraction_failure(self):
+        text = (
+            "El sábado 12 de septiembre: disparo de cohetes de las 13:00 "
+            "horas, la entrada de bandas comenzará a las 18:30 y el "
+            "Desfile Multicolor saldrá a las 19:00 horas. Después, fuegos "
+            "artificiales, Fiesta del Vino a las 21:00 horas y actuaciones "
+            "desde las 23:00 horas. Participarán la Escuela Chari Candela, "
+            "Retropop, DJ y Hora Loca, además de Gamburrino para mayores "
+            "y Gamburrino Juvenil para jóvenes. El domingo 13 habrá "
+            "chocolate con mona de madrugada, Despertà a las 6:00 horas "
+            "y cierre con Charanga a las 10:00 horas. Es importante."
+        )
+        with patch(
+            "telegrambot.municipal_agenda._read_turismo_programme",
+            return_value=("https://guardamarturismo.com/article", "https://guardamarturismo.com/poster.jpg", text),
+        ), patch(
+            "telegrambot.municipal_agenda.fetch_bounded",
+            return_value=(b"image", "https://guardamarturismo.com/poster.jpg", "image/jpeg"),
+        ), patch(
+            "telegrambot.municipal_agenda.extract_agenda_events",
+            new=AsyncMock(side_effect=GeminiError("offline")),
+        ):
+            events, state = await _turismo_programme_events(
+                "test", date(2026, 9, 12), (), {}
+            )
+        self.assertEqual(len(events), 9)
+        self.assertIsNone(next(e for e in events if e.title_es == "Fuegos artificiales").start_time)
+        self.assertEqual(state["extractor_version"], 1)
 
 
 def extraction():
@@ -83,6 +255,14 @@ def extraction():
 
 class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
+        programme_patcher = patch(
+            "telegrambot.municipal_agenda._turismo_programme_events",
+            new=AsyncMock(side_effect=lambda _key, _day, prior, state: (
+                prior, state
+            )),
+        )
+        programme_patcher.start()
+        self.addCleanup(programme_patcher.stop)
         patcher = patch(
             "telegrambot.municipal_agenda.fetch_program_window",
             new=AsyncMock(side_effect=TodoCulturaError(
@@ -99,6 +279,58 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         )
         facebook_patcher.start()
         self.addCleanup(facebook_patcher.stop)
+
+    def test_timed_text_enriches_untimed_monthly_poster_occurrence(self):
+        day = date(2026, 9, 12)
+        poster = SourceEvent(
+            "Torneo de Presentación del Club Tenis de Mesa Guardamar",
+            day, day, None, None, "Guardamar del Segura", "event",
+            ("mupi",),
+        )
+        programme = SourceEvent(
+            "Torneo de presentación del Club Tenis de Mesa Guardamar",
+            day, day, "10:00", "14:30", "Pabellón Sant Jaume", "event",
+            ("todo_cultura",),
+        )
+        merged = merge_text_and_poster_events((poster,), (programme,))
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0].start_time, "10:00")
+        self.assertEqual(merged[0].end_time, "14:30")
+        self.assertEqual(merged[0].place, "Pabellón Sant Jaume")
+
+    def test_current_exhibition_obeys_official_weekend_opening_days(self):
+        exhibition = SourceEvent(
+            "IMBORRABLE", date(2026, 9, 1), date(2026, 10, 16),
+            None, None, "Casa de Cultura", "exhibition", ("turismo_html",),
+        )
+        saturday = _apply_reviewed_daily_schedules(
+            (exhibition,), date(2026, 9, 12)
+        )
+        sunday = _apply_reviewed_daily_schedules(
+            (exhibition,), date(2026, 9, 13)
+        )
+        self.assertEqual(saturday[0].start_time, "10:00")
+        self.assertEqual(saturday[0].end_time, "14:00")
+        self.assertEqual(sunday, ())
+
+    def test_discovers_full_size_poster_from_official_wordpress_article(self):
+        post = [{
+            "title": {"rendered": "Programa Fiestas del Campo 2026"},
+            "link": "https://guardamarturismo.com/programa-campo/",
+            "content": {"rendered": (
+                "<p>El sábado 12 de septiembre hay actos.</p>"
+                "[vc_btn link=\"url:https%3A%2F%2Fguardamarturismo.com%2F"
+                "wp-content%2Fuploads%2F2026%2F08%2FCARTEL-OK-"
+                "fiestas-del-campo-2026.jpg-1-scaled.jpeg|target:_blank\"]"
+            )},
+        }]
+        with patch(
+            "telegrambot.municipal_agenda.fetch_bounded",
+            return_value=(json.dumps(post).encode(), "", "application/json"),
+        ):
+            found = _read_turismo_programme(date(2026, 9, 12))
+        self.assertIsNotNone(found)
+        self.assertTrue(found[1].endswith("-1-scaled.jpeg"))
 
     def test_extracts_declared_month_and_only_programme_section(self):
         payload = b"""

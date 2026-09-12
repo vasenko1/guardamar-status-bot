@@ -22,6 +22,10 @@ LIBRARY_AGENDA_URL = (
     "https://www.bibliotecaspublicas.es/guardamardelsegura/"
     "actividades-programas/Agenda-de-actividades.html"
 )
+LIBRARY_HOURS_URL = (
+    "https://www.bibliotecaspublicas.es/guardamardelsegura/"
+    "Localizacion-Horarios.html"
+)
 LIBRARY_HOST = "www.bibliotecaspublicas.es"
 REQUEST_TIMEOUT_SECONDS = 15
 PAGE_LIMIT_BYTES = 300_000
@@ -178,6 +182,26 @@ def _read_page(url: str) -> bytes:
     return payload
 
 
+def _published_open_weekdays(payload: bytes) -> Optional[Tuple[int, ...]]:
+    """Read weekly public access from the library's official hours page."""
+
+    page = html.unescape(payload.decode("utf-8", "replace"))
+    plain = " ".join(re.sub(r"<[^>]+>", " ", page).split())
+    hours = plain.split("Festivos", 1)[0].casefold()
+    if "lunes a viernes" not in hours:
+        return None
+    weekdays = set(range(5))
+    if re.search(r"s[aá]bados?\s*:", hours):
+        weekdays.add(5)
+    if re.search(r"domingos?\s*:", hours):
+        weekdays.add(6)
+    return tuple(sorted(weekdays))
+
+
+def _read_published_open_weekdays() -> Optional[Tuple[int, ...]]:
+    return _published_open_weekdays(_read_page(LIBRARY_HOURS_URL))
+
+
 def _activity_records(page: str) -> Tuple[Dict[str, str], ...]:
     parser = _AgendaListParser()
     parser.feed(page)
@@ -281,10 +305,13 @@ def extract_teaser(payload: bytes) -> Optional[str]:
 
 
 def _write_snapshot(
-    path: Path, now: datetime, records: Tuple[_LibraryRecord, ...]
+    path: Path, now: datetime, records: Tuple[_LibraryRecord, ...],
+    open_weekdays: Optional[Tuple[int, ...]] = None,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = {"version": 2, "fetched_at": now.isoformat(), "events": [
+    data = {"version": 2, "fetched_at": now.isoformat(),
+            "open_weekdays": list(open_weekdays) if open_weekdays is not None else None,
+            "events": [
         {
             "title": record.event.title,
             "starts_at": record.event.starts_at.isoformat() if record.event.starts_at else None,
@@ -352,9 +379,35 @@ def _load_snapshot(path: Path) -> Tuple[_LibraryRecord, ...]:
         raise LibraryAgendaError("Library agenda snapshot is invalid") from exc
 
 
+def _load_open_weekdays(path: Path) -> Optional[Tuple[int, ...]]:
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8")).get("open_weekdays")
+    except (OSError, ValueError, AttributeError) as exc:
+        raise LibraryAgendaError("Library hours snapshot is invalid") from exc
+    if raw is None:
+        return None
+    if (
+        not isinstance(raw, list)
+        or not all(type(day) is int and 0 <= day <= 6 for day in raw)
+        or len(set(raw)) != len(raw)
+    ):
+        raise LibraryAgendaError("Library hours snapshot is invalid")
+    return tuple(raw)
+
+
 async def refresh_library_catalog(now: datetime, state_path: Path) -> Tuple[Event, ...]:
     records = extract_events(await asyncio.to_thread(_read_page, LIBRARY_AGENDA_URL), now)
     previous = await asyncio.to_thread(_load_snapshot, state_path) if state_path.exists() else ()
+    previous_weekdays = (
+        await asyncio.to_thread(_load_open_weekdays, state_path)
+        if state_path.exists() else None
+    )
+    try:
+        open_weekdays = await asyncio.to_thread(_read_published_open_weekdays)
+    except LibraryAgendaError:
+        open_weekdays = previous_weekdays
+    if open_weekdays is None:
+        open_weekdays = previous_weekdays
     previous_by_url = {
         record.detail_url: record for record in previous if record.detail_url
     }
@@ -375,18 +428,34 @@ async def refresh_library_catalog(now: datetime, state_path: Path) -> Tuple[Even
         refreshed.append(_LibraryRecord(
             replace(event, teaser=teaser), link, detail_loaded
         ))
-    await asyncio.to_thread(_write_snapshot, state_path, now, tuple(refreshed))
+    await asyncio.to_thread(
+        _write_snapshot, state_path, now, tuple(refreshed), open_weekdays
+    )
     return tuple(record.event for record in refreshed)
 
 
 async def fetch_today_library_events(now: datetime, state_path: Path, translation_cache_path: Path) -> Tuple[Event, ...]:
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
+    open_weekdays = await asyncio.to_thread(_load_open_weekdays, state_path)
     result = []
     for record in await asyncio.to_thread(_load_snapshot, state_path):
         event = record.event
         active = ((event.starts_at is not None and event.starts_at.date() == local_day) or
                   (event.starts_at is None and event.active_until is not None and event.active_until >= local_day))
         if not active:
+            continue
+        if (
+            event.category == "exhibition"
+            and open_weekdays is not None
+            and local_day.weekday() not in open_weekdays
+            and (
+                event.place is None
+                or any(
+                    marker in event.place.casefold()
+                    for marker in ("biblioteca", "library", "hall")
+                )
+            )
+        ):
             continue
         teaser = (cached_translation(translation_cache_path, "library_agenda_teaser", event.teaser)
                   if event.teaser else None)
@@ -397,12 +466,19 @@ async def fetch_today_library_events(now: datetime, state_path: Path, translatio
 
 async def library_translation_items(now: datetime, state_path: Path) -> Tuple[Tuple[str, str], ...]:
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
+    open_weekdays = await asyncio.to_thread(_load_open_weekdays, state_path)
     items = []
     for record in await asyncio.to_thread(_load_snapshot, state_path):
         event = record.event
         active = ((event.starts_at is not None and event.starts_at.date() == local_day) or
                   (event.starts_at is None and event.active_until is not None and event.active_until >= local_day))
         if active:
+            if (
+                event.category == "exhibition"
+                and open_weekdays is not None
+                and local_day.weekday() not in open_weekdays
+            ):
+                continue
             items.append(("library_agenda", event.title))
             if event.teaser:
                 items.append(("library_agenda_teaser", event.teaser))

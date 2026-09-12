@@ -23,7 +23,27 @@
     "actuación musical del grupo 40 duros y cierre": "Концерт группы 40 Duros и закрытие торговой ярмарки",
     "trivox (tributo a il divo)": "TRIVOX, благотворительный концерт-трибьют Il Divo в поддержку борьбы с раком",
     "concierto benéfico: trivox (tributo a il divo) para la lucha contra el cáncer": "TRIVOX, благотворительный концерт-трибьют Il Divo в поддержку борьбы с раком",
-    "taller de guitarras eléctricas": "Мастер-класс по электрогитаре"
+    "taller de guitarras eléctricas": "Мастер-класс по электрогитаре",
+    "torneo de presentación del club tenis de mesa guardamar": "Презентационный турнир клуба настольного тенниса Гвардамар",
+    "free tour guiada y gratuita al punto geodésico": "Бесплатная экскурсия к геодезической точке",
+    "actividad disney": "Детская программа «Disney»",
+    "aprender a dibujar de cero a realista": "Мастер-класс по реалистичному рисунку",
+    "aprender a dibujar de cero a realista para jóvenes en el centro social juvenil": "Мастер-класс по реалистичному рисунку для молодёжи",
+    "aprender a dibujar de cero a realista para jóvenes en el csj": "Мастер-класс по реалистичному рисунку для молодёжи",
+    "despertà": "Праздничная побудка Despertà",
+    "visita guiada combinada memoria de arena: castillo y molino de san antonio": "Экскурсия «Memoria de Arena» по замку и мельнице Сан-Антонио",
+    "visita guiada memoria de arena": "Экскурсия «Memoria de Arena» по замку и мельнице Сан-Антонио",
+    "aprender a dibujar de cero a realista para jóvenes de 12 a 30 años": "Мастер-класс по реалистичному рисунку для молодёжи 12–30 лет",
+    "disparo de cohetes": "Праздничный запуск ракет",
+    "entrada de bandas": "Шествие музыкальных оркестров",
+    "desfile multicolor": "Красочный парад",
+    "fiesta del vino": "Праздник вина",
+    "fuegos artificiales": "Фейерверк после парада",
+    "actuaciones nocturnas de las fiestas del campo": "Вечерняя программа праздника Campo de Guardamar",
+    "participarán la escuela chari candela, retropop, dj y hora loca, además de gamburrino para mayores de edad y gamburrino juvenil para participantes de 11 a 17 años.": "Школа танца Chari Candela, ретропоп, DJ и Hora Loca; игра Gamburrino для взрослых и подростков 11–17 лет.",
+    "chocolate con mona de madrugada": "Ночное угощение шоколадом с моной",
+    "despertá": "Праздничная побудка Despertà",
+    "charanga": "Завершение праздника с уличным оркестром"
   },
   "posters": {
     "mupi-agosto-2026-scaled.jpg": {
@@ -222,6 +242,42 @@
     }
   },
   "schedules": [
+    {
+      "match": ["imborrable"],
+      "requires": {"start_date": "2026-09-01", "end_date": "2026-10-16"},
+      "weekday_windows": {
+        "weekday": ["10:00", "20:00"],
+        "saturday": ["10:00", "14:00"],
+        "sunday": null
+      },
+      "set": {
+        "participation_note": "в будни перерыв 14:00–17:00"
+      }
+    },
+    {
+      "match": ["amigos y conocidos"],
+      "requires": {"start_date": "2026-09-07", "end_date": "2026-09-23"},
+      "weekday_windows": {
+        "weekday": ["09:00", "20:00"],
+        "saturday": null,
+        "sunday": null
+      },
+      "set": {
+        "participation_note": "в будни перерыв 13:30–17:00"
+      }
+    },
+    {
+      "match": ["josé luis narbaiza"],
+      "requires": {"start_date": "2026-09-07", "end_date": "2026-09-23"},
+      "weekday_windows": {
+        "weekday": ["09:00", "20:00"],
+        "saturday": null,
+        "sunday": null
+      },
+      "set": {
+        "participation_note": "в будни перерыв 13:30–17:00"
+      }
+    },
     {
       "match": ["mediterráneo", "lenguaje del agua"],
       "requires": {"start_date": "2026-06-19", "end_date": "2026-08-14"},
