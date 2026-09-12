@@ -6,6 +6,8 @@ from zoneinfo import ZoneInfo
 
 from telegrambot.agenda import _write_agenda_snapshot
 from telegrambot.models import Event
+from telegrambot.event_translations import cached_title
+from telegrambot.morning import _merge_events
 from telegrambot.municipal_agenda import (
     SourceEvent,
     _snapshot_data,
@@ -18,6 +20,34 @@ POSTER_URL = (
     "https://www.guardamardelsegura.es/wp-content/uploads/"
     "2026/07/MUPI-AGOSTO-2026-scaled.jpg"
 )
+
+
+class CrossSourceTourDedupTest(unittest.TestCase):
+    def test_production_tour_titles_collapse_into_one_rich_event(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory) / "translations.json"
+            when = datetime(2026, 9, 12, 10, tzinfo=TZ)
+            municipal = Event(
+                title=cached_title(
+                    cache, "municipal_agenda",
+                    "Visita guiada combinada ‘Memoria de arena’ al Castillo y el Molino de San Antonio",
+                ),
+                starts_at=when,
+                place="Castillo de Guardamar",
+            )
+            ticketed = Event(
+                title=cached_title(
+                    cache, "agenda_guardamar",
+                    "Visita Guiada Castillo y Molino de San Antonio",
+                ),
+                starts_at=when,
+                ends_at=datetime(2026, 9, 12, 12, tzinfo=TZ),
+                ticket_price_cents=500,
+            )
+            merged = _merge_events((municipal,), (ticketed,))
+            self.assertEqual(len(merged), 1)
+            self.assertEqual(merged[0].ends_at.hour, 12)
+            self.assertEqual(merged[0].ticket_price_cents, 500)
 
 
 def _paths(directory):
