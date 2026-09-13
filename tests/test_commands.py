@@ -1,14 +1,17 @@
+import asyncio
 import unittest
 from unittest.mock import AsyncMock, patch
 
 from telegrambot.aemet import AemetError
 from telegrambot.commands import (
     _produce_preview,
+    listen_for_preview,
     parse_allowed_user_ids,
     pinned_preview_destination,
     preview_failure_message,
     preview_destination,
 )
+from telegrambot.telegram import TelegramError
 
 
 def update(
@@ -142,6 +145,69 @@ class PreviewRetryTests(unittest.IsolatedAsyncioTestCase):
             await _produce_preview(produce)
 
         self.assertEqual(produce.await_count, 1)
+
+
+class PreviewPollingDiagnosticsTests(unittest.IsolatedAsyncioTestCase):
+    async def test_consecutive_failures_log_once_per_failure_and_recovery(self):
+        get_updates = AsyncMock(
+            side_effect=[
+                TelegramError("private timeout", retryable=True, code="TIMEOUT"),
+                TelegramError("private network", retryable=True, code="NETWORK"),
+                [],
+                [],
+                asyncio.CancelledError(),
+            ]
+        )
+        with (
+            patch("telegrambot.commands.get_updates", get_updates),
+            patch("telegrambot.commands.asyncio.sleep", new_callable=AsyncMock) as sleep,
+            self.assertLogs("telegrambot.commands", level="INFO") as captured,
+            self.assertRaises(asyncio.CancelledError),
+        ):
+            await listen_for_preview("private-token", {123}, AsyncMock())
+
+        failures = [line for line in captured.output if "polling failed" in line]
+        recoveries = [line for line in captured.output if "polling recovered" in line]
+        self.assertEqual(len(failures), 2)
+        self.assertIn("code=TIMEOUT", failures[0])
+        self.assertIn("consecutive_failures=1", failures[0])
+        self.assertIn("code=NETWORK", failures[1])
+        self.assertIn("consecutive_failures=2", failures[1])
+        self.assertEqual(len(recoveries), 1)
+        self.assertIn("after 2 consecutive failures", recoveries[0])
+        self.assertEqual(get_updates.await_count, 5)
+        self.assertEqual(sleep.await_count, 2)
+
+    async def test_failure_log_uses_safe_fields_only(self):
+        sensitive = "private-token-chat-123-update-text"
+        get_updates = AsyncMock(
+            side_effect=[
+                TelegramError(
+                    sensitive,
+                    retryable=True,
+                    retry_after=7,
+                    code="HTTP-429",
+                    status=429,
+                    description=sensitive,
+                ),
+                asyncio.CancelledError(),
+            ]
+        )
+        with (
+            patch("telegrambot.commands.get_updates", get_updates),
+            patch("telegrambot.commands.asyncio.sleep", new_callable=AsyncMock),
+            self.assertLogs("telegrambot.commands", level="INFO") as captured,
+            self.assertRaises(asyncio.CancelledError),
+        ):
+            await listen_for_preview(sensitive, {123}, AsyncMock())
+
+        log = "\n".join(captured.output)
+        self.assertIn("code=HTTP-429", log)
+        self.assertIn("server_status=429", log)
+        self.assertIn("retryable=True", log)
+        self.assertIn("retry_after=7", log)
+        self.assertIn("consecutive_failures=1", log)
+        self.assertNotIn(sensitive, log)
 
 
 if __name__ == "__main__":

@@ -142,14 +142,39 @@ async def listen_for_preview(
     """Serve only the two fresh allowlisted private preview commands."""
 
     offset: Optional[int] = None
+    consecutive_failures = 0
     LOGGER.info("Preview command listener started")
     while True:
         try:
             updates = await get_updates(bot_token, offset)
         except TelegramError as exc:
-            LOGGER.warning("Telegram command polling failed: %s", exc)
+            consecutive_failures += 1
+            LOGGER.warning(
+                "Telegram command polling failed: code=%s%s "
+                "retryable=%s%s consecutive_failures=%d",
+                exc.diagnostic_code,
+                (
+                    f" server_status={exc.server_status}"
+                    if exc.server_status is not None
+                    else ""
+                ),
+                exc.retryable,
+                (
+                    f" retry_after={exc.retry_after}"
+                    if exc.retry_after is not None
+                    else ""
+                ),
+                consecutive_failures,
+            )
             await asyncio.sleep(RETRY_DELAY_SECONDS)
             continue
+
+        if consecutive_failures:
+            LOGGER.info(
+                "Telegram command polling recovered after %d consecutive failures",
+                consecutive_failures,
+            )
+            consecutive_failures = 0
 
         for update in updates:
             update_id = update.get("update_id")
