@@ -92,3 +92,37 @@ Manual dispatch defaults to `audit`; `launch` must be deliberately selected.
 The workflow has one concurrency group and runs at minutes 7, 22, 37, and 52.
 After `READY` it asks GitHub to disable this workflow. If that request fails,
 future runs still find the OCI instance and make zero launch calls.
+
+## Optional Termux schedule backstop
+
+The GitHub-hosted workflow remains the only place that runs OCI SDK code,
+holds OCI credentials or calls `LaunchInstance`. Its schedule at minutes
+7, 22, 37 and 52 is unchanged. An optional one-shot Termux wrapper can check
+at minutes **12, 27, 42 and 57**. It does not run until the operator creates
+a GitHub token on the phone and installs its cron block after deployment.
+
+The operator-created fine-grained PAT must have repository access set to
+**Only selected repositories: `vasenko1/guardamar-status-bot`** and repository
+permission **Actions: Read and write**. No Contents write or Administration
+permission is needed. Store it only in
+`$HOME/.config/guardamar-capacity/github-token` as a nonempty regular file
+without group/other permissions (recommended mode `0600`; `0400` also works).
+Do not put it in `.env`, command arguments or repository files. No PAT is
+created by this repository.
+
+After the token is in place, the operator may run
+`termux/install-capacity-cron.sh` on the phone. The installer checks token
+permissions, backs up the current crontab once, preserves unrelated jobs and
+adds only its own `12,27,42,57 * * * *` block. It starts `crond` and displays
+that block and the service status. This PR does not install the block.
+
+Each invocation makes one bounded GET for the exact workflow and one bounded
+GET for its latest `main` run (`per_page=1`). An inactive workflow, failed or
+invalid GET, queued/in-progress run, or run created less than ten minutes ago
+causes a safe skip. Otherwise Termux sends exactly one `workflow_dispatch`
+with `ref=main` and `action=launch`. The pinned GitHub REST API version is
+`2026-03-10`; its successful dispatch response is HTTP 200 with a
+`workflow_run_id`. A malformed or lost response never causes another POST in
+that invocation. Termux never polls the OCI result, performs an OCI audit or
+removes its own cron block. A rare late GitHub schedule race is contained by
+the existing workflow concurrency and OCI preflight gates.
