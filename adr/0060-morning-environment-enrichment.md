@@ -2,9 +2,12 @@
 
 ## Decision
 
-Meteosalud (zone code `770303`, Litoral sur de Alicante) and the CAMS
-European Air Quality Forecasts dataset are optional inputs of the morning
-digest. A source failure omits only its own compact line.
+Meteosalud heat (`ISO_V`) and cold (`ISO_I`) technical TXT files (zone code
+`770303`, Litoral sur de Alicante) and the CAMS European Air Quality Forecasts
+dataset are optional inputs of the morning digest. The two Meteosalud reads
+are independent, date-checked against today's Madrid date, and level zero is
+silent; a source failure omits only its own compact line. A same-day
+publication state retains each level for later edits without a source re-read.
 
 Scientific processing runs once daily in the public
 `vasenko1/guardamar-cams-data` GitHub repository, not on Android. Its daily

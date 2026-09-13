@@ -35,8 +35,12 @@ from .pharmacy import duty_pharmacies_on
 from .police import PoliceTrafficError, fetch_traffic_notices
 from .safebeach import SafeBeachError, fetch_beach_status
 from .sun import sun_times
-from .environment import EnvironmentError, fetch_cams, fetch_meteosalud
-from .models import BeachNotice, BeachStatus, HeatHealthRisk, MorningDigest
+from .environment import (
+    EnvironmentError, fetch_cams, fetch_meteosalud, fetch_meteosalud_cold,
+)
+from .models import (
+    BeachNotice, BeachStatus, ColdHealthRisk, HeatHealthRisk, MorningDigest,
+)
 
 LOGGER = logging.getLogger(__name__)
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
@@ -190,8 +194,9 @@ async def produce_message(
     fetch_cams_remote: bool = True,
     fetch_meteosalud_data: bool = True,
     heat_health_fallback: Optional[HeatHealthRisk] = None,
+    cold_health_fallback: Optional[ColdHealthRisk] = None,
     environment_observer: Optional[
-        Callable[[Optional[HeatHealthRisk], Optional[datetime]], None]
+        Callable[[Optional[HeatHealthRisk], Optional[ColdHealthRisk], Optional[datetime]], None]
     ] = None,
     fetch_environment: bool = True,
 ) -> str:
@@ -252,6 +257,13 @@ async def produce_message(
         if fetch_environment
         and fetch_meteosalud_data
         and heat_health_fallback is None
+        else None
+    )
+    meteosalud_cold_task = (
+        asyncio.create_task(fetch_meteosalud_cold(now))
+        if fetch_environment
+        and fetch_meteosalud_data
+        and cold_health_fallback is None
         else None
     )
     cams_task = (
@@ -359,6 +371,16 @@ async def produce_message(
                 diagnostics.append(source_error(
                     "METEOSALUD", "Meteosalud", exc
                 ))
+    cold_health_risk = cold_health_fallback
+    if meteosalud_cold_task is not None:
+        try:
+            cold_health_risk = await meteosalud_cold_task
+        except EnvironmentError as exc:
+            LOGGER.warning("Meteosalud frío unavailable; omitting cold risk: %s", exc)
+            if diagnostics is not None:
+                diagnostics.append(source_error(
+                    "METEOSALUD-COLD", "Meteosalud frío", exc
+                ))
     air_quality = pollen = None
     cams_forecast_base = None
     if cams_task is not None:
@@ -370,7 +392,9 @@ async def produce_message(
                 diagnostics.append(source_error("CAMS", "CAMS", exc))
     if environment_observer is not None:
         try:
-            environment_observer(heat_health_risk, cams_forecast_base)
+            environment_observer(
+                heat_health_risk, cold_health_risk, cams_forecast_base
+            )
         except (OSError, ValueError) as exc:
             LOGGER.warning("Morning environment state could not be saved: %s", exc)
 
@@ -513,6 +537,7 @@ async def produce_message(
                 am_guardamar_events,
             ),
             heat_health_risk=heat_health_risk,
+            cold_health_risk=cold_health_risk,
             air_quality=air_quality,
             pollen=pollen,
         ),

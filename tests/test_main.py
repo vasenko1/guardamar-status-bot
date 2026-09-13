@@ -113,10 +113,11 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
             new_base = datetime.fromisoformat("2026-09-11T00:00:00+00:00")
             state = PublicationState(state_path)
             state.mark_morning(now.date(), 10, now)
-            state.mark_morning_environment(now.date(), None, old_base)
+            state.mark_morning_environment(now.date(), None, old_base, cold_level=2)
 
             async def produce(*args, **kwargs):
-                kwargs["environment_observer"](None, new_base)
+                self.assertEqual(kwargs["cold_health_fallback"].level, 2)
+                kwargs["environment_observer"](None, kwargs["cold_health_fallback"], new_base)
                 return "unchanged visible digest"
 
             unchanged = TelegramError(
@@ -159,7 +160,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(fetch.await_count, 1)
             self.assertEqual(
                 PublicationState(state_path).morning_environment(now.date()),
-                (None, new_base),
+                (None, 2, new_base),
             )
 
     async def test_earthquake_monitor_needs_only_telegram_configuration(self):

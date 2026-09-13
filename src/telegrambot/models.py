@@ -116,6 +116,13 @@ class HeatHealthRisk:
 
 
 @dataclass(frozen=True)
+class ColdHealthRisk:
+    """Today's official Meteosalud cold-risk level."""
+
+    level: int
+
+
+@dataclass(frozen=True)
 class AirQualitySummary:
     """Compact, display-ready result of today's CAMS forecast."""
 
@@ -159,3 +166,4 @@ class MorningDigest:
     heat_health_risk: Optional[HeatHealthRisk] = None
     air_quality: Optional[AirQualitySummary] = None
     pollen: Optional[PollenSummary] = None
+    cold_health_risk: Optional[ColdHealthRisk] = None
