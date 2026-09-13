@@ -214,6 +214,26 @@ class AgendaNormalizationTests(unittest.TestCase):
         self.assertEqual(merged[0].title, municipal.title)
         self.assertEqual(merged[0].ends_at.hour, 12)
         self.assertEqual(merged[0].ticket_price_cents, 500)
+        self.assertEqual(merged[0].place, "Castillo de Guardamar")
+
+    def test_duplicate_keeps_explicit_meeting_point(self):
+        when = datetime(2026, 9, 12, 10, tzinfo=TZ)
+        municipal = Event(
+            title="Экскурсия по замку и мельнице",
+            starts_at=when,
+            place="Castillo de Guardamar",
+        )
+        ticketed = Event(
+            title="Экскурсия по замку и мельнице",
+            starts_at=when,
+            place="место встречи — Castillo de Guardamar",
+        )
+        merged = _merge_events((municipal,), (ticketed,))
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(
+            merged[0].place,
+            "место встречи — Castillo de Guardamar",
+        )
 
     def test_duplicate_keeps_actionable_participation_details(self):
         starts_at = datetime(2026, 8, 7, 22, 15, tzinfo=TZ)

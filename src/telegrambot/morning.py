@@ -113,7 +113,16 @@ def _merge_events(*groups):
                     current,
                     starts_at=current.starts_at or event.starts_at,
                     ends_at=current.ends_at or event.ends_at,
-                    place=current.place or event.place,
+                    place=(
+                        event.place
+                        if (
+                            current.place
+                            and event.place
+                            and "место встречи" in event.place.casefold()
+                            and "место встречи" not in current.place.casefold()
+                            and overlap(current.place, event.place) >= 0.5
+                        ) else current.place or event.place
+                    ),
                     ticket_price_cents=(
                         current.ticket_price_cents
                         if current.ticket_price_cents is not None
