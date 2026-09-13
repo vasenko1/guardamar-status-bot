@@ -836,7 +836,39 @@ def build_event_section(
     """
 
     event_lines = ["", heading]
+    rendered_programmes = set()
     for index, event in enumerate(events):
+        programme = getattr(event, "programme_title", None)
+        if programme:
+            if programme in rendered_programmes:
+                continue
+            rendered_programmes.add(programme)
+            members = [
+                candidate for candidate in events
+                if getattr(candidate, "programme_title", None) == programme
+            ]
+            block = [
+                f"• 🎉 {html.escape(programme)}",
+            ]
+            for member in members:
+                when = ""
+                if member.starts_at is not None:
+                    when = "<b>" + member.starts_at.astimezone(
+                        GUARDAMAR_TIMEZONE
+                    ).strftime("%H:%M") + "</b> — "
+                label = html.escape(_event_title(member.title))
+                block.append(f"  {when}{label}")
+                if member.teaser and not _event_teaser_is_redundant(
+                    member.title, member.teaser
+                ):
+                    block.append("  " + html.escape(member.teaser))
+            separator = [""] if len(event_lines) > 2 else []
+            if prefix_length + 1 + len("\n".join(
+                event_lines + separator + block
+            )) > 3900:
+                break
+            event_lines.extend(separator + block)
+            continue
         if index:
             event_lines.append("")
         title = event.title

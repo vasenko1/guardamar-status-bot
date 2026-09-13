@@ -229,7 +229,7 @@ class TodoCulturaTests(unittest.TestCase):
 
     def test_unchanged_complete_window_makes_no_detail_request(self):
         prior = {
-            "parser_version": 10,
+            "parser_version": 11,
             "cursor_modified_gmt": "2026-08-07T10:00:00",
             "candidates": [{
                 "id": 128245,
@@ -284,7 +284,7 @@ class TodoCulturaTests(unittest.TestCase):
 
         details.assert_called_once_with([128245])
         self.assertEqual(window.programs[0].dates, (date(2026, 8, 9),))
-        self.assertEqual(window.source_state["parser_version"], 10)
+        self.assertEqual(window.source_state["parser_version"], 11)
 
     def test_same_date_candidates_are_each_processed(self):
         prior = {
@@ -541,6 +541,42 @@ class TodoCulturaTests(unittest.TestCase):
             "для молодёжи 12–30 лет; можно начать с нуля",
         )
         self.assertEqual(details[0].start_time, "19:00")
+
+    def test_binds_route_registration_and_verified_practical_details(self):
+        details = _participation(
+            "Sábado 12 de septiembre\n"
+            "8,30 horas: Free tour guiada y gratuita al punto geodésico "
+            "con recorrido natural e histórico para toda la familia.\n"
+            "La ruta es de dificultad baja-moderada y apta para todos.\n"
+            "Se recomienda llevar agua, protección solar y calzado cómodo.\n"
+            "Inscripciones y reservas: Pinchad aquí, escaneando el QR "
+            "del cartel o en el email talentojovenguardamar@gmail.com"
+        )
+        self.assertEqual(len(details), 1)
+        self.assertEqual(details[0].start_time, "08:30")
+        self.assertEqual(
+            details[0].registration_contact,
+            "talentojovenguardamar@gmail.com",
+        )
+        self.assertEqual(
+            details[0].participation_note,
+            "маршрут низкой–средней сложности; "
+            "возьмите воду и удобную обувь",
+        )
+
+    def test_binds_drawing_signup_age_and_limited_places(self):
+        details = _participation(
+            "Sábado 12 de septiembre\n"
+            "11 a 13 h.: Actividad 'Aprender a dibujar de cero a "
+            "realista' para jóvenes de 12 a 30 años en el CSJ.\n"
+            "Las plazas son limitadas.\n"
+            "Para apuntarse: Whatsapp 609 00 67 54"
+        )
+        self.assertEqual(len(details), 1)
+        self.assertEqual(details[0].start_time, "11:00")
+        self.assertEqual(details[0].registration_contact, "WhatsApp 609 00 67 54")
+        self.assertEqual(details[0].participation_note, "для молодёжи 12–30 лет")
+        self.assertTrue(details[0].capacity_limited)
 
     def test_preserves_explicit_beginner_improvement_and_group_format(self):
         details = _participation(

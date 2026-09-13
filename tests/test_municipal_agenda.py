@@ -47,6 +47,7 @@ from telegrambot.todo_cultura import (
     TodoCulturaParticipation,
     TodoCulturaProgram,
     TodoCulturaWindow,
+    _participation,
 )
 
 TZ = ZoneInfo("Europe/Madrid")
@@ -647,6 +648,37 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIn("todo_cultura_detail", enriched[0].sources)
         self.assertIsNone(enriched[1].registration_contact)
+
+    def test_sep12_route_and_drawing_fields_survive_normalization(self):
+        day = date(2026, 9, 12)
+        route = SourceEvent(
+            "Free tour guiada y gratuita al punto geodésico",
+            day, day, "08:30", None, None, "event", ("todo_cultura",),
+        )
+        drawing = SourceEvent(
+            "Aprender a dibujar de cero a realista",
+            day, day, "11:00", "13:00", "Centro Social Juvenil",
+            "event", ("todo_cultura",),
+        )
+        details = _participation(
+            "8,30 horas: Free tour guiada y gratuita al punto geodésico.\n"
+            "La ruta es de dificultad baja-moderada.\n"
+            "Inscripciones y reservas: talentojovenguardamar@gmail.com\n"
+            "11 a 13 h.: Actividad 'Aprender a dibujar de cero a realista' "
+            "para jóvenes de 12 a 30 años.\n"
+            "Las plazas son limitadas.\n"
+            "Para apuntarse: Whatsapp 609 00 67 54"
+        )
+        enriched = _enrich_todo_participation((route, drawing), details, day)
+        self.assertEqual(
+            enriched[0].registration_contact,
+            "talentojovenguardamar@gmail.com",
+        )
+        self.assertEqual(
+            enriched[1].registration_contact,
+            "WhatsApp 609 00 67 54",
+        )
+        self.assertTrue(enriched[1].capacity_limited)
 
     def test_todo_registration_does_not_leak_to_same_title_other_time(self):
         sessions = tuple(

@@ -27,7 +27,7 @@ METADATA_PAGE_SIZE = 100
 METADATA_LIMIT_BYTES = 300_000
 ROLLING_WINDOW_DAYS = 7
 CURSOR_OVERLAP_MINUTES = 5
-PARSER_VERSION = 10
+PARSER_VERSION = 11
 API_URL = "https://todoculturavegabaja.es/wp-json/wp/v2/mec-events"
 
 
@@ -265,7 +265,8 @@ def _participation(text: str) -> Tuple[TodoCulturaParticipation, ...]:
     seen = set()
     for index, line in enumerate(lines):
         match = re.match(
-            r"^(inscripci(?:ón|on|ones)|reservas?|más información)"
+            r"^(inscripci(?:ón|on|ones)(?:\s+y\s+reservas?)?"
+            r"|reservas?|para apuntarse|más información)"
             r"\s*:\s*(.+)$",
             line,
             re.IGNORECASE,
@@ -282,13 +283,20 @@ def _participation(text: str) -> Tuple[TodoCulturaParticipation, ...]:
         )
         if (phone is None and email is None) or len(contact) > 180:
             continue
+        if email is not None and re.search(
+            r"\b(?:pinchad aqu[ií]|escaneando el qr)\b",
+            contact,
+            re.IGNORECASE,
+        ):
+            contact = email.group(0)
         anchors = []
         first_anchor_index = max(0, index - 6)
         for candidate_index in range(first_anchor_index, index):
             candidate = lines[candidate_index]
             normalized = candidate.casefold()
             if any(word in normalized for word in (
-                "taller", "ruta", "visita", "concierto", "curso",
+                "taller", "ruta", "visita", "tour", "excursi", "paseo",
+                "concierto", "curso",
                 "actividad", "sesión", "sesion",
             )):
                 anchors.append((candidate_index, candidate))
@@ -297,9 +305,7 @@ def _participation(text: str) -> Tuple[TodoCulturaParticipation, ...]:
         anchor_index, anchor = next((
             candidate
             for candidate in reversed(anchors)
-            if re.search(
-                r"\b\d{1,2}\s*(?:a|:)\s*\d{1,2}\b", candidate[1]
-            )
+            if _event_time(candidate[1]) is not None
         ), anchors[-1])
         contact = re.sub(r"\bwasap\b", "WhatsApp", contact, flags=re.IGNORECASE)
         contact = re.sub(
@@ -365,6 +371,10 @@ def _participation(text: str) -> Tuple[TodoCulturaParticipation, ...]:
             skill_parts.append("практика игры в группе")
         if skill_parts:
             note_parts.append(" или ".join(skill_parts))
+        if re.search(r"dificultad baja[-–]moderada", context, re.I):
+            note_parts.append("маршрут низкой–средней сложности")
+        if re.search(r"llevar agua.*calzado c[oó]modo", context, re.I):
+            note_parts.append("возьмите воду и удобную обувь")
         available_activities = []
         for pattern, label in (
             (r"\bjuegos?\s+de\s+mesa\b", "настольные игры"),

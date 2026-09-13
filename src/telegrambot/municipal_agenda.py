@@ -2808,6 +2808,10 @@ async def fetch_today_municipal_events(
                     )
                     if translation_cache_path is not None and source.teaser_es else None
                 ),
+                programme_title=(
+                    "Fiestas del Campo — Campo de Guardamar"
+                    if "turismo_programme" in source.sources else None
+                ),
                 is_final_day=(
                     source.start_date != source.end_date
                     and local_day == source.end_date
