@@ -24,6 +24,25 @@ from telegrambot.models import (
 
 
 class DigestMessageTests(unittest.TestCase):
+    def test_programme_groups_occurrences_without_losing_times(self):
+        day = datetime(2026, 9, 12, tzinfo=GUARDAMAR_TIMEZONE)
+        digest = MorningDigest(
+            weather=None,
+            warnings=(),
+            warnings_available=True,
+            events=(
+                Event("Салют", None, programme_title="Праздник района"),
+                Event("Концерт", day.replace(hour=21),
+                      programme_title="Праздник района"),
+                Event("Другой концерт", day.replace(hour=22)),
+            ),
+        )
+        message = build_message(digest)
+        self.assertEqual(message.count("Праздник района"), 1)
+        self.assertIn("<b>21:00</b> — Концерт", message)
+        self.assertIn("Салют", message)
+        self.assertIn("Другой концерт", message)
+
     @staticmethod
     def _routine_digest(**changes):
         values = {
