@@ -216,6 +216,47 @@ class AgendaNormalizationTests(unittest.TestCase):
         self.assertEqual(merged[0].ticket_price_cents, 500)
         self.assertEqual(merged[0].place, "Castillo de Guardamar")
 
+    def test_later_duplicate_enriches_missing_programme_metadata(self):
+        when = datetime(2026, 9, 12, 18, 30, tzinfo=TZ)
+        first = Event(
+            title="Праздничное шествие в Кампо",
+            starts_at=when,
+        )
+        municipal = Event(
+            title="Праздничное шествие",
+            starts_at=when,
+            programme_title="Fiestas del Campo",
+            programme_order=20,
+        )
+
+        merged = _merge_events((first,), (municipal,))
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0].title, first.title)
+        self.assertEqual(merged[0].programme_title, "Fiestas del Campo")
+        self.assertEqual(merged[0].programme_order, 20)
+
+    def test_existing_programme_metadata_wins_over_later_duplicate(self):
+        when = datetime(2026, 9, 12, 18, 30, tzinfo=TZ)
+        first = Event(
+            title="Праздничное шествие",
+            starts_at=when,
+            programme_title="Первая программа",
+            programme_order=0,
+        )
+        later = Event(
+            title="Праздничное шествие",
+            starts_at=when,
+            programme_title="Другая программа",
+            programme_order=20,
+        )
+
+        merged = _merge_events((first,), (later,))
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0].programme_title, "Первая программа")
+        self.assertEqual(merged[0].programme_order, 0)
+
     def test_duplicate_keeps_explicit_meeting_point(self):
         when = datetime(2026, 9, 12, 10, tzinfo=TZ)
         municipal = Event(
