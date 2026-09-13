@@ -47,6 +47,14 @@ It never loops on host capacity. The Android installation receives no OCI SDK or
 credential. A larger trial service limit must never override the explicit 2
 OCPU, 12 GB RAM, and 200 GB Always Free cost ceilings. Any existing
 non-terminated target makes subsequent runs read-only.
+An optional Termux one-shot backstop uses only standard-library outbound GitHub
+API calls five minutes after each GitHub schedule slot. It dispatches only when
+the workflow is active and no queued/in-progress or younger-than-ten-minute
+`main` run exists. The phone holds only a single-repository Actions PAT in a
+private file; it never receives OCI credentials, OCI SDK, launch logic or audit
+logic. Failed metadata reads and ambiguous dispatch responses do not trigger
+same-invocation retries. The backstop shares the project runtime lock and has
+no daemon, wake lock or persistent stop-marker (ADR 0063).
 
 The optional operator listener may keep one bounded Telegram `getUpdates`
 long poll solely for allowlisted private `/preview`. It must not schedule
