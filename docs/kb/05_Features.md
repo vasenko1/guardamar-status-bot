@@ -116,6 +116,8 @@ Reduce the effort needed to plan the day and notice important changes.
 - Beach flag status
 - Official warnings
 - Meteosalud heat- and cold-health risk
+- One short static preventive tip beneath a medium or high Meteosalud risk;
+  low risk remains one line and level zero remains silent
 - Forecast air quality and pollen from the normalized CAMS subset
 - Important municipal updates
 - Events relevant today

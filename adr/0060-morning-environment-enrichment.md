@@ -9,6 +9,17 @@ are independent, date-checked against today's Madrid date, and level zero is
 silent; a source failure omits only its own compact line. A same-day
 publication state retains each level for later edits without a source re-read.
 
+The technical TXT files supply only official numeric risk levels. At levels
+2–3, the formatter adds exactly one static, compact Russian editorial
+adaptation of the Ministerio de Sanidad's general preventive advice; level 1
+keeps only the risk line and level 0 is silent. Heat advice draws on the
+[2026 heat plan, Annex III](https://www.sanidad.gob.es/areas/sanidadAmbiental/riesgosAmbientales/calorExtremo/publicaciones/docs/planNacionalExcesoTemperaturas_2026.pdf)
+(water, cooler places, reduced midday activity and vulnerable people). Cold
+advice draws on the [2025–2026 cold plan](https://www.sanidad.gob.es/areas/sanidadAmbiental/riesgosAmbientales/frioExtremo/publicaciones/docs/Plan_Frio_25-26.pdf)
+(layered clothing, harms of cold exposure and attention to vulnerable people).
+Shortening time outdoors in the cold is our preventive editorial inference,
+not a level-specific Ministry quotation. Advice is never fetched at runtime.
+
 Scientific processing runs once daily in the public
 `vasenko1/guardamar-cams-data` GitHub repository, not on Android. Its daily
 07:17 UTC attempt and 08:17 UTC fallback avoid GitHub's start-of-hour load
