@@ -2,7 +2,7 @@
 
 ## Decision
 
-Meteosalud (`idComarca=770303`, Litoral sur de Alicante) and the CAMS
+Meteosalud (zone code `770303`, Litoral sur de Alicante) and the CAMS
 European Air Quality Forecasts dataset are optional inputs of the morning
 digest. A source failure omits only its own compact line.
 

@@ -5,7 +5,6 @@ operational state nor exposes hourly CAMS fields to the formatter.
 """
 
 import asyncio
-import html
 import json
 import logging
 import math
@@ -28,7 +27,7 @@ GUARDAMAR_LATITUDE = 38.0909
 GUARDAMAR_LONGITUDE = -0.6556
 METEOSALUD_URL = (
     "https://www.sanidad.gob.es/excesoTemperaturas/meteosalud.do?"
-    "idComarca=770303&metodo=cargarComarca"
+    "metodo=descargar&nombreDocumento=SANIDAD_NIVELES_ZONAS_ISO_V.txt"
 )
 CAMS_DATA_URL = (
     "https://raw.githubusercontent.com/vasenko1/guardamar-cams-data/"
@@ -94,34 +93,66 @@ def _allowed_cams_data(url: str) -> bool:
 
 
 def parse_meteosalud_level(payload: bytes, now: datetime) -> Optional[HeatHealthRisk]:
-    """Read only the page's dated current level; stale pages are rejected."""
-    text = html.unescape(payload.decode("utf-8", "replace"))
-    text = re.sub(r"<[^>]+>", " ", text)
-    text = " ".join(text.split())
-    date_match = re.search(r"\b(\d{2})/(\d{2})/(\d{2,4})\b", text)
+    """Read today's Guardamar-zone level from the official technical TXT."""
+    try:
+        lines = [
+            line.strip() for line in payload.decode("utf-8-sig").splitlines()
+            if line.strip()
+        ]
+    except UnicodeDecodeError as exc:
+        raise EnvironmentError("Meteosalud TXT encoding is invalid") from exc
+    if len(lines) < 3:
+        raise EnvironmentError("Meteosalud TXT is incomplete")
+    date_match = re.fullmatch(
+        r"Nivel de alerta en zonas de meteosalud del día: (\d{2})/(\d{2})/(\d{4})",
+        lines[0],
+    )
     if not date_match:
-        raise EnvironmentError("Meteosalud page has no date")
+        raise EnvironmentError("Meteosalud TXT has no valid date")
     day, month, year = map(int, date_match.groups())
-    if year < 100:
-        year += 2000
-    if datetime(year, month, day, tzinfo=GUARDAMAR_TIMEZONE).date() != now.astimezone(GUARDAMAR_TIMEZONE).date():
+    try:
+        file_date = datetime(year, month, day).date()
+    except ValueError as exc:
+        raise EnvironmentError("Meteosalud TXT has invalid date") from exc
+    if file_date != now.astimezone(GUARDAMAR_TIMEZONE).date():
         return None
-    levels = ((0, "ausencia de riesgo"), (1, "bajo riesgo"),
-              (2, "riesgo medio"), (3, "riesgo alto"))
-    current = text.casefold().split("previsión", 1)[0]
-    for level, label in levels:
-        if label in current:
-            return HeatHealthRisk(level)
-    raise EnvironmentError("Meteosalud page has no known level")
+    columns = re.split(r"[ \t]{2,}", lines[1])
+    if columns != [
+        "Código Provincia", "Nombre Provincia", "Código Comarca",
+        "Nombre Comarca", "Nivel de alerta",
+    ]:
+        raise EnvironmentError("Meteosalud TXT header is invalid")
+    matches = []
+    for line in lines[2:]:
+        row = re.split(r"[ \t]{2,}", line)
+        if (
+            len(row) != 5
+            or not re.fullmatch(r"\d{2}", row[0])
+            or not re.fullmatch(r"\d{6}", row[2])
+            or not row[1]
+            or not row[3]
+            or not re.fullmatch(r"[0-3]", row[4])
+        ):
+            raise EnvironmentError("Meteosalud TXT row is invalid")
+        if row[2] == "770303":
+            matches.append(row)
+    if len(matches) != 1:
+        raise EnvironmentError("Meteosalud TXT has no unique Guardamar zone")
+    province_code, province, _, comarca, level = matches[0]
+    if (province_code, province, comarca) != (
+        "03", "Alicante", "Litoral sur de Alicante",
+    ):
+        raise EnvironmentError("Meteosalud TXT Guardamar zone is invalid")
+    return HeatHealthRisk(int(level))
 
 
 async def fetch_meteosalud(now: datetime) -> Optional[HeatHealthRisk]:
     try:
         payload, _, _ = await asyncio.to_thread(
             fetch_bounded, METEOSALUD_URL, is_allowed_url=_allowed_meteosalud,
-            limit_bytes=256_000, timeout_seconds=12,
-            headers={"Accept": "text/html", "User-Agent": "GuardamarMorningDigest/0.12"},
-            accepted_types=frozenset({"text/html"}),
+            limit_bytes=64_000, timeout_seconds=12,
+            headers={"Accept": "application/txt", "User-Agent": "GuardamarMorningDigest/0.12"},
+            accepted_types=frozenset({"application/txt"}),
         )
         return parse_meteosalud_level(payload, now)
     except (BoundedFetchError, EnvironmentError) as exc:
@@ -130,9 +161,9 @@ async def fetch_meteosalud(now: datetime) -> Optional[HeatHealthRisk]:
             code=exc.code if isinstance(exc, BoundedFetchError) else "PARSE",
             status=exc.status if isinstance(exc, BoundedFetchError) else None,
             description=(
-                "страница Meteosalud временно недоступна"
+                "данные Meteosalud временно недоступны"
                 if isinstance(exc, BoundedFetchError)
-                else "страница Meteosalud не прошла проверку формата"
+                else "данные Meteosalud не прошли проверку формата"
             ),
         ) from exc
 

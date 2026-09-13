@@ -17,7 +17,7 @@ official endpoints and lightweight access methods are validated.
 | Source category | Purpose | Expected reliability | Update style | MVP |
 | --- | --- | --- | --- | --- |
 | AEMET OpenData | Guardamar forecast, nearby observation, official weather warnings | High; responsible Spanish authority | Structured API; API key required | Yes, first slice |
-| Ministerio de Sanidad Meteosalud | Today's heat-health risk for `Litoral sur de Alicante`, `idComarca=770303` | High; official national health source | One bounded morning HTML read; stale date omitted | Yes, optional |
+| Ministerio de Sanidad Meteosalud | Today's heat-health risk for `Litoral sur de Alicante`, zone code `770303` | High; official national health source | One bounded morning read of the official technical TXT; stale date omitted | Yes, optional |
 | CAMS European Air Quality Forecasts | Forecast pollutants, mineral dust, wildfire PM10 contribution and six pollen types | High for model forecast; not an observation or official measured ICA | Separate public GitHub producer makes two ADS retrieves once daily and publishes one validated JSON | Yes, optional |
 | ESIOS / Red Eléctrica | Next-day PVPC 2.0TD hourly active-energy term | High; official system operator publication | Indicator API `1001`; personal API key required | Yes, evening feature |
 | Official marine service | Sea state and relevant marine warnings | High for its jurisdiction | API or published feed | Yes |
@@ -39,9 +39,10 @@ official endpoints and lightweight access methods are validated.
 ## Approved morning health and atmosphere data
 
 Meteosalud is read once during the 07:30 run from the Ministerio de Sanidad
-page for `Litoral sur de Alicante`, `idComarca=770303`. Only a level explicitly
-dated for today's `Europe/Madrid` date is eligible. Level zero and stale data
-are silent; source failure does not block the digest.
+technical file `SANIDAD_NIVELES_ZONAS_ISO_V.txt` for `Litoral sur de Alicante`,
+zone code `770303`. Only a level explicitly dated for today's `Europe/Madrid`
+date is eligible. Level zero and stale data are silent; source failure does not
+block the digest.
 
 The bot does not call ADS or decode scientific files. The separate public
 [`vasenko1/guardamar-cams-data`](https://github.com/vasenko1/guardamar-cams-data)
