@@ -862,6 +862,8 @@ def build_event_section(
                     ).strftime("%H:%M") + "</b> — "
                 label = html.escape(_event_title(member.title))
                 block.append(f"  {when}{label}")
+                if member.place:
+                    block.append(f"    📍 {_event_place_link(member.place)}")
                 if member.teaser and not _event_teaser_is_redundant(
                     member.title, member.teaser
                 ):

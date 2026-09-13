@@ -34,6 +34,7 @@ class DigestMessageTests(unittest.TestCase):
                 Event("Салют", None, programme_title="Праздник района",
                       programme_order=2),
                 Event("Концерт", day.replace(hour=21),
+                      place="Площадь у замка",
                       programme_title="Праздник района", programme_order=1),
                 Event("Другой концерт", day.replace(hour=22)),
             ),
@@ -42,6 +43,8 @@ class DigestMessageTests(unittest.TestCase):
         self.assertEqual(message.count("Праздник района"), 1)
         self.assertIn("<b>21:00</b> — Концерт", message)
         self.assertIn("Салют", message)
+        self.assertIn("📍", message)
+        self.assertIn("Площадь у замка", message)
         self.assertLess(message.index("Концерт"), message.index("Салют"))
         self.assertIn("Другой концерт", message)
 
