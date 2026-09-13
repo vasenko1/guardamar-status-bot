@@ -164,6 +164,13 @@ class PreparationTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             reviewed_translation(
+                "Actividad 'Aprender a dibujar de cero a realista' "
+                "para jóvenes"
+            ),
+            "Мастер-класс по реалистичному рисунку",
+        )
+        self.assertEqual(
+            reviewed_translation(
                 "Labores a la fresca: ‘Yo te enseño, tú me enseñas’"
             ),
             "Встреча по рукоделию на свежем воздухе "

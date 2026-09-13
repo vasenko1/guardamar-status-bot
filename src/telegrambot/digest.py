@@ -847,6 +847,10 @@ def build_event_section(
                 candidate for candidate in events
                 if getattr(candidate, "programme_title", None) == programme
             ]
+            members.sort(key=lambda candidate: (
+                getattr(candidate, "programme_order", None) is None,
+                getattr(candidate, "programme_order", None) or 0,
+            ))
             block = [
                 f"• 🎉 {html.escape(programme)}",
             ]

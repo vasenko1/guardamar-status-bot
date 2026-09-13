@@ -2812,6 +2812,20 @@ async def fetch_today_municipal_events(
                     "Fiestas del Campo — Campo de Guardamar"
                     if "turismo_programme" in source.sources else None
                 ),
+                programme_order=(
+                    {
+                        "Disparo de cohetes": 10,
+                        "Entrada de bandas": 20,
+                        "Desfile Multicolor": 30,
+                        "Fuegos artificiales": 40,
+                        "Fiesta del Vino": 50,
+                        "Actuaciones nocturnas de las Fiestas del Campo": 60,
+                        "Chocolate con mona de madrugada": 10,
+                        "Despertà": 20,
+                        "Charanga": 30,
+                    }.get(source.title_es)
+                    if "turismo_programme" in source.sources else None
+                ),
                 is_final_day=(
                     source.start_date != source.end_date
                     and local_day == source.end_date
