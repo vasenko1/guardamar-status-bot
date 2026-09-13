@@ -313,15 +313,24 @@ def _warning_blocks(
         if (
             today_block and event == "высокая температура"
             and heat_health_risk is not None and heat_health_risk.level > 0
+            and not heat_nested
         ):
-            blocks.append("   " + _heat_health_line(heat_health_risk))
+            blocks.extend(_health_lines(
+                _heat_health_line(heat_health_risk),
+                _HEAT_HEALTH_ADVICE.get(heat_health_risk.level),
+                nested=True,
+            ))
             heat_nested = True
         if (
             today_block and event == "низкая температура"
             and cold_health_risk is not None and cold_health_risk.level > 0
             and not cold_nested
         ):
-            blocks.append("   " + _cold_health_line(cold_health_risk))
+            blocks.extend(_health_lines(
+                _cold_health_line(cold_health_risk),
+                _COLD_HEALTH_ADVICE.get(cold_health_risk.level),
+                nested=True,
+            ))
             cold_nested = True
         if (
             today_block and event == "пыль в воздухе"
@@ -351,6 +360,26 @@ def _heat_health_line(value: HeatHealthRisk) -> str:
 def _cold_health_line(value: ColdHealthRisk) -> str:
     labels = {1: "низкий", 2: "средний", 3: "высокий"}
     return f"❤️‍🩹 Риск холода для здоровья: {labels[value.level]}"
+
+
+_HEAT_HEALTH_ADVICE = {
+    2: "💧 Пейте больше воды и избегайте жары в середине дня.",
+    3: "💧 Избегайте жары и нагрузок; особое внимание детям и пожилым.",
+}
+_COLD_HEALTH_ADVICE = {
+    2: "🧥 Одевайтесь теплее и избегайте длительного пребывания на холоде.",
+    3: "🧥 Сократите время на холоде; особое внимание детям и пожилым.",
+}
+
+
+def _health_lines(
+    risk_line: str, advice: Optional[str], *, nested: bool = False,
+) -> list[str]:
+    indent = "   " if nested else ""
+    lines = [indent + risk_line]
+    if advice is not None:
+        lines.append(indent + "   " + advice)
+    return lines
 
 
 def _air_quality_line(value: AirQualitySummary, *, dust_warning: bool = False) -> str:
@@ -746,13 +775,19 @@ def build_message(
         and digest.heat_health_risk.level > 0
         and not heat_nested
     ):
-        standalone_environment.append(_heat_health_line(digest.heat_health_risk))
+        standalone_environment.extend(_health_lines(
+            _heat_health_line(digest.heat_health_risk),
+            _HEAT_HEALTH_ADVICE.get(digest.heat_health_risk.level),
+        ))
     if (
         digest.cold_health_risk is not None
         and digest.cold_health_risk.level > 0
         and not cold_nested
     ):
-        standalone_environment.append(_cold_health_line(digest.cold_health_risk))
+        standalone_environment.extend(_health_lines(
+            _cold_health_line(digest.cold_health_risk),
+            _COLD_HEALTH_ADVICE.get(digest.cold_health_risk.level),
+        ))
     if digest.air_quality is not None and not air_nested:
         standalone_environment.append(_air_quality_line(digest.air_quality))
     if digest.pollen is not None:
