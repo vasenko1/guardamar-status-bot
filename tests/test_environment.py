@@ -9,8 +9,10 @@ from zoneinfo import ZoneInfo
 from telegrambot._transport import BoundedFetchError
 from telegrambot.environment import (
     EnvironmentError,
+    METEOSALUD_URL,
     _required_utc_hours,
     fetch_cams,
+    fetch_meteosalud,
     parse_cams_payload,
     parse_meteosalud_level,
     summarize_cams,
@@ -59,17 +61,86 @@ def _cams_payload(now, *, base=None, omit=()):
     }).encode()
 
 
+METEOSALUD_HEADER = (
+    "Código Provincia         Nombre Provincia                                  "
+    "Código Comarca           Nombre Comarca                                    "
+    "Nivel de alerta"
+)
+GUARDAMAR_ROW = (
+    "03                       Alicante                                          "
+    "770303                   Litoral sur de Alicante                           0"
+)
+
+
+def _meteosalud_payload(*, date="04/08/2026", rows=(GUARDAMAR_ROW,)):
+    text = (
+        "Nivel de alerta en zonas de meteosalud del día: " + date + "\n\n"
+        + METEOSALUD_HEADER + "\n" + "\n".join(rows) + "\n"
+    )
+    return text.encode("utf-8")
+
+
 class EnvironmentTests(unittest.TestCase):
     def setUp(self):
         self.now = datetime(2026, 8, 4, 7, 30, tzinfo=MADRID)
 
-    def test_meteosalud_levels_and_stale_page(self):
-        for level, label in enumerate(("Ausencia de riesgo", "Bajo riesgo", "Riesgo medio", "Riesgo alto")):
-            result = parse_meteosalud_level(
-                f"<h1>Litoral sur</h1> 04/08/26 Nivel de alerta {label} Previsión".encode(), self.now
-            )
-            self.assertEqual(result.level, level)
-        self.assertIsNone(parse_meteosalud_level(b"03/08/26 Ausencia de riesgo", self.now))
+    def test_meteosalud_today_selects_guardamar_among_other_zones(self):
+        other = (
+            "01                       Alava                                             "
+            "750101                   Cuenca del Nervión                                3"
+        )
+        result = parse_meteosalud_level(
+            _meteosalud_payload(rows=(other, GUARDAMAR_ROW)), self.now
+        )
+        self.assertEqual(result.level, 0)
+
+    def test_meteosalud_levels_one_to_three(self):
+        for level in (1, 2, 3):
+            with self.subTest(level=level):
+                row = GUARDAMAR_ROW[:-1] + str(level)
+                result = parse_meteosalud_level(
+                    _meteosalud_payload(rows=(row,)), self.now
+                )
+                self.assertEqual(result.level, level)
+
+    def test_meteosalud_stale_file_is_silent(self):
+        self.assertIsNone(parse_meteosalud_level(
+            _meteosalud_payload(date="03/08/2026"), self.now
+        ))
+
+    def test_meteosalud_rejects_missing_or_malformed_date(self):
+        for payload in (
+            _meteosalud_payload(date=""),
+            _meteosalud_payload(date="32/08/2026"),
+            _meteosalud_payload(date="04/8/2026"),
+        ):
+            with self.subTest(payload=payload[:30]), self.assertRaises(EnvironmentError):
+                parse_meteosalud_level(payload, self.now)
+
+    def test_meteosalud_rejects_missing_duplicate_or_wrong_zone(self):
+        other = (
+            "01                       Alava                                             "
+            "750101                   Cuenca del Nervión                                1"
+        )
+        for rows in (
+            (other,),
+            (GUARDAMAR_ROW, GUARDAMAR_ROW),
+            (GUARDAMAR_ROW.replace("Litoral sur de Alicante", "Otra comarca"),),
+            (GUARDAMAR_ROW.replace("Alicante", "Murcia", 1),),
+        ):
+            with self.subTest(rows=rows), self.assertRaises(EnvironmentError):
+                parse_meteosalud_level(_meteosalud_payload(rows=rows), self.now)
+
+    def test_meteosalud_rejects_invalid_levels_header_and_rows(self):
+        for payload in (
+            _meteosalud_payload(rows=(GUARDAMAR_ROW[:-1] + "4",)),
+            _meteosalud_payload(rows=(GUARDAMAR_ROW[:-1] + "alto",)),
+            _meteosalud_payload().replace(b"Nivel de alerta\n", b"Estado\n"),
+            _meteosalud_payload(rows=(GUARDAMAR_ROW, "01 Alava 750101 Cuenca 1")),
+            b"\xff" + _meteosalud_payload(),
+        ):
+            with self.subTest(payload=payload[-50:]), self.assertRaises(EnvironmentError):
+                parse_meteosalud_level(payload, self.now)
 
     def test_uses_official_trailing_windows_and_local_day(self):
         now = self.now.replace(hour=23, minute=30)
@@ -140,6 +211,46 @@ class EnvironmentTests(unittest.TestCase):
         air = summarize_cams(hours, self.now)[0]
         self.assertIsNotNone(air)
         self.assertEqual(air.pollutants, ("NO₂",))
+
+
+class MeteosaludFetchTests(unittest.IsolatedAsyncioTestCase):
+    async def test_fetches_official_txt_with_bounded_mime_and_returns_level(self):
+        with patch(
+            "telegrambot.environment.fetch_bounded",
+            return_value=(
+                _meteosalud_payload(rows=(GUARDAMAR_ROW[:-1] + "2",)),
+                METEOSALUD_URL,
+                "application/txt",
+            ),
+        ) as fetch:
+            result = await fetch_meteosalud(datetime(2026, 8, 4, 7, 30, tzinfo=MADRID))
+        self.assertEqual(result.level, 2)
+        self.assertEqual(fetch.call_args.args, (METEOSALUD_URL,))
+        self.assertEqual(
+            fetch.call_args.kwargs["accepted_types"], frozenset({"application/txt"})
+        )
+        self.assertEqual(fetch.call_args.kwargs["limit_bytes"], 64_000)
+        self.assertIn("SANIDAD_NIVELES_ZONAS_ISO_V.txt", METEOSALUD_URL)
+
+    async def test_transport_and_parse_failures_keep_safe_diagnostics(self):
+        now = datetime(2026, 8, 4, 7, 30, tzinfo=MADRID)
+        with patch(
+            "telegrambot.environment.fetch_bounded",
+            side_effect=BoundedFetchError("offline", code="HTTP-503", status=503),
+        ):
+            with self.assertRaises(EnvironmentError) as raised:
+                await fetch_meteosalud(now)
+        self.assertEqual(raised.exception.diagnostic_code, "HTTP-503")
+        self.assertEqual(raised.exception.server_status, 503)
+        self.assertIsNotNone(raised.exception.safe_description)
+        with patch(
+            "telegrambot.environment.fetch_bounded",
+            return_value=(b"bad TXT", METEOSALUD_URL, "application/txt"),
+        ):
+            with self.assertRaises(EnvironmentError) as raised:
+                await fetch_meteosalud(now)
+        self.assertEqual(raised.exception.diagnostic_code, "PARSE")
+        self.assertIsNone(raised.exception.server_status)
 
 
 class CamsCacheTests(unittest.IsolatedAsyncioTestCase):
