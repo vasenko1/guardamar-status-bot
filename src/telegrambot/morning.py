@@ -141,6 +141,14 @@ def _merge_events(*groups):
                         current.capacity_limited or event.capacity_limited
                     ),
                     teaser=current.teaser or event.teaser,
+                    programme_title=(
+                        current.programme_title or event.programme_title
+                    ),
+                    programme_order=(
+                        current.programme_order
+                        if current.programme_order is not None
+                        else event.programme_order
+                    ),
                 )
                 continue
             result.append(event)
