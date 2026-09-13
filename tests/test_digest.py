@@ -31,9 +31,10 @@ class DigestMessageTests(unittest.TestCase):
             warnings=(),
             warnings_available=True,
             events=(
-                Event("Салют", None, programme_title="Праздник района"),
+                Event("Салют", None, programme_title="Праздник района",
+                      programme_order=2),
                 Event("Концерт", day.replace(hour=21),
-                      programme_title="Праздник района"),
+                      programme_title="Праздник района", programme_order=1),
                 Event("Другой концерт", day.replace(hour=22)),
             ),
         )
@@ -41,6 +42,7 @@ class DigestMessageTests(unittest.TestCase):
         self.assertEqual(message.count("Праздник района"), 1)
         self.assertIn("<b>21:00</b> — Концерт", message)
         self.assertIn("Салют", message)
+        self.assertLess(message.index("Концерт"), message.index("Салют"))
         self.assertIn("Другой концерт", message)
 
     @staticmethod

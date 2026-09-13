@@ -64,6 +64,7 @@ class Event:
     capacity_limited: bool = False
     teaser: Optional[str] = None
     programme_title: Optional[str] = None
+    programme_order: Optional[int] = None
 
 
 @dataclass(frozen=True)
