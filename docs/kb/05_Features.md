@@ -115,7 +115,7 @@ Reduce the effort needed to plan the day and notice important changes.
 - Sea conditions
 - Beach flag status
 - Official warnings
-- Meteosalud heat-health risk
+- Meteosalud heat- and cold-health risk
 - Forecast air quality and pollen from the normalized CAMS subset
 - Important municipal updates
 - Events relevant today

@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo
 
 from ._transport import BoundedFetchError, fetch_bounded
 from .diagnostics import SourceDiagnostic, source_error
-from .models import AirQualitySummary, HeatHealthRisk, PollenSummary
+from .models import AirQualitySummary, ColdHealthRisk, HeatHealthRisk, PollenSummary
 
 LOGGER = logging.getLogger(__name__)
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
@@ -28,6 +28,10 @@ GUARDAMAR_LONGITUDE = -0.6556
 METEOSALUD_URL = (
     "https://www.sanidad.gob.es/excesoTemperaturas/meteosalud.do?"
     "metodo=descargar&nombreDocumento=SANIDAD_NIVELES_ZONAS_ISO_V.txt"
+)
+METEOSALUD_COLD_URL = (
+    "https://www.sanidad.gob.es/bajasTemperaturas/meteosalud.do?"
+    "metodo=descargar&nombreDocumento=SANIDAD_NIVELES_ZONAS_ISO_I.txt"
 )
 CAMS_DATA_URL = (
     "https://raw.githubusercontent.com/vasenko1/guardamar-cams-data/"
@@ -92,8 +96,8 @@ def _allowed_cams_data(url: str) -> bool:
     )
 
 
-def parse_meteosalud_level(payload: bytes, now: datetime) -> Optional[HeatHealthRisk]:
-    """Read today's Guardamar-zone level from the official technical TXT."""
+def _parse_meteosalud_level(payload: bytes, now: datetime) -> Optional[int]:
+    """Read today's Guardamar-zone level from either official technical TXT."""
     try:
         lines = [
             line.strip() for line in payload.decode("utf-8-sig").splitlines()
@@ -143,29 +147,55 @@ def parse_meteosalud_level(payload: bytes, now: datetime) -> Optional[HeatHealth
         "03", "Alicante", "Litoral sur de Alicante",
     ):
         raise EnvironmentError("Meteosalud TXT Guardamar zone is invalid")
-    return HeatHealthRisk(int(level))
+    return int(level)
 
 
-async def fetch_meteosalud(now: datetime) -> Optional[HeatHealthRisk]:
+def parse_meteosalud_level(payload: bytes, now: datetime) -> Optional[HeatHealthRisk]:
+    level = _parse_meteosalud_level(payload, now)
+    return HeatHealthRisk(level) if level is not None else None
+
+
+def parse_meteosalud_cold_level(
+    payload: bytes, now: datetime,
+) -> Optional[ColdHealthRisk]:
+    level = _parse_meteosalud_level(payload, now)
+    return ColdHealthRisk(level) if level is not None else None
+
+
+async def _fetch_meteosalud_level(
+    url: str, now: datetime, source_name: str,
+) -> Optional[int]:
     try:
         payload, _, _ = await asyncio.to_thread(
-            fetch_bounded, METEOSALUD_URL, is_allowed_url=_allowed_meteosalud,
+            fetch_bounded, url, is_allowed_url=_allowed_meteosalud,
             limit_bytes=64_000, timeout_seconds=12,
             headers={"Accept": "application/txt", "User-Agent": "GuardamarMorningDigest/0.12"},
             accepted_types=frozenset({"application/txt"}),
         )
-        return parse_meteosalud_level(payload, now)
+        return _parse_meteosalud_level(payload, now)
     except (BoundedFetchError, EnvironmentError) as exc:
         raise EnvironmentError(
-            "Meteosalud unavailable",
+            f"{source_name} unavailable",
             code=exc.code if isinstance(exc, BoundedFetchError) else "PARSE",
             status=exc.status if isinstance(exc, BoundedFetchError) else None,
             description=(
-                "данные Meteosalud временно недоступны"
+                f"данные {source_name} временно недоступны"
                 if isinstance(exc, BoundedFetchError)
-                else "данные Meteosalud не прошли проверку формата"
+                else f"данные {source_name} не прошли проверку формата"
             ),
         ) from exc
+
+
+async def fetch_meteosalud(now: datetime) -> Optional[HeatHealthRisk]:
+    level = await _fetch_meteosalud_level(METEOSALUD_URL, now, "Meteosalud")
+    return HeatHealthRisk(level) if level is not None else None
+
+
+async def fetch_meteosalud_cold(now: datetime) -> Optional[ColdHealthRisk]:
+    level = await _fetch_meteosalud_level(
+        METEOSALUD_COLD_URL, now, "Meteosalud frío"
+    )
+    return ColdHealthRisk(level) if level is not None else None
 
 
 def _ica_category(pollutant: str, value: float) -> int:

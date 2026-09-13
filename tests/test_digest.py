@@ -18,6 +18,7 @@ from telegrambot.models import (
     Warning,
     Weather,
     HeatHealthRisk,
+    ColdHealthRisk,
     AirQualitySummary,
     PollenSummary,
 )
@@ -115,6 +116,50 @@ class DigestMessageTests(unittest.TestCase):
         message = build_message(digest, now=now)
         self.assertIn("❤️‍🩹 Риск жары для здоровья: низкий", message)
         self.assertLess(message.index("Предупреждения AEMET"), message.index("❤️‍🩹"))
+
+    def test_cold_risk_levels_and_zero_visibility(self):
+        labels = {1: "низкий", 2: "средний", 3: "высокий"}
+        for level, label in labels.items():
+            with self.subTest(level=level):
+                message = build_message(self._routine_digest(
+                    cold_health_risk=ColdHealthRisk(level)
+                ))
+                self.assertIn(f"❤️‍🩹 Риск холода для здоровья: {label}", message)
+        self.assertNotIn("Риск холода", build_message(self._routine_digest(
+            cold_health_risk=ColdHealthRisk(0)
+        )))
+
+    def test_cold_nests_only_in_today_minimum_temperature_warning(self):
+        now = datetime(2026, 9, 14, 7, tzinfo=GUARDAMAR_TIMEZONE)
+        today = Warning("Temperaturas mínimas", "yellow", now + timedelta(hours=12), now + timedelta(hours=5))
+        tomorrow = Warning("Temperaturas mínimas", "yellow", now + timedelta(days=1, hours=12), now + timedelta(days=1, hours=5))
+        today_message = build_message(self._routine_digest(
+            warnings=(today,), cold_health_risk=ColdHealthRisk(2),
+        ), now=now)
+        self.assertEqual(today_message.count("Риск холода для здоровья"), 1)
+        self.assertIn("   ❤️‍🩹 Риск холода для здоровья: средний", today_message)
+        tomorrow_message = build_message(self._routine_digest(
+            warnings=(tomorrow,), cold_health_risk=ColdHealthRisk(2),
+        ), now=now)
+        self.assertIn("Риск холода для здоровья: средний", tomorrow_message)
+        self.assertNotIn("   ❤️‍🩹 Риск холода", tomorrow_message)
+
+    def test_heat_and_cold_render_independently(self):
+        message = build_message(self._routine_digest(
+            heat_health_risk=HeatHealthRisk(1),
+            cold_health_risk=ColdHealthRisk(3),
+        ))
+        self.assertIn("Риск жары для здоровья: низкий", message)
+        self.assertIn("Риск холода для здоровья: высокий", message)
+
+    def test_unrelated_warning_does_not_capture_cold_risk(self):
+        now = datetime(2026, 9, 14, 7, tzinfo=GUARDAMAR_TIMEZONE)
+        message = build_message(self._routine_digest(
+            warnings=(Warning("Viento", "yellow", now + timedelta(hours=12), now + timedelta(hours=5)),),
+            cold_health_risk=ColdHealthRisk(1),
+        ), now=now)
+        self.assertIn("Риск холода для здоровья: низкий", message)
+        self.assertNotIn("   ❤️‍🩹 Риск холода", message)
 
     def test_renders_high_uv_and_sun_rows_inside_weather_block(self):
         digest = self._routine_digest(

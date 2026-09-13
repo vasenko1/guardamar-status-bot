@@ -87,7 +87,7 @@ from .safebeach import (
     is_current_status,
 )
 from .weekend import produce_weekend_message, weekend_dates
-from .models import BeachStatus, HeatHealthRisk
+from .models import BeachStatus, ColdHealthRisk, HeatHealthRisk
 from .state import PublicationState, StateError
 from .telegram import (
     TelegramError,
@@ -350,7 +350,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
     ) -> Optional[datetime]:
         if state.morning_record(now.date()) is None:
             return None
-        _, current_base = state.morning_environment(now.date())
+        _, _, current_base = state.morning_environment(now.date())
         if _cams_cycle_is_current(current_base, now):
             return None
         try:
@@ -386,7 +386,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         message_id = _current_morning_message_id(record)
         fallback = load_snapshot(aemet_snapshot_path, now)
         refreshed_aemet = []
-        heat_level, _ = state.morning_environment(now.date())
+        heat_level, cold_level, _ = state.morning_environment(now.date())
         refreshed_environment = []
         message = await produce_message(
             api_key,
@@ -407,8 +407,11 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             heat_health_fallback=(
                 HeatHealthRisk(heat_level) if heat_level is not None else None
             ),
-            environment_observer=lambda heat, base: refreshed_environment.append(
-                (heat, base)
+            cold_health_fallback=(
+                ColdHealthRisk(cold_level) if cold_level is not None else None
+            ),
+            environment_observer=lambda heat, cold, base: refreshed_environment.append(
+                (heat, cold, base)
             ),
         )
         try:
@@ -419,9 +422,10 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         if refreshed_aemet:
             write_snapshot(aemet_snapshot_path, refreshed_aemet[-1], now)
         if refreshed_environment:
-            heat, base = refreshed_environment[-1]
+            heat, cold, base = refreshed_environment[-1]
             state.mark_morning_environment(
-                now.date(), heat.level if heat is not None else None, base
+                now.date(), heat.level if heat is not None else None, base,
+                cold_level=cold.level if cold is not None else None,
             )
         logging.info("Current morning message %s refreshed", message_id)
 
@@ -1088,8 +1092,8 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 pharmacy_state_path=pharmacy_path,
                 cams_data_url=cams_data_url,
                 cams_cache_path=cams_cache_path,
-                environment_observer=lambda heat, base: morning_environment.append(
-                    (heat, base)
+                environment_observer=lambda heat, cold, base: morning_environment.append(
+                    (heat, cold, base)
                 ),
             ),
             lambda message: send_message(
@@ -1102,9 +1106,10 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         if result == "success" and morning_aemet:
             write_snapshot(aemet_snapshot_path, morning_aemet[-1], now)
         if result == "success" and morning_environment:
-            heat, base = morning_environment[-1]
+            heat, cold, base = morning_environment[-1]
             state.mark_morning_environment(
-                now.date(), heat.level if heat is not None else None, base
+                now.date(), heat.level if heat is not None else None, base,
+                cold_level=cold.level if cold is not None else None,
             )
         return 0 if result in {"success", "duplicate"} else 1
 
@@ -1116,7 +1121,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         logging.info("SKIP: no morning message exists for %s", now.date())
         return 0
 
-    heat_level, morning_cams_base = state.morning_environment(now.date())
+    heat_level, cold_level, morning_cams_base = state.morning_environment(now.date())
     cams_update = False
     available_base = None
     if (
@@ -1212,8 +1217,11 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             heat_health_fallback=(
                 HeatHealthRisk(heat_level) if heat_level is not None else None
             ),
-            environment_observer=lambda heat, base: update_environment.append(
-                (heat, base)
+            cold_health_fallback=(
+                ColdHealthRisk(cold_level) if cold_level is not None else None
+            ),
+            environment_observer=lambda heat, cold, base: update_environment.append(
+                (heat, cold, base)
             ),
         )
 
@@ -1266,9 +1274,10 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
     if result in {"success", "cleanup_failure"} and update_aemet:
         write_snapshot(aemet_snapshot_path, update_aemet[-1], now)
     if result in {"success", "cleanup_failure"} and update_environment:
-        heat, base = update_environment[-1]
+        heat, cold, base = update_environment[-1]
         state.mark_morning_environment(
-            now.date(), heat.level if heat is not None else None, base
+            now.date(), heat.level if heat is not None else None, base,
+            cold_level=cold.level if cold is not None else None,
         )
     return 0 if result in {
         "success",

@@ -147,10 +147,10 @@ class PublicationState:
 
     def morning_environment(
         self, local_day: date
-    ) -> tuple[Optional[int], Optional[datetime]]:
+    ) -> tuple[Optional[int], Optional[int], Optional[datetime]]:
         value = self.morning_record(local_day)
         if value is None:
-            return None, None
+            return None, None, None
         heat_level = value.get("heat_health_level")
         if heat_level is not None and (
             not isinstance(heat_level, int)
@@ -158,9 +158,16 @@ class PublicationState:
             or heat_level not in range(4)
         ):
             raise StateError("publication state has an invalid heat level")
+        cold_level = value.get("cold_health_level")
+        if cold_level is not None and (
+            not isinstance(cold_level, int)
+            or isinstance(cold_level, bool)
+            or cold_level not in range(4)
+        ):
+            raise StateError("publication state has an invalid cold level")
         raw_base = value.get("cams_forecast_base")
         if raw_base is None:
-            return heat_level, None
+            return heat_level, cold_level, None
         if not isinstance(raw_base, str):
             raise StateError("publication state has an invalid CAMS base")
         try:
@@ -169,13 +176,15 @@ class PublicationState:
             raise StateError("publication state has an invalid CAMS base") from exc
         if forecast_base.tzinfo is None:
             raise StateError("publication state has an invalid CAMS base")
-        return heat_level, forecast_base
+        return heat_level, cold_level, forecast_base
 
     def mark_morning_environment(
         self,
         local_day: date,
         heat_level: Optional[int],
         cams_forecast_base: Optional[datetime],
+        *,
+        cold_level: Optional[int] = None,
     ) -> None:
         if heat_level is not None and (
             not isinstance(heat_level, int)
@@ -183,6 +192,12 @@ class PublicationState:
             or heat_level not in range(4)
         ):
             raise StateError("morning heat level is invalid")
+        if cold_level is not None and (
+            not isinstance(cold_level, int)
+            or isinstance(cold_level, bool)
+            or cold_level not in range(4)
+        ):
+            raise StateError("morning cold level is invalid")
         if cams_forecast_base is not None and cams_forecast_base.tzinfo is None:
             raise StateError("morning CAMS base is invalid")
         value = self.morning_record(local_day)
@@ -192,6 +207,10 @@ class PublicationState:
             value["heat_health_level"] = heat_level
         else:
             value.pop("heat_health_level", None)
+        if cold_level is not None:
+            value["cold_health_level"] = cold_level
+        else:
+            value.pop("cold_health_level", None)
         if cams_forecast_base is not None:
             value["cams_forecast_base"] = cams_forecast_base.isoformat()
         else:

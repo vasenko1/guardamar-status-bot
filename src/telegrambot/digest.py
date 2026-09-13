@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 from .branding import with_footer
 from .event_places import canonical_event_place, event_place_is_map_safe
 from .models import (
-    AirQualitySummary, BeachNotice, BeachStatus, HeatHealthRisk,
+    AirQualitySummary, BeachNotice, BeachStatus, ColdHealthRisk, HeatHealthRisk,
     MorningDigest, PollenSummary, Warning,
 )
 
@@ -222,6 +222,7 @@ def _warning_blocks(
     now: datetime,
     heat_health_risk: Optional[HeatHealthRisk] = None,
     air_quality: Optional[AirQualitySummary] = None,
+    cold_health_risk: Optional[ColdHealthRisk] = None,
 ) -> list[str]:
     """Render scan-friendly AEMET warnings without merging unlike facts."""
 
@@ -280,6 +281,7 @@ def _warning_blocks(
 
     blocks = []
     heat_nested = False
+    cold_nested = False
     air_nested = False
     for (
         _display_day,
@@ -315,6 +317,13 @@ def _warning_blocks(
             blocks.append("   " + _heat_health_line(heat_health_risk))
             heat_nested = True
         if (
+            today_block and event == "низкая температура"
+            and cold_health_risk is not None and cold_health_risk.level > 0
+            and not cold_nested
+        ):
+            blocks.append("   " + _cold_health_line(cold_health_risk))
+            cold_nested = True
+        if (
             today_block and event == "пыль в воздухе"
             and air_quality is not None and any(
                 pollutant in {"PM10", "PM2.5"}
@@ -323,7 +332,7 @@ def _warning_blocks(
         ):
             blocks.append("   " + _air_quality_line(air_quality, dust_warning=True))
             air_nested = True
-    return blocks, heat_nested, air_nested
+    return blocks, heat_nested, cold_nested, air_nested
 
 
 def _join_ru(values: Sequence[str]) -> str:
@@ -337,6 +346,11 @@ def _join_ru(values: Sequence[str]) -> str:
 def _heat_health_line(value: HeatHealthRisk) -> str:
     labels = {1: "низкий", 2: "средний", 3: "высокий"}
     return f"❤️‍🩹 Риск жары для здоровья: {labels[value.level]}"
+
+
+def _cold_health_line(value: ColdHealthRisk) -> str:
+    labels = {1: "низкий", 2: "средний", 3: "высокий"}
+    return f"❤️‍🩹 Риск холода для здоровья: {labels[value.level]}"
 
 
 def _air_quality_line(value: AirQualitySummary, *, dust_warning: bool = False) -> str:
@@ -379,11 +393,12 @@ def build_warning_section(
     now: datetime,
     heat_health_risk: Optional[HeatHealthRisk] = None,
     air_quality: Optional[AirQualitySummary] = None,
+    cold_health_risk: Optional[ColdHealthRisk] = None,
 ) -> str:
     """Render the approved complete AEMET warning section."""
 
-    blocks, _, _ = _warning_blocks(
-        warnings, now, heat_health_risk, air_quality
+    blocks, _, _, _ = _warning_blocks(
+        warnings, now, heat_health_risk, air_quality, cold_health_risk
     )
     if not blocks:
         return ""
@@ -712,11 +727,12 @@ def build_message(
             )
 
     warning_now = now or datetime.now(GUARDAMAR_TIMEZONE)
-    warning_blocks, heat_nested, air_nested = _warning_blocks(
+    warning_blocks, heat_nested, cold_nested, air_nested = _warning_blocks(
         digest.warnings,
         warning_now,
         digest.heat_health_risk,
         digest.air_quality,
+        digest.cold_health_risk,
     )
     if warning_blocks:
         lines.extend([
@@ -731,6 +747,12 @@ def build_message(
         and not heat_nested
     ):
         standalone_environment.append(_heat_health_line(digest.heat_health_risk))
+    if (
+        digest.cold_health_risk is not None
+        and digest.cold_health_risk.level > 0
+        and not cold_nested
+    ):
+        standalone_environment.append(_cold_health_line(digest.cold_health_risk))
     if digest.air_quality is not None and not air_nested:
         standalone_environment.append(_air_quality_line(digest.air_quality))
     if digest.pollen is not None:

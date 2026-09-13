@@ -9,12 +9,15 @@ from zoneinfo import ZoneInfo
 from telegrambot._transport import BoundedFetchError
 from telegrambot.environment import (
     EnvironmentError,
+    METEOSALUD_COLD_URL,
     METEOSALUD_URL,
     _required_utc_hours,
     fetch_cams,
     fetch_meteosalud,
+    fetch_meteosalud_cold,
     parse_cams_payload,
     parse_meteosalud_level,
+    parse_meteosalud_cold_level,
     summarize_cams,
 )
 
@@ -107,6 +110,28 @@ class EnvironmentTests(unittest.TestCase):
         self.assertIsNone(parse_meteosalud_level(
             _meteosalud_payload(date="03/08/2026"), self.now
         ))
+
+    def test_meteosalud_cold_levels_and_stale_date(self):
+        for level in range(4):
+            with self.subTest(level=level):
+                row = GUARDAMAR_ROW[:-1] + str(level)
+                self.assertEqual(
+                    parse_meteosalud_cold_level(
+                        _meteosalud_payload(rows=(row,)), self.now
+                    ).level, level,
+                )
+        self.assertIsNone(parse_meteosalud_cold_level(
+            _meteosalud_payload(date="03/08/2026"), self.now
+        ))
+
+    def test_meteosalud_cold_rejects_invalid_zone_and_level(self):
+        for rows in (
+            (GUARDAMAR_ROW[:-1] + "4",),
+            (GUARDAMAR_ROW, GUARDAMAR_ROW),
+            (GUARDAMAR_ROW.replace("770303", "770304"),),
+        ):
+            with self.subTest(rows=rows), self.assertRaises(EnvironmentError):
+                parse_meteosalud_cold_level(_meteosalud_payload(rows=rows), self.now)
 
     def test_meteosalud_rejects_missing_or_malformed_date(self):
         for payload in (
@@ -214,6 +239,35 @@ class EnvironmentTests(unittest.TestCase):
 
 
 class MeteosaludFetchTests(unittest.IsolatedAsyncioTestCase):
+    async def test_cold_fetch_uses_official_bounded_txt(self):
+        now = datetime(2026, 8, 4, 7, 30, tzinfo=MADRID)
+        with patch(
+            "telegrambot.environment.fetch_bounded",
+            return_value=(_meteosalud_payload(), METEOSALUD_COLD_URL, "application/txt"),
+        ) as fetch:
+            result = await fetch_meteosalud_cold(now)
+        self.assertEqual(result.level, 0)
+        self.assertEqual(fetch.call_args.args, (METEOSALUD_COLD_URL,))
+        self.assertEqual(fetch.call_args.kwargs["limit_bytes"], 64_000)
+        self.assertEqual(fetch.call_args.kwargs["timeout_seconds"], 12)
+        self.assertEqual(fetch.call_args.kwargs["accepted_types"], frozenset({"application/txt"}))
+        self.assertIn("SANIDAD_NIVELES_ZONAS_ISO_I.txt", METEOSALUD_COLD_URL)
+        allowed = fetch.call_args.kwargs["is_allowed_url"]
+        self.assertTrue(allowed(METEOSALUD_COLD_URL))
+        self.assertFalse(allowed(METEOSALUD_COLD_URL.replace(
+            "www.sanidad.gob.es", "example.com"
+        )))
+
+    async def test_cold_fetch_transport_failure_has_safe_diagnostics(self):
+        now = datetime(2026, 8, 4, 7, 30, tzinfo=MADRID)
+        with patch(
+            "telegrambot.environment.fetch_bounded",
+            side_effect=BoundedFetchError("offline", code="HTTP-503", status=503),
+        ):
+            with self.assertRaises(EnvironmentError) as raised:
+                await fetch_meteosalud_cold(now)
+        self.assertEqual(raised.exception.diagnostic_code, "HTTP-503")
+        self.assertEqual(raised.exception.server_status, 503)
     async def test_fetches_official_txt_with_bounded_mime_and_returns_level(self):
         with patch(
             "telegrambot.environment.fetch_bounded",

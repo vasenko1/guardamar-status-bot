@@ -108,8 +108,11 @@ class PublicationStateTests(unittest.TestCase):
             base = datetime.fromisoformat("2026-08-06T00:00:00+00:00")
             state.mark_morning(local_day, 101, morning)
 
+            state.mark_morning_environment(local_day, 2, base, cold_level=3)
+            self.assertEqual(state.morning_environment(local_day), (2, 3, base))
+            self.assertEqual(state.morning_environment(date(2026, 8, 8)), (None, None, None))
             state.mark_morning_environment(local_day, 2, base)
-            self.assertEqual(state.morning_environment(local_day), (2, base))
+            self.assertEqual(state.morning_environment(local_day), (2, None, base))
 
     def test_keeps_most_complete_beach_candidate_across_processes(self):
         with tempfile.TemporaryDirectory() as directory:
