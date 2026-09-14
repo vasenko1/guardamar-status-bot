@@ -948,13 +948,20 @@ def build_event_section(
                 GUARDAMAR_TIMEZONE
             ).strftime("%H:%M")
             time_prefix = f"<b>{start_time}"
-            if event.ends_at is not None:
+            if event.ends_at is not None and event.duration_minutes is None:
                 end_time = event.ends_at.astimezone(
                     GUARDAMAR_TIMEZONE
                 ).strftime("%H:%M")
                 time_prefix += f"–{end_time}"
             time_prefix += "</b> — "
         event_lines.append(f"• {time_prefix}{title}")
+        facts = [*event.details]
+        if event.duration_minutes is not None:
+            facts.append(f"{event.duration_minutes} мин")
+        if event.audience_label:
+            facts.append(event.audience_label)
+        if facts:
+            event_lines.append("  " + html.escape(" • ".join(facts)))
         if event.teaser and not _event_teaser_is_redundant(
             event.title, event.teaser
         ):
@@ -1003,6 +1010,7 @@ def build_event_section(
         if prefix_length + 1 + len("\n".join(event_lines)) > 3900:
             rows = (
                 1
+                + int(bool(facts))
                 + int(event.active_until is not None and event.starts_at is None)
                 + int(bool(event.place))
                 + int(bool(event.teaser))

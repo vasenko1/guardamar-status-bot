@@ -57,6 +57,23 @@ def _safebeach_is_in_season(now: datetime) -> bool:
 def _merge_events(*groups):
     result = []
 
+    def richer_title(current, candidate):
+        """Only a clear token-prefix expansion may replace a matched title."""
+
+        def tokens(value):
+            normalized = unicodedata.normalize("NFKD", value.casefold())
+            normalized = "".join(
+                character for character in normalized
+                if not unicodedata.combining(character)
+            )
+            return re.findall(r"[^\W_]+", normalized)
+
+        base, expanded = tokens(current), tokens(candidate)
+        return (
+            candidate if base and len(expanded) > len(base)
+            and expanded[:len(base)] == base else current
+        )
+
     def normalize_title(value):
         normalized = unicodedata.normalize("NFKD", value.strip().casefold())
         normalized = "".join(
@@ -115,6 +132,7 @@ def _merge_events(*groups):
                 current = result[duplicate_index]
                 result[duplicate_index] = replace(
                     current,
+                    title=richer_title(current.title, event.title),
                     starts_at=current.starts_at or event.starts_at,
                     ends_at=current.ends_at or event.ends_at,
                     place=(
@@ -145,6 +163,15 @@ def _merge_events(*groups):
                         current.capacity_limited or event.capacity_limited
                     ),
                     teaser=current.teaser or event.teaser,
+                    duration_minutes=(
+                        current.duration_minutes or event.duration_minutes
+                    ),
+                    audience_label=(
+                        current.audience_label or event.audience_label
+                    ),
+                    details=tuple(dict.fromkeys(
+                        (*current.details, *event.details)
+                    )),
                     programme_title=(
                         current.programme_title or event.programme_title
                     ),

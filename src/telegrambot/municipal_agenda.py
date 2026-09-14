@@ -26,7 +26,7 @@ from .gemini import (
     translate_event_titles,
     verify_agenda_poster_events,
 )
-from .event_translations import cached_title, cached_translation
+from .event_translations import cached_title, cached_translation, spanish_fallback
 from .event_urls import normalize_ticket_url
 from .event_places import canonical_event_place
 from .facebook import FacebookError, FacebookPost, fetch_facebook_posts
@@ -87,6 +87,7 @@ _SPANISH_MONTHS = {
     "agosto": 8,
     "septiembre": 9,
     "setiembre": 9,
+    "setembre": 9,
     "octubre": 10,
     "noviembre": 11,
     "diciembre": 12,
@@ -101,6 +102,143 @@ _EXHIBITION_DATE = re.compile(
     r"(?P<end_month>[a-záéíóúñ]+)))\s*\.",
     re.IGNORECASE,
 )
+
+_CINEMA_SECTION = re.compile(
+    r"\bCINE\b(?P<body>.*?)(?=\b(?:CONCIERTO\s+CORAL|FIESTAS|"
+    r"TALLERES|BALL\s+D[’']ESTIU|VISITAS\s+GUIADAS)\b|$)",
+    re.IGNORECASE | re.DOTALL,
+)
+_CINEMA_ROW = re.compile(
+    r"\b(?P<weekday>lunes|martes|mi[eé]rcoles|jueves|viernes|"
+    r"s[aá]bado|domingo|dilluns|dimarts|dimecres|dijous|divendres|"
+    r"dissabte|diumenge),?\s+(?P<day>\d{1,2})\s+de\s+"
+    r"(?P<month>[a-záéíóú]+)\s+a\s+(?:las|les|la)\s+"
+    r"(?P<hour>\d{1,2})[:.](?P<minute>\d{2})\s*h\.?",
+    re.IGNORECASE,
+)
+_CINEMA_IDENTITY = re.compile(
+    r"(?P<place>[^.]{3,120})\.\s+"
+    r"(?P<title>[^()]{2,120}?)\s*\([^()]{3,180}\)",
+    re.IGNORECASE,
+)
+_CINEMA_GENRES = {
+    "drama": "Драма",
+    "drama-comedia": "Драма-комедия",
+    "tragicomedia": "Трагикомедия",
+    "comedia": "Комедия",
+    "documental": "Документальный фильм",
+}
+
+
+def _detail_label(value: str) -> str:
+    return _CINEMA_GENRES.get(value.casefold(), value)
+
+
+def _cinema_title(value: str) -> str:
+    """Keep the official film name while localizing its known series label."""
+
+    _, separator, film = value.partition(": ")
+    if not separator or not film.strip():
+        return value
+    name = spanish_fallback(film.strip())
+    return f"Кино по понедельникам: «{name[0].upper() + name[1:]}»"
+
+
+def extract_official_cinema(
+    programme: str, expected_month: str,
+) -> Tuple["SourceEvent", ...]:
+    """Read dated library film rows from the already fetched Turismo text."""
+
+    section = _CINEMA_SECTION.search(programme)
+    if section is None:
+        return ()
+    try:
+        year, base_month = map(int, expected_month.split("-"))
+        date(year, base_month, 1)
+    except ValueError:
+        return ()
+    markers = list(_CINEMA_ROW.finditer(section.group("body")))
+    events = []
+    for index, marker in enumerate(markers):
+        if marker.group("weekday").casefold() not in {"lunes", "dilluns"}:
+            continue
+        month = _SPANISH_MONTHS.get(marker.group("month").casefold())
+        if month is None:
+            continue
+        event_year = year + (month < base_month)
+        try:
+            event_day = date(event_year, month, int(marker.group("day")))
+            starts_at = datetime(
+                event_year, month, event_day.day,
+                int(marker.group("hour")), int(marker.group("minute")),
+            )
+        except ValueError:
+            continue
+        if event_day.weekday() != 0 or len(events) == MAX_EVENTS:
+            continue
+        window_start, window_end = _month_window(expected_month)
+        if not window_start <= event_day <= window_end:
+            continue
+        body = section.group("body")[marker.end(): (
+            markers[index + 1].start() if index + 1 < len(markers)
+            else len(section.group("body"))
+        )]
+        identity = _CINEMA_IDENTITY.search(body)
+        if identity is None:
+            continue
+        place = " ".join(identity.group("place").split())
+        title = " ".join(identity.group("title").split()).strip(" .")
+        attributes = body[identity.end():]
+        age_match = re.search(r"\+\s*(\d{1,2})\s*/", attributes)
+        genre_match = re.search(
+            r"(?:\+\s*\d{1,2}\s*/\s*)?"
+            r"([A-Za-zÁÉÍÓÚáéíóú -]{2,50})\s*/\s*\d{1,3}\s*min\b",
+            attributes,
+        )
+        duration_match = re.search(r"\b(\d{1,3})\s*min\b", attributes)
+        duration = int(duration_match.group(1)) if duration_match else None
+        if (
+            "biblioteca" not in place.casefold()
+            or not 1 <= len(title) <= 90
+            or duration is not None and not 1 <= duration <= 720
+        ):
+            continue
+        admission = attributes
+        free = re.search(
+            r"\bEntrada\s+libre\s+hasta\s+completar\s+aforo\b",
+            admission, re.IGNORECASE,
+        ) is not None
+        price_match = re.search(
+            r"\bPrecio\s*:\s*(\d{1,3})(?:[,.](\d{1,2}))?\s*€",
+            admission, re.IGNORECASE,
+        )
+        price = None
+        if free:
+            price = 0
+        elif price_match:
+            price = (
+                int(price_match.group(1)) * 100
+                + int((price_match.group(2) or "0").ljust(2, "0"))
+            )
+        events.append(SourceEvent(
+            title_es=f"Cine de los Lunes: {title}",
+            start_date=event_day,
+            end_date=event_day,
+            start_time=starts_at.strftime("%H:%M"),
+            end_time=None,
+            place=canonical_event_place(place),
+            category="event",
+            sources=("turismo_html", "turismo_cinema"),
+            ticket_price_cents=price,
+            capacity_limited=free,
+            duration_minutes=duration,
+            audience_label=(
+                f"{int(age_match.group(1))}+" if age_match else None
+            ),
+            details=((" ".join(genre_match.group(1).split()),)
+                     if genre_match else ()),
+        ))
+    return tuple(events)
 
 
 def _month_date(year: int, month_name: str, day: str) -> Optional[date]:
@@ -252,6 +390,9 @@ class SourceEvent:
     capacity_limited: bool = False
     admission_evidence: Optional[str] = None
     teaser_es: Optional[str] = None
+    duration_minutes: Optional[int] = None
+    audience_label: Optional[str] = None
+    details: Tuple[str, ...] = ()
 
 
 def _is_contentless_generic_event(event: SourceEvent) -> bool:
@@ -888,7 +1029,7 @@ def extract_poster_url(payload: bytes) -> str:
 _SPANISH_MONTHS = {
     "enero": 1, "febrero": 2, "marzo": 3, "abril": 4,
     "mayo": 5, "junio": 6, "julio": 7, "agosto": 8,
-    "septiembre": 9, "setiembre": 9, "octubre": 10,
+    "septiembre": 9, "setiembre": 9, "setembre": 9, "octubre": 10,
     "noviembre": 11, "diciembre": 12,
 }
 
@@ -1158,6 +1299,15 @@ def merge_text_and_poster_events(
                 "admission_evidence": current.admission_evidence or (
                     poster_event.admission_evidence if same_occurrence else None
                 ),
+                "duration_minutes": (
+                    current.duration_minutes or poster_event.duration_minutes
+                ),
+                "audience_label": (
+                    current.audience_label or poster_event.audience_label
+                ),
+                "details": tuple(dict.fromkeys(
+                    (*current.details, *poster_event.details)
+                )),
             }
         )
     return tuple(merged[:MAX_EVENTS])
@@ -1559,6 +1709,22 @@ def normalize_extraction(
         if not isinstance(capacity_limited, bool):
             raise MunicipalAgendaError("invalid event capacity flag")
         admission_evidence = _clean_text(raw.get("admission_evidence"), 600)
+        duration_minutes = raw.get("duration_minutes")
+        if duration_minutes is not None and (
+            type(duration_minutes) is not int
+            or not 1 <= duration_minutes <= 720
+        ):
+            raise MunicipalAgendaError("invalid event duration")
+        audience_label = _clean_text(raw.get("audience_label"), 40)
+        raw_details = raw.get("details", ())
+        if (
+            not isinstance(raw_details, (list, tuple))
+            or len(raw_details) > 3
+        ):
+            raise MunicipalAgendaError("invalid event details")
+        details = tuple(_clean_text(item, 60) for item in raw_details)
+        if any(item is None for item in details):
+            raise MunicipalAgendaError("invalid event details")
         event = SourceEvent(
             title_es=title_es,
             start_date=start_date,
@@ -1574,6 +1740,9 @@ def normalize_extraction(
             registration_contact=registration_contact,
             capacity_limited=capacity_limited,
             admission_evidence=admission_evidence,
+            duration_minutes=duration_minutes,
+            audience_label=audience_label,
+            details=details,
         )
         key = (event.title_es.casefold(), event.start_date, event.start_time)
         if category == "municipal_service" and start_date == end_date:
@@ -1654,6 +1823,9 @@ def _snapshot_data(
                 "capacity_limited": event.capacity_limited,
                 "admission_evidence": event.admission_evidence,
                 "teaser_es": event.teaser_es,
+                "duration_minutes": event.duration_minutes,
+                "audience_label": event.audience_label,
+                "details": list(event.details),
             }
             for event in events
         ],
@@ -2121,6 +2293,10 @@ async def refresh_municipal_catalog(
                     description="официальная текстовая программа не дала событий",
                 )
 
+        if page_text:
+            text_events = merge_text_and_poster_events(
+                extract_official_cinema(page_text, text_month), text_events
+            )
         text_events = _enrich_admissions(
             text_events,
             _admissions(page.decode("utf-8", "replace"), local_now.date()),
@@ -2788,7 +2964,10 @@ async def fetch_today_municipal_events(
                     ends_at += timedelta(days=1)
         result.append(
             Event(
-                title=title,
+                title=(
+                    _cinema_title(source.title_es)
+                    if "turismo_cinema" in source.sources else title
+                ),
                 starts_at=starts_at,
                 ends_at=ends_at,
                 place=source.place,
@@ -2802,6 +2981,9 @@ async def fetch_today_municipal_events(
                 participation_note=source.participation_note,
                 registration_contact=source.registration_contact,
                 capacity_limited=source.capacity_limited,
+                duration_minutes=source.duration_minutes,
+                audience_label=source.audience_label,
+                details=tuple(_detail_label(item) for item in source.details),
                 teaser=(
                     cached_translation(
                         translation_cache_path, "municipal_agenda_teaser", source.teaser_es
@@ -2842,7 +3024,10 @@ async def municipal_translation_items(
     """Return source identities and exact titles from the local catalog."""
 
     events = await _cached_current_events(now, state_path)
-    items = [("municipal_agenda", event.title_es) for event in events]
+    items = [
+        ("municipal_agenda", event.title_es)
+        for event in events if "turismo_cinema" not in event.sources
+    ]
     items.extend(("municipal_agenda_teaser", event.teaser_es)
                  for event in events if event.teaser_es)
     return tuple(items)
