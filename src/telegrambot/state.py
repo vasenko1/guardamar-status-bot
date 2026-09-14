@@ -227,7 +227,7 @@ class PublicationState:
         air_quality: Optional[AirQualitySummary] = None,
         pollen: Optional[PollenSummary] = None,
     ) -> None:
-        """Store health levels and legacy CAMS fields without breaking old callers."""
+        """Store health levels and legacy CAMS fields without source-cache side effects."""
         if heat_level is not None and (
             not isinstance(heat_level, int)
             or isinstance(heat_level, bool)
@@ -257,9 +257,6 @@ class PublicationState:
             value["cams_forecast_base"] = cams_forecast_base.isoformat()
         else:
             value.pop("cams_forecast_base", None)
-        # Compatibility for callers introduced by the first lifecycle rollout.
-        # New lifecycle code uses mark_cams_environment so a valid clearing can
-        # explicitly remove an old semantic baseline.
         if air_quality is not None:
             value["cams_air"] = _encode_air_quality(air_quality)
         if pollen is not None:

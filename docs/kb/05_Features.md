@@ -113,7 +113,6 @@ Reduce the effort needed to plan the day and notice important changes.
 
 - Weather conditions and forecast
 - Sea conditions
-- Beach flag status
 - Official warnings
 - Meteosalud heat- and cold-health risk
 - One short static preventive tip beneath a medium or high Meteosalud risk;
@@ -151,11 +150,6 @@ This exact visual structure is the product contract:
 🟡 **Высокая температура**
    Сегодня и завтра · 13:00–20:59 · вероятность 40–70%
 
-🏖 **Флаги на пляжах:**
-   🟡 Roqueta
-   🟢 Centre / Babilònia, Vivers
-🪼 Медузы: Roqueta
-
 🚧 **Движение:**
 • С 19:30 перекрыта Calle Mayor.
 • Автобусы следуют по временному маршруту.
@@ -188,13 +182,11 @@ The order never changes:
 7. Warning
 8. Standalone health, air-quality, and pollen lines not nested in today's
    matching warning; pollen is always standalone
-9. Available flags for all six known Guardamar beach zones, grouped by color
-10. Jellyfish beaches, only when explicitly reported
-11. Traffic or closure
-12. On-call pharmacies for Guardamar's complete official service zone from the
+9. Traffic or closure
+10. On-call pharmacies for Guardamar's complete official service zone from the
     weekly-synced rota catalog
-13. Official holiday applicable in Guardamar today
-14. Today's events
+11. Official holiday applicable in Guardamar today
+12. Today's events
 
 Each event is one bullet. Its official place, when available, is rendered on
 the following indented `📍` line. Events are separated by one blank line;
@@ -214,38 +206,24 @@ AEMET sky states. Equal
 adjacent states are collapsed; a change renders as `ясно → облачно`.
 Sea and wind remain mandatory compact rows inside the same weather block.
 Rain is one optional compact row. It uses the highest AEMET probability for an eligible remaining period
-and appears only at `75%` or above; otherwise it is omitted. SafeBeach
-operational rows are considered only from 20 June through 14 September,
-inclusive. The flag row is shown only
-when SafeBeach has at least one active nearby record. It names each available
-beach and never averages flags. Groups use the fixed safety order red, yellow,
-then green. Beach ordering is fixed as `Centre / Babilònia`, `Roqueta`,
-`Vivers`, `Montcaio`, `Camp`, `Ortigues`. Within every color, split names into
-semantic rows of at most three and let Telegram wrap naturally. When all six
-current flags are green and no active municipal bathing prohibition conflicts,
-render the compact `На всех пляжах`; otherwise list every verified name.
-When at least one flag is current, unavailable beaches are omitted rather than
-assigned a reassuring default. The sea
-temperature and sea-state text use the AEMET
-Centro / La Roqueta forecast. Equal sea-state periods render once as
-`умеренные волны`; a change renders compactly as
-`слабые → умеренные`, without repeating `волны`. SafeBeach Centre values are fallbacks when the
-AEMET beach values are unavailable. The jellyfish row is
-shown only for beaches where SafeBeach explicitly reports presence. A negative,
-missing, or unknown jellyfish field produces no row. The wind
-forecast is appended to the wind row as `→ <speed>` and is omitted when
-unavailable. It never creates another row.
+and appears only at `75%` or above; otherwise it is omitted. SafeBeach operational flags are deliberately excluded from the immutable
+Morning Digest. The AEMET Centro / La Roqueta product remains the morning
+source for sea temperature and sea state; no missing SafeBeach flag is inferred
+or substituted into the morning message.
 
-The optional `УФ:` row uses AEMET's municipal `uvMax` value and appears only
-at 6 or above with the WHO category names `высокий` (6–7),
-`очень высокий` (8–10), and `экстремальный` (11+). A missing or implausible
-value produces no row and no extra request. The `Солнце:` row renders the
-computed local sunrise and sunset (`07:10 → 21:00`) from the deterministic
-on-device NOAA calculation; it uses no network source. See ADR 0036.
+### Daily beach root
 
-SafeBeach flag lines contain only the color and beach names. The generic
-SafeBeach flag description is not repeated. Update times are used only for
-internal freshness validation and are never shown in the user-facing digest.
+During the local beach season, verified SafeBeach or explicit Mayor bathing
+facts create one separate daily root titled `🏖 Пляжи Гуардамара сегодня`.
+Flag blocks are phone-first: the flag colour/type is on its own line, verified
+beach names follow on rows of at most three names, and the bathing meaning is a
+separate final line. Mixed states use the fixed safety order red, yellow, green.
+When all six tracked beaches have the same verified colour, the names collapse
+to `На всех пляжах ... флаги`. Missing beaches are omitted and never inferred.
+A Mayor bathing restriction or caution overrides contradictory generic flag
+permission wording. Later confirmed SafeBeach changes edit the root and may
+reply to it; newer explicit Mayor bathing transitions refresh the same root on
+already scheduled operational checks. The Morning Digest is never replaced.
 
 The sky-row icon is dynamic from the existing AEMET daily sky forecast:
 `☀️` clear, `🌤` partly cloudy, `☁️` cloudy, `🌫️` fog, `🌧️` rain,

@@ -4,10 +4,10 @@ The implemented providers are AEMET, Ministerio de Sanidad Meteosalud,
 Copernicus CAMS through a normalized public data product, Guardamar's public SafeBeach page,
 Agenda Guardamar, the official Policía Local traffic page, and the public
 `@AlcaldeGuardamar` channel, the Biblioteca Pública Municipal de Guardamar,
-and Agrupación Musical Guardamar. The 07:30 run requests current operational
-data directly and reads events from four pre-morning local catalogs. A later
-verified beach update permits one fresh complete collection; no raw
-source-response cache is used.
+and Agrupación Musical Guardamar. The 07:30 run requests current morning data
+directly and reads events from four pre-morning local catalogs. Operational
+SafeBeach flags are intentionally excluded from the immutable Morning Digest
+and use a separate seasonal daily beach root.
 
 The remaining municipal, police, and seasonal publisher roles are mapped in
 `research/2026-07-27-guardamar-municipal-source-map.md`. Except for the
@@ -18,10 +18,10 @@ official endpoints and lightweight access methods are validated.
 | --- | --- | --- | --- | --- |
 | AEMET OpenData | Guardamar forecast, nearby observation, official weather warnings | High; responsible Spanish authority | Structured API; API key required | Yes, first slice |
 | Ministerio de Sanidad Meteosalud | Today's heat- and cold-health risk for `Litoral sur de Alicante`, zone code `770303` | High; official national health source | Separate bounded morning reads of the official summer (`ISO_V`) and winter (`ISO_I`) technical TXT files; stale dates omitted | Yes, optional |
-| CAMS European Air Quality Forecasts | Forecast pollutants, mineral dust, wildfire PM10 contribution and six pollen types | High for model forecast; not an observation or official measured ICA | Separate public GitHub producer makes two ADS retrieves once daily and publishes one validated JSON | Yes, optional |
+| CAMS European Air Quality Forecasts | Forecast pollutants, mineral dust, wildfire PM10 contribution and six pollen types | High for model forecast; not an observation or official measured ICA | Separate public GitHub producer workflow runs twice each morning and publishes one validated JSON | Yes, optional |
 | ESIOS / Red Eléctrica | Next-day PVPC 2.0TD hourly active-energy term | High; official system operator publication | Indicator API `1001`; personal API key required | Yes, evening feature |
 | Official marine service | Sea state and relevant marine warnings | High for its jurisdiction | API or published feed | Yes |
-| SafeBeach public Guardamar page | Active beach flags and sea temperature | High when municipal lifeguards actively maintain it | Small structured payload embedded in the public page | Yes |
+| SafeBeach public Guardamar page | Active beach flags and jellyfish operational status | High when municipal lifeguards actively maintain it | Small structured payload embedded in the public page | Yes |
 | Civil protection or emergency authority | Safety warnings | Highest priority | Alert feed or official publication | Yes |
 | Instituto Geografico Nacional (IGN) GeoRSS | Nearby recorded earthquakes | High; official Spanish seismic authority | One bounded public XML feed request per hour; deterministic 10 km and magnitude 2.7 filter | Yes, narrow standalone notice |
 | Policía Local Guardamar | Explicit mobility restrictions | High for direct official notices; publication is irregular | One bounded official HTML page and reviewed linked document | Yes |
@@ -47,22 +47,34 @@ independently without blocking the digest; no season or temperature is inferred.
 
 The bot does not call ADS or decode scientific files. The separate public
 [`vasenko1/guardamar-cams-data`](https://github.com/vasenko1/guardamar-cams-data)
-repository runs one GitHub Action at 07:05 UTC. It makes two small official ADS
-retrieves: two UTC days of ensemble analysis for the five ICA pollutants and
-the current 00 UTC ensemble forecast at lead hours 0–48 for those pollutants,
-mineral dust, PM10 wildfire contribution, and alder, birch, grass, mugwort,
-olive, and ragweed pollen. It selects the nearest CAMS cell to Guardamar and
-publishes only validated UTC hourly values in a versioned JSON. Producer
-failure preserves the previous file.
+repository runs its producer workflow at 07:17 and 08:17 UTC. Each run makes
+two small official ADS retrieves: two UTC days of ensemble analysis for the
+five ICA pollutants and the current 00 UTC ensemble forecast at lead hours
+0–48 for those pollutants, mineral dust, PM10 wildfire contribution, and
+alder, birch, grass, mugwort, olive, and ragweed pollen. It selects the nearest
+CAMS cell to Guardamar and publishes only validated UTC hourly values in a
+versioned JSON. Producer failure preserves the previous file.
 
-At 07:30 the bot reads that JSON once and keeps one atomic last-good local
-copy. Checks at 10:10, 10:25 and 10:40, followed only by the first invocation
-of already scheduled operational windows, continue until today's UTC forecast
-base is accepted. A newer base refreshes the current full message. A stale,
-malformed, non-covering, or unavailable response is
-silent and cannot remove a valid cached enrichment or block the morning
-message. AEMET `Polvo en suspensión` remains an independent CAP warning; CAMS
-dust may affect only conservative explanatory wording.
+At 07:30 the bot reads the newest valid JSON available at that moment. The
+Morning Digest is immutable after publication. Production keeps a mutable
+last-good CAMS cache separate from the accepted lifecycle snapshot used to
+reconstruct the previous semantic baseline. Fetched production candidates are
+written atomically and are promoted only by the lifecycle that accepts that
+forecast cycle. Operator previews use a disposable cache copied from the
+last-good file, so a preview cannot overwrite the production cache or candidate.
+
+Checks at 10:10, 10:25 and 10:40, followed only by the first invocation of
+already scheduled operational windows, continue until today's UTC forecast
+base is accepted. A newer cycle is summarized only for the remaining local day
+and compared with the previously accepted remaining-day state. A material
+user-facing worsening, improvement, appearance, or clearance may produce one
+standalone Telegram update, normally as a reply to the Morning Digest. A
+technical cycle change or a numeric change that does not alter the displayed
+meaning stays silent. Late CAMS data never rebuilds, edits, deletes, or replaces
+the Morning Digest. A stale, malformed, non-covering, or unavailable response
+cannot be treated as an improvement or remove a previously valid warning.
+AEMET `Polvo en suspensión` remains an independent CAP warning; CAMS dust may
+affect only conservative explanatory wording.
 
 The bot applies the MITECO 2020 ICA bands locally: latest hour for NO2/SO2,
 trailing eight-hour mean for O3, and trailing 24-hour mean for PM10/PM2.5. It
@@ -210,25 +222,33 @@ endpoint with adequate freshness and source guarantees. See
 `research/2026-08-14-eulen-sport-beach-status-source.md`.
 
 Only active, non-ended lifeguard records are eligible. Before the final 10:40
-attempt, a replacement requires plausible current flags for all six known
-zones. At 10:40, one or more valid current flags are sufficient.
-A missing timestamp omits only that beach; it delays early replacement but
-does not block the final partial replacement. Missing beaches are omitted;
-their colors are never inferred. Optional sea, wind, and jellyfish fields
-never block publication. SafeBeach supplies
-individual nearby flags and current beach wind when present. Its Centre water
-temperature and sea state are fallbacks when the AEMET beach forecast omits
-those values. Flags are never averaged or generalized; they are grouped by
-color on separate compact lines in the message. Jellyfish are shown only for
-beaches with an explicit positive SafeBeach value, never as a daily
-reassurance. The
-user-facing digest renders both current and forecast wind in metres per
-second. The AEMET daily wind remains the compact forecast after the arrow.
-Today's AEMET Centro / La Roqueta forecast is the primary representative water
-temperature and sea state. Its two sea-state periods are shown once when equal
-or as one compact transition when they differ. AEMET never supplies or implies
-a flag. Unknown colors, ended service, missing data, request failure, or schema
-failure omit the affected optional value and never block the weather digest.
+attempt, the initial daily beach root requires plausible current flags for all
+six known zones. At 10:40, one or more valid current flags are sufficient.
+A missing timestamp omits only that beach; it delays an early complete root but
+does not block the final partial root. Missing beaches are omitted and their
+colors are never inferred. Optional sea, wind, and jellyfish fields never block
+collection.
+
+SafeBeach operational flags are never injected into the immutable 07:30
+Morning Digest. The separate daily beach root uses verified flag colors and
+explicit positive jellyfish state. AEMET remains the morning source for sea
+temperature, sea state, and forecast wind. Missing SafeBeach records cannot
+remove previously confirmed beaches from an existing daily root.
+
+After the daily root exists, later seasonal monitoring uses bounded scheduled
+checks and confirms candidate changes before publication. The root is edited
+from the accumulated confirmed baseline, so a partial response cannot narrow a
+previously fuller snapshot. A confirmed later change may also produce one reply
+to the daily beach root; the initial root is not duplicated by a second reply.
+If the root disappears between edit and reply, the bot recreates the complete
+confirmed root first and retries the reply against that root. A change message
+is never promoted into the beach-root slot.
+The public `@AlcaldeGuardamar` page is also checked for a newer explicit bathing
+transition during the initial root window and on the first invocation of each
+already scheduled operational window. The check is bounded by the last stored
+Mayor notice timestamp (or morning publication time when none exists), so an
+old notice is not replayed. A newer prohibition or caution refreshes the same
+beach root; source failure preserves the previous verified root facts.
 
 The adapter makes one bounded HTTPS request to the exact public SafeBeach host,
 accepts HTML only, and validates the page's calendar date against

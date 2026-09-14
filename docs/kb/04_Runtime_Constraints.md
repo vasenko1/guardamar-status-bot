@@ -38,8 +38,12 @@ producer. Android performs one bounded JSON read at 07:30, then only bounded
 checks at three existing lifecycle checkpoints and the first invocation of
 existing operational windows until today's UTC cycle is accepted. A late
 comparison considers only the remaining local day while retaining the rolling
-input history. It stores one atomic last-good JSON and has no ADS credential,
-scientific Python dependency, or CAMS polling process.
+input history. Production keeps one mutable last-good JSON, one accepted
+lifecycle snapshot, and only the small cycle-addressed candidate files needed
+while acceptance is pending. Accepted promotion prunes superseded candidates.
+Operator previews use a disposable copied cache that is removed when the
+preview ends. Android has no ADS credential, scientific Python dependency, or
+CAMS polling process.
 
 The OCI capacity search also runs only on a GitHub-hosted runner. Each invocation
 is short-lived, has no SDK automatic retry, uses one concurrency group, and may
@@ -118,8 +122,10 @@ or background process is allowed.
 - Assume requests can time out, disconnect, or return incomplete data.
 - Make only the bounded requests required by scheduled collection, the morning
   collection, or an authorized on-demand preview.
-- CAMS uses one public JSON response capped at 128 KiB. A validated local copy
-  may be reused when the remote file is unavailable; raw NetCDF never reaches
+- CAMS uses one public JSON response capped at 128 KiB. Production may reuse
+  its validated mutable last-good copy when the remote file is unavailable;
+  accepted-cycle reconstruction reads only the separate accepted snapshot.
+  Preview reads and writes a disposable private copy. Raw NetCDF never reaches
   or persists on Android.
 - Reuse connections when simple and safe.
 - Never retry indefinitely.
@@ -179,8 +185,10 @@ or background process is allowed.
   catalogs accepted in ADRs 0012 and 0028. The municipal catalog may retain
   unexpired prior-poster events
   for at most the next seven days during a month transition.
-- Store at most one validated CAMS JSON last-good copy; replace it atomically
-  only with an equally fresh or newer covering forecast.
+- CAMS production storage is bounded to one mutable last-good JSON, one accepted
+  lifecycle snapshot, and cycle-addressed candidates awaiting acceptance.
+  Superseded candidates are pruned after acceptance; preview copies live only
+  in a temporary directory and are removed at process exit.
 - Store at most one complete normalized ESIOS target day with its official
   indicator and geographic scope, separately from the electricity publication
   marker. Replace it only after a complete validated response for another day.
@@ -190,11 +198,14 @@ or background process is allowed.
   one-shot process exits.
 - Keep one current and one previous normalized airport schedule/fare snapshot.
   Store no raw Bus Sigüenza HTML or PDF.
-- Do not archive raw responses by default.
+- Do not archive raw responses by default. The normalized CAMS JSON lifecycle
+  snapshots above are the explicit bounded exception required for semantic
+  comparison and crash-safe acceptance.
 - Do not cache raw source responses or municipal information. Only normalized
   source-language event facts, bounded provenance, and the incremental Todo
   Cultura metadata allowed by ADR 0033 may enter the two event catalogs.
-- Use one small atomic JSON file; SQLite is unnecessary for the MVP.
+- Use one small atomic JSON file for publication state; SQLite is unnecessary
+  for the MVP.
 
 ## Preferred technology direction
 

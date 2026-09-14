@@ -5,6 +5,7 @@ import asyncio
 import logging
 import os
 import sys
+import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -53,15 +54,19 @@ from .earthquakes import (
 from .environment import (
     CAMS_DATA_URL,
     EnvironmentError,
+    accepted_cams_cache_path,
     fetch_cams,
     fetch_meteosalud,
     fetch_meteosalud_cold,
+    ensure_accepted_cams_snapshot,
+    persist_cams_snapshot,
+    prune_cams_candidates,
 )
 from .environment_updates import (
     build_environment_update,
     build_meteosalud_update,
 )
-from .mayor import latest_beach_notice
+from .mayor import MayorChannelError, latest_beach_notice
 from .municipal_agenda import (
     MunicipalAgendaError,
     municipal_translation_items,
@@ -79,6 +84,7 @@ from .operational_updates import (
     build_beach_root_message,
     build_update_message,
     clear_beach_ready,
+    confirmed_beach_status,
     finalize_delivery,
     miss_beach_sample,
     observe_beaches,
@@ -183,6 +189,20 @@ def _cams_monitor_checkpoint(schedule) -> bool:
     )
 
 
+def _promote_cams_snapshot(
+    cache_path: Path,
+    now: datetime,
+    forecast_base: datetime,
+) -> None:
+    """Promote the exact fetched CAMS cycle after its public outcome is known."""
+    persist_cams_snapshot(
+        cache_path,
+        accepted_cams_cache_path(cache_path),
+        now,
+        forecast_base,
+    )
+
+
 def _required_environment(name: str) -> str:
     value = os.environ.get(name, "").strip()
     if not value:
@@ -205,8 +225,10 @@ async def _send_operational_update(
     chat_id: str,
     message: str,
     reply_id: Optional[int],
+    *,
+    fallback_if_missing: bool = True,
 ) -> tuple[int, bool]:
-    """Prefer the requested anchor; recreate a root only if that anchor is gone."""
+    """Prefer the requested anchor and use standalone fallback only when allowed."""
     try:
         message_id = await send_message(
             bot_token,
@@ -217,7 +239,11 @@ async def _send_operational_update(
         )
         return message_id, reply_id is not None
     except TelegramError as exc:
-        if reply_id is None or exc.diagnostic_code != "MESSAGE-NOT-FOUND":
+        if (
+            reply_id is None
+            or exc.diagnostic_code != "MESSAGE-NOT-FOUND"
+            or not fallback_if_missing
+        ):
             raise
         logging.warning("Telegram reply anchor unavailable; sending standalone")
         message_id = await send_message(
@@ -228,40 +254,85 @@ async def _send_operational_update(
         )
         return message_id, False
 
+async def _refresh_mayor_beach_notice(
+    now: datetime,
+    state: PublicationState,
+    bot_token: str,
+    chat_id: str,
+) -> str:
+    """Refresh the daily beach root for a newer explicit Mayor transition."""
+    record = state.morning_record(now.date())
+    if record is None:
+        return "no_morning"
+    _, previous_notice = state.beach_root_facts(now.date())
+    since = datetime.fromisoformat(record["morning_published_at"])
+    if previous_notice is not None and previous_notice.published_at > since:
+        since = previous_notice.published_at
+    try:
+        notice = await latest_beach_notice(now, since)
+    except MayorChannelError as exc:
+        logging.warning(
+            "Mayor bathing update check failed: %s", exc
+        )
+        return "unavailable"
+    if notice is None:
+        return "no_update"
+    result, _ = await refresh_beach_root(
+        now,
+        state,
+        None,
+        notice,
+        build_beach_root_message,
+        lambda message: send_message(
+            bot_token, chat_id, message, disable_notification=False
+        ),
+        lambda message_id, message: edit_message(
+            bot_token, chat_id, message_id, message
+        ),
+    )
+    return result
+
 
 async def _produce_message(api_key: str, now: datetime) -> str:
     diagnostics = []
-    message = await produce_message(
-        api_key,
-        now,
-        os.environ.get("GEMINI_API_KEY", "").strip(),
-        Path(
-            os.environ.get(
-                "MUNICIPAL_AGENDA_STATE_PATH",
-                DEFAULT_MUNICIPAL_AGENDA_STATE_PATH,
-            )
-        ),
-        agenda_state_path=Path(os.environ.get(
-            "AGENDA_STATE_PATH", DEFAULT_AGENDA_STATE_PATH
-        )),
-        library_agenda_state_path=Path(os.environ.get(
-            "LIBRARY_AGENDA_STATE_PATH", DEFAULT_LIBRARY_AGENDA_STATE_PATH
-        )),
-        am_guardamar_state_path=Path(os.environ.get(
-            "AM_GUARDAMAR_STATE_PATH", DEFAULT_AM_GUARDAMAR_STATE_PATH
-        )),
-        diagnostics=diagnostics,
-        translation_cache_path=Path(os.environ.get(
-            "EVENT_TRANSLATIONS_PATH", DEFAULT_EVENT_TRANSLATIONS_PATH
-        )),
-        pharmacy_state_path=Path(os.environ.get(
-            "PHARMACY_STATE_PATH", DEFAULT_PHARMACY_STATE_PATH
-        )),
-        cams_data_url=os.environ.get("CAMS_DATA_URL", CAMS_DATA_URL).strip(),
-        cams_cache_path=Path(os.environ.get(
-            "CAMS_CACHE_PATH", DEFAULT_CAMS_CACHE_PATH
-        )),
-    )
+    source_cams_cache = Path(os.environ.get(
+        "CAMS_CACHE_PATH", DEFAULT_CAMS_CACHE_PATH
+    ))
+    with tempfile.TemporaryDirectory(prefix="guardamar-preview-") as directory:
+        preview_cams_cache = Path(directory) / "cams.json"
+        try:
+            preview_cams_cache.write_bytes(source_cams_cache.read_bytes())
+        except OSError:
+            pass
+        message = await produce_message(
+            api_key,
+            now,
+            os.environ.get("GEMINI_API_KEY", "").strip(),
+            Path(
+                os.environ.get(
+                    "MUNICIPAL_AGENDA_STATE_PATH",
+                    DEFAULT_MUNICIPAL_AGENDA_STATE_PATH,
+                )
+            ),
+            agenda_state_path=Path(os.environ.get(
+                "AGENDA_STATE_PATH", DEFAULT_AGENDA_STATE_PATH
+            )),
+            library_agenda_state_path=Path(os.environ.get(
+                "LIBRARY_AGENDA_STATE_PATH", DEFAULT_LIBRARY_AGENDA_STATE_PATH
+            )),
+            am_guardamar_state_path=Path(os.environ.get(
+                "AM_GUARDAMAR_STATE_PATH", DEFAULT_AM_GUARDAMAR_STATE_PATH
+            )),
+            diagnostics=diagnostics,
+            translation_cache_path=Path(os.environ.get(
+                "EVENT_TRANSLATIONS_PATH", DEFAULT_EVENT_TRANSLATIONS_PATH
+            )),
+            pharmacy_state_path=Path(os.environ.get(
+                "PHARMACY_STATE_PATH", DEFAULT_PHARMACY_STATE_PATH
+            )),
+            cams_data_url=os.environ.get("CAMS_DATA_URL", CAMS_DATA_URL).strip(),
+            cams_cache_path=preview_cams_cache,
+        )
     return message + render_diagnostics(diagnostics)
 
 
@@ -420,125 +491,142 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         chat_id: str,
     ) -> None:
         """Accept valid late source states and notify only material changes."""
-        record = state.morning_record(now.date())
-        if record is None:
-            return
-        if isinstance(record.get("update_message_id"), int):
-            logging.info("SKIP: legacy replacement day keeps its existing lifecycle")
-            return
+        with state.exclusive_run():
+            record = state.morning_record(now.date())
+            if record is None:
+                return
+            if isinstance(record.get("update_message_id"), int):
+                logging.info("SKIP: legacy replacement day keeps its existing lifecycle")
+                return
 
-        heat_level, cold_level, current_base, old_air, old_pollen = (
-            state.morning_environment_state(now.date())
-        )
-        try:
-            reply_id = _current_morning_message_id(record)
-        except StateError:
-            reply_id = None
-        effective_base = current_base
+            heat_level, cold_level, current_base, old_air, old_pollen = (
+                state.morning_environment_state(now.date())
+            )
+            try:
+                reply_id = _current_morning_message_id(record)
+            except StateError:
+                reply_id = None
+            effective_base = current_base
 
-        if not _cams_cycle_is_current(current_base, now):
-            old_remaining_air = old_remaining_pollen = None
-            old_remaining_available = current_base is None
-            if current_base is not None:
+            if not _cams_cycle_is_current(current_base, now):
+                old_remaining_air = old_remaining_pollen = None
+                old_remaining_available = current_base is None
+                if current_base is not None:
+                    try:
+                        await asyncio.to_thread(
+                            ensure_accepted_cams_snapshot,
+                            cams_cache_path,
+                            now,
+                            current_base,
+                        )
+                        cached_air, cached_pollen, cached_base = await fetch_cams(
+                            cams_data_url,
+                            cams_cache_path,
+                            now,
+                            allow_remote=False,
+                            remaining_day=True,
+                        )
+                    except EnvironmentError as exc:
+                        logging.warning(
+                            "CAMS accepted cycle cannot be reconstructed; "
+                            "suppressing comparison: %s", exc
+                        )
+                    else:
+                        if cached_base == current_base:
+                            old_remaining_air = cached_air
+                            old_remaining_pollen = cached_pollen
+                            old_remaining_available = True
+                        else:
+                            logging.warning(
+                                "CAMS accepted cycle cache base %s does not match %s; "
+                                "suppressing comparison",
+                                cached_base.isoformat(), current_base.isoformat(),
+                            )
                 try:
-                    cached_air, cached_pollen, cached_base = await fetch_cams(
-                        cams_data_url,
-                        cams_cache_path,
-                        now,
-                        allow_remote=False,
-                        remaining_day=True,
+                    new_air, new_pollen, available_base = await fetch_cams(
+                        cams_data_url, cams_cache_path, now, remaining_day=True
                     )
                 except EnvironmentError as exc:
                     logging.warning(
-                        "CAMS accepted cycle cannot be reconstructed; "
-                        "suppressing comparison: %s", exc
+                        "CAMS late refresh unavailable; preserving baseline: %s", exc
                     )
                 else:
-                    if cached_base == current_base:
-                        old_remaining_air = cached_air
-                        old_remaining_pollen = cached_pollen
-                        old_remaining_available = True
+                    if current_base is None or available_base > current_base:
+                        message = (
+                            build_environment_update(
+                                old_remaining_air,
+                                new_air,
+                                old_remaining_pollen,
+                                new_pollen,
+                                now,
+                            )
+                            if old_remaining_available else None
+                        )
+                        if message is not None:
+                            await _send_operational_update(
+                                bot_token, chat_id, message, reply_id
+                            )
+                        try:
+                            _promote_cams_snapshot(
+                                cams_cache_path, now, available_base
+                            )
+                        except EnvironmentError as exc:
+                            logging.warning(
+                                "CAMS accepted raw snapshot could not be promoted; "
+                                "semantic state still advances: %s", exc
+                            )
+                        state.mark_cams_environment(
+                            now.date(), available_base, new_air, new_pollen
+                        )
+                        prune_cams_candidates(cams_cache_path, available_base)
+                        effective_base = available_base
+                        logging.info(
+                            "CAMS semantic baseline accepted forecast base %s",
+                            available_base.isoformat(),
+                        )
                     else:
-                        logging.warning(
-                            "CAMS accepted cycle cache base %s does not match %s; "
-                            "suppressing comparison",
-                            cached_base.isoformat(), current_base.isoformat(),
+                        logging.info(
+                            "CAMS refresh pending: accepted forecast base is %s",
+                            current_base.isoformat(),
                         )
+
+            previous_heat, previous_cold = heat_level, cold_level
+            heat_resolved = cold_resolved = False
             try:
-                new_air, new_pollen, available_base = await fetch_cams(
-                    cams_data_url, cams_cache_path, now, remaining_day=True
-                )
+                heat = await fetch_meteosalud(now)
             except EnvironmentError as exc:
-                logging.warning(
-                    "CAMS late refresh unavailable; preserving baseline: %s", exc
-                )
+                logging.warning("Late Meteosalud heat unavailable: %s", exc)
             else:
-                if current_base is None or available_base > current_base:
-                    message = (
-                        build_environment_update(
-                            old_remaining_air,
-                            new_air,
-                            old_remaining_pollen,
-                            new_pollen,
-                            now,
-                        )
-                        if old_remaining_available else None
-                    )
-                    if message is not None:
-                        await _send_operational_update(
-                            bot_token, chat_id, message, reply_id
-                        )
-                    state.mark_cams_environment(
-                        now.date(), available_base, new_air, new_pollen
-                    )
-                    effective_base = available_base
-                    logging.info(
-                        "CAMS semantic baseline accepted forecast base %s",
-                        available_base.isoformat(),
-                    )
-                else:
-                    logging.info(
-                        "CAMS refresh pending: accepted forecast base is %s",
-                        current_base.isoformat(),
-                    )
+                if heat is not None:
+                    heat_level = heat.level
+                    heat_resolved = True
+            try:
+                cold = await fetch_meteosalud_cold(now)
+            except EnvironmentError as exc:
+                logging.warning("Late Meteosalud cold unavailable: %s", exc)
+            else:
+                if cold is not None:
+                    cold_level = cold.level
+                    cold_resolved = True
 
-        previous_heat, previous_cold = heat_level, cold_level
-        heat_resolved = cold_resolved = False
-        try:
-            heat = await fetch_meteosalud(now)
-        except EnvironmentError as exc:
-            logging.warning("Late Meteosalud heat unavailable: %s", exc)
-        else:
-            if heat is not None:
-                heat_level = heat.level
-                heat_resolved = True
-        try:
-            cold = await fetch_meteosalud_cold(now)
-        except EnvironmentError as exc:
-            logging.warning("Late Meteosalud cold unavailable: %s", exc)
-        else:
-            if cold is not None:
-                cold_level = cold.level
-                cold_resolved = True
-
-        if heat_resolved or cold_resolved:
-            message = build_meteosalud_update(
-                previous_heat,
-                heat_level if heat_resolved else previous_heat,
-                previous_cold,
-                cold_level if cold_resolved else previous_cold,
-                now,
-            )
-            if message is not None:
-                await _send_operational_update(
-                    bot_token, chat_id, message, reply_id
+            if heat_resolved or cold_resolved:
+                message = build_meteosalud_update(
+                    previous_heat,
+                    heat_level if heat_resolved else previous_heat,
+                    previous_cold,
+                    cold_level if cold_resolved else previous_cold,
+                    now,
                 )
-            state.mark_morning_environment(
-                now.date(),
-                heat_level,
-                effective_base,
-                cold_level=cold_level,
-            )
+                if message is not None:
+                    await _send_operational_update(
+                        bot_token, chat_id, message, reply_id
+                    )
+                state.mark_morning_environment(
+                    now.date(),
+                    heat_level,
+                    effective_base,
+                    cold_level=cold_level,
+                )
 
     if command == "monitor-hidraqua":
         state = HidraquaState(Path(os.environ.get(
@@ -574,6 +662,12 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             "MORNING_DIGEST_STATE_PATH", DEFAULT_STATE_PATH
         )))
         if _cams_monitor_checkpoint(schedule):
+            if _safebeach_is_in_season(now):
+                mayor_result = await _refresh_mayor_beach_notice(
+                    now, publication_state, bot_token, chat_id
+                )
+                if mayor_result == "failure":
+                    return 1
             try:
                 await check_late_environment(publication_state, bot_token, chat_id)
             except (StateError, TelegramError, ValueError) as exc:
@@ -642,11 +736,17 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 return 0
 
             beach_anchor = publication_state.beach_message_id(now.date())
-            if latest_beach is not None:
+            ready_changes = value.get("beach_ready") or []
+            initial_ready = bool(ready_changes) and all(
+                change.get("initial") for change in ready_changes
+            )
+            root_status = confirmed_beach_status(value, now)
+            if latest_beach is not None or ready_changes:
+                status_for_root = root_status or latest_beach
                 root_result, beach_anchor = await refresh_beach_root(
                     now,
                     publication_state,
-                    latest_beach,
+                    status_for_root,
                     None,
                     build_beach_root_message,
                     lambda message: send_message(
@@ -659,15 +759,57 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 if root_result == "failure":
                     return 1
 
-            beach_message = build_beach_message(value, now)
-            if beach_message is not None:
-                sent_id, anchored = await _send_operational_update(
-                    bot_token, chat_id, beach_message, beach_anchor
-                )
+            if initial_ready:
                 clear_beach_ready(value)
                 monitor_state.write(value)
-                if not anchored:
-                    publication_state.set_beach_message_id(now.date(), sent_id)
+
+            beach_message = build_beach_message(value, now)
+            if beach_message is not None:
+                if beach_anchor is None:
+                    logging.error("FAILURE: beach update has no daily root anchor")
+                    return 1
+                try:
+                    await _send_operational_update(
+                        bot_token,
+                        chat_id,
+                        beach_message,
+                        beach_anchor,
+                        fallback_if_missing=False,
+                    )
+                except TelegramError as exc:
+                    if exc.diagnostic_code != "MESSAGE-NOT-FOUND":
+                        raise
+                    logging.warning(
+                        "Beach root disappeared before reply; recreating it"
+                    )
+                    recovery_status = confirmed_beach_status(value, now)
+                    root_result, beach_anchor = await refresh_beach_root(
+                        now,
+                        publication_state,
+                        recovery_status,
+                        None,
+                        build_beach_root_message,
+                        lambda message: send_message(
+                            bot_token,
+                            chat_id,
+                            message,
+                            disable_notification=False,
+                        ),
+                        lambda message_id, message: edit_message(
+                            bot_token, chat_id, message_id, message
+                        ),
+                    )
+                    if root_result == "failure" or beach_anchor is None:
+                        return 1
+                    await _send_operational_update(
+                        bot_token,
+                        chat_id,
+                        beach_message,
+                        beach_anchor,
+                        fallback_if_missing=False,
+                    )
+                clear_beach_ready(value)
+                monitor_state.write(value)
 
             message = build_update_message(value, now)
             if message is None:
@@ -1078,6 +1220,37 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             aemet_snapshot_path, now, max_age=timedelta(minutes=60)
         )
         fetch_live = prepared is None and not preparation_busy(aemet_snapshot_path)
+        async def finalize_morning_publication() -> None:
+            if morning_aemet:
+                try:
+                    write_snapshot(aemet_snapshot_path, morning_aemet[-1], now)
+                except (OSError, ValueError) as exc:
+                    logging.warning(
+                        "Morning AEMET snapshot could not be saved: %s", exc
+                    )
+            if not morning_environment_detail:
+                return
+            heat, cold, air, pollen, base = morning_environment_detail[-1]
+            state.mark_morning_environment(
+                now.date(),
+                heat.level if heat is not None else None,
+                base,
+                cold_level=cold.level if cold is not None else None,
+                air_quality=air if base is not None else None,
+                pollen=pollen if base is not None else None,
+            )
+            if base is not None:
+                try:
+                    _promote_cams_snapshot(cams_cache_path, now, base)
+                except EnvironmentError as exc:
+                    logging.warning(
+                        "Morning CAMS raw snapshot could not be promoted; "
+                        "semantic baseline remains recoverable from its exact candidate: %s",
+                        exc,
+                    )
+                else:
+                    prune_cams_candidates(cams_cache_path, base)
+
         result = await publish_morning(
             now,
             state,
@@ -1109,19 +1282,8 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             lambda message: send_message(
                 bot_token, chat_id, message, disable_notification=False
             ),
+            finalize_morning_publication,
         )
-        if result == "success" and morning_aemet:
-            write_snapshot(aemet_snapshot_path, morning_aemet[-1], now)
-        if result == "success" and morning_environment_detail:
-            heat, cold, air, pollen, base = morning_environment_detail[-1]
-            state.mark_morning_environment(
-                now.date(),
-                heat.level if heat is not None else None,
-                base,
-                cold_level=cold.level if cold is not None else None,
-            )
-            if base is not None:
-                state.mark_cams_environment(now.date(), base, air, pollen)
         return 0 if result in {"success", "duplicate"} else 1
 
     existing = state.morning_record(now.date())
@@ -1148,6 +1310,14 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
 
     if not _safebeach_is_in_season(now):
         logging.info("SKIP: SafeBeach update phase is out of season")
+        return 0
+    if state.beach_message_id(now.date()) is not None:
+        mayor_result = await _refresh_mayor_beach_notice(
+            now, state, bot_token, chat_id
+        )
+        if mayor_result == "failure":
+            return 1
+        logging.info("SKIP: daily beach root already exists")
         return 0
     final_attempt = (now.hour, now.minute) >= (10, 40)
     beach = None

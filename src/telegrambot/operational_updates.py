@@ -413,6 +413,45 @@ def seed_beaches(state: dict, baseline: object) -> None:
         state["latest_beaches"][name] = {"flag": flag, "jellyfish": jellyfish}
 
 
+def confirmed_beach_status(state: dict, now: datetime) -> Optional[BeachStatus]:
+    """Build the full confirmed snapshot without erasing temporarily missing beaches."""
+    confirmed = {
+        name: dict(value)
+        for name, value in state.get("beaches", {}).items()
+        if name in BEACH_ORDER and isinstance(value, dict)
+    }
+    for change in state.get("beach_ready") or ():
+        if not isinstance(change, dict) or change.get("beach") not in BEACH_ORDER:
+            continue
+        field = change.get("field")
+        if field not in {"flag", "jellyfish"}:
+            continue
+        confirmed.setdefault(change["beach"], {})[field] = change.get("new")
+
+    flags = tuple(
+        (name, confirmed[name]["flag"])
+        for name in KNOWN_BEACHES
+        if confirmed.get(name, {}).get("flag") in FLAG_DOTS
+    )
+    if not flags:
+        return None
+    jellyfish_states = tuple(
+        (name, confirmed[name]["jellyfish"])
+        for name in KNOWN_BEACHES
+        if isinstance(confirmed.get(name, {}).get("jellyfish"), bool)
+    )
+    return BeachStatus(
+        flag_color=None,
+        sea_temperature_c=None,
+        nearby_flags=flags,
+        jellyfish_beaches=tuple(
+            name for name, present in jellyfish_states if present
+        ),
+        jellyfish_states=jellyfish_states,
+        source_date=now.astimezone(GUARDAMAR_TIMEZONE).date(),
+    )
+
+
 def observe_warnings(
     state: dict,
     warnings: Sequence[Warning],
@@ -479,8 +518,8 @@ def _beach_change_lines(changes: Sequence[dict]) -> list[str]:
     for change in changes:
         name = html.escape(BEACH_NAMES.get(change["beach"], change["beach"]))
         if change["field"] == "flag":
-            old = FLAG_DOTS.get(change.get("old"), "—")
-            new = FLAG_DOTS.get(change.get("new"), "—")
+            old = FLAG_DOTS.get(change.get("old"), "?")
+            new = FLAG_DOTS.get(change.get("new"), "?")
             lines.append(
                 f"• {name}: {new}"
                 if initial else f"• {name}: {old} → {new}"
@@ -492,22 +531,122 @@ def _beach_change_lines(changes: Sequence[dict]) -> list[str]:
     return lines
 
 
+def _beach_name_lines(names: Sequence[str]) -> list[str]:
+    """Render narrow-screen beach-name rows with at most three names."""
+    escaped = [
+        f"<b>{html.escape(BEACH_NAMES.get(name, name))}</b>"
+        for name in names
+    ]
+    return [
+        ", ".join(escaped[offset:offset + 3])
+        for offset in range(0, len(escaped), 3)
+    ]
+
+
+def _show_flag_meaning(color: str, notice: Optional[BeachNotice]) -> bool:
+    if color == "red" or notice is None:
+        return True
+    if notice.bathing_prohibited:
+        return False
+    return color == "yellow"
+
+def _beach_root_flag_lines(
+    status: Optional[BeachStatus],
+    notice: Optional[BeachNotice],
+) -> list[str]:
+    if status is None or not status.nearby_flags:
+        return []
+    flags = {
+        name: color
+        for name, color in status.nearby_flags
+        if name in BEACH_ORDER and color in FLAG_DOTS
+    }
+    if not flags:
+        return []
+    labels = {
+        "red": ("Красный", "Красные", "⛔ Купание запрещено"),
+        "yellow": ("Жёлтый", "Жёлтые", "⚠️ Купаться с осторожностью"),
+        "green": ("Зелёный", "Зелёные", "✅ Купание разрешено"),
+    }
+
+    if set(flags) == set(BEACH_ORDER) and len(set(flags.values())) == 1:
+        color = next(iter(flags.values()))
+        _, plural, meaning = labels[color]
+        lines = [f"{FLAG_DOTS[color]} На всех пляжах {plural.lower()} флаги"]
+        if _show_flag_meaning(color, notice):
+            lines.append(meaning)
+        return lines
+
+    blocks = []
+    for color in ("red", "yellow", "green"):
+        names = [name for name in KNOWN_BEACHES if flags.get(name) == color]
+        if not names:
+            continue
+        singular, plural, meaning = labels[color]
+        heading = (
+            f"{FLAG_DOTS[color]} {singular} флаг"
+            if len(names) == 1
+            else f"{FLAG_DOTS[color]} {plural} флаги"
+        )
+        block = [heading, *_beach_name_lines(names)]
+        if _show_flag_meaning(color, notice):
+            block.append(meaning)
+        blocks.append(block)
+
+    lines = []
+    for block in blocks:
+        if lines:
+            lines.append("")
+        lines.extend(block)
+    return lines
+
 def build_beach_root_message(
     status: Optional[BeachStatus],
     notice: Optional[BeachNotice],
 ) -> Optional[str]:
-    """Render one independent daily beach root from verified current facts."""
-    context = _beach_operational_lines(status, notice)
+    """Render one self-explanatory daily beach root from verified facts."""
+    displayed_notice = notice
+    if (
+        notice is not None
+        and not notice.bathing_prohibited
+        and status is not None
+        and any(color == "red" for _, color in status.nearby_flags)
+    ):
+        # Mayor parsing intentionally keeps no beach scope. Keep the caution as
+        # a constraint on green wording, but do not render a weaker generic
+        # statement beside a stricter confirmed beach-specific red flag.
+        displayed_notice = None
+    context = _beach_root_flag_lines(status, notice)
+    if status is not None and status.jellyfish_beaches:
+        jellyfish = sorted(
+            status.jellyfish_beaches,
+            key=lambda name: BEACH_ORDER.get(name, len(BEACH_ORDER)),
+        )
+        for offset in range(0, len(jellyfish), 3):
+            chunk = jellyfish[offset:offset + 3]
+            prefix = "🪼 Медузы: " if offset == 0 else "   🪼 "
+            context.append(
+                prefix
+                + ", ".join(
+                    html.escape(BEACH_NAMES.get(name, name)) for name in chunk
+                )
+            )
+    if displayed_notice is not None:
+        heading = (
+            "⛔ Ограничение купания"
+            if displayed_notice.bathing_prohibited
+            else "🏖 Информация о купании"
+        )
+        if context:
+            context.append("")
+        context.extend([f"<b>{heading}:</b>", html.escape(displayed_notice.text)])
     if not context:
         return None
-    if context and context[0] == "🏖 <b>Флаги на пляжах:</b>":
-        context = context[1:]
-    while context and not context[0]:
-        context = context[1:]
-    lines = ["🏖 <b>Пляжи Гуардамара сегодня</b>"]
-    if context:
-        lines.extend(["", *context])
-    return with_footer("\n".join(lines))
+    return with_footer("\n".join([
+        "🏖 <b>Пляжи Гуардамара сегодня</b>",
+        "",
+        *context,
+    ]))
 
 
 def _cancelled_warning_period(warning: Warning, now: datetime) -> str:
