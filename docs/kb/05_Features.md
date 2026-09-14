@@ -281,11 +281,15 @@ because they are celebrations.
 Each event uses the compact order `{time or range} — {type and title}, {place}`.
 When a verified explicit duration exists, show the start time and a compact
 `N мин` fact instead of treating a calendar end slot as an exact finish time.
-Standalone events may show one optional facts line, ordered as short details,
-duration, then audience; absent facts produce no row or separators. This is the
-same renderer for films, tours, workshops and other events. A clearly more
-specific title may replace a generic title only after the occurrences have
-already matched and the shorter title is an exact token prefix of the longer.
+Every event, including a child of a named programme, may show one optional
+facts line, ordered as short details, duration, then audience. A short teaser,
+supplementary schedule, visible venue, distinct meeting point, participation
+note and access row appear only when verified. The visible venue may link to a
+separate safe map query. An equivalent meeting point is not repeated. Exact
+access wording wins over the generic limited-capacity fallback. Source facts
+merge additively; a generic title may gain a specific identity after duplicate
+matching, but a canonical title is not replaced by a promotional subtitle.
+Programme grouping is independent of the programme's name.
 When the official source has no time, omit only the time prefix and keep the
 event. Preserve an explicit activity type or medium such as painting,
 sculpture, concert, workshop, guided tour, or night route. Include the

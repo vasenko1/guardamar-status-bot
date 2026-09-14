@@ -69,8 +69,11 @@ def _merge_events(*groups):
             return re.findall(r"[^\W_]+", normalized)
 
         base, expanded = tokens(current), tokens(candidate)
+        generic = len(base) <= 3 and not any(
+            marker in current for marker in (":", "«", "»", '"')
+        )
         return (
-            candidate if base and len(expanded) > len(base)
+            candidate if generic and len(expanded) > len(base)
             and expanded[:len(base)] == base else current
         )
 
@@ -172,6 +175,10 @@ def _merge_events(*groups):
                     details=tuple(dict.fromkeys(
                         (*current.details, *event.details)
                     )),
+                    place_query=current.place_query or event.place_query,
+                    meeting_point=current.meeting_point or event.meeting_point,
+                    schedule_note=current.schedule_note or event.schedule_note,
+                    access_note=current.access_note or event.access_note,
                     programme_title=(
                         current.programme_title or event.programme_title
                     ),

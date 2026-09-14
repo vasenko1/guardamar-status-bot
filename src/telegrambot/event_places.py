@@ -1,6 +1,7 @@
 """Small deterministic cleanup and map-safety rules for event venues."""
 
 import re
+import unicodedata
 
 
 _CONTEXT_WORDS = re.compile(
@@ -16,7 +17,9 @@ _EMBEDDED_STREET = re.compile(
 _NON_MAP_INSTRUCTIONS = re.compile(
     r"\b(?:lugar|punto)\s+(?:de\s+)?(?:inicio|salida)\b|"
     r"\b(?:por\s+confirmar|por\s+determinar)\b|"
-    r"\b(?:comunicar[aá]|indicar[aá])\b",
+    r"\b(?:comunicar[aá]|indicar[aá])\b|"
+    r"\b(?:место\s+(?:старта|сбора)\s+сообщит|"
+    r"место\s+уточняется|будет\s+сообщено\s+позже)\b",
     re.IGNORECASE,
 )
 _TYPE_LABELS = {
@@ -65,3 +68,18 @@ def event_place_is_map_safe(value: str) -> bool:
         and not _CONTEXT_WORDS.search(compact)
         and not _NON_MAP_INSTRUCTIONS.search(compact)
     )
+
+
+def same_event_place(left: str, right: str) -> bool:
+    """Suppress only equivalent named venues, not merely nearby places."""
+
+    def words(value: str) -> tuple[str, ...]:
+        value = unicodedata.normalize("NFKD", canonical_event_place(value).casefold())
+        value = "".join(char for char in value if not unicodedata.combining(char))
+        aliases = {"castell": "castillo"}
+        return tuple(
+            aliases.get(word, word) for word in re.findall(r"[^\W_]+", value)
+            if word not in {"de", "del", "la", "el"}
+        )
+
+    return bool(words(left)) and words(left) == words(right)

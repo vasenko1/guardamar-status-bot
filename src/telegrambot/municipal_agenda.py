@@ -28,7 +28,7 @@ from .gemini import (
 )
 from .event_translations import cached_title, cached_translation, spanish_fallback
 from .event_urls import normalize_ticket_url
-from .event_places import canonical_event_place
+from .event_places import canonical_event_place, event_place_is_map_safe
 from .facebook import FacebookError, FacebookPost, fetch_facebook_posts
 from .reviewed import (
     ReviewedDataError,
@@ -237,6 +237,7 @@ def extract_official_cinema(
             ),
             details=((" ".join(genre_match.group(1).split()),)
                      if genre_match else ()),
+            access_note="до заполнения зала" if free else None,
         ))
     return tuple(events)
 
@@ -393,6 +394,63 @@ class SourceEvent:
     duration_minutes: Optional[int] = None
     audience_label: Optional[str] = None
     details: Tuple[str, ...] = ()
+    place_query: Optional[str] = None
+    meeting_point: Optional[str] = None
+    schedule_note: Optional[str] = None
+    access_note: Optional[str] = None
+    programme_title: Optional[str] = None
+    programme_order: Optional[int] = None
+
+
+_CAMPO_PROGRAMME_ORDER = {
+    "Disparo de cohetes": 10,
+    "Entrada de bandas": 20,
+    "Desfile Multicolor": 30,
+    "Fuegos artificiales": 40,
+    "Fiesta del Vino": 50,
+    "Actuaciones nocturnas de las Fiestas del Campo": 60,
+    "Chocolate con mona de madrugada": 10,
+    "Despertà": 20,
+    "Charanga": 30,
+}
+
+
+def _programme_source_metadata(
+    event: SourceEvent, programme_title: Optional[str] = None,
+) -> SourceEvent:
+    """Keep the narrow Campo article's programme identity at its adapter."""
+
+    if (
+        "turismo_programme" not in event.sources
+        or event.title_es not in _CAMPO_PROGRAMME_ORDER
+    ):
+        return event
+    return replace(
+        event,
+        programme_title=(
+            event.programme_title or programme_title
+            or "Fiestas del Campo — Campo de Guardamar"
+        ),
+        programme_order=(
+            event.programme_order if event.programme_order is not None
+            else _CAMPO_PROGRAMME_ORDER.get(event.title_es)
+        ),
+    )
+
+
+def _explicit_venue_and_address(event: SourceEvent) -> SourceEvent:
+    """Separate an address from the venue explicitly named in its source row."""
+
+    if not event.place or not event_place_is_map_safe(event.place):
+        return event
+    if not re.match(r"^(?:calle|carrer|avenida|av\.)\b", event.place, re.I):
+        return event
+    venue = re.search(r"\bCentro Social Juvenil\b", event.title_es, re.I)
+    if venue is None:
+        return event
+    return replace(
+        event, place=venue.group(0), place_query=event.place_query or event.place
+    )
 
 
 def _is_contentless_generic_event(event: SourceEvent) -> bool:
@@ -696,7 +754,7 @@ def _unmatched_todo_rows(
     return tuple(missing)
 
 
-def _read_turismo_programme(local_day: date) -> Optional[Tuple[str, str, str]]:
+def _read_turismo_programme(local_day: date) -> Optional[Tuple[str, str, str, str]]:
     """Find the current official festival article and its full-size poster.
 
     The monthly agenda only links a tiny inset of this programme.  WordPress
@@ -752,7 +810,13 @@ def _read_turismo_programme(local_day: date) -> Optional[Tuple[str, str, str]]:
         if poster_url is None:
             continue
         article_text = " ".join(html.unescape(re.sub(r"<[^>]+>", " ", content)).split())
-        return link, poster_url, article_text[:12_000]
+        programme_name = re.search(
+            r"Fiestas del Campo(?: de Guardamar)?\s+\d{4}",
+            html.unescape(title), re.IGNORECASE,
+        )
+        if programme_name is None:
+            continue
+        return link, poster_url, article_text[:12_000], programme_name.group(0)
     return None
 
 
@@ -837,7 +901,8 @@ async def _turismo_programme_events(
     programme = await asyncio.to_thread(_read_turismo_programme, local_day)
     if programme is None:
         return previous, previous_state
-    article_url, poster_url, article_text = programme
+    article_url, poster_url, article_text = programme[:3]
+    programme_name = programme[3] if len(programme) > 3 else None
     explicit_events = _explicit_fiesta_article_events(
         article_text, local_day.year
     )
@@ -977,7 +1042,9 @@ async def _turismo_programme_events(
         )
         if not events:
             return previous, previous_state
-        return events, {
+        return tuple(
+            _programme_source_metadata(event, programme_name) for event in events
+        ), {
             "article_url": article_url,
             "poster_url": poster_url,
             "sha256": fingerprint,
@@ -992,7 +1059,10 @@ async def _turismo_programme_events(
         ):
             return previous, previous_state
         if explicit_events:
-            return explicit_events, {
+            return tuple(
+                _programme_source_metadata(event, programme_name)
+                for event in explicit_events
+            ), {
                 "article_url": article_url,
                 "poster_url": poster_url,
                 "sha256": fingerprint,
@@ -1308,6 +1378,15 @@ def merge_text_and_poster_events(
                 "details": tuple(dict.fromkeys(
                     (*current.details, *poster_event.details)
                 )),
+                "place_query": current.place_query or poster_event.place_query,
+                "meeting_point": current.meeting_point or poster_event.meeting_point,
+                "schedule_note": current.schedule_note or poster_event.schedule_note,
+                "access_note": current.access_note or poster_event.access_note,
+                "programme_title": current.programme_title or poster_event.programme_title,
+                "programme_order": (
+                    current.programme_order if current.programme_order is not None
+                    else poster_event.programme_order
+                ),
             }
         )
     return tuple(merged[:MAX_EVENTS])
@@ -1725,6 +1804,18 @@ def normalize_extraction(
         details = tuple(_clean_text(item, 60) for item in raw_details)
         if any(item is None for item in details):
             raise MunicipalAgendaError("invalid event details")
+        place_query = _clean_text(raw.get("place_query"), 120)
+        if place_query and not event_place_is_map_safe(place_query):
+            raise MunicipalAgendaError("invalid event map query")
+        meeting_point = _clean_text(raw.get("meeting_point"), 120)
+        schedule_note = _clean_text(raw.get("schedule_note"), 160)
+        access_note = _clean_text(raw.get("access_note"), 100)
+        programme_title = _clean_text(raw.get("programme_title"), 120)
+        programme_order = raw.get("programme_order")
+        if programme_order is not None and (
+            type(programme_order) is not int or not 0 <= programme_order <= 999
+        ):
+            raise MunicipalAgendaError("invalid programme order")
         event = SourceEvent(
             title_es=title_es,
             start_date=start_date,
@@ -1743,7 +1834,14 @@ def normalize_extraction(
             duration_minutes=duration_minutes,
             audience_label=audience_label,
             details=details,
+            place_query=place_query,
+            meeting_point=meeting_point,
+            schedule_note=schedule_note,
+            access_note=access_note,
+            programme_title=programme_title,
+            programme_order=programme_order,
         )
+        event = _explicit_venue_and_address(event)
         key = (event.title_es.casefold(), event.start_date, event.start_time)
         if category == "municipal_service" and start_date == end_date:
             # One-day routine services (for example, a generic youth-centre
@@ -1826,6 +1924,12 @@ def _snapshot_data(
                 "duration_minutes": event.duration_minutes,
                 "audience_label": event.audience_label,
                 "details": list(event.details),
+                "place_query": event.place_query,
+                "meeting_point": event.meeting_point,
+                "schedule_note": event.schedule_note,
+                "access_note": event.access_note,
+                "programme_title": event.programme_title,
+                "programme_order": event.programme_order,
             }
             for event in events
         ],
@@ -1925,7 +2029,9 @@ def _load_snapshot(path: Path) -> Optional[Dict[str, Any]]:
                 )
             if _is_contentless_generic_event(normalized):
                 continue
-            events.append(normalized)
+            events.append(_explicit_venue_and_address(
+                _programme_source_metadata(normalized)
+            ))
         return {
             **data,
             "_events": tuple(events),
@@ -2017,6 +2123,18 @@ def _merge_reviewed_details(
         ),
         registration_contact=(
             current.registration_contact or correction.registration_contact
+        ),
+        place_query=current.place_query or correction.place_query,
+        meeting_point=current.meeting_point or correction.meeting_point,
+        schedule_note=current.schedule_note or correction.schedule_note,
+        access_note=current.access_note or correction.access_note,
+        duration_minutes=current.duration_minutes or correction.duration_minutes,
+        audience_label=current.audience_label or correction.audience_label,
+        details=tuple(dict.fromkeys((*current.details, *correction.details))),
+        programme_title=current.programme_title or correction.programme_title,
+        programme_order=(
+            current.programme_order if current.programme_order is not None
+            else correction.programme_order
         ),
         capacity_limited=(
             current.capacity_limited or correction.capacity_limited
@@ -2632,6 +2750,9 @@ async def refresh_municipal_catalog(
             old_programme_events,
             programme_source if isinstance(programme_source, dict) else {},
         )
+        programme_events = tuple(
+            _programme_source_metadata(event) for event in programme_events
+        )
         events = merge_text_and_poster_events(text_events, poster_events)
         events = merge_text_and_poster_events(events, programme_events)
         events = merge_text_and_poster_events(events, todo_events)
@@ -2962,6 +3083,35 @@ async def fetch_today_municipal_events(
                 )
                 if ends_at <= starts_at:
                     ends_at += timedelta(days=1)
+        place = source.place
+        meeting_point = source.meeting_point
+        if place and not event_place_is_map_safe(place) and place.casefold().startswith(
+            ("место старта", "место сбора")
+        ):
+            meeting_point = meeting_point or place
+            place = None
+        participation_note = source.participation_note
+        audience_label = source.audience_label
+        schedule_note = source.schedule_note
+        teaser = (
+            cached_translation(
+                translation_cache_path, "municipal_agenda_teaser", source.teaser_es
+            ) if translation_cache_path is not None and source.teaser_es else None
+        )
+        activities = re.fullmatch(
+            r"(для [^;]{5,50}); доступны (.{5,120})",
+            participation_note or "", re.IGNORECASE,
+        )
+        if activities is not None:
+            audience_label = audience_label or activities.group(1)
+            teaser = teaser or "Доступны " + activities.group(2).rstrip(".") + "."
+            participation_note = None
+        if participation_note and re.match(
+            r"^в будни перерыв \d{1,2}:\d{2}–\d{1,2}:\d{2}$",
+            participation_note, re.IGNORECASE,
+        ):
+            schedule_note = schedule_note or participation_note
+            participation_note = None
         result.append(
             Event(
                 title=(
@@ -2970,7 +3120,7 @@ async def fetch_today_municipal_events(
                 ),
                 starts_at=starts_at,
                 ends_at=ends_at,
-                place=source.place,
+                place=place,
                 active_until=(
                     source.end_date
                     if source.start_date != source.end_date else None
@@ -2978,36 +3128,19 @@ async def fetch_today_municipal_events(
                 category=source.category,
                 ticket_price_cents=source.ticket_price_cents,
                 ticket_url=source.ticket_url,
-                participation_note=source.participation_note,
+                participation_note=participation_note,
                 registration_contact=source.registration_contact,
                 capacity_limited=source.capacity_limited,
                 duration_minutes=source.duration_minutes,
-                audience_label=source.audience_label,
+                audience_label=audience_label,
                 details=tuple(_detail_label(item) for item in source.details),
-                teaser=(
-                    cached_translation(
-                        translation_cache_path, "municipal_agenda_teaser", source.teaser_es
-                    )
-                    if translation_cache_path is not None and source.teaser_es else None
-                ),
-                programme_title=(
-                    "Fiestas del Campo — Campo de Guardamar"
-                    if "turismo_programme" in source.sources else None
-                ),
-                programme_order=(
-                    {
-                        "Disparo de cohetes": 10,
-                        "Entrada de bandas": 20,
-                        "Desfile Multicolor": 30,
-                        "Fuegos artificiales": 40,
-                        "Fiesta del Vino": 50,
-                        "Actuaciones nocturnas de las Fiestas del Campo": 60,
-                        "Chocolate con mona de madrugada": 10,
-                        "Despertà": 20,
-                        "Charanga": 30,
-                    }.get(source.title_es)
-                    if "turismo_programme" in source.sources else None
-                ),
+                place_query=source.place_query,
+                meeting_point=meeting_point,
+                schedule_note=schedule_note,
+                access_note=source.access_note,
+                teaser=teaser,
+                programme_title=source.programme_title,
+                programme_order=source.programme_order,
                 is_final_day=(
                     source.start_date != source.end_date
                     and local_day == source.end_date

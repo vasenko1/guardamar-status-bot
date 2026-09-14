@@ -67,6 +67,7 @@ class OfficialCinemaFactsTests(unittest.TestCase):
             self.assertEqual(event.details, (genre,))
             self.assertEqual(event.ticket_price_cents, 0)
             self.assertTrue(event.capacity_limited)
+            self.assertEqual(event.access_note, "до заполнения зала")
             self.assertEqual(event.start_time, "18:00")
         self.assertEqual(events[2].start_date, date(2026, 9, 28))
 
@@ -78,6 +79,7 @@ class OfficialCinemaFactsTests(unittest.TestCase):
         self.assertEqual(event.details, ("Comedia",))
         self.assertEqual(event.ticket_price_cents, 0)
         self.assertTrue(event.capacity_limited)
+        self.assertEqual(event.access_note, "до заполнения зала")
         generic = SourceEvent(
             "Cine de los Lunes", event.start_date, event.end_date,
             event.start_time, None, "Biblioteca Municipal", "event", ("mupi",),
@@ -156,7 +158,7 @@ class OfficialCinemaFactsTests(unittest.TestCase):
 
         self.assertEqual(len(merged), 1)
         event = merged[0]
-        self.assertIn("Respect", event.title)
+        self.assertEqual(event.title, "Кино по понедельникам: «Respect»")
         self.assertEqual(event.duration_minutes, 144)
         self.assertEqual(event.audience_label, "12+")
         self.assertEqual(event.details, ("Драма",))
@@ -167,7 +169,7 @@ class OfficialCinemaFactsTests(unittest.TestCase):
         self.assertIn("<b>18:00</b>", rendered)
         self.assertNotIn("20:00", rendered)
         self.assertIn("Драма • 144 мин • 12+", rendered)
-        self.assertIn("🎟 Бесплатно · места ограничены", rendered)
+        self.assertIn("🎟 Бесплатно · до заполнения зала", rendered)
         self.assertIn("Biblioteca", rendered)
 
     def test_every_current_film_replaces_only_its_generic_mupi_row(self):
@@ -200,7 +202,7 @@ class OfficialCinemaFactsTests(unittest.TestCase):
                 self.assertIn(genre, rendered)
                 self.assertIn(f"{source.duration_minutes} мин", rendered)
                 self.assertIn(source.audience_label, rendered)
-                self.assertIn("Бесплатно · места ограничены", rendered)
+                self.assertIn("Бесплатно · до заполнения зала", rendered)
 
     def test_old_snapshot_without_optional_fields(self):
         event = SourceEvent(

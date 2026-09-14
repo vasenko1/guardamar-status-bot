@@ -349,6 +349,13 @@ its concrete title and short source-grounded synopsis. Both catalogs merge
 into one ordinary Event; explicit duration suppresses a potentially rounded
 library calendar end time in the shared renderer. Optional fact fields are
 additive in the existing normalized snapshot, so older snapshots remain valid.
+The source's `Entrada libre hasta completar aforo` retains its precise access
+meaning as `Бесплатно · до заполнения зала`; a generic capacity label is only
+a fallback. Venue labels and source-confirmed physical addresses may be
+stored separately, so an address can power the map link without replacing a
+recognizable venue name. Distinct meeting points and supplementary schedule
+notes are optional independent facts. Grouped programme children use the same
+detail rendering as other events, with no new provider or morning request.
 
 Operator-reviewed corrections — exact Russian titles, per-poster reviewed
 occurrences with their known-bad-OCR drop filter, and bounded day-of

@@ -19,6 +19,7 @@ from .gemini import GeminiError, translate_event_titles
 from .event_translations import cached_title
 from .holidays import is_market_day
 from .models import Event
+from .event_places import event_place_is_map_safe
 
 AGENDA_URL = (
     "https://www.agendaguardamar.com/"
@@ -589,6 +590,13 @@ def _write_agenda_snapshot(path: Path, now: datetime, events: Tuple[Event, ...])
                 "place": event.place,
                 "ticket_price_cents": event.ticket_price_cents,
                 "ticket_url": event.ticket_url,
+                "place_query": event.place_query,
+                "meeting_point": event.meeting_point,
+                "schedule_note": event.schedule_note,
+                "access_note": event.access_note,
+                "duration_minutes": event.duration_minutes,
+                "audience_label": event.audience_label,
+                "details": list(event.details),
             }
             for event in events
         ],
@@ -644,6 +652,24 @@ def _load_agenda_snapshot(path: Path) -> Tuple[Event, ...]:
             place = raw.get("place")
             if place is not None and not isinstance(place, str):
                 raise ValueError
+            extra = {name: raw.get(name) for name in (
+                "place_query", "meeting_point", "schedule_note",
+                "access_note", "audience_label",
+            )}
+            if any(value is not None and (
+                not isinstance(value, str) or len(value) > 160
+            ) for value in extra.values()):
+                raise ValueError
+            if extra["place_query"] and not event_place_is_map_safe(extra["place_query"]):
+                raise ValueError
+            duration = raw.get("duration_minutes")
+            if duration is not None and (type(duration) is not int or not 1 <= duration <= 720):
+                raise ValueError
+            details = raw.get("details", [])
+            if not isinstance(details, list) or len(details) > 3 or any(
+                not isinstance(item, str) or len(item) > 60 for item in details
+            ):
+                raise ValueError
             ticket_price_cents = raw.get("ticket_price_cents")
             if ticket_price_cents is not None and (
                 not isinstance(ticket_price_cents, int)
@@ -666,6 +692,9 @@ def _load_agenda_snapshot(path: Path) -> Tuple[Event, ...]:
                 place=place,
                 ticket_price_cents=ticket_price_cents,
                 ticket_url=ticket_url,
+                duration_minutes=duration,
+                details=tuple(details),
+                **extra,
             ))
         return tuple(events)
     except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:

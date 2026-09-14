@@ -186,6 +186,7 @@ def _event_from_data(raw: Any) -> Optional[SourceEvent]:
         values["start_date"] = start
         values["end_date"] = end
         values["sources"] = tuple(raw["sources"])
+        values["details"] = tuple(raw.get("details", ()))
         return SourceEvent(**values)
     except (KeyError, TypeError, ValueError):
         return None
@@ -328,6 +329,15 @@ async def fetch_today_am_guardamar_events(
             ticket_url=event.ticket_url, participation_note=event.participation_note,
             registration_contact=event.registration_contact,
             capacity_limited=event.capacity_limited,
+            duration_minutes=event.duration_minutes,
+            audience_label=event.audience_label,
+            details=event.details,
+            place_query=event.place_query,
+            meeting_point=event.meeting_point,
+            schedule_note=event.schedule_note,
+            access_note=event.access_note,
+            programme_title=event.programme_title,
+            programme_order=event.programme_order,
         ))
     return tuple(result)
 

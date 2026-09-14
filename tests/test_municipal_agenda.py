@@ -1255,7 +1255,9 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
 
             loaded = _load_snapshot(path)
 
-        self.assertEqual(loaded["_events"], (event,))
+        self.assertEqual(loaded["_events"][0].title_es, event.title_es)
+        self.assertEqual(loaded["_events"][0].place, "Centro Social Juvenil")
+        self.assertEqual(loaded["_events"][0].place_query, "calle Molivent")
 
     async def test_cached_cultura_failure_is_visible_but_successful_no_match_is_quiet(self):
         event = SourceEvent(
