@@ -644,6 +644,33 @@ def build_update_message(state: dict, now: datetime) -> Optional[str]:
     return with_footer("\n\n".join(sections))
 
 
+def build_beach_message(state: dict, now: datetime) -> Optional[str]:
+    changes = state.get("beach_ready") or []
+    return with_footer("\n".join(_beach_change_lines(changes))) if changes else None
+
+
+def clear_beach_ready(state: dict) -> None:
+    for change in state.get("beach_ready", ()):
+        state["beaches"].setdefault(change["beach"], {})[change["field"]] = change["new"]
+    state["beach_ready"] = []
+
+
+def build_beach_message(state: dict, now: datetime) -> Optional[str]:
+    """Render only the beach portion for its independent Telegram root."""
+    changes = state.get("beach_ready") or []
+    if not changes:
+        return None
+    lines = _beach_change_lines(changes)
+    return with_footer("\n".join(lines))
+
+
+def clear_beach_ready(state: dict) -> None:
+    for change in state.get("beach_ready", ()):
+        beach = state["beaches"].setdefault(change["beach"], {})
+        beach[change["field"]] = change["new"]
+    state["beach_ready"] = []
+
+
 def finalize_delivery(state: dict) -> None:
     for change in state.get("beach_ready", ()):
         beach = state["beaches"].setdefault(change["beach"], {})

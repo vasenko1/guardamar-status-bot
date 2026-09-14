@@ -8,7 +8,7 @@ from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Iterator, Optional
 
-from .models import BeachStatus
+from .models import AirQualitySummary, BeachStatus, PollenSummary
 
 
 class StateError(RuntimeError):
@@ -123,6 +123,37 @@ class PublicationState:
             "morning_deleted": False,
         })
 
+    def beach_message_id(self, local_day: date) -> Optional[int]:
+        value = self.morning_record(local_day)
+        if value is None:
+            return None
+        identifier = value.get("beach_message_id")
+        if identifier is None:
+            return None
+        if not isinstance(identifier, int) or identifier <= 0:
+            raise StateError("publication state has an invalid beach anchor")
+        return identifier
+
+    def mark_beach_message(self, local_day: date, message_id: int, status: BeachStatus) -> None:
+        if not isinstance(message_id, int) or message_id <= 0:
+            raise StateError("beach message ID is invalid")
+        value = self.morning_record(local_day)
+        if value is None:
+            raise StateError("morning publication record is missing")
+        value["beach_message_id"] = message_id
+        value["beach_baseline"] = {
+            name: {"flag": color, "jellyfish": dict(status.jellyfish_states).get(name)}
+            for name, color in status.nearby_flags
+        }
+        self._write(value)
+
+    def set_beach_message_id(self, local_day: date, message_id: int) -> None:
+        value = self.morning_record(local_day)
+        if value is None or not isinstance(message_id, int) or message_id <= 0:
+            raise StateError("beach message ID is invalid")
+        value["beach_message_id"] = message_id
+        self._write(value)
+
     def mark_update_sent(
         self,
         local_day: date,
@@ -185,6 +216,8 @@ class PublicationState:
         cams_forecast_base: Optional[datetime],
         *,
         cold_level: Optional[int] = None,
+        air_quality: Optional[AirQualitySummary] = None,
+        pollen: Optional[PollenSummary] = None,
     ) -> None:
         if heat_level is not None and (
             not isinstance(heat_level, int)
@@ -215,7 +248,40 @@ class PublicationState:
             value["cams_forecast_base"] = cams_forecast_base.isoformat()
         else:
             value.pop("cams_forecast_base", None)
+        if air_quality is not None:
+            value["cams_air"] = {
+                "pollutants": list(air_quality.pollutants),
+                "period": air_quality.period,
+                "category": air_quality.category,
+            }
+        if pollen is not None:
+            value["cams_pollen"] = {
+                "allergens": list(pollen.allergens),
+                "period": pollen.period,
+                "ragweed_present": pollen.ragweed_present,
+                "ragweed_period": pollen.ragweed_period,
+            }
         self._write(value)
+
+    def morning_environment_state(self, local_day: date) -> tuple:
+        """Return compact semantic CAMS baseline alongside legacy levels."""
+        heat, cold, base = self.morning_environment(local_day)
+        value = self.morning_record(local_day) or {}
+        air_raw = value.get("cams_air")
+        pollen_raw = value.get("cams_pollen")
+        air = None
+        if isinstance(air_raw, dict) and isinstance(air_raw.get("pollutants"), list):
+            air = AirQualitySummary(
+                tuple(air_raw["pollutants"]), str(air_raw.get("period", "")),
+                category=air_raw.get("category", 0),
+            )
+        pollen = None
+        if isinstance(pollen_raw, dict) and isinstance(pollen_raw.get("allergens"), list):
+            pollen = PollenSummary(
+                tuple(pollen_raw["allergens"]), pollen_raw.get("period"),
+                bool(pollen_raw.get("ragweed_present")), pollen_raw.get("ragweed_period"),
+            )
+        return heat, cold, base, air, pollen
 
     def remember_beach_candidate(
         self,

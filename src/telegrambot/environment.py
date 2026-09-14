@@ -249,7 +249,10 @@ def summarize_cams(
             values.get("pm10_wildfires", 0.0) >= 0.25 * values.get("particulate_matter_10um", math.inf)
             for moment, values in series if moment.date() == local_today
         )
-        air = AirQualitySummary(tuple(POLLUTANT_LABELS[key] for key in pollutants), _period(bad_hours), dust_related, wildfire)
+        air = AirQualitySummary(
+            tuple(POLLUTANT_LABELS[key] for key in pollutants),
+            _period(bad_hours), dust_related, wildfire, worst,
+        )
     high = []
     pollen_hours = []
     ragweed_hours = []

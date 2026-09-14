@@ -223,6 +223,7 @@ async def produce_message(
     environment_observer: Optional[
         Callable[[Optional[HeatHealthRisk], Optional[ColdHealthRisk], Optional[datetime]], None]
     ] = None,
+    environment_detail_observer: Optional[Callable] = None,
     fetch_environment: bool = True,
 ) -> str:
     """Build a digest; SafeBeach failure must not block AEMET delivery."""
@@ -422,6 +423,14 @@ async def produce_message(
             )
         except (OSError, ValueError) as exc:
             LOGGER.warning("Morning environment state could not be saved: %s", exc)
+    if environment_detail_observer is not None:
+        try:
+            environment_detail_observer(
+                heat_health_risk, cold_health_risk, air_quality, pollen,
+                cams_forecast_base,
+            )
+        except (OSError, ValueError) as exc:
+            LOGGER.warning("Detailed environment state could not be saved: %s", exc)
 
     try:
         events = await agenda_task
