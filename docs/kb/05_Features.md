@@ -590,3 +590,6 @@ one-page PDFs under ADR 0042. A changed document is downloaded twice
 identically before rendering. Other routes remain text-only unless a suitable
 current operator image is available; dynamic-search screenshots and generated
 timetables remain excluded.
+The 07:30 Morning Digest is not replaced later in the day. Material
+operational changes are short replies to it; beach status is a separate
+seasonal root with confirmed changes threaded beneath that root.

@@ -66,6 +66,8 @@ from .operational_updates import (
     OperationalUpdateState,
     OperationalUpdateStateError,
     build_update_message,
+    build_beach_message,
+    clear_beach_ready,
     finalize_delivery,
     miss_beach_sample,
     observe_beaches,
@@ -208,7 +210,14 @@ async def _send_operational_update(
             reply_to_message_id=reply_id,
         )
     except TelegramError as exc:
-        if reply_id is None or exc.server_status != 400:
+        reply_missing = (
+            exc.diagnostic_code == "MESSAGE-NOT-FOUND"
+            or (
+                exc.diagnostic_code == "HTTP-400"
+                and str(exc).casefold() == "missing reply"
+            )
+        )
+        if reply_id is None or not reply_missing:
             raise
         logging.warning(
             "Daily digest reply anchor unavailable; sending standalone"
@@ -549,6 +558,18 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             if value.get("beach_pending") is not None:
                 logging.info("WAIT: beach change confirmation is pending")
                 return 0
+            beach_message = build_beach_message(value, now)
+            if beach_message is not None:
+                beach_anchor = publication_state.beach_message_id(now.date())
+                sent_id = await send_message(
+                    bot_token, chat_id, beach_message,
+                    disable_notification=False,
+                    reply_to_message_id=beach_anchor,
+                )
+                clear_beach_ready(value)
+                monitor_state.write(value)
+                if beach_anchor is None:
+                    publication_state.set_beach_message_id(now.date(), sent_id)
             message = build_update_message(value, now)
             if message is None:
                 logging.info("SKIP: no confirmed operational changes")
@@ -1060,6 +1081,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
     if command in {"run", "morning"}:
         morning_aemet = []
         morning_environment = []
+        morning_environment_detail = []
         prepared = load_snapshot(
             aemet_snapshot_path, now, max_age=timedelta(minutes=60)
         )
@@ -1095,6 +1117,9 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 environment_observer=lambda heat, cold, base: morning_environment.append(
                     (heat, cold, base)
                 ),
+                environment_detail_observer=lambda heat, cold, air, pollen, base: morning_environment_detail.append(
+                    (heat, cold, air, pollen, base)
+                ),
             ),
             lambda message: send_message(
                 bot_token,
@@ -1110,6 +1135,13 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             state.mark_morning_environment(
                 now.date(), heat.level if heat is not None else None, base,
                 cold_level=cold.level if cold is not None else None,
+            )
+        if result == "success" and morning_environment_detail:
+            heat, cold, air, pollen, base = morning_environment_detail[-1]
+            state.mark_morning_environment(
+                now.date(), heat.level if heat is not None else None, base,
+                cold_level=cold.level if cold is not None else None,
+                air_quality=air, pollen=pollen,
             )
         return 0 if result in {"success", "duplicate"} else 1
 
@@ -1270,6 +1302,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         deliver_update,
         delete_old,
         force_update=cams_update,
+        immutable_morning=True,
     )
     if result in {"success", "cleanup_failure"} and update_aemet:
         write_snapshot(aemet_snapshot_path, update_aemet[-1], now)

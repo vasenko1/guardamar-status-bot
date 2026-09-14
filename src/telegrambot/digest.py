@@ -19,7 +19,7 @@ from .models import (
 )
 
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
-CAMS_ATTRIBUTION_URL = "https://github.com/vasenko1/guardamar-cams-data"
+CAMS_ATTRIBUTION_URL = "https://www.copernicus.eu/en/access-data/copernicus-services-catalogue/atmosphere"
 
 WIND_DIRECTIONS = {
     "N": "С",
@@ -388,7 +388,7 @@ def _air_quality_line(value: AirQualitySummary, *, dust_warning: bool = False) -
     reason = " из-за пыли" if dust_warning and value.dust_related else ""
     text = (
         f"😷 <b>Качество воздуха:</b> {value.period} ожидается ухудшение"
-        f"{reason} — повышен{'ы' if len(value.pollutants) > 1 else ''} "
+        f"{reason}: повышен{'ы' if len(value.pollutants) > 1 else ''} "
         f"{_join_ru(value.pollutants)}."
     )
     if value.wildfire_possible:

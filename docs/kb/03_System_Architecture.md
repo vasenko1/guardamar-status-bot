@@ -302,3 +302,10 @@ the message ID is stored remains an unavoidable duplicate edge.
 - Keep Gemini and its single OpenRouter fallback isolated to accepted bounded
   municipal extraction and title-only translation; do not add general AI,
   provider chains, microservices, webhooks, or heavy background infrastructure.
+### Morning lifecycle
+
+The morning publication is an immutable anchor. Operational beach status has
+an independent seasonal root, while material AEMET, CAMS and Meteosalud
+changes reply to the morning anchor. The existing atomic JSON state stores
+only message identifiers and compact baselines; no database, daemon or extra
+cron is introduced.

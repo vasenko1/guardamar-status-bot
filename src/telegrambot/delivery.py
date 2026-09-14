@@ -11,6 +11,31 @@ from .state import PublicationState, StateError
 LOGGER = logging.getLogger(__name__)
 
 
+async def publish_beach_root(
+    now: datetime,
+    state: PublicationState,
+    produce_message: Callable[[], Awaitable[str]],
+    deliver_message: Callable[[str], Awaitable[int]],
+    status: BeachStatus,
+) -> str:
+    """Publish one seasonal beach root without replacing the Morning Digest."""
+    try:
+        with state.exclusive_run():
+            if state.morning_record(now.date()) is None:
+                return "no_morning"
+            if state.beach_message_id(now.date()) is not None:
+                return "duplicate"
+            message = await produce_message()
+            if not message.strip():
+                return "failure"
+            message_id = await deliver_message(message)
+            state.mark_beach_message(now.date(), message_id, status)
+            return "success"
+    except (StateError, Exception) as exc:
+        LOGGER.error("FAILURE: beach root publication failed: %s", exc)
+        return "failure"
+
+
 async def publish_morning(
     now: datetime,
     state: PublicationState,
@@ -57,6 +82,7 @@ async def publish_update(
     delete_message: Callable[[int], Awaitable[None]],
     *,
     force_update: bool = False,
+    immutable_morning: bool = False,
 ) -> str:
     """Replace the early message after a confirmed beach or data update."""
 
@@ -105,6 +131,11 @@ async def publish_update(
                 LOGGER.error("FAILURE: updated digest delivery failed: %s", exc)
                 return "failure"
 
+            if immutable_morning:
+                if beach_status is not None:
+                    state.mark_beach_message(local_day, message_id, beach_status)
+                LOGGER.info("SUCCESS: operational update delivered without replacing morning")
+                return "success"
             state.mark_update_sent(local_day, message_id, beach_status)
             try:
                 await delete_message(record["morning_message_id"])

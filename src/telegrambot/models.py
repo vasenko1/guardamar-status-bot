@@ -137,6 +137,7 @@ class AirQualitySummary:
     period: str
     dust_related: bool = False
     wildfire_possible: bool = False
+    category: int = 0
 
 
 @dataclass(frozen=True)

@@ -265,6 +265,9 @@ PYTHONPATH=src python -m telegrambot poll "Что добавить в дайдж
 ```
 
 - `preview` collects and prints without Telegram or publication state.
+- The 07:30 Morning Digest remains the immutable daily snapshot and reply
+  anchor. Later material weather/environment changes are compact replies;
+  seasonal beach status uses its own root message.
 - `status` prints the last successfully published local date.
 - `electricity-preview` prints tomorrow's table and its explanatory reply
   without publishing or changing publication state. It reuses, or creates
