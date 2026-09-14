@@ -332,6 +332,10 @@ async def produce_message(
             warnings=(),
             warnings_available=False,
         )
+    if not collect_beach:
+        # Operational SafeBeach flags have their own seasonal root. Never
+        # resurrect them from an older AEMET snapshot in the 07:30 digest.
+        digest = replace(digest, beach=None, beach_notice=None)
 
     try:
         beach = (
