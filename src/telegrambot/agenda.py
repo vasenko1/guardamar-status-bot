@@ -540,7 +540,8 @@ def normalize_event_pages(
     duration_hours, price_cents, meeting_point = _page_facts(payload)
     place = base_event.place or _calendar_place(payload)
     if (
-        place is not None
+        meeting_point is None
+        and place is not None
         and place.casefold() == "castell"
         and any(
             marker in base_event.title.casefold()

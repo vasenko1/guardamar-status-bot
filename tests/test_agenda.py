@@ -459,6 +459,22 @@ class AgendaNormalizationTests(unittest.TestCase):
         self.assertEqual(event.place, "Castell")
         self.assertEqual(event.meeting_point, "Castillo de Guardamar")
 
+    def test_explicit_meeting_point_beats_sand_memories_fallback(self):
+        payload = b"""
+        <script type="application/ld+json">
+        {"@type":"Event","name":"SAND MEMORIES GUIDED TOUR",
+         "startDate":"2026-07-31T10:00",
+         "location":{"name":"Castell"}}
+        </script>
+        <p>Punto de encuentro: Oficina de Turismo
+        Duraci\xf3n 2 horas aprox</p>
+        <a href="https://www.google.com/calendar/render?action=TEMPLATE&amp;location=CASTELL">calendar</a>
+        """
+        event = normalize_event_page(payload, date(2026, 7, 31))
+        self.assertIsNotNone(event)
+        self.assertEqual(event.place, "Castell")
+        self.assertEqual(event.meeting_point, "Oficina de Turismo")
+
     def test_repairs_only_known_official_json_ld_punctuation(self):
         payload = b"""
         <script type="application/ld+json">
