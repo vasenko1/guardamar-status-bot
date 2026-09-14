@@ -23,6 +23,14 @@ bounded detail-page reads.
 - Treat the official Turismo Guardamar HTML program as the primary municipal
   event record. Call Gemini text extraction only when its bounded monthly text
   changes.
+- Deterministically read dated `CINE` rows for the library's Monday film series
+  from that same bounded text. Preserve explicit duration, age, genre and
+  admission in additive normalized fields. The independent official library
+  catalog may add its concrete title and brief synopsis. After duplicate
+  matching, a title with the existing title as an exact token prefix may win;
+  length alone is never sufficient. One shared standalone Event renderer shows
+  present details, duration and audience, and uses start plus duration rather
+  than presenting a calendar end slot as an exact finish.
 - Treat the linked MUPI image as supplementary. Download and process it only
   for a new official URL. Require two blind structured readings: the second
   call receives the image but no first-pass candidates. Keep only facts whose

@@ -340,6 +340,16 @@ This prevents an early next-month poster from erasing the final days of the
 current program. The digest merges these facts with the separate local Agenda
 Guardamar catalog and removes duplicates.
 
+Dated Monday library film rows in the same official Turismo `CINE` text are
+also read deterministically on every existing page refresh, including when the
+text hash is unchanged. A row may contribute its concrete film title, duration,
+age guidance, short genre, venue, and explicit admission/capacity without a
+new request or model call. The separate official Biblioteca catalog supplies
+its concrete title and short source-grounded synopsis. Both catalogs merge
+into one ordinary Event; explicit duration suppresses a potentially rounded
+library calendar end time in the shared renderer. Optional fact fields are
+additive in the existing normalized snapshot, so older snapshots remain valid.
+
 Operator-reviewed corrections — exact Russian titles, per-poster reviewed
 occurrences with their known-bad-OCR drop filter, and bounded day-of
 schedule rules — live in the validated packaged data file described by ADR
