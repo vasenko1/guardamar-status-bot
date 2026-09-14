@@ -1,11 +1,10 @@
-"""Orchestrate one guarded Morning Digest publication."""
+"""Orchestrate guarded Morning Digest and beach-root publications."""
 
 import logging
 from datetime import datetime
 from typing import Awaitable, Callable, Optional
 
 from .models import BeachNotice, BeachStatus
-
 from .state import PublicationState, StateError
 
 LOGGER = logging.getLogger(__name__)
@@ -14,9 +13,9 @@ LOGGER = logging.getLogger(__name__)
 async def publish_beach_root(
     now: datetime,
     state: PublicationState,
-    produce_message: Callable[[], Awaitable[str]],
+    produce_message: Callable[[], Awaitable[Optional[str]]],
     deliver_message: Callable[[str], Awaitable[int]],
-    status: BeachStatus,
+    status: Optional[BeachStatus],
 ) -> str:
     """Publish one seasonal beach root without replacing the Morning Digest."""
     try:
@@ -25,14 +24,19 @@ async def publish_beach_root(
                 return "no_morning"
             if state.beach_message_id(now.date()) is not None:
                 return "duplicate"
-            message = await produce_message()
-            if not message.strip():
+            try:
+                message = await produce_message()
+                if message is None or not message.strip():
+                    return "no_update"
+                message_id = await deliver_message(message)
+            except Exception as exc:
+                LOGGER.error("FAILURE: beach root delivery failed: %s", exc)
                 return "failure"
-            message_id = await deliver_message(message)
             state.mark_beach_message(now.date(), message_id, status)
+            LOGGER.info("SUCCESS: beach root delivered for %s", now.date())
             return "success"
-    except (StateError, Exception) as exc:
-        LOGGER.error("FAILURE: beach root publication failed: %s", exc)
+    except StateError as exc:
+        LOGGER.error("FAILURE: beach root state cannot be trusted: %s", exc)
         return "failure"
 
 
@@ -43,7 +47,6 @@ async def publish_morning(
     deliver_message: Callable[[str], Awaitable[int]],
 ) -> str:
     """Send the early full digest and retain its Telegram identifier."""
-
     local_day = now.date()
     try:
         with state.exclusive_run():
@@ -84,8 +87,7 @@ async def publish_update(
     force_update: bool = False,
     immutable_morning: bool = False,
 ) -> str:
-    """Replace the early message after a confirmed beach or data update."""
-
+    """Legacy two-stage replacement retained for same-day state compatibility."""
     local_day = now.date()
     try:
         with state.exclusive_run():
@@ -100,8 +102,7 @@ async def publish_update(
                         await delete_message(record["morning_message_id"])
                     except Exception as exc:
                         LOGGER.error(
-                            "FAILURE: old morning message cleanup failed: %s",
-                            exc,
+                            "FAILURE: old morning message cleanup failed: %s", exc
                         )
                         return "cleanup_failure"
                     state.mark_morning_deleted(local_day)
@@ -112,9 +113,7 @@ async def publish_update(
                 LOGGER.info("WAIT: SafeBeach has no eligible current flag yet")
                 return "waiting"
 
-            published_at = datetime.fromisoformat(
-                record["morning_published_at"]
-            )
+            published_at = datetime.fromisoformat(record["morning_published_at"])
             try:
                 mayor_notice = await find_mayor_notice(published_at)
             except Exception as exc:
@@ -134,15 +133,18 @@ async def publish_update(
             if immutable_morning:
                 if beach_status is not None:
                     state.mark_beach_message(local_day, message_id, beach_status)
-                LOGGER.info("SUCCESS: operational update delivered without replacing morning")
+                LOGGER.info(
+                    "SUCCESS: legacy operational update delivered without "
+                    "replacing morning"
+                )
                 return "success"
+
             state.mark_update_sent(local_day, message_id, beach_status)
             try:
                 await delete_message(record["morning_message_id"])
             except Exception as exc:
                 LOGGER.error(
-                    "FAILURE: update sent but old message cleanup failed: %s",
-                    exc,
+                    "FAILURE: update sent but old message cleanup failed: %s", exc
                 )
                 return "cleanup_failure"
             state.mark_morning_deleted(local_day)
