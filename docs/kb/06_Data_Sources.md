@@ -351,7 +351,9 @@ library calendar end time in the shared renderer. Optional fact fields are
 additive in the existing normalized snapshot, so older snapshots remain valid.
 The source's `Entrada libre hasta completar aforo` retains its precise access
 meaning as `Бесплатно · до заполнения зала`; a generic capacity label is only
-a fallback. Venue labels and source-confirmed physical addresses may be
+a fallback. Legacy official-cinema snapshots with the deterministic source
+marker, free price and limited-capacity flag recover that same exact condition
+on read. Venue labels and source-confirmed physical addresses may be
 stored separately, so an address can power the map link without replacing a
 recognizable venue name. Distinct meeting points and supplementary schedule
 notes are optional independent facts. Grouped programme children use the same
