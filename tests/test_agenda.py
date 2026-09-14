@@ -88,10 +88,9 @@ class AgendaNormalizationTests(unittest.TestCase):
         self.assertEqual(events[0].starts_at.date(), date(2026, 8, 8))
         self.assertEqual(events[1].starts_at.date(), date(2026, 8, 15))
         self.assertEqual(events[0].ends_at.hour, 12)
-        self.assertEqual(
-            events[0].place,
-            "место встречи — Castillo de Guardamar",
-        )
+        self.assertIsNone(events[0].place)
+        self.assertEqual(events[0].meeting_point, "Castillo de Guardamar")
+        self.assertEqual(events[0].duration_minutes, 120)
         self.assertEqual(events[0].ticket_price_cents, 500)
         self.assertIn("webfecha=08/08/2026", events[0].ticket_url)
         later = normalize_event_page(payload, date(2026, 8, 15))
@@ -267,14 +266,12 @@ class AgendaNormalizationTests(unittest.TestCase):
         ticketed = Event(
             title="Экскурсия по замку и мельнице",
             starts_at=when,
-            place="место встречи — Castillo de Guardamar",
+            meeting_point="Castillo de Guardamar",
         )
         merged = _merge_events((municipal,), (ticketed,))
         self.assertEqual(len(merged), 1)
-        self.assertEqual(
-            merged[0].place,
-            "место встречи — Castillo de Guardamar",
-        )
+        self.assertEqual(merged[0].place, "Castillo de Guardamar")
+        self.assertEqual(merged[0].meeting_point, "Castillo de Guardamar")
 
     def test_duplicate_keeps_actionable_participation_details(self):
         starts_at = datetime(2026, 8, 7, 22, 15, tzinfo=TZ)
@@ -459,10 +456,8 @@ class AgendaNormalizationTests(unittest.TestCase):
         event = normalize_event_page(payload, date(2026, 7, 31))
 
         self.assertIsNotNone(event)
-        self.assertEqual(
-            event.place,
-            "место встречи — Castillo de Guardamar",
-        )
+        self.assertEqual(event.place, "Castell")
+        self.assertEqual(event.meeting_point, "Castillo de Guardamar")
 
     def test_repairs_only_known_official_json_ld_punctuation(self):
         payload = b"""
