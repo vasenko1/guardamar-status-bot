@@ -54,28 +54,24 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
             datetime.fromisoformat("2026-10-24T00:00:00+00:00"), now
         ))
 
-    async def test_cams_refresh_retries_after_transient_miss(self):
+    async def test_cams_refresh_retries_after_transient_miss_and_accepts_silently(self):
         with tempfile.TemporaryDirectory() as directory:
             state_path = Path(directory) / "delivery.json"
             first = datetime(2026, 9, 11, 10, 10, tzinfo=MADRID)
             second = datetime(2026, 9, 11, 10, 25, tzinfo=MADRID)
+            old_base = datetime.fromisoformat("2026-09-10T00:00:00+00:00")
+            new_base = datetime.fromisoformat("2026-09-11T00:00:00+00:00")
             state = PublicationState(state_path)
             state.mark_morning(first.date(), 10, first)
-            state.mark_morning_environment(
-                first.date(), None,
-                datetime.fromisoformat("2026-09-10T00:00:00+00:00"),
-            )
-            # A marker written by the old release must not suppress retries.
+            state.mark_morning_environment(first.date(), None, old_base)
             legacy = json.loads(state_path.read_text(encoding="utf-8"))
             legacy["cams_refresh_attempted"] = True
             state_path.write_text(json.dumps(legacy), encoding="utf-8")
             fetch = AsyncMock(side_effect=[
                 EnvironmentError("not published yet"),
-                (None, None, datetime.fromisoformat(
-                    "2026-09-11T00:00:00+00:00"
-                )),
+                (None, None, new_base),
             ])
-            publish = AsyncMock(return_value="waiting")
+            sent = AsyncMock(return_value=30)
             common = {
                 "AEMET_API_KEY": "aemet",
                 "TELEGRAM_BOT_TOKEN": "telegram",
@@ -87,6 +83,14 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 patch("telegrambot.__main__.datetime") as clock,
                 patch("telegrambot.__main__.fetch_cams", new=fetch),
                 patch(
+                    "telegrambot.__main__.fetch_meteosalud",
+                    new=AsyncMock(return_value=None),
+                ),
+                patch(
+                    "telegrambot.__main__.fetch_meteosalud_cold",
+                    new=AsyncMock(return_value=None),
+                ),
+                patch(
                     "telegrambot.__main__.fetch_beach_status",
                     new=AsyncMock(return_value=None),
                 ),
@@ -94,17 +98,20 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                     "telegrambot.__main__._refresh_event_catalogs_once",
                     new=AsyncMock(),
                 ),
-                patch("telegrambot.__main__.publish_update", new=publish),
+                patch("telegrambot.__main__.send_message", new=sent),
             ):
                 clock.now.side_effect = [first, second]
                 self.assertEqual(await _run_command("update"), 0)
                 self.assertEqual(await _run_command("update"), 0)
 
         self.assertEqual(fetch.await_count, 2)
-        self.assertFalse(publish.await_args_list[0].kwargs["force_update"])
-        self.assertTrue(publish.await_args_list[1].kwargs["force_update"])
+        sent.assert_not_awaited()
+        self.assertEqual(
+            PublicationState(state_path).morning_environment(first.date())[2],
+            new_base,
+        )
 
-    async def test_operational_checkpoint_accepts_late_cams_cycle(self):
+    async def test_operational_checkpoint_accepts_late_cams_without_editing_digest(self):
         with tempfile.TemporaryDirectory() as directory:
             state_path = Path(directory) / "delivery.json"
             monitor_path = Path(directory) / "operational.json"
@@ -114,18 +121,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
             state = PublicationState(state_path)
             state.mark_morning(now.date(), 10, now)
             state.mark_morning_environment(now.date(), None, old_base, cold_level=2)
-
-            async def produce(*args, **kwargs):
-                self.assertEqual(kwargs["cold_health_fallback"].level, 2)
-                kwargs["environment_observer"](None, kwargs["cold_health_fallback"], new_base)
-                return "unchanged visible digest"
-
-            unchanged = TelegramError(
-                "unchanged",
-                retryable=False,
-                code="MESSAGE-NOT-MODIFIED",
-                status=400,
-            )
+            edited = AsyncMock()
             with (
                 patch.dict(os.environ, {
                     "AEMET_API_KEY": "aemet",
@@ -139,11 +135,11 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                     "telegrambot.__main__.fetch_cams",
                     new=AsyncMock(return_value=(None, None, new_base)),
                 ) as fetch,
-                patch("telegrambot.__main__.produce_message", new=produce),
                 patch(
-                    "telegrambot.__main__.edit_message",
-                    new=AsyncMock(side_effect=unchanged),
+                    "telegrambot.__main__.fetch_meteosalud",
+                    new=AsyncMock(return_value=None),
                 ),
+                patch("telegrambot.__main__.edit_message", new=edited),
                 patch("telegrambot.__main__.load_snapshot", return_value=None),
                 patch(
                     "telegrambot.__main__.fetch_beach_status",
@@ -158,6 +154,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(await _run_command("monitor-updates"), 0)
 
             self.assertEqual(fetch.await_count, 1)
+            edited.assert_not_awaited()
             self.assertEqual(
                 PublicationState(state_path).morning_environment(now.date()),
                 (None, 2, new_base),
@@ -173,10 +170,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                     "TELEGRAM_CHAT_ID": "@group",
                     "EARTHQUAKE_STATE_PATH": str(state_path),
                 }),
-                patch(
-                    "telegrambot.__main__.monitor_earthquakes",
-                    new=monitor,
-                ),
+                patch("telegrambot.__main__.monitor_earthquakes", new=monitor),
             ):
                 result = await _run_command("monitor-earthquakes")
 
@@ -272,14 +266,8 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
             municipal = AsyncMock(return_value=())
             agenda = AsyncMock(return_value=())
             with (
-                patch(
-                    "telegrambot.__main__.refresh_municipal_catalog",
-                    new=municipal,
-                ),
-                patch(
-                    "telegrambot.__main__.refresh_agenda_catalog",
-                    new=agenda,
-                ),
+                patch("telegrambot.__main__.refresh_municipal_catalog", new=municipal),
+                patch("telegrambot.__main__.refresh_agenda_catalog", new=agenda),
             ):
                 await _refresh_event_catalogs_once(
                     now,
@@ -325,8 +313,11 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
             ):
                 translations = Path(directory) / "translations.json"
                 await _refresh_event_catalogs_once(
-                    now, state, Path(directory) / "municipal.json",
-                    Path(directory) / "agenda.json", translations,
+                    now,
+                    state,
+                    Path(directory) / "municipal.json",
+                    Path(directory) / "agenda.json",
+                    translations,
                 )
 
         prepared.assert_awaited_once()
@@ -363,8 +354,11 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
     async def test_operational_update_replies_to_full_digest(self):
         send = AsyncMock(return_value=30)
         with patch("telegrambot.__main__.send_message", new=send):
-            await _send_operational_update("token", "group", "update", 20)
+            result = await _send_operational_update(
+                "token", "group", "update", 20
+            )
 
+        self.assertEqual(result, (30, True))
         send.assert_awaited_once_with(
             "token",
             "group",
@@ -378,14 +372,17 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
             TelegramError(
                 "missing reply",
                 retryable=False,
-                code="HTTP-400",
+                code="MESSAGE-NOT-FOUND",
                 status=400,
             ),
             30,
         ])
         with patch("telegrambot.__main__.send_message", new=send):
-            await _send_operational_update("token", "group", "update", 20)
+            result = await _send_operational_update(
+                "token", "group", "update", 20
+            )
 
+        self.assertEqual(result, (30, False))
         self.assertEqual(send.await_args_list, [
             call(
                 "token",
@@ -402,7 +399,21 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
             ),
         ])
 
-    async def test_refresh_current_edits_recorded_update_in_place(self):
+    async def test_operational_update_does_not_hide_other_http_400(self):
+        send = AsyncMock(side_effect=TelegramError(
+            "bad html",
+            retryable=False,
+            code="HTTP-400",
+            status=400,
+        ))
+        with patch("telegrambot.__main__.send_message", new=send):
+            with self.assertRaises(TelegramError):
+                await _send_operational_update(
+                    "token", "group", "update", 20
+                )
+        send.assert_awaited_once()
+
+    async def test_refresh_current_edits_legacy_recorded_update_in_place(self):
         with tempfile.TemporaryDirectory() as directory:
             state_path = Path(directory) / "delivery.json"
             now = datetime.now(MADRID)
@@ -443,6 +454,21 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
             "message": "обновлённое сообщение",
         })
 
+    async def test_refresh_current_rejects_immutable_morning(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "delivery.json"
+            now = datetime.now(MADRID)
+            state = PublicationState(state_path)
+            state.mark_morning(now.date(), 10, now)
+            with patch.dict(os.environ, {
+                "AEMET_API_KEY": "aemet",
+                "TELEGRAM_BOT_TOKEN": "telegram",
+                "TELEGRAM_CHAT_ID": "group",
+                "MORNING_DIGEST_STATE_PATH": str(state_path),
+            }):
+                with self.assertRaises(ValueError):
+                    await _run_command("refresh-current")
+
     async def test_successful_live_morning_fetch_updates_aemet_snapshot(self):
         observed_digest = object()
 
@@ -460,20 +486,11 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                     "AEMET_API_KEY": "aemet",
                     "TELEGRAM_BOT_TOKEN": "telegram",
                     "TELEGRAM_CHAT_ID": "group",
-                    "MORNING_DIGEST_STATE_PATH": str(
-                        Path(directory) / "delivery.json"
-                    ),
-                    "AEMET_SNAPSHOT_PATH": str(
-                        Path(directory) / "aemet.json"
-                    ),
+                    "MORNING_DIGEST_STATE_PATH": str(Path(directory) / "delivery.json"),
+                    "AEMET_SNAPSHOT_PATH": str(Path(directory) / "aemet.json"),
                 }),
-                patch(
-                    "telegrambot.__main__.load_snapshot", return_value=None
-                ),
-                patch(
-                    "telegrambot.__main__.preparation_busy",
-                    return_value=False,
-                ),
+                patch("telegrambot.__main__.load_snapshot", return_value=None),
+                patch("telegrambot.__main__.preparation_busy", return_value=False),
                 patch("telegrambot.__main__.produce_message", new=produce),
                 patch("telegrambot.__main__.publish_morning", new=publish),
                 patch("telegrambot.__main__.write_snapshot") as write,
@@ -485,13 +502,11 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_appends_diagnostics_only_in_preview_wrapper(self):
         async def produce(*args, diagnostics=None, **kwargs):
-            diagnostics.append(
-                SourceDiagnostic(
-                    "SB-NO-ACTIVE",
-                    "SafeBeach",
-                    "активных данных выбранных пляжей нет",
-                )
-            )
+            diagnostics.append(SourceDiagnostic(
+                "SB-NO-ACTIVE",
+                "SafeBeach",
+                "активных данных выбранных пляжей нет",
+            ))
             return "готовый дайджест"
 
         with patch("telegrambot.__main__.produce_message", new=produce):
@@ -510,18 +525,12 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
             translations = Path(directory) / "translations.json"
             weekend_state = Path(directory) / "weekend.json"
             with (
-                patch(
-                    "telegrambot.__main__.prepare_translations",
-                    new=prepared,
-                ),
+                patch("telegrambot.__main__.prepare_translations", new=prepared),
                 patch(
                     "telegrambot.__main__.produce_weekend_message",
                     new=AsyncMock(return_value="афиша"),
                 ),
-                patch(
-                    "telegrambot.__main__.send_message",
-                    new=AsyncMock(),
-                ) as sent,
+                patch("telegrambot.__main__.send_message", new=AsyncMock()) as sent,
                 patch.dict(os.environ, {
                     "EVENT_TRANSLATIONS_PATH": str(translations),
                     "WEEKEND_STATE_PATH": str(weekend_state),
@@ -532,7 +541,6 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
             ):
                 result = await _run_command("weekend-preview")
 
-            # A configured Gemini key must not turn preview into a writer.
             self.assertEqual(result, 0)
             prepared.assert_not_awaited()
             sent.assert_not_awaited()
@@ -562,13 +570,10 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 datetime(2026, 8, 1, 7, 30, tzinfo=MADRID),
             )
 
-        self.assertEqual(
-            captured,
-            {
-                "municipal": Path("state/municipal-test.json"),
-                "agenda": Path("state/agenda-test.json"),
-            },
-        )
+        self.assertEqual(captured, {
+            "municipal": Path("state/municipal-test.json"),
+            "agenda": Path("state/agenda-test.json"),
+        })
 
 
 if __name__ == "__main__":
