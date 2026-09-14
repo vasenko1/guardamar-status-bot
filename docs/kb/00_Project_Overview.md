@@ -87,22 +87,23 @@ The project is successful when the digest is:
 
 ## Current phase
 
-The MVP first publishes one short message at 07:30. During the SafeBeach
-season, short external invocations check for complete current beach data every
-five minutes from 10:10 through 10:40. Before the final attempt, completeness
-requires current flags for all six known Guardamar zones. At 10:40, any
-non-empty verified Guardamar beach set is eligible. An eligible beach or
-new Mayor-channel update triggers one fresh full digest; Telegram receives the
-replacement before the earlier message is deleted. Otherwise the 07:30 message
-remains.
+The MVP first publishes one immutable short message at 07:30. During the
+SafeBeach season, short external invocations check for complete current beach
+data every five minutes from 10:10 through 10:40. Before the final attempt,
+completeness requires current flags for all six known Guardamar zones. At
+10:40, any non-empty verified Guardamar beach set is eligible. The first
+usable beach or Mayor fact creates a separate daily beach root; later verified
+coverage enriches that same root without changing the Morning Digest.
 There is no resident scheduler, sleeping retry process, background collector,
 or cache synchronization. A separate optional
 operator listener may use one idle Telegram long poll solely for allowlisted
 private `/preview`; it never publishes or changes publication state.
 
-After the later digest phase, bounded one-shot checks may publish a new reply
-when a beach flag, explicit jellyfish status, or official AEMET warning has
-actually changed. They remain silent when verified state is unchanged.
+Bounded one-shot checks may publish a reply only when a beach flag, explicit
+jellyfish status, AEMET warning, remaining-day CAMS meaning, or same-day
+Meteosalud risk has actually changed. Beach replies use the beach root; the
+other updates use the immutable Morning Digest. They remain silent on unchanged,
+stale, or unavailable source data.
 An independent hourly one-shot process may publish a compact local earthquake
 notice from IGN. It retains only a bounded identifier set for deduplication and
 the latest normalized parameters needed for revisions and series editing. It

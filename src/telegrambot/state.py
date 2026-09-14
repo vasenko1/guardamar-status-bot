@@ -8,7 +8,7 @@ from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Iterator, Optional
 
-from .models import AirQualitySummary, BeachStatus, PollenSummary
+from .models import AirQualitySummary, BeachNotice, BeachStatus, PollenSummary
 
 
 class StateError(RuntimeError):
@@ -16,7 +16,7 @@ class StateError(RuntimeError):
 
 
 class PublicationState:
-    """Store the minimal identifiers needed for safe daily replacement."""
+    """Store the minimal identifiers and semantic baselines for one local day."""
 
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -30,7 +30,6 @@ class PublicationState:
             raise StateError("publication state is unreadable") from exc
         if not isinstance(value, dict):
             raise StateError("publication state has an invalid structure")
-
         return value
 
     def last_successful_date(self) -> Optional[date]:
@@ -54,10 +53,7 @@ class PublicationState:
 
     def mark_published(self, local_day: date) -> None:
         """Record one confirmed success for a simple single-date workflow."""
-
-        self._write({
-            "last_successful_date": local_day.isoformat(),
-        })
+        self._write({"last_successful_date": local_day.isoformat()})
 
     def electricity_explanation_message_id(self) -> Optional[int]:
         value = self._read()
@@ -65,15 +61,11 @@ class PublicationState:
         if message_id is None:
             return None
         if not isinstance(message_id, int) or message_id <= 0:
-            raise StateError(
-                "publication state has an invalid electricity anchor"
-            )
+            raise StateError("publication state has an invalid electricity anchor")
         return message_id
 
     def mark_electricity_published(self, local_day: date) -> None:
-        value = {
-            "last_successful_date": local_day.isoformat(),
-        }
+        value = {"last_successful_date": local_day.isoformat()}
         anchor_id = self.electricity_explanation_message_id()
         if anchor_id is not None:
             value["electricity_explanation_message_id"] = anchor_id
@@ -92,20 +84,14 @@ class PublicationState:
             return None
         message_id = value.get("morning_message_id")
         published_at = value.get("morning_published_at")
-        if not isinstance(message_id, int) or not isinstance(
-            published_at, str
-        ):
+        if not isinstance(message_id, int) or not isinstance(published_at, str):
             raise StateError("publication state has an invalid morning record")
         try:
             parsed_time = datetime.fromisoformat(published_at)
         except ValueError as exc:
-            raise StateError(
-                "publication state has an invalid publication time"
-            ) from exc
+            raise StateError("publication state has an invalid publication time") from exc
         if parsed_time.tzinfo is None:
-            raise StateError(
-                "publication state has an invalid publication time"
-            )
+            raise StateError("publication state has an invalid publication time")
         return value
 
     def mark_morning(
@@ -134,18 +120,42 @@ class PublicationState:
             raise StateError("publication state has an invalid beach anchor")
         return identifier
 
-    def mark_beach_message(self, local_day: date, message_id: int, status: BeachStatus) -> None:
+    def mark_beach_message(
+        self,
+        local_day: date,
+        message_id: int,
+        status: Optional[BeachStatus] = None,
+        notice: Optional[BeachNotice] = None,
+    ) -> None:
+        """Store the daily beach root and its verified SafeBeach baseline."""
         if not isinstance(message_id, int) or message_id <= 0:
             raise StateError("beach message ID is invalid")
         value = self.morning_record(local_day)
         if value is None:
             raise StateError("morning publication record is missing")
         value["beach_message_id"] = message_id
-        value["beach_baseline"] = {
-            name: {"flag": color, "jellyfish": dict(status.jellyfish_states).get(name)}
-            for name, color in status.nearby_flags
-        }
+        value.pop("beach_candidate", None)
+        if status is not None:
+            value["beach_root_status"] = _encode_beach_status(status)
+            jellyfish = dict(status.jellyfish_states)
+            value["beach_baseline"] = {
+                name: {"flag": color, "jellyfish": jellyfish.get(name)}
+                for name, color in status.nearby_flags
+            }
+        if notice is not None:
+            value["beach_root_notice"] = _encode_beach_notice(notice)
         self._write(value)
+
+    def beach_root_facts(
+        self, local_day: date
+    ) -> tuple[Optional[BeachStatus], Optional[BeachNotice]]:
+        """Return the last verified root facts so a refresh cannot erase them."""
+        value = self.morning_record(local_day)
+        if value is None:
+            return None, None
+        status = _decode_beach_status(value.get("beach_root_status"))
+        notice = _decode_beach_notice(value.get("beach_root_notice"))
+        return status, notice
 
     def set_beach_message_id(self, local_day: date, message_id: int) -> None:
         value = self.morning_record(local_day)
@@ -160,6 +170,7 @@ class PublicationState:
         message_id: int,
         beach_status: Optional[BeachStatus] = None,
     ) -> None:
+        """Legacy replacement state retained for safe same-day upgrades."""
         value = self.morning_record(local_day)
         if value is None:
             raise StateError("morning publication record is missing")
@@ -168,10 +179,7 @@ class PublicationState:
         if beach_status is not None:
             jellyfish = dict(beach_status.jellyfish_states)
             value["beach_baseline"] = {
-                name: {
-                    "flag": color,
-                    "jellyfish": jellyfish.get(name),
-                }
+                name: {"flag": color, "jellyfish": jellyfish.get(name)}
                 for name, color in beach_status.nearby_flags
             }
         self._write(value)
@@ -219,6 +227,7 @@ class PublicationState:
         air_quality: Optional[AirQualitySummary] = None,
         pollen: Optional[PollenSummary] = None,
     ) -> None:
+        """Store health levels and legacy CAMS fields without breaking old callers."""
         if heat_level is not None and (
             not isinstance(heat_level, int)
             or isinstance(heat_level, bool)
@@ -248,39 +257,54 @@ class PublicationState:
             value["cams_forecast_base"] = cams_forecast_base.isoformat()
         else:
             value.pop("cams_forecast_base", None)
+        # Compatibility for callers introduced by the first lifecycle rollout.
+        # New lifecycle code uses mark_cams_environment so a valid clearing can
+        # explicitly remove an old semantic baseline.
         if air_quality is not None:
-            value["cams_air"] = {
-                "pollutants": list(air_quality.pollutants),
-                "period": air_quality.period,
-                "category": air_quality.category,
-            }
+            value["cams_air"] = _encode_air_quality(air_quality)
         if pollen is not None:
-            value["cams_pollen"] = {
-                "allergens": list(pollen.allergens),
-                "period": pollen.period,
-                "ragweed_present": pollen.ragweed_present,
-                "ragweed_period": pollen.ragweed_period,
-            }
+            value["cams_pollen"] = _encode_pollen(pollen)
         self._write(value)
 
-    def morning_environment_state(self, local_day: date) -> tuple:
-        """Return compact semantic CAMS baseline alongside legacy levels."""
+    def mark_cams_environment(
+        self,
+        local_day: date,
+        cams_forecast_base: Optional[datetime],
+        air_quality: Optional[AirQualitySummary],
+        pollen: Optional[PollenSummary],
+    ) -> None:
+        """Replace one valid CAMS semantic snapshot, including explicit clears."""
+        if cams_forecast_base is not None and cams_forecast_base.tzinfo is None:
+            raise StateError("CAMS base is invalid")
+        value = self.morning_record(local_day)
+        if value is None:
+            raise StateError("morning publication record is missing")
+        if cams_forecast_base is None:
+            value.pop("cams_forecast_base", None)
+        else:
+            value["cams_forecast_base"] = cams_forecast_base.isoformat()
+        if air_quality is None:
+            value.pop("cams_air", None)
+        else:
+            value["cams_air"] = _encode_air_quality(air_quality)
+        if pollen is None:
+            value.pop("cams_pollen", None)
+        else:
+            value["cams_pollen"] = _encode_pollen(pollen)
+        value["cams_semantic_baseline"] = True
+        self._write(value)
+
+    def morning_environment_state(
+        self, local_day: date
+    ) -> tuple[
+        Optional[int], Optional[int], Optional[datetime],
+        Optional[AirQualitySummary], Optional[PollenSummary],
+    ]:
+        """Return health levels plus the compact semantic CAMS baseline."""
         heat, cold, base = self.morning_environment(local_day)
         value = self.morning_record(local_day) or {}
-        air_raw = value.get("cams_air")
-        pollen_raw = value.get("cams_pollen")
-        air = None
-        if isinstance(air_raw, dict) and isinstance(air_raw.get("pollutants"), list):
-            air = AirQualitySummary(
-                tuple(air_raw["pollutants"]), str(air_raw.get("period", "")),
-                category=air_raw.get("category", 0),
-            )
-        pollen = None
-        if isinstance(pollen_raw, dict) and isinstance(pollen_raw.get("allergens"), list):
-            pollen = PollenSummary(
-                tuple(pollen_raw["allergens"]), pollen_raw.get("period"),
-                bool(pollen_raw.get("ragweed_present")), pollen_raw.get("ragweed_period"),
-            )
+        air = _decode_air_quality(value.get("cams_air"))
+        pollen = _decode_pollen(value.get("cams_pollen"))
         return heat, cold, base, air, pollen
 
     def remember_beach_candidate(
@@ -290,7 +314,6 @@ class PublicationState:
         observed_at: datetime,
     ) -> bool:
         """Keep one whole best SafeBeach response for the final attempt."""
-
         if (
             observed_at.tzinfo is None
             or observed_at.date() != local_day
@@ -308,8 +331,7 @@ class PublicationState:
                 existing_size = len(existing_status.nearby_flags)
                 candidate_size = len(status.nearby_flags)
                 if candidate_size < existing_size or (
-                    candidate_size == existing_size
-                    and observed_at <= existing_time
+                    candidate_size == existing_size and observed_at <= existing_time
                 ):
                     return False
             value["beach_candidate"] = {
@@ -327,7 +349,6 @@ class PublicationState:
         max_age: timedelta = timedelta(minutes=45),
     ) -> Optional[BeachStatus]:
         """Return a recent same-day candidate without trusting bad state."""
-
         if now.tzinfo is None or max_age < timedelta(0):
             return None
         value = self.morning_record(local_day)
@@ -354,21 +375,14 @@ class PublicationState:
         value["morning_deleted"] = True
         self._write(value)
 
-    def event_catalog_sync_attempted(
-        self, local_day: date, source: str
-    ) -> bool:
+    def event_catalog_sync_attempted(self, local_day: date, source: str) -> bool:
         value = self.morning_record(local_day)
         if value is None:
             return False
         completed = value.get("event_catalog_sync", [])
-        return (
-            isinstance(completed, list)
-            and source in completed
-        )
+        return isinstance(completed, list) and source in completed
 
-    def mark_event_catalog_sync_attempted(
-        self, local_day: date, source: str
-    ) -> None:
+    def mark_event_catalog_sync_attempted(self, local_day: date, source: str) -> None:
         if not source or len(source) > 40:
             raise StateError("event catalog source is invalid")
         value = self.morning_record(local_day)
@@ -379,9 +393,7 @@ class PublicationState:
             isinstance(item, str) for item in completed
         ):
             raise StateError("event catalog sync state is invalid")
-        value["event_catalog_sync"] = list(dict.fromkeys(
-            completed + [source]
-        ))
+        value["event_catalog_sync"] = list(dict.fromkeys(completed + [source]))
         self._write(value)
 
     def _write(self, value: dict) -> None:
@@ -395,41 +407,100 @@ class PublicationState:
             os.chmod(temporary_path, 0o600)
             os.replace(temporary_path, self.path)
         except OSError as exc:
-            raise StateError(
-                "publication state could not be saved"
-            ) from exc
+            raise StateError("publication state could not be saved") from exc
 
     @contextmanager
     def exclusive_run(self) -> Iterator[None]:
         """Prevent overlapping one-shot processes without storing run state."""
-
         lock_path = self.path.with_name(f".{self.path.name}.lock")
         lock_file = None
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             lock_file = lock_path.open("a", encoding="utf-8")
-            fcntl.flock(
-                lock_file.fileno(),
-                fcntl.LOCK_EX | fcntl.LOCK_NB,
-            )
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
             if lock_file is not None:
                 lock_file.close()
-            raise StateError(
-                "another publication run is already active"
-            ) from exc
+            raise StateError("another publication run is already active") from exc
         except OSError as exc:
             if lock_file is not None:
                 lock_file.close()
-            raise StateError(
-                "publication state could not be locked"
-            ) from exc
-
+            raise StateError("publication state could not be locked") from exc
         try:
             yield
         finally:
             assert lock_file is not None
             lock_file.close()
+
+
+def _encode_air_quality(value: AirQualitySummary) -> dict:
+    return {
+        "pollutants": list(value.pollutants),
+        "period": value.period,
+        "dust_related": value.dust_related,
+        "wildfire_possible": value.wildfire_possible,
+        "category": value.category,
+    }
+
+
+def _decode_air_quality(value) -> Optional[AirQualitySummary]:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise StateError("publication state has an invalid CAMS air baseline")
+    pollutants = value.get("pollutants")
+    period = value.get("period")
+    category = value.get("category")
+    dust_related = value.get("dust_related", False)
+    wildfire_possible = value.get("wildfire_possible", False)
+    if (
+        not isinstance(pollutants, list)
+        or not pollutants
+        or any(not isinstance(item, str) or not item for item in pollutants)
+        or not isinstance(period, str)
+        or not period
+        or not isinstance(category, int)
+        or isinstance(category, bool)
+        or category not in range(3, 6)
+        or not isinstance(dust_related, bool)
+        or not isinstance(wildfire_possible, bool)
+    ):
+        raise StateError("publication state has an invalid CAMS air baseline")
+    return AirQualitySummary(
+        tuple(pollutants), period, dust_related, wildfire_possible, category
+    )
+
+
+def _encode_pollen(value: PollenSummary) -> dict:
+    return {
+        "allergens": list(value.allergens),
+        "period": value.period,
+        "ragweed_present": value.ragweed_present,
+        "ragweed_period": value.ragweed_period,
+    }
+
+
+def _decode_pollen(value) -> Optional[PollenSummary]:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise StateError("publication state has an invalid CAMS pollen baseline")
+    allergens = value.get("allergens")
+    period = value.get("period")
+    ragweed_present = value.get("ragweed_present")
+    ragweed_period = value.get("ragweed_period")
+    if (
+        not isinstance(allergens, list)
+        or any(not isinstance(item, str) or not item for item in allergens)
+        or (period is not None and not isinstance(period, str))
+        or not isinstance(ragweed_present, bool)
+        or (ragweed_period is not None and not isinstance(ragweed_period, str))
+        or (not allergens and not ragweed_present)
+    ):
+        raise StateError("publication state has an invalid CAMS pollen baseline")
+    return PollenSummary(
+        tuple(allergens), period, ragweed_present, ragweed_period
+    )
 
 
 def _encode_beach_status(status: BeachStatus) -> dict:
@@ -444,13 +515,9 @@ def _encode_beach_status(status: BeachStatus) -> dict:
         "jellyfish_states": [list(item) for item in status.jellyfish_states],
         "flag_meanings": [list(item) for item in status.flag_meanings],
         "updated_times": [
-            [name, updated.isoformat()]
-            for name, updated in status.updated_times
+            [name, updated.isoformat()] for name, updated in status.updated_times
         ],
-        "source_date": (
-            status.source_date.isoformat()
-            if status.source_date is not None else None
-        ),
+        "source_date": status.source_date.isoformat() if status.source_date else None,
     }
 
 
@@ -473,13 +540,12 @@ def _decode_beach_candidate(value) -> Optional[tuple]:
     return observed_at, status
 
 
-def _decode_beach_status(value: dict) -> Optional[BeachStatus]:
-    optional_strings = (
-        "flag_color", "wind_direction", "sea_state",
-    )
+def _decode_beach_status(value) -> Optional[BeachStatus]:
+    if not isinstance(value, dict):
+        return None
+    optional_strings = ("flag_color", "wind_direction", "sea_state")
     if any(
-        value.get(name) is not None
-        and not isinstance(value.get(name), str)
+        value.get(name) is not None and not isinstance(value.get(name), str)
         for name in optional_strings
     ):
         return None
@@ -535,6 +601,35 @@ def _decode_beach_status(value: dict) -> Optional[BeachStatus]:
         updated_times=tuple(updated_times),
         source_date=source_date,
     )
+
+
+def _encode_beach_notice(notice: BeachNotice) -> dict:
+    return {
+        "text": notice.text,
+        "bathing_prohibited": notice.bathing_prohibited,
+        "published_at": notice.published_at.isoformat(),
+    }
+
+
+def _decode_beach_notice(value) -> Optional[BeachNotice]:
+    if not isinstance(value, dict):
+        return None
+    text = value.get("text")
+    prohibited = value.get("bathing_prohibited")
+    raw_time = value.get("published_at")
+    if (
+        not isinstance(text, str)
+        or not isinstance(prohibited, bool)
+        or not isinstance(raw_time, str)
+    ):
+        return None
+    try:
+        published_at = datetime.fromisoformat(raw_time)
+    except ValueError:
+        return None
+    if published_at.tzinfo is None:
+        return None
+    return BeachNotice(text, prohibited, published_at)
 
 
 def _string_pairs(value) -> Optional[tuple]:

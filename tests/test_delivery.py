@@ -2,18 +2,21 @@ import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
 from telegrambot.delivery import (
     publish_morning,
     publish_update,
+    refresh_beach_root,
 )
 from telegrambot.__main__ import (
     _beach_ready_for_update,
     _select_beach_for_update,
 )
-from telegrambot.models import BeachStatus
+from telegrambot.models import BeachNotice, BeachStatus
 from telegrambot.state import PublicationState
+from telegrambot.telegram import TelegramError
 
 MADRID = ZoneInfo("Europe/Madrid")
 
@@ -30,6 +33,41 @@ class DeliveryRunTests(unittest.IsolatedAsyncioTestCase):
                 for name in names
             ),
         )
+
+    async def test_beach_root_refreshes_without_duplicate_and_recreates_if_deleted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = PublicationState(Path(directory) / "delivery.json")
+            now = datetime(2026, 8, 7, 11, 0, tzinfo=MADRID)
+            state.mark_morning(now.date(), 10, now)
+            notice = BeachNotice("Купание запрещено", True, now)
+            first = self._partial_status(now, ("Centre",))
+            fuller = self._partial_status(now, ("Centre", "Roqueta"))
+            sent = AsyncMock(side_effect=[20, 30])
+            edited = AsyncMock()
+            render = lambda status, saved_notice: (
+                f"root {status.nearby_flags} {saved_notice.text if saved_notice else ''}"
+            )
+
+            self.assertEqual((await refresh_beach_root(
+                now, state, first, notice, render, sent, edited
+            )), ("created", 20))
+            self.assertEqual((await refresh_beach_root(
+                now, state, fuller, None, render, sent, edited
+            )), ("refreshed", 20))
+            sent.assert_awaited_once()
+            self.assertIn("Купание запрещено", edited.await_args.args[1])
+            self.assertEqual(
+                state.beach_root_facts(now.date())[0].nearby_flags,
+                fuller.nearby_flags,
+            )
+
+            edited.side_effect = TelegramError(
+                "gone", retryable=False, code="MESSAGE-NOT-FOUND", status=400
+            )
+            self.assertEqual((await refresh_beach_root(
+                now, state, fuller, None, render, sent, edited
+            )), ("created", 30))
+            self.assertEqual(state.beach_message_id(now.date()), 30)
 
     def test_partial_candidate_survives_until_final_timeout(self):
         with tempfile.TemporaryDirectory() as directory:

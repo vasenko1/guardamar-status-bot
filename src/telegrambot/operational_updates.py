@@ -20,7 +20,7 @@ from .digest import (
     _warning_blocks,
     _warning_text,
 )
-from .models import BeachStatus, Warning
+from .models import BeachNotice, BeachStatus, Warning
 from .safebeach import BEACH_ORDER, KNOWN_BEACHES
 
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
@@ -39,7 +39,6 @@ class MonitorRun:
 
 def scheduled_run(now: datetime) -> MonitorRun:
     """Return the bounded work assigned to this exact local minute."""
-
     local = now.astimezone(GUARDAMAR_TIMEZONE)
     day = local.date()
     in_season = (
@@ -94,16 +93,10 @@ class OperationalUpdateState:
         warning_ready = value.get("warning_ready")
         if (
             not isinstance(value.get("beach_ready"), list)
-            or (
-                beach_pending is not None
-                and not isinstance(beach_pending, dict)
-            )
+            or (beach_pending is not None and not isinstance(beach_pending, dict))
             or not isinstance(value.get("warnings_initialized"), bool)
             or not isinstance(value.get("warnings"), list)
-            or (
-                warning_ready is not None
-                and not isinstance(warning_ready, dict)
-            )
+            or (warning_ready is not None and not isinstance(warning_ready, dict))
         ):
             raise OperationalUpdateStateError(
                 "operational update state has invalid pending data"
@@ -251,13 +244,8 @@ def _change_key(change: dict) -> Tuple[str, str]:
     return change["beach"], change["field"]
 
 
-def observe_beaches(
-    state: dict,
-    status: BeachStatus,
-    phase: int,
-) -> None:
+def observe_beaches(state: dict, status: BeachStatus, phase: int) -> None:
     """Advance one bounded three-sample beach confirmation window."""
-
     current = _beach_values(status)
     if not current:
         return
@@ -291,17 +279,12 @@ def observe_beaches(
         return
 
     initial_status = not baseline
-    # Once a public beach baseline exists, a newly seen beach is availability,
-    # not a transition. The first status of the day uses the confirmed
-    # initial-status path below.
     if not initial_status:
         for name, values in current.items():
             if name not in baseline:
                 baseline[name] = {
                     "flag": values["flag"],
-                    "jellyfish": (
-                        False if values.get("jellyfish") is False else None
-                    ),
+                    "jellyfish": False if values.get("jellyfish") is False else None,
                 }
             elif (
                 baseline[name].get("jellyfish") is None
@@ -315,8 +298,7 @@ def observe_beaches(
             return
         candidates = (
             _initial_flag_changes(current)
-            if initial_status
-            else _field_changes(baseline, current)
+            if initial_status else _field_changes(baseline, current)
         )
         if candidates:
             state["beach_pending"] = {
@@ -335,13 +317,9 @@ def observe_beaches(
 
     changes = (
         _initial_flag_changes(current)
-        if pending.get("initial")
-        else _field_changes(baseline, current)
+        if pending.get("initial") else _field_changes(baseline, current)
     )
-    observed = {
-        _change_key(item): item
-        for item in changes
-    }
+    observed = {_change_key(item): item for item in changes}
     held = list(pending.get("held", ()))
     rolled = []
     handled = set()
@@ -374,7 +352,6 @@ def observe_beaches(
 
 def miss_beach_sample(state: dict, phase: int) -> None:
     """Close a bounded confirmation safely after a missing valid sample."""
-
     pending = state.get("beach_pending")
     if not isinstance(pending, dict):
         return
@@ -391,13 +368,10 @@ def _warning_dict(warning: Warning) -> dict:
     return {
         "event": " ".join(warning.event.split()),
         "level": warning.level.strip().casefold(),
-        "starts_at": (
-            warning.starts_at.isoformat() if warning.starts_at else None
-        ),
+        "starts_at": warning.starts_at.isoformat() if warning.starts_at else None,
         "ends_at": warning.ends_at.isoformat() if warning.ends_at else None,
         "description": (
-            " ".join(warning.description.split())
-            if warning.description else None
+            " ".join(warning.description.split()) if warning.description else None
         ),
         "probability": warning.probability,
     }
@@ -422,8 +396,7 @@ def seed_warnings(state: dict, warnings: Sequence[Warning]) -> None:
 
 
 def seed_beaches(state: dict, baseline: object) -> None:
-    """Reuse the verified beach values stored with the full daily digest."""
-
+    """Reuse verified beach values stored with the daily beach root."""
     if state["beaches"] or not isinstance(baseline, dict):
         return
     for name in KNOWN_BEACHES:
@@ -436,14 +409,8 @@ def seed_beaches(state: dict, baseline: object) -> None:
             jellyfish is not None and not isinstance(jellyfish, bool)
         ):
             continue
-        state["beaches"][name] = {
-            "flag": flag,
-            "jellyfish": jellyfish,
-        }
-        state["latest_beaches"][name] = {
-            "flag": flag,
-            "jellyfish": jellyfish,
-        }
+        state["beaches"][name] = {"flag": flag, "jellyfish": jellyfish}
+        state["latest_beaches"][name] = {"flag": flag, "jellyfish": jellyfish}
 
 
 def observe_warnings(
@@ -452,7 +419,6 @@ def observe_warnings(
     now: datetime,
 ) -> None:
     """Store a ready AEMET update only after one valid complete response."""
-
     current = [_warning_dict(item) for item in warnings]
     if not state.get("warnings_initialized"):
         state["warnings_initialized"] = True
@@ -461,18 +427,13 @@ def observe_warnings(
     previous_by_id = {_warning_identity(item): item for item in previous}
     current_ids = {_warning_identity(item) for item in current}
     added_or_changed = current_ids - set(previous_by_id)
-    changed_events = {
-        identity[0] for identity in added_or_changed
-    }
+    changed_events = {identity[0] for identity in added_or_changed}
     removed = [
         item for identity, item in previous_by_id.items()
         if identity not in current_ids
     ]
     early_cancelled = []
     for item in removed:
-        # A replacement interval/content for the same event is an update, not
-        # a simultaneous cancellation. Another unchanged interval with the
-        # same event name must not hide a genuinely removed warning.
         if item.get("event", "").casefold() in changed_events:
             continue
         raw_end = item.get("ends_at")
@@ -491,7 +452,6 @@ def observe_warnings(
             "cancelled": early_cancelled,
         }
     else:
-        # Natural expiry and unchanged valid responses advance silently.
         state["warnings"] = current
 
 
@@ -532,15 +492,30 @@ def _beach_change_lines(changes: Sequence[dict]) -> list[str]:
     return lines
 
 
+def build_beach_root_message(
+    status: Optional[BeachStatus],
+    notice: Optional[BeachNotice],
+) -> Optional[str]:
+    """Render one independent daily beach root from verified current facts."""
+    context = _beach_operational_lines(status, notice)
+    if not context:
+        return None
+    if context and context[0] == "🏖 <b>Флаги на пляжах:</b>":
+        context = context[1:]
+    while context and not context[0]:
+        context = context[1:]
+    lines = ["🏖 <b>Пляжи Гуардамара сегодня</b>"]
+    if context:
+        lines.extend(["", *context])
+    return with_footer("\n".join(lines))
+
+
 def _cancelled_warning_period(warning: Warning, now: datetime) -> str:
     """Return a compact Russian target period for a cancelled warning."""
-
     if warning.starts_at is None:
         return ""
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
-    warning_day = warning.starts_at.astimezone(
-        GUARDAMAR_TIMEZONE
-    ).date()
+    warning_day = warning.starts_at.astimezone(GUARDAMAR_TIMEZONE).date()
     if warning_day == local_day:
         return "На сегодня"
     if warning_day == local_day + timedelta(days=1):
@@ -555,12 +530,8 @@ def _joined_warning_labels(labels: Sequence[str]) -> str:
     return ", ".join(unique[:-1]) + " и " + unique[-1]
 
 
-def _warning_update_lines(
-    warning_ready: dict,
-    now: datetime,
-) -> list[str]:
+def _warning_update_lines(warning_ready: dict, now: datetime) -> list[str]:
     """Render one self-contained current AEMET status update."""
-
     current = tuple(
         _warning_from_dict(item)
         for item in warning_ready.get("current", ())
@@ -584,36 +555,43 @@ def _warning_update_lines(
     ]
     for period, labels in cancelled_by_period.items():
         joined = html.escape(_joined_warning_labels(labels))
-        if len(tuple(dict.fromkeys(labels))) == 1:
-            status = "отменено предупреждение"
-        else:
-            status = "отменены предупреждения"
+        status = (
+            "отменено предупреждение"
+            if len(tuple(dict.fromkeys(labels))) == 1
+            else "отменены предупреждения"
+        )
         prefix = f"{period} " if period else ""
         lines.append(f"✅ {prefix}{status}: {joined}.")
 
     if current_blocks:
         lines.extend(["", "<b>Сейчас действует:</b>", *current_blocks])
     elif not current:
-        lines.extend([
-            "",
-            "Других действующих предупреждений сейчас нет.",
-        ])
+        lines.extend(["", "Других действующих предупреждений сейчас нет."])
     return lines
 
 
 def build_update_message(state: dict, now: datetime) -> Optional[str]:
-    sections = []
-    beach_ready = state.get("beach_ready") or []
-    if beach_ready:
-        beach_lines = _beach_change_lines(beach_ready)
-        confirmed = {
-            name: dict(value)
-            for name, value in state.get("beaches", {}).items()
-        }
-        for change in beach_ready:
-            confirmed.setdefault(change["beach"], {})[
-                change["field"]
-            ] = change["new"]
+    """Render only the AEMET portion; beaches use their own reply thread."""
+    warning_ready = state.get("warning_ready")
+    if not isinstance(warning_ready, dict):
+        return None
+    warning_lines = _warning_update_lines(warning_ready, now)
+    return with_footer("\n".join(warning_lines)) if warning_lines else None
+
+
+def build_beach_message(state: dict, now: datetime) -> Optional[str]:
+    """Render only confirmed beach changes for the daily beach thread."""
+    changes = state.get("beach_ready") or []
+    if not changes:
+        return None
+    lines = _beach_change_lines(changes)
+    confirmed = {
+        name: dict(value)
+        for name, value in state.get("beaches", {}).items()
+    }
+    for change in changes:
+        confirmed.setdefault(change["beach"], {})[change["field"]] = change["new"]
+    if not all(change.get("initial") for change in changes):
         status = BeachStatus(
             flag_color=None,
             sea_temperature_c=None,
@@ -628,39 +606,9 @@ def build_update_message(state: dict, now: datetime) -> Optional[str]:
             ),
         )
         context = _beach_operational_lines(status, None)
-        if context and not all(change.get("initial") for change in beach_ready):
+        if context:
             context[0] = "<b>Последние подтверждённые флаги:</b>"
-            beach_lines.extend(["", *context])
-        sections.append("\n".join(beach_lines))
-
-    warning_ready = state.get("warning_ready")
-    if isinstance(warning_ready, dict):
-        warning_lines = _warning_update_lines(warning_ready, now)
-        if warning_lines:
-            sections.append("\n".join(warning_lines))
-
-    if not sections:
-        return None
-    return with_footer("\n\n".join(sections))
-
-
-def build_beach_message(state: dict, now: datetime) -> Optional[str]:
-    changes = state.get("beach_ready") or []
-    return with_footer("\n".join(_beach_change_lines(changes))) if changes else None
-
-
-def clear_beach_ready(state: dict) -> None:
-    for change in state.get("beach_ready", ()):
-        state["beaches"].setdefault(change["beach"], {})[change["field"]] = change["new"]
-    state["beach_ready"] = []
-
-
-def build_beach_message(state: dict, now: datetime) -> Optional[str]:
-    """Render only the beach portion for its independent Telegram root."""
-    changes = state.get("beach_ready") or []
-    if not changes:
-        return None
-    lines = _beach_change_lines(changes)
+            lines.extend(["", *context])
     return with_footer("\n".join(lines))
 
 
@@ -672,10 +620,8 @@ def clear_beach_ready(state: dict) -> None:
 
 
 def finalize_delivery(state: dict) -> None:
-    for change in state.get("beach_ready", ()):
-        beach = state["beaches"].setdefault(change["beach"], {})
-        beach[change["field"]] = change["new"]
-    state["beach_ready"] = []
+    """Commit a successfully delivered AEMET update."""
+    clear_beach_ready(state)
     ready = state.get("warning_ready")
     if isinstance(ready, dict):
         state["warnings"] = list(ready.get("current", ()))

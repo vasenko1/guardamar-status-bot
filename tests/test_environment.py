@@ -237,6 +237,27 @@ class EnvironmentTests(unittest.TestCase):
         self.assertIsNotNone(air)
         self.assertEqual(air.pollutants, ("NO₂",))
 
+    def test_late_summary_ignores_past_only_adverse_hours(self):
+        now = datetime(2026, 8, 4, 14, tzinfo=MADRID)
+        rows = []
+        for hour in range(24):
+            rows.append((datetime(2026, 8, 4, hour, tzinfo=MADRID), {
+                "nitrogen_dioxide": 130.0 if hour == 9 else 20.0,
+            }))
+        self.assertIsNotNone(summarize_cams(rows, now)[0])
+        self.assertIsNone(summarize_cams(rows, now, remaining_day=True)[0])
+
+    def test_late_summary_keeps_future_adverse_hours(self):
+        now = datetime(2026, 8, 4, 14, tzinfo=MADRID)
+        rows = []
+        for hour in range(24):
+            rows.append((datetime(2026, 8, 4, hour, tzinfo=MADRID), {
+                "nitrogen_dioxide": 130.0 if hour == 18 else 20.0,
+            }))
+        air, _ = summarize_cams(rows, now, remaining_day=True)
+        self.assertIsNotNone(air)
+        self.assertEqual(air.period, "во второй половине дня")
+
 
 class MeteosaludFetchTests(unittest.IsolatedAsyncioTestCase):
     async def test_cold_fetch_uses_official_bounded_txt(self):

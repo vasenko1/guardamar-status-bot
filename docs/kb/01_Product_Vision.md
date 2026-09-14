@@ -38,12 +38,12 @@ narrow, deduplicated, compact, and quiet when nothing qualifies.
 
 A good digest is calm and predictable:
 
-- one current group message: an early 07:30 briefing, replaced later only
-  when verified beach or Mayor-channel information adds value;
+- one immutable 07:30 briefing, with rare compact replies for verified material
+  updates and a separate daily beach thread when beach facts become available;
 - important items appear before routine conditions;
 - wording is factual and compact;
 - missing optional sections do not create clutter;
-- source failure does not produce fabricated replacements;
+- source failure does not produce fabricated updates or all-clear claims;
 - no message is preferable to a misleading or empty message.
 
 ## MVP direction

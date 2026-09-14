@@ -8,6 +8,7 @@ from telegrambot.models import BeachStatus, Warning
 from telegrambot.operational_updates import (
     OperationalUpdateState,
     OperationalUpdateStateError,
+    build_beach_message,
     build_update_message,
     finalize_delivery,
     miss_beach_sample,
@@ -220,7 +221,7 @@ class BeachConfirmationTests(unittest.TestCase):
             "new": "red",
             "initial": True,
         }]
-        message = build_update_message(
+        message = build_beach_message(
             state, datetime(2026, 8, 7, 13, 5, tzinfo=MADRID)
         )
         self.assertIn("<b>Пляжи Guardamar:</b>", message)
@@ -420,7 +421,7 @@ class StateAndMessageTests(unittest.TestCase):
             with self.assertRaises(OperationalUpdateStateError):
                 store.read(now)
 
-    def test_combined_message_uses_latest_status_and_footer(self):
+    def test_beach_change_message_uses_latest_status_and_footer(self):
         state = OperationalUpdateState.empty("2026-08-07")
         state["beach_ready"] = [{
             "beach": "Centre",
@@ -436,7 +437,7 @@ class StateAndMessageTests(unittest.TestCase):
             "Centre": {"flag": "yellow", "jellyfish": False},
             "Roqueta": {"flag": "red", "jellyfish": True},
         }
-        message = build_update_message(
+        message = build_beach_message(
             state, datetime(2026, 8, 7, 13, 5, tzinfo=MADRID)
         )
         self.assertIn("Centre / Babilònia: 🟢 → 🟡", message)

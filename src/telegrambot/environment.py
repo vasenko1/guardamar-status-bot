@@ -1,6 +1,6 @@
 """Morning-only Meteosalud and CAMS enrichment for the digest.
 
-The module deliberately returns small display-domain records.  It neither owns
+The module deliberately returns small display-domain records. It neither owns
 operational state nor exposes hourly CAMS fields to the formatter.
 """
 
@@ -222,47 +222,128 @@ def _period(hours: Sequence[int]) -> str:
 
 def summarize_cams(
     hours: Iterable[Tuple[datetime, Dict[str, float]]], now: datetime,
+    *,
+    remaining_day: bool = False,
 ) -> Tuple[Optional[AirQualitySummary], Optional[PollenSummary]]:
-    """Apply MITECO windows and compact pollen policy to one nearest grid cell."""
+    """Apply MITECO windows and compact pollen policy to one nearest grid cell.
+
+    ``remaining_day`` changes only which completed local hours are displayed.
+    Earlier rows remain in ``series`` so PM and ozone rolling windows keep their
+    required history.
+    """
     local_today = now.astimezone(GUARDAMAR_TIMEZONE).date()
-    series = sorted((moment.astimezone(GUARDAMAR_TIMEZONE), values) for moment, values in hours)
+    local_hour = now.astimezone(GUARDAMAR_TIMEZONE).replace(
+        minute=0, second=0, microsecond=0
+    )
+    series = sorted(
+        (moment.astimezone(GUARDAMAR_TIMEZONE), values)
+        for moment, values in hours
+    )
     categories = defaultdict(list)
     for index, (moment, values) in enumerate(series):
         if moment.date() != local_today:
             continue
         for pollutant in ICA_BANDS:
-            window = 1 if pollutant in {"nitrogen_dioxide", "sulphur_dioxide"} else (8 if pollutant == "ozone" else 24)
-            samples = [entry[1].get(pollutant) for entry in series[max(0, index-window+1):index+1]]
+            window = (
+                1 if pollutant in {"nitrogen_dioxide", "sulphur_dioxide"}
+                else (8 if pollutant == "ozone" else 24)
+            )
+            samples = [
+                entry[1].get(pollutant)
+                for entry in series[max(0, index - window + 1):index + 1]
+            ]
             if len(samples) == window and all(value is not None for value in samples):
-                categories[pollutant].append((moment.hour, _ica_category(pollutant, sum(samples) / window)))
-    worst = max((category for values in categories.values() for _, category in values), default=0)
-    if worst < 3:  # Regular is intentionally quiet; only Desfavorable+ is material.
+                if not remaining_day or moment >= local_hour:
+                    categories[pollutant].append((
+                        moment.hour,
+                        _ica_category(pollutant, sum(samples) / window),
+                    ))
+
+    worst = max(
+        (category for values in categories.values() for _, category in values),
+        default=0,
+    )
+    if worst < 3:
         air = None
     else:
-        pollutants = tuple(key for key, values in categories.items() if max(category for _, category in values) == worst)
-        bad_hours = [hour for key in pollutants for hour, category in categories[key] if category == worst]
-        dust_related = any(
-            values.get("dust", 0.0) >= 0.35 * values.get("particulate_matter_10um", math.inf)
-            for moment, values in series if moment.date() == local_today
-        ) and "particulate_matter_10um" in pollutants
-        wildfire = any(
-            values.get("pm10_wildfires", 0.0) >= 0.25 * values.get("particulate_matter_10um", math.inf)
-            for moment, values in series if moment.date() == local_today
+        pollutants = tuple(
+            key for key, values in categories.items()
+            if max(category for _, category in values) == worst
+        )
+        bad_hours_by_pollutant = {
+            key: {
+                hour for hour, category in categories[key] if category == worst
+            }
+            for key in pollutants
+        }
+        bad_hours = [
+            hour
+            for key in pollutants
+            for hour in bad_hours_by_pollutant[key]
+        ]
+        pm10_bad_hours = bad_hours_by_pollutant.get(
+            "particulate_matter_10um", set()
+        )
+        dust_related = bool(pm10_bad_hours) and any(
+            moment.date() == local_today
+            and moment.hour in pm10_bad_hours
+            and values.get("dust", 0.0)
+            >= 0.35 * values.get("particulate_matter_10um", math.inf)
+            for moment, values in series
+        )
+        wildfire = bool(pm10_bad_hours) and any(
+            moment.date() == local_today
+            and moment.hour in pm10_bad_hours
+            and values.get("pm10_wildfires", 0.0)
+            >= 0.25 * values.get("particulate_matter_10um", math.inf)
+            for moment, values in series
         )
         air = AirQualitySummary(
             tuple(POLLUTANT_LABELS[key] for key in pollutants),
-            _period(bad_hours), dust_related, wildfire, worst,
+            _period(bad_hours),
+            dust_related,
+            wildfire,
+            worst,
         )
+
     high = []
-    pollen_hours = []
-    ragweed_hours = []
+    pollen_periods = []
     for variable, threshold in POLLEN_HIGH.items():
-        matching = [moment.hour for moment, values in series if moment.date() == local_today and values.get(variable, 0.0) > threshold]
+        matching = [
+            moment.hour
+            for moment, values in series
+            if moment.date() == local_today
+            and (not remaining_day or moment >= local_hour)
+            and values.get(variable, 0.0) > threshold
+        ]
         if matching:
             high.append(POLLEN_LABELS[variable])
-            pollen_hours.extend(matching)
-    ragweed_hours = [moment.hour for moment, values in series if moment.date() == local_today and values.get("ragweed_pollen", 0.0) >= 3.0]
-    pollen = PollenSummary(tuple(high), _period(pollen_hours) if pollen_hours else None, bool(ragweed_hours), _period(ragweed_hours) if ragweed_hours else None) if high or ragweed_hours else None
+            pollen_periods.append(_period(matching))
+    pollen_period = None
+    if pollen_periods:
+        unique_periods = tuple(dict.fromkeys(pollen_periods))
+        pollen_period = (
+            unique_periods[0]
+            if len(unique_periods) == 1
+            else "в разное время дня"
+        )
+
+    ragweed_hours = [
+        moment.hour
+        for moment, values in series
+        if moment.date() == local_today
+        and (not remaining_day or moment >= local_hour)
+        and values.get("ragweed_pollen", 0.0) >= 3.0
+    ]
+    pollen = (
+        PollenSummary(
+            tuple(high),
+            pollen_period,
+            bool(ragweed_hours),
+            _period(ragweed_hours) if ragweed_hours else None,
+        )
+        if high or ragweed_hours else None
+    )
     return air, pollen
 
 
@@ -296,7 +377,6 @@ def parse_cams_payload(
     payload: bytes, now: datetime
 ) -> Tuple[Tuple[Tuple[datetime, Dict[str, float]], ...], datetime]:
     """Validate the public producer contract and today's rolling coverage."""
-
     try:
         document = json.loads(payload.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -310,14 +390,9 @@ def parse_cams_payload(
         or document.get("model") != "ensemble"
     ):
         raise EnvironmentError("CAMS data has invalid provenance")
-    forecast_base = _parse_timestamp(
-        document.get("forecast_base_utc"), "forecast base"
-    )
+    forecast_base = _parse_timestamp(document.get("forecast_base_utc"), "forecast base")
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
-    if forecast_base.date() not in {
-        local_day,
-        local_day - timedelta(days=1),
-    }:
+    if forecast_base.date() not in {local_day, local_day - timedelta(days=1)}:
         raise EnvironmentError("CAMS forecast is stale or premature")
     units = document.get("units")
     if not isinstance(units, dict):
@@ -326,24 +401,16 @@ def parse_cams_payload(
         **{
             name: "µg/m3"
             for name in (
-                "particulate_matter_2.5um",
-                "particulate_matter_10um",
-                "ozone",
-                "nitrogen_dioxide",
-                "sulphur_dioxide",
-                "dust",
+                "particulate_matter_2.5um", "particulate_matter_10um",
+                "ozone", "nitrogen_dioxide", "sulphur_dioxide", "dust",
                 "pm10_wildfires",
             )
         },
         **{
             name: "grains/m3"
             for name in (
-                "alder_pollen",
-                "birch_pollen",
-                "grass_pollen",
-                "mugwort_pollen",
-                "olive_pollen",
-                "ragweed_pollen",
+                "alder_pollen", "birch_pollen", "grass_pollen",
+                "mugwort_pollen", "olive_pollen", "ragweed_pollen",
             )
         },
     }
@@ -352,10 +419,7 @@ def parse_cams_payload(
         raise EnvironmentError("CAMS hourly data is missing")
     parsed_rows: Dict[datetime, Dict[str, float]] = {}
     for row in rows:
-        if not isinstance(row, dict) or row.get("kind") not in {
-            "analysis",
-            "forecast",
-        }:
+        if not isinstance(row, dict) or row.get("kind") not in {"analysis", "forecast"}:
             raise EnvironmentError("CAMS hourly row is invalid")
         timestamp = _parse_timestamp(row.get("timestamp_utc"), "timestamp")
         raw_values = row.get("values")
@@ -415,9 +479,9 @@ async def fetch_cams(
     *,
     allow_remote: bool = True,
     diagnostics: Optional[List[SourceDiagnostic]] = None,
+    remaining_day: bool = False,
 ) -> Tuple[Optional[AirQualitySummary], Optional[PollenSummary], datetime]:
     """Use the newest valid public JSON or a covering local last-good copy."""
-
     cached = await asyncio.to_thread(_load_cams_cache, cache_path, now)
     remote = None
     remote_payload = None
@@ -452,9 +516,7 @@ async def fetch_cams(
             )
             LOGGER.warning("Remote CAMS JSON unavailable; trying cache: %s", exc)
     selected = cached
-    if remote is not None and (
-        selected is None or remote[1] >= selected[1]
-    ):
+    if remote is not None and (selected is None or remote[1] >= selected[1]):
         selected = remote
         assert remote_payload is not None
         try:
@@ -462,9 +524,7 @@ async def fetch_cams(
         except EnvironmentError as exc:
             LOGGER.warning("CAMS cache update failed: %s", exc)
             if diagnostics is not None:
-                diagnostics.append(source_error(
-                    "CAMS", "CAMS", exc, stage="CACHE"
-                ))
+                diagnostics.append(source_error("CAMS", "CAMS", exc, stage="CACHE"))
     if selected is None:
         raise EnvironmentError(
             "CAMS unavailable",
@@ -472,9 +532,7 @@ async def fetch_cams(
             description="нет корректного свежего прогноза или локального снимка",
         )
     if remote_failure is not None and diagnostics is not None:
-        failure = source_error(
-            "CAMS", "CAMS", remote_failure, stage="REMOTE"
-        )
+        failure = source_error("CAMS", "CAMS", remote_failure, stage="REMOTE")
         diagnostics.append(SourceDiagnostic(
             failure.code,
             failure.source,
@@ -487,5 +545,5 @@ async def fetch_cams(
             selected[1].isoformat(),
             local_day.isoformat(),
         )
-    air, pollen = summarize_cams(selected[0], now)
+    air, pollen = summarize_cams(selected[0], now, remaining_day=remaining_day)
     return air, pollen, selected[1]
