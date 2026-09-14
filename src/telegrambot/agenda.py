@@ -538,11 +538,7 @@ def normalize_event_pages(
         return ()
 
     duration_hours, price_cents, meeting_point = _page_facts(payload)
-    place = (
-        f"место встречи — {meeting_point}"
-        if meeting_point is not None
-        else base_event.place or _calendar_place(payload)
-    )
+    place = base_event.place or _calendar_place(payload)
     if (
         place is not None
         and place.casefold() == "castell"
@@ -551,7 +547,7 @@ def normalize_event_pages(
             for marker in ("sand memories", "memoria de arena")
         )
     ):
-        place = "место встречи — Castillo de Guardamar"
+        meeting_point = "Castillo de Guardamar"
     sessions = _page_sessions(payload)
     if not sessions:
         sessions = ((base_event.starts_at, ""),)
@@ -569,8 +565,10 @@ def normalize_event_pages(
             starts_at=starts_at,
             ends_at=ends_at,
             place=place,
+            meeting_point=meeting_point,
             ticket_price_cents=price_cents,
             ticket_url=ticket_url or None,
+            duration_minutes=duration_hours * 60 if duration_hours is not None else None,
         ))
     return tuple(result)
 
