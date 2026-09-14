@@ -193,6 +193,31 @@ class AdditiveContractTests(unittest.TestCase):
 
 
 class SnapshotContractTests(unittest.TestCase):
+    def test_legacy_official_cinema_snapshot_restores_exact_access(self):
+        day = date(2026, 9, 14)
+        official = SourceEvent(
+            "Cine de los Lunes: RESPECT", day, day, "18:00", None,
+            "Biblioteca Municipal", "event", ("turismo_html", "turismo_cinema"),
+            ticket_price_cents=0, capacity_limited=True,
+        )
+        unrelated = SourceEvent(
+            "Concierto", day, day, "20:00", None, "Teatro", "event",
+            ("agenda_guardamar",), ticket_price_cents=0,
+            capacity_limited=True,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "municipal.json"
+            write_municipal(path, _snapshot_data("", "", WHEN, (official, unrelated)))
+            restored = load_municipal(path)["_events"]
+        self.assertEqual(restored[0].access_note, "до заполнения зала")
+        self.assertIsNone(restored[1].access_note)
+        self.assertIn("Бесплатно · до заполнения зала", rendered(Event(
+            "Кино по понедельникам: «Respect»", WHEN,
+            ticket_price_cents=restored[0].ticket_price_cents,
+            capacity_limited=restored[0].capacity_limited,
+            access_note=restored[0].access_note,
+        )))
+
     def test_municipal_old_and_new_optional_fields(self):
         source = SourceEvent(
             "Visita guiada", date(2026, 9, 14), date(2026, 9, 14),

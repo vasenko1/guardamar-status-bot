@@ -2029,6 +2029,16 @@ def _load_snapshot(path: Path) -> Optional[Dict[str, Any]]:
                 )
             if _is_contentless_generic_event(normalized):
                 continue
+            # Older snapshots predate access_note. This source marker is set
+            # only by the deterministic official row whose free admission is
+            # explicitly qualified by "hasta completar aforo".
+            if (
+                "turismo_cinema" in normalized.sources
+                and normalized.ticket_price_cents == 0
+                and normalized.capacity_limited
+                and normalized.access_note is None
+            ):
+                normalized = replace(normalized, access_note="до заполнения зала")
             events.append(_explicit_venue_and_address(
                 _programme_source_metadata(normalized)
             ))
