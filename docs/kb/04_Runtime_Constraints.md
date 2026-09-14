@@ -35,10 +35,11 @@ data.
 
 CAMS ADS access and NetCDF decoding run only in the separate GitHub-hosted data
 producer. Android performs one bounded JSON read at 07:30, then only bounded
-checks at three existing replacement checkpoints and the first invocation of
-existing operational windows until today's UTC cycle is accepted. It stores one
-atomic last-good JSON and has no ADS credential, scientific Python dependency,
-or CAMS polling process.
+checks at three existing lifecycle checkpoints and the first invocation of
+existing operational windows until today's UTC cycle is accepted. A late
+comparison considers only the remaining local day while retaining the rolling
+input history. It stores one atomic last-good JSON and has no ADS credential,
+scientific Python dependency, or CAMS polling process.
 
 The OCI capacity search also runs only on a GitHub-hosted runner. Each invocation
 is short-lived, has no SDK automatic retry, uses one concurrency group, and may

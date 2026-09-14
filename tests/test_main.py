@@ -2,7 +2,7 @@ import json
 import os
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, call, patch
 from zoneinfo import ZoneInfo
@@ -103,13 +103,12 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 clock.now.side_effect = [first, second]
                 self.assertEqual(await _run_command("update"), 0)
                 self.assertEqual(await _run_command("update"), 0)
-
-        self.assertEqual(fetch.await_count, 2)
-        sent.assert_not_awaited()
-        self.assertEqual(
-            PublicationState(state_path).morning_environment(first.date())[2],
-            new_base,
-        )
+            self.assertEqual(fetch.await_count, 2)
+            sent.assert_not_awaited()
+            self.assertEqual(
+                PublicationState(state_path).morning_environment(first.date())[2],
+                new_base,
+            )
 
     async def test_operational_checkpoint_accepts_late_cams_without_editing_digest(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -158,6 +157,46 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(
                 PublicationState(state_path).morning_environment(now.date()),
                 (None, 2, new_base),
+            )
+
+    async def test_late_meteosalud_failure_preserves_previous_level(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "delivery.json"
+            now = datetime(2026, 9, 11, 10, 10, tzinfo=MADRID)
+            state = PublicationState(state_path)
+            state.mark_morning(now.date(), 10, now)
+            state.mark_morning_environment(
+                now.date(), 2,
+                datetime(2026, 9, 11, tzinfo=timezone.utc),
+                cold_level=1,
+            )
+            with (
+                patch.dict(os.environ, {
+                    "AEMET_API_KEY": "aemet",
+                    "TELEGRAM_BOT_TOKEN": "telegram",
+                    "TELEGRAM_CHAT_ID": "group",
+                    "MORNING_DIGEST_STATE_PATH": str(state_path),
+                }),
+                patch("telegrambot.__main__.datetime") as clock,
+                patch(
+                    "telegrambot.__main__.fetch_meteosalud",
+                    new=AsyncMock(side_effect=EnvironmentError("offline")),
+                ),
+                patch(
+                    "telegrambot.__main__.fetch_meteosalud_cold",
+                    new=AsyncMock(return_value=None),
+                ),
+                patch(
+                    "telegrambot.__main__.fetch_beach_status",
+                    new=AsyncMock(return_value=None),
+                ),
+                patch("telegrambot.__main__.send_message", new=AsyncMock()),
+            ):
+                clock.now.return_value = now
+                self.assertEqual(await _run_command("update"), 0)
+            self.assertEqual(
+                PublicationState(state_path).morning_environment(now.date())[:2],
+                (2, 1),
             )
 
     async def test_earthquake_monitor_needs_only_telegram_configuration(self):

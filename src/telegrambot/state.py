@@ -8,7 +8,7 @@ from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Iterator, Optional
 
-from .models import AirQualitySummary, BeachStatus, PollenSummary
+from .models import AirQualitySummary, BeachNotice, BeachStatus, PollenSummary
 
 
 class StateError(RuntimeError):
@@ -125,6 +125,7 @@ class PublicationState:
         local_day: date,
         message_id: int,
         status: Optional[BeachStatus] = None,
+        notice: Optional[BeachNotice] = None,
     ) -> None:
         """Store the daily beach root and its verified SafeBeach baseline."""
         if not isinstance(message_id, int) or message_id <= 0:
@@ -135,12 +136,26 @@ class PublicationState:
         value["beach_message_id"] = message_id
         value.pop("beach_candidate", None)
         if status is not None:
+            value["beach_root_status"] = _encode_beach_status(status)
             jellyfish = dict(status.jellyfish_states)
             value["beach_baseline"] = {
                 name: {"flag": color, "jellyfish": jellyfish.get(name)}
                 for name, color in status.nearby_flags
             }
+        if notice is not None:
+            value["beach_root_notice"] = _encode_beach_notice(notice)
         self._write(value)
+
+    def beach_root_facts(
+        self, local_day: date
+    ) -> tuple[Optional[BeachStatus], Optional[BeachNotice]]:
+        """Return the last verified root facts so a refresh cannot erase them."""
+        value = self.morning_record(local_day)
+        if value is None:
+            return None, None
+        status = _decode_beach_status(value.get("beach_root_status"))
+        notice = _decode_beach_notice(value.get("beach_root_notice"))
+        return status, notice
 
     def set_beach_message_id(self, local_day: date, message_id: int) -> None:
         value = self.morning_record(local_day)
@@ -525,7 +540,9 @@ def _decode_beach_candidate(value) -> Optional[tuple]:
     return observed_at, status
 
 
-def _decode_beach_status(value: dict) -> Optional[BeachStatus]:
+def _decode_beach_status(value) -> Optional[BeachStatus]:
+    if not isinstance(value, dict):
+        return None
     optional_strings = ("flag_color", "wind_direction", "sea_state")
     if any(
         value.get(name) is not None and not isinstance(value.get(name), str)
@@ -584,6 +601,35 @@ def _decode_beach_status(value: dict) -> Optional[BeachStatus]:
         updated_times=tuple(updated_times),
         source_date=source_date,
     )
+
+
+def _encode_beach_notice(notice: BeachNotice) -> dict:
+    return {
+        "text": notice.text,
+        "bathing_prohibited": notice.bathing_prohibited,
+        "published_at": notice.published_at.isoformat(),
+    }
+
+
+def _decode_beach_notice(value) -> Optional[BeachNotice]:
+    if not isinstance(value, dict):
+        return None
+    text = value.get("text")
+    prohibited = value.get("bathing_prohibited")
+    raw_time = value.get("published_at")
+    if (
+        not isinstance(text, str)
+        or not isinstance(prohibited, bool)
+        or not isinstance(raw_time, str)
+    ):
+        return None
+    try:
+        published_at = datetime.fromisoformat(raw_time)
+    except ValueError:
+        return None
+    if published_at.tzinfo is None:
+        return None
+    return BeachNotice(text, prohibited, published_at)
 
 
 def _string_pairs(value) -> Optional[tuple]:

@@ -34,7 +34,7 @@ from .am_guardamar import (
 )
 from .airport_schedule import AirportScheduleState, sync_airport_schedule
 from .commands import listen_for_preview, parse_allowed_user_ids
-from .delivery import publish_beach_root, publish_morning
+from .delivery import publish_morning, refresh_beach_root
 from .diagnostics import render_diagnostics
 from .electricity import (
     ElectricityError,
@@ -439,7 +439,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         if not _cams_cycle_is_current(current_base, now):
             try:
                 new_air, new_pollen, available_base = await fetch_cams(
-                    cams_data_url, cams_cache_path, now
+                    cams_data_url, cams_cache_path, now, remaining_day=True
                 )
             except EnvironmentError as exc:
                 logging.warning(
@@ -468,35 +468,31 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                         current_base.isoformat(),
                     )
 
-        new_heat_level = None
-        new_cold_level = None
-        heat_resolved = False
-        cold_resolved = False
-        if heat_level is None:
-            try:
-                heat = await fetch_meteosalud(now)
-            except EnvironmentError as exc:
-                logging.warning("Late Meteosalud heat unavailable: %s", exc)
-            else:
-                if heat is not None:
-                    heat_level = heat.level
-                    new_heat_level = heat.level
-                    heat_resolved = True
-        if cold_level is None:
-            try:
-                cold = await fetch_meteosalud_cold(now)
-            except EnvironmentError as exc:
-                logging.warning("Late Meteosalud cold unavailable: %s", exc)
-            else:
-                if cold is not None:
-                    cold_level = cold.level
-                    new_cold_level = cold.level
-                    cold_resolved = True
+        previous_heat, previous_cold = heat_level, cold_level
+        heat_resolved = cold_resolved = False
+        try:
+            heat = await fetch_meteosalud(now)
+        except EnvironmentError as exc:
+            logging.warning("Late Meteosalud heat unavailable: %s", exc)
+        else:
+            if heat is not None:
+                heat_level = heat.level
+                heat_resolved = True
+        try:
+            cold = await fetch_meteosalud_cold(now)
+        except EnvironmentError as exc:
+            logging.warning("Late Meteosalud cold unavailable: %s", exc)
+        else:
+            if cold is not None:
+                cold_level = cold.level
+                cold_resolved = True
 
         if heat_resolved or cold_resolved:
             message = build_meteosalud_update(
-                new_heat_level if heat_resolved else None,
-                new_cold_level if cold_resolved else None,
+                previous_heat,
+                heat_level if heat_resolved else previous_heat,
+                previous_cold,
+                cold_level if cold_resolved else previous_cold,
                 now,
             )
             if message is not None:
@@ -565,6 +561,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     seed_warnings(value, snapshot.warnings)
 
             phase = schedule.beach_phase
+            latest_beach = None
             if phase == 1 and value.get("beach_pending") is not None:
                 value["beach_pending"] = None
             elif (
@@ -585,6 +582,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 try:
                     beach = await fetch_beach_status(now)
                     if is_current_status(beach, now):
+                        latest_beach = beach
                         observe_beaches(value, beach, phase)
                     else:
                         miss_beach_sample(value, phase)
@@ -609,9 +607,26 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 logging.info("WAIT: beach change confirmation is pending")
                 return 0
 
+            beach_anchor = publication_state.beach_message_id(now.date())
+            if latest_beach is not None:
+                root_result, beach_anchor = await refresh_beach_root(
+                    now,
+                    publication_state,
+                    latest_beach,
+                    None,
+                    build_beach_root_message,
+                    lambda message: send_message(
+                        bot_token, chat_id, message, disable_notification=False
+                    ),
+                    lambda message_id, message: edit_message(
+                        bot_token, chat_id, message_id, message
+                    ),
+                )
+                if root_result == "failure":
+                    return 1
+
             beach_message = build_beach_message(value, now)
             if beach_message is not None:
-                beach_anchor = publication_state.beach_message_id(now.date())
                 sent_id, anchored = await _send_operational_update(
                     bot_token, chat_id, beach_message, beach_anchor
                 )
@@ -1100,10 +1115,6 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
     if not _safebeach_is_in_season(now):
         logging.info("SKIP: SafeBeach update phase is out of season")
         return 0
-    if state.beach_message_id(now.date()) is not None:
-        logging.info("SKIP: daily beach root already exists")
-        return 0
-
     final_attempt = (now.hour, now.minute) >= (10, 40)
     beach = None
     try:
@@ -1128,16 +1139,20 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         logging.info("SKIP: no beach root facts became available")
         return 0
 
-    result = await publish_beach_root(
+    result, _ = await refresh_beach_root(
         now,
         state,
-        lambda: asyncio.sleep(0, result=build_beach_root_message(beach, notice)),
+        beach,
+        notice,
+        build_beach_root_message,
         lambda message: send_message(
             bot_token, chat_id, message, disable_notification=False
         ),
-        beach,
+        lambda message_id, message: edit_message(
+            bot_token, chat_id, message_id, message
+        ),
     )
-    return 0 if result in {"success", "duplicate", "no_update", "no_morning"} else 1
+    return 0 if result in {"created", "refreshed", "no_update", "no_morning"} else 1
 
 
 def main() -> None:

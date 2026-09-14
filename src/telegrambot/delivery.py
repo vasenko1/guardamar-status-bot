@@ -6,38 +6,57 @@ from typing import Awaitable, Callable, Optional
 
 from .models import BeachNotice, BeachStatus
 from .state import PublicationState, StateError
+from .telegram import TelegramError
 
 LOGGER = logging.getLogger(__name__)
 
 
-async def publish_beach_root(
+async def refresh_beach_root(
     now: datetime,
     state: PublicationState,
-    produce_message: Callable[[], Awaitable[Optional[str]]],
-    deliver_message: Callable[[str], Awaitable[int]],
     status: Optional[BeachStatus],
-) -> str:
-    """Publish one seasonal beach root without replacing the Morning Digest."""
+    notice: Optional[BeachNotice],
+    produce_message: Callable[
+        [Optional[BeachStatus], Optional[BeachNotice]], Optional[str]
+    ],
+    deliver_message: Callable[[str], Awaitable[int]],
+    edit_root: Callable[[int, str], Awaitable[None]],
+) -> tuple[str, Optional[int]]:
+    """Create or edit the one daily beach root, retaining prior verified facts."""
     try:
         with state.exclusive_run():
             if state.morning_record(now.date()) is None:
-                return "no_morning"
-            if state.beach_message_id(now.date()) is not None:
-                return "duplicate"
-            try:
-                message = await produce_message()
-                if message is None or not message.strip():
-                    return "no_update"
-                message_id = await deliver_message(message)
-            except Exception as exc:
-                LOGGER.error("FAILURE: beach root delivery failed: %s", exc)
-                return "failure"
-            state.mark_beach_message(now.date(), message_id, status)
-            LOGGER.info("SUCCESS: beach root delivered for %s", now.date())
-            return "success"
-    except StateError as exc:
-        LOGGER.error("FAILURE: beach root state cannot be trusted: %s", exc)
-        return "failure"
+                return "no_morning", None
+            old_status, old_notice = state.beach_root_facts(now.date())
+            effective_status = status or old_status
+            effective_notice = notice or old_notice
+            message = produce_message(effective_status, effective_notice)
+            if message is None or not message.strip():
+                return "no_update", state.beach_message_id(now.date())
+            root_id = state.beach_message_id(now.date())
+            if root_id is not None:
+                try:
+                    await edit_root(root_id, message)
+                except TelegramError as exc:
+                    if exc.diagnostic_code == "MESSAGE-NOT-MODIFIED":
+                        pass
+                    elif exc.diagnostic_code == "MESSAGE-NOT-FOUND":
+                        root_id = None
+                    else:
+                        raise
+                if root_id is not None:
+                    state.mark_beach_message(
+                        now.date(), root_id, effective_status, effective_notice
+                    )
+                    return "refreshed", root_id
+            root_id = await deliver_message(message)
+            state.mark_beach_message(
+                now.date(), root_id, effective_status, effective_notice
+            )
+            return "created", root_id
+    except (StateError, TelegramError) as exc:
+        LOGGER.error("FAILURE: beach root refresh failed: %s", exc)
+        return "failure", None
 
 
 async def publish_morning(

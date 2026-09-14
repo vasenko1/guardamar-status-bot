@@ -71,16 +71,33 @@ class EnvironmentUpdateTests(unittest.TestCase):
         pollen = PollenSummary(("оливы",), "днём")
         messages = (
             build_environment_update(None, air, None, pollen, NOW),
-            build_meteosalud_update(2, None, NOW),
-            build_meteosalud_update(None, 2, NOW),
+            build_meteosalud_update(None, 2, None, None, NOW),
+            build_meteosalud_update(None, None, None, 2, NOW),
         )
         self.assertTrue(all("\u2014" not in message for message in messages))
 
     def test_meteosalud_zero_is_silent_and_risk_is_compact(self):
-        self.assertIsNone(build_meteosalud_update(0, 0, NOW))
-        message = build_meteosalud_update(2, None, NOW)
+        self.assertIsNone(build_meteosalud_update(None, 0, None, 0, NOW))
+        message = build_meteosalud_update(None, 2, None, None, NOW)
         self.assertIn("средний риск жары", message)
         self.assertIn("Ministerio de Sanidad", message)
+
+    def test_meteosalud_material_transitions_are_deterministic(self):
+        cases = (
+            (None, 0, None),
+            (None, 2, "появился средний риск жары"),
+            (1, 2, "повысился: теперь средний"),
+            (3, 2, "снизился: теперь средний"),
+            (2, 0, "риск жары на сегодня отменён"),
+            (2, 2, None),
+        )
+        for old, new, expected in cases:
+            with self.subTest(old=old, new=new):
+                message = build_meteosalud_update(old, new, None, None, NOW)
+                if expected is None:
+                    self.assertIsNone(message)
+                else:
+                    self.assertIn(expected, message.casefold())
 
 
 if __name__ == "__main__":

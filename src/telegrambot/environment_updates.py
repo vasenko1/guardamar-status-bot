@@ -252,26 +252,53 @@ def build_environment_update(
     return with_footer(message + "\n\n" + _cams_attribution(now))
 
 
+def _health_change_text(
+    kind: str,
+    old_level: Optional[int],
+    new_level: Optional[int],
+) -> Optional[str]:
+    """Describe one verified Meteosalud change; unavailable is never a clear."""
+
+    if new_level is None or new_level == old_level:
+        return None
+    labels = {1: "низкий", 2: "средний", 3: "высокий"}
+    name = "жары" if kind == "heat" else "холода"
+    if new_level == 0:
+        if old_level and old_level > 0:
+            return f"Риск {name} на сегодня отменён."
+        return None
+    if old_level is None or old_level == 0:
+        return f"На сегодня появился {labels[new_level]} риск {name} для здоровья."
+    direction = "повысился" if new_level > old_level else "снизился"
+    return (
+        f"Риск {name} на сегодня {direction}: "
+        f"теперь {labels[new_level]}."
+    )
+
+
 def build_meteosalud_update(
-    heat_level: Optional[int],
-    cold_level: Optional[int],
+    old_heat_level: Optional[int],
+    new_heat_level: Optional[int],
+    old_cold_level: Optional[int],
+    new_cold_level: Optional[int],
     now: datetime,
 ) -> Optional[str]:
-    """Render newly available same-day Meteosalud risks; zero stays silent."""
+    """Render one concise notification for verified, material risk changes."""
 
-    labels = {1: "низкий", 2: "средний", 3: "высокий"}
     sections = []
-    if heat_level in labels:
-        text = f"На сегодня появился {labels[heat_level]} риск жары для здоровья."
-        if heat_level >= 2:
+    heat = _health_change_text("heat", old_heat_level, new_heat_level)
+    if heat is not None:
+        text = heat
+        if new_heat_level is not None and new_heat_level >= 2:
             text += (
                 " Пейте воду, по возможности оставайтесь в прохладе и "
                 "сократите активность в самые жаркие часы."
             )
         sections.append(("❤️‍🩹 <b>Сегодня с жарой лучше поосторожнее</b>", text))
-    if cold_level in labels:
-        text = f"На сегодня появился {labels[cold_level]} риск холода для здоровья."
-        if cold_level >= 2:
+    cold = _health_change_text("cold", old_cold_level, new_cold_level)
+    if cold is not None:
+        text = cold
+        if new_cold_level is not None and new_cold_level >= 2:
             text += (
                 " Одевайтесь по погоде, сохраняйте тепло и уделите особое "
                 "внимание детям, пожилым и другим уязвимым людям."

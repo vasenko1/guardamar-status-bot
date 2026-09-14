@@ -222,9 +222,19 @@ def _period(hours: Sequence[int]) -> str:
 
 def summarize_cams(
     hours: Iterable[Tuple[datetime, Dict[str, float]]], now: datetime,
+    *,
+    remaining_day: bool = False,
 ) -> Tuple[Optional[AirQualitySummary], Optional[PollenSummary]]:
-    """Apply MITECO windows and compact pollen policy to one nearest grid cell."""
+    """Apply MITECO windows and compact pollen policy to one nearest grid cell.
+
+    ``remaining_day`` changes only which completed local hours are displayed.
+    Earlier rows remain in ``series`` so PM and ozone rolling windows keep their
+    required history.
+    """
     local_today = now.astimezone(GUARDAMAR_TIMEZONE).date()
+    local_hour = now.astimezone(GUARDAMAR_TIMEZONE).replace(
+        minute=0, second=0, microsecond=0
+    )
     series = sorted(
         (moment.astimezone(GUARDAMAR_TIMEZONE), values)
         for moment, values in hours
@@ -243,10 +253,11 @@ def summarize_cams(
                 for entry in series[max(0, index - window + 1):index + 1]
             ]
             if len(samples) == window and all(value is not None for value in samples):
-                categories[pollutant].append((
-                    moment.hour,
-                    _ica_category(pollutant, sum(samples) / window),
-                ))
+                if not remaining_day or moment >= local_hour:
+                    categories[pollutant].append((
+                        moment.hour,
+                        _ica_category(pollutant, sum(samples) / window),
+                    ))
 
     worst = max(
         (category for values in categories.values() for _, category in values),
@@ -302,6 +313,7 @@ def summarize_cams(
             moment.hour
             for moment, values in series
             if moment.date() == local_today
+            and (not remaining_day or moment >= local_hour)
             and values.get(variable, 0.0) > threshold
         ]
         if matching:
@@ -320,6 +332,7 @@ def summarize_cams(
         moment.hour
         for moment, values in series
         if moment.date() == local_today
+        and (not remaining_day or moment >= local_hour)
         and values.get("ragweed_pollen", 0.0) >= 3.0
     ]
     pollen = (
@@ -466,6 +479,7 @@ async def fetch_cams(
     *,
     allow_remote: bool = True,
     diagnostics: Optional[List[SourceDiagnostic]] = None,
+    remaining_day: bool = False,
 ) -> Tuple[Optional[AirQualitySummary], Optional[PollenSummary], datetime]:
     """Use the newest valid public JSON or a covering local last-good copy."""
     cached = await asyncio.to_thread(_load_cams_cache, cache_path, now)
@@ -531,5 +545,5 @@ async def fetch_cams(
             selected[1].isoformat(),
             local_day.isoformat(),
         )
-    air, pollen = summarize_cams(selected[0], now)
+    air, pollen = summarize_cams(selected[0], now, remaining_day=remaining_day)
     return air, pollen, selected[1]

@@ -26,27 +26,26 @@ schemas, and library choices belong in later design work or ADRs.
    message.
 7. **Telegram delivery** sends the early message and stores its message ID.
 8. **External update checks** run at 10:10–10:40 in five-minute steps. Three
-   bounded checkpoints (10:10, 10:25 and 10:40) may check for a newer CAMS
-   forecast until today's UTC cycle is accepted; a newer base may replace the
-   morning message through the existing update path. Each
+   bounded checkpoints (10:10, 10:25 and 10:40) may accept a newer CAMS
+   forecast until today's UTC cycle is accepted, compare only the remaining
+   local day semantically, and send one compact reply only for a material
+   change. Each
    process checks SafeBeach first, retains at most the best whole normalized
    partial response for this window, and attempts each event catalog at most
    once that day so later event facts are saved without seven repeat calls.
-9. **Conditional replacement** checks the Mayor channel once after SafeBeach
-   succeeds or its retry window expires. A verified update permits one fresh
-   full collection, delivery of the replacement, then deletion of the earlier
-   message.
+9. **Beach root** checks the Mayor channel once after SafeBeach succeeds or its
+   retry window expires. Verified beach or Mayor facts create or refresh one
+   standalone beach root; they never replace or delete the Morning Digest.
 10. **Minimal state** keeps the local date, both Telegram message IDs,
    morning publication time, and cleanup result.
 11. **Exit** ends every process; no collector or watcher remains active.
 
-After the later full digest is settled, externally scheduled operational
-checks compare current SafeBeach and AEMET warning state with one small daily
-snapshot. Beach candidates use at most two scheduled confirmations. Confirmed
-changes are sent as replies to the current full digest; older updates remain
-unchanged. While the digest still uses the previous valid CAMS cycle, only the
-first invocation of each existing operational window checks again and edits the
-current digest if today's cycle has appeared.
+Externally scheduled operational checks compare current SafeBeach and AEMET
+warning state with one small daily snapshot. Beach candidates use at most two
+scheduled confirmations. Confirmed beach changes reply to the independently
+maintained beach root; AEMET, CAMS and Meteosalud changes reply to the immutable
+Morning Digest. Source failure preserves the last verified baseline and never
+creates an all-clear message.
 
 If nothing trustworthy and useful remains after filtering, the run may produce
 no message.
@@ -149,9 +148,8 @@ It has no resident process or dependency on Morning Digest state.
 - One daily urban-timetable synchronization and optional manual guide update
 - Optional lightweight operator listener with one idle Telegram long poll
 - One event loop with bounded asynchronous I/O
-- One direct 07:30 collection; one later full collection only after a beach or
-  newer-CAMS update, plus a bounded in-place refresh if CAMS arrives after the
-  replacement window
+- One direct immutable 07:30 collection; later checks create only compact
+  semantic replies or refresh the separate beach root, never a second digest
 - No webhook or public server
 - No resident scheduler, source polling, or watcher; only bounded one-shot
   event refresh, digest, electricity and operational-change commands
@@ -170,10 +168,10 @@ It has no resident process or dependency on Morning Digest state.
 - **Telegram unavailable:** use bounded recovery and avoid duplicate delivery.
 - **Later invocation:** retry when no confirmed success was stored.
 
-Each publication workflow holds its own local file lock. Morning replacement
+Each publication workflow holds its own local file lock. Morning lifecycle
 state and electricity success state are separate small atomic JSON files. The
-replacement is sent and recorded before deletion of the morning message; a
-later invocation retries only failed cleanup.
+morning anchor is never deleted on new lifecycle days; a missing beach root is
+recreated only after Telegram confirms its message is gone.
 
 The electricity workflow checks its success state before any ESIOS work. A
 complete normalized target-day snapshot is reused by later attempts, including
