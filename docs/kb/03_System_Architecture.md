@@ -33,9 +33,11 @@ schemas, and library choices belong in later design work or ADRs.
    process checks SafeBeach first, retains at most the best whole normalized
    partial response for this window, and attempts each event catalog at most
    once that day so later event facts are saved without seven repeat calls.
-9. **Beach root** checks the Mayor channel once after SafeBeach succeeds or its
-   retry window expires. Verified beach or Mayor facts create or refresh one
-   standalone beach root; they never replace or delete the Morning Digest.
+9. **Beach root** checks the Mayor channel during the initial SafeBeach window
+   and again only on the first invocation of already scheduled operational
+   windows. Verified beach or newer explicit Mayor bathing transitions create
+   or refresh one standalone beach root; they never replace or delete the
+   Morning Digest.
 10. **Minimal state** keeps the local date, both Telegram message IDs,
    morning publication time, and cleanup result.
 11. **Exit** ends every process; no collector or watcher remains active.

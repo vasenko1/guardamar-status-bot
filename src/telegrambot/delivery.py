@@ -64,8 +64,9 @@ async def publish_morning(
     state: PublicationState,
     produce_message: Callable[[], Awaitable[str]],
     deliver_message: Callable[[str], Awaitable[int]],
+    finalize_publication: Optional[Callable[[], Awaitable[None]]] = None,
 ) -> str:
-    """Send the early full digest and retain its Telegram identifier."""
+    """Send the early digest and finalize its baselines under the same state lock."""
     local_day = now.date()
     try:
         with state.exclusive_run():
@@ -84,6 +85,14 @@ async def publish_morning(
                 LOGGER.error("FAILURE: morning publication failed: %s", exc)
                 return "failure"
             state.mark_morning(local_day, message_id, now)
+            if finalize_publication is not None:
+                try:
+                    await finalize_publication()
+                except Exception as exc:
+                    LOGGER.warning(
+                        "Morning post-publication baseline finalization failed: %s",
+                        exc,
+                    )
             LOGGER.info("SUCCESS: morning message delivered for %s", local_day)
             return "success"
     except StateError as exc:

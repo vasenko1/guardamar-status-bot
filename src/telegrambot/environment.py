@@ -10,6 +10,7 @@ import logging
 import math
 import os
 import re
+import tempfile
 import urllib.parse
 from collections import defaultdict
 from datetime import datetime, time, timedelta, timezone
@@ -79,6 +80,28 @@ class EnvironmentError(RuntimeError):
         self.diagnostic_code = code
         self.safe_description = description
         self.server_status = status
+
+
+def accepted_cams_cache_path(cache_path: Path) -> Path:
+    """Return the lifecycle snapshot isolated from the mutable source cache."""
+
+    override = os.environ.get("CAMS_ACCEPTED_CACHE_PATH", "").strip()
+    if override:
+        return Path(override)
+    suffix = cache_path.suffix or ".json"
+    stem = cache_path.stem if cache_path.suffix else cache_path.name
+    return cache_path.with_name(f"{stem}-accepted{suffix}")
+
+
+def candidate_cams_cache_path(cache_path: Path, forecast_base: datetime) -> Path:
+    """Address one immutable fetched candidate by its UTC forecast base."""
+
+    if forecast_base.tzinfo is None:
+        raise ValueError("CAMS candidate forecast base must be timezone-aware")
+    stamp = forecast_base.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    suffix = cache_path.suffix or ".json"
+    stem = cache_path.stem if cache_path.suffix else cache_path.name
+    return cache_path.with_name(f"{stem}-candidate-{stamp}{suffix}")
 
 
 def _allowed_meteosalud(url: str) -> bool:
@@ -458,18 +481,96 @@ def _load_cams_cache(
 
 
 def _write_cams_cache(cache_path: Path, payload: bytes) -> None:
-    temporary = cache_path.with_name(f".{cache_path.name}.tmp")
+    temporary: Optional[Path] = None
     try:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary.write_bytes(payload)
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            dir=cache_path.parent,
+            prefix=f".{cache_path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+            handle.write(payload)
         os.chmod(temporary, 0o600)
         os.replace(temporary, cache_path)
     except OSError as exc:
-        try:
-            temporary.unlink(missing_ok=True)
-        except OSError:
-            pass
+        if temporary is not None:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
         raise EnvironmentError("CAMS cache could not be saved") from exc
+
+
+def _persist_cams_candidate(
+    cache_path: Path,
+    payload: bytes,
+    forecast_base: datetime,
+) -> None:
+    _write_cams_cache(candidate_cams_cache_path(cache_path, forecast_base), payload)
+
+
+def persist_cams_snapshot(
+    cache_path: Path,
+    snapshot_path: Path,
+    now: datetime,
+    expected_base: datetime,
+) -> None:
+    """Promote only the exact fetched candidate that is being accepted."""
+
+    candidate_path = candidate_cams_cache_path(cache_path, expected_base)
+    try:
+        payload = candidate_path.read_bytes()
+    except OSError as exc:
+        raise EnvironmentError("CAMS accepted candidate is unavailable") from exc
+    _, actual_base = parse_cams_payload(payload, now)
+    if actual_base != expected_base:
+        raise EnvironmentError("CAMS accepted snapshot base does not match candidate")
+    _write_cams_cache(snapshot_path, payload)
+
+
+def ensure_accepted_cams_snapshot(
+    cache_path: Path,
+    now: datetime,
+    expected_base: datetime,
+) -> None:
+    """Repair the accepted raw baseline from its exact retained candidate."""
+    accepted_path = accepted_cams_cache_path(cache_path)
+    try:
+        payload = accepted_path.read_bytes()
+        _, actual_base = parse_cams_payload(payload, now)
+    except (OSError, EnvironmentError):
+        actual_base = None
+    if actual_base == expected_base:
+        return
+
+    candidate_path = candidate_cams_cache_path(cache_path, expected_base)
+    try:
+        payload = candidate_path.read_bytes()
+    except OSError as exc:
+        raise EnvironmentError("CAMS accepted candidate is unavailable") from exc
+    _, actual_base = parse_cams_payload(payload, now)
+    if actual_base != expected_base:
+        raise EnvironmentError(
+            "CAMS accepted candidate base does not match publication state"
+        )
+    _write_cams_cache(accepted_path, payload)
+
+def prune_cams_candidates(cache_path: Path, keep_base: datetime) -> None:
+    """Keep only the candidate matching the newly accepted forecast base."""
+
+    keep = candidate_cams_cache_path(cache_path, keep_base)
+    suffix = cache_path.suffix or ".json"
+    stem = cache_path.stem if cache_path.suffix else cache_path.name
+    for candidate in cache_path.parent.glob(f"{stem}-candidate-*{suffix}"):
+        if candidate == keep:
+            continue
+        try:
+            candidate.unlink()
+        except OSError:
+            LOGGER.warning("Old CAMS candidate could not be removed: %s", candidate)
 
 
 async def fetch_cams(
@@ -482,7 +583,12 @@ async def fetch_cams(
     remaining_day: bool = False,
 ) -> Tuple[Optional[AirQualitySummary], Optional[PollenSummary], datetime]:
     """Use the newest valid public JSON or a covering local last-good copy."""
-    cached = await asyncio.to_thread(_load_cams_cache, cache_path, now)
+    read_cache_path = (
+        accepted_cams_cache_path(cache_path)
+        if not allow_remote and remaining_day
+        else cache_path
+    )
+    cached = await asyncio.to_thread(_load_cams_cache, read_cache_path, now)
     remote = None
     remote_payload = None
     remote_failure = None
@@ -516,8 +622,10 @@ async def fetch_cams(
             )
             LOGGER.warning("Remote CAMS JSON unavailable; trying cache: %s", exc)
     selected = cached
+    selected_payload = None
     if remote is not None and (selected is None or remote[1] >= selected[1]):
         selected = remote
+        selected_payload = remote_payload
         assert remote_payload is not None
         try:
             await asyncio.to_thread(_write_cams_cache, cache_path, remote_payload)
@@ -525,12 +633,29 @@ async def fetch_cams(
             LOGGER.warning("CAMS cache update failed: %s", exc)
             if diagnostics is not None:
                 diagnostics.append(source_error("CAMS", "CAMS", exc, stage="CACHE"))
+    elif selected is not None:
+        try:
+            selected_payload = await asyncio.to_thread(read_cache_path.read_bytes)
+        except OSError:
+            selected_payload = None
     if selected is None:
         raise EnvironmentError(
             "CAMS unavailable",
             code="UNAVAILABLE",
             description="нет корректного свежего прогноза или локального снимка",
         )
+    if allow_remote and selected_payload is not None:
+        try:
+            await asyncio.to_thread(
+                _persist_cams_candidate,
+                cache_path,
+                selected_payload,
+                selected[1],
+            )
+        except EnvironmentError as exc:
+            LOGGER.warning("CAMS candidate snapshot could not be saved: %s", exc)
+            if diagnostics is not None:
+                diagnostics.append(source_error("CAMS", "CAMS", exc, stage="CANDIDATE"))
     if remote_failure is not None and diagnostics is not None:
         failure = source_error("CAMS", "CAMS", remote_failure, stage="REMOTE")
         diagnostics.append(SourceDiagnostic(

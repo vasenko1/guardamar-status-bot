@@ -89,6 +89,8 @@ def _response_error(payload: Any, status: int) -> TelegramError:
     elif status == 400 and (
         "message to edit not found" in api_description
         or "message to pin not found" in api_description
+        or "reply message not found" in api_description
+        or "message to be replied not found" in api_description
         or "message not found" in api_description
     ):
         code = "MESSAGE-NOT-FOUND"
@@ -805,11 +807,7 @@ async def edit_photo_caption(
 
     await _retry_idempotent(
         lambda: asyncio.to_thread(
-            _edit_photo_caption,
-            bot_token,
-            chat_id,
-            message_id,
-            caption,
+            _edit_photo_caption, bot_token, chat_id, message_id, caption
         ),
         max_attempts=max_attempts,
         sleep=sleep,

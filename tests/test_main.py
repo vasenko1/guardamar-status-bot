@@ -65,6 +65,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 }),
                 patch("telegrambot.__main__.datetime") as clock,
                 patch("telegrambot.__main__.fetch_cams", new=fetch),
+                patch("telegrambot.__main__.ensure_accepted_cams_snapshot"),
                 patch(
                     "telegrambot.__main__.fetch_meteosalud",
                     new=AsyncMock(return_value=None),
@@ -200,7 +201,9 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
             legacy["cams_refresh_attempted"] = True
             state_path.write_text(json.dumps(legacy), encoding="utf-8")
             fetch = AsyncMock(side_effect=[
+                (None, None, old_base),
                 EnvironmentError("not published yet"),
+                (None, None, old_base),
                 (None, None, new_base),
             ])
             sent = AsyncMock(return_value=30)
@@ -214,6 +217,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 patch.dict(os.environ, common),
                 patch("telegrambot.__main__.datetime") as clock,
                 patch("telegrambot.__main__.fetch_cams", new=fetch),
+                patch("telegrambot.__main__.ensure_accepted_cams_snapshot"),
                 patch(
                     "telegrambot.__main__.fetch_meteosalud",
                     new=AsyncMock(return_value=None),
@@ -235,7 +239,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 clock.now.side_effect = [first, second]
                 self.assertEqual(await _run_command("update"), 0)
                 self.assertEqual(await _run_command("update"), 0)
-            self.assertEqual(fetch.await_count, 2)
+            self.assertEqual(fetch.await_count, 4)
             sent.assert_not_awaited()
             self.assertEqual(
                 PublicationState(state_path).morning_environment(first.date())[2],
@@ -266,6 +270,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                     "telegrambot.__main__.fetch_cams",
                     new=AsyncMock(return_value=(None, None, new_base)),
                 ) as fetch,
+                patch("telegrambot.__main__.ensure_accepted_cams_snapshot"),
                 patch(
                     "telegrambot.__main__.fetch_meteosalud",
                     new=AsyncMock(return_value=None),
@@ -647,8 +652,10 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
             kwargs["aemet_observer"](observed_digest)
             return "утреннее сообщение"
 
-        async def publish(now, state, producer, sender):
+        async def publish(now, state, producer, sender, finalizer=None):
             await producer()
+            if finalizer is not None:
+                await finalizer()
             return "success"
 
         with tempfile.TemporaryDirectory() as directory:
