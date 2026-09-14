@@ -96,10 +96,12 @@ class DigestMessageTests(unittest.TestCase):
         )
         message = build_message(digest, now=now)
         self.assertIn("❤️‍🩹 Риск жары для здоровья: средний", message)
-        self.assertIn("ожидается ухудшение из-за пыли", message)
+        self.assertIn("ожидается ухудшение: повышен PM10", message)
+        self.assertIn("Возможно влияние переносимой пыли", message)
+        self.assertNotIn("из-за пыли", message)
         self.assertIn("🌿 <b>Пыльца:</b> высокий уровень оливы", message)
-        self.assertIn("изменённые данные CAMS (Copernicus), 2026", message)
-        self.assertIn("ЕС и ECMWF не отвечают за их использование", message)
+        self.assertIn("Изменённые данные CAMS (Copernicus), 2026", message)
+        self.assertIn("ЕС и ECMWF не несут ответственности за их использование", message)
 
     def test_cams_attribution_is_absent_without_cams_content(self):
         message = build_message(self._routine_digest())

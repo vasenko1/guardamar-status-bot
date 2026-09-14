@@ -385,14 +385,15 @@ def _health_lines(
 
 
 def _air_quality_line(value: AirQualitySummary, *, dust_warning: bool = False) -> str:
-    reason = " из-за пыли" if dust_warning and value.dust_related else ""
     text = (
         f"😷 <b>Качество воздуха:</b> {value.period} ожидается ухудшение"
-        f"{reason}: повышен{'ы' if len(value.pollutants) > 1 else ''} "
+        f": повышен{'ы' if len(value.pollutants) > 1 else ''} "
         f"{_join_ru(value.pollutants)}."
     )
+    if dust_warning and value.dust_related:
+        text += " Возможно влияние переносимой пыли."
     if value.wildfire_possible:
-        text = text[:-1] + "; возможно влияние дыма от пожаров."
+        text += " Возможно влияние дыма от пожаров."
     return text
 
 
@@ -414,8 +415,8 @@ def _pollen_line(value: PollenSummary) -> str:
 
 def _cams_attribution(year: int) -> str:
     return (
-        f'Источник: <a href="{CAMS_ATTRIBUTION_URL}">изменённые данные CAMS '
-        f'(Copernicus), {year}</a>. ЕС и ECMWF не отвечают за их использование.'
+        f'Источник: <a href="{CAMS_ATTRIBUTION_URL}">Изменённые данные CAMS '
+        f'(Copernicus), {year}</a>. ЕС и ECMWF не несут ответственности за их использование.'
     )
 
 

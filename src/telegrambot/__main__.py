@@ -437,6 +437,33 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         effective_base = current_base
 
         if not _cams_cycle_is_current(current_base, now):
+            old_remaining_air = old_remaining_pollen = None
+            old_remaining_available = current_base is None
+            if current_base is not None:
+                try:
+                    cached_air, cached_pollen, cached_base = await fetch_cams(
+                        cams_data_url,
+                        cams_cache_path,
+                        now,
+                        allow_remote=False,
+                        remaining_day=True,
+                    )
+                except EnvironmentError as exc:
+                    logging.warning(
+                        "CAMS accepted cycle cannot be reconstructed; "
+                        "suppressing comparison: %s", exc
+                    )
+                else:
+                    if cached_base == current_base:
+                        old_remaining_air = cached_air
+                        old_remaining_pollen = cached_pollen
+                        old_remaining_available = True
+                    else:
+                        logging.warning(
+                            "CAMS accepted cycle cache base %s does not match %s; "
+                            "suppressing comparison",
+                            cached_base.isoformat(), current_base.isoformat(),
+                        )
             try:
                 new_air, new_pollen, available_base = await fetch_cams(
                     cams_data_url, cams_cache_path, now, remaining_day=True
@@ -447,8 +474,15 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 )
             else:
                 if current_base is None or available_base > current_base:
-                    message = build_environment_update(
-                        old_air, new_air, old_pollen, new_pollen, now
+                    message = (
+                        build_environment_update(
+                            old_remaining_air,
+                            new_air,
+                            old_remaining_pollen,
+                            new_pollen,
+                            now,
+                        )
+                        if old_remaining_available else None
                     )
                     if message is not None:
                         await _send_operational_update(

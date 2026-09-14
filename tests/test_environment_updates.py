@@ -29,7 +29,7 @@ class EnvironmentUpdateTests(unittest.TestCase):
         message = build_environment_update(None, new, None, None, NOW)
         self.assertIn("PM10, PM2.5 и NO₂", message)
         self.assertIn("Возможно влияние переносимой пыли", message)
-        self.assertIn("CAMS / Copernicus, 2026", message)
+        self.assertIn("Изменённые данные CAMS (Copernicus), 2026", message)
         self.assertNotIn("guardamar-cams-data", message)
         self.assertNotIn("дыма от пожаров", message)
 
@@ -64,7 +64,7 @@ class EnvironmentUpdateTests(unittest.TestCase):
         self.assertIn("Есть пара уточнений", message)
         self.assertIn("PM10", message)
         self.assertIn("оливы", message)
-        self.assertEqual(message.count("CAMS / Copernicus"), 1)
+        self.assertEqual(message.count("Изменённые данные CAMS"), 1)
 
     def test_new_author_messages_have_no_em_dash(self):
         air = AirQualitySummary(("PM10", "PM2.5"), "днём", category=3)
@@ -98,6 +98,45 @@ class EnvironmentUpdateTests(unittest.TestCase):
                     self.assertIsNone(message)
                 else:
                     self.assertIn(expected, message.casefold())
+
+    def test_meteosalud_headings_follow_the_change_direction(self):
+        cases = (
+            (
+                None, 2,
+                "❤️‍🩹 <b>Сегодня с жарой лучше поосторожнее</b>\n\n"
+                "На сегодня появился средний риск жары для здоровья. "
+                "Пейте воду, по возможности оставайтесь в прохладе и "
+                "сократите активность в самые жаркие часы.",
+            ),
+            (
+                1, 2,
+                "❤️‍🩹 <b>Сегодня с жарой лучше поосторожнее</b>\n\n"
+                "Риск жары на сегодня повысился: теперь средний. "
+                "Пейте воду, по возможности оставайтесь в прохладе и "
+                "сократите активность в самые жаркие часы.",
+            ),
+            (
+                3, 2,
+                "😌 <b>По жаре стало спокойнее</b>\n\n"
+                "Риск жары на сегодня снизился: теперь средний. "
+                "Пейте воду, по возможности оставайтесь в прохладе и "
+                "сократите активность в самые жаркие часы.",
+            ),
+            (
+                2, 0,
+                "😌 <b>Риск жары на сегодня снят</b>\n\n"
+                "Риск жары на сегодня отменён.",
+            ),
+        )
+        attribution = "<i>Данные: Ministerio de Sanidad, 14.09.2026.</i>"
+        for old, new, expected in cases:
+            with self.subTest(old=old, new=new):
+                message = build_meteosalud_update(old, new, None, None, NOW)
+                self.assertEqual(message, expected + "\n\n" + attribution + "\n\n📣 "
+                    '<a href="https://t.me/MarketGuardamar"><b>обЪявления '
+                    "Гуардамар</b></a>")
+                if old is not None and new < old:
+                    self.assertNotIn("лучше поосторожнее", message)
 
 
 if __name__ == "__main__":
