@@ -41,7 +41,7 @@ def _period_relevant(period: Optional[str], now: datetime) -> bool:
 def _cams_attribution(now: datetime) -> str:
     year = now.astimezone(GUARDAMAR_TIMEZONE).year
     return (
-        f"<i>Данные: CAMS / Copernicus, {year}. "
+        f"<i>Изменённые данные CAMS (Copernicus), {year}. "
         "ЕС и ECMWF не несут ответственности за их использование.</i>"
     )
 
@@ -276,6 +276,21 @@ def _health_change_text(
     )
 
 
+def _health_heading(
+    kind: str,
+    old_level: Optional[int],
+    new_level: Optional[int],
+) -> str:
+    name = "жары" if kind == "heat" else "холода"
+    short = "жаре" if kind == "heat" else "холоду"
+    instrumental = "жарой" if kind == "heat" else "холодом"
+    if new_level == 0:
+        return f"😌 <b>Риск {name} на сегодня снят</b>"
+    if old_level is not None and new_level is not None and new_level < old_level:
+        return f"😌 <b>По {short} стало спокойнее</b>"
+    return f"❤️‍🩹 <b>Сегодня с {instrumental} лучше поосторожнее</b>"
+
+
 def build_meteosalud_update(
     old_heat_level: Optional[int],
     new_heat_level: Optional[int],
@@ -294,7 +309,7 @@ def build_meteosalud_update(
                 " Пейте воду, по возможности оставайтесь в прохладе и "
                 "сократите активность в самые жаркие часы."
             )
-        sections.append(("❤️‍🩹 <b>Сегодня с жарой лучше поосторожнее</b>", text))
+        sections.append((_health_heading("heat", old_heat_level, new_heat_level), text))
     cold = _health_change_text("cold", old_cold_level, new_cold_level)
     if cold is not None:
         text = cold
@@ -303,7 +318,7 @@ def build_meteosalud_update(
                 " Одевайтесь по погоде, сохраняйте тепло и уделите особое "
                 "внимание детям, пожилым и другим уязвимым людям."
             )
-        sections.append(("❤️‍🩹 <b>Сегодня с холодом лучше поосторожнее</b>", text))
+        sections.append((_health_heading("cold", old_cold_level, new_cold_level), text))
 
     if not sections:
         return None

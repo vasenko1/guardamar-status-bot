@@ -19,6 +19,7 @@ from telegrambot.__main__ import (
 )
 from telegrambot.diagnostics import SourceDiagnostic
 from telegrambot.environment import EnvironmentError
+from telegrambot.models import AirQualitySummary, PollenSummary
 from telegrambot.operational_updates import MonitorRun
 from telegrambot.state import PublicationState, StateError
 from telegrambot.telegram import TelegramError
@@ -28,6 +29,137 @@ MADRID = ZoneInfo("Europe/Madrid")
 
 
 class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
+    async def _run_late_cams_refresh(
+        self,
+        old_base,
+        new_base,
+        morning_air,
+        cached_air,
+        new_air,
+        *,
+        morning_pollen=None,
+        cached_pollen=None,
+        new_pollen=None,
+        cached_base=None,
+    ):
+        """Run one late checkpoint with a separately reconstructed cache."""
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "delivery.json"
+            now = datetime(2026, 9, 11, 10, 25, tzinfo=MADRID)
+            state = PublicationState(state_path)
+            state.mark_morning(now.date(), 10, now)
+            state.mark_cams_environment(
+                now.date(), old_base, morning_air, morning_pollen
+            )
+            fetch = AsyncMock(side_effect=[
+                (cached_air, cached_pollen, cached_base or old_base),
+                (new_air, new_pollen, new_base),
+            ])
+            sent = AsyncMock(return_value=30)
+            with (
+                patch.dict(os.environ, {
+                    "AEMET_API_KEY": "aemet",
+                    "TELEGRAM_BOT_TOKEN": "telegram",
+                    "TELEGRAM_CHAT_ID": "group",
+                    "MORNING_DIGEST_STATE_PATH": str(state_path),
+                }),
+                patch("telegrambot.__main__.datetime") as clock,
+                patch("telegrambot.__main__.fetch_cams", new=fetch),
+                patch(
+                    "telegrambot.__main__.fetch_meteosalud",
+                    new=AsyncMock(return_value=None),
+                ),
+                patch(
+                    "telegrambot.__main__.fetch_meteosalud_cold",
+                    new=AsyncMock(return_value=None),
+                ),
+                patch(
+                    "telegrambot.__main__.fetch_beach_status",
+                    new=AsyncMock(return_value=None),
+                ),
+                patch(
+                    "telegrambot.__main__._refresh_event_catalogs_once",
+                    new=AsyncMock(),
+                ),
+                patch("telegrambot.__main__.send_message", new=sent),
+            ):
+                clock.now.return_value = now
+                self.assertEqual(await _run_command("update"), 0)
+                environment_state = PublicationState(
+                    state_path
+                ).morning_environment_state(now.date())
+            return sent, fetch, environment_state
+
+    async def test_late_cams_ignores_elapsed_morning_air_category(self):
+        old_base = datetime(2026, 9, 10, tzinfo=timezone.utc)
+        new_base = datetime(2026, 9, 11, tzinfo=timezone.utc)
+        future = AirQualitySummary(("PM10",), "во второй половине дня", category=3)
+        sent, fetch, state = await self._run_late_cams_refresh(
+            old_base,
+            new_base,
+            AirQualitySummary(("PM10",), "утром", category=4),
+            future,
+            future,
+        )
+        sent.assert_not_awaited()
+        self.assertFalse(fetch.await_args_list[0].kwargs["allow_remote"])
+        self.assertTrue(fetch.await_args_list[0].kwargs["remaining_day"])
+        self.assertEqual(state[2:], (new_base, future, None))
+
+    async def test_late_cams_reports_genuine_future_improvement(self):
+        old_base = datetime(2026, 9, 10, tzinfo=timezone.utc)
+        new_base = datetime(2026, 9, 11, tzinfo=timezone.utc)
+        sent, _, _ = await self._run_late_cams_refresh(
+            old_base,
+            new_base,
+            AirQualitySummary(("PM10",), "утром", category=4),
+            AirQualitySummary(("PM10",), "во второй половине дня", category=4),
+            AirQualitySummary(("PM10",), "во второй половине дня", category=3),
+        )
+        sent.assert_awaited_once()
+        self.assertIn("С воздухом стало лучше", sent.await_args.args[2])
+
+    async def test_late_cams_reports_genuine_future_worsening(self):
+        old_base = datetime(2026, 9, 10, tzinfo=timezone.utc)
+        new_base = datetime(2026, 9, 11, tzinfo=timezone.utc)
+        sent, _, _ = await self._run_late_cams_refresh(
+            old_base,
+            new_base,
+            AirQualitySummary(("PM10",), "утром", category=3),
+            AirQualitySummary(("PM10",), "во второй половине дня", category=3),
+            AirQualitySummary(("PM10",), "во второй половине дня", category=4),
+        )
+        sent.assert_awaited_once()
+        self.assertIn("Сегодня с воздухом лучше быть осторожнее", sent.await_args.args[2])
+
+    async def test_late_cams_mismatched_cache_accepts_without_comparing(self):
+        old_base = datetime(2026, 9, 10, tzinfo=timezone.utc)
+        new_base = datetime(2026, 9, 11, tzinfo=timezone.utc)
+        mismatched = datetime(2026, 9, 9, tzinfo=timezone.utc)
+        new_air = AirQualitySummary(("PM10",), "во второй половине дня", category=4)
+        sent, _, state = await self._run_late_cams_refresh(
+            old_base,
+            new_base,
+            AirQualitySummary(("PM10",), "утром", category=3),
+            AirQualitySummary(("PM10",), "во второй половине дня", category=3),
+            new_air,
+            cached_base=mismatched,
+        )
+        sent.assert_not_awaited()
+        self.assertEqual(state[2:], (new_base, new_air, None))
+
+    async def test_late_cams_compares_pollen_on_the_same_remaining_interval(self):
+        old_base = datetime(2026, 9, 10, tzinfo=timezone.utc)
+        new_base = datetime(2026, 9, 11, tzinfo=timezone.utc)
+        future = PollenSummary(("оливы",), "во второй половине дня")
+        sent, _, _ = await self._run_late_cams_refresh(
+            old_base, new_base, None, None, None,
+            morning_pollen=PollenSummary(("оливы",), "утром"),
+            cached_pollen=future,
+            new_pollen=future,
+        )
+        sent.assert_not_awaited()
+
     def test_cams_refresh_uses_only_bounded_existing_checkpoints(self):
         self.assertTrue(_cams_update_checkpoint(
             datetime(2026, 9, 11, 10, 10, tzinfo=MADRID)
@@ -152,7 +284,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 clock.now.return_value = now
                 self.assertEqual(await _run_command("monitor-updates"), 0)
 
-            self.assertEqual(fetch.await_count, 1)
+            self.assertEqual(fetch.await_count, 2)
             edited.assert_not_awaited()
             self.assertEqual(
                 PublicationState(state_path).morning_environment(now.date()),
