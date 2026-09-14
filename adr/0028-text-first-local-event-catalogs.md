@@ -26,11 +26,16 @@ bounded detail-page reads.
 - Deterministically read dated `CINE` rows for the library's Monday film series
   from that same bounded text. Preserve explicit duration, age, genre and
   admission in additive normalized fields. The independent official library
-  catalog may add its concrete title and brief synopsis. After duplicate
-  matching, a title with the existing title as an exact token prefix may win;
-  length alone is never sufficient. One shared standalone Event renderer shows
-  present details, duration and audience, and uses start plus duration rather
-  than presenting a calendar end slot as an exact finish.
+  catalog may add a short source-grounded synopsis. A generic title may gain
+  a specific film name after duplicate matching, but a canonical specific
+  title cannot be displaced merely by a longer promotional subtitle.
+- An ordinary Event may carry a separate safe map query, distinct meeting
+  point, supplementary schedule and exact access condition. Independent
+  source facts merge additively. The same optional detail rows render for a
+  standalone Event and each child of any named programme. Only the narrow
+  Campo article adapter assigns its own festival identity and order; grouping
+  itself has no festival-specific path. Explicit duration uses start plus
+  minutes rather than presenting a calendar end slot as an exact finish.
 - Treat the linked MUPI image as supplementary. Download and process it only
   for a new official URL. Require two blind structured readings: the second
   call receives the image but no first-pass candidates. Keep only facts whose

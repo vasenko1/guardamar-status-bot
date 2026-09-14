@@ -10,7 +10,9 @@ from typing import List, Optional, Sequence
 from zoneinfo import ZoneInfo
 
 from .branding import with_footer
-from .event_places import canonical_event_place, event_place_is_map_safe
+from .event_places import (
+    canonical_event_place, event_place_is_map_safe, same_event_place,
+)
 from .models import (
     AirQualitySummary, BeachNotice, BeachStatus, ColdHealthRisk, HeatHealthRisk,
     MorningDigest, PollenSummary, Warning,
@@ -477,15 +479,19 @@ def _event_place(value: str) -> str:
     return _event_title(value)
 
 
-def _event_place_link(value: str) -> str:
+def _event_place_link(value: str, place_query: Optional[str] = None) -> str:
     """Render one fixed-host Google Maps search for a verified place."""
 
     source_place = canonical_event_place(value)
-    if source_place == "Место старта сообщит инструктор":
-        return html.escape(source_place)
-    if not event_place_is_map_safe(source_place):
+    if not event_place_is_map_safe(source_place) or (
+        place_query is not None and not event_place_is_map_safe(place_query)
+    ):
         return html.escape(_event_place(source_place))
-    if source_place.casefold() in {
+    if place_query is not None:
+        query = place_query
+        if "guardamar" not in query.casefold():
+            query += ", Guardamar del Segura"
+    elif source_place.casefold() in {
         "plaça dels llauradors",
         "plaça llauradors",
         "plaza labradores",
@@ -894,130 +900,109 @@ def build_event_section(
 
     event_lines = ["", heading]
     rendered_programmes = set()
-    for index, event in enumerate(events):
+    for event in events:
         programme = getattr(event, "programme_title", None)
         if programme:
             if programme in rendered_programmes:
                 continue
             rendered_programmes.add(programme)
-            members = [
-                candidate for candidate in events
-                if getattr(candidate, "programme_title", None) == programme
-            ]
-            members.sort(key=lambda candidate: (
-                getattr(candidate, "programme_order", None) is None,
-                getattr(candidate, "programme_order", None) or 0,
-            ))
-            block = [
-                f"• 🎉 {html.escape(programme)}",
-            ]
+            members = sorted(
+                (candidate for candidate in events
+                 if getattr(candidate, "programme_title", None) == programme),
+                key=lambda candidate: (
+                    getattr(candidate, "programme_order", None) is None,
+                    getattr(candidate, "programme_order", None) or 0,
+                ),
+            )
+            block = [f"• 🎉 {html.escape(programme)}"]
             for member in members:
-                when = ""
-                if member.starts_at is not None:
-                    when = "<b>" + member.starts_at.astimezone(
-                        GUARDAMAR_TIMEZONE
-                    ).strftime("%H:%M") + "</b> — "
-                label = html.escape(_event_title(member.title))
-                block.append(f"  {when}{label}")
-                if member.place:
-                    block.append(f"    📍 {_event_place_link(member.place)}")
-                if member.teaser and not _event_teaser_is_redundant(
-                    member.title, member.teaser
-                ):
-                    block.append("  " + html.escape(member.teaser))
-            separator = [""] if len(event_lines) > 2 else []
-            if prefix_length + 1 + len("\n".join(
-                event_lines + separator + block
-            )) > 3900:
-                break
-            event_lines.extend(separator + block)
-            continue
-        if index:
-            event_lines.append("")
-        title = event.title
-        if event.category == "exhibition":
-            title = _exhibition_title(title)
-        title = html.escape(_event_title(title))
-        if event.participation_note:
-            title += " (" + html.escape(event.participation_note) + ")"
-        if event.is_final_day:
-            title = f"Последний день: {title}"
-        time_prefix = ""
-        if event.starts_at is not None:
-            start_time = event.starts_at.astimezone(
+                block.append(_event_heading(member, "  ", bullet=False))
+                block.extend(_render_event_details(member, "    "))
+        else:
+            block = [_event_heading(event, "", bullet=True)]
+            block.extend(_render_event_details(event, "  "))
+        separator = [""] if len(event_lines) > 2 else []
+        if prefix_length + 1 + len("\n".join(
+            event_lines + separator + block
+        )) > 3900:
+            break
+        event_lines.extend(separator + block)
+    return event_lines if len(event_lines) > 2 else []
+
+
+def _event_heading(event, indent: str, *, bullet: bool) -> str:
+    title = event.title
+    if event.category == "exhibition":
+        title = _exhibition_title(title)
+    title = html.escape(_event_title(title))
+    if event.is_final_day:
+        title = f"Последний день: {title}"
+    when = ""
+    if event.starts_at is not None:
+        when = event.starts_at.astimezone(GUARDAMAR_TIMEZONE).strftime("%H:%M")
+        if event.ends_at is not None and event.duration_minutes is None:
+            when += "–" + event.ends_at.astimezone(
                 GUARDAMAR_TIMEZONE
             ).strftime("%H:%M")
-            time_prefix = f"<b>{start_time}"
-            if event.ends_at is not None and event.duration_minutes is None:
-                end_time = event.ends_at.astimezone(
-                    GUARDAMAR_TIMEZONE
-                ).strftime("%H:%M")
-                time_prefix += f"–{end_time}"
-            time_prefix += "</b> — "
-        event_lines.append(f"• {time_prefix}{title}")
-        facts = [*event.details]
-        if event.duration_minutes is not None:
-            facts.append(f"{event.duration_minutes} мин")
-        if event.audience_label:
-            facts.append(event.audience_label)
-        if facts:
-            event_lines.append("  " + html.escape(" • ".join(facts)))
-        if event.teaser and not _event_teaser_is_redundant(
-            event.title, event.teaser
-        ):
-            event_lines.append("  " + html.escape(event.teaser))
-        if event.active_until is not None and event.starts_at is None:
-            event_lines.append("  " + _event_active_until_label(event.active_until))
-        if event.place:
-            event_lines.append(f"  📍 {_event_place_link(event.place)}")
-        has_ticket_row = (
-            event.ticket_price_cents is not None
-            or event.ticket_url is not None
-            or event.registration_contact is not None
-            or event.capacity_limited
+        when = f"<b>{when}</b> — "
+    return f"{indent}{'• ' if bullet else ''}{when}{title}"
+
+
+def _render_event_details(event, indent: str) -> List[str]:
+    """One optional detail contract for standalone and programme events."""
+
+    rows = []
+    facts = [*event.details]
+    if event.duration_minutes is not None:
+        facts.append(f"{event.duration_minutes} мин")
+    if event.audience_label:
+        facts.append(event.audience_label)
+    if facts:
+        rows.append(indent + html.escape(" • ".join(facts)))
+    if event.teaser and not _event_teaser_is_redundant(event.title, event.teaser):
+        rows.append(indent + html.escape(event.teaser))
+    if event.active_until is not None and event.starts_at is None:
+        rows.append(indent + _event_active_until_label(event.active_until))
+    if event.schedule_note:
+        rows.append(indent + "🕐 " + html.escape(event.schedule_note))
+    if event.place:
+        rows.append(indent + "📍 " + _event_place_link(
+            event.place, event.place_query
+        ))
+    if event.meeting_point and (
+        not event.place or not same_event_place(event.place, event.meeting_point)
+    ):
+        label = event.meeting_point
+        prefix = "" if label.casefold().startswith("место ") else "Место сбора: "
+        rows.append(indent + "👥 " + prefix + _event_place_link(label))
+    if event.participation_note:
+        rows.append(indent + "ℹ️ " + html.escape(event.participation_note))
+    access = []
+    if event.ticket_price_cents == 0:
+        ticket_label = "Бесплатно"
+    elif event.ticket_price_cents is not None:
+        price = event.ticket_price_cents / 100
+        amount = f"{int(price)}" if price.is_integer() else (
+            f"{price:.2f}".replace(".", ",")
         )
-        if has_ticket_row:
-            if event.ticket_price_cents == 0:
-                ticket_label = "Бесплатно"
-            elif event.ticket_price_cents is not None:
-                price = event.ticket_price_cents / 100
-                price_label = (
-                    f"{int(price)} €"
-                    if price.is_integer()
-                    else f"{price:.2f} €".replace(".", ",")
-                )
-                ticket_label = f"Билет {price_label}"
-            else:
-                ticket_label = "Билеты" if event.ticket_url else ""
-            details = []
-            if event.ticket_url and ticket_label:
-                details.append(
-                    '<a href="'
-                    + html.escape(event.ticket_url, quote=True)
-                    + f'">{ticket_label}</a>'
-                )
-            elif ticket_label:
-                details.append(ticket_label)
-            if event.registration_contact:
-                details.append(
-                    "регистрация: "
-                    + html.escape(event.registration_contact)
-                )
-            if event.capacity_limited:
-                details.append("места ограничены")
-            if details:
-                event_lines.append("  🎟 " + " · ".join(details))
-        if prefix_length + 1 + len("\n".join(event_lines)) > 3900:
-            rows = (
-                1
-                + int(bool(facts))
-                + int(event.active_until is not None and event.starts_at is None)
-                + int(bool(event.place))
-                + int(bool(event.teaser))
-                + int(has_ticket_row)
-            )
-            event_lines = event_lines[:-rows]
-            if event_lines and event_lines[-1] == "":
-                event_lines.pop()
-            break
-    return event_lines if len(event_lines) > 2 else []
+        ticket_label = f"Билет {amount} €"
+    else:
+        ticket_label = "Билеты" if event.ticket_url else ""
+    if ticket_label:
+        access.append(
+            '<a href="' + html.escape(event.ticket_url, quote=True)
+            + f'">{ticket_label}</a>' if event.ticket_url else ticket_label
+        )
+    if event.access_note:
+        access.append(html.escape(event.access_note))
+    if event.registration_contact:
+        label = (
+            "" if event.access_note and "регистрац" in event.access_note.casefold()
+            else "регистрация: "
+        )
+        access.append(label + html.escape(event.registration_contact))
+    if not event.access_note and event.capacity_limited:
+        access.append("места ограничены")
+    if access:
+        rows.append(indent + "🎟 " + " · ".join(access))
+    return rows

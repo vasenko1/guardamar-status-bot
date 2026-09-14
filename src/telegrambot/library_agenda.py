@@ -17,6 +17,7 @@ from zoneinfo import ZoneInfo
 from ._transport import BoundedFetchError, fetch_bounded
 from .event_translations import cached_title, cached_translation
 from .models import Event
+from .event_places import event_place_is_map_safe
 
 LIBRARY_AGENDA_URL = (
     "https://www.bibliotecaspublicas.es/guardamardelsegura/"
@@ -320,6 +321,13 @@ def _write_snapshot(
             "active_until": record.event.active_until.isoformat() if record.event.active_until else None,
             "category": record.event.category,
             "teaser": record.event.teaser,
+            "place_query": record.event.place_query,
+            "meeting_point": record.event.meeting_point,
+            "schedule_note": record.event.schedule_note,
+            "access_note": record.event.access_note,
+            "duration_minutes": record.event.duration_minutes,
+            "audience_label": record.event.audience_label,
+            "details": list(record.event.details),
             "detail_url": record.detail_url,
             "detail_loaded": record.detail_loaded,
         }
@@ -358,9 +366,28 @@ def _load_snapshot(path: Path) -> Tuple[_LibraryRecord, ...]:
             active_until = date.fromisoformat(raw["active_until"]) if isinstance(raw.get("active_until"), str) else None
             if (starts_at and starts_at.tzinfo is None) or (ends_at and ends_at.tzinfo is None):
                 raise ValueError
+            extra = {name: raw.get(name) for name in (
+                "place_query", "meeting_point", "schedule_note",
+                "access_note", "audience_label",
+            )}
+            if any(value is not None and (
+                not isinstance(value, str) or len(value) > 160
+            ) for value in extra.values()):
+                raise ValueError
+            if extra["place_query"] and not event_place_is_map_safe(extra["place_query"]):
+                raise ValueError
+            duration = raw.get("duration_minutes")
+            if duration is not None and (type(duration) is not int or not 1 <= duration <= 720):
+                raise ValueError
+            details = raw.get("details", [])
+            if not isinstance(details, list) or len(details) > 3 or any(
+                not isinstance(item, str) or len(item) > 60 for item in details
+            ):
+                raise ValueError
             event = Event(
                 raw["title"], starts_at, ends_at, raw.get("place"), active_until,
                 raw.get("category", "event"), teaser=raw.get("teaser"),
+                duration_minutes=duration, details=tuple(details), **extra,
             )
             if data["version"] == 1:
                 records.append(_LibraryRecord(event, "", False))

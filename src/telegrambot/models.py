@@ -68,6 +68,10 @@ class Event:
     duration_minutes: Optional[int] = None
     audience_label: Optional[str] = None
     details: Tuple[str, ...] = ()
+    place_query: Optional[str] = None
+    meeting_point: Optional[str] = None
+    schedule_note: Optional[str] = None
+    access_note: Optional[str] = None
 
 
 @dataclass(frozen=True)

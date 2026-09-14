@@ -1165,10 +1165,10 @@ class DigestMessageTests(unittest.TestCase):
         self.assertIn("📍 Место старта сообщит инструктор", message)
         self.assertNotIn("query=%D0%9C%D0%B5%D1%81%D1%82%D0%BE", message)
         self.assertIn(
-            "Ночной поход (8 км) для молодёжи 12–30 лет "
-            "(с собой: спортивная обувь, вода и фонарик)",
+            "Ночной поход (8 км) для молодёжи 12–30 лет",
             message,
         )
+        self.assertIn("ℹ️ с собой: спортивная обувь, вода и фонарик", message)
         self.assertIn(
             "🎟 Бесплатно · регистрация: 633 14 57 75 · "
             "места ограничены",
