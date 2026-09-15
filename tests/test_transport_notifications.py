@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 from telegrambot.airport_schedule import AirportSchedule, Fare
 from telegrambot.branding import FOOTER
 from telegrambot.transport_notifications import (
-    _airport_baseline,
+    _airport_snapshot,
     _empty_state,
     build_message,
     collect_changes,
@@ -31,11 +31,22 @@ def _schedule(
     )
 
 
-def _pinned(image_1="1" * 64, image_2="2" * 64, pdf_1="a" * 64, pdf_2="b" * 64):
+def _pinned(
+    image_1="1" * 64,
+    image_2="2" * 64,
+    pdf_1="a" * 64,
+    pdf_2="b" * 64,
+):
     return {
         "lines": {
-            "line_1": {"pdf_sha256": pdf_1, "image_sha256": image_1},
-            "line_2": {"pdf_sha256": pdf_2, "image_sha256": image_2},
+            "line_1": {
+                "pdf_sha256": pdf_1,
+                "image_sha256": image_1,
+            },
+            "line_2": {
+                "pdf_sha256": pdf_2,
+                "image_sha256": image_2,
+            },
         }
     }
 
@@ -59,8 +70,14 @@ def test_visual_urban_change_creates_generic_line_event():
     today = date(2026, 9, 15)
     state = _empty_state()
     state["urban"] = {
-        "line_1": {"pdf_sha256": "a" * 64, "image_sha256": "1" * 64},
-        "line_2": {"pdf_sha256": "b" * 64, "image_sha256": "2" * 64},
+        "line_1": {
+            "pdf_sha256": "a" * 64,
+            "image_sha256": "1" * 64,
+        },
+        "line_2": {
+            "pdf_sha256": "b" * 64,
+            "image_sha256": "2" * 64,
+        },
     }
 
     result = collect_changes(
@@ -78,8 +95,14 @@ def test_pdf_metadata_change_without_visual_change_does_not_notify():
     today = date(2026, 9, 15)
     state = _empty_state()
     state["urban"] = {
-        "line_1": {"pdf_sha256": "a" * 64, "image_sha256": "1" * 64},
-        "line_2": {"pdf_sha256": "b" * 64, "image_sha256": "2" * 64},
+        "line_1": {
+            "pdf_sha256": "a" * 64,
+            "image_sha256": "1" * 64,
+        },
+        "line_2": {
+            "pdf_sha256": "b" * 64,
+            "image_sha256": "2" * 64,
+        },
     }
 
     result = collect_changes(
@@ -96,14 +119,22 @@ def test_pdf_metadata_change_without_visual_change_does_not_notify():
 def test_airport_diff_compares_same_service_date_not_yesterday():
     today = date(2026, 9, 15)
     state = _empty_state()
-    state["airport_next"] = _airport_baseline(
-        _schedule(today, to_airport=("08:00", "10:00"), from_airport=("09:00", "11:00"))
+    state["airport_next"] = _airport_snapshot(
+        _schedule(
+            today,
+            to_airport=("08:00", "10:00"),
+            from_airport=("09:00", "11:00"),
+        )
     )
 
     result = collect_changes(
         datetime(2026, 9, 15, 5, tzinfo=TZ),
         _pinned(),
-        _schedule(today, to_airport=("08:00", "10:30"), from_airport=("09:00", "11:00")),
+        _schedule(
+            today,
+            to_airport=("08:00", "10:30"),
+            from_airport=("09:00", "11:00"),
+        ),
         state,
         _schedule(date(2026, 9, 16)),
     )
@@ -116,7 +147,7 @@ def test_airport_diff_compares_same_service_date_not_yesterday():
 def test_wrong_baseline_date_never_creates_airport_change():
     today = date(2026, 9, 15)
     state = _empty_state()
-    state["airport_next"] = _airport_baseline(
+    state["airport_next"] = _airport_snapshot(
         _schedule(date(2026, 9, 14), to_airport=("07:00",))
     )
 
@@ -142,7 +173,9 @@ def test_base_fare_change_is_reported_with_effective_date():
     new_fare = Fare(
         cents=320,
         effective_date=date(2026, 10, 1),
-        source_url="https://www.bus-siguenza.com/wbus/tarifas/tarifa.pdf",
+        source_url=(
+            "https://www.bus-siguenza.com/wbus/tarifas/tarifa.pdf"
+        ),
         etag=None,
         last_modified=None,
         pdf_sha256="b" * 64,
@@ -161,6 +194,27 @@ def test_base_fare_change_is_reported_with_effective_date():
         "new_cents": 320,
         "effective_date": "2026-10-01",
     }
+
+
+def test_stale_pending_expires_on_next_collection():
+    today = date(2026, 9, 15)
+    state = _empty_state()
+    state["pending"] = {
+        "created_date": "2026-09-14",
+        "urban_lines": ["line_1"],
+        "airport": None,
+        "fare": None,
+    }
+
+    result = collect_changes(
+        datetime(2026, 9, 15, 5, tzinfo=TZ),
+        _pinned(),
+        _schedule(today),
+        state,
+        _schedule(date(2026, 9, 16)),
+    )
+
+    assert result["pending"] is None
 
 
 def test_message_keeps_editorial_style_and_existing_footer():
