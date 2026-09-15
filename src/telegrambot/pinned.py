@@ -337,6 +337,7 @@ def build_pool_indoor(swimming_link: Optional[str] = None) -> str:
     return with_footer(
         "🏊 <b>Крытый бассейн Manel Estiarte</b>\n\n"
         "Работает с <b>16 сентября по 15 июня</b>.\n\n"
+        "📍 <b>Piscina Climatizada Manel Estiarte</b>\n"
         "📞 <b>Телефон:</b> 966 72 65 93\n\n"
         f"🎓 Занятия и запись: {_direct_link('🏊 Плавание', swimming_link)}."
     )
@@ -348,6 +349,8 @@ def build_pool_outdoor(swimming_link: Optional[str] = None) -> str:
     return with_footer(
         "☀️ <b>Открытый муниципальный бассейн</b>\n\n"
         "Работает с <b>16 июня по 15 сентября</b>.\n\n"
+        "📍 <b>Piscinas Descubiertas Municipales</b>\n"
+        "📞 <b>Телефон:</b> 966 72 63 35\n\n"
         f"🎓 Занятия и запись: {_direct_link('🏊 Плавание', swimming_link)}."
     )
 
