@@ -44,7 +44,7 @@ def scheduled_run(now: datetime) -> MonitorRun:
     in_season = (
         (day.month == 6 and day.day >= 20)
         or day.month in {7, 8}
-        or (day.month == 9 and day.day <= 14)
+        or (day.month == 9 and day.day <= 15)
     )
     shoulder = in_season and day.month in {6, 9}
     beach_hours = {12, 14, 16, 18} if shoulder else {11, 13, 15, 17, 19}
