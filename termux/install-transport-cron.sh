@@ -5,6 +5,8 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PROJECT_DIR=$(dirname "$SCRIPT_DIR")
 SYNC="$PROJECT_DIR/termux/sync-transport.sh"
+PUBLISH="$PROJECT_DIR/termux/publish-transport-notifications.sh"
+SH_BIN=$(command -v sh)
 BACKUP_DIR="$HOME/.cache/crontab"
 CURRENT=$(mktemp)
 BEGIN_MARKER='# BEGIN guardamar-status transport sync'
@@ -17,6 +19,10 @@ trap cleanup EXIT HUP INT TERM
 
 if [ ! -x "$SYNC" ]; then
     echo "ОШИБКА: sync-transport.sh не найден или не исполняемый" >&2
+    exit 1
+fi
+if [ ! -f "$PUBLISH" ]; then
+    echo "ОШИБКА: publish-transport-notifications.sh не найден" >&2
     exit 1
 fi
 
@@ -36,8 +42,9 @@ awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" '
         "$BEGIN_MARKER" \
         'CRON_TZ=Europe/Madrid' \
         "0 5 * * * $SYNC" \
+        "30 12 * * * $SH_BIN $PUBLISH" \
         "$END_MARKER"
 } | crontab -
 
 sv up crond
-echo "Транспортная синхронизация установлена на 05:00 Europe/Madrid"
+echo "Транспорт: синхронизация 05:00, уведомления 12:30 Europe/Madrid"
