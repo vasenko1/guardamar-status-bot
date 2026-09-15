@@ -52,44 +52,36 @@ Therefore the active venue for a swimming programme is first constrained by the
 seasonal facility state. A course cannot legitimately be scheduled in the
 inactive/drained pool merely because copied provider text names it.
 
-The exact calendar dates for the seasonal switch are a separate operational
-fact. They must be obtained from a fresh current source before the bot publishes
-or automates statements such as `summer pool opens on X` or `indoor pool closes
-on Y`. Do not derive the exact switch date from an old page or from a lifeguard
-contract alone.
+### Default automatic season calendar
 
-### Current 2026 switch-date evidence gap
+For the product, use the following **default automatic calendar unless a later
+specific exception is learned**:
 
-A fresh check on 2026-09-15 did **not** find an explicit current public notice
-from Guardamar Ayuntamiento/Deportes, the pool itself, or the current service
-operator saying that 15 September 2026 is the final public day of the outdoor
-pool season or giving the exact indoor-pool reopening date.
+- **16 June through 15 September, inclusive: outdoor municipal pool active;**
+- **16 September through 15 June, inclusive: indoor/heated Manel Estiarte active.**
 
-There is strong supporting evidence for 15 September as the expected summer
-boundary:
+This is now a product rule, not a multi-source inference performed every year.
+The bot does not need a fresh annual announcement merely to switch between these
+two normal seasons.
 
-- the current municipal lifeguard technical specification schedules outdoor-pool
-  coverage for `1 al 15 de septiembre`;
-- the old municipal pool page also used a `16 de junio al 15 de septiembre`
-  summer period, but that page is explicitly labelled `VERANO 2023`.
+If Ayuntamiento, Deportes, the pool, or another trusted operational source later
+announces an exceptional opening/closure or different switch date, that explicit
+exception overrides the default calendar for the affected period. After the
+exception ends, the normal calendar resumes.
 
-Neither item is sufficient by itself for an unqualified current public claim.
-The current technical specification explicitly allows schedule variations based
-on Sports Department needs, including facility closure. Therefore `15 September`
-is an internal baseline/expectation until confirmed by a fresh operational
-announcement.
+The municipal lifeguard contract is **not an accepted source for the operational
+pool calendar**. Its staffing/coverage clauses may be retained as procurement
+context, but must not be used to decide which pool is open, public hours, or the
+season switch.
 
-For a public seasonal-switch notification, accepted evidence should be one of:
+For 2026 this means:
 
-1. a current Ayuntamiento/Concejalía de Deportes announcement;
-2. a current official pool/sports-facility announcement;
-3. a current announcement from the contracted service operator clearly referring
-   to Guardamar's municipal pool operation;
-4. another current official operational source that explicitly states the open/
-   close or switch date.
+- **15 September 2026 is treated as the final day of the outdoor summer season;**
+- **from 16 September 2026 the indoor/heated pool is treated as the active pool.**
 
-A resident/community message saying `today is the last day` is a useful discovery
-signal, but it is not publication evidence by itself.
+No additional current notice is required for that normal switch under this
+product rule. If a contrary operational notice appears, correct the state and
+published information.
 
 ### Young-child programmes
 
@@ -121,11 +113,13 @@ but their venue follows the active pool:
 
 The implementation therefore needs two distinct concepts:
 
-1. **facility season/state** — which municipal pool is currently active;
+1. **facility season/state** — which municipal pool is currently active by the
+   default calendar or a specific exception;
 2. **programme availability** — which courses exist during that season.
 
 Do not encode venue independently from facility season, and do not infer that a
-course continues across the seasonal switch unless a current source proves it.
+course continues across the seasonal switch unless current programme data proves
+it.
 
 ## 3. Consequence for card drafting
 
@@ -133,7 +127,7 @@ The first public drafts should be resident-first and source-light.
 
 Example information layers:
 
-- place card: the currently relevant pool/facility, usable current facts,
+- place card: the currently active pool/facility, usable current facts,
   phone/contact if useful, booking action if available, and a link to `Плавание`
   inside the Telegram guide;
 - swimming card: currently verified programme families, age/season/schedule/price
@@ -143,10 +137,10 @@ Example information layers:
   represented inside Telegram;
 - no public `operator`, `source`, `procurement`, or monitoring-method fields.
 
-Because only one municipal pool is active at a time, the public navigation
-should not suggest simultaneous summer and winter availability. When the season
-switches, the relevant pool card/state and any affected swimming-programme facts
-should switch together once the change is verified.
+Because only one municipal pool is active at a time, the public navigation must
+not suggest simultaneous summer and winter availability. On 16 June and 16
+September the relevant pool card/state changes automatically according to the
+default calendar unless an explicit exception is active.
 
 The research/ADR layer keeps the full evidence trail so maintainers can audit
 why a fact is trusted without exposing that trail in the resident-facing
