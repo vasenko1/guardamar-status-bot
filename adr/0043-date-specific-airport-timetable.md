@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-08-14
 - Extends ADRs 0041 and 0042
+- TLS recovery details superseded by ADR 0066
 
 ## Context
 

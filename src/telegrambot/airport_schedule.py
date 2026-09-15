@@ -34,7 +34,53 @@ PDF_LIMIT_BYTES = 5_000_000
 REQUEST_TIMEOUT_SECONDS = 20
 PROCESS_TIMEOUT_SECONDS = 30
 TLS_CERT_LIMIT_BYTES = 16_384
-TLS_INTERMEDIATE_HOST = re.compile(r"^[a-z0-9-]+\.i\.lencr\.org$")
+TLS_AIA_HOST = re.compile(
+    r"^(?P<label>(?:e[5-9]|r1[0-4]|ye[1-3]|yr[1-3]))\.i\.lencr\.org$"
+)
+TLS_CERT_HOST = "letsencrypt.org"
+TLS_CERT_CONTENT_TYPES = frozenset({
+    "application/pkix-cert",
+    "application/x-x509-cert",
+})
+TLS_CHAIN_PATHS = {
+    "ye1": (
+        "/certs/gen-y/int-ye1.der",
+        "/certs/gen-y/root-ye-by-x2.der",
+    ),
+    "ye2": (
+        "/certs/gen-y/int-ye2.der",
+        "/certs/gen-y/root-ye-by-x2.der",
+    ),
+    "ye3": (
+        "/certs/gen-y/int-ye3.der",
+        "/certs/gen-y/root-ye-by-x2.der",
+    ),
+    "yr1": (
+        "/certs/gen-y/int-yr1.der",
+        "/certs/gen-y/root-yr-by-x1.der",
+    ),
+    "yr2": (
+        "/certs/gen-y/int-yr2.der",
+        "/certs/gen-y/root-yr-by-x1.der",
+    ),
+    "yr3": (
+        "/certs/gen-y/int-yr3.der",
+        "/certs/gen-y/root-yr-by-x1.der",
+    ),
+    "e5": ("/certs/2024/e5.der",),
+    "e6": ("/certs/2024/e6.der",),
+    "e7": ("/certs/2024/e7.der",),
+    "e8": ("/certs/2024/e8.der",),
+    "e9": ("/certs/2024/e9.der",),
+    "r10": ("/certs/2024/r10.der",),
+    "r11": ("/certs/2024/r11.der",),
+    "r12": ("/certs/2024/r12.der",),
+    "r13": ("/certs/2024/r13.der",),
+    "r14": ("/certs/2024/r14.der",),
+}
+TLS_ALLOWED_CERT_PATHS = frozenset(
+    path for chain in TLS_CHAIN_PATHS.values() for path in chain
+)
 STATE_VERSION = 1
 USER_AGENT = "GuardamarMorningDigest/0.13"
 TIME_PATTERN = re.compile(r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")
@@ -158,12 +204,11 @@ def _allowed_intermediate_url(url: str) -> bool:
         return False
     return (
         parsed.scheme == "https"
-        and parsed.hostname is not None
-        and TLS_INTERMEDIATE_HOST.fullmatch(parsed.hostname) is not None
+        and parsed.hostname == TLS_CERT_HOST
         and port in (None, 443)
         and parsed.username is None
         and parsed.password is None
-        and parsed.path == "/"
+        and parsed.path in TLS_ALLOWED_CERT_PATHS
         and not parsed.params
         and not parsed.query
         and not parsed.fragment
@@ -200,7 +245,7 @@ def _leaf_certificate() -> bytes:
     return certificate
 
 
-def _intermediate_url(certificate: bytes) -> str:
+def _intermediate_urls(certificate: bytes) -> tuple[str, ...]:
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "leaf.der"
         path.write_bytes(certificate)
@@ -231,10 +276,34 @@ def _intermediate_url(certificate: bytes) -> str:
     if len(urls) != 1:
         raise AirportScheduleError("airport TLS issuer is ambiguous")
     parsed = urllib.parse.urlparse(urls[0])
-    secure = urllib.parse.urlunparse(parsed._replace(scheme="https"))
-    if not _allowed_intermediate_url(secure):
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise AirportScheduleError("airport TLS issuer is not allowed") from exc
+    match = TLS_AIA_HOST.fullmatch(parsed.hostname or "")
+    if (
+        parsed.scheme not in {"http", "https"}
+        or match is None
+        or port is not None
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path != "/"
+        or parsed.params
+        or parsed.query
+        or parsed.fragment
+    ):
         raise AirportScheduleError("airport TLS issuer is not allowed")
-    return secure
+    paths = TLS_CHAIN_PATHS.get(match.group("label"))
+    if paths is None:
+        raise AirportScheduleError("airport TLS issuer is not supported")
+    return tuple(
+        urllib.parse.urlunparse(("https", TLS_CERT_HOST, path, "", "", ""))
+        for path in paths
+    )
+
+
+def _intermediate_url(certificate: bytes) -> str:
+    return _intermediate_urls(certificate)[0]
 
 
 def _download_intermediate(url: str) -> bytes:
@@ -244,7 +313,7 @@ def _download_intermediate(url: str) -> bytes:
     request = urllib.request.Request(
         url,
         headers={
-            "Accept": "application/pkix-cert",
+            "Accept": ", ".join(sorted(TLS_CERT_CONTENT_TYPES)),
             "User-Agent": USER_AGENT,
         },
     )
@@ -266,9 +335,9 @@ def _download_intermediate(url: str) -> bytes:
         payload = response.read(TLS_CERT_LIMIT_BYTES + 1)
         if (
             response.status != 200
+            or final_url != url
             or not _allowed_intermediate_url(final_url)
-            or response.headers.get_content_type()
-            != "application/pkix-cert"
+            or response.headers.get_content_type() not in TLS_CERT_CONTENT_TYPES
             or not 1 <= len(payload) <= TLS_CERT_LIMIT_BYTES
         ):
             raise AirportScheduleError("TLS intermediate is invalid")
@@ -281,13 +350,16 @@ def _repaired_tls_context() -> ssl.SSLContext:
         if _BUS_TLS_CONTEXT is not None:
             return _BUS_TLS_CONTEXT
         certificate = _leaf_certificate()
-        intermediate = _download_intermediate(
-            _intermediate_url(certificate)
-        )
+        chain = [
+            _download_intermediate(url)
+            for url in _intermediate_urls(certificate)
+        ]
         try:
-            pem = ssl.DER_cert_to_PEM_cert(intermediate)
+            cadata = "".join(
+                ssl.DER_cert_to_PEM_cert(item) for item in chain
+            )
             context = ssl.create_default_context()
-            context.load_verify_locations(cadata=pem)
+            context.load_verify_locations(cadata=cadata)
         except (ValueError, ssl.SSLError) as exc:
             raise AirportScheduleError(
                 "TLS intermediate could not be loaded"
