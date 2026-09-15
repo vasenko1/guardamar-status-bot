@@ -110,13 +110,15 @@ class PinnedContentTests(unittest.TestCase):
         self.assertNotIn("будут добавляться", complex_card)
         self.assertNotIn("Aqualider", swimming)
 
-    def test_pool_cards_keep_distinct_seasons_and_verified_phone_boundary(self):
+    def test_pool_cards_keep_distinct_seasons_and_verified_contacts(self):
         indoor = build_pool_indoor()
         outdoor = build_pool_outdoor()
         self.assertIn("16 сентября по 15 июня", indoor)
+        self.assertIn("Piscina Climatizada Manel Estiarte", indoor)
         self.assertIn("966 72 65 93", indoor)
         self.assertIn("16 июня по 15 сентября", outdoor)
-        self.assertNotIn("966 72 63 35", outdoor)
+        self.assertIn("Piscinas Descubiertas Municipales", outdoor)
+        self.assertIn("966 72 63 35", outdoor)
         self.assertNotIn("965 35 76 93", outdoor)
 
     def test_transport_navigator_has_navigation_but_no_footer(self):
