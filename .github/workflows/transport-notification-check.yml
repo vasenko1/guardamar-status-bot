@@ -1,9 +1,9 @@
 name: Transport notification checks
 
 on:
-  push:
+  pull_request:
     branches:
-      - transport-change-notifications
+      - main
 
 permissions:
   contents: read
