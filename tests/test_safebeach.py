@@ -84,9 +84,14 @@ class SafeBeachNormalizationTests(unittest.TestCase):
                 datetime(2026, 9, 14, 23, 59, tzinfo=MADRID)
             )
         )
+        self.assertTrue(
+            _safebeach_is_in_season(
+                datetime(2026, 9, 15, 23, 59, tzinfo=MADRID)
+            )
+        )
         self.assertFalse(
             _safebeach_is_in_season(
-                datetime(2026, 9, 15, 0, 0, tzinfo=MADRID)
+                datetime(2026, 9, 16, 0, 0, tzinfo=MADRID)
             )
         )
 
