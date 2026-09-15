@@ -124,6 +124,15 @@ class AqualiderSourceTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(GuideSourceError):
             _validate_cross_references(services, providers)
 
+    def test_one_sided_cross_reference_is_rejected(self):
+        services = _normalize_services(sample_services())
+        providers = _normalize_providers([
+            {"id": "2", "name": "Period", "services": []}
+        ])
+        with self.assertRaises(GuideSourceError) as captured:
+            _validate_cross_references(services, providers)
+        self.assertEqual(captured.exception.diagnostic_code, "SCHEMA")
+
     async def test_fetch_requires_json_even_on_http_200(self):
         queued = BoundedFetchError(
             "Unexpected content type", code="CONTENT-TYPE"
