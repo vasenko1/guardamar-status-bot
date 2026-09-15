@@ -65,7 +65,9 @@ def _text(value: Any) -> Optional[str]:
     if not isinstance(value, str):
         raise HidraquaError("invalid text field")
     value = " ".join(value.split())
-    return value or None
+    if not value or value.casefold() == "null":
+        return None
+    return value
 
 
 def normalize_events(payload: Dict[str, Any]) -> tuple[HidraquaEvent, ...]:

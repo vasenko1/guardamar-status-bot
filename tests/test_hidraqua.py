@@ -118,6 +118,22 @@ class HidraquaFormattingTests(unittest.TestCase):
         self.assertIn("Гуардамаре", text)
         self.assertNotIn("примерно к", text)
 
+    def test_string_null_other_streets_is_treated_as_missing(self):
+        rows = normalize_events({"features": [{"attributes": {
+            "CI_ID": 8,
+            "CI_ESTADO": "5EC",
+            "CI_MOTIVO": "AVE",
+            "COD_MUNI": "03076",
+            "CI_DIRECCION": "Calle de Argentina 4-14",
+            "CI_CALLES": "Null",
+        }}]})
+        self.assertEqual(rows[0].address, "Calle de Argentina 4-14")
+        self.assertIsNone(rows[0].streets)
+        text = format_event(rows[0])
+        self.assertIn("Calle de Argentina 4-14", text)
+        self.assertNotIn("Null", text)
+        self.assertNotIn("Также затронута", text)
+
     def test_improvement_text_and_dst_epoch(self):
         text = format_event(event(motive="***"))
         self.assertIn("работах по улучшению", text)
