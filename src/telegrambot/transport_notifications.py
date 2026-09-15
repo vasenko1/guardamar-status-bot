@@ -20,6 +20,7 @@ from .airport_schedule import (
 )
 from .branding import FOOTER, with_footer
 from .pinned import DEFAULT_PINNED_STATE_PATH, PinnedGuideState, telegram_message_link
+from .state import PublicationState, StateError
 from .telegram import TelegramError, send_message
 
 STATE_VERSION = 1
@@ -600,10 +601,16 @@ async def _main() -> int:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
     )
-    if args.command == "collect":
-        await collect()
-    else:
-        await publish()
+    try:
+        with PublicationState(_state_path()).exclusive_run():
+            if args.command == "collect":
+                await collect()
+            else:
+                await publish()
+    except StateError as exc:
+        raise TransportNotificationError(
+            "another transport notification run is active"
+        ) from exc
     return 0
 
 
