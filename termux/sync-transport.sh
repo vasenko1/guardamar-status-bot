@@ -25,4 +25,5 @@ if ! command -v pdfinfo >/dev/null 2>&1 \
     exit 1
 fi
 
-exec ./.venv/bin/python -m telegrambot sync-transport
+./.venv/bin/python -m telegrambot sync-transport
+exec ./.venv/bin/python -m telegrambot.transport_notifications collect
