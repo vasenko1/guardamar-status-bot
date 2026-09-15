@@ -24,6 +24,7 @@ from .telegram import TelegramError
 PINNED_CONTENT_VERSION = 2
 DEFAULT_PINNED_STATE_PATH = "state/pinned_guide.json"
 MAX_RECONCILIATION_PASSES = 3
+AQUALIDER_BOOKING_URL = "https://aqualidernatacion.simplybook.it/v2/"
 
 Send = Callable[[str], Awaitable[int]]
 Edit = Callable[[int, str], Awaitable[None]]
@@ -181,6 +182,22 @@ LEAF_MESSAGES: Dict[str, str] = {
     ),
 }
 
+GUIDE_MESSAGE_KEYS = (
+    "places",
+    "polideportivo",
+    "pool_indoor",
+    "pool_outdoor",
+    "activities",
+    "swimming",
+)
+PINNED_MESSAGE_KEYS = (
+    *LEAF_MESSAGES,
+    "cameras",
+    "transport",
+    *GUIDE_MESSAGE_KEYS,
+    "root",
+)
+
 
 def telegram_message_link(chat_id: str, message_id: int) -> str:
     """Build a member-visible link for a public or private supergroup."""
@@ -201,6 +218,12 @@ def _linked(label: str, key: str, links: Optional[Mapping[str, str]]) -> str:
     if links is None:
         return f"<b>{label}</b>"
     url = links[key]
+    return f'<a href="{url}"><b>{label}</b></a>'
+
+
+def _direct_link(label: str, url: Optional[str]) -> str:
+    if url is None:
+        return f"<b>{label}</b>"
     return f'<a href="{url}"><b>{label}</b></a>'
 
 
@@ -277,24 +300,99 @@ def build_transport_index(
     return f"{message}\n\n⬅️ {target}"
 
 
+def build_places(polideportivo_link: Optional[str] = None) -> str:
+    """Build the durable places branch."""
+
+    return with_footer(
+        "📍 <b>Места</b>\n\n"
+        f"🏟 {_direct_link('Polideportivo Municipal', polideportivo_link)}\n"
+        "Муниципальный спортивный комплекс Гуардамара."
+    )
+
+
+def build_polideportivo(
+    indoor_link: Optional[str] = None,
+    outdoor_link: Optional[str] = None,
+) -> str:
+    """Build the municipal sports-complex card."""
+
+    return with_footer(
+        "🏟 <b>Polideportivo Municipal</b>\n\n"
+        "Муниципальный спортивный комплекс Гуардамара.\n\n"
+        f"🏊 {_direct_link('Крытый бассейн Manel Estiarte', indoor_link)}\n"
+        f"☀️ {_direct_link('Открытый муниципальный бассейн', outdoor_link)}\n\n"
+        "<b>Также в комплексе:</b>\n"
+        "🎾 теннис и падель\n"
+        "🏀 баскетбол\n"
+        "⚽ fútbol sala\n"
+        "🏟 Palau Sant Jaume\n"
+        "💪 тренажёрный зал и калистеника\n"
+        "🥎 frontón"
+    )
+
+
+def build_pool_indoor(swimming_link: Optional[str] = None) -> str:
+    """Build the indoor municipal pool card."""
+
+    return with_footer(
+        "🏊 <b>Крытый бассейн Manel Estiarte</b>\n\n"
+        "Работает с <b>16 сентября по 15 июня</b>.\n\n"
+        "📞 <b>Телефон:</b> 966 72 65 93\n\n"
+        f"🎓 Занятия и запись: {_direct_link('🏊 Плавание', swimming_link)}."
+    )
+
+
+def build_pool_outdoor(swimming_link: Optional[str] = None) -> str:
+    """Build the outdoor municipal pool card."""
+
+    return with_footer(
+        "☀️ <b>Открытый муниципальный бассейн</b>\n\n"
+        "Работает с <b>16 июня по 15 сентября</b>.\n\n"
+        f"🎓 Занятия и запись: {_direct_link('🏊 Плавание', swimming_link)}."
+    )
+
+
+def build_activities(swimming_link: Optional[str] = None) -> str:
+    """Build the recurring activities branch."""
+
+    return with_footer(
+        "🎓 <b>Занятия и секции</b>\n\n"
+        f"🏊 {_direct_link('Плавание', swimming_link)}\n"
+        "Группы, сезоны и запись."
+    )
+
+
+def build_swimming(
+    indoor_link: Optional[str] = None,
+    outdoor_link: Optional[str] = None,
+) -> str:
+    """Build the safe swimming card without inferring current availability."""
+
+    return with_footer(
+        "🏊 <b>Плавание</b>\n\n"
+        "Актуальные группы и запись зависят от сезона.\n\n"
+        f"🏊 {_direct_link('Крытый бассейн Manel Estiarte', indoor_link)}\n"
+        "16 сентября - 15 июня.\n\n"
+        f"☀️ {_direct_link('Открытый муниципальный бассейн', outdoor_link)}\n"
+        "16 июня - 15 сентября.\n\n"
+        f"📝 <a href=\"{AQUALIDER_BOOKING_URL}\"><b>Проверить группы и запись</b></a>"
+    )
+
+
 def build_root(
     camera_link: Optional[str] = None,
     transport_link: Optional[str] = None,
+    places_link: Optional[str] = None,
+    activities_link: Optional[str] = None,
 ) -> str:
     """Build the compact message intended to remain pinned."""
 
-    if camera_link is None or transport_link is None:
-        cameras = "<b>Онлайн-камеры</b>"
-        transport = "<b>Транспорт в Гуардамаре</b>"
-    else:
-        cameras = f'<a href="{camera_link}"><b>Онлайн-камеры</b></a>'
-        transport = (
-            f'<a href="{transport_link}"><b>Транспорт в Гуардамаре</b></a>'
-        )
     return (
         "📌 <b>Полезное о Гуардамаре</b>\n\n"
-        f"📹 {cameras}\n\n"
-        f"🚌 {transport}"
+        f"📹 {_direct_link('Онлайн-камеры', camera_link)}\n\n"
+        f"🚌 {_direct_link('Транспорт в Гуардамаре', transport_link)}\n\n"
+        f"📍 {_direct_link('Места', places_link)}\n\n"
+        f"🎓 {_direct_link('Занятия и секции', activities_link)}"
     )
 
 
@@ -305,6 +403,12 @@ def preview_messages() -> Sequence[str]:
         *(build_leaf_message(key) for key in LEAF_MESSAGES),
         build_cameras(),
         build_transport_index(),
+        build_places(),
+        build_polideportivo(),
+        build_pool_indoor(),
+        build_pool_outdoor(),
+        build_activities(),
+        build_swimming(),
         build_root(),
     )
 
@@ -539,6 +643,9 @@ def _render_messages(
             key: telegram_message_link(chat_id, messages[key])
             for key in LEAF_MESSAGES
         }
+    swimming_link = _known_link(chat_id, messages, "swimming")
+    indoor_link = _known_link(chat_id, messages, "pool_indoor")
+    outdoor_link = _known_link(chat_id, messages, "pool_outdoor")
     return {
         **{
             key: build_leaf_message(key, transport_link)
@@ -546,9 +653,19 @@ def _render_messages(
         },
         "cameras": build_cameras(root_link),
         "transport": build_transport_index(leaf_links, root_link),
+        "places": build_places(
+            _known_link(chat_id, messages, "polideportivo")
+        ),
+        "polideportivo": build_polideportivo(indoor_link, outdoor_link),
+        "pool_indoor": build_pool_indoor(swimming_link),
+        "pool_outdoor": build_pool_outdoor(swimming_link),
+        "activities": build_activities(swimming_link),
+        "swimming": build_swimming(indoor_link, outdoor_link),
         "root": build_root(
             _known_link(chat_id, messages, "cameras"),
             transport_link,
+            _known_link(chat_id, messages, "places"),
+            _known_link(chat_id, messages, "activities"),
         ),
     }
 
@@ -564,10 +681,7 @@ async def _reconcile_messages(
     """Converge IDs and links after partial runs or deleted messages."""
 
     skipped = frozenset(skip_keys)
-    keys = tuple(
-        key for key in (*LEAF_MESSAGES, "cameras", "transport", "root")
-        if key not in skipped
-    )
+    keys = tuple(key for key in PINNED_MESSAGE_KEYS if key not in skipped)
     for _ in range(MAX_RECONCILIATION_PASSES):
         before = dict(messages)
         rendered = _render_messages(chat_id, before)
