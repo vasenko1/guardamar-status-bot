@@ -1,8 +1,8 @@
 """One-shot synchronization for the linked city guide.
 
 The first vertical slice keeps pool facility facts deterministic and stores only
-a small normalized SimplyBook catalogue baseline.  Registration availability
-is deliberately not inferred until the provider's batched availability contract
+a small normalized SimplyBook catalogue baseline. Registration availability is
+deliberately not inferred until the provider's batched availability contract
 has been validated on the production runtime.
 """
 
@@ -40,7 +40,6 @@ GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 DEFAULT_GUIDE_STATE_PATH = "state/guide.json"
 AQUALIDER_ORIGIN = "https://aqualidernatacion.simplybook.it"
 AQUALIDER_BASE_URL = f"{AQUALIDER_ORIGIN}/v2"
-AQUALIDER_BOOKING_URL = f"{AQUALIDER_ORIGIN}/v2/"
 _GUIDE_STATE_VERSION = 1
 _JSON_TYPES = frozenset({"application/json"})
 _REQUEST_HEADERS = {
@@ -83,16 +82,20 @@ class GuideState:
             or notice["message_id"] <= 0
         ):
             raise StateError("guide state has an invalid seasonal notice")
+        uncertain = value.get("season_notice_uncertain")
+        if uncertain is not None and not isinstance(uncertain, str):
+            raise StateError("guide state has an invalid uncertain notice")
         return value
 
     def write(self, value: dict) -> None:
         normalized = dict(value)
         normalized["version"] = _GUIDE_STATE_VERSION
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        descriptor, temporary = tempfile.mkstemp(
-            dir=str(self.path.parent), prefix=f".{self.path.name}."
-        )
+        temporary = None
         try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            descriptor, temporary = tempfile.mkstemp(
+                dir=str(self.path.parent), prefix=f".{self.path.name}."
+            )
             with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
                 json.dump(normalized, handle, ensure_ascii=False, sort_keys=True)
                 handle.write("\n")
@@ -100,11 +103,25 @@ class GuideState:
                 os.fsync(handle.fileno())
             os.chmod(temporary, 0o600)
             os.replace(temporary, self.path)
-        except Exception:
+            temporary = None
+            directory = os.open(str(self.path.parent), os.O_RDONLY)
             try:
-                os.unlink(temporary)
-            except OSError:
-                pass
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        except OSError as exc:
+            if temporary is not None:
+                try:
+                    os.unlink(temporary)
+                except OSError:
+                    pass
+            raise StateError("guide state could not be written") from exc
+        except Exception:
+            if temporary is not None:
+                try:
+                    os.unlink(temporary)
+                except OSError:
+                    pass
             raise
 
     @contextmanager
@@ -148,12 +165,13 @@ def _required_environment(name: str) -> str:
 def _allowed_aqualider_url(url: str) -> bool:
     try:
         parsed = urllib.parse.urlsplit(url)
+        port = parsed.port
     except ValueError:
         return False
     return (
         parsed.scheme == "https"
         and parsed.hostname == "aqualidernatacion.simplybook.it"
-        and parsed.port in {None, 443}
+        and port in {None, 443}
         and parsed.path.startswith("/v2/")
         and parsed.username is None
         and parsed.password is None
@@ -163,10 +181,12 @@ def _allowed_aqualider_url(url: str) -> bool:
 def _positive_id(value, field: str) -> int:
     if isinstance(value, bool):
         raise GuideSourceError(f"invalid {field}", code="SCHEMA")
-    try:
+    if isinstance(value, int):
+        identifier = value
+    elif isinstance(value, str) and value.isascii() and value.isdigit():
         identifier = int(value)
-    except (TypeError, ValueError) as exc:
-        raise GuideSourceError(f"invalid {field}", code="SCHEMA") from exc
+    else:
+        raise GuideSourceError(f"invalid {field}", code="SCHEMA")
     if identifier <= 0:
         raise GuideSourceError(f"invalid {field}", code="SCHEMA")
     return identifier
@@ -262,7 +282,7 @@ def _valid_snapshot(value) -> bool:
         _validate_cross_references(normalized_services, normalized_providers)
     except (ValueError, GuideSourceError):
         return False
-    return parsed.tzinfo is not None
+    return parsed.tzinfo is not None and parsed.utcoffset() is not None
 
 
 async def _fetch_json(path: str, *, limit_bytes: int):
@@ -290,6 +310,8 @@ async def _fetch_json(path: str, *, limit_bytes: int):
 async def fetch_aqualider_catalog(now: datetime) -> dict:
     """Fetch one compact, internally consistent public catalogue snapshot."""
 
+    if now.tzinfo is None or now.utcoffset() is None:
+        raise ValueError("guide observation time must be timezone-aware")
     services_raw = await _fetch_json("service/", limit_bytes=256 * 1024)
     providers_raw = await _fetch_json("provider/", limit_bytes=128 * 1024)
     services = _normalize_services(services_raw)
@@ -405,13 +427,26 @@ async def sync_guide(now: datetime) -> str:
         with guide_state.exclusive_run():
             state = guide_state.read()
             sent = state.get("season_notice")
-            if not isinstance(sent, dict) or sent.get("key") != notice_key:
-                notice_id = await send_message(
-                    bot_token,
-                    chat_id,
-                    _season_notice_text(notice_key, chat_id, messages),
-                    disable_notification=False,
+            uncertain = state.get("season_notice_uncertain")
+            if uncertain == notice_key:
+                logging.warning(
+                    "Seasonal pool notice remains uncertain: %s", notice_key
                 )
+            elif not isinstance(sent, dict) or sent.get("key") != notice_key:
+                try:
+                    notice_id = await send_message(
+                        bot_token,
+                        chat_id,
+                        _season_notice_text(notice_key, chat_id, messages),
+                        disable_notification=False,
+                        retry_only_rate_limits=True,
+                    )
+                except TelegramError as exc:
+                    if exc.retryable and exc.server_status != 429:
+                        state["season_notice_uncertain"] = notice_key
+                        guide_state.write(state)
+                    raise
+                state.pop("season_notice_uncertain", None)
                 state["season_notice"] = {
                     "key": notice_key,
                     "message_id": notice_id,
