@@ -51,7 +51,12 @@ facility model:
 Exact seasonal cutover dates remain a separate fact that must be verified from
 a fresh current source before public automation. Old municipal pages and
 lifeguard-contract coverage are not enough by themselves to prove the public
-switch date.
+switch date. A check on 2026-09-15 found supporting evidence for a 15 September
+summer boundary but no explicit current 2026 public operational announcement
+from Ayuntamiento/Deportes, the pool, or the service operator confirming that
+15 September is the final public day. The current lifeguard specification covers
+outdoor-pool service through 15 September but also explicitly allows schedule
+variation and closure by the Sports Department.
 
 See `research/2026-09-15-guardamar-municipal-pools-and-swimming.md` for the
 source inventory and evidence boundaries, and
@@ -118,6 +123,12 @@ If this pilot is accepted for implementation:
   consistent source state.
 - Do not infer current pool opening hours from lifeguard-contract coverage and do
   not promote the municipality's `VERANO 2023` pool price/schedule as current.
+- A public seasonal-switch statement or notification requires a current
+  operational source explicitly stating the open/close or switch date. Accepted
+  source classes are: Ayuntamiento/Concejalía de Deportes, an official pool or
+  municipal sports-facility publication, the current contracted service operator
+  when it clearly refers to Guardamar municipal operation, or another current
+  official operational source. Community posts are discovery signals only.
 - A change in stored/source data does not automatically produce a public
   message. Public change notifications require material user impact: a proven
   registration opening, new recurring programme, verified seasonal pool switch,
@@ -192,6 +203,9 @@ If this pilot is accepted for implementation:
 - **Model indoor/outdoor pools as simultaneously available seasonal choices:
   rejected.** Local operation is mutually exclusive by season; presenting both
   as concurrently usable would be misleading.
+- **Use contract/old schedule dates as current season-switch truth: rejected.**
+  They are useful baselines, but exact operational dates require a current
+  explicit official statement.
 - **Publicly list all underlying sources/operators: rejected.** It adds little
   resident value, clutters cards, exposes the project's source map, and makes
   copying the monitoring workflow easier. Direct action links remain allowed
