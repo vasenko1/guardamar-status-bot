@@ -18,7 +18,10 @@ from telegrambot.airport_schedule import (
     _DownloadedPdf,
     _SearchResult,
     _allowed_intermediate_url,
+    _download_intermediate,
     _intermediate_url,
+    _intermediate_urls,
+    _repaired_tls_context,
     _missing_issuer,
     _open_bounded,
     _refresh_fare,
@@ -108,20 +111,48 @@ def _messages():
 
 
 class AirportSourceTests(unittest.TestCase):
-    def test_tls_repair_accepts_only_official_https_intermediate(self):
-        self.assertTrue(
-            _allowed_intermediate_url("https://e7.i.lencr.org/")
-        )
+    def test_tls_repair_accepts_only_official_certificate_repository(self):
         for url in (
-            "http://e7.i.lencr.org/",
-            "https://e7.i.lencr.org/extra",
-            "https://e7.i.lencr.org/?next=evil",
-            "https://e7.i.lencr.org.evil.example/",
-            "https://user@e7.i.lencr.org/",
+            "https://letsencrypt.org/certs/gen-y/int-yr1.der",
+            "https://letsencrypt.org/certs/gen-y/root-yr-by-x1.der",
+            "https://letsencrypt.org/certs/2024/e7.der",
+        ):
+            self.assertTrue(_allowed_intermediate_url(url))
+        for url in (
+            "http://letsencrypt.org/certs/gen-y/int-yr1.der",
+            "https://yr1.i.lencr.org/",
+            "https://letsencrypt.org/certs/gen-y/int-yr1.der?next=evil",
+            "https://letsencrypt.org/certs/gen-y/unknown.der",
+            "https://letsencrypt.org.evil.example/certs/gen-y/int-yr1.der",
+            "https://user@letsencrypt.org/certs/gen-y/int-yr1.der",
         ):
             self.assertFalse(_allowed_intermediate_url(url))
 
-    def test_tls_aia_is_upgraded_to_strict_https(self):
+    def test_tls_aia_maps_current_y_issuer_to_verified_repository_chain(self):
+        completed = subprocess.CompletedProcess(
+            [], 0,
+            stdout=(
+                b"Authority Information Access:\n"
+                b" CA Issuers - URI:http://yr1.i.lencr.org/\n"
+            ),
+        )
+        with patch(
+            "telegrambot.airport_schedule.subprocess.run",
+            return_value=completed,
+        ):
+            urls = _intermediate_urls(b"leaf")
+            first = _intermediate_url(b"leaf")
+
+        self.assertEqual(
+            urls,
+            (
+                "https://letsencrypt.org/certs/gen-y/int-yr1.der",
+                "https://letsencrypt.org/certs/gen-y/root-yr-by-x1.der",
+            ),
+        )
+        self.assertEqual(first, urls[0])
+
+    def test_tls_aia_maps_legacy_issuer_to_verified_repository_certificate(self):
         completed = subprocess.CompletedProcess(
             [], 0,
             stdout=(
@@ -133,9 +164,99 @@ class AirportSourceTests(unittest.TestCase):
             "telegrambot.airport_schedule.subprocess.run",
             return_value=completed,
         ):
-            url = _intermediate_url(b"leaf")
+            urls = _intermediate_urls(b"leaf")
 
-        self.assertEqual(url, "https://e7.i.lencr.org/")
+        self.assertEqual(
+            urls,
+            ("https://letsencrypt.org/certs/2024/e7.der",),
+        )
+
+    def test_tls_aia_rejects_unknown_issuer_label(self):
+        completed = subprocess.CompletedProcess(
+            [], 0,
+            stdout=(
+                b"Authority Information Access:\n"
+                b" CA Issuers - URI:http://yr4.i.lencr.org/\n"
+            ),
+        )
+        with patch(
+            "telegrambot.airport_schedule.subprocess.run",
+            return_value=completed,
+        ):
+            with self.assertRaises(AirportScheduleError):
+                _intermediate_urls(b"leaf")
+
+    def test_tls_certificate_download_requires_exact_official_der_response(self):
+        url = "https://letsencrypt.org/certs/gen-y/int-yr1.der"
+        response = MagicMock()
+        response.geturl.return_value = url
+        response.read.return_value = b"der-certificate"
+        response.status = 200
+        response.headers.get_content_type.return_value = "application/x-x509-cert"
+        response.__enter__.return_value = response
+        opener = MagicMock()
+        opener.open.return_value = response
+
+        with patch(
+            "telegrambot.airport_schedule.urllib.request.build_opener",
+            return_value=opener,
+        ):
+            self.assertEqual(_download_intermediate(url), b"der-certificate")
+
+        response.headers.get_content_type.return_value = "application/octet-stream"
+        with patch(
+            "telegrambot.airport_schedule.urllib.request.build_opener",
+            return_value=opener,
+        ):
+            with self.assertRaises(AirportScheduleError):
+                _download_intermediate(url)
+
+        response.headers.get_content_type.return_value = "application/x-x509-cert"
+        response.geturl.return_value = (
+            "https://letsencrypt.org/certs/gen-y/int-yr2.der"
+        )
+        with patch(
+            "telegrambot.airport_schedule.urllib.request.build_opener",
+            return_value=opener,
+        ):
+            with self.assertRaises(AirportScheduleError):
+                _download_intermediate(url)
+
+    def test_tls_context_loads_the_whole_verified_chain(self):
+        context = MagicMock(spec=ssl.SSLContext)
+        with (
+            patch("telegrambot.airport_schedule._BUS_TLS_CONTEXT", None),
+            patch(
+                "telegrambot.airport_schedule._leaf_certificate",
+                return_value=b"leaf",
+            ),
+            patch(
+                "telegrambot.airport_schedule._intermediate_urls",
+                return_value=(
+                    "https://letsencrypt.org/certs/gen-y/int-yr1.der",
+                    "https://letsencrypt.org/certs/gen-y/root-yr-by-x1.der",
+                ),
+            ),
+            patch(
+                "telegrambot.airport_schedule._download_intermediate",
+                side_effect=(b"one", b"two"),
+            ) as download,
+            patch(
+                "telegrambot.airport_schedule.ssl.DER_cert_to_PEM_cert",
+                side_effect=("PEM-ONE\n", "PEM-TWO\n"),
+            ),
+            patch(
+                "telegrambot.airport_schedule.ssl.create_default_context",
+                return_value=context,
+            ),
+        ):
+            repaired = _repaired_tls_context()
+
+        self.assertIs(repaired, context)
+        self.assertEqual(download.call_count, 2)
+        context.load_verify_locations.assert_called_once_with(
+            cadata="PEM-ONE\nPEM-TWO\n"
+        )
 
     def test_only_missing_issuer_error_can_trigger_tls_repair(self):
         missing = ssl.SSLCertVerificationError(

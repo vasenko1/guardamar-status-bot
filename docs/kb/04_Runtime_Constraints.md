@@ -90,10 +90,7 @@ two current and two previous timetable PNGs, and bounded source metadata. PDF
 rendering is allowed only after a stable changed official one-page document;
 one strict normalized airport schedule and fare snapshot is also allowed.
 Fare text extraction is allowed only after a stable changed official tariff
-PDF. One bounded in-memory HTTPS intermediate-certificate recovery is allowed
-only for the documented Bus Sigüenza missing-issuer fault; it must not disable
-TLS verification or persist certificates. No browser, OCR, resident collector,
-or background process is allowed.
+PDF. One bounded in-memory HTTPS issuer-chain recovery is allowed only for the documented Bus Sigüenza missing-issuer fault. It may read at most two allowlisted DER certificates from the official Let's Encrypt certificate repository, must not disable TLS verification, and must not persist certificates. No browser, OCR, resident collector, or background process is allowed.
 
 ## Resource policy
 

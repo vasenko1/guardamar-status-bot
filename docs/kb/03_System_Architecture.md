@@ -135,8 +135,7 @@ official PDF links conditionally and renders only a stable changed one-page
 document. The same invocation makes one bounded date-specific Bus Sigüenza
 request and conditionally checks its official fare PDF. It stores only one
 strict normalized airport snapshot and parses the PDF only after a stable
-change. A narrowly allowlisted Let's Encrypt AIA recovery preserves full TLS
-and hostname verification when the operator omits its issuing intermediate.
+change. A narrowly allowlisted Let's Encrypt recovery reads only the leaf AIA issuer label, downloads the corresponding certificate chain from the official `https://letsencrypt.org/certs/` repository, and preserves full TLS and hostname verification when the operator omits its issuing chain.
 It has no resident process or dependency on Morning Digest state.
 
 ## Operating model
