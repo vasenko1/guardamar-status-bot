@@ -25,10 +25,9 @@ The source landscape is uneven. Sporttia exposes strong current structured
 public data for municipal sports facilities and many municipal activities, but
 its current Guardamar public page does not expose the swimming-course catalogue.
 The current swimming-course booking/provider surface exposes a rich public
-SimplyBook/Booking.page catalogue, but the page retains expired seasonal entries,
-contains contradictory copied descriptions, and returned HTTP 403 to a direct
-automated fetch during investigation. Current pool hours and casual-entry price
-also lack a sufficiently fresh authoritative public source.
+SimplyBook/Booking.page catalogue, but the page retains expired seasonal entries
+and contains contradictory copied descriptions. Current exact public hours and
+some prices still require field-specific validation.
 
 A product clarification on 2026-09-15 established that the identity of an
 underlying service operator is implementation/source provenance, not resident-
@@ -36,8 +35,7 @@ facing content. Residents need the service facts, not the procurement/operator
 relationship. Source discovery is part of the project's competitive advantage
 and should normally remain internal.
 
-A corrected local-operational clarification also established the seasonal
-facility model:
+The project owner also established the municipal pool operating model:
 
 - in summer only the outdoor municipal pool operates;
 - in winter only the indoor/heated municipal pool operates;
@@ -46,22 +44,15 @@ facility model:
 - very-young-child `Bebés` / `Peques` swimming uses the shallow outdoor pool and
   is therefore summer-only;
 - adult and older-child programmes may exist in either seasonal period, but
-  their venue follows the pool that is active for that season.
+  their venue follows the pool active for that season.
 
-Exact seasonal cutover dates remain a separate fact that must be verified from
-a fresh current source before public automation. Old municipal pages and
-lifeguard-contract coverage are not enough by themselves to prove the public
-switch date. A check on 2026-09-15 found supporting evidence for a 15 September
-summer boundary but no explicit current 2026 public operational announcement
-from Ayuntamiento/Deportes, the pool, or the service operator confirming that
-15 September is the final public day. The current lifeguard specification covers
-outdoor-pool service through 15 September but also explicitly allows schedule
-variation and closure by the Sports Department.
+Rather than building a recurring multi-source inference process for normal
+season changes, the product will use a fixed default calendar and allow explicit
+exceptions to override it when needed.
 
-See `research/2026-09-15-guardamar-municipal-pools-and-swimming.md` for the
-source inventory and evidence boundaries, and
-`research/2026-09-15-pool-pilot-product-clarifications.md` for the later product
-clarifications.
+See `research/2026-09-15-guardamar-municipal-pools-and-swimming.md`,
+`research/2026-09-15-pool-pilot-product-clarifications.md`, and
+`research/2026-09-15-pool-source-confidence.md`.
 
 ## Decision
 
@@ -82,12 +73,23 @@ If this pilot is accepted for implementation:
   - one-off dated occurrences remain in the existing event pipeline;
   - material actionable changes may create separate public notifications.
 - For seasonal facilities, keep **facility state** separate from **programme
-  availability**. In the pool pilot, only one municipal pool is active at a
-  time: outdoor in summer, indoor/heated in winter. Programme venue must be
-  consistent with that active facility state.
+  availability**.
+- Use this default automatic facility calendar:
+  - **16 June through 15 September, inclusive → outdoor municipal pool active;**
+  - **16 September through 15 June, inclusive → indoor/heated Manel Estiarte
+    active.**
+- Do not require a fresh annual announcement to perform the normal 16 June / 16
+  September switch. This is a product rule.
+- A specific trusted operational announcement may override the default calendar
+  for an exceptional closure, delayed opening, early switch, maintenance period,
+  or other temporary deviation. After the exception ends, resume the default
+  calendar.
+- The municipal lifeguard contract is **not** an accepted source for pool
+  operating state, season dates, or public opening hours. Do not use its nominal
+  indoor `1 January–31 December` coverage to infer pool availability.
 - Do not infer that a programme survives a seasonal switch. A summer programme
-  and a winter programme must each be supported by current evidence even when
-  they have similar names.
+  and a winter programme must each be supported by current programme evidence
+  even when they have similar names.
 - Treat very-young-child `Bebés` / `Peques` swimming as summer-only because it
   uses the shallow outdoor pool; do not manufacture a winter indoor equivalent
   from contradictory copied provider text.
@@ -108,33 +110,30 @@ If this pilot is accepted for implementation:
 - Topic groupings such as sport, culture, children, education, or museums are
   added only when real content volume requires another navigation level. Do not
   create empty category trees in advance.
-- Preserve the existing evidence-first/fail-closed product rule: a field may be
-  public only when the accepted source proves both the fact and sufficient
+- Preserve the existing evidence-first/fail-closed rule for fields other than the
+  accepted season calendar: a public field must have enough evidence and
   freshness for the claim being made.
-- Treat the Sporttia public centre page as a candidate automated source only for
-  the fields it currently exposes reliably. Live slot availability remains a
-  separate validation problem.
+- Treat the Sporttia public centre page as an automated source only for fields it
+  currently exposes reliably. Live slot availability remains a separate
+  validation problem.
 - Treat the swimming-course booking/provider surface as an internal curated
   research source until stable permitted automated access and lifecycle
   semantics are validated. A visible `Book now` button alone does not prove
   current registration availability.
 - Do not copy contradictory programme text into the public guide. Programme
-  venue, season, age, schedule, and price must come from a current internally
-  consistent source state.
-- Do not infer current pool opening hours from lifeguard-contract coverage and do
-  not promote the municipality's `VERANO 2023` pool price/schedule as current.
-- A public seasonal-switch statement or notification requires a current
-  operational source explicitly stating the open/close or switch date. Accepted
-  source classes are: Ayuntamiento/Concejalía de Deportes, an official pool or
-  municipal sports-facility publication, the current contracted service operator
-  when it clearly refers to Guardamar municipal operation, or another current
-  official operational source. Community posts are discovery signals only.
+  venue, age, schedule, and price must come from a current internally consistent
+  source state.
 - A change in stored/source data does not automatically produce a public
   message. Public change notifications require material user impact: a proven
-  registration opening, new recurring programme, verified seasonal pool switch,
-  material price/schedule/venue change, or authoritative closure/opening notice.
-- The first successful observation of any automated source establishes a silent
-  baseline; it must not announce the pre-existing catalogue as new.
+  registration opening, new recurring programme, explicit exceptional facility
+  change, material price/schedule/venue change, or authoritative closure/opening
+  notice.
+- The normal June/September seasonal switch may update the relevant pool card and
+  state automatically from the calendar; it does not require a monitoring
+  framework across several sources.
+- The first successful observation of any automated programme/source feed
+  establishes a silent baseline; it must not announce the pre-existing catalogue
+  as new.
 - Reuse the existing linked pinned-message machinery. Do not introduce a generic
   CMS, ontology framework, universal place database, or new persistence stack
   for this pilot unless the vertical slice demonstrates a concrete need.
@@ -150,43 +149,40 @@ If this pilot is accepted for implementation:
   do, while source provenance, procurement context, provider identity, fallback
   logic, and monitoring details stay internal unless a direct action requires an
   external link.
-- The pool card model will not imply simultaneous indoor/outdoor availability.
-  When a verified seasonal switch occurs, the relevant facility state and any
-  affected programme facts must switch consistently.
-- This preserves a useful competitive asymmetry: the visible result can be
-  shared freely, while the source map and monitoring process are not exposed by
-  default.
-- The pilot can proceed to card/UX design using already verified pool facts even
-  though full automatic swimming-course monitoring is not yet ready.
-- Some desired fields will intentionally remain absent (for example current
-  casual-entry price, guaranteed opening hours, or exact seasonal cutover date)
-  until a fresh source is found.
+- The pool card model never implies simultaneous indoor/outdoor availability.
+- The ordinary seasonal state is deterministic and very cheap to maintain:
+  outdoor from 16 June, indoor from 16 September.
+- If the municipality changes a season date in a particular year, the project
+  applies an explicit exception rather than building a complex inference engine.
+- For 2026, 15 September is treated as the final outdoor-pool day and 16
+  September as the first indoor-pool day under the default product calendar.
+- Some desired fields still remain separate validation problems, especially exact
+  public opening hours, some tariffs, and programme registration state.
 - Swimming-course automation may remain manual/curated if no stable public data
-  surface can be validated. This is acceptable; avoiding false alerts is more
-  important than maximizing automation.
+  surface can be validated. Avoiding false alerts remains more important than
+  maximizing automation.
 - Additional Telegram hierarchy is introduced only when actual content volume
   requires it, reducing message-graph maintenance and migration risk.
 
 ## Follow-up work before acceptance
 
-1. Draft the first place and swimming activity cards from the research inventory
-   and review their Telegram navigation/linking.
-2. Remove provider/operator naming and generic source links from the public-card
-   drafts; retain only direct action links that residents actually need.
-3. Validate the public swimming-course booking flow from the real runtime and a
+1. Draft the first place and swimming activity cards and review their Telegram
+   navigation/linking.
+2. Remove provider/operator naming and generic source links from public-card
+   drafts; retain only direct action links residents actually need.
+3. Implement the minimal deterministic season state if/when the pool pilot moves
+   to code: 16 Jun outdoor, 16 Sep indoor, with a simple explicit override path
+   only if a real exception becomes necessary.
+4. Validate the public swimming-course booking flow from the real runtime and a
    normal browser without bypassing authentication or access controls.
-4. Determine whether a stable public data surface exposes current services,
-   prices, registration windows, venue/season, and availability.
-5. Verify the exact current seasonal cutover/open-close dates for the indoor and
-   outdoor pools from a fresh operational source. Do not use stale municipal
-   pages or contract coverage as the sole source for public switch dates.
-6. Resolve the current `Bebés`/`Peques` label/age details before publishing a
-   detailed child-swimming card, while preserving the established summer-only
-   shallow-outdoor-pool constraint.
-7. Validate Sporttia live lane-availability access separately if it is useful to
-   residents; do not couple it to the course catalogue.
-8. Decide which exact source facts are allowed to trigger a public notification
-   and which update the pinned card silently.
+5. Determine whether a stable public data surface exposes current services,
+   prices, registration windows, and availability.
+6. Resolve current `Bebés`/`Peques` label/age details before publishing a
+   detailed child-swimming card, while preserving the summer-only constraint.
+7. Validate Sporttia live lane availability only if it proves useful; do not
+   couple it to the course catalogue.
+8. Decide which programme/source changes trigger a public notification and which
+   update the pinned card silently.
 9. Only after the UX and source contracts are accepted, implement the smallest
    pool vertical slice and tests.
 
@@ -201,11 +197,12 @@ If this pilot is accepted for implementation:
 - **One all-in-one pool card: rejected.** Facility facts and recurring course
   facts have different lifecycles, sources, and change semantics.
 - **Model indoor/outdoor pools as simultaneously available seasonal choices:
-  rejected.** Local operation is mutually exclusive by season; presenting both
-  as concurrently usable would be misleading.
-- **Use contract/old schedule dates as current season-switch truth: rejected.**
-  They are useful baselines, but exact operational dates require a current
-  explicit official statement.
+  rejected.** Local operation is mutually exclusive by season.
+- **Require fresh annual proof of every normal season switch: rejected.** It adds
+  operational complexity without enough value. Use the fixed calendar and fix
+  exceptions when they actually occur.
+- **Use the lifeguard contract as an operational calendar: rejected.** Its
+  staffing clauses do not describe actual seasonal pool operation.
 - **Publicly list all underlying sources/operators: rejected.** It adds little
   resident value, clutters cards, exposes the project's source map, and makes
   copying the monitoring workflow easier. Direct action links remain allowed
