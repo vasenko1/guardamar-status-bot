@@ -255,12 +255,24 @@ def _validate_cross_references(
 ) -> None:
     service_ids = {item["id"] for item in services}
     provider_ids = {item["id"] for item in providers}
+    service_pairs = set()
+    provider_pairs = set()
     for service in services:
         if not set(service["providers"]).issubset(provider_ids):
             raise GuideSourceError("unknown provider reference", code="SCHEMA")
+        service_pairs.update(
+            (service["id"], provider_id)
+            for provider_id in service["providers"]
+        )
     for provider in providers:
         if not set(provider["services"]).issubset(service_ids):
             raise GuideSourceError("unknown service reference", code="SCHEMA")
+        provider_pairs.update(
+            (service_id, provider["id"])
+            for service_id in provider["services"]
+        )
+    if service_pairs != provider_pairs:
+        raise GuideSourceError("inconsistent service/provider references", code="SCHEMA")
 
 
 def _valid_snapshot(value) -> bool:
