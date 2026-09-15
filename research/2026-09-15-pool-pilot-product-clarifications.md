@@ -35,16 +35,20 @@ This is a product/competitive policy, not permission to hide uncertainty. If a
 fact cannot be verified with sufficient freshness, omit the fact or qualify it
 instead of presenting an unsupported claim.
 
-## 2. Child-swimming season and venue clarification
+## 2. Swimming season and venue clarification
 
-The project owner supplied local operational context for young-child swimming:
+The project owner supplied local operational context for pool usage by age/group:
 
-- the relevant very-young-child / `Peques` programme is associated with the
-  shallow outdoor pool;
+- the relevant very-young-child / `Peques` format is associated with the shallow
+  outdoor pool;
 - the indoor pool is deep and this young-child format is not a winter indoor
   programme;
-- therefore the product must not interpret copied source wording such as
-  `Piscina climatizada` as proof of winter availability for that programme.
+- adult swimming programmes can use both the indoor and outdoor municipal pools,
+  depending on programme and season;
+- therefore the product must not apply a blanket rule such as `summer = outdoor`
+  or `winter = indoor` to all swimming programmes;
+- copied source wording such as `Piscina climatizada` is not enough to override
+  the known young-child venue/season constraint.
 
 This local clarification helps explain the contradiction found in the public
 booking catalogue, where a `Peques (Tardes)` title referenced the heated/indoor
@@ -60,10 +64,11 @@ flow.
 
 Safe product implication now:
 
-- treat young-child swimming as seasonal/outdoor unless a fresh verified source
-  proves a different current arrangement;
-- do not show a winter indoor `Peques` programme based only on the contradictory
+- treat the relevant very-young-child swimming format as seasonal/outdoor unless
+  a fresh verified source proves a different current arrangement;
+- do not show a winter indoor `Peques` programme based only on contradictory
   provider copy;
+- treat adult venue as programme/season-specific rather than fixed to one pool;
 - do not expose the provider/source identity in the final card unless a direct
   action link is required.
 
