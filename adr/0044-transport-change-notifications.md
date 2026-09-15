@@ -21,12 +21,12 @@ Guardamar del Segura to Aeropuerto.
 
 ## Decision
 
-- Keep the existing 05:00 transport synchronization unchanged as the source of
-  accepted data, then collect notification candidates immediately afterwards.
+- Keep the existing 05:00 transport synchronization as the source of accepted
+  data, then collect notification candidates immediately afterwards.
 - Publish at most one aggregated public transport notification at 12:30
   Europe/Madrid.
-- Use the fixed heading `🚌 Transport · changes` in Russian as
-  `🚌 Транспорт · изменения` and the existing shared Guardamar footer.
+- Use the fixed heading `🚌 Транспорт · изменения` and the existing shared
+  Guardamar footer.
 - Urban lines notify only when the accepted rendered timetable image changes.
   A PDF hash change with the same rendered image is silent. The text says only
   that the municipality published a new timetable; it never claims a specific
@@ -43,10 +43,13 @@ Guardamar del Segura to Aeropuerto.
 - Multiple urban, airport, and fare changes are aggregated into one message.
 - The first run only establishes baselines and never publishes the already
   existing state as a new change.
-- Publication uses a small atomic pending state. Before Telegram delivery the
-  state is marked uncertain; automatic resend is disabled if the outcome is
-  ambiguous, preventing duplicate public posts after a crash or network
-  failure.
+- A pending notification that was never sent at 12:30 expires the next morning
+  instead of being delivered late. Normal collection then continues from the
+  newest accepted state.
+- Before Telegram delivery the state is marked uncertain. Automatic resend is
+  disabled when the send result is ambiguous, preventing duplicate public
+  posts after a crash or network failure. An explicit rate-limit rejection may
+  be retried because Telegram did not accept the message.
 - Road closures, temporary diversions, mobility measures, and emergency
   transport disruptions remain outside this subsystem.
 
@@ -58,5 +61,6 @@ remain precise because comparisons are date-for-date, at the cost of one extra
 planner request each morning to establish the following day's baseline.
 
 A missed tomorrow-baseline request means exact airport departure-change
-notification is skipped for the following day rather than guessed. The pinned
-transport guide still updates normally.
+notification is skipped for the following day rather than guessed. A missed
+12:30 publication is not replayed late on a later day. The pinned transport
+guide still updates normally.
