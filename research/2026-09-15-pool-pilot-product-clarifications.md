@@ -35,42 +35,64 @@ This is a product/competitive policy, not permission to hide uncertainty. If a
 fact cannot be verified with sufficient freshness, omit the fact or qualify it
 instead of presenting an unsupported claim.
 
-## 2. Swimming season and venue clarification
+## 2. Swimming season and mutually exclusive pool operation
 
-The project owner supplied local operational context for pool usage by age/group:
+The project owner supplied a corrected local-operational rule that applies to
+the municipal pool system as a whole:
 
-- the relevant very-young-child / `Peques` format is associated with the shallow
-  outdoor pool;
-- the indoor pool is deep and this young-child format is not a winter indoor
-  programme;
-- adult swimming programmes can use both the indoor and outdoor municipal pools,
-  depending on programme and season;
-- therefore the product must not apply a blanket rule such as `summer = outdoor`
-  or `winter = indoor` to all swimming programmes;
-- copied source wording such as `Piscina climatizada` is not enough to override
-  the known young-child venue/season constraint.
+- **summer: only the outdoor municipal pool is in operation;**
+- **winter: only the indoor/heated pool is in operation;**
+- the two pool facilities are not operated in parallel;
+- when the outdoor summer pool is operating, the indoor pool is drained/not in
+  service;
+- when the indoor winter pool is operating, the outdoor pool is drained/not in
+  service.
 
-This local clarification helps explain the contradiction found in the public
-booking catalogue, where a `Peques (Tardes)` title referenced the heated/indoor
-pool while its description referenced the outdoor pool.
+Therefore the active venue for a swimming programme is first constrained by the
+seasonal facility state. A course cannot legitimately be scheduled in the
+inactive/drained pool merely because copied provider text names it.
 
-However the public catalogue also exposes separate `Natación Bebés` and
-`Natación Peques` labels with different age text. Because that terminology does
-not cleanly align with the local clarification, implementation must **not**
-silently merge, rename, or remap those source labels. Before a detailed public
-child-swimming card is published, the current programme name, age group, season,
-and venue should be verified from a fresh operational source or direct booking
-flow.
+The exact calendar dates for the seasonal switch are a separate operational
+fact. They must be obtained from a fresh current source before the bot publishes
+or automates statements such as `summer pool opens on X` or `indoor pool closes
+on Y`. Do not derive the exact switch date from an old page or from a lifeguard
+contract alone.
 
-Safe product implication now:
+### Young-child programmes
 
-- treat the relevant very-young-child swimming format as seasonal/outdoor unless
-  a fresh verified source proves a different current arrangement;
-- do not show a winter indoor `Peques` programme based only on contradictory
-  provider copy;
-- treat adult venue as programme/season-specific rather than fixed to one pool;
-- do not expose the provider/source identity in the final card unless a direct
-  action link is required.
+There is an additional programme-level restriction for the very-young-child
+`Bebés` / `Peques` family:
+
+- these courses use the shallow outdoor pool;
+- they are therefore **summer-only**;
+- there is no corresponding winter version in the deep indoor pool.
+
+This explains the contradiction found in the public booking catalogue where a
+`Peques (Tardes)` title referenced `Piscina climatizada` while its description
+referenced the outdoor pool. The product must not turn that copied title into a
+winter indoor programme.
+
+The provider catalogue uses separate `Natación Bebés` and `Natación Peques`
+labels with different age wording. The project must still not silently merge,
+rename, or remap those labels until the current programme names and age ranges
+are verified.
+
+### Adult and older-child programmes
+
+Adult and older-child programmes may exist in both seasonal parts of the year,
+but their venue follows the active pool:
+
+- in summer, a current course may use the outdoor pool;
+- in winter, a current course may use the indoor pool;
+- this does **not** mean both pools are active at the same time.
+
+The implementation therefore needs two distinct concepts:
+
+1. **facility season/state** — which municipal pool is currently active;
+2. **programme availability** — which courses exist during that season.
+
+Do not encode venue independently from facility season, and do not infer that a
+course continues across the seasonal switch unless a current source proves it.
 
 ## 3. Consequence for card drafting
 
@@ -78,13 +100,20 @@ The first public drafts should be resident-first and source-light.
 
 Example information layers:
 
-- place card: pool name, usable current facts, phone/contact if useful, booking
-  action if available, link to `Плавание` inside the Telegram guide;
+- place card: the currently relevant pool/facility, usable current facts,
+  phone/contact if useful, booking action if available, and a link to `Плавание`
+  inside the Telegram guide;
 - swimming card: currently verified programme families, age/season/schedule/price
-  only where fresh and internally consistent, link back to the pool;
+  only where fresh and internally consistent, and a link back to the currently
+  active pool;
 - external links: only direct booking/registration/payment actions that cannot be
   represented inside Telegram;
 - no public `operator`, `source`, `procurement`, or monitoring-method fields.
+
+Because only one municipal pool is active at a time, the public navigation
+should not suggest simultaneous summer and winter availability. When the season
+switches, the relevant pool card/state and any affected swimming-programme facts
+should switch together once the change is verified.
 
 The research/ADR layer keeps the full evidence trail so maintainers can audit
 why a fact is trusted without exposing that trail in the resident-facing
