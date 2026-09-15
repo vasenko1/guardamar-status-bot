@@ -20,6 +20,7 @@ from telegrambot.guide import (
     sync_guide,
 )
 from telegrambot.state import StateError
+from telegrambot.telegram import TelegramError
 
 
 MADRID = ZoneInfo("Europe/Madrid")
@@ -76,7 +77,7 @@ class PoolSeasonTests(unittest.TestCase):
 
 
 class AqualiderSourceTests(unittest.IsolatedAsyncioTestCase):
-    def test_url_policy_is_exact_and_https_only(self):
+    def test_url_policy_is_exact_https_and_total(self):
         self.assertTrue(
             _allowed_aqualider_url(
                 "https://aqualidernatacion.simplybook.it/v2/service/"
@@ -87,6 +88,7 @@ class AqualiderSourceTests(unittest.IsolatedAsyncioTestCase):
             "https://simplybook.it/v2/service/",
             "https://aqualidernatacion.simplybook.it.evil.example/v2/service/",
             "https://aqualidernatacion.simplybook.it/other/service/",
+            "https://aqualidernatacion.simplybook.it:bad/v2/service/",
         ):
             with self.subTest(invalid=invalid):
                 self.assertFalse(_allowed_aqualider_url(invalid))
@@ -108,6 +110,12 @@ class AqualiderSourceTests(unittest.IsolatedAsyncioTestCase):
             },),
         )
 
+    def test_non_integer_identifier_is_rejected(self):
+        invalid = sample_services()
+        invalid[0]["id"] = 2.5
+        with self.assertRaises(GuideSourceError):
+            _normalize_services(invalid)
+
     def test_unknown_cross_reference_is_rejected(self):
         services = _normalize_services(sample_services())
         providers = _normalize_providers([
@@ -124,6 +132,13 @@ class AqualiderSourceTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(GuideSourceError) as captured:
                 await _fetch_json("service/", limit_bytes=1024)
         self.assertEqual(captured.exception.diagnostic_code, "CONTENT-TYPE")
+
+    async def test_catalog_fetch_rejects_naive_observation_time_before_network(self):
+        fetch = AsyncMock()
+        with patch("telegrambot.guide._fetch_json", new=fetch):
+            with self.assertRaises(ValueError):
+                await fetch_aqualider_catalog(datetime(2026, 9, 16, 16, 30))
+        fetch.assert_not_awaited()
 
     async def test_catalog_fetch_normalizes_two_stateless_endpoints(self):
         moment = datetime(2026, 9, 16, 16, 30, tzinfo=MADRID)
@@ -148,6 +163,16 @@ class GuideStateTests(unittest.TestCase):
             path.write_text("{}", encoding="utf-8")
             with self.assertRaises(StateError):
                 state.read()
+
+    def test_uncertain_notice_state_requires_a_string_key(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "guide.json"
+            path.write_text(
+                json.dumps({"version": 1, "season_notice_uncertain": 123}),
+                encoding="utf-8",
+            )
+            with self.assertRaises(StateError):
+                GuideState(path).read()
 
 
 class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
@@ -259,6 +284,7 @@ class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
                 await sync_guide(moment)
                 await sync_guide(moment)
             send.assert_awaited_once()
+            self.assertTrue(send.await_args.kwargs["retry_only_rate_limits"])
             text = send.await_args.args[2]
             self.assertIn("Крытый бассейн Manel Estiarte", text)
             self.assertIn("https://t.me/c/123/101", text)
@@ -266,6 +292,34 @@ class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
             saved = GuideState(Path(directory) / "guide.json").read()
             self.assertEqual(saved["season_notice"]["key"], "2026:indoor")
             self.assertEqual(saved["season_notice"]["message_id"], 501)
+
+    async def test_ambiguous_season_notice_is_recorded_and_not_retried_same_day(self):
+        with tempfile.TemporaryDirectory() as directory:
+            moment = datetime(2026, 9, 15, 16, 30, tzinfo=MADRID)
+            current = snapshot(moment)
+            timeout = TelegramError(
+                "timeout", retryable=True, code="TIMEOUT"
+            )
+            send = AsyncMock(side_effect=timeout)
+            publish = AsyncMock(return_value=self._pinned_messages())
+            with (
+                patch.dict("os.environ", self._environment(directory), clear=False),
+                patch(
+                    "telegrambot.guide.fetch_aqualider_catalog",
+                    new=AsyncMock(return_value=current),
+                ),
+                patch("telegrambot.guide.publish_pinned_guide", new=publish),
+                patch("telegrambot.guide.send_message", new=send),
+            ):
+                with self.assertRaises(TelegramError):
+                    await sync_guide(moment)
+                state = GuideState(Path(directory) / "guide.json").read()
+                self.assertEqual(
+                    state["season_notice_uncertain"], "2026:indoor"
+                )
+                result = await sync_guide(moment)
+            self.assertEqual(result, "unchanged")
+            self.assertEqual(send.await_count, 1)
 
 
 if __name__ == "__main__":
