@@ -8,7 +8,6 @@ from telegrambot.pinned import (
     PINNED_MESSAGE_KEYS,
     PINNED_PARENT_KEYS,
     PinnedGuideState,
-    YOUTH_CENTRE_AGENDA_URL,
     YOUTH_CENTRE_MAP_URL,
     _render_messages,
     build_places,
@@ -50,7 +49,7 @@ class YouthCentreContentTests(unittest.TestCase):
         ):
             self.assertIn(hours, message)
         self.assertIn(YOUTH_CENTRE_MAP_URL, message)
-        self.assertIn(YOUTH_CENTRE_AGENDA_URL, message)
+        self.assertNotIn("Agenda municipal", message)
         self.assertIn("609 006 754", message)
         self.assertIn("juventudguardamar@gmail.com", message)
         self.assertNotIn("96 535 71 91", message)

@@ -27,10 +27,6 @@ MAX_RECONCILIATION_PASSES = 3
 AQUALIDER_BOOKING_URL = "https://aqualidernatacion.simplybook.it/v2/"
 AIRPORT_STOP_MAP_URL = "https://maps.app.goo.gl/V3REb7P6CmdJtgom7"
 YOUTH_CENTRE_MAP_URL = "https://maps.app.goo.gl/HhfDRr6tpbbKekjM7"
-YOUTH_CENTRE_AGENDA_URL = (
-    "https://www.guardamardelsegura.es/wp-content/uploads/2026/09/"
-    "MUPI-SEPTIEMBRE-2026-scaled.jpg"
-)
 
 Send = Callable[[str], Awaitable[int]]
 Edit = Callable[[int, str], Awaitable[None]]
@@ -419,8 +415,7 @@ def build_youth_centre(places_link: Optional[str] = None) -> str:
             "Сб: 17:00–22:00\n\n"
             f"📍 <a href=\"{YOUTH_CENTRE_MAP_URL}\"><b>Calle Molivent, у автовокзала</b></a>\n"
             "📱 <b>WhatsApp:</b> 609 006 754\n"
-            "✉️ <b>Email:</b> juventudguardamar@gmail.com\n\n"
-            f"ℹ️ <a href=\"{YOUTH_CENTRE_AGENDA_URL}\"><b>Agenda municipal · сентябрь 2026</b></a>"
+            "✉️ <b>Email:</b> juventudguardamar@gmail.com"
         ),
         "К списку мест",
         places_link,
