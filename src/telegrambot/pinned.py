@@ -26,6 +26,14 @@ DEFAULT_PINNED_STATE_PATH = "state/pinned_guide.json"
 MAX_RECONCILIATION_PASSES = 3
 AQUALIDER_BOOKING_URL = "https://aqualidernatacion.simplybook.it/v2/"
 AIRPORT_STOP_MAP_URL = "https://maps.app.goo.gl/V3REb7P6CmdJtgom7"
+YOUTH_CENTRE_MAP_URL = (
+    "https://www.google.com/maps/search/?api=1&amp;"
+    "query=Calle+Molivent%2C+Guardamar+del+Segura"
+)
+YOUTH_CENTRE_AGENDA_URL = (
+    "https://www.guardamardelsegura.es/wp-content/uploads/2026/09/"
+    "MUPI-SEPTIEMBRE-2026-scaled.jpg"
+)
 
 Send = Callable[[str], Awaitable[int]]
 Edit = Callable[[int, str], Awaitable[None]]
@@ -188,6 +196,7 @@ GUIDE_MESSAGE_KEYS = (
     "polideportivo",
     "pool_indoor",
     "pool_outdoor",
+    "youth_centre",
     "activities",
     "swimming",
 )
@@ -206,6 +215,7 @@ PINNED_PARENT_KEYS = {
     "polideportivo": "places",
     "pool_indoor": "polideportivo",
     "pool_outdoor": "polideportivo",
+    "youth_centre": "places",
     "activities": "root",
     "swimming": "activities",
 }
@@ -315,6 +325,7 @@ def build_transport_index(
 def build_places(
     polideportivo_link: Optional[str] = None,
     root_link: Optional[str] = None,
+    youth_centre_link: Optional[str] = None,
 ) -> str:
     """Build the durable places branch."""
 
@@ -322,7 +333,9 @@ def build_places(
         with_footer(
             "📍 <b>Места</b>\n\n"
             f"🏟 {_direct_link('Polideportivo Municipal', polideportivo_link)}\n"
-            "Муниципальный спортивный комплекс Гуардамара."
+            "Муниципальный спортивный комплекс Гуардамара.\n\n"
+            f"👥 {_direct_link('Centro Social Juvenil', youth_centre_link)}\n"
+            "Пространство для подростков и молодёжи."
         ),
         "Полезное о Гуардамаре",
         root_link,
@@ -393,6 +406,30 @@ def build_pool_outdoor(
     )
 
 
+def build_youth_centre(places_link: Optional[str] = None) -> str:
+    """Build the current verified Centro Social Juvenil place card."""
+
+    return _with_back_link(
+        with_footer(
+            "👥 <b>Centro Social Juvenil</b>\n\n"
+            "Пространство для подростков и молодёжи от <b>12 до 30 лет</b>.\n\n"
+            "🎲 Настольные игры, настольный футбол, пинг-понг, аэрохоккей, "
+            "игровой автомат и другие занятия.\n\n"
+            "🕒 <b>Режим работы в сентябре 2026</b>\n"
+            "Пн–Пт: 08:30–14:00\n"
+            "Ср–Чт: 17:00–21:00\n"
+            "Пт: 17:00–22:00\n"
+            "Сб: 17:00–22:00\n\n"
+            f"📍 <a href=\"{YOUTH_CENTRE_MAP_URL}\"><b>Calle Molivent, у автовокзала</b></a>\n"
+            "📱 <b>WhatsApp:</b> 609 006 754\n"
+            "✉️ <b>Email:</b> juventudguardamar@gmail.com\n\n"
+            f"ℹ️ <a href=\"{YOUTH_CENTRE_AGENDA_URL}\"><b>Agenda municipal · сентябрь 2026</b></a>"
+        ),
+        "К списку мест",
+        places_link,
+    )
+
+
 def build_activities(
     swimming_link: Optional[str] = None,
     root_link: Optional[str] = None,
@@ -460,6 +497,7 @@ def preview_messages() -> Sequence[str]:
         build_polideportivo(),
         build_pool_indoor(),
         build_pool_outdoor(),
+        build_youth_centre(),
         build_activities(),
         build_swimming(),
         build_root(),
@@ -692,6 +730,7 @@ def _render_messages(
     root_link = _known_link(chat_id, messages, "root")
     places_link = _known_link(chat_id, messages, "places")
     polideportivo_link = _known_link(chat_id, messages, "polideportivo")
+    youth_centre_link = _known_link(chat_id, messages, "youth_centre")
     activities_link = _known_link(chat_id, messages, "activities")
     leaf_links = None
     if all(key in messages for key in LEAF_MESSAGES):
@@ -709,12 +748,15 @@ def _render_messages(
         },
         "cameras": build_cameras(root_link),
         "transport": build_transport_index(leaf_links, root_link),
-        "places": build_places(polideportivo_link, root_link),
+        "places": build_places(
+            polideportivo_link, root_link, youth_centre_link
+        ),
         "polideportivo": build_polideportivo(
             indoor_link, outdoor_link, places_link
         ),
         "pool_indoor": build_pool_indoor(swimming_link, polideportivo_link),
         "pool_outdoor": build_pool_outdoor(swimming_link, polideportivo_link),
+        "youth_centre": build_youth_centre(places_link),
         "activities": build_activities(swimming_link, root_link),
         "swimming": build_swimming(
             indoor_link, outdoor_link, activities_link
