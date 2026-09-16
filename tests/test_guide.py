@@ -266,12 +266,14 @@ class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
                 ),
             ):
                 first = asyncio.create_task(sync_guide(moment))
-                await entered.wait()
-                with self.assertRaises(StateError):
-                    await sync_guide(moment)
-                self.assertEqual(fetch.await_count, 1)
-                release.set()
-                result = await first
+                await asyncio.wait_for(entered.wait(), timeout=2.0)
+                try:
+                    with self.assertRaises(StateError):
+                        await asyncio.wait_for(sync_guide(moment), timeout=2.0)
+                    self.assertEqual(fetch.await_count, 1)
+                finally:
+                    release.set()
+                result = await asyncio.wait_for(first, timeout=2.0)
             self.assertEqual(result, "baseline")
 
     async def test_source_failure_preserves_last_good_and_still_reconciles_cards(self):
