@@ -41,3 +41,18 @@ labels inclusive multisport as open while its own detail text says new
 registration begins on 1 October 2026. Only explicit
 `NUEVAS INSCRIPCIONES` date intervals are eligible for resident-facing
 registration text.
+
+## Occupancy follow-up
+
+The current user-facing centre screen at
+`play.sporttia.com/sportcenters/1509/home` displays `Alumnos X/Y` for
+activities. An equal numerator and denominator (for example `30/30`)
+means the displayed enrolled count has reached the displayed capacity at
+that observation. It should not be treated as durable availability because
+cancellations or other centre-side changes can alter the count.
+
+The already-validated single HTML response from
+`sporttia.com/centros/ayuntamiento-guardamar-del-segura` does not expose
+these occupancy counts. We therefore keep occupancy out of automation
+rather than add another request surface or reverse-engineer a client API.
+
