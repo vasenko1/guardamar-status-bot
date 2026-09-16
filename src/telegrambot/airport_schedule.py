@@ -22,7 +22,12 @@ from pathlib import Path
 from typing import Awaitable, Callable, Optional
 
 from .branding import FOOTER, with_footer
-from .pinned import PinnedGuideState, build_leaf_message, telegram_message_link
+from .pinned import (
+    AIRPORT_STOP_MAP_URL,
+    PinnedGuideState,
+    build_leaf_message,
+    telegram_message_link,
+)
 from .state import StateError
 from .telegram import TelegramError
 
@@ -927,10 +932,7 @@ def build_airport_message(
         "https://www.google.com/maps/search/?api=1&amp;query="
         + urllib.parse.quote(schedule.guardamar_coordinates, safe="")
     )
-    airport_map = (
-        "https://www.google.com/maps/search/?api=1&amp;query="
-        + urllib.parse.quote(schedule.airport_coordinates, safe="")
-    )
+    airport_map = html.escape(AIRPORT_STOP_MAP_URL, quote=True)
     fare_line = ""
     if (
         schedule.fare is not None
