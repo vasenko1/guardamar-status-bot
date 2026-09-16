@@ -25,6 +25,7 @@ PINNED_CONTENT_VERSION = 2
 DEFAULT_PINNED_STATE_PATH = "state/pinned_guide.json"
 MAX_RECONCILIATION_PASSES = 3
 AQUALIDER_BOOKING_URL = "https://aqualidernatacion.simplybook.it/v2/"
+AIRPORT_STOP_MAP_URL = "https://maps.app.goo.gl/V3REb7P6CmdJtgom7"
 
 Send = Callable[[str], Awaitable[int]]
 Edit = Callable[[int, str], Awaitable[None]]
@@ -77,13 +78,13 @@ LEAF_MESSAGES: Dict[str, str] = {
 🛍 По средам автобус также останавливается рядом с рынком: La Redona, 56."""
     ),
     "airport": with_footer(
-        """✈️ <b>Гуардамар ↔ аэропорт Alicante-Elche</b>
+        f"""✈️ <b>Гуардамар ↔ аэропорт Alicante-Elche</b>
 До аэропорта можно доехать без пересадок на автобусе Bus Sigüenza.
 
 🗓 Автобус ходит каждый день. Рейсы на текущую дату обновляются здесь каждое утро.
 
 📍 <b>Откуда и куда</b>
-<a href="https://www.google.com/maps/search/?api=1&amp;query=38.087834%2C-0.655759">автовокзал Гуардамара</a> ↔ <a href="https://www.google.com/maps/search/?api=1&amp;query=38.282222222222%2C-0.55805555555556">остановка у терминала аэропорта</a>
+<a href="https://www.google.com/maps/search/?api=1&amp;query=38.087834%2C-0.655759">автовокзал Гуардамара</a> ↔ <a href="{AIRPORT_STOP_MAP_URL}">остановка у терминала аэропорта</a>
 
 🕒 <a href="https://www.bus-siguenza.com/index.php?page=urbano">Найти расписание на нужную дату</a>"""
     ),
@@ -197,6 +198,17 @@ PINNED_MESSAGE_KEYS = (
     *GUIDE_MESSAGE_KEYS,
     "root",
 )
+PINNED_PARENT_KEYS = {
+    **{key: "transport" for key in LEAF_MESSAGES},
+    "cameras": "root",
+    "transport": "root",
+    "places": "root",
+    "polideportivo": "places",
+    "pool_indoor": "polideportivo",
+    "pool_outdoor": "polideportivo",
+    "activities": "root",
+    "swimming": "activities",
+}
 
 
 def telegram_message_link(chat_id: str, message_id: int) -> str:
@@ -300,85 +312,123 @@ def build_transport_index(
     return f"{message}\n\n⬅️ {target}"
 
 
-def build_places(polideportivo_link: Optional[str] = None) -> str:
+def build_places(
+    polideportivo_link: Optional[str] = None,
+    root_link: Optional[str] = None,
+) -> str:
     """Build the durable places branch."""
 
-    return with_footer(
-        "📍 <b>Места</b>\n\n"
-        f"🏟 {_direct_link('Polideportivo Municipal', polideportivo_link)}\n"
-        "Муниципальный спортивный комплекс Гуардамара."
+    return _with_back_link(
+        with_footer(
+            "📍 <b>Места</b>\n\n"
+            f"🏟 {_direct_link('Polideportivo Municipal', polideportivo_link)}\n"
+            "Муниципальный спортивный комплекс Гуардамара."
+        ),
+        "Полезное о Гуардамаре",
+        root_link,
     )
 
 
 def build_polideportivo(
     indoor_link: Optional[str] = None,
     outdoor_link: Optional[str] = None,
+    places_link: Optional[str] = None,
 ) -> str:
     """Build the municipal sports-complex card."""
 
-    return with_footer(
-        "🏟 <b>Polideportivo Municipal</b>\n\n"
-        "Муниципальный спортивный комплекс Гуардамара.\n\n"
-        f"🏊 {_direct_link('Крытый бассейн Manel Estiarte', indoor_link)}\n"
-        f"☀️ {_direct_link('Открытый муниципальный бассейн', outdoor_link)}\n\n"
-        "<b>Также в комплексе:</b>\n"
-        "🎾 теннис и падель\n"
-        "🏀 баскетбол\n"
-        "⚽ fútbol sala\n"
-        "🏟 Palau Sant Jaume\n"
-        "💪 тренажёрный зал и калистеника\n"
-        "🥎 frontón"
+    return _with_back_link(
+        with_footer(
+            "🏟 <b>Polideportivo Municipal</b>\n\n"
+            "Муниципальный спортивный комплекс Гуардамара.\n\n"
+            f"🏊 {_direct_link('Крытый бассейн Manel Estiarte', indoor_link)}\n"
+            f"☀️ {_direct_link('Открытый муниципальный бассейн', outdoor_link)}\n\n"
+            "<b>Также в комплексе:</b>\n"
+            "🎾 теннис и падель\n"
+            "🏀 баскетбол\n"
+            "⚽ fútbol sala\n"
+            "🏟 Palau Sant Jaume\n"
+            "💪 тренажёрный зал и калистеника\n"
+            "🥎 frontón"
+        ),
+        "К списку мест",
+        places_link,
     )
 
 
-def build_pool_indoor(swimming_link: Optional[str] = None) -> str:
+def build_pool_indoor(
+    swimming_link: Optional[str] = None,
+    polideportivo_link: Optional[str] = None,
+) -> str:
     """Build the indoor municipal pool card."""
 
-    return with_footer(
-        "🏊 <b>Крытый бассейн Manel Estiarte</b>\n\n"
-        "Работает с <b>16 сентября по 15 июня</b>.\n\n"
-        "📍 <b>Piscina Climatizada Manel Estiarte</b>\n"
-        "📞 <b>Телефон:</b> 966 72 65 93\n\n"
-        f"🎓 Занятия и запись: {_direct_link('🏊 Плавание', swimming_link)}."
+    return _with_back_link(
+        with_footer(
+            "🏊 <b>Крытый бассейн Manel Estiarte</b>\n\n"
+            "Работает с <b>16 сентября по 15 июня</b>.\n\n"
+            "📍 <b>Piscina Climatizada Manel Estiarte</b>\n"
+            "📞 <b>Телефон:</b> 966 72 65 93\n\n"
+            f"🎓 Занятия и запись: {_direct_link('🏊 Плавание', swimming_link)}."
+        ),
+        "Polideportivo Municipal",
+        polideportivo_link,
     )
 
 
-def build_pool_outdoor(swimming_link: Optional[str] = None) -> str:
+def build_pool_outdoor(
+    swimming_link: Optional[str] = None,
+    polideportivo_link: Optional[str] = None,
+) -> str:
     """Build the outdoor municipal pool card."""
 
-    return with_footer(
-        "☀️ <b>Открытый муниципальный бассейн</b>\n\n"
-        "Работает с <b>16 июня по 15 сентября</b>.\n\n"
-        "📍 <b>Piscinas Descubiertas Municipales</b>\n"
-        "📞 <b>Телефон:</b> 966 72 63 35\n\n"
-        f"🎓 Занятия и запись: {_direct_link('🏊 Плавание', swimming_link)}."
+    return _with_back_link(
+        with_footer(
+            "☀️ <b>Открытый муниципальный бассейн</b>\n\n"
+            "Работает с <b>16 июня по 15 сентября</b>.\n\n"
+            "📍 <b>Piscinas Descubiertas Municipales</b>\n"
+            "📞 <b>Телефон:</b> 966 72 63 35\n\n"
+            f"🎓 Занятия и запись: {_direct_link('🏊 Плавание', swimming_link)}."
+        ),
+        "Polideportivo Municipal",
+        polideportivo_link,
     )
 
 
-def build_activities(swimming_link: Optional[str] = None) -> str:
+def build_activities(
+    swimming_link: Optional[str] = None,
+    root_link: Optional[str] = None,
+) -> str:
     """Build the recurring activities branch."""
 
-    return with_footer(
-        "🎓 <b>Занятия и секции</b>\n\n"
-        f"🏊 {_direct_link('Плавание', swimming_link)}\n"
-        "Группы, сезоны и запись."
+    return _with_back_link(
+        with_footer(
+            "🎓 <b>Занятия и секции</b>\n\n"
+            f"🏊 {_direct_link('Плавание', swimming_link)}\n"
+            "Группы, сезоны и запись."
+        ),
+        "Полезное о Гуардамаре",
+        root_link,
     )
 
 
 def build_swimming(
     indoor_link: Optional[str] = None,
     outdoor_link: Optional[str] = None,
+    activities_link: Optional[str] = None,
 ) -> str:
     """Build the safe swimming card without inferring current availability."""
 
-    return with_footer(
-        "🏊 <b>Плавание</b>\n\n"
-        "Актуальные группы и запись зависят от сезона.\n\n"
-        f"🏊 {_direct_link('Крытый бассейн Manel Estiarte', indoor_link)}\n"
-        "16 сентября - 15 июня.\n\n"
-        f"☀️ {_direct_link('Открытый муниципальный бассейн', outdoor_link)}\n"
-        "16 июня - 15 сентября.\n\n"
-        f"📝 <a href=\"{AQUALIDER_BOOKING_URL}\"><b>Проверить группы и запись</b></a>"
+    return _with_back_link(
+        with_footer(
+            "🏊 <b>Плавание</b>\n\n"
+            "Актуальные группы и запись зависят от сезона.\n\n"
+            f"🏊 {_direct_link('Крытый бассейн Manel Estiarte', indoor_link)}\n"
+            "16 сентября - 15 июня.\n\n"
+            f"☀️ {_direct_link('Открытый муниципальный бассейн', outdoor_link)}\n"
+            "16 июня - 15 сентября.\n\n"
+            f"📝 <a href=\"{AQUALIDER_BOOKING_URL}\"><b>Проверить группы и запись</b></a>"
+        ),
+        "К занятиям и секциям",
+        activities_link,
     )
 
 
@@ -640,6 +690,9 @@ def _render_messages(
 
     transport_link = _known_link(chat_id, messages, "transport")
     root_link = _known_link(chat_id, messages, "root")
+    places_link = _known_link(chat_id, messages, "places")
+    polideportivo_link = _known_link(chat_id, messages, "polideportivo")
+    activities_link = _known_link(chat_id, messages, "activities")
     leaf_links = None
     if all(key in messages for key in LEAF_MESSAGES):
         leaf_links = {
@@ -656,19 +709,21 @@ def _render_messages(
         },
         "cameras": build_cameras(root_link),
         "transport": build_transport_index(leaf_links, root_link),
-        "places": build_places(
-            _known_link(chat_id, messages, "polideportivo")
+        "places": build_places(polideportivo_link, root_link),
+        "polideportivo": build_polideportivo(
+            indoor_link, outdoor_link, places_link
         ),
-        "polideportivo": build_polideportivo(indoor_link, outdoor_link),
-        "pool_indoor": build_pool_indoor(swimming_link),
-        "pool_outdoor": build_pool_outdoor(swimming_link),
-        "activities": build_activities(swimming_link),
-        "swimming": build_swimming(indoor_link, outdoor_link),
+        "pool_indoor": build_pool_indoor(swimming_link, polideportivo_link),
+        "pool_outdoor": build_pool_outdoor(swimming_link, polideportivo_link),
+        "activities": build_activities(swimming_link, root_link),
+        "swimming": build_swimming(
+            indoor_link, outdoor_link, activities_link
+        ),
         "root": build_root(
             _known_link(chat_id, messages, "cameras"),
             transport_link,
-            _known_link(chat_id, messages, "places"),
-            _known_link(chat_id, messages, "activities"),
+            places_link,
+            activities_link,
         ),
     }
 
