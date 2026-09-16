@@ -114,15 +114,27 @@ class PinnedContentTests(unittest.TestCase):
         self.assertNotIn("будут добавляться", complex_card)
         self.assertNotIn("Aqualider", swimming)
 
+    def test_polideportivo_card_links_verified_maps(self):
+        complex_card = build_polideportivo()
+        self.assertIn("https://maps.app.goo.gl/KSZV3aVX75UxATQ68", complex_card)
+        self.assertIn("https://maps.app.goo.gl/Jp7EA9RqrZQPcVq17", complex_card)
+        self.assertIn("https://maps.app.goo.gl/tzMkY17nvVPA4CWx6", complex_card)
+
     def test_pool_cards_keep_distinct_seasons_and_verified_contacts(self):
         indoor = build_pool_indoor()
         outdoor = build_pool_outdoor()
         self.assertIn("16 сентября по 15 июня", indoor)
         self.assertIn("Piscina Climatizada Manel Estiarte", indoor)
-        self.assertIn("966 72 65 93", indoor)
+        self.assertIn("https://maps.app.goo.gl/p9GqBDQEbnyQQNaAA", indoor)
+        self.assertIn("Av. de Cervantes, s/n", indoor)
+        self.assertIn("<code>966726593</code>", indoor)
+        self.assertNotIn("966 72 65 93", indoor)
         self.assertIn("16 июня по 15 сентября", outdoor)
         self.assertIn("Piscinas Descubiertas Municipales", outdoor)
-        self.assertIn("966 72 63 35", outdoor)
+        self.assertIn("https://maps.app.goo.gl/dnCq36EzS8DTcq4T6", outdoor)
+        self.assertIn("Av. Europa, 3", outdoor)
+        self.assertIn("<code>966726335</code>", outdoor)
+        self.assertNotIn("966 72 63 35", outdoor)
         self.assertNotIn("965 35 76 93", outdoor)
 
     def test_transport_navigator_has_navigation_but_no_footer(self):
