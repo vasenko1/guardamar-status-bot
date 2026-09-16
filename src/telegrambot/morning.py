@@ -46,12 +46,35 @@ LOGGER = logging.getLogger(__name__)
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 SAFEBEACH_SEASON_START = (6, 20)
 SAFEBEACH_SEASON_END = (9, 15)
+_ROUTINE_EVENT_TITLES = frozenset({
+    "actividades del centro social juvenil",
+    "actividades del centro social juvenil csj",
+    "actividades centro social juvenil",
+    "мероприятия центра социальной молодежи",
+    "мероприятия центра социальной молодежи csj",
+})
 
 
 def _safebeach_is_in_season(now: datetime) -> bool:
     local = now.astimezone(GUARDAMAR_TIMEZONE)
     month_day = (local.month, local.day)
     return SAFEBEACH_SEASON_START <= month_day <= SAFEBEACH_SEASON_END
+
+
+def _normalized_event_title(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value.strip().casefold())
+    normalized = "".join(
+        character
+        for character in normalized
+        if not unicodedata.combining(character)
+    )
+    return " ".join(re.findall(r"[^\W_]+", normalized))
+
+
+def _is_routine_event(event) -> bool:
+    """Keep durable venue opening hours out of event publications."""
+
+    return _normalized_event_title(event.title) in _ROUTINE_EVENT_TITLES
 
 
 def _merge_events(*groups):
@@ -111,6 +134,8 @@ def _merge_events(*groups):
 
     for group in groups:
         for event in group:
+            if _is_routine_event(event):
+                continue
             normalized_title = normalize_title(event.title)
             duplicate_index = next((
                 index
