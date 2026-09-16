@@ -201,6 +201,20 @@ class GuideStateTests(unittest.TestCase):
 
 
 class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.sporttia_fetch = AsyncMock(
+            side_effect=lambda now: {
+                "observed_at": now.isoformat(),
+                "activities": [],
+            }
+        )
+        self.sporttia_patch = patch(
+            "telegrambot.guide.fetch_sporttia_catalog",
+            new=self.sporttia_fetch,
+        )
+        self.sporttia_patch.start()
+        self.addCleanup(self.sporttia_patch.stop)
+
     def _environment(self, directory):
         return {
             "TELEGRAM_BOT_TOKEN": "token",

@@ -2,10 +2,12 @@
 
 import asyncio
 import fcntl
+import html
 import json
 import os
 import tempfile
 from contextlib import contextmanager
+from datetime import date
 from pathlib import Path
 from typing import (
     Awaitable,
@@ -18,6 +20,11 @@ from typing import (
 )
 
 from .branding import FOOTER, with_footer
+from .sporttia import (
+    SPORTTIA_CENTER_URL,
+    SPORT_ACTIVITY_KEYS,
+    select_sport_groups,
+)
 from .state import StateError
 from .telegram import TelegramError
 
@@ -32,6 +39,14 @@ POOL_INDOOR_MAP_URL = "https://maps.app.goo.gl/p9GqBDQEbnyQQNaAA"
 POOL_OUTDOOR_MAP_URL = "https://maps.app.goo.gl/dnCq36EzS8DTcq4T6"
 PALAU_SANT_JAUME_MAP_URL = "https://maps.app.goo.gl/Jp7EA9RqrZQPcVq17"
 TENNIS_COURT_MAP_URL = "https://maps.app.goo.gl/tzMkY17nvVPA4CWx6"
+SPORT_ACTIVITY_META = {
+    "rhythmic_gymnastics": ("🤸", "Художественная гимнастика"),
+    "judo": ("🥋", "Дзюдо"),
+    "multisport": ("🏃", "Мультиспорт"),
+    "inclusive_multisport": ("♿", "Инклюзивный мультиспорт"),
+    "senior_gymnastics": ("🧓", "Гимнастика для старшего возраста"),
+    "women_gymnastics": ("👩", "Гимнастика Asociación Mujeres"),
+}
 
 Send = Callable[[str], Awaitable[int]]
 Edit = Callable[[int, str], Awaitable[None]]
@@ -486,17 +501,207 @@ def build_wifi(root_link: Optional[str] = None) -> str:
 def build_activities(
     swimming_link: Optional[str] = None,
     root_link: Optional[str] = None,
+    sport_links: Optional[Mapping[str, str]] = None,
 ) -> str:
     """Build the recurring activities branch."""
 
+    sport_links = sport_links or {}
+    lines = [
+        "🎓 <b>Занятия и секции</b>",
+        "",
+        f"🏊 {_direct_link('Плавание', swimming_link)}",
+    ]
+    for key in SPORT_ACTIVITY_KEYS:
+        emoji, label = SPORT_ACTIVITY_META[key]
+        lines.append(
+            f"{emoji} {_direct_link(label, sport_links.get(key))}"
+        )
     return _with_back_link(
-        with_footer(
-            "🎓 <b>Занятия и секции</b>\n\n"
-            f"🏊 {_direct_link('Плавание', swimming_link)}\n"
-            "Группы, сезоны и запись."
-        ),
+        with_footer("\n".join(lines)),
         "Полезное о Гуардамаре",
         root_link,
+    )
+
+
+_RU_MONTHS = (
+    "",
+    "января",
+    "февраля",
+    "марта",
+    "апреля",
+    "мая",
+    "июня",
+    "июля",
+    "августа",
+    "сентября",
+    "октября",
+    "ноября",
+    "декабря",
+)
+
+
+def _format_date_ru(value: str) -> str:
+    parsed = date.fromisoformat(value)
+    return f"{parsed.day} {_RU_MONTHS[parsed.month]} {parsed.year}"
+
+
+def _venue_markup(value: str) -> str:
+    if value.startswith("Palau Sant Jaume"):
+        remainder = value[len("Palau Sant Jaume"):].lstrip(" .")
+        result = (
+            f'<a href="{PALAU_SANT_JAUME_MAP_URL}">'
+            '<b>Palau Sant Jaume</b></a>'
+        )
+        if remainder:
+            result += f" · {html.escape(remainder)}"
+        return result
+    return html.escape(value)
+
+
+def _registration_signature(group: Mapping[str, object]):
+    return (
+        tuple(
+            (entry["start"], entry["end"])
+            for entry in group["registrations"]
+        ),
+        group["registration_until_full"],
+    )
+
+
+def _registration_line(
+    group: Mapping[str, object], local_day: date
+) -> Optional[str]:
+    intervals = [
+        (date.fromisoformat(item["start"]), date.fromisoformat(item["end"]))
+        for item in group["registrations"]
+    ]
+    current = next(
+        (interval for interval in intervals if interval[0] <= local_day <= interval[1]),
+        None,
+    )
+    if current is not None:
+        text = f"📝 <b>Запись:</b> до {_format_date_ru(current[1].isoformat())}"
+    else:
+        future = [interval for interval in intervals if interval[0] > local_day]
+        if not future:
+            return None
+        start, end = min(future, key=lambda interval: interval[0])
+        text = (
+            "📝 <b>Следующая запись:</b> "
+            f"{_format_date_ru(start.isoformat())} — "
+            f"{_format_date_ru(end.isoformat())}"
+        )
+    if group["registration_until_full"]:
+        text += " · до заполнения мест"
+    return text
+
+
+def _group_label(key: str, group: Mapping[str, object]) -> str:
+    if key == "inclusive_multisport":
+        if group["requires_companion"]:
+            return "С сопровождающим"
+        if group["independent"]:
+            return "Самостоятельно"
+    if key in {"senior_gymnastics", "women_gymnastics"}:
+        return "Группа"
+    suffix = {1: "1-я", 2: "2-я", 3: "3-я", 4: "4-я"}.get(
+        group["group_order"],
+        f'{group["group_order"]}-я',
+    )
+    return f"{suffix} группа"
+
+
+def build_sport_activity(
+    key: str,
+    catalog: Mapping[str, object],
+    local_day: date,
+    activities_link: Optional[str] = None,
+) -> str:
+    """Build one source-backed municipal activity card."""
+
+    if key not in SPORT_ACTIVITY_META:
+        raise ValueError(f"unknown sport activity key: {key}")
+    emoji, title = SPORT_ACTIVITY_META[key]
+    groups = select_sport_groups(catalog, key, local_day)
+    lines = [f"{emoji} <b>{title}</b>"]
+    if not groups:
+        lines.extend(
+            [
+                "",
+                "Сейчас актуальные муниципальные группы не опубликованы.",
+                "",
+                f'<a href="{SPORTTIA_CENTER_URL}"><b>Проверить Sporttia</b></a>',
+            ]
+        )
+        return _with_back_link(
+            with_footer("\n".join(lines)),
+            "К занятиям и секциям",
+            activities_link,
+        )
+
+    first = groups[0]
+    lines.extend(
+        [
+            "",
+            "🗓 <b>Сезон:</b> "
+            f"{_format_date_ru(first['season_start'])} — "
+            f"{_format_date_ru(first['season_end'])}",
+        ]
+    )
+
+    venues = {group["venue"] for group in groups}
+    common_venue = next(iter(venues)) if len(venues) == 1 else None
+    if common_venue is not None:
+        lines.append(f"📍 {_venue_markup(common_venue)}")
+
+    registrations = {_registration_signature(group) for group in groups}
+    common_registration = len(registrations) == 1
+    if common_registration:
+        registration = _registration_line(first, local_day)
+        if registration is not None:
+            lines.append(registration)
+
+    lines.append("")
+    for index, group in enumerate(groups):
+        if index:
+            lines.append("")
+        label = _group_label(key, group)
+        activity_url = html.escape(group["activity_url"], quote=True)
+        group_line = f'• <a href="{activity_url}"><b>{html.escape(label)}</b></a>'
+        audience = group.get("audience")
+        if audience:
+            group_line += f" · {html.escape(audience)}"
+        lines.append(group_line)
+        lines.append(f"  {html.escape(group['schedule'])}")
+        if common_venue is None:
+            lines.append(f"  📍 {_venue_markup(group['venue'])}")
+        if not common_registration:
+            registration = _registration_line(group, local_day)
+            if registration is not None:
+                lines.append(f"  {registration}")
+        if group["racket_sports"]:
+            lines.append("  🎾 Ракеточные виды спорта")
+
+    notes = []
+    if any(group["group_may_change"] for group in groups):
+        notes.append(
+            "ℹ️ Распределение по группам может корректироваться организаторами."
+        )
+    if any(group["medical_certificate"] for group in groups):
+        notes.append("📄 После записи требуется спортивная медсправка.")
+    if any(group["women_membership"] for group in groups):
+        notes.append(
+            "👩 Также требуется подтверждение членского взноса "
+            "Asociación Mujeres de Guardamar."
+        )
+    if notes:
+        lines.append("")
+        lines.extend(notes)
+
+    return _with_back_link(
+        with_footer("\n".join(lines)),
+        "К занятиям и секциям",
+        activities_link,
     )
 
 
@@ -789,6 +994,11 @@ def _render_messages(
     youth_centre_link = _known_link(chat_id, messages, "youth_centre")
     wifi_link = _known_link(chat_id, messages, "wifi")
     activities_link = _known_link(chat_id, messages, "activities")
+    sport_links = {}
+    for key in SPORT_ACTIVITY_KEYS:
+        link = _known_link(chat_id, messages, key)
+        if link is not None:
+            sport_links[key] = link
     leaf_links = None
     if all(key in messages for key in LEAF_MESSAGES):
         leaf_links = {
@@ -815,7 +1025,9 @@ def _render_messages(
         "pool_outdoor": build_pool_outdoor(swimming_link, polideportivo_link),
         "youth_centre": build_youth_centre(places_link),
         "wifi": build_wifi(root_link),
-        "activities": build_activities(swimming_link, root_link),
+        "activities": build_activities(
+            swimming_link, root_link, sport_links
+        ),
         "swimming": build_swimming(
             indoor_link, outdoor_link, activities_link
         ),
@@ -868,10 +1080,14 @@ async def publish_pinned_guide(
     edit: Edit,
     pin: Pin,
     skip_keys: Sequence[str] = (),
+    sporttia_catalog: Optional[Mapping[str, object]] = None,
+    local_day: Optional[date] = None,
 ) -> Dict[str, int]:
     """Create or update all linked messages, then pin the compact root."""
 
     telegram_message_link(chat_id, 1)
+    if sporttia_catalog is not None and local_day is None:
+        raise ValueError("local_day is required with Sporttia catalogue")
     payload = await asyncio.to_thread(state.read_payload, chat_id)
     if payload["uncertain_messages"]:
         raise StateError(
@@ -885,6 +1101,24 @@ async def publish_pinned_guide(
     await _reconcile_messages(
         chat_id, messages, state, send, edit, managed_elsewhere
     )
+    if sporttia_catalog is not None:
+        assert local_day is not None
+        activities_link = _known_link(chat_id, messages, "activities")
+        for key in SPORT_ACTIVITY_KEYS:
+            await _upsert(
+                key,
+                build_sport_activity(
+                    key, sporttia_catalog, local_day, activities_link
+                ),
+                messages,
+                state,
+                chat_id,
+                send,
+                edit,
+            )
+        await _reconcile_messages(
+            chat_id, messages, state, send, edit, managed_elsewhere
+        )
     try:
         await pin(messages["root"])
     except TelegramError as exc:
