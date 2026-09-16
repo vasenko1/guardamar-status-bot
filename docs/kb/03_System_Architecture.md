@@ -123,20 +123,36 @@ Telegram and minimal file state; it does not depend on Morning Digest internals.
 
 ### Linked pinned guide
 
-One one-shot workflow maintains the camera and transport messages. It
-reconciles detailed messages, the navigator and compact root into
-a bidirectional link graph, then pins the root. Exact missing-message responses
-replace deleted bot-authored messages and bounded passes rewrite every affected
-forward and return link before success. Unchanged-message responses are treated
-as idempotent success; other HTTP 400 errors fail closed without duplicates. A
-small independent atomic state stores chat and message IDs plus bounded media
-metadata for the two urban lines. One external 05:00 invocation checks their
-official PDF links conditionally and renders only a stable changed one-page
-document. The same invocation makes one bounded date-specific Bus Sigüenza
-request and conditionally checks its official fare PDF. It stores only one
-strict normalized airport snapshot and parses the PDF only after a stable
-change. A narrowly allowlisted Let's Encrypt recovery reads only the leaf AIA issuer label, downloads the corresponding certificate chain from the official `https://letsencrypt.org/certs/` repository, and preserves full TLS and hostname verification when the operator omits its issuing chain.
-It has no resident process or dependency on Morning Digest state.
+One recoverable Telegram graph contains cameras, transport, durable places, and
+recurring activities under a compact pinned root. The same existing
+reconciliation machinery owns every logical message ID. Exact
+`MESSAGE-NOT-FOUND` responses replace deleted bot-authored messages and bounded
+passes rewrite affected forward and return links before success. Unchanged edits
+are idempotent success; unrelated HTTP 400 errors fail closed without creating
+replacement duplicates.
+
+`state/pinned_guide.json` stores only the shared message graph plus bounded media
+metadata for the two urban transport lines. The existing 05:00 transport sync
+checks their official PDF links, the date-specific Bus Sigüenza airport result,
+and the verified standard fare, then reconciles the complete guide graph. Its
+narrow Let's Encrypt issuer recovery remains limited to the documented Bus
+Sigüenza chain fault and preserves normal TLS and hostname verification.
+
+A separate 16:30 `sync-guide` process reads Aqualider's public SimplyBook
+`/v2/service/` and `/v2/provider/` JSON endpoints sequentially. It accepts only
+the exact HTTPS host, bounded JSON and an internally reciprocal service/provider
+schema. One compact `state/guide.json` stores the last-good normalized catalogue
+and the seasonal-notice delivery marker; raw source responses are not stored.
+The first successful catalogue read is a silent baseline. A catalogue diff is
+stored and logged but does not itself prove registration availability and does
+not create a public programme alert.
+
+The same 16:30 process reconciles the existing guide graph. On 15 June and 15
+September it may publish one next-day municipal-pool season notice from the fixed
+calendar. New-message delivery retries only explicit Telegram rate limits;
+ambiguous delivery is recorded rather than automatically resent. There is no
+resident guide worker, database, browser, per-sport process, or per-service
+availability polling.
 
 ## Operating model
 
@@ -146,14 +162,15 @@ It has no resident process or dependency on Morning Digest state.
   pending; three warning-only AEMET checks per day
 - Up to five short evening electricity attempts; success-only state makes
   later invocations no-ops after the first publication
-- One daily urban-timetable synchronization and optional manual guide update
+- One daily 05:00 transport sync and one daily 16:30 guide/catalog sync; both
+  are short-lived and reconcile the same pinned Telegram graph
 - Optional lightweight operator listener with one idle Telegram long poll
 - One event loop with bounded asynchronous I/O
 - One direct immutable 07:30 collection; later checks create only compact
   semantic replies or refresh the separate beach root, never a second digest
 - No webhook or public server
 - No resident scheduler, source polling, or watcher; only bounded one-shot
-  event refresh, digest, electricity and operational-change commands
+  event refresh, digest, guide, electricity and operational-change commands
 - Small local state
 - No required database server, message broker, or worker service
 
@@ -162,6 +179,9 @@ It has no resident process or dependency on Morning Digest state.
 - **Source unavailable:** omit that source's contribution.
 - **CAMS JSON unavailable:** use a covering last-good local JSON; otherwise
   omit air quality and pollen without blocking publication.
+- **Guide catalogue unavailable or malformed:** keep the last-good normalized
+  baseline, still reconcile static guide messages, and publish no catalogue
+  change claim.
 - **Stale or invalid data:** reject it; do not substitute a normal-looking
   default.
 - **Partial collection:** build a digest only from independently valid facts.
@@ -230,14 +250,15 @@ only a fresh invitation with a quoted title, explicit current date, valid
 time and explicit place. It uses no AI, cache or additional request; ordinary
 news and retrospective reports remain ineligible.
 
-Termux refreshes municipal and Agenda Guardamar catalogs at 05:10 and 05:30,
-invokes the morning command at 07:30, and runs the update command every five
-minutes from 10:10 through 10:40 in `Europe/Madrid`.
+Termux runs the transport sync at 05:00, refreshes municipal and Agenda Guardamar
+catalogs at 05:10 and 05:30, invokes the morning command at 07:30, and runs the
+update command every five minutes from 10:10 through 10:40 in `Europe/Madrid`.
 The first update invocation that acquires the daily state lock attempts each
 event catalog once, independently of whether SafeBeach succeeds. These facts
-are retained for later publications and do not alone trigger replacement.
-The electricity command runs at 20:30, then after 5, 15 and 30 minutes, with a
-final 21:20 attempt. It publishes at most once for the next local date.
+are retained for later publications and do not alone trigger replacement. The
+linked guide/catalog sync runs at 16:30. The electricity command runs at 20:30,
+then after 5, 15 and 30 minutes, with a final 21:20 attempt. It publishes at most
+once for the next local date.
 
 An independent earthquake command runs at minute 55 of every hour. Each
 invocation performs one bounded request to the official IGN GeoRSS endpoint,
@@ -250,10 +271,9 @@ six-hour series share one Telegram message; later events and source revisions
 edit it in place, with at most five events visible. A missing series message is
 recreated. An explicit Telegram rejection remains eligible for the next hour;
 an ambiguous network result is recorded as uncertain instead of risking an
-automatic duplicate. The state keeps at most 256 normalized records for 14
-The state keeps at most 256 normalized records for 14 days, and the raw XML is
-never stored. The monitor uses a short-lived local lock so a manual duplicate
-invocation cannot overlap it.
+automatic duplicate. The state keeps at most 256 normalized records for 14 days,
+and the raw XML is never stored. The monitor uses a short-lived local lock so a
+manual duplicate invocation cannot overlap it.
 
 Code deployment is external to the application and operator-driven over private
 Tailscale SSH. The operator reviews Git state, runs relevant tests, commits the
@@ -287,6 +307,8 @@ the message ID is stored remains an unavoidable duplicate edge.
 - Prefer structured official feeds or APIs over page scraping.
 - Collect sources only in bounded scheduled runs; never continuously.
 - Bound network time, retries, response sizes, concurrency, and stored history.
+- Fetch account-level guide catalogues once per source account and fan the
+  normalized result into guide entities; do not poll once per activity.
 - Keep the local earthquake monitor hourly and one-shot; it is informational,
   never a replacement for official emergency alerts.
 - Keep domain rules independent from transport and source formats.
