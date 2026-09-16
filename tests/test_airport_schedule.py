@@ -31,7 +31,11 @@ from telegrambot.airport_schedule import (
     sync_airport_schedule,
 )
 from telegrambot.branding import FOOTER
-from telegrambot.pinned import LEAF_MESSAGES, PinnedGuideState
+from telegrambot.pinned import (
+    AIRPORT_STOP_MAP_URL,
+    LEAF_MESSAGES,
+    PinnedGuideState,
+)
 from telegrambot.state import StateError
 from telegrambot.telegram import TelegramError
 
@@ -545,7 +549,8 @@ class AirportMessageTests(unittest.TestCase):
         self.assertIn("07:50 · 12:05 · 15:05", message)
         self.assertIn("Обычный билет: 2,95 €", message)
         self.assertIn("38.087834%2C-0.655759", message)
-        self.assertIn("38.282222222222%2C-0.55805555555556", message)
+        self.assertIn(AIRPORT_STOP_MAP_URL, message)
+        self.assertNotIn("38.282222222222%2C-0.55805555555556", message)
         self.assertIn("Найти расписание на другую дату", message)
         self.assertIn(
             "До аэропорта можно доехать без пересадок", message
