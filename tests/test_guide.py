@@ -21,6 +21,7 @@ from telegrambot.guide import (
     fetch_aqualider_catalog,
     sync_guide,
 )
+from telegrambot.sporttia import SporttiaSourceError
 from telegrambot.state import StateError
 from telegrambot.telegram import TelegramError
 
@@ -201,6 +202,20 @@ class GuideStateTests(unittest.TestCase):
 
 
 class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.sporttia_fetch = AsyncMock(
+            side_effect=lambda now: {
+                "observed_at": now.isoformat(),
+                "activities": [],
+            }
+        )
+        self.sporttia_patch = patch(
+            "telegrambot.guide.fetch_sporttia_catalog",
+            new=self.sporttia_fetch,
+        )
+        self.sporttia_patch.start()
+        self.addCleanup(self.sporttia_patch.stop)
+
     def _environment(self, directory):
         return {
             "TELEGRAM_BOT_TOKEN": "token",
@@ -240,6 +255,49 @@ class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
                 Path(directory, "guide.json").read_text(encoding="utf-8")
             )
             self.assertEqual(saved["aqualider_catalog"], current)
+
+    async def test_sporttia_is_attempted_at_most_once_per_local_day(self):
+        with tempfile.TemporaryDirectory() as directory:
+            moment = datetime(2026, 9, 16, 14, 0, tzinfo=MADRID)
+            later = datetime(2026, 9, 16, 16, 30, tzinfo=MADRID)
+            current = snapshot(moment)
+            publish = AsyncMock(return_value=self._pinned_messages())
+            with (
+                patch.dict("os.environ", self._environment(directory), clear=False),
+                patch(
+                    "telegrambot.guide.fetch_aqualider_catalog",
+                    new=AsyncMock(return_value=current),
+                ),
+                patch("telegrambot.guide.publish_pinned_guide", new=publish),
+            ):
+                await sync_guide(moment)
+                await sync_guide(later)
+            self.assertEqual(self.sporttia_fetch.await_count, 1)
+            saved = GuideState(Path(directory) / "guide.json").read()
+            self.assertEqual(saved["sporttia_last_attempt_day"], "2026-09-16")
+
+    async def test_sporttia_failure_is_not_retried_same_day(self):
+        with tempfile.TemporaryDirectory() as directory:
+            moment = datetime(2026, 9, 16, 14, 0, tzinfo=MADRID)
+            later = datetime(2026, 9, 16, 16, 30, tzinfo=MADRID)
+            self.sporttia_fetch.side_effect = SporttiaSourceError(
+                "timeout", code="TIMEOUT"
+            )
+            publish = AsyncMock(return_value=self._pinned_messages())
+            with (
+                patch.dict("os.environ", self._environment(directory), clear=False),
+                patch(
+                    "telegrambot.guide.fetch_aqualider_catalog",
+                    new=AsyncMock(return_value=snapshot(moment)),
+                ),
+                patch("telegrambot.guide.publish_pinned_guide", new=publish),
+            ):
+                await sync_guide(moment)
+                await sync_guide(later)
+            self.assertEqual(self.sporttia_fetch.await_count, 1)
+            saved = GuideState(Path(directory) / "guide.json").read()
+            self.assertEqual(saved["sporttia_last_attempt_day"], "2026-09-16")
+            self.assertNotIn("sporttia_catalog", saved)
 
     async def test_sync_lock_covers_pinned_reconciliation(self):
         with tempfile.TemporaryDirectory() as directory:

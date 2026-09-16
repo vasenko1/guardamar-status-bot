@@ -31,6 +31,12 @@ from .pinned import (
     publish_pinned_guide,
     telegram_message_link,
 )
+from .sporttia import (
+    SporttiaSourceError,
+    fetch_sporttia_catalog,
+    merge_sporttia_catalog,
+    valid_sporttia_snapshot,
+)
 from .state import StateError
 from .telegram import (
     TelegramError,
@@ -87,6 +93,19 @@ class GuideState:
         snapshot = value.get("aqualider_catalog")
         if snapshot is not None and not _valid_snapshot(snapshot):
             raise StateError("guide state has an invalid Aqualider snapshot")
+        sporttia = value.get("sporttia_catalog")
+        if sporttia is not None and not valid_sporttia_snapshot(sporttia):
+            raise StateError("guide state has an invalid Sporttia snapshot")
+        sporttia_attempt_day = value.get("sporttia_last_attempt_day")
+        if sporttia_attempt_day is not None:
+            if not isinstance(sporttia_attempt_day, str):
+                raise StateError("guide state has an invalid Sporttia attempt day")
+            try:
+                date.fromisoformat(sporttia_attempt_day)
+            except ValueError as exc:
+                raise StateError(
+                    "guide state has an invalid Sporttia attempt day"
+                ) from exc
         notice = value.get("season_notice")
         if notice is not None and (
             not isinstance(notice, dict)
@@ -602,6 +621,26 @@ async def sync_guide(now: datetime) -> str:
             state["aqualider_catalog"] = current
             guide_state.write(state)
 
+        local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
+        previous_sporttia = state.get("sporttia_catalog")
+        if state.get("sporttia_last_attempt_day") != local_day.isoformat():
+            # Mark before network I/O so manual reruns cannot hammer the source
+            # after a timeout, parse failure, or interrupted observation.
+            state["sporttia_last_attempt_day"] = local_day.isoformat()
+            guide_state.write(state)
+            try:
+                observed_sporttia = await fetch_sporttia_catalog(now)
+            except SporttiaSourceError as exc:
+                logging.warning(
+                    "Sporttia catalogue deferred [GUIDE-%s]",
+                    exc.diagnostic_code,
+                )
+            else:
+                state["sporttia_catalog"] = merge_sporttia_catalog(
+                    previous_sporttia, observed_sporttia, local_day
+                )
+                guide_state.write(state)
+
         await _check_wifi_source(bot_token, state, guide_state)
 
         with pinned_state.exclusive_run():
@@ -624,11 +663,11 @@ async def sync_guide(now: datetime) -> str:
                     message_id,
                     disable_notification=True,
                 ),
+                sporttia_catalog=state.get("sporttia_catalog"),
+                local_day=local_day,
             )
 
-        notice_key = _season_notice_key(
-            now.astimezone(GUARDAMAR_TIMEZONE).date()
-        )
+        notice_key = _season_notice_key(local_day)
         if notice_key is not None:
             sent = state.get("season_notice")
             uncertain = state.get("season_notice_uncertain")
