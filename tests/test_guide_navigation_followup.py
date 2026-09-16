@@ -1,5 +1,8 @@
+import tempfile
 import unittest
 from datetime import date, datetime
+from pathlib import Path
+from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
 from telegrambot.airport_schedule import AirportSchedule, build_airport_message
@@ -9,10 +12,13 @@ from telegrambot.pinned import (
     AIRPORT_STOP_MAP_URL,
     PINNED_MESSAGE_KEYS,
     PINNED_PARENT_KEYS,
+    PinnedGuideState,
     _render_messages,
     build_leaf_message,
+    publish_pinned_guide,
     telegram_message_link,
 )
+from telegrambot.telegram import TelegramError
 
 
 class GuideNavigationFollowupTests(unittest.TestCase):
@@ -28,6 +34,7 @@ class GuideNavigationFollowupTests(unittest.TestCase):
             set(PINNED_PARENT_KEYS),
             set(PINNED_MESSAGE_KEYS) - {"root"},
         )
+        self.assertNotIn("⬅️", rendered["root"])
         for child, parent in PINNED_PARENT_KEYS.items():
             with self.subTest(child=child, parent=parent):
                 self.assertIn("⬅️", rendered[child])
@@ -79,6 +86,48 @@ class GuideNavigationFollowupTests(unittest.TestCase):
         merged = _merge_events((routine_ru, routine_es, workshop))
 
         self.assertEqual(merged, (workshop,))
+
+
+class GuideNavigationRecoveryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_recreated_parent_rewrites_child_backlinks(self):
+        chat_id = "-100123"
+        messages = {
+            key: number
+            for number, key in enumerate(PINNED_MESSAGE_KEYS, start=1)
+        }
+        old_parent = messages["polideportivo"]
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = PinnedGuideState(Path(directory) / "pinned.json")
+            state.write(chat_id, messages)
+
+            async def edit(message_id, message):
+                if message_id == old_parent:
+                    raise TelegramError(
+                        "missing",
+                        retryable=False,
+                        code="MESSAGE-NOT-FOUND",
+                        status=400,
+                    )
+
+            edit_mock = AsyncMock(side_effect=edit)
+            result = await publish_pinned_guide(
+                chat_id,
+                state,
+                AsyncMock(return_value=99),
+                edit_mock,
+                AsyncMock(),
+            )
+
+        self.assertEqual(result["polideportivo"], 99)
+        new_parent_link = telegram_message_link(chat_id, 99)
+        for key in ("pool_indoor", "pool_outdoor"):
+            edits = [
+                call.args[1]
+                for call in edit_mock.await_args_list
+                if call.args[0] == messages[key]
+            ]
+            self.assertIn(new_parent_link, edits[-1])
 
 
 if __name__ == "__main__":
