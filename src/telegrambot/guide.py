@@ -9,6 +9,7 @@ has been validated on the production runtime.
 import argparse
 import asyncio
 import fcntl
+import html
 import json
 import logging
 import os
@@ -16,12 +17,14 @@ import tempfile
 import urllib.parse
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Dict, Iterator, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
 from ._transport import BoundedFetchError, fetch_bounded
 from .branding import with_footer
+from .commands import parse_allowed_user_ids
 from .pinned import (
     DEFAULT_PINNED_STATE_PATH,
     PinnedGuideState,
@@ -40,10 +43,20 @@ GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 DEFAULT_GUIDE_STATE_PATH = "state/guide.json"
 AQUALIDER_ORIGIN = "https://aqualidernatacion.simplybook.it"
 AQUALIDER_BASE_URL = f"{AQUALIDER_ORIGIN}/v2"
+WIFI_SOURCE_PAGE_URL = "https://www.guardamardelsegura.es/wifis-municipales/"
+WIFI_VERIFIED_ASSET_URL = (
+    "https://www.guardamardelsegura.es/wp-content/uploads/2023/12/"
+    "PLANO-SINEU-WIFIS-GUARDAMAR-PUBLICAS-scaled.jpg"
+)
 _GUIDE_STATE_VERSION = 1
 _JSON_TYPES = frozenset({"application/json"})
+_HTML_TYPES = frozenset({"text/html", "application/xhtml+xml"})
 _REQUEST_HEADERS = {
     "Accept": "application/json",
+    "User-Agent": "guardamar-status-bot/1.0",
+}
+_WIFI_REQUEST_HEADERS = {
+    "Accept": "text/html,application/xhtml+xml",
     "User-Agent": "guardamar-status-bot/1.0",
 }
 
@@ -85,6 +98,11 @@ class GuideState:
         uncertain = value.get("season_notice_uncertain")
         if uncertain is not None and not isinstance(uncertain, str):
             raise StateError("guide state has an invalid uncertain notice")
+        wifi_alerted = value.get("wifi_last_alerted_asset_url")
+        if wifi_alerted is not None and (
+            not isinstance(wifi_alerted, str) or not wifi_alerted.strip()
+        ):
+            raise StateError("guide state has an invalid Wi-Fi source alert")
         return value
 
     def write(self, value: dict) -> None:
@@ -176,6 +194,168 @@ def _allowed_aqualider_url(url: str) -> bool:
         and parsed.username is None
         and parsed.password is None
     )
+
+
+def _allowed_wifi_source_url(url: str) -> bool:
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        port = parsed.port
+    except ValueError:
+        return False
+    return (
+        parsed.scheme == "https"
+        and parsed.hostname in {
+            "guardamardelsegura.es",
+            "www.guardamardelsegura.es",
+        }
+        and port in {None, 443}
+        and parsed.path in {"/wifis-municipales", "/wifis-municipales/"}
+        and parsed.username is None
+        and parsed.password is None
+    )
+
+
+class _WifiAssetParser(HTMLParser):
+    """Collect linked image assets that identify the municipal Wi-Fi map."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.current_href: Optional[str] = None
+        self.candidates = set()
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        attributes = dict(attrs)
+        if tag.casefold() == "a":
+            href = attributes.get("href")
+            self.current_href = href if isinstance(href, str) else None
+            return
+        if tag.casefold() != "img" or self.current_href is None:
+            return
+        marker = " ".join(
+            value
+            for key in ("src", "data-src", "alt", "title")
+            if isinstance((value := attributes.get(key)), str)
+        ).casefold()
+        if "wifi" in marker and ("guardamar" in marker or "public" in marker):
+            self.candidates.add(self.current_href)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.casefold() == "a":
+            self.current_href = None
+
+
+def _extract_wifi_asset_url(payload: bytes) -> str:
+    try:
+        text = payload.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise GuideSourceError(
+            "Wi-Fi source HTML is invalid", code="WIFI-HTML"
+        ) from exc
+    parser = _WifiAssetParser()
+    parser.feed(text)
+    urls = set()
+    for href in parser.candidates:
+        candidate = urllib.parse.urljoin(WIFI_SOURCE_PAGE_URL, href)
+        try:
+            parsed = urllib.parse.urlsplit(candidate)
+        except ValueError:
+            continue
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            continue
+        urls.add(urllib.parse.urlunsplit(parsed._replace(fragment="")))
+    if len(urls) != 1:
+        raise GuideSourceError(
+            "Wi-Fi source asset is missing or ambiguous",
+            code="WIFI-LINK" if not urls else "WIFI-AMBIGUOUS",
+        )
+    return urls.pop()
+
+
+async def fetch_current_wifi_asset() -> str:
+    """Return the one asset currently linked from the municipal Wi-Fi page."""
+
+    try:
+        payload, _, _ = await asyncio.to_thread(
+            fetch_bounded,
+            WIFI_SOURCE_PAGE_URL,
+            is_allowed_url=_allowed_wifi_source_url,
+            limit_bytes=512 * 1024,
+            timeout_seconds=15.0,
+            headers=_WIFI_REQUEST_HEADERS,
+            accepted_types=_HTML_TYPES,
+        )
+    except BoundedFetchError as exc:
+        raise GuideSourceError(
+            "Wi-Fi source request failed", code=f"WIFI-{exc.code}"
+        ) from exc
+    return _extract_wifi_asset_url(payload)
+
+
+def _wifi_operator_ids() -> Tuple[int, ...]:
+    raw = os.environ.get("TELEGRAM_ALLOWED_USER_IDS", "").strip()
+    if not raw:
+        return ()
+    try:
+        return tuple(sorted(parse_allowed_user_ids(raw)))
+    except ValueError:
+        logging.warning(
+            "Wi-Fi source watch disabled: TELEGRAM_ALLOWED_USER_IDS is invalid"
+        )
+        return ()
+
+
+def _wifi_alert_text(current_asset_url: str) -> str:
+    verified = html.escape(WIFI_VERIFIED_ASSET_URL)
+    current = html.escape(current_asset_url)
+    return (
+        "⚠️ <b>Изменился официальный источник муниципального Wi-Fi.</b>\n\n"
+        "Нужно проверить точки, SSID и пароли.\n\n"
+        f"Проверенная версия:\n<code>{verified}</code>\n\n"
+        f"Новая версия:\n<code>{current}</code>"
+    )
+
+
+async def _check_wifi_source(
+    bot_token: str,
+    state: dict,
+    guide_state: GuideState,
+) -> None:
+    operators = _wifi_operator_ids()
+    if not operators:
+        return
+    try:
+        current = await fetch_current_wifi_asset()
+    except GuideSourceError as exc:
+        logging.warning(
+            "Wi-Fi source check deferred [GUIDE-%s]", exc.diagnostic_code
+        )
+        return
+    if current == WIFI_VERIFIED_ASSET_URL:
+        return
+    if current == state.get("wifi_last_alerted_asset_url"):
+        return
+
+    for operator_id in operators:
+        try:
+            await send_message(
+                bot_token,
+                str(operator_id),
+                _wifi_alert_text(current),
+                disable_notification=False,
+                retry_only_rate_limits=True,
+            )
+        except TelegramError as exc:
+            logging.warning(
+                "Wi-Fi source alert delivery failed [TELEGRAM-%s]",
+                exc.diagnostic_code,
+            )
+            continue
+        state["wifi_last_alerted_asset_url"] = current
+        guide_state.write(state)
+        logging.warning("Wi-Fi source changed; private operator alert sent")
+        return
+
+    logging.warning("Wi-Fi source change remains pending operator delivery")
 
 
 def _positive_id(value, field: str) -> int:
@@ -413,6 +593,8 @@ async def sync_guide(now: datetime) -> str:
                 )
             state["aqualider_catalog"] = current
             guide_state.write(state)
+
+        await _check_wifi_source(bot_token, state, guide_state)
 
         with pinned_state.exclusive_run():
             messages = await publish_pinned_guide(
