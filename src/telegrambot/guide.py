@@ -262,7 +262,15 @@ def _extract_wifi_asset_url(payload: bytes) -> str:
             continue
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             continue
-        urls.add(urllib.parse.urlunsplit(parsed._replace(fragment="")))
+        canonical_path = urllib.parse.quote(
+            urllib.parse.unquote(parsed.path),
+            safe="/:@!$&'()*+,;=-._~",
+        )
+        urls.add(
+            urllib.parse.urlunsplit(
+                parsed._replace(path=canonical_path, fragment="")
+            )
+        )
     if len(urls) != 1:
         raise GuideSourceError(
             "Wi-Fi source asset is missing or ambiguous",
