@@ -12,7 +12,7 @@ The municipality may publish a replacement Wi-Fi map while an older upload remai
 
 ## Decision
 
-Add one static `📶 Бесплатный Wi-Fi` card under the existing `📍 Места` branch. Keep the compact root unchanged. The card contains only the seven facts verified from the current official municipal map and uses the established guide footer and backlink conventions.
+Add one static `📶 Бесплатный Wi-Fi` card as a direct entry in the compact `📌 Полезное о Гуардамаре` root. Do not classify Wi-Fi as a place. The card contains only the seven facts verified from the current official municipal map and uses the established guide footer and backlink conventions.
 
 Reuse the existing daily `telegrambot.guide sync` invocation for one lightweight source watch when `TELEGRAM_ALLOWED_USER_IDS` is configured:
 
@@ -34,7 +34,7 @@ Content replacement under the exact same asset URL is an accepted blind spot. Ad
 
 ## Consequences
 
-- Residents get one useful static Wi-Fi reference card without expanding the pinned root.
+- Residents get one useful static Wi-Fi reference card directly from the pinned root; the root intentionally gains one item.
 - The phone pays for one small daily HTML request only when a private operator allowlist exists.
 - A new municipal asset becomes a human-review trigger rather than an automatic public fact change.
 - Source failures cannot erase or silently mutate the reviewed Wi-Fi information.

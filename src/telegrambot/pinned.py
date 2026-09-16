@@ -252,7 +252,7 @@ PINNED_PARENT_KEYS = {
     "pool_indoor": "polideportivo",
     "pool_outdoor": "polideportivo",
     "youth_centre": "places",
-    "wifi": "places",
+    "wifi": "root",
     "activities": "root",
     "swimming": "activities",
 }
@@ -363,7 +363,6 @@ def build_places(
     polideportivo_link: Optional[str] = None,
     root_link: Optional[str] = None,
     youth_centre_link: Optional[str] = None,
-    wifi_link: Optional[str] = None,
 ) -> str:
     """Build the durable places branch."""
 
@@ -373,9 +372,7 @@ def build_places(
             f"🏟 {_direct_link('Polideportivo Municipal', polideportivo_link)}\n"
             "Муниципальный спортивный комплекс Гуардамара.\n\n"
             f"👥 {_direct_link('Centro Social Juvenil', youth_centre_link)}\n"
-            "Пространство для подростков и молодёжи.\n\n"
-            f"📶 {_direct_link('Бесплатный Wi-Fi', wifi_link)}\n"
-            "7 муниципальных точек, сети и пароли."
+            "Пространство для подростков и молодёжи."
         ),
         "Полезное о Гуардамаре",
         root_link,
@@ -469,13 +466,13 @@ def build_youth_centre(places_link: Optional[str] = None) -> str:
     )
 
 
-def build_wifi(places_link: Optional[str] = None) -> str:
+def build_wifi(root_link: Optional[str] = None) -> str:
     """Build the verified municipal Wi-Fi card."""
 
     return _with_back_link(
         WIFI,
-        "К списку мест",
-        places_link,
+        "Полезное о Гуардамаре",
+        root_link,
     )
 
 
@@ -523,6 +520,7 @@ def build_root(
     transport_link: Optional[str] = None,
     places_link: Optional[str] = None,
     activities_link: Optional[str] = None,
+    wifi_link: Optional[str] = None,
 ) -> str:
     """Build the compact message intended to remain pinned."""
 
@@ -531,6 +529,7 @@ def build_root(
         f"📹 {_direct_link('Онлайн-камеры', camera_link)}\n\n"
         f"🚌 {_direct_link('Транспорт в Гуардамаре', transport_link)}\n\n"
         f"📍 {_direct_link('Места', places_link)}\n\n"
+        f"📶 {_direct_link('Бесплатный Wi-Fi', wifi_link)}\n\n"
         f"🎓 {_direct_link('Занятия и секции', activities_link)}"
     )
 
@@ -800,7 +799,7 @@ def _render_messages(
         "cameras": build_cameras(root_link),
         "transport": build_transport_index(leaf_links, root_link),
         "places": build_places(
-            polideportivo_link, root_link, youth_centre_link, wifi_link
+            polideportivo_link, root_link, youth_centre_link
         ),
         "polideportivo": build_polideportivo(
             indoor_link, outdoor_link, places_link
@@ -808,7 +807,7 @@ def _render_messages(
         "pool_indoor": build_pool_indoor(swimming_link, polideportivo_link),
         "pool_outdoor": build_pool_outdoor(swimming_link, polideportivo_link),
         "youth_centre": build_youth_centre(places_link),
-        "wifi": build_wifi(places_link),
+        "wifi": build_wifi(root_link),
         "activities": build_activities(swimming_link, root_link),
         "swimming": build_swimming(
             indoor_link, outdoor_link, activities_link
@@ -818,6 +817,7 @@ def _render_messages(
             transport_link,
             places_link,
             activities_link,
+            wifi_link,
         ),
     }
 

@@ -14,7 +14,7 @@ from telegrambot.guide import (
     _check_wifi_source,
     _extract_wifi_asset_url,
 )
-from telegrambot.pinned import build_places, build_wifi
+from telegrambot.pinned import build_places, build_root, build_wifi
 from telegrambot.telegram import TelegramError
 
 
@@ -33,15 +33,17 @@ class WifiPinnedContentTests(unittest.TestCase):
         self.assertIn("biblioteca infantil", message)
         self.assertIn("vicenteramos", message)
         self.assertIn("menjallibres", message)
-        self.assertIn("К списку мест", message)
+        self.assertIn("Полезное о Гуардамаре", message)
         self.assertIn("https://t.me/c/1/22", message)
         self.assertIn("google.com/maps/search", message)
 
-    def test_places_branch_links_to_wifi_card(self):
-        message = build_places(wifi_link="https://t.me/c/1/50")
-        self.assertIn("Бесплатный Wi-Fi", message)
-        self.assertIn("https://t.me/c/1/50", message)
-        self.assertIn("7 муниципальных точек, сети и пароли", message)
+    def test_root_links_to_wifi_and_places_does_not(self):
+        root = build_root(wifi_link="https://t.me/c/1/50")
+        places = build_places()
+        self.assertIn("Бесплатный Wi-Fi", root)
+        self.assertIn("https://t.me/c/1/50", root)
+        self.assertNotIn("Бесплатный Wi-Fi", places)
+        self.assertNotIn("7 муниципальных точек, сети и пароли", places)
 
 
 class WifiSourceParsingTests(unittest.TestCase):
