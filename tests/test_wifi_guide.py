@@ -74,6 +74,16 @@ class WifiSourceParsingTests(unittest.TestCase):
             "wifi-map.pdf?rev=2",
         )
 
+    def test_canonicalizes_unicode_path_like_the_live_source(self):
+        payload = """
+        <html><body>
+          <a href="/wp-content/uploads/2021/06/PLANO-WIFIS-GUARDAMAR-PÚBLICAS.pdf">
+            <img src="/wp-content/uploads/2021/06/PLANO-WIFIS-GUARDAMAR-PUBLICAS.jpg">
+          </a>
+        </body></html>
+        """.encode("utf-8")
+        self.assertEqual(_extract_wifi_asset_url(payload), WIFI_VERIFIED_ASSET_URL)
+
     def test_missing_or_ambiguous_asset_is_rejected(self):
         for payload in (
             b"<html><body><p>No map</p></body></html>",
