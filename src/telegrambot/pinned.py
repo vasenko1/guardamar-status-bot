@@ -417,12 +417,14 @@ def build_polideportivo(
     palau_target = palau_link or PALAU_SANT_JAUME_MAP_URL
     return _with_back_link(
         with_footer(
-            f"🏟 <a href=\"{POLIDEPORTIVO_MAP_URL}\"><b>Polideportivo Municipal</b></a>\n\n"
+            "🏟 <b>Polideportivo Municipal</b>\n\n"
             "Муниципальный спортивный комплекс Гуардамара.\n\n"
+            f'📍 <a href="{POLIDEPORTIVO_MAP_URL}"><b>Открыть на карте</b></a>\n\n'
+            "<b>Объекты:</b>\n"
             f"🏊 {_direct_link('Крытый бассейн Manel Estiarte', indoor_link)}\n"
             f"☀️ {_direct_link('Открытый муниципальный бассейн', outdoor_link)}\n"
             f"🏟 {_direct_link('Palau Sant Jaume', palau_target)}\n\n"
-            "<b>Также в комплексе:</b>\n"
+            "<b>Другие зоны:</b>\n"
             f"🎾 <a href=\"{TENNIS_COURT_MAP_URL}\">теннис и падель</a>\n"
             "💪 тренажёрный зал и калистеника\n"
             "🥎 frontón"
@@ -443,16 +445,16 @@ def build_palau_sant_jaume(
         "",
         "Крытый спортивный павильон в составе Polideportivo Municipal.",
         "",
-        f'<a href="{PALAU_SANT_JAUME_MAP_URL}">📍 <b>Palau Sant Jaume</b></a>',
-        "Av. Europa, s/n",
+        f'<a href="{PALAU_SANT_JAUME_MAP_URL}">📍 <b>Открыть на карте</b></a>',
         "📞 <b>Телефон:</b> <code>965357693</code>",
-        f"✉️ <b>Email:</b> <code>{SPORTS_CONTACT_EMAIL}</code>",
+        "✉️ <b>Email:</b>",
+        f"<code>{SPORTS_CONTACT_EMAIL}</code>",
         "",
         "<b>Внутри:</b>",
-        "🏟 центральная спортивная площадка",
+        "🏟 Центральная спортивная площадка",
         "🏀 баскетбол · футзал · волейбол · бадминтон",
         "🤸 2 многофункциональных зала",
-        "🏋️ зал силовых тренировок",
+        "🏋️ Зал силовых тренировок",
     ]
     sport_links = sport_links or {}
     linked_sports = [
@@ -461,7 +463,7 @@ def build_palau_sant_jaume(
         if key in sport_links
     ]
     if linked_sports:
-        lines.extend(["", "🎓 <b>Занятия здесь:</b>"])
+        lines.extend(["", "🎓 <b>Занятия:</b>"])
         for key, link in linked_sports:
             emoji, label = SPORT_ACTIVITY_META[key]
             lines.append(f"{emoji} {_direct_link(label, link)}")
@@ -482,10 +484,9 @@ def build_pool_indoor(
         with_footer(
             "🏊 <b>Крытый бассейн Manel Estiarte</b>\n\n"
             "Работает с <b>16 сентября по 15 июня</b>.\n\n"
-            f"📍 <a href=\"{POOL_INDOOR_MAP_URL}\"><b>Piscina Climatizada Manel Estiarte</b></a>\n"
-            "Av. de Cervantes, s/n\n"
+            f"📍 <a href=\"{POOL_INDOOR_MAP_URL}\"><b>Открыть на карте</b></a>\n"
             "📞 <b>Телефон:</b> <code>966726593</code>\n\n"
-            f"🎓 Занятия и запись: {_direct_link('🏊 Плавание', swimming_link)}."
+            f"🎓 <b>Занятия:</b> {_direct_link('🏊 Плавание', swimming_link)}."
         ),
         "Polideportivo Municipal",
         polideportivo_link,
@@ -502,10 +503,9 @@ def build_pool_outdoor(
         with_footer(
             "☀️ <b>Открытый муниципальный бассейн</b>\n\n"
             "Работает с <b>16 июня по 15 сентября</b>.\n\n"
-            f"📍 <a href=\"{POOL_OUTDOOR_MAP_URL}\"><b>Piscinas Descubiertas Municipales</b></a>\n"
-            "Av. Europa, 3\n"
+            f"📍 <a href=\"{POOL_OUTDOOR_MAP_URL}\"><b>Открыть на карте</b></a>\n"
             "📞 <b>Телефон:</b> <code>966726335</code>\n\n"
-            f"🎓 Занятия и запись: {_direct_link('🏊 Плавание', swimming_link)}."
+            f"🎓 <b>Занятия:</b> {_direct_link('🏊 Плавание', swimming_link)}."
         ),
         "Polideportivo Municipal",
         polideportivo_link,
@@ -526,9 +526,10 @@ def build_youth_centre(places_link: Optional[str] = None) -> str:
             "Ср–Чт: 17:00–21:00\n"
             "Пт: 17:00–22:00\n"
             "Сб: 17:00–22:00\n\n"
-            f"📍 <a href=\"{YOUTH_CENTRE_MAP_URL}\"><b>Calle Molivent, у автовокзала</b></a>\n"
+            f"📍 <a href=\"{YOUTH_CENTRE_MAP_URL}\"><b>Открыть на карте</b></a>\n"
             "📱 <b>WhatsApp:</b> <code>609006754</code>\n"
-            "✉️ <b>Email:</b> <code>juventudguardamar@gmail.com</code>"
+            "✉️ <b>Email:</b>\n"
+            "<code>juventudguardamar@gmail.com</code>"
         ),
         "К списку мест",
         places_link,
@@ -715,9 +716,7 @@ def build_sport_activity(
             lines.append(registration)
 
     lines.append("")
-    for index, group in enumerate(groups):
-        if index:
-            lines.append("")
+    for group in groups:
         label = _group_label(key, group)
         group_line = f"• <b>{html.escape(label)}</b>"
         audience = group.get("audience")
@@ -741,24 +740,23 @@ def build_sport_activity(
         activity_url = html.escape(group["activity_url"], quote=True)
         if _registration_is_open(group, local_day):
             lines.append(
-                f'  📝 <a href="{activity_url}"><b>Запись в группу</b></a>'
+                f'  📝 <a href="{activity_url}">Записаться</a>'
             )
         else:
             lines.append(
-                f'  🔎 <a href="{activity_url}"><b>Страница группы</b></a>'
+                f'  🔎 <a href="{activity_url}">Страница группы</a>'
             )
 
     notes = []
     if any(group["group_may_change"] for group in groups):
-        notes.append(
-            "ℹ️ Распределение по группам может корректироваться организаторами."
-        )
+        notes.append("ℹ️ Группы могут корректироваться организаторами.")
     if any(group["medical_certificate"] for group in groups):
         notes.extend(
             [
                 "📄 После записи нужна спортивная медсправка.",
-                f'📎 <a href="{SPORT_MEDICAL_CERTIFICATE_URL}"><b>Скачать бланк</b></a>',
-                f"✉️ <b>Отправить:</b> <code>{SPORTS_CONTACT_EMAIL}</code>",
+                f'📎 <a href="{SPORT_MEDICAL_CERTIFICATE_URL}">Скачать бланк</a>',
+                "✉️ <b>Отправить справку:</b>",
+                f"<code>{SPORTS_CONTACT_EMAIL}</code>",
             ]
         )
     if any(group["women_membership"] for group in groups):

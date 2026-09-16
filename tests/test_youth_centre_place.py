@@ -49,6 +49,8 @@ class YouthCentreContentTests(unittest.TestCase):
         ):
             self.assertIn(hours, message)
         self.assertIn(YOUTH_CENTRE_MAP_URL, message)
+        self.assertIn("Открыть на карте", message)
+        self.assertNotIn("Calle Molivent", message)
         self.assertNotIn("Agenda municipal", message)
         self.assertIn("<code>609006754</code>", message)
         self.assertIn("<code>juventudguardamar@gmail.com</code>", message)
