@@ -38,6 +38,11 @@ POLIDEPORTIVO_MAP_URL = "https://maps.app.goo.gl/KSZV3aVX75UxATQ68"
 POOL_INDOOR_MAP_URL = "https://maps.app.goo.gl/p9GqBDQEbnyQQNaAA"
 POOL_OUTDOOR_MAP_URL = "https://maps.app.goo.gl/dnCq36EzS8DTcq4T6"
 PALAU_SANT_JAUME_MAP_URL = "https://maps.app.goo.gl/Jp7EA9RqrZQPcVq17"
+SPORT_MEDICAL_CERTIFICATE_URL = (
+    "https://www.guardamardelsegura.es/wp-content/uploads/2023/03/"
+    "Certificado-medico-deportivo-ACTUALIZADO.pdf"
+)
+SPORTS_CONTACT_EMAIL = "deportesguardamar@hotmail.com"
 TENNIS_COURT_MAP_URL = "https://maps.app.goo.gl/tzMkY17nvVPA4CWx6"
 SPORT_ACTIVITY_META = {
     "rhythmic_gymnastics": ("🤸", "Художественная гимнастика"),
@@ -251,6 +256,7 @@ GUIDE_MESSAGE_KEYS = (
     "polideportivo",
     "pool_indoor",
     "pool_outdoor",
+    "palau_sant_jaume",
     "youth_centre",
     "wifi",
     "activities",
@@ -271,6 +277,7 @@ PINNED_PARENT_KEYS = {
     "polideportivo": "places",
     "pool_indoor": "polideportivo",
     "pool_outdoor": "polideportivo",
+    "palau_sant_jaume": "polideportivo",
     "youth_centre": "places",
     "wifi": "root",
     "activities": "root",
@@ -403,25 +410,65 @@ def build_polideportivo(
     indoor_link: Optional[str] = None,
     outdoor_link: Optional[str] = None,
     places_link: Optional[str] = None,
+    palau_link: Optional[str] = None,
 ) -> str:
     """Build the municipal sports-complex card."""
 
+    palau_target = palau_link or PALAU_SANT_JAUME_MAP_URL
     return _with_back_link(
         with_footer(
             f"🏟 <a href=\"{POLIDEPORTIVO_MAP_URL}\"><b>Polideportivo Municipal</b></a>\n\n"
             "Муниципальный спортивный комплекс Гуардамара.\n\n"
             f"🏊 {_direct_link('Крытый бассейн Manel Estiarte', indoor_link)}\n"
-            f"☀️ {_direct_link('Открытый муниципальный бассейн', outdoor_link)}\n\n"
+            f"☀️ {_direct_link('Открытый муниципальный бассейн', outdoor_link)}\n"
+            f"🏟 {_direct_link('Palau Sant Jaume', palau_target)}\n\n"
             "<b>Также в комплексе:</b>\n"
             f"🎾 <a href=\"{TENNIS_COURT_MAP_URL}\">теннис и падель</a>\n"
-            "🏀 баскетбол\n"
-            "⚽ fútbol sala\n"
-            f"🏟 <a href=\"{PALAU_SANT_JAUME_MAP_URL}\">Palau Sant Jaume</a>\n"
             "💪 тренажёрный зал и калистеника\n"
             "🥎 frontón"
         ),
         "К списку мест",
         places_link,
+    )
+
+
+def build_palau_sant_jaume(
+    sport_links: Optional[Mapping[str, str]] = None,
+    polideportivo_link: Optional[str] = None,
+) -> str:
+    """Build the Palau place card and its source-backed activity links."""
+
+    lines = [
+        "🏟 <b>Palau Sant Jaume</b>",
+        "",
+        "Крытый спортивный павильон в составе Polideportivo Municipal.",
+        "",
+        f'<a href="{PALAU_SANT_JAUME_MAP_URL}">📍 <b>Palau Sant Jaume</b></a>',
+        "Av. Europa, s/n",
+        "📞 <b>Телефон:</b> <code>966726335</code>",
+        f"✉️ <b>Email:</b> <code>{SPORTS_CONTACT_EMAIL}</code>",
+        "",
+        "<b>Внутри:</b>",
+        "🏟 центральная спортивная площадка",
+        "🏀 баскетбол · футзал · волейбол · бадминтон",
+        "🤸 2 многофункциональных зала",
+        "🏋️ зал силовых тренировок",
+    ]
+    sport_links = sport_links or {}
+    linked_sports = [
+        (key, sport_links[key])
+        for key in SPORT_ACTIVITY_KEYS
+        if key in sport_links
+    ]
+    if linked_sports:
+        lines.extend(["", "🎓 <b>Занятия здесь:</b>"])
+        for key, link in linked_sports:
+            emoji, label = SPORT_ACTIVITY_META[key]
+            lines.append(f"{emoji} {_direct_link(label, link)}")
+    return _with_back_link(
+        with_footer("\n".join(lines)),
+        "Polideportivo Municipal",
+        polideportivo_link,
     )
 
 
@@ -480,8 +527,8 @@ def build_youth_centre(places_link: Optional[str] = None) -> str:
             "Пт: 17:00–22:00\n"
             "Сб: 17:00–22:00\n\n"
             f"📍 <a href=\"{YOUTH_CENTRE_MAP_URL}\"><b>Calle Molivent, у автовокзала</b></a>\n"
-            "📱 <b>WhatsApp:</b> 609 006 754\n"
-            "✉️ <b>Email:</b> juventudguardamar@gmail.com"
+            "📱 <b>WhatsApp:</b> <code>609006754</code>\n"
+            "✉️ <b>Email:</b> <code>juventudguardamar@gmail.com</code>"
         ),
         "К списку мест",
         places_link,
@@ -546,13 +593,11 @@ def _format_date_ru(value: str) -> str:
     return f"{parsed.day} {_RU_MONTHS[parsed.month]} {parsed.year}"
 
 
-def _venue_markup(value: str) -> str:
+def _venue_markup(value: str, palau_link: Optional[str] = None) -> str:
     if value.startswith("Palau Sant Jaume"):
         remainder = value[len("Palau Sant Jaume"):].lstrip(" .")
-        result = (
-            f'<a href="{PALAU_SANT_JAUME_MAP_URL}">'
-            '<b>Palau Sant Jaume</b></a>'
-        )
+        target = palau_link or PALAU_SANT_JAUME_MAP_URL
+        result = f'<a href="{target}"><b>Palau Sant Jaume</b></a>'
         if remainder:
             result += f" · {html.escape(remainder)}"
         return result
@@ -597,13 +642,19 @@ def _registration_line(
     return text
 
 
+def _registration_is_open(
+    group: Mapping[str, object], local_day: date
+) -> bool:
+    return any(
+        date.fromisoformat(item["start"])
+        <= local_day
+        <= date.fromisoformat(item["end"])
+        for item in group["registrations"]
+    )
+
+
 def _group_label(key: str, group: Mapping[str, object]) -> str:
-    if key == "inclusive_multisport":
-        if group["requires_companion"]:
-            return "С сопровождающим"
-        if group["independent"]:
-            return "Самостоятельно"
-    if key in {"senior_gymnastics", "women_gymnastics"}:
+    if key == "women_gymnastics":
         return "Группа"
     suffix = {1: "1-я", 2: "2-я", 3: "3-я", 4: "4-я"}.get(
         group["group_order"],
@@ -617,6 +668,7 @@ def build_sport_activity(
     catalog: Mapping[str, object],
     local_day: date,
     activities_link: Optional[str] = None,
+    palau_link: Optional[str] = None,
 ) -> str:
     """Build one source-backed municipal activity card."""
 
@@ -631,7 +683,7 @@ def build_sport_activity(
                 "",
                 "Сейчас актуальные муниципальные группы не опубликованы.",
                 "",
-                f'<a href="{SPORTTIA_CENTER_URL}"><b>Проверить Sporttia</b></a>',
+                f'<a href="{SPORTTIA_CENTER_URL}"><b>Проверить запись</b></a>',
             ]
         )
         return _with_back_link(
@@ -653,7 +705,7 @@ def build_sport_activity(
     venues = {group["venue"] for group in groups}
     common_venue = next(iter(venues)) if len(venues) == 1 else None
     if common_venue is not None:
-        lines.append(f"📍 {_venue_markup(common_venue)}")
+        lines.append(f"📍 {_venue_markup(common_venue, palau_link)}")
 
     registrations = {_registration_signature(group) for group in groups}
     common_registration = len(registrations) == 1
@@ -667,21 +719,34 @@ def build_sport_activity(
         if index:
             lines.append("")
         label = _group_label(key, group)
-        activity_url = html.escape(group["activity_url"], quote=True)
-        group_line = f'• <a href="{activity_url}"><b>{html.escape(label)}</b></a>'
+        group_line = f"• <b>{html.escape(label)}</b>"
         audience = group.get("audience")
         if audience:
             group_line += f" · {html.escape(audience)}"
         lines.append(group_line)
+        if key == "inclusive_multisport":
+            if group["independent"]:
+                lines.append("  👤 Самостоятельное участие")
+            elif group["requires_companion"]:
+                lines.append("  👥 С сопровождающим взрослым")
         lines.append(f"  {html.escape(group['schedule'])}")
         if common_venue is None:
-            lines.append(f"  📍 {_venue_markup(group['venue'])}")
+            lines.append(f"  📍 {_venue_markup(group['venue'], palau_link)}")
         if not common_registration:
             registration = _registration_line(group, local_day)
             if registration is not None:
                 lines.append(f"  {registration}")
         if group["racket_sports"]:
             lines.append("  🎾 Ракеточные виды спорта")
+        activity_url = html.escape(group["activity_url"], quote=True)
+        if _registration_is_open(group, local_day):
+            lines.append(
+                f'  📝 <a href="{activity_url}"><b>Запись в группу</b></a>'
+            )
+        else:
+            lines.append(
+                f'  🔎 <a href="{activity_url}"><b>Страница группы</b></a>'
+            )
 
     notes = []
     if any(group["group_may_change"] for group in groups):
@@ -689,7 +754,13 @@ def build_sport_activity(
             "ℹ️ Распределение по группам может корректироваться организаторами."
         )
     if any(group["medical_certificate"] for group in groups):
-        notes.append("📄 После записи требуется спортивная медсправка.")
+        notes.extend(
+            [
+                "📄 После записи нужна спортивная медсправка.",
+                f'📎 <a href="{SPORT_MEDICAL_CERTIFICATE_URL}"><b>Скачать бланк</b></a>',
+                f"✉️ <b>Отправить:</b> <code>{SPORTS_CONTACT_EMAIL}</code>",
+            ]
+        )
     if any(group["women_membership"] for group in groups):
         notes.append(
             "👩 Также требуется подтверждение членского взноса "
@@ -758,6 +829,7 @@ def preview_messages() -> Sequence[str]:
         build_polideportivo(),
         build_pool_indoor(),
         build_pool_outdoor(),
+        build_palau_sant_jaume(),
         build_youth_centre(),
         build_wifi(),
         build_activities(),
@@ -992,6 +1064,7 @@ def _render_messages(
     root_link = _known_link(chat_id, messages, "root")
     places_link = _known_link(chat_id, messages, "places")
     polideportivo_link = _known_link(chat_id, messages, "polideportivo")
+    palau_link = _known_link(chat_id, messages, "palau_sant_jaume")
     youth_centre_link = _known_link(chat_id, messages, "youth_centre")
     wifi_link = _known_link(chat_id, messages, "wifi")
     activities_link = _known_link(chat_id, messages, "activities")
@@ -1020,10 +1093,16 @@ def _render_messages(
             polideportivo_link, root_link, youth_centre_link
         ),
         "polideportivo": build_polideportivo(
-            indoor_link, outdoor_link, places_link
+            indoor_link,
+            outdoor_link,
+            places_link,
+            palau_link=palau_link,
         ),
         "pool_indoor": build_pool_indoor(swimming_link, polideportivo_link),
         "pool_outdoor": build_pool_outdoor(swimming_link, polideportivo_link),
+        "palau_sant_jaume": build_palau_sant_jaume(
+            sport_links, polideportivo_link
+        ),
         "youth_centre": build_youth_centre(places_link),
         "wifi": build_wifi(root_link),
         "activities": build_activities(
@@ -1105,11 +1184,16 @@ async def publish_pinned_guide(
     if sporttia_catalog is not None:
         assert local_day is not None
         activities_link = _known_link(chat_id, messages, "activities")
+        palau_link = _known_link(chat_id, messages, "palau_sant_jaume")
         for key in SPORT_ACTIVITY_KEYS:
             await _upsert(
                 key,
                 build_sport_activity(
-                    key, sporttia_catalog, local_day, activities_link
+                    key,
+                    sporttia_catalog,
+                    local_day,
+                    activities_link,
+                    palau_link,
                 ),
                 messages,
                 state,

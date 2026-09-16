@@ -78,3 +78,33 @@ source-backed content.
   the root information architecture.
 - Registration status is derived only from explicit source date windows,
   never from Sporttia's contradictory generic `Abierta` label.
+
+## Follow-up UX and place hierarchy
+
+Palau Sant Jaume is a child place of `Polideportivo Municipal`, alongside
+the indoor and outdoor pools. It is not a peer of the complex in the
+top-level `Места` navigator. Activity cards link their Palau venue to the
+Palau Telegram card; the Palau card links back to the complex and lists
+the already-published activity cards that take place there. Internal
+rooms such as `Sala Polivalente nº1` remain venue detail, not separate
+Telegram cards.
+
+Public copy describes user actions rather than the registration vendor.
+Source `primer/segundo/... turno` identity is kept as `1-я/2-я/... группа`,
+while the external action is shown separately as `Запись в группу` only
+during an explicit registration interval and `Страница группы` otherwise.
+The vendor name is not shown in resident-facing labels.
+
+When the source explicitly requires a sports medical certificate, the
+activity card links the municipality's certificate form and shows the
+sports-department email in copyable `<code>` markup. Contact values in
+place cards follow the same copyable style.
+
+The newer user-facing centre screen exposes live-looking `Alumnos X/Y`
+occupancy values, but those counts are not present in the one bounded
+server-rendered centre response used by this ADR. They are therefore not
+added to the normalized snapshot or public cards. Adding them would first
+require proving that they can be obtained within the same bounded
+one-request architecture without per-activity calls or API reverse
+engineering.
+
