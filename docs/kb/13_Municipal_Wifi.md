@@ -4,9 +4,11 @@
 
 The linked city guide exposes one durable `📶 Бесплатный Wi-Fi` card under the existing `📍 Места` branch. It is static resident-facing information; it is not a separate bot, scheduled publisher, or automatically rewritten source feed.
 
+The architecture decision is recorded in `adr/0068-municipal-wifi-guide-source-watch.md`. Dated source verification belongs in `research/2026-09-16-municipal-wifi-source.md`.
+
 ## Approved public content
 
-The card contains seven municipal Wi-Fi locations verified against the current Ayuntamiento Wi-Fi map on 2026-09-16:
+The card contains seven municipal Wi-Fi locations from the reviewed official Ayuntamiento Wi-Fi map:
 
 - Escola de Música, C/ Mercat, 2 — `WiFi4EU`, no password;
 - Casa de Cultura, C/ Colón, 60 — `WiFi4EU`, no password;
@@ -26,11 +28,7 @@ The official landing page is:
 
 `https://www.guardamardelsegura.es/wifis-municipales/`
 
-The human-verified asset as of 2026-09-16 is:
-
-`https://www.guardamardelsegura.es/wp-content/uploads/2023/12/PLANO-SINEU-WIFIS-GUARDAMAR-PUBLICAS-scaled.jpg`
-
-The linked asset URL, not the continued existence of an older file, is the source-change signal.
+The currently reviewed asset URL is held explicitly in `telegrambot.guide` as the human-reviewed baseline. The linked asset URL, not the continued existence of an older file, is the source-change signal.
 
 ## Minimal source watch
 
