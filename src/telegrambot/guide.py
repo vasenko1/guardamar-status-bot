@@ -15,7 +15,7 @@ import os
 import tempfile
 import urllib.parse
 from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Dict, Iterator, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
@@ -343,11 +343,13 @@ def _catalog_fingerprint(snapshot: Optional[dict]):
 
 
 def _season_notice_key(local_day: date) -> Optional[str]:
-    if (local_day.month, local_day.day) == (6, 15):
-        return f"{local_day.year}:outdoor"
-    if (local_day.month, local_day.day) == (9, 15):
-        return f"{local_day.year}:indoor"
-    return None
+    """Return a notice key only when tomorrow changes the active pool."""
+
+    current = active_pool(local_day)
+    next_day = active_pool(local_day + timedelta(days=1))
+    if current == next_day:
+        return None
+    return f"{local_day.year}:{next_day}"
 
 
 def _season_notice_text(
