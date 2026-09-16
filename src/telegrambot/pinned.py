@@ -512,10 +512,11 @@ def build_activities(
         f"🏊 {_direct_link('Плавание', swimming_link)}",
     ]
     for key in SPORT_ACTIVITY_KEYS:
+        link = sport_links.get(key)
+        if link is None:
+            continue
         emoji, label = SPORT_ACTIVITY_META[key]
-        lines.append(
-            f"{emoji} {_direct_link(label, sport_links.get(key))}"
-        )
+        lines.append(f"{emoji} {_direct_link(label, link)}")
     return _with_back_link(
         with_footer("\n".join(lines)),
         "Полезное о Гуардамаре",

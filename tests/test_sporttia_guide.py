@@ -232,6 +232,23 @@ class SporttiaPinnedTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("Abierta", card)
         self.assertNotIn("€", card)
 
+    def test_activities_index_hides_unpublished_sport_cards(self):
+        message = build_activities(
+            "https://t.me/c/123/59",
+            "https://t.me/c/123/50",
+        )
+        self.assertIn("Плавание", message)
+        for label in (
+            "Художественная гимнастика",
+            "Дзюдо",
+            "Мультиспорт",
+            "Инклюзивный мультиспорт",
+            "Гимнастика для старшего возраста",
+            "Гимнастика Asociación Mujeres",
+        ):
+            with self.subTest(label=label):
+                self.assertNotIn(label, message)
+
     def test_activities_index_can_link_each_independent_sport_card(self):
         links = {
             key: f"https://t.me/c/123/{index}"
