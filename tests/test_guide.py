@@ -1,3 +1,4 @@
+import asyncio
 import json
 import tempfile
 import unittest
@@ -239,6 +240,39 @@ class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
                 Path(directory, "guide.json").read_text(encoding="utf-8")
             )
             self.assertEqual(saved["aqualider_catalog"], current)
+
+    async def test_sync_lock_covers_pinned_reconciliation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            moment = datetime(2026, 9, 16, 16, 30, tzinfo=MADRID)
+            current = snapshot(moment)
+            entered = asyncio.Event()
+            release = asyncio.Event()
+
+            async def blocking_publish(*args, **kwargs):
+                entered.set()
+                await release.wait()
+                return self._pinned_messages()
+
+            fetch = AsyncMock(return_value=current)
+            with (
+                patch.dict("os.environ", self._environment(directory), clear=False),
+                patch(
+                    "telegrambot.guide.fetch_aqualider_catalog",
+                    new=fetch,
+                ),
+                patch(
+                    "telegrambot.guide.publish_pinned_guide",
+                    new=blocking_publish,
+                ),
+            ):
+                first = asyncio.create_task(sync_guide(moment))
+                await entered.wait()
+                with self.assertRaises(StateError):
+                    await sync_guide(moment)
+                self.assertEqual(fetch.await_count, 1)
+                release.set()
+                result = await first
+            self.assertEqual(result, "baseline")
 
     async def test_source_failure_preserves_last_good_and_still_reconciles_cards(self):
         with tempfile.TemporaryDirectory() as directory:
