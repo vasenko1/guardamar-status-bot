@@ -45,8 +45,8 @@ AQUALIDER_ORIGIN = "https://aqualidernatacion.simplybook.it"
 AQUALIDER_BASE_URL = f"{AQUALIDER_ORIGIN}/v2"
 WIFI_SOURCE_PAGE_URL = "https://www.guardamardelsegura.es/wifis-municipales/"
 WIFI_VERIFIED_ASSET_URL = (
-    "https://www.guardamardelsegura.es/wp-content/uploads/2023/12/"
-    "PLANO-SINEU-WIFIS-GUARDAMAR-PUBLICAS-scaled.jpg"
+    "https://www.guardamardelsegura.es/wp-content/uploads/2021/06/"
+    "PLANO-WIFIS-GUARDAMAR-PU%CC%81BLICAS.pdf"
 )
 _GUIDE_STATE_VERSION = 1
 _JSON_TYPES = frozenset({"application/json"})
