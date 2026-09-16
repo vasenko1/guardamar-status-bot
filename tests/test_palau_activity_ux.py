@@ -150,7 +150,7 @@ class PalauActivityUxTests(unittest.TestCase):
   "https://t.me/c/123/70",
         )
         self.assertIn(PALAU_SANT_JAUME_MAP_URL, card)
-        self.assertIn("<code>966726335</code>", card)
+        self.assertIn("<code>965357693</code>", card)
         self.assertIn("<code>deportesguardamar@hotmail.com</code>", card)
         self.assertIn("2 многофункциональных зала", card)
         self.assertIn("https://t.me/c/123/80", card)

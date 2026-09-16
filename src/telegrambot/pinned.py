@@ -445,7 +445,7 @@ def build_palau_sant_jaume(
         "",
         f'<a href="{PALAU_SANT_JAUME_MAP_URL}">📍 <b>Palau Sant Jaume</b></a>',
         "Av. Europa, s/n",
-        "📞 <b>Телефон:</b> <code>966726335</code>",
+        "📞 <b>Телефон:</b> <code>965357693</code>",
         f"✉️ <b>Email:</b> <code>{SPORTS_CONTACT_EMAIL}</code>",
         "",
         "<b>Внутри:</b>",
