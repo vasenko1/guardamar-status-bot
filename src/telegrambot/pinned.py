@@ -27,6 +27,11 @@ MAX_RECONCILIATION_PASSES = 3
 AQUALIDER_BOOKING_URL = "https://aqualidernatacion.simplybook.it/v2/"
 AIRPORT_STOP_MAP_URL = "https://maps.app.goo.gl/V3REb7P6CmdJtgom7"
 YOUTH_CENTRE_MAP_URL = "https://maps.app.goo.gl/HhfDRr6tpbbKekjM7"
+POLIDEPORTIVO_MAP_URL = "https://maps.app.goo.gl/KSZV3aVX75UxATQ68"
+POOL_INDOOR_MAP_URL = "https://maps.app.goo.gl/p9GqBDQEbnyQQNaAA"
+POOL_OUTDOOR_MAP_URL = "https://maps.app.goo.gl/dnCq36EzS8DTcq4T6"
+PALAU_SANT_JAUME_MAP_URL = "https://maps.app.goo.gl/Jp7EA9RqrZQPcVq17"
+TENNIS_COURT_MAP_URL = "https://maps.app.goo.gl/tzMkY17nvVPA4CWx6"
 
 Send = Callable[[str], Awaitable[int]]
 Edit = Callable[[int, str], Awaitable[None]]
@@ -388,15 +393,15 @@ def build_polideportivo(
 
     return _with_back_link(
         with_footer(
-            "🏟 <b>Polideportivo Municipal</b>\n\n"
+            f"🏟 <a href=\"{POLIDEPORTIVO_MAP_URL}\"><b>Polideportivo Municipal</b></a>\n\n"
             "Муниципальный спортивный комплекс Гуардамара.\n\n"
             f"🏊 {_direct_link('Крытый бассейн Manel Estiarte', indoor_link)}\n"
             f"☀️ {_direct_link('Открытый муниципальный бассейн', outdoor_link)}\n\n"
             "<b>Также в комплексе:</b>\n"
-            "🎾 теннис и падель\n"
+            f"🎾 <a href=\"{TENNIS_COURT_MAP_URL}\">теннис и падель</a>\n"
             "🏀 баскетбол\n"
             "⚽ fútbol sala\n"
-            "🏟 Palau Sant Jaume\n"
+            f"🏟 <a href=\"{PALAU_SANT_JAUME_MAP_URL}\">Palau Sant Jaume</a>\n"
             "💪 тренажёрный зал и калистеника\n"
             "🥎 frontón"
         ),
@@ -415,8 +420,9 @@ def build_pool_indoor(
         with_footer(
             "🏊 <b>Крытый бассейн Manel Estiarte</b>\n\n"
             "Работает с <b>16 сентября по 15 июня</b>.\n\n"
-            "📍 <b>Piscina Climatizada Manel Estiarte</b>\n"
-            "📞 <b>Телефон:</b> 966 72 65 93\n\n"
+            f"📍 <a href=\"{POOL_INDOOR_MAP_URL}\"><b>Piscina Climatizada Manel Estiarte</b></a>\n"
+            "Av. de Cervantes, s/n\n"
+            "📞 <b>Телефон:</b> <code>966726593</code>\n\n"
             f"🎓 Занятия и запись: {_direct_link('🏊 Плавание', swimming_link)}."
         ),
         "Polideportivo Municipal",
@@ -434,8 +440,9 @@ def build_pool_outdoor(
         with_footer(
             "☀️ <b>Открытый муниципальный бассейн</b>\n\n"
             "Работает с <b>16 июня по 15 сентября</b>.\n\n"
-            "📍 <b>Piscinas Descubiertas Municipales</b>\n"
-            "📞 <b>Телефон:</b> 966 72 63 35\n\n"
+            f"📍 <a href=\"{POOL_OUTDOOR_MAP_URL}\"><b>Piscinas Descubiertas Municipales</b></a>\n"
+            "Av. Europa, 3\n"
+            "📞 <b>Телефон:</b> <code>966726335</code>\n\n"
             f"🎓 Занятия и запись: {_direct_link('🏊 Плавание', swimming_link)}."
         ),
         "Polideportivo Municipal",
