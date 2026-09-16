@@ -1,0 +1,201 @@
+name: Apply Sporttia review fix
+
+on:
+  push:
+    branches:
+      - feature/sporttia-activity-cards
+    paths:
+      - .github/workflows/review-fix-sporttia.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/sporttia-activity-cards
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply review fix
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              if text.count(old) != 1:
+                  raise SystemExit(f"unexpected replacement count in {path}: {text.count(old)}")
+              p.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          replace_once(
+              "src/telegrambot/guide.py",
+              '''        sporttia = value.get("sporttia_catalog")
+        if sporttia is not None and not valid_sporttia_snapshot(sporttia):
+            raise StateError("guide state has an invalid Sporttia snapshot")
+        notice = value.get("season_notice")
+''',
+              '''        sporttia = value.get("sporttia_catalog")
+        if sporttia is not None and not valid_sporttia_snapshot(sporttia):
+            raise StateError("guide state has an invalid Sporttia snapshot")
+        sporttia_attempt_day = value.get("sporttia_last_attempt_day")
+        if sporttia_attempt_day is not None:
+            if not isinstance(sporttia_attempt_day, str):
+                raise StateError("guide state has an invalid Sporttia attempt day")
+            try:
+                date.fromisoformat(sporttia_attempt_day)
+            except ValueError as exc:
+                raise StateError(
+                    "guide state has an invalid Sporttia attempt day"
+                ) from exc
+        notice = value.get("season_notice")
+''',
+          )
+
+          replace_once(
+              "src/telegrambot/guide.py",
+              '''        local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
+        previous_sporttia = state.get("sporttia_catalog")
+        try:
+            observed_sporttia = await fetch_sporttia_catalog(now)
+        except SporttiaSourceError as exc:
+            logging.warning(
+                "Sporttia catalogue deferred [GUIDE-%s]",
+                exc.diagnostic_code,
+            )
+        else:
+            state["sporttia_catalog"] = merge_sporttia_catalog(
+                previous_sporttia, observed_sporttia, local_day
+            )
+            guide_state.write(state)
+
+        await _check_wifi_source(bot_token, state, guide_state)
+''',
+              '''        local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
+        previous_sporttia = state.get("sporttia_catalog")
+        if state.get("sporttia_last_attempt_day") != local_day.isoformat():
+            # Mark before network I/O so manual reruns cannot hammer the source
+            # after a timeout, parse failure, or interrupted observation.
+            state["sporttia_last_attempt_day"] = local_day.isoformat()
+            guide_state.write(state)
+            try:
+                observed_sporttia = await fetch_sporttia_catalog(now)
+            except SporttiaSourceError as exc:
+                logging.warning(
+                    "Sporttia catalogue deferred [GUIDE-%s]",
+                    exc.diagnostic_code,
+                )
+            else:
+                state["sporttia_catalog"] = merge_sporttia_catalog(
+                    previous_sporttia, observed_sporttia, local_day
+                )
+                guide_state.write(state)
+
+        await _check_wifi_source(bot_token, state, guide_state)
+''',
+          )
+
+          replace_once(
+              "tests/test_guide.py",
+              '''    async def test_sync_lock_covers_pinned_reconciliation(self):
+''',
+              '''    async def test_sporttia_is_attempted_at_most_once_per_local_day(self):
+        with tempfile.TemporaryDirectory() as directory:
+            moment = datetime(2026, 9, 16, 14, 0, tzinfo=MADRID)
+            later = datetime(2026, 9, 16, 16, 30, tzinfo=MADRID)
+            current = snapshot(moment)
+            publish = AsyncMock(return_value=self._pinned_messages())
+            with (
+                patch.dict("os.environ", self._environment(directory), clear=False),
+                patch(
+                    "telegrambot.guide.fetch_aqualider_catalog",
+                    new=AsyncMock(return_value=current),
+                ),
+                patch("telegrambot.guide.publish_pinned_guide", new=publish),
+            ):
+                await sync_guide(moment)
+                await sync_guide(later)
+            self.assertEqual(self.sporttia_fetch.await_count, 1)
+            saved = GuideState(Path(directory) / "guide.json").read()
+            self.assertEqual(saved["sporttia_last_attempt_day"], "2026-09-16")
+
+    async def test_sporttia_failure_is_not_retried_same_day(self):
+        with tempfile.TemporaryDirectory() as directory:
+            moment = datetime(2026, 9, 16, 14, 0, tzinfo=MADRID)
+            later = datetime(2026, 9, 16, 16, 30, tzinfo=MADRID)
+            self.sporttia_fetch.side_effect = SporttiaSourceError(
+                "timeout", code="TIMEOUT"
+            )
+            publish = AsyncMock(return_value=self._pinned_messages())
+            with (
+                patch.dict("os.environ", self._environment(directory), clear=False),
+                patch(
+                    "telegrambot.guide.fetch_aqualider_catalog",
+                    new=AsyncMock(return_value=snapshot(moment)),
+                ),
+                patch("telegrambot.guide.publish_pinned_guide", new=publish),
+            ):
+                await sync_guide(moment)
+                await sync_guide(later)
+            self.assertEqual(self.sporttia_fetch.await_count, 1)
+            saved = GuideState(Path(directory) / "guide.json").read()
+            self.assertEqual(saved["sporttia_last_attempt_day"], "2026-09-16")
+            self.assertNotIn("sporttia_catalog", saved)
+
+    async def test_sync_lock_covers_pinned_reconciliation(self):
+''',
+          )
+
+          replace_once(
+              "tests/test_guide.py",
+              '''from telegrambot.state import StateError
+''',
+              '''from telegrambot.sporttia import SporttiaSourceError
+from telegrambot.state import StateError
+''',
+          )
+
+          replace_once(
+              "adr/0069-automated-sporttia-activity-cards.md",
+              '''Reuse the existing 16:30 `sync-guide` one-shot. Add exactly one bounded
+Sporttia GET per run, with redirects disabled and no retry. Parse the
+''',
+              '''Reuse the existing 16:30 `sync-guide` one-shot. Attempt at most one bounded
+Sporttia GET per Europe/Madrid calendar day, even if `sync-guide` is rerun
+manually; mark the attempt before network I/O so failures are not retried the
+same day. Redirects and retries remain disabled. Parse the
+''',
+          )
+          replace_once(
+              "adr/0069-automated-sporttia-activity-cards.md",
+              '''- one Sporttia request per `sync-guide` run.
+''',
+              '''- at most one Sporttia request per local calendar day.
+''',
+          )
+          PY
+      - name: Install and test
+        run: |
+          python -m pip install -e .
+          python -m py_compile src/telegrambot/guide.py tests/test_guide.py
+          python -m unittest tests.test_guide -q
+          python -m unittest tests.test_sporttia_guide -q
+          python -m unittest tests.test_pinned -q
+          python -m unittest tests.test_guide_navigation_followup -q
+          python -m unittest tests.test_wifi_guide -q
+          python -m unittest discover -s tests -q
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/telegrambot/guide.py tests/test_guide.py adr/0069-automated-sporttia-activity-cards.md
+          git diff --cached --check
+          git commit -m "Bound Sporttia checks to once per day"
+          git push origin HEAD:feature/sporttia-activity-cards
