@@ -17,4 +17,11 @@ cd "$PROJECT_DIR"
 . ./.env
 export PYTHONPATH="$PROJECT_DIR/src"
 
-exec ./.venv/bin/python -m telegrambot.guide sync
+./.venv/bin/python -m telegrambot.guide sync
+
+# Notifications consume only the accepted Sporttia/Telegram state written above.
+# They have their own fail-closed delivery state, so a notification ambiguity must
+# never undo or block the already-completed guide reconciliation.
+if ! ./.venv/bin/python -m telegrambot.sports_notifications_runner; then
+    echo "Sports notification sync deferred; guide sync remains complete" >&2
+fi
