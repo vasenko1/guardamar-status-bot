@@ -26,10 +26,7 @@ DEFAULT_PINNED_STATE_PATH = "state/pinned_guide.json"
 MAX_RECONCILIATION_PASSES = 3
 AQUALIDER_BOOKING_URL = "https://aqualidernatacion.simplybook.it/v2/"
 AIRPORT_STOP_MAP_URL = "https://maps.app.goo.gl/V3REb7P6CmdJtgom7"
-YOUTH_CENTRE_MAP_URL = (
-    "https://www.google.com/maps/search/?api=1&amp;"
-    "query=Calle+Molivent%2C+Guardamar+del+Segura"
-)
+YOUTH_CENTRE_MAP_URL = "https://maps.app.goo.gl/HhfDRr6tpbbKekjM7"
 YOUTH_CENTRE_AGENDA_URL = (
     "https://www.guardamardelsegura.es/wp-content/uploads/2026/09/"
     "MUPI-SEPTIEMBRE-2026-scaled.jpg"
