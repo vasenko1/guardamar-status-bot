@@ -14,6 +14,7 @@ from telegrambot.guide import (
     _fetch_json,
     _normalize_providers,
     _normalize_services,
+    _season_notice_key,
     _validate_cross_references,
     active_pool,
     fetch_aqualider_catalog,
@@ -74,6 +75,20 @@ class PoolSeasonTests(unittest.TestCase):
         for local_day, expected in cases.items():
             with self.subTest(local_day=local_day):
                 self.assertEqual(active_pool(local_day), expected)
+
+    def test_notice_key_exists_only_before_a_pool_change(self):
+        cases = {
+            date(2026, 6, 14): None,
+            date(2026, 6, 15): "2026:outdoor",
+            date(2026, 6, 16): None,
+            date(2026, 9, 14): None,
+            date(2026, 9, 15): "2026:indoor",
+            date(2026, 9, 16): None,
+            date(2026, 12, 31): None,
+        }
+        for local_day, expected in cases.items():
+            with self.subTest(local_day=local_day):
+                self.assertEqual(_season_notice_key(local_day), expected)
 
 
 class AqualiderSourceTests(unittest.IsolatedAsyncioTestCase):
