@@ -386,6 +386,10 @@ async def sync_guide(now: datetime) -> str:
         os.environ.get("GUIDE_STATE_PATH", "").strip()
         or DEFAULT_GUIDE_STATE_PATH
     ))
+    pinned_state = PinnedGuideState(Path(
+        os.environ.get("PINNED_GUIDE_STATE_PATH", "").strip()
+        or DEFAULT_PINNED_STATE_PATH
+    ))
 
     source_result = "unchanged"
     with guide_state.exclusive_run():
@@ -410,36 +414,32 @@ async def sync_guide(now: datetime) -> str:
             state["aqualider_catalog"] = current
             guide_state.write(state)
 
-    pinned_state = PinnedGuideState(Path(
-        os.environ.get("PINNED_GUIDE_STATE_PATH", "").strip()
-        or DEFAULT_PINNED_STATE_PATH
-    ))
-    with pinned_state.exclusive_run():
-        messages = await publish_pinned_guide(
-            chat_id,
-            pinned_state,
-            lambda message: send_message(
-                bot_token,
+        with pinned_state.exclusive_run():
+            messages = await publish_pinned_guide(
                 chat_id,
-                message,
-                disable_notification=True,
-                retry_only_rate_limits=True,
-            ),
-            lambda message_id, message: edit_message(
-                bot_token, chat_id, message_id, message
-            ),
-            lambda message_id: pin_chat_message(
-                bot_token,
-                chat_id,
-                message_id,
-                disable_notification=True,
-            ),
-        )
+                pinned_state,
+                lambda message: send_message(
+                    bot_token,
+                    chat_id,
+                    message,
+                    disable_notification=True,
+                    retry_only_rate_limits=True,
+                ),
+                lambda message_id, message: edit_message(
+                    bot_token, chat_id, message_id, message
+                ),
+                lambda message_id: pin_chat_message(
+                    bot_token,
+                    chat_id,
+                    message_id,
+                    disable_notification=True,
+                ),
+            )
 
-    notice_key = _season_notice_key(now.astimezone(GUARDAMAR_TIMEZONE).date())
-    if notice_key is not None:
-        with guide_state.exclusive_run():
-            state = guide_state.read()
+        notice_key = _season_notice_key(
+            now.astimezone(GUARDAMAR_TIMEZONE).date()
+        )
+        if notice_key is not None:
             sent = state.get("season_notice")
             uncertain = state.get("season_notice_uncertain")
             if uncertain == notice_key:
