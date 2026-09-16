@@ -1,6 +1,6 @@
 # Activities and Programs
 
-Status: implementation ledger — Deploy 1 completed 2026-09-17
+Status: implementation ledger — Deploy 2 completed 2026-09-17
 
 This note is the living product/technical plan for the linked Guardamar guide. It records agreed scope, source contracts, information architecture, implementation gaps and deployment order so future work does not depend on chat history.
 
@@ -175,15 +175,25 @@ Implementation notes / small deliberate deviations from example wording:
 
 No new production-source probe was required for this slice: it uses the Sporttia centre-page contract already validated on 2026-09-16. `guide.py` orchestration, the `sync-guide` schedule, and cron layout are unchanged. No new ADR was added because Deploy 1 does not introduce a new source or architectural contract beyond ADR 0067 and ADR 0069.
 
-### Deploy 2 — sports notifications
+### Deploy 2 — sports notifications — completed 2026-09-17
 
-After Deploy 1 has been verified in production, add semantic sports notifications as a separate public-side-effect slice.
+Implemented as a separate irreversible-public-side-effect slice while preserving the existing Sporttia source contract:
 
-Reuse the existing 16:30 source observation; do not add a poll or cron. Compare normalized previous/current facts, batch multiple material changes into one calm message, and use a silent baseline plus uncertain-delivery protection comparable to the proven transport notification pattern.
+- the existing 16:30 `sync-guide.sh` remains the only schedule;
+- `telegrambot.guide sync` still performs the single bounded Sporttia observation and linked-card reconciliation first;
+- `telegrambot.sports_notifications_runner` then reads only the accepted local `guide.json` / `pinned_guide.json` state and performs zero source requests;
+- `sports_notifications.py` owns explicit semantic diffing, rendering, compact state and Telegram delivery safety; no generic notification framework was introduced;
+- `state/sports_notifications.json` keeps the notification baseline, known activity keys, at most one pending batch, date-trigger dedupe IDs, launch completion, `idle/uncertain` delivery state and last message ID;
+- the first fresh observation establishes a silent baseline and may publish one deliberate `Спорт · сейчас открыта запись` overview for explicit registration windows already open at launch; it never calls existing activities newly discovered;
+- after launch, material changes cover genuinely new activities, new groups/seasons, registration-window changes, schedule, venue, age/audience, season dates, explicit participation conditions and `hasta completar` wording;
+- registration opening is date-triggered from the accepted snapshot, and one deadline reminder is eligible exactly three local calendar days before the explicit end date;
+- date triggers require a Sporttia snapshot observed on that same Europe/Madrid date, so stale last-good state after source failure cannot generate an opening/deadline alert;
+- disappearance from the open-registration surface, row ordering, raw HTML churn, `Abierta/Cerrada`, occupancy and source failure remain non-events;
+- multiple eligible changes are batched into one calm message linking to the already-reconciled activity cards;
+- before `sendMessage`, delivery state is persisted as `uncertain`; HTTP 429 restores `idle` for a safe retry, while ambiguous failures block automatic resend until operator inspection;
+- a notification failure is logged/deferred without undoing or blocking the already successful guide reconciliation.
 
-Date-triggered registration-opening/deadline notices need compact dedupe state. They do not require another source request.
-
-A deliberate one-time launch overview may be used for registrations already open before the notification feature was deployed; do not mislabel old activities as newly discovered.
+This contract is recorded in ADR 0070. No additional GET, cron row, daemon, dependency, database, browser automation, per-activity request or polling loop was added. The only runtime cost is one additional short Python process after the existing guide process, reading small local JSON state once per day.
 
 ### Deploy 3 — music school
 
