@@ -77,20 +77,40 @@ scheduled self-update, resident deployment agent, self-hosted CI runner, or
 public inbound port.
 
 The local earthquake feature may make one bounded official IGN GeoRSS request
-at minute 55 of each hour. It has no internal retry, browser, screenshot,
+at minute 55 of every hour. It has no internal retry, browser, screenshot,
 resident worker, or raw-response cache. The process exits after parsing and
 possible delivery. Normalized revision and delivery state is capped at 256
 events and 14 days; its log rotates at 1 MiB with one previous file.
 The monitor uses one mutually exclusive runtime lock. A conflicting invocation
 exits successfully without a request.
 
-The linked pinned guide uses explicit one-shot operator commands plus one short
-daily urban-timetable synchronization. It may store one small message graph,
-two current and two previous timetable PNGs, and bounded source metadata. PDF
-rendering is allowed only after a stable changed official one-page document;
-one strict normalized airport schedule and fare snapshot is also allowed.
-Fare text extraction is allowed only after a stable changed official tariff
-PDF. One bounded in-memory HTTPS issuer-chain recovery is allowed only for the documented Bus Sigüenza missing-issuer fault. It may read at most two allowlisted DER certificates from the official Let's Encrypt certificate repository, must not disable TLS verification, and must not persist certificates. No browser, OCR, resident collector, or background process is allowed.
+The linked pinned guide remains one shared recoverable Telegram graph. The
+existing 05:00 transport invocation updates its bounded transport media and
+source snapshots, then reconciles the whole graph. A second short 16:30
+`sync-guide` invocation reads the two approved Aqualider catalogue JSON
+endpoints sequentially, stores only one normalized last-good catalogue in
+`state/guide.json`, reconciles the same graph, and exits. It adds no daemon,
+worker pool, database, browser, per-sport process, or independent Telegram graph.
+
+The guide catalogue may store service/provider identifiers, normalized names and
+their reciprocal relationships only. It does not store source HTML, raw JSON,
+descriptions, images, marketing claims, or response history. Normal pool seasons
+come from the fixed product calendar. Registration availability remains out of
+automation until one bounded account-level request is validated; N-per-service
+availability polling is prohibited. Seasonal June/September notices are sent at
+most once per switch key, and ambiguous new-message delivery is recorded rather
+than automatically retried. The guide log rotates at 512 KiB with one previous
+file.
+
+PDF rendering for transport is allowed only after a stable changed official
+one-page document; one strict normalized airport schedule and fare snapshot is
+also allowed. Fare text extraction is allowed only after a stable changed
+official tariff PDF. One bounded in-memory HTTPS issuer-chain recovery is allowed
+only for the documented Bus Sigüenza missing-issuer fault. It may read at most
+two allowlisted DER certificates from the official Let's Encrypt certificate
+repository, must not disable TLS verification, and must not persist
+certificates. No browser, OCR, resident collector, or background process is
+allowed for the guide.
 
 ## Resource policy
 
@@ -101,8 +121,10 @@ PDF. One bounded in-memory HTTPS issuer-chain recovery is allowed only for the d
   only seven quick SafeBeach checks
   from 10:10 through 10:40 and at most one later full recollection.
 - Leave exact timing to a lightweight external Termux scheduler.
-- Install the operational-monitor cron rows by merging them with the existing
-  crontab; never replace unrelated jobs owned by another bot.
+- Install recurring cron rows by merging them with the existing crontab; never
+  replace unrelated jobs owned by another bot.
+- Keep the guide sync sequential and one-shot; its current source cost is two
+  small catalogue requests, not one request per activity.
 - Avoid continuous parsing, transformation, or monitoring.
 - Do not optimize speculatively, but reject designs with obvious background
   cost.
@@ -112,6 +134,8 @@ PDF. One bounded in-memory HTTPS issuer-chain recovery is allowed only for the d
 - Process small responses and compact records.
 - Do not retain full source histories in memory.
 - Limit concurrency to the small number of approved sources.
+- The current guide catalogue fetch is sequential; do not add concurrency until
+  a demonstrated need justifies it.
 - Avoid heavy frameworks and model runtimes.
 
 ### Network
@@ -126,6 +150,15 @@ PDF. One bounded in-memory HTTPS issuer-chain recovery is allowed only for the d
   or persists on Android.
 - Reuse connections when simple and safe.
 - Never retry indefinitely.
+- The 16:30 guide sync performs one `GET /v2/service/` capped at 256 KiB and one
+  `GET /v2/provider/` capped at 128 KiB against the exact approved SimplyBook
+  HTTPS host, sequentially, with a 15-second request timeout. It requires
+  `application/json`, valid JSON, valid identifiers and reciprocal
+  service/provider relationships. `200 text/html`, empty/malformed structures,
+  redirects outside the host, timeouts, and partial relationships are failed
+  observations: preserve last-good state and publish no catalogue claim. Do not
+  add cookies, CSRF bootstrap, HTML scraping, a browser, an inner retry storm, or
+  N-per-service availability requests.
 - AEMET recovery is bounded inside the adapter: three attempts for the
   mandatory forecast and two for each optional product, with short exponential
   delays or a server-provided `Retry-After` only when it fits the runtime
@@ -160,7 +193,9 @@ PDF. One bounded in-memory HTTPS issuer-chain recovery is allowed only for the d
 - Telegram operations share one bounded JSON client restricted to the official
   API host. Sends retain their workflow-specific delivery policy. Idempotent
   known-message edits and pins retry transient failures at most twice and
-  honor only server delays that fit a 60-second per-wait bound.
+  honor only server delays that fit a 60-second per-wait bound. New guide
+  messages retry only explicit rate-limit rejections; ambiguous delivery is
+  recorded to prevent an automatic duplicate.
 - Electricity checks confirmed publication before any source access. The first
   complete ESIOS response for a target date is atomically normalized to one
   private local snapshot; later invocations reuse it instead of repeating the
@@ -195,14 +230,16 @@ PDF. One bounded in-memory HTTPS issuer-chain recovery is allowed only for the d
   one-shot process exits.
 - Keep one current and one previous normalized airport schedule/fare snapshot.
   Store no raw Bus Sigüenza HTML or PDF.
+- Keep one `state/guide.json` normalized last-good catalogue plus the bounded
+  seasonal-notice marker. Store no raw SimplyBook response or source history.
 - Do not archive raw responses by default. The normalized CAMS JSON lifecycle
   snapshots above are the explicit bounded exception required for semantic
   comparison and crash-safe acceptance.
 - Do not cache raw source responses or municipal information. Only normalized
   source-language event facts, bounded provenance, and the incremental Todo
   Cultura metadata allowed by ADR 0033 may enter the two event catalogs.
-- Use one small atomic JSON file for publication state; SQLite is unnecessary
-  for the MVP.
+- Use small atomic JSON files for independent publication workflows; SQLite is
+  unnecessary for the MVP.
 
 ## Preferred technology direction
 
@@ -217,7 +254,7 @@ PDF. One bounded in-memory HTTPS issuer-chain recovery is allowed only for the d
 - standard-library HTTP for the current small source and delivery set
 - aiogram or aiohttp only if a later requirement clearly justifies them
 - Python standard-library facilities where they are sufficient
-- one atomic JSON file for daily Telegram message IDs and cleanup state
+- small atomic JSON state files per independent workflow
 
 These are directions, not permission to add unused dependencies before their
 need is demonstrated.
@@ -232,6 +269,8 @@ need is demonstrated.
 - Resident application schedulers, continuous source polling, collectors,
   watchers, or cache synchronization
 - Browser automation for routine source collection
+- Per-sport or per-activity daemons, state files, cron rows, or source polling
+  when one account-level guide sync can serve the catalogue
 - Continuous OCR, computer vision, or media processing
 - Local AI models, embeddings, vector databases, general cloud generation, or
   cloud AI outside the bounded municipal tasks and single secondary provider
@@ -246,6 +285,8 @@ Unstable infrastructure is normal, not exceptional:
 
 - valid data from available sources may still produce a partial digest;
 - an unavailable optional section should be omitted;
+- an unavailable guide catalogue preserves its last-good baseline and does not
+  prevent static guide self-healing;
 - stale data must not be presented as current;
 - unavailable data must not be converted into reassuring defaults;
 - no trustworthy content means no digest, not a fabricated one.

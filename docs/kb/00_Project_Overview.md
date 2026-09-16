@@ -44,11 +44,18 @@ Digest and runs as another short-lived Termux process.
 
 ### Linked pinned city guide
 
-One linked Telegram guide connects a compact pinned root to public cameras and
-direct transport messages. It is independent of the daily digest. Most content
-is static; one short daily job conditionally refreshes the two official urban
-timetable images and their current calendar captions, plus the date-specific
-airport departures and verified standard fare.
+One recoverable Telegram graph connects a compact pinned root to cameras,
+transport, durable places, and recurring activities. The first place/activity
+slice is `Места → Polideportivo Municipal →` the indoor and outdoor municipal
+pools, plus `Занятия и секции → Плавание` with direct cross-links between the
+activity and both pool cards.
+
+Most guide content is static. The existing 05:00 transport sync keeps its
+transport media current and also reconciles the shared message graph. A separate
+short 16:30 `sync-guide` invocation reads only a small normalized public
+SimplyBook catalogue baseline for swimming, reconciles the same graph, and
+publishes the deterministic June/September pool-season notice when due. It does
+not infer registration availability from stale catalogue entries.
 
 ### Local earthquake notices
 

@@ -3,10 +3,10 @@
 A small Telegram bot designed to run reliably in Termux on a low-powered
 Android device.
 
-The planned first feature is a concise Morning Digest covering local weather,
-sea conditions, beach flags, warnings, municipal updates, and relevant events.
-The architecture reserves one additional feature slot without defining it
-prematurely.
+The primary feature is a concise Morning Digest covering local weather, sea
+conditions, beach flags, warnings, municipal updates, and relevant events. The
+same lightweight application also publishes a linked city guide, next-day PVPC
+prices, weekend events, and selected bounded operational updates.
 
 ## Current status
 
@@ -15,6 +15,13 @@ Guardamar's public SafeBeach status, format one short message, and deliver it
 to one configured Telegram chat or channel. It may also include all verified
 deduplicated Guardamar events occurring today and an explicit active
 festival traffic restriction from Policía Local Guardamar.
+
+The linked pinned city guide uses one recoverable Telegram graph for cameras,
+transport, durable places, and recurring activities. Its first places/activity
+slice covers `Polideportivo Municipal`, the indoor and outdoor municipal pools,
+and swimming. One bounded 16:30 guide sync reads only the accepted public
+SimplyBook catalogue JSON surface; it does not infer registration availability
+from catalogue visibility.
 
 ## Repository map
 
@@ -35,8 +42,9 @@ with [docs/kb/00_Project_Overview.md](docs/kb/00_Project_Overview.md).
 - Python with `asyncio`
 - standard-library HTTP for sources and outbound Telegram delivery
 - one short-lived 07:30 process and bounded seasonal update checks
+- independent short 05:00 transport and 16:30 guide synchronizations
 - optional isolated listener for allowlisted private `/preview`
-- one atomic JSON value for the last successful local date
+- small local atomic JSON state per independent workflow
 - no Docker, PostgreSQL, webhooks, or heavy background services
 - no internal scheduler, continuous polling, resident collectors, or generic
   cache layer
@@ -44,8 +52,9 @@ with [docs/kb/00_Project_Overview.md](docs/kb/00_Project_Overview.md).
 The `tzdata` package supplies the `Europe/Madrid` timezone on Termux builds
 that do not expose Android's system timezone database to Python. CAMS NetCDF
 processing runs off-device in GitHub Actions; Android reads only a small public
-JSON and needs no scientific Python stack. The optional linked transport guide
-also uses the Termux `poppler` package for bounded one-page PDF rendering.
+JSON and needs no scientific Python stack. The linked city guide uses the
+Termux `poppler` package only for bounded changed transport PDFs; the places and
+activities slice adds no new dependency.
 
 ## Configuration
 
@@ -61,6 +70,7 @@ export TELEGRAM_BOT_TOKEN="your-bot-token"
 export TELEGRAM_CHAT_ID="@your-channel-or-chat-id"
 export TELEGRAM_ALLOWED_USER_IDS="your-private-telegram-user-id"
 export PINNED_GUIDE_STATE_PATH="state/pinned_guide.json"
+export GUIDE_STATE_PATH="state/guide.json"
 export GEMINI_API_KEY="your-optional-gemini-key"
 export OPENROUTER_API_KEY="your-optional-fallback-key"
 export CAMS_DATA_URL="https://raw.githubusercontent.com/vasenko1/guardamar-cams-data/main/data/latest.json"
@@ -71,8 +81,9 @@ Morning state defaults to `state/delivery.json`; override it with
 `MORNING_DIGEST_STATE_PATH` if needed. Electricity publication state defaults
 to `state/electricity.json`, and its private normalized target-day data defaults
 to `state/electricity_prices.json`; override the latter with
-`ELECTRICITY_SNAPSHOT_PATH` if needed. The state and snapshot paths must remain
-different. Secrets must not be committed.
+`ELECTRICITY_SNAPSHOT_PATH` if needed. The pinned guide state defaults to
+`state/pinned_guide.json`, while the normalized places/activities source
+baseline defaults to `state/guide.json`. Secrets must not be committed.
 
 `CAMS_DATA_URL` and `CAMS_CACHE_PATH` have the defaults shown above and normally
 need not be configured. The phone never receives an ADS credential. Invalid,
@@ -91,11 +102,11 @@ PYTHONPATH=src python -m telegrambot run
 The command collects the approved sources without operational SafeBeach rows,
 sends the briefing, stores its Telegram message ID, and exits.
 
-Use external Termux cron entries at `07:30` and every five minutes from
-`10:10` through `10:40` in `Europe/Madrid`:
+Use external Termux cron entries in `Europe/Madrid`:
 
 ```cron
 CRON_TZ=Europe/Madrid
+0 5 * * * /path/to/TelegramBot/termux/sync-transport.sh
 10 5 * * * /path/to/TelegramBot/termux/sync-municipal-events.sh
 30 5 * * * /path/to/TelegramBot/termux/sync-agenda-events.sh
 0,30 6 * * * /path/to/TelegramBot/termux/prepare-events.sh
@@ -111,6 +122,7 @@ CRON_TZ=Europe/Madrid
 0 11,15,19 * 1-5,10-12 * /path/to/TelegramBot/termux/monitor-updates.sh
 0 11,15,19 1-19 6 * /path/to/TelegramBot/termux/monitor-updates.sh
 0 11,15,19 15-30 9 * /path/to/TelegramBot/termux/monitor-updates.sh
+30 16 * * * /path/to/TelegramBot/termux/sync-guide.sh
 30,35,45 20 * * * /path/to/TelegramBot/termux/run-electricity.sh
 0,20 21 * * * /path/to/TelegramBot/termux/run-electricity.sh
 0,20 18 * * 5 /path/to/TelegramBot/termux/run-weekend.sh
@@ -127,6 +139,8 @@ The validated Android deployment uses the scripts in `termux/`:
 - `termux/listen.sh` under a `termux-services` service named
   `guardamar-preview`; its `run` file may be a symlink because the launcher
   resolves the real target path before loading the project `.env`;
+- `termux/sync-transport.sh` at 05:00 to refresh the transport source data and
+  reconcile the shared linked guide;
 - `termux/run-daily.sh` at 07:30 and `termux/update-daily.sh` every five
   minutes from 10:10 through 10:40;
 - `termux/monitor-updates.sh` at the bounded seasonal beach windows and the
@@ -137,6 +151,9 @@ The validated Android deployment uses the scripts in `termux/`:
 - `termux/prepare-events.sh` at 06:00, 06:30, and 07:00 to fill only missing
   title translations, and `termux/prepare-aemet.sh` at 07:15 to store one
   normalized same-day weather snapshot;
+- `termux/sync-guide.sh` at 16:30 to read the bounded places/activities source
+  baseline, reconcile the same pinned graph, and publish only a due deterministic
+  pool-season notice;
 - `termux/monitor-earthquakes.sh` at minute 55 of every hour to check the
   official IGN GeoRSS feed for a new qualifying local event;
 - `termux/start-services` copied to `~/.termux/boot/start-services` for the
@@ -192,6 +209,7 @@ CRON_TZ=Europe/Madrid
 0 11,15,19 * 1-5,10-12 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
 0 11,15,19 1-19 6 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
 0 11,15,19 15-30 9 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
+30 16 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-guide.sh
 30,35,45 20 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity.sh
 0,20 21 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity.sh
 0,20 18 * * 5 /data/data/com.termux/files/home/bots/guardamar-status/termux/run-weekend.sh
@@ -234,13 +252,25 @@ cd ~/bots/guardamar-status
 ./termux/install-earthquake-cron.sh
 ```
 
-This idempotent installer owns only its marked block and saves the original
-crontab once as `~/.cache/crontab/crontab.before-earthquakes`. Minute `:55`
-avoids the scheduled code changes, morning preparation, digest, beach-monitor, transport,
-electricity, weekend, and pharmacy slots listed above. The installer aborts on
-a crontab read error or malformed managed markers rather than risk replacing
-unrelated jobs. A runtime-lock conflict skips that invocation; the next hour
-is the bounded recovery path.
+Install the linked places/activities guide row in the same idempotent way:
+
+```sh
+cd ~/bots/guardamar-status
+sh ./termux/install-guide-cron.sh
+```
+
+The guide installer owns only its marked block, preserves unrelated crontab
+lines, saves the original crontab once as
+`~/.cache/crontab/crontab.before-guide`, and schedules one 16:30
+`Europe/Madrid` invocation. It creates no service or resident process.
+
+This idempotent earthquake installer owns only its marked block and saves the
+original crontab once as `~/.cache/crontab/crontab.before-earthquakes`. Minute
+`:55` avoids the scheduled code changes, morning preparation, digest,
+beach-monitor, transport, guide, electricity, weekend, and pharmacy slots listed
+above. The installer aborts on a crontab read error or malformed managed markers
+rather than risk replacing unrelated jobs. A runtime-lock conflict skips that
+invocation; the next hour is the bounded recovery path.
 
 Install `cronie`, `termux-services`, and the Python `tzdata` dependency before
 enabling the services. Open Termux:Boot once after installation. On Android,
@@ -277,8 +307,8 @@ PYTHONPATH=src python -m telegrambot poll "Что добавить в дайдж
 - `refresh-current` is an explicit operator action that rebuilds today's
   digest and edits its one live Telegram message in place. It never creates a
   replacement message and refuses to act without a trusted current-day state.
-- `pinned-preview` prints the complete camera and transport guide without
-  contacting Telegram or changing publication state.
+- `pinned-preview` prints the complete linked city guide without contacting
+  Telegram or changing publication state.
 
 To enable private Telegram previews, run the independent listener:
 
@@ -287,10 +317,10 @@ PYTHONPATH=src python -m telegrambot listen
 ```
 
 Send `/preview` for the Morning Digest or `/pinned_preview` for the complete
-camera and transport guide. Only IDs in
-`TELEGRAM_ALLOWED_USER_IDS` are accepted. The reply is silent, is never sent
-to the configured group, and does not change publication state. The listener
-does not fetch any source until an authorized command arrives.
+linked city guide. Only IDs in `TELEGRAM_ALLOWED_USER_IDS` are accepted. The
+reply is silent, is never sent to the configured group, and does not change
+publication state. The listener does not fetch any source until an authorized
+command arrives.
 
 After reviewing the private guide, publish or update it manually:
 
@@ -307,23 +337,31 @@ PYTHONPATH=src python -m telegrambot sync-transport
 ./termux/install-transport-cron.sh
 ```
 
+The places/activities baseline uses no additional package. After deployment,
+run its one-shot command manually once before installing its cron row:
+
+```sh
+PYTHONPATH=src python -m telegrambot.guide sync
+sh ./termux/install-guide-cron.sh
+```
+
 The configured group must be public and addressed by `@username`, or a private
 supergroup addressed by its numeric `-100...` identifier. State stores the
 bot-authored message graph and bounded metadata for the two urban timetable
 images. Later runs edit that graph and pin the compact root without a
 notification. Detail messages link back to their navigator. If one or several
-managed messages were deleted, run `sync-transport`: it reconciles text and
-media messages and rewrites all affected links before reporting success.
+managed messages were deleted, run `sync-transport` or `telegrambot.guide sync`:
+it reconciles the shared graph and rewrites affected links before reporting
+success.
 
-State contains only the current local date, publication time, Telegram
-message IDs, cleanup result, the pinned-guide graph with bounded timetable
-metadata, and the
-isolated electricity publication marker plus one normalized 24-hour
-target-day snapshot. AEMET recovery retries only
-bounded transient failures and repeats the complete two-step product request.
-If AEMET remains unavailable during a later update, the same-day prepared
-AEMET snapshot supplies the weather blocks. No raw source cache is
-implemented.
+State contains only compact publication state: current-day delivery markers,
+Telegram message IDs, the pinned-guide graph with bounded timetable metadata,
+one normalized last-good guide catalogue and seasonal-notice marker, and the
+isolated electricity publication marker plus one normalized 24-hour target-day
+snapshot. AEMET recovery retries only bounded transient failures and repeats the
+complete two-step product request. If AEMET remains unavailable during a later
+update, the same-day prepared AEMET snapshot supplies the weather blocks. Raw
+SimplyBook responses are never stored.
 
 Gemini is used only for the bounded municipal AI tasks documented in ADRs
 0011, 0012, and 0028. If `OPENROUTER_API_KEY` is configured, one pinned
