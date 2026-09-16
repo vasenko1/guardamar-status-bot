@@ -1,6 +1,6 @@
 # Activities and Programs
 
-Status: planning / architecture-audited — 2026-09-16
+Status: implementation ledger — Deploy 1 completed 2026-09-17
 
 This note is the living product/technical plan for the linked Guardamar guide. It records agreed scope, source contracts, information architecture, implementation gaps and deployment order so future work does not depend on chat history.
 
@@ -11,7 +11,7 @@ It is intentionally not an ADR. ADRs record accepted architectural decisions aft
 - This file (`14_Activities_and_Programs.md`) is the single living implementation ledger for activities/programs.
 - `09_Roadmap.md` remains high level; do not duplicate item-by-item implementation detail there.
 - `06_Data_Sources.md` is updated only when a source role is actually approved/implemented.
-- `11_Pinned_Message_Content.md` records final resident-facing guide copy/rules. Its legacy root section still describes the old two-item root and must be brought in sync when the next guide-content implementation lands; do not use that old root description to override current code/ADRs.
+- `11_Pinned_Message_Content.md` records final resident-facing guide copy/rules and is now synchronized with the current root/places/activities architecture.
 - ADR 0067 remains the base linked places/activities architecture. ADR 0069 remains the current Sporttia source contract. New accepted source/notification contracts should receive narrow ADRs only when implemented.
 
 ## Resident-facing information architecture
@@ -81,59 +81,42 @@ Future places such as CEIP Reyes Católicos or the music school should receive c
 
 ## Code architecture audit
 
-The current architecture is suitable for the planned expansion and should be extended, not replaced. Keep the existing one-shot Termux model, atomic JSON state, source-specific adapters and linked-message reconciliation.
+The current architecture remains suitable after Deploy 1. Keep the existing one-shot Termux model, atomic JSON state, source-specific adapters and linked-message reconciliation.
 
-### Gap 1 — `SPORT_ACTIVITY_KEYS` is overloaded
+### Resolved in Deploy 1 — source keys and venue membership are separate
 
-Today one tuple effectively means several different things at once: Sporttia parser scope, valid snapshot keys, source-managed Telegram cards, rows in `Занятия и секции`, and all activities assumed to belong to Palau Sant Jaume. Recovery tests currently encode the same all-sports-at-Palau assumption.
-
-That accidental coupling must be removed before adding Les Raboses and Molivent, but without introducing a Place/Activity relation engine.
-
-Use a few explicit constants by responsibility, for example:
+The old `SPORT_ACTIVITY_KEYS` tuple represented too many responsibilities at once. Deploy 1 split those responsibilities explicitly without introducing a Place/Activity relation engine:
 
 ```python
-SPORTTIA_ACTIVITY_KEYS = (... existing ..., "deporte_plus", "psychomotor")
+SPORTTIA_ACTIVITY_KEYS = (... existing ..., "deporte_plus", "psychomotricity")
 PALAU_ACTIVITY_KEYS = (... existing six ...)
 LES_RABOSES_SOURCE_ACTIVITY_KEYS = ("deporte_plus",)
-MOLIVENT_ACTIVITY_KEYS = ("psychomotor",)
+MOLIVENT_SOURCE_ACTIVITY_KEYS = ("psychomotricity",)
 ```
 
-Football remains a durable static activity and is not added to Sporttia source keys.
+Football remains a durable static activity and is not part of Sporttia source keys.
 
-The exact constant names may differ, but source ownership and venue membership must no longer be represented by the same tuple.
+### Resolved in Deploy 1 — venue rendering
 
-### Gap 2 — venue rendering only knows Palau
+`_venue_markup` now recognizes only the three supported durable sport venues explicitly: `Palau Sant Jaume`, `Complejo Deportivo Les Raboses`, and `CEIP Molivent`. The recognized place name links to its internal Telegram card when available; a verified map is the recovery fallback. Source sublocation text remains plain escaped text.
 
-`_venue_markup` currently recognizes only `Palau Sant Jaume`; other venues are plain text. Extend it with a tiny explicit prefix-to-guide-link resolver for the few supported durable places (Palau, Les Raboses, Molivent). Preserve any source detail after the known venue name as plain text, for example field/room information.
+This remains a presentation lookup, not a generic place ontology. Unknown venues remain escaped plain text.
 
-This is a presentation lookup, not a generic place ontology. Unknown venues remain escaped plain text or an explicit map link when a feature deliberately supplies one.
+### Resolved in Deploy 1 — source-card rollout guard
 
-### Gap 3 — source-card creation must not manufacture empty cards during rollout
+`publish_pinned_guide` no longer manufactures a newly introduced source-managed card merely because a source key exists in code. A new source card is created only when current/future normalized groups are available. An already-created source card can still participate in normal recovery using last-good catalogue data.
 
-`publish_pinned_guide` currently loops every source activity key and upserts a card. When a new classifier key is deployed after that day’s single Sporttia attempt has already happened, the saved catalogue may not yet contain the new activity. Do not create a misleading empty new card solely because the code knows the key.
+No second Sporttia request, override fetch, scheduler or cron was added for same-day deployment timing.
 
-For a newly supported source-managed key, create/recreate the card only when either:
+### Resolved in Deploy 1 — venue-aware recovery
 
-- selected current/future source groups exist; or
-- an already-known stable message is being recovered and the current last-good catalogue still supports it.
+Recovery remains on the existing bounded reconciliation passes. Palau activities relink to Palau; DEPORTE+ relinks to Les Raboses; psychomotricity relinks to CEIP Molivent; static football relinks to Les Raboses. Deleting a place does not reassign unrelated activities to it.
 
-Do not add an extra Sporttia fetch merely to solve deployment timing.
+No graph database, dependency engine or generic relation layer was introduced.
 
-### Gap 4 — recovery tests assume one venue
+### Constraint — `guide.py` must stay an orchestrator
 
-Rewrite recovery expectations around actual owners:
-
-- a Palau activity relinks `Занятия и секции` and Palau;
-- DEPORTE+ relinks `Занятия и секции` and Les Raboses;
-- psychomotor relinks `Занятия и секции` and CEIP Molivent;
-- deleting a place relinks only the activities/cards that point to that place;
-- football is recovered as a durable static card, not a Sporttia-managed card.
-
-Keep the existing bounded reconciliation passes. Do not build a general graph database or dependency engine.
-
-### Gap 5 — `guide.py` must stay an orchestrator
-
-`guide.py` already coordinates Aqualider, Sporttia, Wi-Fi, pinned reconciliation and the pool-season notice. Do not place all future HTML/RSS/WordPress parsing into this module.
+`guide.py` coordinates Aqualider, Sporttia, Wi-Fi, pinned reconciliation and the pool-season notice. Do not place future HTML/RSS/WordPress parsing into this module.
 
 Follow the existing project pattern:
 
@@ -142,7 +125,7 @@ Follow the existing project pattern:
 
 No plugin framework, provider registry, dependency injection container or generic source scheduler is needed.
 
-### Gap 6 — the existing guide state can grow safely
+### Constraint — the existing guide state can grow safely
 
 Keep `state/guide.json` as the small atomic guide/source state. Add optional, independently validated top-level normalized snapshots as features land (for example music/municipal/holiday catalog state) instead of introducing a database or one file per activity.
 
@@ -150,7 +133,7 @@ Do not persist raw pages. Preserve last-good normalized facts on source failure.
 
 Notification delivery state may be separate when it needs explicit `pending/uncertain` semantics; do not overload `pinned_guide.json`, whose job is message IDs/media graph state.
 
-### Gap 7 — notification semantics should copy the proven pattern, not its module
+### Constraint — notification semantics should copy the proven pattern, not its module
 
 `transport_notifications.py` already proves the useful delivery ideas: silent first baseline, semantic diffs, batching, atomic pending state, and `uncertain` before `sendMessage` because Telegram has no idempotency key.
 
@@ -166,33 +149,31 @@ A separate schedule is justified only if a real product requirement needs a mate
 
 ## Deployment sequence
 
-### Deploy 1 — sports core / linked guide only
+### Deploy 1 — sports core / linked guide only — completed 2026-09-17
 
-Keep this deployment limited to the existing linked-guide and Sporttia architecture.
+Implemented as one extension of the existing linked-guide and Sporttia architecture:
 
-Add:
+- durable `Complejo Deportivo Les Raboses` place card;
+- durable `CEIP Molivent` place card;
+- source-managed `DEPORTE +` from the existing Sporttia centre read;
+- source-managed `Психомоторика` with two current CEIP Molivent groups and the source’s overlapping 2022 audience year preserved;
+- durable static `Футбол` card for Guardamar Soccer C.D., linked to Les Raboses and deliberately not treated as Sporttia-managed;
+- internal venue links matching the existing Palau UX, with verified map fallback during recovery;
+- explicit source/venue key separation;
+- same-day source-card rollout guard;
+- venue-specific recovery coverage;
+- one visual `🏃 Спорт и движение` heading inside the existing single `Занятия и секции` message.
 
-- `Complejo Deportivo Les Raboses` as a durable place card;
-- `CEIP Molivent` as a durable place card;
-- `DEPORTE +` from the existing Sporttia centre read;
-- `Психомоторика` from the existing Sporttia centre read (two current groups at CEIP Molivent);
-- `Футбол` as a durable Guardamar Soccer C.D. activity card linked to Les Raboses; do not pretend it is Sporttia-managed;
-- internal venue links matching the existing Palau UX;
-- explicit source/venue key separation described above;
-- source-card rollout guard described above;
-- venue-specific recovery tests;
-- visual grouping in `Занятия и секции` only if it improves the now-longer index; no new category cards.
+Sporttia remains one bounded centre-page GET, at most one attempt per local calendar day. The supported parser scope now covers all 15 currently published municipal rows represented by the existing six activity families plus DEPORTE+, and the two psychomotricity groups. There are still no activity-detail requests, internal API calls, occupancy reads, browser automation, or `Abierta/Cerrada` semantics.
 
-Current Sporttia target after this deploy: cover all 15 currently published municipal rows from the one existing bounded centre-page GET.
+Implementation notes / small deliberate deviations from example wording:
 
-Do not add in Deploy 1:
+- the actual Molivent membership constant is named `MOLIVENT_SOURCE_ACTIVITY_KEYS`, matching the Les Raboses source-membership name;
+- DEPORTE+ uses a narrow `_activity_group_order()` exception that returns its single visible group order without weakening `_group_order()` for any other activity;
+- Sporttia `registrations` continues to normalize explicit `NUEVAS INSCRIPCIONES` windows only. The April–May DEPORTE+ renewal period is not presented as new-user registration, preserving ADR 0069 semantics;
+- the known DEPORTE+ activity mix (`flag rugby`, obstacle course, athletics) is stable resident-facing copy on its activity card; schedule, season, audience, venue, registration action, and medical-certificate requirement remain source-normalized.
 
-- a second Sporttia source;
-- per-activity Sporttia requests;
-- occupancy `Alumnos X/Y`;
-- interpretation of generic Sporttia `Abierta/Cerrada`;
-- automatic public sport-change notifications;
-- music/social/holiday program source code.
+No new production-source probe was required for this slice: it uses the Sporttia centre-page contract already validated on 2026-09-16. `guide.py` orchestration, the `sync-guide` schedule, and cron layout are unchanged. No new ADR was added because Deploy 1 does not introduce a new source or architectural contract beyond ADR 0067 and ADR 0069.
 
 ### Deploy 2 — sports notifications
 
@@ -303,7 +284,7 @@ First observation after a parser/source rollout is a silent alert baseline so de
 - Sporttia's current 2026/27 registration windows for the targeted municipal sports generally include September and end on 2026-09-30 where explicitly published.
 - Jardín Musical (ages 3–6) has an exceptional enrollment extension through 2026-09-17 on the official Agrupación Musical Guardamar site. This is time-sensitive and should not wait for a future automatic change event if Deploy 3 is not ready in time.
 
-## Open research, not blockers for Deploy 1
+## Deferred research
 
 - Sporttia occupancy/status second layer: determine whether all relevant Guardamar capacity/status facts can be obtained by one bounded public request without auth, browser automation or per-activity crawling. Do not change ADR 0069 until that contract is proven.
 - Before implementing the municipal-program adapter, make one production-network probe of the Ayuntamiento RSS/list response: final URL, content type, size and encoding.

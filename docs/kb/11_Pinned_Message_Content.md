@@ -3,12 +3,14 @@
 ## Status
 
 This page stores the approved copy and editorial rules for the linked pinned
-city guide implemented by ADR 0041. Publication is an explicit operator action;
-it is not scheduled and does not interact with the Morning Digest.
+city guide implemented by ADR 0041 and extended by ADR 0067/0069. The guide is
+a recoverable set of managed Telegram messages. Ongoing reconciliation happens
+inside the existing daily `sync-guide` one-shot; it does not interact with the
+Morning Digest.
 
 ## Compact root
 
-Use the root only as a quiet two-item navigator:
+Use the root only as a quiet five-item navigator:
 
 ```markdown
 📌 **Полезное о Гуардамаре**
@@ -16,15 +18,40 @@ Use the root only as a quiet two-item navigator:
 📹 **Онлайн-камеры**
 
 🚌 **Транспорт в Гуардамаре**
+
+📍 **Места**
+
+📶 **Бесплатный Wi-Fi**
+
+🎓 **Занятия и секции**
 ```
 
-Both item names link to their managed detail messages. Intermediate navigation
-messages have no shared promotional footer: this applies to the compact root
-and the transport navigator. The footer remains in final messages where the
-reader finishes: the camera list and every individual transport detail. Keep
-one blank line between the root links so they remain separate touch targets on
-a phone. Write `Онлайн-камеры` with one hyphen; do not use
-`Он-лайн камеры`.
+All item names link to their managed detail/index messages. Intermediate
+navigation messages have no shared promotional footer: this applies to the
+compact root and the transport navigator. The footer remains in final messages
+and linked guide cards where the reader finishes. Keep one blank line between
+root links so they remain separate touch targets on a phone. Write
+`Онлайн-камеры` with one hyphen; do not use `Он-лайн камеры`.
+
+### Current places and activities architecture
+
+`📍 Места` is one durable place index. It contains the municipal
+Polideportivo hierarchy (including the two pool cards and Palau Sant Jaume),
+Complejo Deportivo Les Raboses, CEIP Molivent, and Centro Social Juvenil.
+Do not flatten every Sporttia room/field into a place card.
+
+`🎓 Занятия и секции` remains one message. Sports are visually grouped under
+`🏃 Спорт и движение`; this is presentation only and does not create another
+Telegram navigation layer. Source-managed Sporttia cards and durable static
+activities such as Guardamar Soccer C.D. football share this index but retain
+their different source/recovery semantics.
+
+When an activity uses a supported durable venue, link the recognized place
+name to that internal Telegram place card. Palau Sant Jaume, Complejo Deportivo
+Les Raboses, and CEIP Molivent are the current explicit venue mappings. Any
+source sublocation after the recognized place name remains plain text. A
+verified map is only the fallback when the internal place message is not yet
+available during recovery.
 
 ## Live cameras
 
