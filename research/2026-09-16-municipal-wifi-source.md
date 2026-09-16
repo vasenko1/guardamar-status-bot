@@ -10,15 +10,15 @@ Municipal landing page:
 
 `https://www.guardamardelsegura.es/wifis-municipales/`
 
-Current linked map reviewed on 2026-09-16:
+Asset linked by that landing page on 2026-09-16:
 
-`https://www.guardamardelsegura.es/wp-content/uploads/2023/12/PLANO-SINEU-WIFIS-GUARDAMAR-PUBLICAS-scaled.jpg`
+`https://www.guardamardelsegura.es/wp-content/uploads/2021/06/PLANO-WIFIS-GUARDAMAR-PU%CC%81BLICAS.pdf`
 
-An older official 2021 PDF also remains reachable. Its continued availability demonstrates why probing the old asset itself is not a sufficient freshness check.
+A separate 2023 JPG upload with the same map facts is also reachable, but the current `Wifis Públicas` landing page does not use it as its linked source. The source watch therefore uses the 2021 PDF URL as the reviewed linked baseline. This distinction was confirmed by a live GitHub Actions smoke check against the page rather than inferred from upload dates.
 
 ## Current reviewed facts
 
-The current municipal map shows seven access points:
+The linked municipal map shows seven access points:
 
 1. Escola de Música, C/ Mercat, 2 — `WiFi4EU`, no password.
 2. Casa de Cultura, C/ Colón, 60 — `WiFi4EU`, no password.
@@ -32,7 +32,7 @@ The WiFi4EU access points use the common `WiFi4EU` SSID and captive-portal confi
 
 ## Change-signal conclusion
 
-The useful signal is the asset currently linked by the municipal landing page, not whether a previously reviewed upload continues to exist. One bounded landing-page GET and exact linked-asset comparison is sufficient for the first implementation.
+The useful signal is the asset currently linked by the municipal landing page, not which upload has the newest-looking path and not whether a separately known upload remains reachable. One bounded landing-page GET and exact linked-asset comparison is sufficient for the first implementation.
 
 Failures to fetch or extract exactly one candidate are not evidence of a factual change. They must preserve the reviewed baseline and produce no public update.
 
