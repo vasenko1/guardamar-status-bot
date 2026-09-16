@@ -26,8 +26,10 @@ have closed.
 
 ## Decision
 
-Reuse the existing 16:30 `sync-guide` one-shot. Add exactly one bounded
-Sporttia GET per run, with redirects disabled and no retry. Parse the
+Reuse the existing 16:30 `sync-guide` one-shot. Attempt at most one bounded
+Sporttia GET per Europe/Madrid calendar day, even if `sync-guide` is rerun
+manually; mark the attempt before network I/O so failures are not retried the
+same day. Redirects and retries remain disabled. Parse the
 server-rendered offer rows with the Python standard-library HTML parser.
 Do not fetch `play.sporttia.com` activity pages, JavaScript assets,
 `api.sporttia.com`, or the alternate Markdown representation.
@@ -59,7 +61,7 @@ formatter, not a generic activity CMS, relation model or scheduler.
 - no database or new state file;
 - no operator confirmation or private alert;
 - no browser automation;
-- one Sporttia request per `sync-guide` run.
+- at most one Sporttia request per local calendar day.
 
 Existing pinned-message state keeps the six Telegram message IDs. Other
 guide reconciliations can preserve links without performing Sporttia
