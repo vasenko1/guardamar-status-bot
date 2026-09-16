@@ -115,9 +115,33 @@ def sporttia_html():
             85508,
             "DEPORTE +. Nacidos entre 2011 y 2017. (temp. 2026/2027)",
             [
-                "NUEVAS INSCRIPCIONES: 01/06/26 al 30/06/26",
+                "NUEVAS INSCRIPCIONES: 01/06/26 al 30/06/26 y 01/09/26 al 30/09/26",
                 "Horario: Martes y jueves de 19:30 a 21:00 horas.",
-                "Clases en Complejo Deportivo Les Raboses.",
+                "Clases en Complejo Deportivo Les Raboses. Pista de atletismo y campo de césped natural nº2",
+                "Rugby flag, circuito de obstáculos y atletismo.",
+                "Se deberá aportar certificado médico correspondiente.",
+            ],
+            "1 oct 2026 – 31 may 2027",
+        ),
+        (
+            85524,
+            "9. PSICOMOTRICIDAD. Primer turno. Nacidos en 2022 Y 2023. (Temp. 2026/2027)",
+            [
+                "NUEVAS INSCRIPCIONES: 01/06/26 al 30/06/26 y 01/09/26 al 30/09/26",
+                "Horario: Martes y jueves de 17:15 a 18:15 horas.",
+                "Clases en CEIP MOLIVENT.",
+                "Se deberá aportar certificado médico correspondiente.",
+            ],
+            "1 oct 2026 – 31 may 2027",
+        ),
+        (
+            85525,
+            "10. PSICOMOTRICIDAD. Segundo turno. Nacidos en 2021 y 2022. (Temp. 2026/2027)",
+            [
+                "NUEVAS INSCRIPCIONES: 01/06/26 al 30/06/26 y 01/09/26 al 30/09/26",
+                "Horario: Martes y jueves de 18:15 a 19:15 horas.",
+                "Clases en CEIP MOLIVENT.",
+                "Se deberá aportar certificado médico correspondiente.",
             ],
             "1 oct 2026 – 31 may 2027",
         ),
@@ -176,10 +200,26 @@ class SporttiaSourceTests(unittest.IsolatedAsyncioTestCase):
             len([item for item in result["activities"] if item["key"] == "judo"]),
             2,
         )
+        self.assertEqual(
+            len(
+                [
+                    item
+                    for item in result["activities"]
+                    if item["key"] == "psychomotricity"
+                ]
+            ),
+            2,
+        )
         judo = next(item for item in result["activities"] if item["source_id"] == 85509)
         self.assertEqual(judo["schedule"], "Ср и Пт · 17:00–18:30")
         self.assertEqual(judo["venue"], "Palau Sant Jaume")
         self.assertEqual(judo["audience"], "2011–2020 г.р.")
+        deporte = next(
+            item for item in result["activities"] if item["key"] == "deporte_plus"
+        )
+        self.assertEqual(deporte["group_order"], 1)
+        self.assertEqual(deporte["audience"], "2011–2017 г.р.")
+        self.assertIn("Pista de atletismo", deporte["venue"])
         serialized = str(result)
         self.assertNotIn("Abierta", serialized)
         self.assertNotIn("€", serialized)
@@ -209,6 +249,14 @@ class SporttiaSourceTests(unittest.IsolatedAsyncioTestCase):
         current = select_sport_groups(catalog, "judo", date(2026, 10, 2))
         self.assertEqual(len(future), 2)
         self.assertEqual(len(current), 2)
+        psychomotricity = select_sport_groups(
+            catalog, "psychomotricity", date(2026, 9, 16)
+        )
+        self.assertEqual(len(psychomotricity), 2)
+        self.assertEqual(
+            [group["audience"] for group in psychomotricity],
+            ["2022–2023 г.р.", "2021–2022 г.р."],
+        )
 
 
 class SporttiaPinnedTests(unittest.IsolatedAsyncioTestCase):
@@ -232,6 +280,40 @@ class SporttiaPinnedTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("Abierta", card)
         self.assertNotIn("€", card)
 
+    def test_deporte_plus_and_psychomotricity_use_their_internal_places(self):
+        moment = datetime(2026, 9, 16, 16, 30, tzinfo=MADRID)
+        catalog = sample_catalog(moment)
+        deporte = build_sport_activity(
+            "deporte_plus",
+            catalog,
+            date(2026, 9, 16),
+            "https://t.me/c/123/50",
+            None,
+            "https://t.me/c/123/71",
+            "https://t.me/c/123/72",
+        )
+        self.assertIn("🏃 <b>DEPORTE +</b>", deporte)
+        self.assertIn("<b>Группа</b> · 2011–2017 г.р.", deporte)
+        self.assertIn("Вт и Чт · 19:30–21:00", deporte)
+        self.assertIn('href="https://t.me/c/123/71"', deporte)
+        self.assertIn("Pista de atletismo", deporte)
+        self.assertNotIn("https://maps.app.goo.gl/tGXyANAYgRREeajP8", deporte)
+
+        psychomotricity = build_sport_activity(
+            "psychomotricity",
+            catalog,
+            date(2026, 9, 16),
+            "https://t.me/c/123/50",
+            None,
+            "https://t.me/c/123/71",
+            "https://t.me/c/123/72",
+        )
+        self.assertIn("🧒 <b>Психомоторика</b>", psychomotricity)
+        self.assertIn("<b>1-я группа</b> · 2022–2023 г.р.", psychomotricity)
+        self.assertIn("<b>2-я группа</b> · 2021–2022 г.р.", psychomotricity)
+        self.assertIn('href="https://t.me/c/123/72"', psychomotricity)
+        self.assertNotIn("https://maps.app.goo.gl/kS2wM2V8x2twhuBCA", psychomotricity)
+
     def test_activities_index_hides_unpublished_sport_cards(self):
         message = build_activities(
             "https://t.me/c/123/59",
@@ -243,6 +325,9 @@ class SporttiaPinnedTests(unittest.IsolatedAsyncioTestCase):
             "Дзюдо",
             "Мультиспорт",
             "Инклюзивный мультиспорт",
+            "Психомоторика",
+            "DEPORTE +",
+            "Футбол",
             "Гимнастика для старшего возраста",
             "Гимнастика Asociación Mujeres",
         ):
@@ -263,6 +348,8 @@ class SporttiaPinnedTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn(link, message)
         self.assertIn("Художественная гимнастика", message)
         self.assertIn("Инклюзивный мультиспорт", message)
+        self.assertIn("Психомоторика", message)
+        self.assertIn("DEPORTE +", message)
 
     async def test_source_managed_cards_get_stable_ids_and_relink_index(self):
         moment = datetime(2026, 9, 16, 16, 30, tzinfo=MADRID)
@@ -301,6 +388,37 @@ class SporttiaPinnedTests(unittest.IsolatedAsyncioTestCase):
                     telegram_message_link("-100123", result[key]),
                     activity_edits[-1],
                 )
+
+    async def test_new_source_key_without_current_groups_is_not_materialized(self):
+        moment = datetime(2026, 9, 16, 16, 30, tzinfo=MADRID)
+        catalog = sample_catalog(moment)
+        catalog = {
+            **catalog,
+            "activities": [
+                item
+                for item in catalog["activities"]
+                if item["key"] != "deporte_plus"
+            ],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            state = PinnedGuideState(Path(directory) / "pinned.json")
+            sent = []
+
+            async def send(message):
+                sent.append(message)
+                return len(sent)
+
+            result = await publish_pinned_guide(
+                "-100123",
+                state,
+                send,
+                AsyncMock(),
+                AsyncMock(),
+                sporttia_catalog=catalog,
+                local_day=date(2026, 9, 16),
+            )
+            self.assertNotIn("deporte_plus", result)
+            self.assertIn("psychomotricity", result)
 
 
 class SporttiaGuideStateTests(unittest.TestCase):
