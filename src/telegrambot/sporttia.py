@@ -20,14 +20,19 @@ SPORTTIA_CENTER_URL = (
     "https://sporttia.com/centros/ayuntamiento-guardamar-del-segura"
 )
 SPORTTIA_CENTER_ID = "1509"
-SPORT_ACTIVITY_KEYS = (
+SPORTTIA_ACTIVITY_KEYS = (
     "rhythmic_gymnastics",
     "judo",
     "multisport",
     "inclusive_multisport",
     "senior_gymnastics",
     "women_gymnastics",
+    "deporte_plus",
+    "psychomotricity",
 )
+# Compatibility alias for callers that still mean the Sporttia parser scope.
+# Guide venue membership must use its own explicit sets instead.
+SPORT_ACTIVITY_KEYS = SPORTTIA_ACTIVITY_KEYS
 _HTML_TYPES = frozenset({"text/html", "application/xhtml+xml"})
 _REQUEST_HEADERS = {
     "Accept": "text/html,application/xhtml+xml",
@@ -240,6 +245,10 @@ def _classify_activity(title: str) -> Optional[str]:
     folded = _fold(title)
     if "multideporte inclusivo" in folded:
         return "inclusive_multisport"
+    if "psicomotricidad" in folded:
+        return "psychomotricity"
+    if re.search(r"\bdeporte\s*\+", folded):
+        return "deporte_plus"
     if "gimnasia ritmica" in folded:
         return "rhythmic_gymnastics"
     if re.search(r"\bjudo\b", folded):
@@ -253,7 +262,7 @@ def _classify_activity(title: str) -> Optional[str]:
     return None
 
 
-def _group_order(title: str) -> int:
+def _group_order(title: str, key: str) -> int:
     folded = _fold(title)
     for marker, value in (
         ("primer turno", 1),
@@ -264,6 +273,8 @@ def _group_order(title: str) -> int:
     ):
         if marker in folded:
             return value
+    if key == "deporte_plus":
+        return 1
     raise SporttiaSourceError(
         "Sporttia target activity has no recognized group order",
         code="SCHEMA",
@@ -443,7 +454,7 @@ def _normalize_activity_row(row: dict) -> Optional[dict]:
         "activity_url": activity_url,
         "season_start": season_start.isoformat(),
         "season_end": season_end.isoformat(),
-        "group_order": _group_order(title),
+        "group_order": _group_order(title, key),
         "audience": _audience(title),
         "schedule": schedule,
         "venue": venue,
@@ -577,7 +588,7 @@ def valid_sporttia_snapshot(value) -> bool:
         ):
             return False
         seen.add(source_id)
-        if item.get("key") not in SPORT_ACTIVITY_KEYS:
+        if item.get("key") not in SPORTTIA_ACTIVITY_KEYS:
             return False
         if not isinstance(item.get("activity_url"), str) or not _allowed_activity_url(
             item["activity_url"]
@@ -670,7 +681,7 @@ def select_sport_groups(
 ) -> Tuple[dict, ...]:
     """Select the current season, or otherwise the nearest future season."""
 
-    if key not in SPORT_ACTIVITY_KEYS or not valid_sporttia_snapshot(catalog):
+    if key not in SPORTTIA_ACTIVITY_KEYS or not valid_sporttia_snapshot(catalog):
         return ()
     candidates = [
         item
