@@ -50,8 +50,8 @@ _ROUTINE_EVENT_TITLES = frozenset({
     "actividades del centro social juvenil",
     "actividades del centro social juvenil csj",
     "actividades centro social juvenil",
-    "мероприятия центра социальной молодежи",
-    "мероприятия центра социальной молодежи csj",
+    "мероприятия центра социальнои молодежи",
+    "мероприятия центра социальнои молодежи csj",
 })
 
 
