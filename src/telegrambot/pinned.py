@@ -57,6 +57,48 @@ CAMERAS = with_footer(
 )
 
 
+WIFI = with_footer(
+    """📶 <b>Бесплатный Wi-Fi в Гуардамаре</b>
+
+В городе есть <b>7 муниципальных точек</b> бесплатного Wi-Fi.
+
+🔓 <b>WiFi4EU · пароль не нужен</b>
+При первом подключении откроется страница входа — достаточно подтвердить подключение. Документ и местная регистрация не нужны.
+
+🎵 <a href="https://www.google.com/maps/search/?api=1&amp;query=Escola+de+M%C3%BAsica%2C+C%2F+Mercat+2%2C+Guardamar+del+Segura"><b>Escola de Música</b></a>
+📍 C/ Mercat, 2
+📡 <code>WiFi4EU</code>
+
+🎭 <a href="https://www.google.com/maps/search/?api=1&amp;query=Casa+de+Cultura%2C+C%2F+Col%C3%B3n+60%2C+Guardamar+del+Segura"><b>Casa de Cultura</b></a>
+📍 C/ Colón, 60
+📡 <code>WiFi4EU</code>
+
+🌴 <a href="https://www.google.com/maps/search/?api=1&amp;query=Avenida+Los+Pinos%2C+Guardamar+del+Segura"><b>Avda. Los Pinos</b></a>
+📡 <code>WiFi4EU</code>
+
+🔑 <b>Сети с паролем</b>
+
+🏛 <a href="https://www.google.com/maps/search/?api=1&amp;query=Plaza+de+la+Constituci%C3%B3n%2C+Guardamar+del+Segura"><b>Plaza de la Constitución</b></a>
+📡 <code>vegafibra_gratis</code>
+🔑 <code>vegafibra</code>
+
+🌊 <a href="https://www.google.com/maps/search/?api=1&amp;query=Paseo+Mar%C3%ADtimo%2C+Avenida+de+Europa%2C+Guardamar+del+Segura"><b>Paseo Marítimo · Avda. de Europa</b></a>
+📡 <code>vegafibra_gratis</code>
+🔑 <code>vegafibra</code>
+
+📚 <a href="https://www.google.com/maps/search/?api=1&amp;query=C%2F+Mayor+69%2C+Guardamar+del+Segura"><b>Sala de Estudios 24/365</b></a>
+📍 C/ Mayor, 69
+📡 <code>wifi_1EO9C</code>
+🔑 <code>vegafibra</code>
+
+📖 <a href="https://www.google.com/maps/search/?api=1&amp;query=Biblioteca+P%C3%BAblica%2C+C%2F+San+Jaime+5%2C+Guardamar+del+Segura"><b>Biblioteca Pública</b></a>
+📍 C/ San Jaime, 5
+• <code>wifibiblioteca</code> → 🔑 <code>biblimar</code>
+• <code>biblioteca infantil</code> → 🔑 <code>menjallibres</code>
+• <code>vicenteramos</code> → 🔑 <code>menjallibres</code>"""
+)
+
+
 LEAF_MESSAGES: Dict[str, str] = {
     "line_1": with_footer(
         """🚌 <b>Городской автобус · Линия 1</b>
@@ -190,6 +232,7 @@ GUIDE_MESSAGE_KEYS = (
     "pool_indoor",
     "pool_outdoor",
     "youth_centre",
+    "wifi",
     "activities",
     "swimming",
 )
@@ -209,6 +252,7 @@ PINNED_PARENT_KEYS = {
     "pool_indoor": "polideportivo",
     "pool_outdoor": "polideportivo",
     "youth_centre": "places",
+    "wifi": "places",
     "activities": "root",
     "swimming": "activities",
 }
@@ -319,6 +363,7 @@ def build_places(
     polideportivo_link: Optional[str] = None,
     root_link: Optional[str] = None,
     youth_centre_link: Optional[str] = None,
+    wifi_link: Optional[str] = None,
 ) -> str:
     """Build the durable places branch."""
 
@@ -328,7 +373,9 @@ def build_places(
             f"🏟 {_direct_link('Polideportivo Municipal', polideportivo_link)}\n"
             "Муниципальный спортивный комплекс Гуардамара.\n\n"
             f"👥 {_direct_link('Centro Social Juvenil', youth_centre_link)}\n"
-            "Пространство для подростков и молодёжи."
+            "Пространство для подростков и молодёжи.\n\n"
+            f"📶 {_direct_link('Бесплатный Wi-Fi', wifi_link)}\n"
+            "7 муниципальных точек, сети и пароли."
         ),
         "Полезное о Гуардамаре",
         root_link,
@@ -422,6 +469,16 @@ def build_youth_centre(places_link: Optional[str] = None) -> str:
     )
 
 
+def build_wifi(places_link: Optional[str] = None) -> str:
+    """Build the verified municipal Wi-Fi card."""
+
+    return _with_back_link(
+        WIFI,
+        "К списку мест",
+        places_link,
+    )
+
+
 def build_activities(
     swimming_link: Optional[str] = None,
     root_link: Optional[str] = None,
@@ -490,6 +547,7 @@ def preview_messages() -> Sequence[str]:
         build_pool_indoor(),
         build_pool_outdoor(),
         build_youth_centre(),
+        build_wifi(),
         build_activities(),
         build_swimming(),
         build_root(),
@@ -723,6 +781,7 @@ def _render_messages(
     places_link = _known_link(chat_id, messages, "places")
     polideportivo_link = _known_link(chat_id, messages, "polideportivo")
     youth_centre_link = _known_link(chat_id, messages, "youth_centre")
+    wifi_link = _known_link(chat_id, messages, "wifi")
     activities_link = _known_link(chat_id, messages, "activities")
     leaf_links = None
     if all(key in messages for key in LEAF_MESSAGES):
@@ -741,7 +800,7 @@ def _render_messages(
         "cameras": build_cameras(root_link),
         "transport": build_transport_index(leaf_links, root_link),
         "places": build_places(
-            polideportivo_link, root_link, youth_centre_link
+            polideportivo_link, root_link, youth_centre_link, wifi_link
         ),
         "polideportivo": build_polideportivo(
             indoor_link, outdoor_link, places_link
@@ -749,6 +808,7 @@ def _render_messages(
         "pool_indoor": build_pool_indoor(swimming_link, polideportivo_link),
         "pool_outdoor": build_pool_outdoor(swimming_link, polideportivo_link),
         "youth_centre": build_youth_centre(places_link),
+        "wifi": build_wifi(places_link),
         "activities": build_activities(swimming_link, root_link),
         "swimming": build_swimming(
             indoor_link, outdoor_link, activities_link
