@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The linked city guide exposes one durable `📶 Бесплатный Wi-Fi` card under the existing `📍 Места` branch. It is static resident-facing information; it is not a separate bot, scheduled publisher, or automatically rewritten source feed.
+The linked city guide exposes one durable `📶 Бесплатный Wi-Fi` card directly from the `📌 Полезное о Гуардамаре` root. Wi-Fi is not classified as a place. It is static resident-facing information; it is not a separate bot, scheduled publisher, or automatically rewritten source feed.
 
 The architecture decision is recorded in `adr/0068-municipal-wifi-guide-source-watch.md`. Dated source verification belongs in `research/2026-09-16-municipal-wifi-source.md`.
 
@@ -20,7 +20,7 @@ The card contains seven municipal Wi-Fi locations from the reviewed official Ayu
 
 For WiFi4EU, the user confirms the captive-portal connection; the public card does not require or imply local documentation or registration.
 
-Place names are map links. The card returns to `К списку мест` and uses the standard public-message footer. The root pinned navigator remains unchanged and compact.
+Place names are map links. The card returns to `Полезное о Гуардамаре` and uses the standard public-message footer. The pinned root contains Wi-Fi as one direct item alongside the existing guide sections.
 
 ## Source policy
 

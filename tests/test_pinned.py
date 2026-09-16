@@ -22,6 +22,7 @@ from telegrambot.pinned import (
     build_root,
     build_swimming,
     build_transport_index,
+    build_wifi,
     preview_messages,
     publish_pinned_guide,
     telegram_message_link,
@@ -39,6 +40,7 @@ class PinnedContentTests(unittest.TestCase):
             build_polideportivo(),
             build_pool_indoor(),
             build_pool_outdoor(),
+            build_wifi(),
             build_activities(),
             build_swimming(),
         ]
@@ -69,12 +71,13 @@ class PinnedContentTests(unittest.TestCase):
         self.assertTrue(any("Плавание" in item for item in messages))
         self.assertIn("Полезное о Гуардамаре", messages[-1])
 
-    def test_root_is_compact_four_branch_navigator(self):
+    def test_root_is_compact_five_item_navigator(self):
         root = build_root(
             "https://t.me/c/1/20",
             "https://t.me/c/1/21",
             "https://t.me/c/1/22",
             "https://t.me/c/1/23",
+            wifi_link="https://t.me/c/1/24",
         )
         self.assertEqual(
             root,
@@ -82,6 +85,7 @@ class PinnedContentTests(unittest.TestCase):
             '📹 <a href="https://t.me/c/1/20"><b>Онлайн-камеры</b></a>\n\n'
             '🚌 <a href="https://t.me/c/1/21"><b>Транспорт в Гуардамаре</b></a>\n\n'
             '📍 <a href="https://t.me/c/1/22"><b>Места</b></a>\n\n'
+            '📶 <a href="https://t.me/c/1/24"><b>Бесплатный Wi-Fi</b></a>\n\n'
             '🎓 <a href="https://t.me/c/1/23"><b>Занятия и секции</b></a>',
         )
         self.assertNotIn(FOOTER, root)
