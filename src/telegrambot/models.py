@@ -31,6 +31,9 @@ class Warning:
     starts_at: Optional[datetime] = None
     description: Optional[str] = None
     probability: Optional[str] = None
+    parameter_code: Optional[str] = None
+    parameter_value: Optional[float] = None
+    parameter_unit: Optional[str] = None
 
 
 @dataclass(frozen=True)

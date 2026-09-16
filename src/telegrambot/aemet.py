@@ -723,6 +723,69 @@ def _elements(element: ElementTree.Element, name: str) -> Iterable[ElementTree.E
     return (item for item in element.iter() if _local_name(item) == name)
 
 
+_WARNING_PARAMETER_UNITS = {
+    "P1": "mm",
+    "P2": "mm",
+    "NV": "cm",
+    "RM": "km/h",
+    "TA": "°C",
+    "TI": "°C",
+}
+
+
+def _normalize_warning_probability(value: Optional[str]) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    normalized = " ".join(value.split()).casefold().replace("–", "-")
+    match = re.fullmatch(r"(\d{1,3})%\s*-\s*(\d{1,3})%", normalized)
+    if match is not None:
+        lower, upper = (int(part) for part in match.groups())
+        if 0 <= lower <= upper <= 100:
+            return f"{lower}–{upper}%"
+    if re.fullmatch(r"mayor\s+70%", normalized):
+        return ">70%"
+    return None
+
+
+def _normalize_warning_parameter(
+    value: Optional[str],
+) -> Tuple[Optional[str], Optional[float], Optional[str]]:
+    if not isinstance(value, str):
+        return None, None, None
+    parts = [part.strip() for part in value.split(";", 2)]
+    if len(parts) != 3:
+        return None, None, None
+    code = parts[0].upper()
+    expected_unit = _WARNING_PARAMETER_UNITS.get(code)
+    if expected_unit is None:
+        return None, None, None
+    match = re.fullmatch(
+        r"([+-]?\d+(?:[.,]\d+)?)\s*(mm|cm|km/h|ºC|°C)",
+        parts[2],
+        flags=re.IGNORECASE,
+    )
+    if match is None:
+        return None, None, None
+    raw_unit = match.group(2)
+    if expected_unit == "°C":
+        if raw_unit not in {"ºC", "°C"}:
+            return None, None, None
+        unit = "°C"
+    else:
+        if raw_unit.casefold() != expected_unit.casefold():
+            return None, None, None
+        unit = expected_unit
+    try:
+        number = float(match.group(1).replace(",", "."))
+    except ValueError:
+        return None, None, None
+    if not math.isfinite(number):
+        return None, None, None
+    if code in {"P1", "P2", "NV", "RM"} and number < 0:
+        return None, None, None
+    return code, number, unit
+
+
 def _cap_documents(payload: bytes) -> Iterable[bytes]:
     if payload.startswith(b"PK"):
         try:
@@ -837,22 +900,39 @@ def normalize_warnings(payload: bytes, now: datetime) -> Tuple[Warning, ...]:
             }.get(severity.casefold(), severity.casefold())
             description = _child_text(info, "description")
             probability = None
+            parameter_code = None
+            parameter_value = None
+            parameter_unit = None
             for parameter in _elements(info, "parameter"):
                 name = _child_text(parameter, "valueName")
                 value = _child_text(parameter, "value")
-                if (
-                    name
-                    and value
-                    and name.casefold() == "aemet-meteoalerta probabilidad"
-                    and re.fullmatch(r"\d{1,3}%\s*-\s*\d{1,3}%", value)
+                if not name or not value:
+                    continue
+                normalized_name = name.casefold()
+                if normalized_name == "aemet-meteoalerta probabilidad":
+                    candidate = _normalize_warning_probability(value)
+                    if candidate is not None:
+                        probability = candidate
+                elif (
+                    normalized_name == "aemet-meteoalerta parametro"
+                    and parameter_code is None
                 ):
-                    lower, upper = (
-                        int(part.strip().rstrip("%"))
-                        for part in value.split("-", 1)
-                    )
-                    if 0 <= lower <= upper <= 100:
-                        probability = f"{lower}–{upper}%"
-            key = (event.casefold(), level, starts_at, ends_at)
+                    (
+                        candidate_code,
+                        candidate_value,
+                        candidate_unit,
+                    ) = _normalize_warning_parameter(value)
+                    if candidate_code is not None:
+                        parameter_code = candidate_code
+                        parameter_value = candidate_value
+                        parameter_unit = candidate_unit
+            key = (
+                event.casefold(),
+                parameter_code,
+                level,
+                starts_at,
+                ends_at,
+            )
             if key not in seen:
                 seen.add(key)
                 warnings.append(
@@ -863,11 +943,22 @@ def normalize_warnings(payload: bytes, now: datetime) -> Tuple[Warning, ...]:
                         starts_at=starts_at,
                         description=description,
                         probability=probability,
+                        parameter_code=parameter_code,
+                        parameter_value=parameter_value,
+                        parameter_unit=parameter_unit,
                     )
                 )
 
     priority = {"red": 0, "orange": 1, "yellow": 2}
-    warnings.sort(key=lambda item: (priority.get(item.level, 3), item.event))
+    warnings.sort(
+        key=lambda item: (
+            priority.get(item.level, 3),
+            item.event.casefold(),
+            item.parameter_code or "",
+            item.starts_at or datetime.min.replace(tzinfo=timezone.utc),
+            item.ends_at or datetime.max.replace(tzinfo=timezone.utc),
+        )
+    )
     return tuple(warnings)
 
 

@@ -16,8 +16,10 @@ from .digest import (
     BEACH_NAMES,
     FLAG_DOTS,
     MONTHS_GENITIVE,
+    WARNING_DOTS,
     _beach_operational_lines,
-    _warning_blocks,
+    _warning_description,
+    _warning_interval,
     _warning_text,
 )
 from .models import BeachNotice, BeachStatus, Warning
@@ -112,6 +114,10 @@ class OperationalUpdateState:
         if isinstance(warning_ready, dict) and (
             not isinstance(warning_ready.get("current"), list)
             or not isinstance(warning_ready.get("cancelled"), list)
+            or (
+                warning_ready.get("previous") is not None
+                and not isinstance(warning_ready.get("previous"), list)
+            )
         ):
             raise OperationalUpdateStateError(
                 "operational warning update has an invalid structure"
@@ -374,10 +380,13 @@ def _warning_dict(warning: Warning) -> dict:
             " ".join(warning.description.split()) if warning.description else None
         ),
         "probability": warning.probability,
+        "parameter_code": warning.parameter_code,
+        "parameter_value": warning.parameter_value,
+        "parameter_unit": warning.parameter_unit,
     }
 
 
-def _warning_identity(value: dict) -> Tuple[object, ...]:
+def _warning_legacy_identity(value: dict) -> Tuple[object, ...]:
     return (
         value.get("event", "").casefold(),
         value.get("level"),
@@ -385,6 +394,15 @@ def _warning_identity(value: dict) -> Tuple[object, ...]:
         value.get("ends_at"),
         (value.get("description") or "").casefold(),
         value.get("probability"),
+    )
+
+
+def _warning_identity(value: dict) -> Tuple[object, ...]:
+    return (
+        *_warning_legacy_identity(value),
+        value.get("parameter_code"),
+        value.get("parameter_value"),
+        value.get("parameter_unit"),
     )
 
 
@@ -463,30 +481,63 @@ def observe_warnings(
         state["warnings_initialized"] = True
         state["warnings"] = []
     previous = state.get("warnings", [])
+
+    # One-time compatibility bridge: old state has no CAP parameter fields.
+    # If every legacy-visible fact is unchanged, enrich the baseline silently.
+    legacy_previous = bool(previous) and all(
+        "parameter_code" not in item
+        and "parameter_value" not in item
+        and "parameter_unit" not in item
+        for item in previous
+    )
+    if legacy_previous and (
+        {_warning_legacy_identity(item) for item in previous}
+        == {_warning_legacy_identity(item) for item in current}
+    ):
+        state["warnings"] = current
+        state["warning_ready"] = None
+        return
+
     previous_by_id = {_warning_identity(item): item for item in previous}
     current_ids = {_warning_identity(item) for item in current}
     added_or_changed = current_ids - set(previous_by_id)
-    changed_events = {identity[0] for identity in added_or_changed}
     removed = [
         item for identity, item in previous_by_id.items()
         if identity not in current_ids
     ]
+    changed_events = {
+        identity[0] for identity in added_or_changed
+    }
     early_cancelled = []
+    removed_relevant = False
     for item in removed:
-        if item.get("event", "").casefold() in changed_events:
-            continue
         raw_end = item.get("ends_at")
-        if raw_end is None:
+        if raw_end is not None:
+            try:
+                end = datetime.fromisoformat(raw_end)
+            except ValueError:
+                continue
+            if end <= now.astimezone(end.tzinfo):
+                continue
+        event_key = item.get("event", "").casefold()
+        same_context_other_parameter = (
+            item.get("parameter_code") is not None
+            and any(
+                candidate.get("event", "").casefold() == event_key
+                and candidate.get("starts_at") == item.get("starts_at")
+                and candidate.get("ends_at") == item.get("ends_at")
+                and candidate.get("parameter_code") != item.get("parameter_code")
+                for candidate in current
+            )
+        )
+        if event_key in changed_events or same_context_other_parameter:
+            removed_relevant = True
+        else:
             early_cancelled.append(item)
-            continue
-        try:
-            end = datetime.fromisoformat(raw_end)
-        except ValueError:
-            continue
-        if end > now.astimezone(end.tzinfo):
-            early_cancelled.append(item)
-    if added_or_changed or early_cancelled:
+
+    if added_or_changed or removed_relevant or early_cancelled:
         state["warning_ready"] = {
+            "previous": list(previous),
             "current": current,
             "cancelled": early_cancelled,
         }
@@ -506,6 +557,9 @@ def _warning_from_dict(value: dict) -> Warning:
         ends_at=parsed("ends_at"),
         description=value.get("description"),
         probability=value.get("probability"),
+        parameter_code=value.get("parameter_code"),
+        parameter_value=value.get("parameter_value"),
+        parameter_unit=value.get("parameter_unit"),
     )
 
 
@@ -669,6 +723,206 @@ def _joined_warning_labels(labels: Sequence[str]) -> str:
     return ", ".join(unique[:-1]) + " и " + unique[-1]
 
 
+def _warning_parameter_line(warning: Warning) -> Optional[str]:
+    if warning.parameter_code is None or warning.parameter_value is None:
+        return None
+    value = f"{warning.parameter_value:g}".replace(".", ",")
+    code = warning.parameter_code
+    if code == "P1" and warning.parameter_unit == "mm":
+        return f"{value} л/м² за 1 час"
+    if code == "P2" and warning.parameter_unit == "mm":
+        return f"{value} л/м² за 12 часов"
+    if code == "NV" and warning.parameter_unit == "cm":
+        return f"Снег: {value} см за 24 часа"
+    if code == "RM" and warning.parameter_unit == "km/h":
+        return f"Порывы ветра: {value} км/ч"
+    if code == "TA" and warning.parameter_unit == "°C":
+        return f"Максимальная температура: {value} °C"
+    if code == "TI" and warning.parameter_unit == "°C":
+        return f"Минимальная температура: {value} °C"
+    return None
+
+
+def _warning_probability_text(value: Optional[str]) -> Optional[str]:
+    if value == ">70%":
+        return "более 70%"
+    return value
+
+
+def _warning_update_blocks(
+    warnings: Sequence[Warning], now: datetime
+) -> list[str]:
+    """Render compact current/future warnings, merging only identical contexts."""
+    today = now.astimezone(GUARDAMAR_TIMEZONE).date()
+    priority = {"red": 0, "orange": 1, "yellow": 2}
+    usable = [
+        warning for warning in warnings
+        if (
+            warning.ends_at is None
+            or warning.ends_at.astimezone(GUARDAMAR_TIMEZONE) > now
+        )
+        and _warning_text(warning.event) is not None
+    ]
+    usable.sort(
+        key=lambda warning: (
+            warning.starts_at or datetime.min.replace(tzinfo=GUARDAMAR_TIMEZONE),
+            priority.get(warning.level, 3),
+            _warning_text(warning.event) or "",
+            warning.parameter_code or "",
+        )
+    )
+
+    grouped = []
+    positions = {}
+    for warning in usable:
+        label = _warning_text(warning.event) or ""
+        description = _warning_description(warning)
+        description_identity = (
+            " ".join(warning.description.split()).casefold()
+            if warning.description else None
+        )
+        key = (
+            warning.level,
+            label,
+            warning.starts_at,
+            warning.ends_at,
+            description_identity,
+            description,
+            warning.probability,
+        )
+        if key not in positions:
+            positions[key] = len(grouped)
+            grouped.append([key, []])
+        grouped[positions[key]][1].append(warning)
+
+    blocks = []
+    for (
+        level,
+        event,
+        _starts_at,
+        _ends_at,
+        _description_identity,
+        description,
+        probability,
+    ), items in grouped:
+        if blocks:
+            blocks.append("")
+        dot = WARNING_DOTS.get(level, "⚠️")
+        blocks.append(f"{dot} <b>{html.escape(event.capitalize())}</b>")
+        interval = _warning_interval(items[0], today)
+        if interval:
+            blocks.append(f"   {interval}")
+        parameter_lines = tuple(dict.fromkeys(
+            line for item in items
+            if (line := _warning_parameter_line(item)) is not None
+        ))
+        blocks.extend(f"   • {html.escape(line)}" for line in parameter_lines)
+        probability_text = _warning_probability_text(probability)
+        if probability_text:
+            blocks.append(
+                f"   Вероятность: {html.escape(probability_text)}"
+            )
+        if description:
+            blocks.append(f"   {html.escape(description)}")
+    return blocks
+
+
+def _warning_day_phrase(warnings: Sequence[Warning], now: datetime) -> str:
+    today = now.astimezone(GUARDAMAR_TIMEZONE).date()
+    days = {
+        warning.starts_at.astimezone(GUARDAMAR_TIMEZONE).date()
+        for warning in warnings
+        if warning.starts_at is not None
+    }
+    if len(days) != 1:
+        return ""
+    day = next(iter(days))
+    if day == today:
+        return " на сегодня"
+    if day == today + timedelta(days=1):
+        return " на завтра"
+    return f" на {day.day} {MONTHS_GENITIVE[day.month]}"
+
+
+def _warning_levels_by_day(
+    warnings: Sequence[Warning], now: datetime
+) -> Dict[object, int]:
+    today = now.astimezone(GUARDAMAR_TIMEZONE).date()
+    weights = {"yellow": 1, "orange": 2, "red": 3}
+    result: Dict[object, int] = {}
+    for warning in warnings:
+        if _warning_text(warning.event) is None:
+            continue
+        day = (
+            warning.starts_at.astimezone(GUARDAMAR_TIMEZONE).date()
+            if warning.starts_at is not None else today
+        )
+        result[day] = max(result.get(day, 0), weights.get(warning.level, 0))
+    return result
+
+
+def _warning_update_lead(
+    warning_ready: dict,
+    current: Sequence[Warning],
+    now: datetime,
+) -> str:
+    visible_current = tuple(
+        item for item in current if _warning_text(item.event) is not None
+    )
+    previous_known = "previous" in warning_ready
+    previous = tuple(
+        _warning_from_dict(item)
+        for item in warning_ready.get("previous", ())
+    ) if previous_known else ()
+    visible_previous = tuple(
+        item for item in previous if _warning_text(item.event) is not None
+    )
+    day_phrase = _warning_day_phrase(visible_current, now)
+
+    if previous_known and not visible_previous and visible_current:
+        noun = (
+            "предупреждение"
+            if len({_warning_text(item.event) for item in visible_current}) == 1
+            else "предупреждения"
+        )
+        return f"⚠️ <b>AEMET объявила {noun}{day_phrase}</b>"
+
+    if previous_known and visible_previous and visible_current:
+        before = _warning_levels_by_day(visible_previous, now)
+        after = _warning_levels_by_day(visible_current, now)
+        increased = [
+            day for day, level in after.items()
+            if day in before and level > before[day]
+        ]
+        if increased:
+            day = min(increased)
+            level = after[day]
+            level_key = {1: "yellow", 2: "orange", 3: "red"}[level]
+            level_word = {
+                "yellow": "жёлтого",
+                "orange": "оранжевого",
+                "red": "красного",
+            }[level_key]
+            target = _warning_day_phrase(
+                tuple(
+                    item for item in visible_current
+                    if (
+                        item.starts_at.astimezone(GUARDAMAR_TIMEZONE).date()
+                        if item.starts_at is not None
+                        else now.astimezone(GUARDAMAR_TIMEZONE).date()
+                    ) == day
+                ),
+                now,
+            )
+            dot = WARNING_DOTS.get(level_key, "")
+            return (
+                f"⚠️{dot} <b>AEMET повысила уровень предупреждения"
+                f"{target} до {level_word}</b>"
+            )
+
+    return f"⚠️ <b>AEMET обновила предупреждения{day_phrase}</b>"
+
+
 def _warning_update_lines(warning_ready: dict, now: datetime) -> list[str]:
     """Render one self-contained current AEMET status update."""
     current = tuple(
@@ -684,12 +938,12 @@ def _warning_update_lines(warning_ready: dict, now: datetime) -> list[str]:
         period = _cancelled_warning_period(warning, now)
         cancelled_by_period.setdefault(period, []).append(warning_label)
 
-    current_blocks, _, _, _ = _warning_blocks(current, now)
+    current_blocks = _warning_update_blocks(current, now)
     if not cancelled_by_period and not current_blocks:
         return []
 
     lines = [
-        "⚠️ <b>Обновление AEMET:</b>",
+        _warning_update_lead(warning_ready, current, now),
         "Зона: южное побережье Аликанте",
     ]
     for period, labels in cancelled_by_period.items():
@@ -703,7 +957,17 @@ def _warning_update_lines(warning_ready: dict, now: datetime) -> list[str]:
         lines.append(f"✅ {prefix}{status}: {joined}.")
 
     if current_blocks:
-        lines.extend(["", "<b>Сейчас действует:</b>", *current_blocks])
+        future = any(
+            item.starts_at is not None
+            and item.starts_at.astimezone(GUARDAMAR_TIMEZONE) > now
+            for item in current
+            if _warning_text(item.event) is not None
+        )
+        heading = (
+            "<b>Актуальные предупреждения:</b>"
+            if future else "<b>Сейчас действует:</b>"
+        )
+        lines.extend(["", heading, *current_blocks])
     elif not current:
         lines.extend(["", "Других действующих предупреждений сейчас нет."])
     return lines
