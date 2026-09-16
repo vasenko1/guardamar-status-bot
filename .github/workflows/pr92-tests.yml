@@ -22,3 +22,14 @@ jobs:
         run: python -m compileall -q src tests
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
+      - name: Check current municipal Wi-Fi source
+        run: |
+          python - <<'PY'
+          import asyncio
+          from telegrambot.guide import WIFI_VERIFIED_ASSET_URL, fetch_current_wifi_asset
+
+          current = asyncio.run(fetch_current_wifi_asset())
+          print(current)
+          if current != WIFI_VERIFIED_ASSET_URL:
+              raise SystemExit(f"unexpected Wi-Fi asset: {current}")
+          PY
