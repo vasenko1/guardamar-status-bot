@@ -45,10 +45,11 @@ Digest and runs as another short-lived Termux process.
 ### Linked pinned city guide
 
 One recoverable Telegram graph connects a compact pinned root to cameras,
-transport, durable places, and recurring activities. The first place/activity
-slice is `Места → Polideportivo Municipal →` the indoor and outdoor municipal
-pools, plus `Занятия и секции → Плавание` with direct cross-links between the
-activity and both pool cards.
+transport, durable places, and recurring activities. The current place/activity
+slice includes `Места → Polideportivo Municipal →` the indoor and outdoor
+municipal pools, `Места → Centro Social Juvenil`, plus
+`Занятия и секции → Плавание` with direct cross-links between the activity and
+both pool cards.
 
 Most guide content is static. The existing 05:00 transport sync keeps its
 transport media current and also reconciles the shared message graph. A separate
