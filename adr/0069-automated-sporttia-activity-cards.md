@@ -108,3 +108,15 @@ require proving that they can be obtained within the same bounded
 one-request architecture without per-activity calls or API reverse
 engineering.
 
+## Mobile guide UX and recovery invariant
+
+Place cards use one explicit `Открыть на карте` action and omit textual street
+addresses. Contact values remain copyable; long email values are rendered on a
+separate line. Sport group cards keep source `turno` identity but use compact
+`Записаться` / `Страница группы` actions and avoid blank rows between groups.
+
+The self-healing graph covers both durable guide cards and source-managed sport
+cards. If a sport card is deleted, it is recreated and both the activities index
+and Palau card are relinked. If Palau is deleted, Polideportivo and every sport
+card are relinked to the replacement. This recovery must not add any source
+requests.

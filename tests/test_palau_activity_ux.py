@@ -81,7 +81,7 @@ class PalauActivityUxTests(unittest.TestCase):
   card,
         )
         self.assertIn(
-  '📝 <a href="https://play.sporttia.com/activities/85509"><b>Запись в группу</b></a>',
+  '📝 <a href="https://play.sporttia.com/activities/85509">Записаться</a>',
   card,
         )
         self.assertIn('href="https://t.me/c/123/77"><b>Palau Sant Jaume</b>', card)
@@ -113,7 +113,7 @@ class PalauActivityUxTests(unittest.TestCase):
         self.assertIn("Sala Polivalente nº1", card)
         self.assertIn("🔎", card)
         self.assertIn("Страница группы", card)
-        self.assertNotIn("<b>Запись в группу</b>", card)
+        self.assertNotIn(">Записаться</a>", card)
 
     def test_medical_certificate_is_actionable_and_email_is_copyable(self):
         catalog = _catalog(
@@ -151,6 +151,9 @@ class PalauActivityUxTests(unittest.TestCase):
         )
         self.assertIn(PALAU_SANT_JAUME_MAP_URL, card)
         self.assertIn("<code>965357693</code>", card)
+        self.assertIn("Открыть на карте", card)
+        self.assertNotIn("Av. Europa, s/n", card)
+        self.assertIn("✉️ <b>Email:</b>\n<code>deportesguardamar@hotmail.com</code>", card)
         self.assertIn("<code>deportesguardamar@hotmail.com</code>", card)
         self.assertIn("2 многофункциональных зала", card)
         self.assertIn("https://t.me/c/123/80", card)
@@ -165,7 +168,7 @@ class PalauActivityUxTests(unittest.TestCase):
         self.assertIn("https://t.me/c/123/73", parent)
         self.assertLess(
   parent.index("Palau Sant Jaume"),
-  parent.index("Также в комплексе"),
+  parent.index("Другие зоны"),
         )
         self.assertNotIn("🏀 баскетбол\n", parent)
 
@@ -173,6 +176,8 @@ class PalauActivityUxTests(unittest.TestCase):
         youth = build_youth_centre()
         self.assertIn("<code>609006754</code>", youth)
         self.assertIn("<code>juventudguardamar@gmail.com</code>", youth)
+        self.assertIn("Открыть на карте", youth)
+        self.assertNotIn("Calle Molivent", youth)
 
 
 if __name__ == "__main__":
