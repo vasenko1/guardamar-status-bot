@@ -353,7 +353,7 @@ class StateAndMessageTests(unittest.TestCase):
         )
         self.assertIn("<b>Сейчас действует:</b>", message)
         self.assertIn("Высокая температура", message)
-        self.assertEqual(message.count("Обновление AEMET"), 1)
+        self.assertEqual(message.count("AEMET обновила предупреждения"), 1)
         self.assertEqual(message.count("Зона:"), 1)
         self.assertLess(message.index("✅"), message.index("Сейчас действует"))
         self.assertNotIn("Досрочно отменено", message)
