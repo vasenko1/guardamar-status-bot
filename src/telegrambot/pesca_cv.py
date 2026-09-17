@@ -1,17 +1,27 @@
-"""Bounded Federación de Pesca CV source for resident-relevant Guardamar events."""
+"""Bounded Federación de Pesca CV source for Guardamar competitions."""
 
 import asyncio
+import json
+import logging
+import os
 import re
+import tempfile
 import unicodedata
 import urllib.parse
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from html.parser import HTMLParser
+from pathlib import Path
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 from ._transport import BoundedFetchError, fetch_bounded
+from .event_translations import cached_title
+from .models import Event
 
 PESCA_CV_URL = "https://federacionpescacv.com/competiciones-de-nuestros-clubes/"
+DEFAULT_STATE_PATH = "state/pesca_cv_events.json"
+GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 _HTML_TYPES = frozenset({"text/html", "application/xhtml+xml"})
 _HEADERS = {
     "Accept": "text/html,application/xhtml+xml",
@@ -24,7 +34,7 @@ _ALLOWED_LEVELS = frozenset({"mundial", "nacional", "autonomico", "provincial"})
 
 
 class PescaCvSourceError(RuntimeError):
-    """A Pesca CV observation that is unsafe to use."""
+    """A Pesca CV observation or local snapshot that is unsafe to use."""
 
     def __init__(self, message: str, *, code: str) -> None:
         super().__init__(message)
@@ -95,9 +105,6 @@ def _parse_date(value: str) -> date:
 
 
 def _header_map(rows: list[list[str]]) -> tuple[int, dict[str, int]]:
-    # Current production table: FECHA | CLUB | ENTIDAD | AMBITO |
-    # MODALIDAD | ESCENARIO | PROVINCIA | ZONA. Keep a few language aliases,
-    # but deliberately do not treat CLUB (the short code) as the organizer.
     aliases = {
         "date": {"fecha", "data"},
         "organizer": {"entidad", "organizador", "organiza"},
@@ -106,7 +113,9 @@ def _header_map(rows: list[list[str]]) -> tuple[int, dict[str, int]]:
         "location": {"escenario", "localidad", "poblacion", "población", "lugar"},
         "zone": {"zona", "pesquero"},
     }
-    folded_aliases = {key: {_fold(item) for item in values} for key, values in aliases.items()}
+    folded_aliases = {
+        key: {_fold(item) for item in values} for key, values in aliases.items()
+    }
     for row_index, row in enumerate(rows):
         mapped: dict[str, int] = {}
         for index, cell in enumerate(row):
@@ -116,7 +125,9 @@ def _header_map(rows: list[list[str]]) -> tuple[int, dict[str, int]]:
                     mapped[key] = index
         if {"date", "organizer", "level", "modality", "location"}.issubset(mapped):
             return row_index, mapped
-    raise PescaCvSourceError("Pesca CV competition table header is missing", code="SCHEMA")
+    raise PescaCvSourceError(
+        "Pesca CV competition table header is missing", code="SCHEMA"
+    )
 
 
 def _event_title(modality: str) -> str:
@@ -152,7 +163,13 @@ def parse_pesca_cv_html(payload: bytes, local_day: date, observed_at: datetime) 
         zone = ""
         if "zone" in columns and columns["zone"] < len(row):
             zone = " ".join(row[columns["zone"]].split()).rstrip("*# ")
-        if not modality or not organizer or len(modality) > 180 or len(organizer) > 180 or len(zone) > 120:
+        if (
+            not modality
+            or not organizer
+            or len(modality) > 180
+            or len(organizer) > 180
+            or len(zone) > 120
+        ):
             raise PescaCvSourceError("Pesca CV target row is invalid", code="SCHEMA")
         day = _parse_date(row[columns["date"]])
         if day < local_day:
@@ -203,14 +220,20 @@ def parse_pesca_cv_html(payload: bytes, local_day: date, observed_at: datetime) 
                     "title": _event_title(row["modality"]),
                     "start": start.isoformat(),
                     "end": end.isoformat(),
-                    "place": "Guardamar" if not row["zone"] else f"Guardamar · {row['zone'].title()}",
+                    "place": (
+                        "Guardamar"
+                        if not row["zone"]
+                        else f"Guardamar · {row['zone'].title()}"
+                    ),
                     "organizer": row["organizer"],
                     "level": row["level"],
                     "source_url": PESCA_CV_URL,
                 }
             )
             if len(events) > _MAX_EVENTS:
-                raise PescaCvSourceError("Pesca CV Guardamar event set is too large", code="SCHEMA")
+                raise PescaCvSourceError(
+                    "Pesca CV Guardamar event set is too large", code="SCHEMA"
+                )
     events.sort(key=lambda item: (item["start"], item["title"].casefold()))
     return {"observed_at": observed_at.isoformat(), "events": events}
 
@@ -227,7 +250,9 @@ def valid_pesca_cv_snapshot(value: Any) -> bool:
     events = value.get("events")
     if not isinstance(events, list) or len(events) > _MAX_EVENTS:
         return False
-    required = {"sport", "title", "start", "end", "place", "organizer", "level", "source_url"}
+    required = {
+        "sport", "title", "start", "end", "place", "organizer", "level", "source_url"
+    }
     for event in events:
         if not isinstance(event, dict) or set(event) != required:
             return False
@@ -235,7 +260,10 @@ def valid_pesca_cv_snapshot(value: Any) -> bool:
             return False
         if _fold(str(event.get("level", ""))) not in _ALLOWED_LEVELS:
             return False
-        if not all(isinstance(event.get(key), str) and event[key] for key in ("title", "place", "organizer")):
+        if not all(
+            isinstance(event.get(key), str) and event[key]
+            for key in ("title", "place", "organizer")
+        ):
             return False
         try:
             start = date.fromisoformat(event["start"])
@@ -262,4 +290,140 @@ async def fetch_pesca_cv_snapshot(now: datetime) -> dict:
         )
     except BoundedFetchError as exc:
         raise PescaCvSourceError("Pesca CV request failed", code=exc.code) from exc
-    return parse_pesca_cv_html(payload, now.date(), now)
+    return parse_pesca_cv_html(
+        payload, now.astimezone(GUARDAMAR_TIMEZONE).date(), now
+    )
+
+
+def _load_snapshot(path: Path) -> Optional[dict]:
+    if not path.exists():
+        return None
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise PescaCvSourceError(
+            "Pesca CV local catalog is unreadable", code="STATE"
+        ) from exc
+    if not valid_pesca_cv_snapshot(value):
+        raise PescaCvSourceError("Pesca CV local catalog is invalid", code="STATE")
+    return value
+
+
+def _write_snapshot(path: Path, value: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(
+        dir=str(path.parent), prefix=f".{path.name}."
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+            json.dump(value, output, ensure_ascii=False, separators=(",", ":"))
+            output.write("\n")
+            output.flush()
+            os.fsync(output.fileno())
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+
+
+def _usable_events(snapshot: dict, local_day: date, *, active_only: bool) -> tuple[dict, ...]:
+    result = []
+    for raw in snapshot["events"]:
+        start = date.fromisoformat(raw["start"])
+        end = date.fromisoformat(raw["end"])
+        if active_only:
+            if not start <= local_day <= end:
+                continue
+        elif end < local_day:
+            continue
+        result.append(raw)
+    return tuple(result)
+
+
+async def refresh_pesca_cv_catalog(
+    now: datetime, state_path: Path
+) -> tuple[dict, ...]:
+    """Refresh once and preserve a valid last-good snapshot on source failure."""
+
+    previous = None
+    try:
+        previous = await asyncio.to_thread(_load_snapshot, state_path)
+    except PescaCvSourceError as exc:
+        logging.warning(
+            "Pesca CV local catalog ignored [PESCA-%s]", exc.diagnostic_code
+        )
+    try:
+        current = await fetch_pesca_cv_snapshot(now)
+    except PescaCvSourceError:
+        if previous is None:
+            raise
+        logging.warning("Pesca CV source unavailable; preserving last-good catalog")
+        return _usable_events(
+            previous, now.astimezone(GUARDAMAR_TIMEZONE).date(), active_only=False
+        )
+    await asyncio.to_thread(_write_snapshot, state_path, current)
+    return tuple(current["events"])
+
+
+async def fetch_today_pesca_cv_events(
+    now: datetime,
+    state_path: Path = Path(DEFAULT_STATE_PATH),
+    translation_cache_path: Path = Path("state/event_translations.json"),
+) -> tuple[Event, ...]:
+    """Return today's Pesca CV rows from local state with no network access."""
+
+    snapshot = await asyncio.to_thread(_load_snapshot, state_path)
+    if snapshot is None:
+        return ()
+    local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
+    result = []
+    for raw in _usable_events(snapshot, local_day, active_only=True):
+        start = date.fromisoformat(raw["start"])
+        end = date.fromisoformat(raw["end"])
+        result.append(
+            Event(
+                title=cached_title(
+                    translation_cache_path, "pesca_cv", raw["title"]
+                ),
+                starts_at=None,
+                place=raw["place"],
+                active_until=end if start != end else None,
+                category="event",
+                is_final_day=start != end and local_day == end,
+            )
+        )
+    return tuple(result)
+
+
+async def pesca_cv_translation_items(
+    now: datetime, state_path: Path = Path(DEFAULT_STATE_PATH)
+) -> tuple[tuple[str, str], ...]:
+    snapshot = await asyncio.to_thread(_load_snapshot, state_path)
+    if snapshot is None:
+        return ()
+    local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
+    return tuple(
+        ("pesca_cv", raw["title"])
+        for raw in _usable_events(snapshot, local_day, active_only=False)
+    )
+
+
+def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    state_path = Path(
+        os.environ.get("PESCA_CV_EVENTS_STATE_PATH", DEFAULT_STATE_PATH)
+    )
+    now = datetime.now(GUARDAMAR_TIMEZONE)
+    try:
+        events = asyncio.run(refresh_pesca_cv_catalog(now, state_path))
+    except (PescaCvSourceError, ValueError) as exc:
+        print(f"Command failed: {exc}", file=os.sys.stderr)
+        raise SystemExit(2) from exc
+    logging.info("Pesca CV event catalog synchronized: %d facts", len(events))
+
+
+if __name__ == "__main__":
+    main()
