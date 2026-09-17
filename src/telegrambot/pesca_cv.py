@@ -31,6 +31,12 @@ _MAX_BYTES = 1536 * 1024
 _TIMEOUT_SECONDS = 15.0
 _MAX_EVENTS = 64
 _ALLOWED_LEVELS = frozenset({"mundial", "nacional", "autonomico", "provincial"})
+_LEVEL_LABELS_RU = {
+    "mundial": "Мировые соревнования",
+    "nacional": "Национальные соревнования",
+    "autonomico": "Региональные соревнования",
+    "provincial": "Провинциальные соревнования",
+}
 
 
 class PescaCvSourceError(RuntimeError):
@@ -265,6 +271,9 @@ def valid_pesca_cv_snapshot(value: Any) -> bool:
             for key in ("title", "place", "organizer")
         ):
             return False
+        place = " ".join(event["place"].split())
+        if place != "Guardamar" and not place.startswith("Guardamar · "):
+            return False
         try:
             start = date.fromisoformat(event["start"])
             end = date.fromisoformat(event["end"])
@@ -383,10 +392,14 @@ async def fetch_today_pesca_cv_events(
     for raw in _usable_events(snapshot, local_day, active_only=True):
         start = date.fromisoformat(raw["start"])
         end = date.fromisoformat(raw["end"])
+        translated_title = cached_title(
+            translation_cache_path, "pesca_cv", raw["title"]
+        )
         result.append(
             Event(
-                title=cached_title(
-                    translation_cache_path, "pesca_cv", raw["title"]
+                title=(
+                    f"{_LEVEL_LABELS_RU[_fold(raw['level'])]} — "
+                    f"{translated_title}"
                 ),
                 starts_at=None,
                 place=raw["place"],
