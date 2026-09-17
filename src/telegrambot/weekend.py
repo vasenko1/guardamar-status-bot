@@ -41,6 +41,8 @@ async def _day_events(
     agenda_state_path: Path,
     library_agenda_state_path: Path,
     am_guardamar_state_path: Path,
+    facv_state_path: Path,
+    pesca_cv_state_path: Path,
     translation_cache_path: Path,
     diagnostics: Optional[List[SourceDiagnostic]] = None,
 ):
@@ -108,7 +110,8 @@ async def _day_events(
     try:
         facv_events = await fetch_today_facv_events(
             day,
-            translation_cache_path=translation_cache_path,
+            facv_state_path,
+            translation_cache_path,
         )
     except FacvSourceError as exc:
         LOGGER.warning("FACV catalog unavailable for %s; omitting: %s", day.date(), exc)
@@ -118,7 +121,8 @@ async def _day_events(
     try:
         pesca_cv_events = await fetch_today_pesca_cv_events(
             day,
-            translation_cache_path=translation_cache_path,
+            pesca_cv_state_path,
+            translation_cache_path,
         )
     except PescaCvSourceError as exc:
         LOGGER.warning("Pesca CV catalog unavailable for %s; omitting: %s", day.date(), exc)
@@ -144,6 +148,8 @@ async def produce_weekend_message(
     agenda_state_path: Path,
     library_agenda_state_path: Path = Path("state/library_agenda.json"),
     am_guardamar_state_path: Path = Path("state/am_guardamar.json"),
+    facv_state_path: Path = Path("state/facv_events.json"),
+    pesca_cv_state_path: Path = Path("state/pesca_cv_events.json"),
     translation_cache_path: Path = Path("state/event_translations.json"),
     diagnostics: Optional[List[SourceDiagnostic]] = None,
 ) -> Optional[str]:
@@ -161,6 +167,8 @@ async def produce_weekend_message(
             agenda_state_path,
             library_agenda_state_path,
             am_guardamar_state_path,
+            facv_state_path,
+            pesca_cv_state_path,
             translation_cache_path,
             diagnostics,
         )
