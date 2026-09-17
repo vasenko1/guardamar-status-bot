@@ -163,9 +163,16 @@ def _post(raw: Mapping[str, Any]) -> Optional[dict]:
     try:
         published_day = date.fromisoformat(published[:10])
         parsed_link = urllib.parse.urlsplit(link)
+        link_port = parsed_link.port
     except (ValueError, TypeError):
         return None
-    if parsed_link.scheme != "https" or parsed_link.hostname != API_HOST:
+    if (
+        parsed_link.scheme != "https"
+        or parsed_link.hostname != API_HOST
+        or link_port not in {None, 443}
+        or parsed_link.username is not None
+        or parsed_link.password is not None
+    ):
         return None
     title = _plain(title_value.get("rendered"))
     rendered = content_value.get("rendered")
@@ -262,13 +269,22 @@ def _normalize_posts(raw_posts: List[Dict[str, Any]], now: datetime) -> dict:
         if season is None:
             continue
         start_year, label = season
+        folded = post["text"].casefold()
+        if not any(marker in folded for marker in (
+            "matrícula",
+            "matricula",
+            "jardín musical",
+            "jardin musical",
+            "lenguaje musical",
+            "asignaturas conjuntas",
+        )):
+            continue
         bucket = seasons.setdefault(start_year, {
             "season": label,
             "schedule_url": None,
             "jardin_registration": None,
             "school_registration": None,
         })
-        folded = post["text"].casefold()
         jardin_form, school_form = _forms(post["hrefs"])
         intervals = _windows(post["text"])
 
@@ -331,9 +347,16 @@ def _https_url(value: Any, *, hosts: Optional[frozenset[str]] = None) -> bool:
         return False
     try:
         parsed = urllib.parse.urlsplit(value)
+        port = parsed.port
     except ValueError:
         return False
-    if parsed.scheme != "https" or not parsed.hostname:
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or port not in {None, 443}
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
         return False
     return hosts is None or parsed.hostname in hosts
 

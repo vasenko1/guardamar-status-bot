@@ -1049,7 +1049,7 @@ def build_music_activity(
             _music_place_line(school_link),
             "",
             "• <b>Другие инструменты</b>",
-            "  ударные · виолончель · дульсайна · гитара · фортепиано",
+            "  ударные · виолончель · дульсайна · гитара · Piano Complementario",
             _music_place_line(school_link),
         ])
 
