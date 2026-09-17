@@ -1,0 +1,156 @@
+name: Deploy 3 review fixes
+
+on:
+  push:
+    branches:
+      - deploy3-music-activities-v2
+
+permissions:
+  contents: write
+
+jobs:
+  review-fixes:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: deploy3-music-activities-v2
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install project
+        run: python -m pip install -e .
+
+      - name: Apply review fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              if text.count(old) != 1:
+                  raise SystemExit(f'{path}: expected one match for {old[:80]!r}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          source = 'src/telegrambot/music_school.py'
+          pinned = 'src/telegrambot/pinned.py'
+
+          replace_once(
+              source,
+              '''        start_year, label = season
+                  bucket = seasons.setdefault(start_year, {
+                      "season": label,
+                      "schedule_url": None,
+                      "jardin_registration": None,
+                      "school_registration": None,
+                  })
+                  folded = post["text"].casefold()
+''',
+              '''        start_year, label = season
+                  folded = post["text"].casefold()
+                  if not any(marker in folded for marker in (
+                      "matrícula",
+                      "matricula",
+                      "jardín musical",
+                      "jardin musical",
+                      "lenguaje musical",
+                      "asignaturas conjuntas",
+                  )):
+                      continue
+                  bucket = seasons.setdefault(start_year, {
+                      "season": label,
+                      "schedule_url": None,
+                      "jardin_registration": None,
+                      "school_registration": None,
+                  })
+''',
+          )
+
+          replace_once(
+              source,
+              '''    try:
+                  parsed = urllib.parse.urlsplit(value)
+              except ValueError:
+                  return False
+              if parsed.scheme != "https" or not parsed.hostname:
+                  return False
+              return hosts is None or parsed.hostname in hosts
+''',
+              '''    try:
+                  parsed = urllib.parse.urlsplit(value)
+                  port = parsed.port
+              except ValueError:
+                  return False
+              if (
+                  parsed.scheme != "https"
+                  or not parsed.hostname
+                  or port not in {None, 443}
+                  or parsed.username is not None
+                  or parsed.password is not None
+              ):
+                  return False
+              return hosts is None or parsed.hostname in hosts
+''',
+          )
+
+          replace_once(
+              source,
+              '''    try:
+                  published_day = date.fromisoformat(published[:10])
+                  parsed_link = urllib.parse.urlsplit(link)
+              except (ValueError, TypeError):
+                  return None
+              if parsed_link.scheme != "https" or parsed_link.hostname != API_HOST:
+                  return None
+''',
+              '''    try:
+                  published_day = date.fromisoformat(published[:10])
+                  parsed_link = urllib.parse.urlsplit(link)
+                  link_port = parsed_link.port
+              except (ValueError, TypeError):
+                  return None
+              if (
+                  parsed_link.scheme != "https"
+                  or parsed_link.hostname != API_HOST
+                  or link_port not in {None, 443}
+                  or parsed_link.username is not None
+                  or parsed_link.password is not None
+              ):
+                  return None
+''',
+          )
+
+          replace_once(
+              pinned,
+              '  ударные · виолончель · дульсайна · гитара · фортепиано',
+              '  ударные · виолончель · дульсайна · гитара · Piano Complementario',
+          )
+          PY
+
+      - name: Targeted tests
+        run: >-
+          python -m unittest
+          tests.test_music_school
+          tests.test_music_school_hardening
+          tests.test_music_pinned
+          tests.test_guide
+          tests.test_dynamic_guide_recovery
+          tests.test_sporttia_guide
+          tests.test_guide_navigation_followup
+          -v
+
+      - name: Full test suite
+        run: python -m unittest discover -s tests -v
+
+      - name: Commit review fixes
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/telegrambot/music_school.py src/telegrambot/pinned.py
+          git commit -m "Harden music programme parsing"
+          git push origin HEAD:deploy3-music-activities-v2
