@@ -1,0 +1,641 @@
+name: Deploy 3 integration bootstrap
+
+on:
+  push:
+    branches:
+      - deploy3-music-activities-clean
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: deploy3-music-activities-clean
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Apply minimal integration patches
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one match, got {count}: {old[:80]!r}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          # pinned.py: imports and explicit music metadata.
+          replace_once(
+              'src/telegrambot/pinned.py',
+              'from .branding import FOOTER, with_footer\nfrom .sporttia import (',
+              'from .branding import FOOTER, with_footer\n'
+              'from .music_school import (\n'
+              '    SCHOOL_ADDRESS,\n'
+              '    SCHOOL_EMAIL,\n'
+              '    SCHOOL_MAP_URL,\n'
+              '    SCHOOL_PHONE,\n'
+              '    SCHOOL_SITE_URL,\n'
+              '    registration_is_open as music_registration_is_open,\n'
+              ')\n'
+              'from .sporttia import ('
+          )
+          replace_once(
+              'src/telegrambot/pinned.py',
+              '    "psychomotricity": ("🧒", "Психомоторика"),\n}\n\nSend =',
+              '    "psychomotricity": ("🧒", "Психомоторика"),\n}\n'
+              'MUSIC_ACTIVITY_KEYS = (\n'
+              '    "music_basics",\n'
+              '    "music_vocal",\n'
+              '    "music_instruments",\n'
+              ')\n'
+              'MUSIC_ACTIVITY_META = {\n'
+              '    "music_basics": ("🎶", "Музыкальное развитие и грамота"),\n'
+              '    "music_vocal": ("🎤", "Вокал и хор"),\n'
+              '    "music_instruments": ("🎷", "Музыкальные инструменты"),\n'
+              '}\n\nSend ='
+          )
+          replace_once(
+              'src/telegrambot/pinned.py',
+              '    "les_raboses",\n    "molivent",\n    "youth_centre",',
+              '    "les_raboses",\n    "molivent",\n    "music_school",\n    "youth_centre",'
+          )
+          replace_once(
+              'src/telegrambot/pinned.py',
+              '    "les_raboses": "places",\n    "molivent": "places",\n    "youth_centre": "places",',
+              '    "les_raboses": "places",\n    "molivent": "places",\n    "music_school": "places",\n    "youth_centre": "places",'
+          )
+          replace_once(
+              'src/telegrambot/pinned.py',
+              '    "swimming": "activities",\n    "football": "activities",\n}',
+              '    "swimming": "activities",\n    "football": "activities",\n'
+              '    **{key: "activities" for key in MUSIC_ACTIVITY_KEYS},\n}'
+          )
+
+          # Places index and durable music-school place card.
+          replace_once(
+              'src/telegrambot/pinned.py',
+              '    youth_centre_link: Optional[str] = None,\n'
+              '    les_raboses_link: Optional[str] = None,\n'
+              '    molivent_link: Optional[str] = None,\n'
+              ') -> str:',
+              '    youth_centre_link: Optional[str] = None,\n'
+              '    les_raboses_link: Optional[str] = None,\n'
+              '    molivent_link: Optional[str] = None,\n'
+              '    music_school_link: Optional[str] = None,\n'
+              ') -> str:'
+          )
+          replace_once(
+              'src/telegrambot/pinned.py',
+              '            f"🏫 {_direct_link(\'CEIP Molivent\', molivent_link)}\\n"\n'
+              '            "Здесь проходят муниципальные занятия для детей.\\n\\n"\n'
+              '            f"👥 {_direct_link(\'Centro Social Juvenil\', youth_centre_link)}\\n"',
+              '            f"🏫 {_direct_link(\'CEIP Molivent\', molivent_link)}\\n"\n'
+              '            "Здесь проходят муниципальные занятия для детей.\\n\\n"\n'
+              '            f"🎼 {_direct_link(\'Escuela de Música\', music_school_link)}\\n"\n'
+              '            "Музыкальная школа Agrupación Musical de Guardamar.\\n\\n"\n'
+              '            f"👥 {_direct_link(\'Centro Social Juvenil\', youth_centre_link)}\\n"'
+          )
+          music_school_builder = r'''
+
+def build_music_school(
+    music_links: Optional[Mapping[str, str]] = None,
+    places_link: Optional[str] = None,
+) -> str:
+    """Build the durable school place card shared by music activities."""
+
+    map_url = html.escape(SCHOOL_MAP_URL, quote=True)
+    lines = [
+        "🎼 <b>Escuela de Música</b>",
+        "",
+        "Музыкальная школа Agrupación Musical de Guardamar.",
+        "",
+        f'<a href="{map_url}">📍 <b>Открыть на карте</b></a>',
+        html.escape(SCHOOL_ADDRESS),
+        "",
+        f"📞 <b>Телефон:</b> <code>{SCHOOL_PHONE}</code>",
+        "✉️ <b>Email:</b>",
+        f"<code>{SCHOOL_EMAIL}</code>",
+        f'🌐 <a href="{SCHOOL_SITE_URL}"><b>Сайт школы</b></a>',
+    ]
+    music_links = music_links or {}
+    linked = [
+        (key, music_links[key])
+        for key in MUSIC_ACTIVITY_KEYS
+        if key in music_links
+    ]
+    if linked:
+        lines.extend(["", "🎓 <b>Занятия:</b>"])
+        for key, link in linked:
+            emoji, label = MUSIC_ACTIVITY_META[key]
+            lines.append(f"{emoji} {_direct_link(label, link)}")
+    return _with_back_link(
+        with_footer("\n".join(lines)),
+        "К списку мест",
+        places_link,
+    )
+'''
+          replace_once(
+              'src/telegrambot/pinned.py',
+              '\n\ndef build_pool_indoor(\n',
+              music_school_builder + '\n\ndef build_pool_indoor(\n'
+          )
+
+          # Activities index gets one visual music section, no extra navigator.
+          replace_once(
+              'src/telegrambot/pinned.py',
+              '    sport_links: Optional[Mapping[str, str]] = None,\n'
+              '    football_link: Optional[str] = None,\n'
+              ') -> str:',
+              '    sport_links: Optional[Mapping[str, str]] = None,\n'
+              '    football_link: Optional[str] = None,\n'
+              '    music_links: Optional[Mapping[str, str]] = None,\n'
+              ') -> str:'
+          )
+          replace_once(
+              'src/telegrambot/pinned.py',
+              '    lines.append(f"⚽ {_direct_link(\'Футбол\', football_link)}")\n'
+              '    return _with_back_link(',
+              '    lines.append(f"⚽ {_direct_link(\'Футбол\', football_link)}")\n'
+              '    music_links = music_links or {}\n'
+              '    linked_music = [\n'
+              '        (key, music_links[key])\n'
+              '        for key in MUSIC_ACTIVITY_KEYS\n'
+              '        if key in music_links\n'
+              '    ]\n'
+              '    if linked_music:\n'
+              '        lines.extend(["", "🎵 <b>Музыка</b>"])\n'
+              '        for key, link in linked_music:\n'
+              '            emoji, label = MUSIC_ACTIVITY_META[key]\n'
+              '            lines.append(f"{emoji} {_direct_link(label, link)}")\n'
+              '    return _with_back_link('
+          )
+
+          music_activity_builder = r'''
+
+def _music_place_line(school_link: Optional[str]) -> str:
+    return "  📍 " + _direct_link(
+        "Escuela de Música",
+        school_link or SCHOOL_MAP_URL,
+    )
+
+
+def _append_music_schedule(lines, catalog: Mapping[str, object]) -> None:
+    url = catalog.get("schedule_url")
+    season = catalog.get("season")
+    if not isinstance(url, str) or not url:
+        return
+    label = "Расписание групп"
+    if isinstance(season, str) and season:
+        label += f" {html.escape(season)}"
+    lines.append(
+        f'  📅 <a href="{html.escape(url, quote=True)}">{label}</a>'
+    )
+
+
+def build_music_activity(
+    key: str,
+    catalog: Mapping[str, object],
+    local_day: date,
+    activities_link: Optional[str] = None,
+    school_link: Optional[str] = None,
+) -> str:
+    """Build one compact music activity card; contacts stay on the place card."""
+
+    if key not in MUSIC_ACTIVITY_META:
+        raise ValueError(f"unknown music activity key: {key}")
+    emoji, title = MUSIC_ACTIVITY_META[key]
+    lines = [f"{emoji} <b>{title}</b>", ""]
+
+    if key == "music_basics":
+        lines.extend(
+            [
+                "• <b>Jardín Musical</b> · 3–6 лет",
+                "  1 час в неделю · занятия Пн–Чт",
+            ]
+        )
+        if music_registration_is_open(
+            catalog, "jardin_registration", local_day
+        ):
+            registration = catalog.get("jardin_registration")
+            if isinstance(registration, Mapping):
+                url = registration.get("url")
+                if isinstance(url, str) and url:
+                    lines.append(
+                        f'  📝 <a href="{html.escape(url, quote=True)}">Записаться</a>'
+                    )
+        lines.append(_music_place_line(school_link))
+        lines.extend(
+            [
+                "• <b>Lenguaje Musical</b> · с 7 лет",
+                "  2 часа в неделю",
+            ]
+        )
+        _append_music_schedule(lines, catalog)
+        lines.append(_music_place_line(school_link))
+        lines.append("• <b>Lenguaje Musical para Adultos</b> · 18+")
+        _append_music_schedule(lines, catalog)
+        lines.append(_music_place_line(school_link))
+    elif key == "music_vocal":
+        lines.append("• <b>Técnica Vocal / Coro</b>")
+        _append_music_schedule(lines, catalog)
+        lines.append(_music_place_line(school_link))
+    else:
+        lines.extend(
+            [
+                "• <b>Духовые инструменты</b>",
+                "  деревянные · медные",
+                _music_place_line(school_link),
+                "• <b>Другие инструменты</b>",
+                "  ударные · дульсайна · виолончель · гитара · Piano Complementario",
+                _music_place_line(school_link),
+            ]
+        )
+
+    return _with_back_link(
+        with_footer("\n".join(lines)),
+        "К занятиям и секциям",
+        activities_link,
+    )
+'''
+          replace_once(
+              'src/telegrambot/pinned.py',
+              '\n\ndef build_football(\n',
+              music_activity_builder + '\n\ndef build_football(\n'
+          )
+
+          # Preview and graph rendering.
+          replace_once(
+              'src/telegrambot/pinned.py',
+              '        build_molivent(),\n        build_youth_centre(),',
+              '        build_molivent(),\n        build_music_school(),\n        build_youth_centre(),'
+          )
+          replace_once(
+              'src/telegrambot/pinned.py',
+              '    molivent_link = _known_link(chat_id, messages, "molivent")\n'
+              '    youth_centre_link = _known_link(chat_id, messages, "youth_centre")',
+              '    molivent_link = _known_link(chat_id, messages, "molivent")\n'
+              '    music_school_link = _known_link(chat_id, messages, "music_school")\n'
+              '    youth_centre_link = _known_link(chat_id, messages, "youth_centre")'
+          )
+          replace_once(
+              'src/telegrambot/pinned.py',
+              '    for key in SPORTTIA_ACTIVITY_KEYS:\n'
+              '        link = _known_link(chat_id, messages, key)\n'
+              '        if link is not None:\n'
+              '            sport_links[key] = link\n'
+              '    leaf_links = None',
+              '    for key in SPORTTIA_ACTIVITY_KEYS:\n'
+              '        link = _known_link(chat_id, messages, key)\n'
+              '        if link is not None:\n'
+              '            sport_links[key] = link\n'
+              '    music_links = {}\n'
+              '    for key in MUSIC_ACTIVITY_KEYS:\n'
+              '        link = _known_link(chat_id, messages, key)\n'
+              '        if link is not None:\n'
+              '            music_links[key] = link\n'
+              '    leaf_links = None'
+          )
+          replace_once(
+              'src/telegrambot/pinned.py',
+              '            youth_centre_link,\n            les_raboses_link,\n            molivent_link,\n        ),',
+              '            youth_centre_link,\n            les_raboses_link,\n            molivent_link,\n            music_school_link,\n        ),'
+          )
+          replace_once(
+              'src/telegrambot/pinned.py',
+              '        "molivent": build_molivent(\n'
+              '            sport_links.get("psychomotricity"),\n'
+              '            places_link,\n'
+              '        ),\n'
+              '        "youth_centre": build_youth_centre(places_link),',
+              '        "molivent": build_molivent(\n'
+              '            sport_links.get("psychomotricity"),\n'
+              '            places_link,\n'
+              '        ),\n'
+              '        "music_school": build_music_school(music_links, places_link),\n'
+              '        "youth_centre": build_youth_centre(places_link),'
+          )
+          replace_once(
+              'src/telegrambot/pinned.py',
+              '            sport_links,\n            football_link,\n        ),',
+              '            sport_links,\n            football_link,\n            music_links,\n        ),'
+          )
+
+          # Source-managed music cards participate in the same bounded recovery graph.
+          replace_once(
+              'src/telegrambot/pinned.py',
+              '    sporttia_catalog: Optional[Mapping[str, object]] = None,\n'
+              '    local_day: Optional[date] = None,',
+              '    sporttia_catalog: Optional[Mapping[str, object]] = None,\n'
+              '    music_school_catalog: Optional[Mapping[str, object]] = None,\n'
+              '    local_day: Optional[date] = None,'
+          )
+          replace_once(
+              'src/telegrambot/pinned.py',
+              '    if sporttia_catalog is not None and local_day is None:\n'
+              '        raise ValueError("local_day is required with Sporttia catalogue")',
+              '    if (sporttia_catalog is not None or music_school_catalog is not None) and local_day is None:\n'
+              '        raise ValueError("local_day is required with source-backed activity catalogues")'
+          )
+          music_publish = r'''
+    if music_school_catalog is not None:
+        assert local_day is not None
+        activities_link = _known_link(chat_id, messages, "activities")
+        school_link = _known_link(chat_id, messages, "music_school")
+        for key in MUSIC_ACTIVITY_KEYS:
+            await _upsert(
+                key,
+                build_music_activity(
+                    key,
+                    music_school_catalog,
+                    local_day,
+                    activities_link,
+                    school_link,
+                ),
+                messages,
+                state,
+                chat_id,
+                send,
+                edit,
+            )
+        await _reconcile_messages(
+            chat_id, messages, state, send, edit, managed_elsewhere
+        )
+'''
+          replace_once(
+              'src/telegrambot/pinned.py',
+              '        await _reconcile_messages(\n'
+              '            chat_id, messages, state, send, edit, managed_elsewhere\n'
+              '        )\n'
+              '    try:\n'
+              '        await pin(messages["root"])',
+              '        await _reconcile_messages(\n'
+              '            chat_id, messages, state, send, edit, managed_elsewhere\n'
+              '        )\n'
+              + music_publish +
+              '    try:\n'
+              '        await pin(messages["root"])'
+          )
+
+          # guide.py: source import/state validation/daily fetch/publish handoff.
+          replace_once(
+              'src/telegrambot/guide.py',
+              'from .commands import parse_allowed_user_ids\nfrom .pinned import (',
+              'from .commands import parse_allowed_user_ids\n'
+              'from .music_school import (\n'
+              '    MusicSchoolSourceError,\n'
+              '    fetch_music_school_catalog,\n'
+              '    merge_music_school_catalog,\n'
+              '    valid_music_school_snapshot,\n'
+              ')\n'
+              'from .pinned import ('
+          )
+          replace_once(
+              'src/telegrambot/guide.py',
+              '        notice = value.get("season_notice")',
+              '        music_school = value.get("music_school_catalog")\n'
+              '        if music_school is not None and not valid_music_school_snapshot(music_school):\n'
+              '            raise StateError("guide state has an invalid music-school snapshot")\n'
+              '        music_attempt_day = value.get("music_school_last_attempt_day")\n'
+              '        if music_attempt_day is not None:\n'
+              '            if not isinstance(music_attempt_day, str):\n'
+              '                raise StateError("guide state has an invalid music-school attempt day")\n'
+              '            try:\n'
+              '                date.fromisoformat(music_attempt_day)\n'
+              '            except ValueError as exc:\n'
+              '                raise StateError(\n'
+              '                    "guide state has an invalid music-school attempt day"\n'
+              '                ) from exc\n'
+              '        notice = value.get("season_notice")'
+          )
+          music_sync = r'''
+        previous_music_school = state.get("music_school_catalog")
+        if state.get("music_school_last_attempt_day") != local_day.isoformat():
+            state["music_school_last_attempt_day"] = local_day.isoformat()
+            guide_state.write(state)
+            try:
+                observed_music_school = await fetch_music_school_catalog(now)
+            except MusicSchoolSourceError as exc:
+                logging.warning(
+                    "Music-school catalogue deferred [GUIDE-%s]",
+                    exc.diagnostic_code,
+                )
+            else:
+                state["music_school_catalog"] = merge_music_school_catalog(
+                    previous_music_school,
+                    observed_music_school,
+                )
+                guide_state.write(state)
+
+'''
+          replace_once(
+              'src/telegrambot/guide.py',
+              '        await _check_wifi_source(bot_token, state, guide_state)\n',
+              music_sync + '        await _check_wifi_source(bot_token, state, guide_state)\n'
+          )
+          replace_once(
+              'src/telegrambot/guide.py',
+              '                sporttia_catalog=state.get("sporttia_catalog"),\n'
+              '                local_day=local_day,',
+              '                sporttia_catalog=state.get("sporttia_catalog"),\n'
+              '                music_school_catalog=state.get("music_school_catalog"),\n'
+              '                local_day=local_day,'
+          )
+
+          # Existing guide tests must never touch the live WordPress source.
+          replace_once(
+              'tests/test_guide.py',
+              'from telegrambot.sporttia import SporttiaSourceError\n',
+              'from telegrambot.music_school import MusicSchoolSourceError\n'
+              'from telegrambot.sporttia import SporttiaSourceError\n'
+          )
+          replace_once(
+              'tests/test_guide.py',
+              '        self.sporttia_patch.start()\n'
+              '        self.addCleanup(self.sporttia_patch.stop)\n',
+              '        self.sporttia_patch.start()\n'
+              '        self.addCleanup(self.sporttia_patch.stop)\n'
+              '        self.music_fetch = AsyncMock(\n'
+              '            side_effect=lambda now: {\n'
+              '                "observed_at": now.isoformat(),\n'
+              '                "season": "2026/27",\n'
+              '                "schedule_url": None,\n'
+              '                "jardin_registration": None,\n'
+              '                "school_registration": None,\n'
+              '            }\n'
+              '        )\n'
+              '        self.music_patch = patch(\n'
+              '            "telegrambot.guide.fetch_music_school_catalog",\n'
+              '            new=self.music_fetch,\n'
+              '        )\n'
+              '        self.music_patch.start()\n'
+              '        self.addCleanup(self.music_patch.stop)\n'
+          )
+          music_tests = r'''
+
+    async def test_music_school_is_attempted_at_most_once_per_local_day(self):
+        with tempfile.TemporaryDirectory() as directory:
+            moment = datetime(2026, 9, 16, 14, 0, tzinfo=MADRID)
+            later = datetime(2026, 9, 16, 16, 30, tzinfo=MADRID)
+            publish = AsyncMock(return_value=self._pinned_messages())
+            with (
+                patch.dict("os.environ", self._environment(directory), clear=False),
+                patch(
+                    "telegrambot.guide.fetch_aqualider_catalog",
+                    new=AsyncMock(return_value=snapshot(moment)),
+                ),
+                patch("telegrambot.guide.publish_pinned_guide", new=publish),
+            ):
+                await sync_guide(moment)
+                await sync_guide(later)
+            self.assertEqual(self.music_fetch.await_count, 1)
+            saved = GuideState(Path(directory) / "guide.json").read()
+            self.assertEqual(
+                saved["music_school_last_attempt_day"], "2026-09-16"
+            )
+            self.assertIn("music_school_catalog", saved)
+            self.assertIn(
+                "music_school_catalog",
+                publish.await_args.kwargs,
+            )
+
+    async def test_music_school_failure_is_not_retried_same_day(self):
+        with tempfile.TemporaryDirectory() as directory:
+            moment = datetime(2026, 9, 16, 14, 0, tzinfo=MADRID)
+            later = datetime(2026, 9, 16, 16, 30, tzinfo=MADRID)
+            self.music_fetch.side_effect = MusicSchoolSourceError(
+                "timeout", code="TIMEOUT"
+            )
+            publish = AsyncMock(return_value=self._pinned_messages())
+            with (
+                patch.dict("os.environ", self._environment(directory), clear=False),
+                patch(
+                    "telegrambot.guide.fetch_aqualider_catalog",
+                    new=AsyncMock(return_value=snapshot(moment)),
+                ),
+                patch("telegrambot.guide.publish_pinned_guide", new=publish),
+            ):
+                await sync_guide(moment)
+                await sync_guide(later)
+            self.assertEqual(self.music_fetch.await_count, 1)
+            saved = GuideState(Path(directory) / "guide.json").read()
+            self.assertEqual(
+                saved["music_school_last_attempt_day"], "2026-09-16"
+            )
+            self.assertNotIn("music_school_catalog", saved)
+'''
+          replace_once(
+              'tests/test_guide.py',
+              '\n    async def test_sync_lock_covers_pinned_reconciliation(self):',
+              music_tests + '\n    async def test_sync_lock_covers_pinned_reconciliation(self):'
+          )
+
+          # Documentation: completed Deploy 3 and source/pinned UX contracts.
+          replace_once(
+              'docs/kb/14_Activities_and_Programs.md',
+              'Status: implementation ledger — Deploy 2 completed 2026-09-17',
+              'Status: implementation ledger — Deploy 3 completed 2026-09-17'
+          )
+          old_deploy3 = '''### Deploy 3 — music school
+
+Add `🎼 Школа музыки` under recurring activities.
+
+The project already has a bounded Agrupación Musical Guardamar WordPress REST adapter reading twelve recently modified posts. Its event path deliberately rejects `matrícula`, `curso`, `horarios`, `plazas`, etc. For the program feature, prefer a small deterministic program extractor over broadening event semantics.
+
+One additional bounded daily GET to the same endpoint is acceptable if that keeps event and programme logic isolated. Refactor shared fetching only later if measured cost justifies it.
+
+Track only explicit current facts: Jardín Musical/other school offer, enrollment window, audience/age, schedule facts, contact and registration URL.
+'''
+          new_deploy3 = '''### Deploy 3 — music activities — completed 2026-09-17
+
+Implemented as one narrow extension of the existing linked-guide architecture:
+
+- one bounded AM Guardamar WordPress recent-post GET at most once per local day inside the existing 16:30 `guide sync`;
+- a deterministic `music_school.py` programme snapshot, separate from the existing event adapter and with same-season last-good retention;
+- no LLM, category-ID discovery, detail crawl, PDF/Drive parser, browser, new cron, daemon, database or provider framework;
+- one durable `🎼 Escuela de Música` place card owning map, address, copyable phone/email, site and reverse activity links;
+- one visual `🎵 Музыка` section inside the existing `🎓 Занятия и секции` index;
+- three resident-facing activity cards: `🎶 Музыкальное развитие и грамота`, `🎤 Вокал и хор`, `🎷 Музыкальные инструменты`;
+- activity cards keep contacts out, link `📍 Escuela de Música` to the internal place card, and preserve the standard upward navigation plus public footer;
+- Jardín shows `📝 Записаться` only while its explicit dedicated registration window is open;
+- current group schedules link to the official AM Guardamar post, never directly to Drive documents that also contain enrolled-student lists;
+- the general Escuela enrolment form is retained as a source fact but is not presented as a group-specific registration action.
+
+The source and information-architecture contract is recorded in ADR 0071. Music source failure preserves the last accepted snapshot and never blocks the rest of linked-guide reconciliation.
+'''
+          replace_once(
+              'docs/kb/14_Activities_and_Programs.md',
+              old_deploy3,
+              new_deploy3,
+          )
+
+          decision_marker = '| --- | --- | --- | --- |\n'
+          decision_row = (
+              '| 2026-09-17 | Add activity-first music guide cards from bounded AM Guardamar programme state | '
+              'Keep the existing event parser separate; read one small recent-post surface daily, retain last-good seasonal facts, '
+              'put contacts on a durable Escuela de Música place card, and expose three music activity cards with safe official-post schedule links. '
+              '| `adr/0071-music-school-programme-source.md`, `docs/kb/14_Activities_and_Programs.md` |\n'
+          )
+          replace_once(
+              'docs/kb/10_Decision_Log.md',
+              decision_marker,
+              decision_marker + decision_row,
+          )
+
+          pinned_append = '''
+
+## Music activities
+
+Music uses the same activity-first linked-guide UX as municipal sport. Keep one visual `🎵 Музыка` group inside the existing `🎓 Занятия и секции` index; do not create a music category message.
+
+The durable `🎼 Escuela de Música` place card owns the verified map/address, copyable phone/email, school site and reverse links to current music activity cards. Music activity cards do not repeat contact details. Each programme/group row uses `📍 Escuela de Música` as an internal Telegram link once that place card exists, with the verified map as recovery fallback.
+
+Current music activity cards are `🎶 Музыкальное развитие и грамота`, `🎤 Вокал и хор`, and `🎷 Музыкальные инструменты`. A direct registration action is shown only for an explicit currently open programme-specific form; the general school form must not be presented as if it were a group-specific link. Schedule actions point to the official AM Guardamar schedule post rather than its Drive documents because those documents also contain enrolled-student lists.
+
+Every final music/place card must keep `⬅️` navigation to its immediate parent immediately before the standard `📣 обЪявления Гуардамар` footer.
+'''
+          p = Path('docs/kb/11_Pinned_Message_Content.md')
+          text = p.read_text(encoding='utf-8')
+          if '## Music activities' not in text:
+              p.write_text(text.rstrip() + pinned_append + '\n', encoding='utf-8')
+
+          replace_once(
+              'docs/kb/06_Data_Sources.md',
+              '| Agrupación Musical Guardamar WordPress posts | Its future public musical events in Guardamar | High for its own published events | One bounded 05:10 REST list refresh of twelve recent posts; changed posts only are extracted | Yes, ADR 0058 |',
+              '| Agrupación Musical Guardamar WordPress posts | Future public musical events plus current music-school programme/enrolment/schedule discovery | High for its own published events and school notices | Event path: one bounded 05:10 REST list refresh of twelve recent posts; programme path: one separate bounded 16:30 recent-post GET at most once/day with deterministic normalized last-good state | Yes, ADR 0058 / ADR 0071 |'
+          )
+
+          # Self-remove the bootstrap workflow from the final feature tree.
+          Path('.github/workflows/deploy3-integration.yml').unlink()
+          PY
+
+      - name: Targeted Deploy 3 tests
+        run: |
+          PYTHONPATH=src python -m unittest \
+            tests.test_music_school \
+            tests.test_music_guide \
+            tests.test_guide \
+            tests.test_dynamic_guide_recovery \
+            tests.test_sporttia_guide -v
+
+      - name: Full regression suite
+        run: PYTHONPATH=src python -m unittest discover -s tests -v
+
+      - name: Commit validated integration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Deploy 3: integrate music activities into linked guide"
+          git push origin HEAD:deploy3-music-activities-clean
