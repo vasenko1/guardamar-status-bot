@@ -219,6 +219,27 @@ def _warning_interval(warning: Warning, today: date) -> str:
     )
 
 
+def _warning_parameter_line(warning: Warning) -> Optional[str]:
+    """Return one compact human-readable structured CAP value."""
+    if warning.parameter_code is None or warning.parameter_value is None:
+        return None
+    value = f"{warning.parameter_value:g}".replace(".", ",")
+    code = warning.parameter_code
+    if code == "P1" and warning.parameter_unit == "mm":
+        return f"{value} л/м² за 1 час"
+    if code == "P2" and warning.parameter_unit == "mm":
+        return f"{value} л/м² за 12 часов"
+    if code == "NV" and warning.parameter_unit == "cm":
+        return f"Снег: {value} см за 24 часа"
+    if code == "RM" and warning.parameter_unit == "km/h":
+        return f"Порывы ветра: {value} км/ч"
+    if code == "TA" and warning.parameter_unit == "°C":
+        return f"Максимальная температура: {value} °C"
+    if code == "TI" and warning.parameter_unit == "°C":
+        return f"Минимальная температура: {value} °C"
+    return None
+
+
 def _warning_blocks(
     warnings: Sequence[Warning],
     now: datetime,
@@ -226,18 +247,17 @@ def _warning_blocks(
     air_quality: Optional[AirQualitySummary] = None,
     cold_health_risk: Optional[ColdHealthRisk] = None,
 ) -> list[str]:
-    """Render scan-friendly AEMET warnings without merging unlike facts."""
+    """Render scan-friendly AEMET warnings, grouping one visible period once."""
 
     today = now.astimezone(GUARDAMAR_TIMEZONE).date()
     priority = {"red": 0, "orange": 1, "yellow": 2}
     active = [
         warning for warning in warnings
-        if warning.ends_at is None
-        or warning.ends_at.astimezone(GUARDAMAR_TIMEZONE) > now
-    ]
-    active = [
-        warning for warning in active
-        if _warning_text(warning.event) is not None
+        if (
+            warning.ends_at is None
+            or warning.ends_at.astimezone(GUARDAMAR_TIMEZONE) > now
+        )
+        and _warning_text(warning.event) is not None
     ]
 
     def display_day(warning: Warning) -> date:
@@ -256,24 +276,25 @@ def _warning_blocks(
             warning.starts_at or datetime.min.replace(
                 tzinfo=GUARDAMAR_TIMEZONE
             ),
+            warning.ends_at or datetime.max.replace(
+                tzinfo=GUARDAMAR_TIMEZONE
+            ),
             _warning_text(warning.event) or "",
+            warning.parameter_code or "",
         ),
     )
+
+    # Presentation grouping is intentionally separate from CAP identity.
+    # P1/P2 remain distinct facts in the model/state, but one shared visible
+    # period should not repeat the same event, interval, or probability.
     grouped = []
     positions = {}
     for warning in ordered:
-        description = _warning_description(warning)
-        description_identity = (
-            " ".join(warning.description.split()).casefold()
-            if warning.description
-            else None
-        )
         key = (
             display_day(warning),
             warning.level,
-            _warning_text(warning.event) or "",
-            description_identity,
-            description,
+            warning.starts_at,
+            warning.ends_at,
             warning.probability,
         )
         if key not in positions:
@@ -285,64 +306,110 @@ def _warning_blocks(
     heat_nested = False
     cold_nested = False
     air_nested = False
+
     for (
         _display_day,
         level,
-        event,
-        _description_identity,
-        description,
+        _starts_at,
+        _ends_at,
         probability,
     ), items in grouped:
         dot = WARNING_DOTS.get(level, "⚠️")
-        blocks.append(f"{dot} <b>{html.escape(event.capitalize())}</b>")
-        intervals = [
-            interval
-            for item in items
-            if (interval := _warning_interval(item, today))
-        ]
-        if probability:
-            if intervals:
-                intervals = [
-                    f"{interval} · вероятность {probability}"
-                    for interval in intervals
-                ]
+        interval = _warning_interval(items[0], today)
+
+        # CAP normally supplies a period. Preserve the established event-first
+        # fallback for malformed/partial warnings with no usable interval.
+        period_first = bool(interval)
+        if period_first:
+            blocks.append(f"{dot} <b>{html.escape(interval)}</b>")
+            if probability:
+                blocks.append(
+                    f"   Вероятность: {html.escape(probability)}"
+                )
+
+        event_groups = []
+        event_positions = {}
+        for warning in items:
+            label = _warning_text(warning.event) or ""
+            if label not in event_positions:
+                event_positions[label] = len(event_groups)
+                event_groups.append([label, []])
+            event_groups[event_positions[label]][1].append(warning)
+
+        for event, event_items in event_groups:
+            if period_first:
+                blocks.append(f"   • <b>{html.escape(event.capitalize())}</b>")
             else:
-                intervals.append(f"Вероятность: {probability}")
-        blocks.extend(f"   {interval}" for interval in intervals)
-        if description:
-            blocks.append(f"   {description}")
-        today_block = _display_day == today
-        if (
-            today_block and event == "высокая температура"
-            and heat_health_risk is not None and heat_health_risk.level > 0
-            and not heat_nested
-        ):
-            blocks.extend(_health_lines(
-                _heat_health_line(heat_health_risk),
-                _HEAT_HEALTH_ADVICE.get(heat_health_risk.level),
-                nested=True,
+                blocks.append(
+                    f"{dot} <b>{html.escape(event.capitalize())}</b>"
+                )
+                if probability:
+                    blocks.append(
+                        f"   Вероятность: {html.escape(probability)}"
+                    )
+
+            parameter_lines = tuple(dict.fromkeys(
+                line
+                for item in event_items
+                if (line := _warning_parameter_line(item)) is not None
             ))
-            heat_nested = True
-        if (
-            today_block and event == "низкая температура"
-            and cold_health_risk is not None and cold_health_risk.level > 0
-            and not cold_nested
-        ):
-            blocks.extend(_health_lines(
-                _cold_health_line(cold_health_risk),
-                _COLD_HEALTH_ADVICE.get(cold_health_risk.level),
-                nested=True,
-            ))
-            cold_nested = True
-        if (
-            today_block and event == "пыль в воздухе"
-            and air_quality is not None and any(
-                pollutant in {"PM10", "PM2.5"}
-                for pollutant in air_quality.pollutants
+            parameter_indent = "      " if period_first else "   "
+            blocks.extend(
+                f"{parameter_indent}{html.escape(line)}"
+                for line in parameter_lines
             )
-        ):
-            blocks.append("   " + _air_quality_line(air_quality, dust_warning=True))
-            air_nested = True
+
+            descriptions = tuple(dict.fromkeys(
+                description
+                for item in event_items
+                if (description := _warning_description(item)) is not None
+            ))
+            blocks.extend(
+                f"{parameter_indent}{html.escape(description)}"
+                for description in descriptions
+            )
+
+            today_block = _display_day == today
+            health_indent = "   "
+            if (
+                today_block and event == "высокая температура"
+                and heat_health_risk is not None
+                and heat_health_risk.level > 0
+                and not heat_nested
+            ):
+                lines = _health_lines(
+                    _heat_health_line(heat_health_risk),
+                    _HEAT_HEALTH_ADVICE.get(heat_health_risk.level),
+                    nested=True,
+                )
+                blocks.extend(lines)
+                heat_nested = True
+            if (
+                today_block and event == "низкая температура"
+                and cold_health_risk is not None
+                and cold_health_risk.level > 0
+                and not cold_nested
+            ):
+                lines = _health_lines(
+                    _cold_health_line(cold_health_risk),
+                    _COLD_HEALTH_ADVICE.get(cold_health_risk.level),
+                    nested=True,
+                )
+                blocks.extend(lines)
+                cold_nested = True
+            if (
+                today_block and event == "пыль в воздухе"
+                and air_quality is not None and any(
+                    pollutant in {"PM10", "PM2.5"}
+                    for pollutant in air_quality.pollutants
+                )
+            ):
+                blocks.append(
+                    health_indent
+                    + _air_quality_line(air_quality, dust_warning=True)
+                )
+                air_nested = True
+
     return blocks, heat_nested, cold_nested, air_nested
 
 

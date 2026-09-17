@@ -690,8 +690,9 @@ class DigestMessageTests(unittest.TestCase):
         )
 
         self.assertIn(
-            "🟡 <b>Грозы</b>\n"
-            "   Сегодня · 16:00–21:59 · вероятность 40–70%",
+            "🟡 <b>Сегодня · 16:00–21:59</b>\n"
+            "   Вероятность: 40–70%\n"
+            "   • <b>Грозы</b>",
             message,
         )
         self.assertIn(
@@ -725,11 +726,11 @@ class DigestMessageTests(unittest.TestCase):
 
         self.assertEqual(message.count("<b>Высокая температура</b>"), 2)
         self.assertIn(
-            "   Сегодня · 13:00–20:59 · вероятность 40–70%",
+            "🟡 <b>Сегодня · 13:00–20:59</b>",
             message,
         )
         self.assertIn(
-            "   Завтра · 13:00–20:59 · вероятность 40–70%",
+            "🟡 <b>Завтра · 13:00–20:59</b>",
             message,
         )
 
@@ -767,10 +768,10 @@ class DigestMessageTests(unittest.TestCase):
             now=datetime(2026, 8, 18, 7, 30, tzinfo=madrid),
         )
 
-        red_today = message.index("🔴 <b>Грозы</b>")
-        orange_today = message.index("🟠 <b>Сильный дождь</b>")
-        yellow_today = message.index("🟡 <b>Сильный ветер</b>")
-        orange_tomorrow = message.index("🟠 <b>Высокая температура</b>")
+        red_today = message.index("<b>Грозы</b>")
+        orange_today = message.index("<b>Сильный дождь</b>")
+        yellow_today = message.index("<b>Сильный ветер</b>")
+        orange_tomorrow = message.index("<b>Высокая температура</b>")
         self.assertLess(red_today, orange_today)
         self.assertLess(orange_today, yellow_today)
         self.assertLess(yellow_today, orange_tomorrow)
@@ -804,9 +805,15 @@ class DigestMessageTests(unittest.TestCase):
         )
 
         self.assertIn(
-            "   Сегодня · 13:00–20:59 · вероятность 40–70%\n"
-            "🟡 <b>Высокая температура</b>\n"
-            "   Завтра · 14:00–20:59 · вероятность 40–70%",
+            "🟡 <b>Сегодня · 13:00–20:59</b>\n"
+            "   Вероятность: 40–70%\n"
+            "   • <b>Высокая температура</b>",
+            message,
+        )
+        self.assertIn(
+            "🟡 <b>Завтра · 14:00–20:59</b>\n"
+            "   Вероятность: 40–70%\n"
+            "   • <b>Высокая температура</b>",
             message,
         )
         self.assertNotIn("Сегодня и завтра", message)
