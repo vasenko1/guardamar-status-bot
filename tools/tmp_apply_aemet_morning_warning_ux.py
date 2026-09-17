@@ -349,3 +349,34 @@ class AemetMorningWarningUxTests(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 ''', encoding="utf-8")
+
+
+digest_tests_path = Path("tests/test_digest.py")
+digest_tests = digest_tests_path.read_text(encoding="utf-8")
+replacements = [
+    (
+        '''        self.assertIn(\n            "🟡 <b>Грозы</b>\\n"\n            "   Сегодня · 16:00–21:59 · вероятность 40–70%",\n            message,\n        )\n''',
+        '''        self.assertIn(\n            "🟡 <b>Сегодня · 16:00–21:59</b>\\n"\n            "   Вероятность: 40–70%\\n"\n            "   • <b>Грозы</b>",\n            message,\n        )\n''',
+    ),
+    (
+        '''        self.assertIn(\n            "   Сегодня · 13:00–20:59 · вероятность 40–70%",\n            message,\n        )\n''',
+        '''        self.assertIn(\n            "🟡 <b>Сегодня · 13:00–20:59</b>",\n            message,\n        )\n''',
+    ),
+    (
+        '''        self.assertIn(\n            "   Завтра · 13:00–20:59 · вероятность 40–70%",\n            message,\n        )\n''',
+        '''        self.assertIn(\n            "🟡 <b>Завтра · 13:00–20:59</b>",\n            message,\n        )\n''',
+    ),
+    (
+        '''        red_today = message.index("🔴 <b>Грозы</b>")\n        orange_today = message.index("🟠 <b>Сильный дождь</b>")\n        yellow_today = message.index("🟡 <b>Сильный ветер</b>")\n        orange_tomorrow = message.index("🟠 <b>Высокая температура</b>")\n''',
+        '''        red_today = message.index("<b>Грозы</b>")\n        orange_today = message.index("<b>Сильный дождь</b>")\n        yellow_today = message.index("<b>Сильный ветер</b>")\n        orange_tomorrow = message.index("<b>Высокая температура</b>")\n''',
+    ),
+    (
+        '''        self.assertIn(\n            "   Сегодня · 13:00–20:59 · вероятность 40–70%\\n"\n            "🟡 <b>Высокая температура</b>\\n"\n            "   Завтра · 14:00–20:59 · вероятность 40–70%",\n            message,\n        )\n''',
+        '''        self.assertIn(\n            "🟡 <b>Сегодня · 13:00–20:59</b>\\n"\n            "   Вероятность: 40–70%\\n"\n            "   • <b>Высокая температура</b>",\n            message,\n        )\n        self.assertIn(\n            "🟡 <b>Завтра · 14:00–20:59</b>\\n"\n            "   Вероятность: 40–70%\\n"\n            "   • <b>Высокая температура</b>",\n            message,\n        )\n''',
+    ),
+]
+for old, new in replacements:
+    if old not in digest_tests:
+        raise SystemExit(f"expected digest test block not found: {old[:80]!r}")
+    digest_tests = digest_tests.replace(old, new, 1)
+digest_tests_path.write_text(digest_tests, encoding="utf-8")
