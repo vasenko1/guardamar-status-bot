@@ -16,4 +16,6 @@ status=0
 ./.venv/bin/python -m telegrambot sync-municipal-events || status=$?
 ./.venv/bin/python -m telegrambot sync-library-events || status=$?
 ./.venv/bin/python -m telegrambot sync-am-guardamar-events || status=$?
+./.venv/bin/python -m telegrambot.facv || status=$?
+./.venv/bin/python -m telegrambot.pesca_cv || status=$?
 exit "$status"

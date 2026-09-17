@@ -1030,7 +1030,11 @@ def _render_event_details(event, indent: str) -> List[str]:
         rows.append(indent + html.escape(" • ".join(facts)))
     if event.teaser and not _event_teaser_is_redundant(event.title, event.teaser):
         rows.append(indent + html.escape(event.teaser))
-    if event.active_until is not None and event.starts_at is None:
+    if (
+        event.active_until is not None
+        and event.starts_at is None
+        and not event.is_final_day
+    ):
         rows.append(indent + _event_active_until_label(event.active_until))
     if event.schedule_note:
         rows.append(indent + "🕐 " + html.escape(event.schedule_note))
