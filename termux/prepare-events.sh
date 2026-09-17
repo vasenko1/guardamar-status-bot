@@ -7,5 +7,4 @@ set -a
 set +a
 
 exec >> state/event-preparation.log 2>&1
-./.venv/bin/python -m telegrambot prepare-event-translations
-./.venv/bin/python -m telegrambot.federation_event_translations
+exec ./.venv/bin/python -m telegrambot prepare-event-translations
