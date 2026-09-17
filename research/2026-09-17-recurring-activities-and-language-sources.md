@@ -39,17 +39,16 @@ sync runs daily.
 | Item | Primary source | Current technical status | Proposed unattended cost | Decision |
 | --- | --- | --- | ---: | --- |
 | Creative workshops | existing Turismo agenda fetch | Server-rendered text already downloaded by `municipal_agenda.py`; current September 2026 page exposes `TALLERES 2025/2026` and registration facts | **0 new GET/day** | **TECH READY; semantic guard required** |
-| Dinamización Social 2026/27 | Ayuntamiento campaign discovery -> detail -> linked Google Form | Detail and Form are ordinary text-readable HTML; no browser/JS/OCR/LLM required | ~1 tiny discovery GET/day; detail/form only on fingerprint change | **READY after production transport probe chooses REST vs RSS** |
-| Chess school | Club Dama 2026 page | Plain server HTML; current page exposes school schedule and levels | one low-frequency bounded GET, suggested weekly; no new cron | **TECH READY; production transport probe pending** |
-| Tertulia Literaria | official Biblioteca static page | Plain server HTML; durable schedule is explicit | one low-frequency bounded GET, suggested weekly/monthly; no new cron | **TECH READY; production transport probe pending** |
+| Dinamización Social 2026/27 | Ayuntamiento RSS -> detail -> linked Google Form | Production probe confirms RSS, detail and Form are ordinary text-readable responses; no browser/JS/OCR/LLM required | 1 RSS GET/day (~4.6 KB); detail/form only on fingerprint change | **READY** |
+| Chess school | Club Dama 2026 page | Production probe: HTTP 200, ~25.8 KB, all expected markers present | one low-frequency bounded GET, suggested weekly; no new cron | **READY** |
+| Tertulia Literaria | official Biblioteca static page | Production probe: HTTP 200, ~6.5 KB, Tuesday + 11:00–13:00 markers present | one low-frequency bounded GET, suggested weekly/monthly; no new cron | **READY** |
 | EPA Spanish | municipal EPA page + current-year forms + reviewed 2026/27 flyer evidence | Official page is current-year, but public machine source does not expose current A1/A2/B1/B1.2 timetable, vacancies or price | piggyback municipal discovery; linked docs only on change | **DEFER dynamic card until current machine-readable offer is sufficient** |
 | EPA English / Valencian | same EPA surface | Current 2026/27 detailed offer/timetable not found | same discovery when evidence appears | **DEFER** |
 | EOI Guardamar English | Generalitat/EOI | Official section in Guardamar is confirmed, but exact current Guardamar group timetable/vacancies are not yet proven through a stable machine contract | potentially structured Generalitat admission surface | **DEFER until local current contract is proven** |
 | Cruz Roja Spanish | Cruz Roja Guardamar | Activity exists, but no first-party current autumn timetable/enrollment surface found | no safe deterministic poller yet | **DEFER dynamic automation** |
 | PANGEA / INTEGRA | municipal campaign publications | Good only when an explicit current campaign exists; do not merge the two programmes conceptually | piggyback municipal discovery | **READY AS FUTURE CAMPAIGN CLASSIFIERS; no current autumn card** |
-| Educare | provider website | Plain HTML, but current exact group timetable/pricing is not published; commercial-source inclusion is undecided | low | **DEFER product decision** |
-| Kairós | provider website | Plain HTML with languages/services, but current exact groups/times/prices are not sufficiently published; commercial-source inclusion is undecided | low | **DEFER product decision** |
-| French / German | private candidates mainly Kairós | local direction exists, no production-ready current group facts | — | **DEFER** |
+| Commercial academies/providers | Educare, Kairós and similar | Technically readable but outside the product scope | — | **EXCLUDE** |
+| French / German | no verified non-commercial regular Guardamar source | no production-ready public/municipal group facts | — | **NO CARD** |
 
 ## Creative workshops
 
@@ -116,8 +115,19 @@ Preferred contract:
 5. store compact normalized facts, never raw HTML;
 6. preserve last-good on failures.
 
-REST vs RSS is intentionally not chosen yet. Production probe should compare
-final URL/MIME/size and choose the smaller stable contract.
+Production probe selected RSS as the municipal discovery contract.
+
+Measured on the production Termux device:
+
+- RSS: HTTP 200, `application/rss+xml`, 4,579 bytes, 1.431 s, target campaign present;
+- generic REST `posts?per_page=10&_fields=...`: HTTP 200, JSON, 1,057 bytes,
+  0.924 s, but the target 7 September campaign is absent from the latest ten
+  posts.
+
+The generic REST response is smaller but is not a complete enough discovery
+surface at this cadence. Do not add search/pagination complexity merely to save
+about 3.5 KB/day. One 4.6 KB RSS read per day is simpler, deterministic and
+operationally negligible.
 
 ## Chess
 
@@ -228,21 +238,18 @@ metadata and must not be treated as proof of current September activity.
 Both are good future explicit classifiers on the same municipal discovery
 surface. Show a card only when an explicit current campaign/intake exists.
 
-## Private providers
+## Commercial providers
 
-Educare currently publishes, in plain HTML, English for school ages,
-Cambridge/Trinity preparation A1–C1, and Spanish for foreigners, plus contact
-and center opening hours. It does not publish a stable exact group timetable or
-price.
+Commercial schools and academies are **out of scope** for this guide.
 
-Kairós currently publishes English, German, French, Spanish for foreigners,
-official-exam preparation, conversation classes, Valencian C1 preparation,
-small groups, contact and center opening hours. It likewise does not expose a
-stable current exact group timetable/pricing contract.
+Do not add Educare, Kairós, private tutors, commercial academies or similar
+providers as recurring cards or language options, even when their websites are
+technically easy to parse. This is a product rule, not a temporary source
+limitation.
 
-Even technically easy HTML does not automatically make these sources suitable
-for the municipal guide. Product inclusion of commercial academies remains a
-separate decision.
+If a future municipal/public source establishes a regular French or German
+offering, evaluate that source independently; do not use private academies to
+fill the gap.
 
 ## User-facing information architecture
 
@@ -260,10 +267,9 @@ Language architecture is language-first rather than provider-first:
 
 - `🌍 Языковые курсы`
   - Spanish -> EPA, Cruz Roja, current PANGEA/INTEGRA campaigns;
-  - English -> EOI Guardamar, EPA, possible private child options only if the
-    commercial-provider rule is explicitly opened;
-  - Valencian -> EPA and only later verified alternatives;
-  - French/German -> no production-ready public/municipal regular offering.
+  - English -> EOI Guardamar and EPA when current source contracts are sufficient;
+  - Valencian -> EPA when current source evidence is sufficient;
+  - French/German -> no card unless a future non-commercial public/municipal source appears.
 
 Do not implement this hierarchy until the exact initial card set has enough
 current source evidence. One reviewed Spanish snapshot alone does not justify
@@ -288,32 +294,45 @@ Every implemented recurring card must preserve existing guide invariants:
 No new generic notification framework is justified. Reuse invariants from the
 existing sports notification design.
 
-## Remaining production verification
+## Production probe — completed 2026-09-18
 
-The exact read-only script is stored in
-`research/2026-09-18-recurring-source-production-probe.md`.
+The read-only probe from the actual Android/Termux production runtime completed
+successfully.
 
-A single Termux probe is still required before implementation to
-record final URL, HTTP status, MIME, bytes and time for:
+| Source | HTTP | MIME | Bytes | Seconds | Required markers |
+| --- | ---: | --- | ---: | ---: | --- |
+| Ayuntamiento RSS | 200 | `application/rss+xml` | 4,579 | 1.431 | target Dinamización campaign **YES** |
+| Ayuntamiento REST latest 10 | 200 | `application/json` | 1,057 | 0.924 | target campaign **NO** |
+| Dinamización detail | 200 | `text/html` | 38,290 | 1.595 | **YES** |
+| Google Form | 200 | `text/html` | 35,307 | 0.723 | registration + group markers **YES** |
+| Turismo agenda | 200 | `text/html` | 30,532 | 1.320 | workshop markers **YES** |
+| Chess | 200 | `text/html` | 25,841 | 0.969 | school/schedule/level markers **YES** |
+| Tertulia | 200 | `text/html` | 6,484 | 0.604 | Tuesday + 11:00 + 13:00 **YES** |
+| EPA | 200 | `text/html` | 35,923 | 1.483 | current 2026/27 markers **YES** |
+| EOI vacancy entry | 200 | `text/html` ISO-8859-1 | 13,409 | 0.292 | 2026/27 **YES**, Guardamar **NO** |
 
-- Ayuntamiento RSS feed;
-- Ayuntamiento WordPress REST posts endpoint;
-- Dinamización detail;
-- linked Google Form;
-- Turismo agenda;
-- chess source;
-- Tertulia source;
-- EPA page;
-- optionally the Generalitat EOI vacancy entry surface.
+Final decisions:
 
-After that probe:
+1. use Ayuntamiento RSS as the one daily municipal discovery read;
+2. Dinamización, Chess and Tertulia source contracts are accepted for
+   implementation;
+3. Workshops transport is accepted but resident publication remains suppressed
+   while the official block still identifies itself as `TALLERES 2025/2026`;
+4. EPA transport is accepted but the source contract is insufficient for a
+   complete current language card;
+5. EOI remains deferred because the initial official vacancy surface does not
+   expose Guardamar-specific current groups in its initial response;
+6. commercial providers are excluded from the product;
+7. no further production transport probe is required before implementing the
+   first recurring-card slice.
 
-1. choose REST or RSS for the one municipal discovery request;
-2. implement Chess + Tertulia as low-frequency source-specific guide adapters;
-3. extract Workshops from the already-fetched Turismo page with zero new GETs;
-4. implement Dinamización using one discovery adapter and changed-detail/form
-   reads;
-5. keep language cards deferred until their current source contracts are
+## Current implementation order
+
+1. Chess + Tertulia;
+2. Dinamización Social;
+3. keep the zero-extra-GET Workshops extractor/card deferred until the official
+   season ambiguity is resolved;
+4. languages remain deferred until current non-commercial source contracts are
    sufficient.
 
-No production code should be changed before this probe is reviewed.
+No generic recurring framework, new daemon or new cron is justified.
