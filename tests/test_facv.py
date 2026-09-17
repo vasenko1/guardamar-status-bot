@@ -3,6 +3,7 @@ import json
 import tempfile
 import unittest
 from datetime import date, datetime
+from unittest.mock import AsyncMock, patch
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -11,6 +12,7 @@ from telegrambot.facv import (
     facv_translation_items,
     fetch_today_facv_events,
     parse_facv_html,
+    refresh_facv_catalog,
     valid_facv_snapshot,
 )
 
@@ -56,6 +58,18 @@ class FacvParserTests(unittest.TestCase):
         self.assertEqual(snapshot["events"], [])
         self.assertTrue(valid_facv_snapshot(snapshot))
 
+    def test_rejects_guardamar_row_without_organizer(self):
+        with self.assertRaises(FacvSourceError):
+            parse_facv_html(
+                _html(
+                    "<tr><td>1</td><td>Open</td><td>20/09/2026</td>"
+                    "<td>20/09/2026</td><td>Guardamar del Segura</td>"
+                    "<td></td><td></td></tr>"
+                ),
+                date(2026, 9, 17),
+                datetime(2026, 9, 17, 16, 30, tzinfo=MADRID),
+            )
+
     def test_fails_closed_when_table_schema_changes(self):
         payload = b"<table><tr><th>Nombre</th><th>Fecha</th></tr></table>"
         with self.assertRaises(FacvSourceError):
@@ -94,6 +108,76 @@ class FacvParserTests(unittest.TestCase):
             items,
             (("facv", "Festival Guardamar"), ("facv", "Open futuro")),
         )
+
+    def test_refresh_preserves_last_good_on_source_failure(self):
+        observed = datetime(2026, 9, 17, 5, 10, tzinfo=MADRID)
+        snapshot = parse_facv_html(
+            _html(
+                "<tr><td>1</td><td>Open Dama Guardamar</td>"
+                "<td>20/09/2026</td><td>20/09/2026</td>"
+                "<td>Guardamar del Segura</td><td>Club Dama</td><td></td></tr>"
+            ),
+            date(2026, 9, 17),
+            observed,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "facv.json"
+            state.write_text(json.dumps(snapshot), encoding="utf-8")
+            with patch(
+                "telegrambot.facv.fetch_facv_snapshot",
+                new=AsyncMock(side_effect=FacvSourceError("down", code="NETWORK")),
+            ):
+                events = asyncio.run(refresh_facv_catalog(observed, state))
+            saved = json.loads(state.read_text(encoding="utf-8"))
+        self.assertEqual(len(events), 1)
+        self.assertEqual(saved, snapshot)
+
+    def test_successful_empty_refresh_replaces_old_future_event(self):
+        observed = datetime(2026, 9, 17, 5, 10, tzinfo=MADRID)
+        previous = parse_facv_html(
+            _html(
+                "<tr><td>1</td><td>Open Dama Guardamar</td>"
+                "<td>20/09/2026</td><td>20/09/2026</td>"
+                "<td>Guardamar del Segura</td><td>Club Dama</td><td></td></tr>"
+            ),
+            date(2026, 9, 17),
+            observed,
+        )
+        current = {"observed_at": observed.isoformat(), "events": []}
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "facv.json"
+            state.write_text(json.dumps(previous), encoding="utf-8")
+            with patch(
+                "telegrambot.facv.fetch_facv_snapshot",
+                new=AsyncMock(return_value=current),
+            ):
+                events = asyncio.run(refresh_facv_catalog(observed, state))
+            saved = json.loads(state.read_text(encoding="utf-8"))
+        self.assertEqual(events, ())
+        self.assertEqual(saved["events"], [])
+
+    def test_corrupt_local_state_recovers_from_valid_remote(self):
+        observed = datetime(2026, 9, 17, 5, 10, tzinfo=MADRID)
+        current = parse_facv_html(
+            _html(
+                "<tr><td>1</td><td>Open Dama Guardamar</td>"
+                "<td>20/09/2026</td><td>20/09/2026</td>"
+                "<td>Guardamar del Segura</td><td>Club Dama</td><td></td></tr>"
+            ),
+            date(2026, 9, 17),
+            observed,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "facv.json"
+            state.write_text("{broken", encoding="utf-8")
+            with patch(
+                "telegrambot.facv.fetch_facv_snapshot",
+                new=AsyncMock(return_value=current),
+            ):
+                events = asyncio.run(refresh_facv_catalog(observed, state))
+            saved = json.loads(state.read_text(encoding="utf-8"))
+        self.assertEqual(len(events), 1)
+        self.assertTrue(valid_facv_snapshot(saved))
 
 
 if __name__ == "__main__":
