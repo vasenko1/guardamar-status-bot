@@ -28,7 +28,6 @@ from .music_school import (
     SCHOOL_SITE_URL,
     registration_is_open as music_registration_is_open,
 )
-from .sports_events import build_sports_events_card, current_sports_events
 from .sporttia import (
     SPORTTIA_ACTIVITY_KEYS,
     SPORTTIA_CENTER_URL,
@@ -236,6 +235,8 @@ LEAF_MESSAGES: Dict[str, str] = {
 ⏱ Около 30 минут
 
 📍 <b>Остановки по пути</b>
+
+<b>В больницу</b>
 <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0877707496%2C-0.6560185196">Guardamar</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0583071959%2C-0.6569832033">La Rosa</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.034828419%2C-0.6600459049">Pinomar</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0241372606%2C-0.6570898059">La Mata</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=37.9643925369%2C-0.7172232255">Hospital de Torrevieja</a>
 
 <b>Обратно</b>
@@ -1133,11 +1134,10 @@ def build_root(
     places_link: Optional[str] = None,
     activities_link: Optional[str] = None,
     wifi_link: Optional[str] = None,
-    sports_events_link: Optional[str] = None,
 ) -> str:
     """Build the compact message intended to remain pinned."""
 
-    message = (
+    return (
         "📌 <b>Полезное о Гуардамаре</b>\n\n"
         f"📹 {_direct_link('Онлайн-камеры', camera_link)}\n\n"
         f"🚌 {_direct_link('Транспорт в Гуардамаре', transport_link)}\n\n"
@@ -1145,12 +1145,6 @@ def build_root(
         f"📶 {_direct_link('Бесплатный Wi-Fi', wifi_link)}\n\n"
         f"🎓 {_direct_link('Занятия и секции', activities_link)}"
     )
-    if sports_events_link is not None:
-        message += (
-            "\n\n🏆 "
-            + _direct_link("Спортивные мероприятия", sports_events_link)
-        )
-    return message
 
 
 def preview_messages() -> Sequence[str]:
@@ -1232,7 +1226,7 @@ class PinnedGuideState:
         ):
             raise StateError("pinned guide state is invalid")
         uncertain = raw.get("uncertain_messages", [])
-        if uncertain is not None and not all(
+        if not isinstance(uncertain, list) or not all(
             isinstance(value, str) for value in uncertain
         ):
             raise StateError("pinned guide state is invalid")
@@ -1411,7 +1405,6 @@ def _render_messages(
     wifi_link = _known_link(chat_id, messages, "wifi")
     activities_link = _known_link(chat_id, messages, "activities")
     football_link = _known_link(chat_id, messages, "football")
-    sports_events_link = _known_link(chat_id, messages, "sports_events")
     sport_links = {}
     for key in SPORTTIA_ACTIVITY_KEYS:
         link = _known_link(chat_id, messages, key)
@@ -1486,7 +1479,6 @@ def _render_messages(
             places_link,
             activities_link,
             wifi_link,
-            sports_events_link,
         ),
     }
 
@@ -1532,7 +1524,6 @@ async def publish_pinned_guide(
     skip_keys: Sequence[str] = (),
     sporttia_catalog: Optional[Mapping[str, object]] = None,
     music_school_catalog: Optional[Mapping[str, object]] = None,
-    sports_events_catalog: Optional[Mapping[str, object]] = None,
     local_day: Optional[date] = None,
 ) -> Dict[str, int]:
     """Create or update all linked messages, then pin the compact root."""
@@ -1542,8 +1533,6 @@ async def publish_pinned_guide(
         raise ValueError("local_day is required with Sporttia catalogue")
     if music_school_catalog is not None and local_day is None:
         raise ValueError("local_day is required with music-school catalogue")
-    if sports_events_catalog is not None and local_day is None:
-        raise ValueError("local_day is required with sports-event catalogue")
     payload = await asyncio.to_thread(state.read_payload, chat_id)
     if payload["uncertain_messages"]:
         raise StateError(
@@ -1610,25 +1599,6 @@ async def publish_pinned_guide(
         await _reconcile_messages(
             chat_id, messages, state, send, edit, managed_elsewhere
         )
-    if sports_events_catalog is not None:
-        assert local_day is not None
-        events = current_sports_events(sports_events_catalog, local_day)
-        if events or "sports_events" in messages:
-            await _upsert(
-                "sports_events",
-                build_sports_events_card(
-                    events,
-                    _known_link(chat_id, messages, "root"),
-                ),
-                messages,
-                state,
-                chat_id,
-                send,
-                edit,
-            )
-            await _reconcile_messages(
-                chat_id, messages, state, send, edit, managed_elsewhere
-            )
     try:
         await pin(messages["root"])
     except TelegramError as exc:
