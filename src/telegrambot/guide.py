@@ -37,6 +37,11 @@ from .pinned import (
     publish_pinned_guide,
     telegram_message_link,
 )
+from .sports_events import (
+    SportsEventsSourceError,
+    refresh_sports_events_catalog,
+    valid_sports_events_catalog,
+)
 from .sporttia import (
     SporttiaSourceError,
     fetch_sporttia_catalog,
@@ -105,6 +110,9 @@ class GuideState:
         music_school = value.get("music_school_catalog")
         if music_school is not None and not valid_music_school_snapshot(music_school):
             raise StateError("guide state has an invalid music-school snapshot")
+        sports_events = value.get("sports_events_catalog")
+        if sports_events is not None and not valid_sports_events_catalog(sports_events):
+            raise StateError("guide state has an invalid sports-event snapshot")
         music_attempt_day = value.get("music_school_last_attempt_day")
         if music_attempt_day is not None:
             if not isinstance(music_attempt_day, str):
@@ -124,6 +132,16 @@ class GuideState:
             except ValueError as exc:
                 raise StateError(
                     "guide state has an invalid Sporttia attempt day"
+                ) from exc
+        sports_attempt_day = value.get("sports_events_last_attempt_day")
+        if sports_attempt_day is not None:
+            if not isinstance(sports_attempt_day, str):
+                raise StateError("guide state has an invalid sports-event attempt day")
+            try:
+                date.fromisoformat(sports_attempt_day)
+            except ValueError as exc:
+                raise StateError(
+                    "guide state has an invalid sports-event attempt day"
                 ) from exc
         notice = value.get("season_notice")
         if notice is not None and (
@@ -641,6 +659,22 @@ async def sync_guide(now: datetime) -> str:
             guide_state.write(state)
 
         local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
+        previous_sports = state.get("sports_events_catalog")
+        if state.get("sports_events_last_attempt_day") != local_day.isoformat():
+            # Mark before network I/O so manual reruns cannot hammer the two
+            # federation pages after a timeout, parse failure, or interruption.
+            state["sports_events_last_attempt_day"] = local_day.isoformat()
+            guide_state.write(state)
+            try:
+                observed_sports = await refresh_sports_events_catalog(
+                    previous_sports, now
+                )
+            except SportsEventsSourceError as exc:
+                logging.warning("Sports-event catalogue deferred: %s", exc)
+            else:
+                state["sports_events_catalog"] = observed_sports
+                guide_state.write(state)
+
         previous_sporttia = state.get("sporttia_catalog")
         if state.get("sporttia_last_attempt_day") != local_day.isoformat():
             # Mark before network I/O so manual reruns cannot hammer the source
@@ -701,6 +735,7 @@ async def sync_guide(now: datetime) -> str:
                 ),
                 sporttia_catalog=state.get("sporttia_catalog"),
                 music_school_catalog=state.get("music_school_catalog"),
+                sports_events_catalog=state.get("sports_events_catalog"),
                 local_day=local_day,
             )
 
