@@ -1,0 +1,50 @@
+name: Deploy 3 integration
+
+on:
+  push:
+    branches:
+      - deploy3-music-activities-v2
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: deploy3-music-activities-v2
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install project
+        run: python -m pip install -e .
+
+      - name: Apply minimal integration patch
+        run: python .github/deploy3_apply.py
+
+      - name: Targeted tests
+        run: >-
+          python -m unittest
+          tests.test_music_school
+          tests.test_music_pinned
+          tests.test_guide
+          tests.test_dynamic_guide_recovery
+          tests.test_sporttia_guide
+          -v
+
+      - name: Full test suite
+        run: python -m unittest discover -s tests -v
+
+      - name: Commit validated integration
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/telegrambot/pinned.py src/telegrambot/guide.py tests/test_guide.py
+          git commit -m "Integrate music activities into linked guide"
+          git push origin HEAD:deploy3-music-activities-v2
