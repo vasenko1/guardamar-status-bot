@@ -197,6 +197,8 @@ def _merge_events(*groups):
                     meeting_point=current.meeting_point or event.meeting_point,
                     schedule_note=current.schedule_note or event.schedule_note,
                     access_note=current.access_note or event.access_note,
+                    active_until=current.active_until or event.active_until,
+                    is_final_day=current.is_final_day or event.is_final_day,
                     programme_title=(
                         current.programme_title or event.programme_title
                     ),
