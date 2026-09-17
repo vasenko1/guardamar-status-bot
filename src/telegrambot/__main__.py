@@ -427,20 +427,18 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         *,
         fetch_cams_remote: bool,
     ) -> None:
-        """Legacy operator recovery for a day already replaced by an old release."""
+        """Explicitly re-render today's existing Morning Digest in place."""
         record = state.morning_record(now.date())
         if record is None:
             raise StateError(
                 f"no morning message exists for {now.date().isoformat()}"
             )
-        if not isinstance(record.get("update_message_id"), int):
-            raise ValueError(
-                "refresh-current is disabled for immutable Morning Digest days"
-            )
         message_id = _current_morning_message_id(record)
         fallback = load_snapshot(aemet_snapshot_path, now)
         refreshed_aemet = []
-        heat_level, cold_level, _ = state.morning_environment(now.date())
+        heat_level, cold_level, existing_cams_base = state.morning_environment(
+            now.date()
+        )
         refreshed_environment = []
         message = await produce_message(
             api_key,
@@ -451,6 +449,8 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             library_agenda_state_path=library_path,
             am_guardamar_state_path=am_guardamar_path,
             translation_cache_path=translations_path,
+            aemet_digest=fallback,
+            fetch_aemet=fallback is None,
             aemet_fallback=fallback,
             aemet_observer=refreshed_aemet.append,
             pharmacy_state_path=pharmacy_path,
@@ -464,8 +464,10 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             cold_health_fallback=(
                 ColdHealthRisk(cold_level) if cold_level is not None else None
             ),
-            environment_observer=lambda heat, cold, base: refreshed_environment.append(
-                (heat, cold, base)
+            environment_detail_observer=(
+                lambda heat, cold, air, pollen, base: refreshed_environment.append(
+                    (heat, cold, air, pollen, base)
+                )
             ),
         )
         try:
@@ -476,14 +478,25 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         if refreshed_aemet:
             write_snapshot(aemet_snapshot_path, refreshed_aemet[-1], now)
         if refreshed_environment:
-            heat, cold, base = refreshed_environment[-1]
+            heat, cold, air, pollen, base = refreshed_environment[-1]
+            effective_base = base if base is not None else existing_cams_base
             state.mark_morning_environment(
                 now.date(),
                 heat.level if heat is not None else None,
-                base,
+                effective_base,
                 cold_level=cold.level if cold is not None else None,
             )
-        logging.info("Legacy current digest %s refreshed", message_id)
+            if base is not None:
+                state.mark_cams_environment(now.date(), base, air, pollen)
+                try:
+                    _promote_cams_snapshot(cams_cache_path, now, base)
+                except EnvironmentError as exc:
+                    logging.warning(
+                        "Manual refresh CAMS snapshot could not be promoted: %s", exc
+                    )
+                else:
+                    prune_cams_candidates(cams_cache_path, base)
+        logging.info("Current digest %s refreshed in place", message_id)
 
     async def check_late_environment(
         state: PublicationState,
