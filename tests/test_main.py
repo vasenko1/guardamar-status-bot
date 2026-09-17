@@ -630,20 +630,40 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
             "message": "обновлённое сообщение",
         })
 
-    async def test_refresh_current_rejects_immutable_morning(self):
+    async def test_refresh_current_edits_immutable_morning_in_place(self):
         with tempfile.TemporaryDirectory() as directory:
             state_path = Path(directory) / "delivery.json"
             now = datetime.now(MADRID)
             state = PublicationState(state_path)
             state.mark_morning(now.date(), 10, now)
-            with patch.dict(os.environ, {
-                "AEMET_API_KEY": "aemet",
-                "TELEGRAM_BOT_TOKEN": "telegram",
-                "TELEGRAM_CHAT_ID": "group",
-                "MORNING_DIGEST_STATE_PATH": str(state_path),
-            }):
-                with self.assertRaises(ValueError):
-                    await _run_command("refresh-current")
+            edited = AsyncMock()
+
+            async def produce(*args, **kwargs):
+                self.assertIsNone(kwargs["aemet_digest"])
+                self.assertTrue(kwargs["fetch_aemet"])
+                return "обновлённое утреннее сообщение"
+
+            with (
+                patch.dict(os.environ, {
+                    "AEMET_API_KEY": "aemet",
+                    "TELEGRAM_BOT_TOKEN": "telegram",
+                    "TELEGRAM_CHAT_ID": "group",
+                    "MORNING_DIGEST_STATE_PATH": str(state_path),
+                }),
+                patch("telegrambot.__main__.produce_message", new=produce),
+                patch("telegrambot.__main__.edit_message", new=edited),
+                patch("telegrambot.__main__.load_snapshot", return_value=None),
+            ):
+                self.assertEqual(await _run_command("refresh-current"), 0)
+
+            edited.assert_awaited_once_with(
+                "telegram", "group", 10, "обновлённое утреннее сообщение"
+            )
+            self.assertIsNone(
+                PublicationState(state_path).morning_record(now.date())[
+                    "update_message_id"
+                ]
+            )
 
     async def test_successful_live_morning_fetch_updates_aemet_snapshot(self):
         observed_digest = object()

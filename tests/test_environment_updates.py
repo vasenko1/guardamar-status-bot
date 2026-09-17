@@ -29,7 +29,7 @@ class EnvironmentUpdateTests(unittest.TestCase):
         message = build_environment_update(None, new, None, None, NOW)
         self.assertIn("PM10, PM2.5 и NO₂", message)
         self.assertIn("Возможно влияние переносимой пыли", message)
-        self.assertIn("Изменённые данные CAMS (Copernicus), 2026", message)
+        self.assertIn("Источник: данные CAMS (Copernicus), обработанные для Гуардамара, 2026", message)
         self.assertNotIn("guardamar-cams-data", message)
         self.assertNotIn("дыма от пожаров", message)
 
@@ -64,7 +64,7 @@ class EnvironmentUpdateTests(unittest.TestCase):
         self.assertIn("Есть пара уточнений", message)
         self.assertIn("PM10", message)
         self.assertIn("оливы", message)
-        self.assertEqual(message.count("Изменённые данные CAMS"), 1)
+        self.assertEqual(message.count("Источник: данные CAMS"), 1)
 
     def test_new_author_messages_have_no_em_dash(self):
         air = AirQualitySummary(("PM10", "PM2.5"), "днём", category=3)

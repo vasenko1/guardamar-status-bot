@@ -41,7 +41,7 @@ def _period_relevant(period: Optional[str], now: datetime) -> bool:
 def _cams_attribution(now: datetime) -> str:
     year = now.astimezone(GUARDAMAR_TIMEZONE).year
     return (
-        f"<i>Изменённые данные CAMS (Copernicus), {year}. "
+        f"<i>Источник: данные CAMS (Copernicus), обработанные для Гуардамара, {year}. "
         "ЕС и ECMWF не несут ответственности за их использование.</i>"
     )
 

@@ -482,8 +482,9 @@ def _pollen_line(value: PollenSummary) -> str:
 
 def _cams_attribution(year: int) -> str:
     return (
-        f'Источник: <a href="{CAMS_ATTRIBUTION_URL}">Изменённые данные CAMS '
-        f'(Copernicus), {year}</a>. ЕС и ECMWF не несут ответственности за их использование.'
+        f'Источник: <a href="{CAMS_ATTRIBUTION_URL}">данные CAMS (Copernicus), '
+        f'обработанные для Гуардамара, {year}</a>. '
+        'ЕС и ECMWF не несут ответственности за их использование.'
     )
 
 

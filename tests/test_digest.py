@@ -100,7 +100,7 @@ class DigestMessageTests(unittest.TestCase):
         self.assertIn("Возможно влияние переносимой пыли", message)
         self.assertNotIn("из-за пыли", message)
         self.assertIn("🌿 <b>Пыльца:</b> высокий уровень оливы", message)
-        self.assertIn("Изменённые данные CAMS (Copernicus), 2026", message)
+        self.assertIn("данные CAMS (Copernicus), обработанные для Гуардамара, 2026", message)
         self.assertIn("ЕС и ECMWF не несут ответственности за их использование", message)
 
     def test_cams_attribution_is_absent_without_cams_content(self):
