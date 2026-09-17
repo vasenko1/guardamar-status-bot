@@ -266,11 +266,17 @@ def _group_key(line: str) -> Optional[str]:
 
 def _extract_groups(parts: list[str], season_start_year: int) -> list[dict]:
     grouped: dict[str, dict] = {}
+    text = " ".join(parts)
     candidates = [
-        line for line in parts
-        if "/semana" in line.casefold() and _TIME_RANGE_RE.search(line)
+        " ".join(match.group(1).split())
+        for match in _WORKSHOP_ROW_RE.finditer(text)
     ]
     for line in candidates:
+        if _TIME_RANGE_RE.search(line) is None:
+            raise DinamizacionSourceError(
+                "Dinamización workshop row has no time range",
+                code="SCHEMA",
+            )
         key = _group_key(line)
         if key is None:
             raise DinamizacionSourceError(
