@@ -20,6 +20,15 @@ from typing import (
 )
 
 from .branding import FOOTER, with_footer
+from .music_school import (
+    SCHOOL_ADDRESS,
+    SCHOOL_EMAIL,
+    SCHOOL_INFO_URL,
+    SCHOOL_MAP_URL,
+    SCHOOL_PHONE,
+    SCHOOL_SITE_URL,
+    registration_is_open as music_registration_is_open,
+)
 from .sporttia import (
     SPORTTIA_ACTIVITY_KEYS,
     SPORTTIA_CENTER_URL,
@@ -68,6 +77,16 @@ SPORT_ACTIVITY_META = {
     "women_gymnastics": ("👩", "Гимнастика Asociación Mujeres"),
     "deporte_plus": ("🏃", "DEPORTE +"),
     "psychomotricity": ("🧒", "Психомоторика"),
+}
+MUSIC_ACTIVITY_KEYS = (
+    "music_basics",
+    "music_vocal",
+    "music_instruments",
+)
+MUSIC_ACTIVITY_META = {
+    "music_basics": ("🎶", "Музыкальное развитие и грамота"),
+    "music_vocal": ("🎤", "Вокал и хор"),
+    "music_instruments": ("🎷", "Музыкальные инструменты"),
 }
 
 Send = Callable[[str], Awaitable[int]]
@@ -276,6 +295,7 @@ GUIDE_MESSAGE_KEYS = (
     "palau_sant_jaume",
     "les_raboses",
     "molivent",
+    "music_school",
     "youth_centre",
     "wifi",
     "activities",
@@ -300,11 +320,13 @@ PINNED_PARENT_KEYS = {
     "palau_sant_jaume": "polideportivo",
     "les_raboses": "places",
     "molivent": "places",
+    "music_school": "places",
     "youth_centre": "places",
     "wifi": "root",
     "activities": "root",
     "swimming": "activities",
     "football": "activities",
+    **{key: "activities" for key in MUSIC_ACTIVITY_KEYS},
 }
 
 
@@ -356,31 +378,17 @@ def build_leaf_message(
     key: str,
     transport_link: Optional[str] = None,
 ) -> str:
-    """Build one route detail with a return to the transport navigator."""
-
-    return _with_back_link(
-        LEAF_MESSAGES[key],
-        "К списку транспорта",
-        transport_link,
-    )
+    return _with_back_link(LEAF_MESSAGES[key], "К списку транспорта", transport_link)
 
 
 def build_cameras(root_link: Optional[str] = None) -> str:
-    """Build the camera list with a return to the compact root."""
-
-    return _with_back_link(
-        CAMERAS,
-        "Полезное о Гуардамаре",
-        root_link,
-    )
+    return _with_back_link(CAMERAS, "Полезное о Гуардамаре", root_link)
 
 
 def build_transport_index(
     links: Optional[Mapping[str, str]] = None,
     root_link: Optional[str] = None,
 ) -> str:
-    """Build the transport navigator with live links or preview labels."""
-
     message = f"""🧭 <b>Транспорт из Гуардамара</b>
 
 🏙 <b>Городские маршруты:</b> {_linked('Линия 1', 'line_1', links)} · {_linked('Линия 2', 'line_2', links)}
@@ -403,9 +411,7 @@ def build_transport_index(
 Только в учебный период · для членов ADEUGT"""
     target = "<b>Полезное о Гуардамаре</b>"
     if root_link is not None:
-        target = (
-            f'<a href="{root_link}"><b>Полезное о Гуардамаре</b></a>'
-        )
+        target = f'<a href="{root_link}"><b>Полезное о Гуардамаре</b></a>'
     return f"{message}\n\n⬅️ {target}"
 
 
@@ -415,9 +421,8 @@ def build_places(
     youth_centre_link: Optional[str] = None,
     les_raboses_link: Optional[str] = None,
     molivent_link: Optional[str] = None,
+    music_school_link: Optional[str] = None,
 ) -> str:
-    """Build the durable places branch."""
-
     return _with_back_link(
         with_footer(
             "📍 <b>Места</b>\n\n"
@@ -427,6 +432,8 @@ def build_places(
             "Муниципальный спортивный комплекс и стадион.\n\n"
             f"🏫 {_direct_link('CEIP Molivent', molivent_link)}\n"
             "Здесь проходят муниципальные занятия для детей.\n\n"
+            f"🎼 {_direct_link('Escuela de Música', music_school_link)}\n"
+            "Музыкальная школа Agrupación Musical de Guardamar.\n\n"
             f"👥 {_direct_link('Centro Social Juvenil', youth_centre_link)}\n"
             "Пространство для подростков и молодёжи."
         ),
@@ -441,8 +448,6 @@ def build_polideportivo(
     places_link: Optional[str] = None,
     palau_link: Optional[str] = None,
 ) -> str:
-    """Build the municipal sports-complex card."""
-
     palau_target = palau_link or PALAU_SANT_JAUME_MAP_URL
     return _with_back_link(
         with_footer(
@@ -467,40 +472,24 @@ def build_palau_sant_jaume(
     sport_links: Optional[Mapping[str, str]] = None,
     polideportivo_link: Optional[str] = None,
 ) -> str:
-    """Build the Palau place card and its source-backed activity links."""
-
     lines = [
-        "🏟 <b>Palau Sant Jaume</b>",
-        "",
-        "Крытый спортивный павильон в составе Polideportivo Municipal.",
-        "",
+        "🏟 <b>Palau Sant Jaume</b>", "",
+        "Крытый спортивный павильон в составе Polideportivo Municipal.", "",
         f'<a href="{PALAU_SANT_JAUME_MAP_URL}">📍 <b>Открыть на карте</b></a>',
         "📞 <b>Телефон:</b> <code>965357693</code>",
-        "✉️ <b>Email:</b>",
-        f"<code>{SPORTS_CONTACT_EMAIL}</code>",
-        "",
-        "<b>Внутри:</b>",
-        "🏟 Центральная спортивная площадка",
+        "✉️ <b>Email:</b>", f"<code>{SPORTS_CONTACT_EMAIL}</code>", "",
+        "<b>Внутри:</b>", "🏟 Центральная спортивная площадка",
         "🏀 баскетбол · футзал · волейбол · бадминтон",
-        "🤸 2 многофункциональных зала",
-        "🏋️ Зал силовых тренировок",
+        "🤸 2 многофункциональных зала", "🏋️ Зал силовых тренировок",
     ]
     sport_links = sport_links or {}
-    linked_sports = [
-        (key, sport_links[key])
-        for key in PALAU_ACTIVITY_KEYS
-        if key in sport_links
-    ]
+    linked_sports = [(key, sport_links[key]) for key in PALAU_ACTIVITY_KEYS if key in sport_links]
     if linked_sports:
         lines.extend(["", "🎓 <b>Занятия:</b>"])
         for key, link in linked_sports:
             emoji, label = SPORT_ACTIVITY_META[key]
             lines.append(f"{emoji} {_direct_link(label, link)}")
-    return _with_back_link(
-        with_footer("\n".join(lines)),
-        "Polideportivo Municipal",
-        polideportivo_link,
-    )
+    return _with_back_link(with_footer("\n".join(lines)), "Polideportivo Municipal", polideportivo_link)
 
 
 def build_les_raboses(
@@ -508,24 +497,18 @@ def build_les_raboses(
     football_link: Optional[str] = None,
     places_link: Optional[str] = None,
 ) -> str:
-    """Build the durable Les Raboses place card."""
-
     return _with_back_link(
         with_footer(
             "🏟 <b>Complejo Deportivo Les Raboses</b>\n\n"
             "Муниципальный спортивный комплекс и стадион José García Campillo.\n\n"
             f'📍 <a href="{LES_RABOSES_MAP_URL}"><b>Открыть на карте</b></a>\n\n'
-            "<b>Объекты:</b>\n"
-            "⚽ 2 футбольных поля\n"
-            "🏃 легкоатлетическая дорожка\n"
-            "💪 зона калистеники\n"
-            "🏹 поле для стрельбы из лука\n\n"
+            "<b>Объекты:</b>\n⚽ 2 футбольных поля\n🏃 легкоатлетическая дорожка\n"
+            "💪 зона калистеники\n🏹 поле для стрельбы из лука\n\n"
             "🎓 <b>Занятия:</b>\n"
             f"🏃 {_direct_link('DEPORTE +', deporte_plus_link)}\n"
             f"⚽ {_direct_link('Футбол', football_link)}"
         ),
-        "К списку мест",
-        places_link,
+        "К списку мест", places_link,
     )
 
 
@@ -533,8 +516,6 @@ def build_molivent(
     psychomotricity_link: Optional[str] = None,
     places_link: Optional[str] = None,
 ) -> str:
-    """Build the durable CEIP Molivent place card."""
-
     return _with_back_link(
         with_footer(
             "🏫 <b>CEIP Molivent</b>\n\n"
@@ -543,17 +524,43 @@ def build_molivent(
             "🎓 <b>Занятия:</b>\n"
             f"🧒 {_direct_link('Психомоторика', psychomotricity_link)}"
         ),
-        "К списку мест",
-        places_link,
+        "К списку мест", places_link,
     )
+
+
+def build_music_school(
+    music_links: Optional[Mapping[str, str]] = None,
+    places_link: Optional[str] = None,
+) -> str:
+    """Build the durable school place card shared by music activities."""
+
+    lines = [
+        "🎼 <b>Escuela de Música</b>",
+        "",
+        "Музыкальная школа Agrupación Musical de Guardamar.",
+        "",
+        f'📍 <a href="{SCHOOL_MAP_URL}"><b>Открыть на карте</b></a>',
+        html.escape(SCHOOL_ADDRESS),
+        "",
+        f"📞 <b>Телефон:</b> <code>{SCHOOL_PHONE}</code>",
+        "✉️ <b>Email:</b>",
+        f"<code>{SCHOOL_EMAIL}</code>",
+        f'🌐 <a href="{SCHOOL_SITE_URL}"><b>Сайт школы</b></a>',
+    ]
+    music_links = music_links or {}
+    linked = [(key, music_links[key]) for key in MUSIC_ACTIVITY_KEYS if key in music_links]
+    if linked:
+        lines.extend(["", "🎓 <b>Занятия:</b>"])
+        for key, link in linked:
+            emoji, label = MUSIC_ACTIVITY_META[key]
+            lines.append(f"{emoji} {_direct_link(label, link)}")
+    return _with_back_link(with_footer("\n".join(lines)), "К списку мест", places_link)
 
 
 def build_pool_indoor(
     swimming_link: Optional[str] = None,
     polideportivo_link: Optional[str] = None,
 ) -> str:
-    """Build the indoor municipal pool card."""
-
     return _with_back_link(
         with_footer(
             "🏊 <b>Крытый бассейн Manel Estiarte</b>\n\n"
@@ -562,8 +569,7 @@ def build_pool_indoor(
             "📞 <b>Телефон:</b> <code>966726593</code>\n\n"
             f"🎓 <b>Занятия:</b> {_direct_link('🏊 Плавание', swimming_link)}."
         ),
-        "Polideportivo Municipal",
-        polideportivo_link,
+        "Polideportivo Municipal", polideportivo_link,
     )
 
 
@@ -571,8 +577,6 @@ def build_pool_outdoor(
     swimming_link: Optional[str] = None,
     polideportivo_link: Optional[str] = None,
 ) -> str:
-    """Build the outdoor municipal pool card."""
-
     return _with_back_link(
         with_footer(
             "☀️ <b>Открытый муниципальный бассейн</b>\n\n"
@@ -581,43 +585,28 @@ def build_pool_outdoor(
             "📞 <b>Телефон:</b> <code>966726335</code>\n\n"
             f"🎓 <b>Занятия:</b> {_direct_link('🏊 Плавание', swimming_link)}."
         ),
-        "Polideportivo Municipal",
-        polideportivo_link,
+        "Polideportivo Municipal", polideportivo_link,
     )
 
 
 def build_youth_centre(places_link: Optional[str] = None) -> str:
-    """Build the current verified Centro Social Juvenil place card."""
-
     return _with_back_link(
         with_footer(
             "👥 <b>Centro Social Juvenil</b>\n\n"
             "Пространство для подростков и молодёжи от <b>12 до 30 лет</b>.\n\n"
-            "🎲 Настольные игры, настольный футбол, пинг-понг, аэрохоккей, "
-            "игровой автомат и другие занятия.\n\n"
+            "🎲 Настольные игры, настольный футбол, пинг-понг, аэрохоккей, игровой автомат и другие занятия.\n\n"
             "🕒 <b>Режим работы в сентябре 2026</b>\n"
-            "Пн–Пт: 08:30–14:00\n"
-            "Ср–Чт: 17:00–21:00\n"
-            "Пт: 17:00–22:00\n"
-            "Сб: 17:00–22:00\n\n"
+            "Пн–Пт: 08:30–14:00\nСр–Чт: 17:00–21:00\nПт: 17:00–22:00\nСб: 17:00–22:00\n\n"
             f"📍 <a href=\"{YOUTH_CENTRE_MAP_URL}\"><b>Открыть на карте</b></a>\n"
             "📱 <b>WhatsApp:</b> <code>609006754</code>\n"
-            "✉️ <b>Email:</b>\n"
-            "<code>juventudguardamar@gmail.com</code>"
+            "✉️ <b>Email:</b>\n<code>juventudguardamar@gmail.com</code>"
         ),
-        "К списку мест",
-        places_link,
+        "К списку мест", places_link,
     )
 
 
 def build_wifi(root_link: Optional[str] = None) -> str:
-    """Build the verified municipal Wi-Fi card."""
-
-    return _with_back_link(
-        WIFI,
-        "Полезное о Гуардамаре",
-        root_link,
-    )
+    return _with_back_link(WIFI, "Полезное о Гуардамаре", root_link)
 
 
 def build_activities(
@@ -625,14 +614,12 @@ def build_activities(
     root_link: Optional[str] = None,
     sport_links: Optional[Mapping[str, str]] = None,
     football_link: Optional[str] = None,
+    music_links: Optional[Mapping[str, str]] = None,
 ) -> str:
-    """Build the recurring activities branch."""
-
     sport_links = sport_links or {}
+    music_links = music_links or {}
     lines = [
-        "🎓 <b>Занятия и секции</b>",
-        "",
-        "🏃 <b>Спорт и движение</b>",
+        "🎓 <b>Занятия и секции</b>", "", "🏃 <b>Спорт и движение</b>",
         f"🏊 {_direct_link('Плавание', swimming_link)}",
     ]
     for key in SPORTTIA_ACTIVITY_KEYS:
@@ -642,27 +629,20 @@ def build_activities(
         emoji, label = SPORT_ACTIVITY_META[key]
         lines.append(f"{emoji} {_direct_link(label, link)}")
     lines.append(f"⚽ {_direct_link('Футбол', football_link)}")
-    return _with_back_link(
-        with_footer("\n".join(lines)),
-        "Полезное о Гуардамаре",
-        root_link,
-    )
+    if music_links:
+        lines.extend(["", "🎵 <b>Музыка</b>"])
+        for key in MUSIC_ACTIVITY_KEYS:
+            link = music_links.get(key)
+            if link is None:
+                continue
+            emoji, label = MUSIC_ACTIVITY_META[key]
+            lines.append(f"{emoji} {_direct_link(label, link)}")
+    return _with_back_link(with_footer("\n".join(lines)), "Полезное о Гуардамаре", root_link)
 
 
 _RU_MONTHS = (
-    "",
-    "января",
-    "февраля",
-    "марта",
-    "апреля",
-    "мая",
-    "июня",
-    "июля",
-    "августа",
-    "сентября",
-    "октября",
-    "ноября",
-    "декабря",
+    "", "января", "февраля", "марта", "апреля", "мая", "июня", "июля",
+    "августа", "сентября", "октября", "ноября", "декабря",
 )
 
 
@@ -687,9 +667,7 @@ def _venue_markup(
     if value.startswith("Complejo Deportivo Les Raboses"):
         remainder = value[len("Complejo Deportivo Les Raboses"):].lstrip(" .")
         target = les_raboses_link or LES_RABOSES_MAP_URL
-        result = (
-            f'<a href="{target}"><b>Complejo Deportivo Les Raboses</b></a>'
-        )
+        result = f'<a href="{target}"><b>Complejo Deportivo Les Raboses</b></a>'
         if remainder:
             result += f" · {html.escape(remainder)}"
         return result
@@ -705,25 +683,17 @@ def _venue_markup(
 
 def _registration_signature(group: Mapping[str, object]):
     return (
-        tuple(
-            (entry["start"], entry["end"])
-            for entry in group["registrations"]
-        ),
+        tuple((entry["start"], entry["end"]) for entry in group["registrations"]),
         group["registration_until_full"],
     )
 
 
-def _registration_line(
-    group: Mapping[str, object], local_day: date
-) -> Optional[str]:
+def _registration_line(group: Mapping[str, object], local_day: date) -> Optional[str]:
     intervals = [
         (date.fromisoformat(item["start"]), date.fromisoformat(item["end"]))
         for item in group["registrations"]
     ]
-    current = next(
-        (interval for interval in intervals if interval[0] <= local_day <= interval[1]),
-        None,
-    )
+    current = next((interval for interval in intervals if interval[0] <= local_day <= interval[1]), None)
     if current is not None:
         text = f"📝 <b>Запись:</b> до {_format_date_ru(current[1].isoformat())}"
     else:
@@ -731,23 +701,15 @@ def _registration_line(
         if not future:
             return None
         start, end = min(future, key=lambda interval: interval[0])
-        text = (
-            "📝 <b>Следующая запись:</b> "
-            f"{_format_date_ru(start.isoformat())} — "
-            f"{_format_date_ru(end.isoformat())}"
-        )
+        text = f"📝 <b>Следующая запись:</b> {_format_date_ru(start.isoformat())} — {_format_date_ru(end.isoformat())}"
     if group["registration_until_full"]:
         text += " · до заполнения мест"
     return text
 
 
-def _registration_is_open(
-    group: Mapping[str, object], local_day: date
-) -> bool:
+def _registration_is_open(group: Mapping[str, object], local_day: date) -> bool:
     return any(
-        date.fromisoformat(item["start"])
-        <= local_day
-        <= date.fromisoformat(item["end"])
+        date.fromisoformat(item["start"]) <= local_day <= date.fromisoformat(item["end"])
         for item in group["registrations"]
     )
 
@@ -755,10 +717,7 @@ def _registration_is_open(
 def _group_label(key: str, group: Mapping[str, object]) -> str:
     if key in {"women_gymnastics", "deporte_plus"}:
         return "Группа"
-    suffix = {1: "1-я", 2: "2-я", 3: "3-я", 4: "4-я"}.get(
-        group["group_order"],
-        f'{group["group_order"]}-я',
-    )
+    suffix = {1: "1-я", 2: "2-я", 3: "3-я", 4: "4-я"}.get(group["group_order"], f'{group["group_order"]}-я')
     return f"{suffix} группа"
 
 
@@ -771,58 +730,26 @@ def build_sport_activity(
     les_raboses_link: Optional[str] = None,
     molivent_link: Optional[str] = None,
 ) -> str:
-    """Build one source-backed municipal activity card."""
-
     if key not in SPORT_ACTIVITY_META:
         raise ValueError(f"unknown sport activity key: {key}")
     emoji, title = SPORT_ACTIVITY_META[key]
     groups = select_sport_groups(catalog, key, local_day)
     lines = [f"{emoji} <b>{title}</b>"]
     if not groups:
-        lines.extend(
-            [
-                "",
-                "Сейчас актуальные муниципальные группы не опубликованы.",
-                "",
-                f'<a href="{SPORTTIA_CENTER_URL}"><b>Проверить запись</b></a>',
-            ]
-        )
-        return _with_back_link(
-            with_footer("\n".join(lines)),
-            "К занятиям и секциям",
-            activities_link,
-        )
-
+        lines.extend(["", "Сейчас актуальные муниципальные группы не опубликованы.", "", f'<a href="{SPORTTIA_CENTER_URL}"><b>Проверить запись</b></a>'])
+        return _with_back_link(with_footer("\n".join(lines)), "К занятиям и секциям", activities_link)
     first = groups[0]
-    lines.extend(
-        [
-            "",
-            "🗓 <b>Сезон:</b> "
-            f"{_format_date_ru(first['season_start'])} — "
-            f"{_format_date_ru(first['season_end'])}",
-        ]
-    )
-
+    lines.extend(["", "🗓 <b>Сезон:</b> " f"{_format_date_ru(first['season_start'])} — {_format_date_ru(first['season_end'])}"])
     venues = {group["venue"] for group in groups}
     common_venue = next(iter(venues)) if len(venues) == 1 else None
     if common_venue is not None:
-        lines.append(
-            "📍 "
-            + _venue_markup(
-                common_venue,
-                palau_link,
-                les_raboses_link,
-                molivent_link,
-            )
-        )
-
+        lines.append("📍 " + _venue_markup(common_venue, palau_link, les_raboses_link, molivent_link))
     registrations = {_registration_signature(group) for group in groups}
     common_registration = len(registrations) == 1
     if common_registration:
         registration = _registration_line(first, local_day)
         if registration is not None:
             lines.append(registration)
-
     lines.append("")
     for group in groups:
         label = _group_label(key, group)
@@ -838,15 +765,7 @@ def build_sport_activity(
                 lines.append("  👥 С сопровождающим взрослым")
         lines.append(f"  {html.escape(group['schedule'])}")
         if common_venue is None:
-            lines.append(
-                "  📍 "
-                + _venue_markup(
-                    group["venue"],
-                    palau_link,
-                    les_raboses_link,
-                    molivent_link,
-                )
-            )
+            lines.append("  📍 " + _venue_markup(group["venue"], palau_link, les_raboses_link, molivent_link))
         if not common_registration:
             registration = _registration_line(group, local_day)
             if registration is not None:
@@ -855,56 +774,101 @@ def build_sport_activity(
             lines.append("  🎾 Ракеточные виды спорта")
         activity_url = html.escape(group["activity_url"], quote=True)
         if _registration_is_open(group, local_day):
-            lines.append(
-                f'  📝 <a href="{activity_url}">Записаться</a>'
-            )
+            lines.append(f'  📝 <a href="{activity_url}">Записаться</a>')
         else:
-            lines.append(
-                f'  🔎 <a href="{activity_url}">Страница группы</a>'
-            )
-
+            lines.append(f'  🔎 <a href="{activity_url}">Страница группы</a>')
     if key == "deporte_plus":
-        lines.extend(
-            [
-                "",
-                "🏉 flag rugby · полоса препятствий · лёгкая атлетика",
-            ]
-        )
-
+        lines.extend(["", "🏉 flag rugby · полоса препятствий · лёгкая атлетика"])
     notes = []
     if any(group["group_may_change"] for group in groups):
         notes.append("ℹ️ Группы могут корректироваться организаторами.")
     if any(group["medical_certificate"] for group in groups):
-        notes.extend(
-            [
-                "📄 После записи нужна спортивная медсправка.",
-                f'📎 <a href="{SPORT_MEDICAL_CERTIFICATE_URL}">Скачать бланк</a>',
-                "✉️ <b>Отправить справку:</b>",
-                f"<code>{SPORTS_CONTACT_EMAIL}</code>",
-            ]
-        )
+        notes.extend(["📄 После записи нужна спортивная медсправка.", f'📎 <a href="{SPORT_MEDICAL_CERTIFICATE_URL}">Скачать бланк</a>', "✉️ <b>Отправить справку:</b>", f"<code>{SPORTS_CONTACT_EMAIL}</code>"])
     if any(group["women_membership"] for group in groups):
-        notes.append(
-            "👩 Также требуется подтверждение членского взноса "
-            "Asociación Mujeres de Guardamar."
-        )
+        notes.append("👩 Также требуется подтверждение членского взноса Asociación Mujeres de Guardamar.")
     if notes:
         lines.append("")
         lines.extend(notes)
+    return _with_back_link(with_footer("\n".join(lines)), "К занятиям и секциям", activities_link)
 
-    return _with_back_link(
-        with_footer("\n".join(lines)),
-        "К занятиям и секциям",
-        activities_link,
-    )
+
+def _music_place(school_link: Optional[str]) -> str:
+    return _direct_link("Escuela de Música", school_link or SCHOOL_MAP_URL)
+
+
+def _music_signup(
+    lines: list,
+    catalog: Mapping[str, object],
+    registration_key: str,
+    local_day: date,
+) -> None:
+    if not music_registration_is_open(catalog, registration_key, local_day):
+        return
+    registration = catalog.get(registration_key)
+    if isinstance(registration, Mapping):
+        url = html.escape(str(registration["url"]), quote=True)
+        lines.append(f'  📝 <a href="{url}">Записаться</a>')
+
+
+def _music_schedule(lines: list, catalog: Mapping[str, object]) -> None:
+    url = catalog.get("schedule_url")
+    season = html.escape(str(catalog.get("season", "")))
+    if isinstance(url, str) and url:
+        lines.append(f'  📅 <a href="{html.escape(url, quote=True)}">Расписание групп {season}</a>')
+
+
+def build_music_activity(
+    key: str,
+    catalog: Mapping[str, object],
+    local_day: date,
+    activities_link: Optional[str] = None,
+    school_link: Optional[str] = None,
+) -> str:
+    """Build one compact music activity card; contacts live on the school card."""
+
+    if key not in MUSIC_ACTIVITY_META:
+        raise ValueError(f"unknown music activity key: {key}")
+    emoji, title = MUSIC_ACTIVITY_META[key]
+    place = _music_place(school_link)
+    lines = [f"{emoji} <b>{title}</b>", ""]
+    if key == "music_basics":
+        lines.extend(["• <b>Jardín Musical</b> · 3–6 лет", "  1 час в неделю · занятия Пн–Чт"])
+        _music_signup(lines, catalog, "jardin_registration", local_day)
+        lines.append(f"  📍 {place}")
+        lines.extend(["", "• <b>Lenguaje Musical</b> · с 7 лет", "  2 часа в неделю"])
+        _music_schedule(lines, catalog)
+        _music_signup(lines, catalog, "school_registration", local_day)
+        lines.append(f"  📍 {place}")
+        lines.extend(["", "• <b>Lenguaje Musical para Adultos</b> · 18+"])
+        _music_schedule(lines, catalog)
+        _music_signup(lines, catalog, "school_registration", local_day)
+        lines.append(f"  📍 {place}")
+    elif key == "music_vocal":
+        lines.append("• <b>Técnica Vocal / Coro</b>")
+        _music_schedule(lines, catalog)
+        _music_signup(lines, catalog, "school_registration", local_day)
+        lines.append(f"  📍 {place}")
+    else:
+        lines.extend([
+            "• <b>Духовые инструменты</b>",
+            "  кларнет · саксофон · флейта · гобой · фагот · труба · тромбон · валторна · эуфониум · туба",
+        ])
+        _music_signup(lines, catalog, "school_registration", local_day)
+        lines.append(f"  📍 {place}")
+        lines.extend([
+            "",
+            "• <b>Другие инструменты</b>",
+            "  ударные · дульсайна · виолончель · гитара · Piano Complementario",
+        ])
+        _music_signup(lines, catalog, "school_registration", local_day)
+        lines.append(f"  📍 {place}")
+    return _with_back_link(with_footer("\n".join(lines)), "К занятиям и секциям", activities_link)
 
 
 def build_football(
     activities_link: Optional[str] = None,
     les_raboses_link: Optional[str] = None,
 ) -> str:
-    """Build the durable static Guardamar Soccer C.D. activity card."""
-
     return _with_back_link(
         with_footer(
             "⚽ <b>Футбол</b>\n\n"
@@ -914,11 +878,9 @@ def build_football(
             "✉️ <b>Email:</b>\n"
             f"<code>{FOOTBALL_EMAIL}</code>\n"
             f'📝 <a href="{FOOTBALL_FORM_URL}"><b>Онлайн-форма клуба</b></a>\n\n'
-            "ℹ️ Группу по возрасту, расписание тренировок и условия участия "
-            "уточняйте у клуба."
+            "ℹ️ Группу по возрасту, расписание тренировок и условия участия уточняйте у клуба."
         ),
-        "К занятиям и секциям",
-        activities_link,
+        "К занятиям и секциям", activities_link,
     )
 
 
@@ -927,20 +889,15 @@ def build_swimming(
     outdoor_link: Optional[str] = None,
     activities_link: Optional[str] = None,
 ) -> str:
-    """Build the safe swimming card without inferring current availability."""
-
     return _with_back_link(
         with_footer(
             "🏊 <b>Плавание</b>\n\n"
             "Актуальные группы и запись зависят от сезона.\n\n"
-            f"🏊 {_direct_link('Крытый бассейн Manel Estiarte', indoor_link)}\n"
-            "16 сентября - 15 июня.\n\n"
-            f"☀️ {_direct_link('Открытый муниципальный бассейн', outdoor_link)}\n"
-            "16 июня - 15 сентября.\n\n"
+            f"🏊 {_direct_link('Крытый бассейн Manel Estiarte', indoor_link)}\n16 сентября - 15 июня.\n\n"
+            f"☀️ {_direct_link('Открытый муниципальный бассейн', outdoor_link)}\n16 июня - 15 сентября.\n\n"
             f"📝 <a href=\"{AQUALIDER_BOOKING_URL}\"><b>Проверить группы и запись</b></a>"
         ),
-        "К занятиям и секциям",
-        activities_link,
+        "К занятиям и секциям", activities_link,
     )
 
 
@@ -951,8 +908,6 @@ def build_root(
     activities_link: Optional[str] = None,
     wifi_link: Optional[str] = None,
 ) -> str:
-    """Build the compact message intended to remain pinned."""
-
     return (
         "📌 <b>Полезное о Гуардамаре</b>\n\n"
         f"📹 {_direct_link('Онлайн-камеры', camera_link)}\n\n"
@@ -964,25 +919,12 @@ def build_root(
 
 
 def preview_messages() -> Sequence[str]:
-    """Return the exact text sequence for a private operator preview."""
-
     return (
         *(build_leaf_message(key) for key in LEAF_MESSAGES),
-        build_cameras(),
-        build_transport_index(),
-        build_places(),
-        build_polideportivo(),
-        build_pool_indoor(),
-        build_pool_outdoor(),
-        build_palau_sant_jaume(),
-        build_les_raboses(),
-        build_molivent(),
-        build_youth_centre(),
-        build_wifi(),
-        build_activities(),
-        build_swimming(),
-        build_football(),
-        build_root(),
+        build_cameras(), build_transport_index(), build_places(), build_polideportivo(),
+        build_pool_indoor(), build_pool_outdoor(), build_palau_sant_jaume(),
+        build_les_raboses(), build_molivent(), build_music_school(), build_youth_centre(),
+        build_wifi(), build_activities(), build_swimming(), build_football(), build_root(),
     )
 
 
@@ -994,73 +936,36 @@ class PinnedGuideState:
 
     def read_payload(self, chat_id: str) -> dict:
         if not self.path.exists():
-            return {
-                "version": PINNED_CONTENT_VERSION,
-                "chat_id": chat_id,
-                "messages": {},
-                "lines": {},
-                "obsolete_messages": [],
-                "uncertain_messages": [],
-            }
+            return {"version": PINNED_CONTENT_VERSION, "chat_id": chat_id, "messages": {}, "lines": {}, "obsolete_messages": [], "uncertain_messages": []}
         try:
             raw = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-            previous = self.path.with_name(
-                f"{self.path.stem}.previous.json"
-            )
+            previous = self.path.with_name(f"{self.path.stem}.previous.json")
             try:
                 raw = json.loads(previous.read_text(encoding="utf-8"))
-            except (
-                OSError, UnicodeDecodeError, json.JSONDecodeError
-            ):
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
                 raise StateError("pinned guide state is invalid") from exc
-        if (
-            not isinstance(raw, dict)
-            or raw.get("version") not in {1, PINNED_CONTENT_VERSION}
-            or raw.get("chat_id") != chat_id
-            or not isinstance(raw.get("messages"), dict)
-        ):
+        if (not isinstance(raw, dict) or raw.get("version") not in {1, PINNED_CONTENT_VERSION} or raw.get("chat_id") != chat_id or not isinstance(raw.get("messages"), dict)):
             raise StateError("pinned guide state is invalid")
         messages = raw["messages"]
-        if not all(
-            isinstance(key, str)
-            and isinstance(value, int)
-            and value > 0
-            for key, value in messages.items()
-        ):
+        if not all(isinstance(key, str) and isinstance(value, int) and value > 0 for key, value in messages.items()):
             raise StateError("pinned guide state is invalid")
         lines = raw.get("lines", {})
-        if not isinstance(lines, dict) or not all(
-            key in {"line_1", "line_2"} and isinstance(value, dict)
-            for key, value in lines.items()
-        ):
+        if not isinstance(lines, dict) or not all(key in {"line_1", "line_2"} and isinstance(value, dict) for key, value in lines.items()):
             raise StateError("pinned guide state is invalid")
         obsolete = raw.get("obsolete_messages", [])
-        if not isinstance(obsolete, list) or not all(
-            isinstance(value, int) and value > 0 for value in obsolete
-        ):
+        if not isinstance(obsolete, list) or not all(isinstance(value, int) and value > 0 for value in obsolete):
             raise StateError("pinned guide state is invalid")
         uncertain = raw.get("uncertain_messages", [])
-        if not isinstance(uncertain, list) or not all(
-            isinstance(value, str) for value in uncertain
-        ):
+        if not isinstance(uncertain, list) or not all(isinstance(value, str) for value in uncertain):
             raise StateError("pinned guide state is invalid")
-        return {
-            "version": PINNED_CONTENT_VERSION,
-            "chat_id": chat_id,
-            "messages": dict(messages),
-            "lines": {key: dict(value) for key, value in lines.items()},
-            "obsolete_messages": list(obsolete),
-            "uncertain_messages": list(uncertain),
-        }
+        return {"version": PINNED_CONTENT_VERSION, "chat_id": chat_id, "messages": dict(messages), "lines": {key: dict(value) for key, value in lines.items()}, "obsolete_messages": list(obsolete), "uncertain_messages": list(uncertain)}
 
     def read(self, chat_id: str) -> Dict[str, int]:
         return dict(self.read_payload(chat_id)["messages"])
 
     def _atomic_write(self, path: Path, payload: dict) -> None:
-        descriptor, temporary = tempfile.mkstemp(
-            dir=str(path.parent), prefix=f".{path.name}."
-        )
+        descriptor, temporary = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.")
         try:
             with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
                 json.dump(payload, handle, ensure_ascii=False, sort_keys=True)
@@ -1084,21 +989,7 @@ class PinnedGuideState:
         if payload.get("chat_id") != chat_id:
             raise StateError("pinned guide state is invalid")
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        normalized = {
-            "version": PINNED_CONTENT_VERSION,
-            "chat_id": chat_id,
-            "messages": dict(payload.get("messages", {})),
-            "lines": {
-                key: dict(value)
-                for key, value in payload.get("lines", {}).items()
-            },
-            "obsolete_messages": list(
-                payload.get("obsolete_messages", [])
-            ),
-            "uncertain_messages": list(
-                payload.get("uncertain_messages", [])
-            ),
-        }
+        normalized = {"version": PINNED_CONTENT_VERSION, "chat_id": chat_id, "messages": dict(payload.get("messages", {})), "lines": {key: dict(value) for key, value in payload.get("lines", {}).items()}, "obsolete_messages": list(payload.get("obsolete_messages", [])), "uncertain_messages": list(payload.get("uncertain_messages", []))}
         previous = self.path.with_name(f"{self.path.stem}.previous.json")
         if self.path.exists():
             try:
@@ -1115,14 +1006,7 @@ class PinnedGuideState:
         except StateError:
             if self.path.exists():
                 raise
-            payload = {
-                "version": PINNED_CONTENT_VERSION,
-                "chat_id": chat_id,
-                "messages": {},
-                "lines": {},
-                "obsolete_messages": [],
-                "uncertain_messages": [],
-            }
+            payload = {"version": PINNED_CONTENT_VERSION, "chat_id": chat_id, "messages": {}, "lines": {}, "obsolete_messages": [], "uncertain_messages": []}
         payload["messages"] = dict(messages)
         self.write_payload(chat_id, payload)
 
@@ -1134,22 +1018,16 @@ class PinnedGuideState:
 
     @contextmanager
     def exclusive_run(self) -> Iterator[None]:
-        """Prevent two guide publications from creating duplicate messages."""
-
         lock_path = self.path.with_name(f".{self.path.name}.lock")
         lock_file = None
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             lock_file = lock_path.open("a", encoding="utf-8")
-            fcntl.flock(
-                lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB
-            )
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
             if lock_file is not None:
                 lock_file.close()
-            raise StateError(
-                "another pinned guide publication is already active"
-            ) from exc
+            raise StateError("another pinned guide publication is already active") from exc
         except OSError as exc:
             if lock_file is not None:
                 lock_file.close()
@@ -1191,23 +1069,14 @@ async def _upsert(
     return message_id
 
 
-def _known_link(
-    chat_id: str,
-    messages: Mapping[str, int],
-    key: str,
-) -> Optional[str]:
+def _known_link(chat_id: str, messages: Mapping[str, int], key: str) -> Optional[str]:
     message_id = messages.get(key)
     if message_id is None:
         return None
     return telegram_message_link(chat_id, message_id)
 
 
-def _render_messages(
-    chat_id: str,
-    messages: Mapping[str, int],
-) -> Dict[str, str]:
-    """Render the best complete link graph possible from known identifiers."""
-
+def _render_messages(chat_id: str, messages: Mapping[str, int]) -> Dict[str, str]:
     transport_link = _known_link(chat_id, messages, "transport")
     root_link = _known_link(chat_id, messages, "root")
     places_link = _known_link(chat_id, messages, "places")
@@ -1215,6 +1084,7 @@ def _render_messages(
     palau_link = _known_link(chat_id, messages, "palau_sant_jaume")
     les_raboses_link = _known_link(chat_id, messages, "les_raboses")
     molivent_link = _known_link(chat_id, messages, "molivent")
+    music_school_link = _known_link(chat_id, messages, "music_school")
     youth_centre_link = _known_link(chat_id, messages, "youth_centre")
     wifi_link = _known_link(chat_id, messages, "wifi")
     activities_link = _known_link(chat_id, messages, "activities")
@@ -1224,68 +1094,35 @@ def _render_messages(
         link = _known_link(chat_id, messages, key)
         if link is not None:
             sport_links[key] = link
+    music_links = {}
+    for key in MUSIC_ACTIVITY_KEYS:
+        link = _known_link(chat_id, messages, key)
+        if link is not None:
+            music_links[key] = link
     leaf_links = None
     if all(key in messages for key in LEAF_MESSAGES):
-        leaf_links = {
-            key: telegram_message_link(chat_id, messages[key])
-            for key in LEAF_MESSAGES
-        }
+        leaf_links = {key: telegram_message_link(chat_id, messages[key]) for key in LEAF_MESSAGES}
     swimming_link = _known_link(chat_id, messages, "swimming")
     indoor_link = _known_link(chat_id, messages, "pool_indoor")
     outdoor_link = _known_link(chat_id, messages, "pool_outdoor")
     return {
-        **{
-            key: build_leaf_message(key, transport_link)
-            for key in LEAF_MESSAGES
-        },
+        **{key: build_leaf_message(key, transport_link) for key in LEAF_MESSAGES},
         "cameras": build_cameras(root_link),
         "transport": build_transport_index(leaf_links, root_link),
-        "places": build_places(
-            polideportivo_link,
-            root_link,
-            youth_centre_link,
-            les_raboses_link,
-            molivent_link,
-        ),
-        "polideportivo": build_polideportivo(
-            indoor_link,
-            outdoor_link,
-            places_link,
-            palau_link=palau_link,
-        ),
+        "places": build_places(polideportivo_link, root_link, youth_centre_link, les_raboses_link, molivent_link, music_school_link),
+        "polideportivo": build_polideportivo(indoor_link, outdoor_link, places_link, palau_link=palau_link),
         "pool_indoor": build_pool_indoor(swimming_link, polideportivo_link),
         "pool_outdoor": build_pool_outdoor(swimming_link, polideportivo_link),
-        "palau_sant_jaume": build_palau_sant_jaume(
-            sport_links, polideportivo_link
-        ),
-        "les_raboses": build_les_raboses(
-            sport_links.get("deporte_plus"),
-            football_link,
-            places_link,
-        ),
-        "molivent": build_molivent(
-            sport_links.get("psychomotricity"),
-            places_link,
-        ),
+        "palau_sant_jaume": build_palau_sant_jaume(sport_links, polideportivo_link),
+        "les_raboses": build_les_raboses(sport_links.get("deporte_plus"), football_link, places_link),
+        "molivent": build_molivent(sport_links.get("psychomotricity"), places_link),
+        "music_school": build_music_school(music_links, places_link),
         "youth_centre": build_youth_centre(places_link),
         "wifi": build_wifi(root_link),
-        "activities": build_activities(
-            swimming_link,
-            root_link,
-            sport_links,
-            football_link,
-        ),
-        "swimming": build_swimming(
-            indoor_link, outdoor_link, activities_link
-        ),
+        "activities": build_activities(swimming_link, root_link, sport_links, football_link, music_links),
+        "swimming": build_swimming(indoor_link, outdoor_link, activities_link),
         "football": build_football(activities_link, les_raboses_link),
-        "root": build_root(
-            _known_link(chat_id, messages, "cameras"),
-            transport_link,
-            places_link,
-            activities_link,
-            wifi_link,
-        ),
+        "root": build_root(_known_link(chat_id, messages, "cameras"), transport_link, places_link, activities_link, wifi_link),
     }
 
 
@@ -1297,28 +1134,16 @@ async def _reconcile_messages(
     edit: Edit,
     skip_keys: Sequence[str] = (),
 ) -> None:
-    """Converge IDs and links after partial runs or deleted messages."""
-
     skipped = frozenset(skip_keys)
     keys = tuple(key for key in PINNED_MESSAGE_KEYS if key not in skipped)
     for _ in range(MAX_RECONCILIATION_PASSES):
         before = dict(messages)
         rendered = _render_messages(chat_id, before)
         for key in keys:
-            await _upsert(
-                key,
-                rendered[key],
-                messages,
-                state,
-                chat_id,
-                send,
-                edit,
-            )
+            await _upsert(key, rendered[key], messages, state, chat_id, send, edit)
         if messages == before:
             return
-    raise StateError(
-        "pinned guide messages changed during every recovery pass"
-    )
+    raise StateError("pinned guide messages changed during every recovery pass")
 
 
 async def publish_pinned_guide(
@@ -1329,26 +1154,22 @@ async def publish_pinned_guide(
     pin: Pin,
     skip_keys: Sequence[str] = (),
     sporttia_catalog: Optional[Mapping[str, object]] = None,
+    music_school_catalog: Optional[Mapping[str, object]] = None,
     local_day: Optional[date] = None,
 ) -> Dict[str, int]:
     """Create or update all linked messages, then pin the compact root."""
 
     telegram_message_link(chat_id, 1)
-    if sporttia_catalog is not None and local_day is None:
-        raise ValueError("local_day is required with Sporttia catalogue")
+    if (sporttia_catalog is not None or music_school_catalog is not None) and local_day is None:
+        raise ValueError("local_day is required with source-backed catalogues")
     payload = await asyncio.to_thread(state.read_payload, chat_id)
     if payload["uncertain_messages"]:
-        raise StateError(
-            "a previous pinned guide delivery has an uncertain result"
-        )
+        raise StateError("a previous pinned guide delivery has an uncertain result")
     messages = payload["messages"]
     managed_elsewhere = tuple(
-        key for key, value in payload["lines"].items()
-        if value.get("media") is True and key in messages
+        key for key, value in payload["lines"].items() if value.get("media") is True and key in messages
     ) + tuple(key for key in skip_keys if key in messages)
-    await _reconcile_messages(
-        chat_id, messages, state, send, edit, managed_elsewhere
-    )
+    await _reconcile_messages(chat_id, messages, state, send, edit, managed_elsewhere)
     if sporttia_catalog is not None:
         assert local_day is not None
         activities_link = _known_link(chat_id, messages, "activities")
@@ -1361,24 +1182,21 @@ async def publish_pinned_guide(
                 continue
             await _upsert(
                 key,
-                build_sport_activity(
-                    key,
-                    sporttia_catalog,
-                    local_day,
-                    activities_link,
-                    palau_link,
-                    les_raboses_link,
-                    molivent_link,
-                ),
-                messages,
-                state,
-                chat_id,
-                send,
-                edit,
+                build_sport_activity(key, sporttia_catalog, local_day, activities_link, palau_link, les_raboses_link, molivent_link),
+                messages, state, chat_id, send, edit,
             )
-        await _reconcile_messages(
-            chat_id, messages, state, send, edit, managed_elsewhere
-        )
+    if music_school_catalog is not None:
+        assert local_day is not None
+        activities_link = _known_link(chat_id, messages, "activities")
+        school_link = _known_link(chat_id, messages, "music_school")
+        for key in MUSIC_ACTIVITY_KEYS:
+            await _upsert(
+                key,
+                build_music_activity(key, music_school_catalog, local_day, activities_link, school_link),
+                messages, state, chat_id, send, edit,
+            )
+    if sporttia_catalog is not None or music_school_catalog is not None:
+        await _reconcile_messages(chat_id, messages, state, send, edit, managed_elsewhere)
     try:
         await pin(messages["root"])
     except TelegramError as exc:
@@ -1386,8 +1204,6 @@ async def publish_pinned_guide(
             raise
         messages.pop("root", None)
         await asyncio.to_thread(state.write, chat_id, messages)
-        await _reconcile_messages(
-            chat_id, messages, state, send, edit, managed_elsewhere
-        )
+        await _reconcile_messages(chat_id, messages, state, send, edit, managed_elsewhere)
         await pin(messages["root"])
     return messages
