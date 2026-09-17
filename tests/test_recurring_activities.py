@@ -42,13 +42,13 @@ FORM = "https://docs.google.com/forms/d/e/test/viewform"
 
 
 def _chess_snapshot():
-    payload = b"""
+    payload = """
     <html><body>
-    <p>la actividad de la ESCUELA DE AJEDREZ, que dirige PROMOCHESS ESPAÃA,
+    <p>la actividad de la ESCUELA DE AJEDREZ, que dirige PROMOCHESS ESPAÑA,
     es todos los martes y jueves en horario de 16:00 a 20:00 horas,
-    por niveles: INICIACIÃN â AVANZADO, para lo que hay que contactar.</p>
+    por niveles: INICIACIÓN – AVANZADO, para lo que hay que contactar.</p>
     </body></html>
-    """
+    """.encode("utf-8")
     return extract_chess(payload, NOW)
 
 
