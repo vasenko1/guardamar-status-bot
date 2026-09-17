@@ -20,6 +20,14 @@ from typing import (
 )
 
 from .branding import FOOTER, with_footer
+from .music_school import (
+    SCHOOL_ADDRESS,
+    SCHOOL_EMAIL,
+    SCHOOL_MAP_URL,
+    SCHOOL_PHONE,
+    SCHOOL_SITE_URL,
+    registration_is_open as music_registration_is_open,
+)
 from .sporttia import (
     SPORTTIA_ACTIVITY_KEYS,
     SPORTTIA_CENTER_URL,
@@ -68,6 +76,16 @@ SPORT_ACTIVITY_META = {
     "women_gymnastics": ("👩", "Гимнастика Asociación Mujeres"),
     "deporte_plus": ("🏃", "DEPORTE +"),
     "psychomotricity": ("🧒", "Психомоторика"),
+}
+MUSIC_ACTIVITY_KEYS = (
+    "music_basics",
+    "music_vocal",
+    "music_instruments",
+)
+MUSIC_ACTIVITY_META = {
+    "music_basics": ("🎶", "Музыкальное развитие и грамота"),
+    "music_vocal": ("🎤", "Вокал и хор"),
+    "music_instruments": ("🎷", "Музыкальные инструменты"),
 }
 
 Send = Callable[[str], Awaitable[int]]
@@ -276,6 +294,7 @@ GUIDE_MESSAGE_KEYS = (
     "palau_sant_jaume",
     "les_raboses",
     "molivent",
+    "music_school",
     "youth_centre",
     "wifi",
     "activities",
@@ -300,6 +319,7 @@ PINNED_PARENT_KEYS = {
     "palau_sant_jaume": "polideportivo",
     "les_raboses": "places",
     "molivent": "places",
+    "music_school": "places",
     "youth_centre": "places",
     "wifi": "root",
     "activities": "root",
@@ -415,6 +435,7 @@ def build_places(
     youth_centre_link: Optional[str] = None,
     les_raboses_link: Optional[str] = None,
     molivent_link: Optional[str] = None,
+    music_school_link: Optional[str] = None,
 ) -> str:
     """Build the durable places branch."""
 
@@ -427,6 +448,8 @@ def build_places(
             "Муниципальный спортивный комплекс и стадион.\n\n"
             f"🏫 {_direct_link('CEIP Molivent', molivent_link)}\n"
             "Здесь проходят муниципальные занятия для детей.\n\n"
+            f"🎼 {_direct_link('Escuela de Música', music_school_link)}\n"
+            "Музыкальная школа Agrupación Musical de Guardamar.\n\n"
             f"👥 {_direct_link('Centro Social Juvenil', youth_centre_link)}\n"
             "Пространство для подростков и молодёжи."
         ),
@@ -548,6 +571,43 @@ def build_molivent(
     )
 
 
+def build_music_school(
+    music_links: Optional[Mapping[str, str]] = None,
+    places_link: Optional[str] = None,
+) -> str:
+    """Build the durable school card shared by music activity cards."""
+
+    lines = [
+        "🎼 <b>Escuela de Música</b>",
+        "",
+        "Музыкальная школа Agrupación Musical de Guardamar.",
+        "",
+        f'<a href="{html.escape(SCHOOL_MAP_URL, quote=True)}">📍 <b>Открыть на карте</b></a>',
+        html.escape(SCHOOL_ADDRESS),
+        "",
+        f"📞 <b>Телефон:</b> <code>{SCHOOL_PHONE}</code>",
+        "✉️ <b>Email:</b>",
+        f"<code>{SCHOOL_EMAIL}</code>",
+        f'<a href="{html.escape(SCHOOL_SITE_URL, quote=True)}">🌐 <b>Сайт школы</b></a>',
+    ]
+    music_links = music_links or {}
+    linked = [
+        (key, music_links[key])
+        for key in MUSIC_ACTIVITY_KEYS
+        if key in music_links
+    ]
+    if linked:
+        lines.extend(["", "🎓 <b>Занятия:</b>"])
+        for key, link in linked:
+            emoji, label = MUSIC_ACTIVITY_META[key]
+            lines.append(f"{emoji} {_direct_link(label, link)}")
+    return _with_back_link(
+        with_footer("\n".join(lines)),
+        "К списку мест",
+        places_link,
+    )
+
+
 def build_pool_indoor(
     swimming_link: Optional[str] = None,
     polideportivo_link: Optional[str] = None,
@@ -625,6 +685,7 @@ def build_activities(
     root_link: Optional[str] = None,
     sport_links: Optional[Mapping[str, str]] = None,
     football_link: Optional[str] = None,
+    music_links: Optional[Mapping[str, str]] = None,
 ) -> str:
     """Build the recurring activities branch."""
 
@@ -642,6 +703,17 @@ def build_activities(
         emoji, label = SPORT_ACTIVITY_META[key]
         lines.append(f"{emoji} {_direct_link(label, link)}")
     lines.append(f"⚽ {_direct_link('Футбол', football_link)}")
+    music_links = music_links or {}
+    linked_music = [
+        (key, music_links[key])
+        for key in MUSIC_ACTIVITY_KEYS
+        if key in music_links
+    ]
+    if linked_music:
+        lines.extend(["", "🎵 <b>Музыка</b>"])
+        for key, link in linked_music:
+            emoji, label = MUSIC_ACTIVITY_META[key]
+            lines.append(f"{emoji} {_direct_link(label, link)}")
     return _with_back_link(
         with_footer("\n".join(lines)),
         "Полезное о Гуардамаре",
@@ -899,6 +971,95 @@ def build_sport_activity(
     )
 
 
+def _music_place_line(school_link: Optional[str]) -> str:
+    return "  📍 " + _direct_link(
+        "Escuela de Música",
+        school_link or SCHOOL_MAP_URL,
+    )
+
+
+def _append_music_schedule(
+    lines: list,
+    catalog: Mapping[str, object],
+) -> None:
+    url = catalog.get("schedule_url")
+    season = catalog.get("season")
+    if not isinstance(url, str) or not url:
+        return
+    label = "Расписание групп"
+    if isinstance(season, str) and season:
+        label += f" {html.escape(season)}"
+    lines.append(
+        f'  📅 <a href="{html.escape(url, quote=True)}">{label}</a>'
+    )
+
+
+def build_music_activity(
+    key: str,
+    catalog: Mapping[str, object],
+    local_day: date,
+    activities_link: Optional[str] = None,
+    school_link: Optional[str] = None,
+) -> str:
+    """Build one compact music card; school contacts stay on the place card."""
+
+    if key not in MUSIC_ACTIVITY_META:
+        raise ValueError(f"unknown music activity key: {key}")
+    emoji, title = MUSIC_ACTIVITY_META[key]
+    lines = [f"{emoji} <b>{title}</b>", ""]
+
+    if key == "music_basics":
+        lines.extend([
+            "• <b>Jardín Musical</b> · 3–6 лет",
+            "  1 час в неделю · занятия Пн–Чт",
+        ])
+        if music_registration_is_open(
+            catalog, "jardin_registration", local_day
+        ):
+            registration = catalog.get("jardin_registration")
+            if isinstance(registration, Mapping):
+                url = registration.get("url")
+                if isinstance(url, str) and url:
+                    lines.append(
+                        f'  📝 <a href="{html.escape(url, quote=True)}">Записаться</a>'
+                    )
+        lines.append(_music_place_line(school_link))
+        lines.extend([
+            "",
+            "• <b>Lenguaje Musical</b> · с 7 лет",
+            "  2 часа в неделю",
+        ])
+        _append_music_schedule(lines, catalog)
+        lines.append(_music_place_line(school_link))
+        lines.extend([
+            "",
+            "• <b>Lenguaje Musical para Adultos</b> · 18+",
+        ])
+        _append_music_schedule(lines, catalog)
+        lines.append(_music_place_line(school_link))
+    elif key == "music_vocal":
+        lines.append("• <b>Técnica Vocal / Coro</b>")
+        _append_music_schedule(lines, catalog)
+        lines.append(_music_place_line(school_link))
+    else:
+        lines.extend([
+            "• <b>Духовые инструменты</b>",
+            "  кларнет · саксофон · флейта · гобой · фагот",
+            "  труба · тромбон · валторна · эуфониум · туба",
+            _music_place_line(school_link),
+            "",
+            "• <b>Другие инструменты</b>",
+            "  ударные · виолончель · дульсайна · гитара · фортепиано",
+            _music_place_line(school_link),
+        ])
+
+    return _with_back_link(
+        with_footer("\n".join(lines)),
+        "К занятиям и секциям",
+        activities_link,
+    )
+
+
 def build_football(
     activities_link: Optional[str] = None,
     les_raboses_link: Optional[str] = None,
@@ -977,6 +1138,7 @@ def preview_messages() -> Sequence[str]:
         build_palau_sant_jaume(),
         build_les_raboses(),
         build_molivent(),
+        build_music_school(),
         build_youth_centre(),
         build_wifi(),
         build_activities(),
@@ -1215,6 +1377,7 @@ def _render_messages(
     palau_link = _known_link(chat_id, messages, "palau_sant_jaume")
     les_raboses_link = _known_link(chat_id, messages, "les_raboses")
     molivent_link = _known_link(chat_id, messages, "molivent")
+    music_school_link = _known_link(chat_id, messages, "music_school")
     youth_centre_link = _known_link(chat_id, messages, "youth_centre")
     wifi_link = _known_link(chat_id, messages, "wifi")
     activities_link = _known_link(chat_id, messages, "activities")
@@ -1224,6 +1387,11 @@ def _render_messages(
         link = _known_link(chat_id, messages, key)
         if link is not None:
             sport_links[key] = link
+    music_links = {}
+    for key in MUSIC_ACTIVITY_KEYS:
+        link = _known_link(chat_id, messages, key)
+        if link is not None:
+            music_links[key] = link
     leaf_links = None
     if all(key in messages for key in LEAF_MESSAGES):
         leaf_links = {
@@ -1246,6 +1414,7 @@ def _render_messages(
             youth_centre_link,
             les_raboses_link,
             molivent_link,
+            music_school_link,
         ),
         "polideportivo": build_polideportivo(
             indoor_link,
@@ -1267,6 +1436,7 @@ def _render_messages(
             sport_links.get("psychomotricity"),
             places_link,
         ),
+        "music_school": build_music_school(music_links, places_link),
         "youth_centre": build_youth_centre(places_link),
         "wifi": build_wifi(root_link),
         "activities": build_activities(
@@ -1274,6 +1444,7 @@ def _render_messages(
             root_link,
             sport_links,
             football_link,
+            music_links,
         ),
         "swimming": build_swimming(
             indoor_link, outdoor_link, activities_link
@@ -1329,6 +1500,7 @@ async def publish_pinned_guide(
     pin: Pin,
     skip_keys: Sequence[str] = (),
     sporttia_catalog: Optional[Mapping[str, object]] = None,
+    music_school_catalog: Optional[Mapping[str, object]] = None,
     local_day: Optional[date] = None,
 ) -> Dict[str, int]:
     """Create or update all linked messages, then pin the compact root."""
@@ -1336,6 +1508,8 @@ async def publish_pinned_guide(
     telegram_message_link(chat_id, 1)
     if sporttia_catalog is not None and local_day is None:
         raise ValueError("local_day is required with Sporttia catalogue")
+    if music_school_catalog is not None and local_day is None:
+        raise ValueError("local_day is required with music-school catalogue")
     payload = await asyncio.to_thread(state.read_payload, chat_id)
     if payload["uncertain_messages"]:
         raise StateError(
@@ -1369,6 +1543,29 @@ async def publish_pinned_guide(
                     palau_link,
                     les_raboses_link,
                     molivent_link,
+                ),
+                messages,
+                state,
+                chat_id,
+                send,
+                edit,
+            )
+        await _reconcile_messages(
+            chat_id, messages, state, send, edit, managed_elsewhere
+        )
+    if music_school_catalog is not None:
+        assert local_day is not None
+        activities_link = _known_link(chat_id, messages, "activities")
+        school_link = _known_link(chat_id, messages, "music_school")
+        for key in MUSIC_ACTIVITY_KEYS:
+            await _upsert(
+                key,
+                build_music_activity(
+                    key,
+                    music_school_catalog,
+                    local_day,
+                    activities_link,
+                    school_link,
                 ),
                 messages,
                 state,
