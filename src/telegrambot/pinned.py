@@ -88,6 +88,27 @@ MUSIC_ACTIVITY_META = {
     "music_instruments": ("🎷", "Музыкальные инструменты"),
 }
 
+SPORT_ACTIVITY_INDEX_KEYS = (
+    "rhythmic_gymnastics",
+    "judo",
+    "multisport",
+    "psychomotricity",
+    "deporte_plus",
+    "inclusive_multisport",
+    "senior_gymnastics",
+    "women_gymnastics",
+)
+SPORT_ACTIVITY_INDEX_LABELS = {
+    "psychomotricity": "Психомоторика · 2–6 лет",
+    "inclusive_multisport": "Инклюзивный мультиспорт · 7+",
+    "senior_gymnastics": "Гимнастика для старших",
+    "women_gymnastics": "Гимнастика Mujeres",
+}
+MUSIC_ACTIVITY_INDEX_LABELS = {
+    "music_basics": "Музыкальная грамота",
+    "music_instruments": "Инструменты",
+}
+
 Send = Callable[[str], Awaitable[int]]
 Edit = Callable[[int, str], Awaitable[None]]
 Pin = Callable[[int], Awaitable[None]]
@@ -694,15 +715,16 @@ def build_activities(
         "🎓 <b>Занятия и секции</b>",
         "",
         "🏃 <b>Спорт и движение</b>",
+        f"⚽ {_direct_link('Футбол', football_link)}",
         f"🏊 {_direct_link('Плавание', swimming_link)}",
     ]
-    for key in SPORTTIA_ACTIVITY_KEYS:
+    for key in SPORT_ACTIVITY_INDEX_KEYS:
         link = sport_links.get(key)
         if link is None:
             continue
-        emoji, label = SPORT_ACTIVITY_META[key]
+        emoji, default_label = SPORT_ACTIVITY_META[key]
+        label = SPORT_ACTIVITY_INDEX_LABELS.get(key, default_label)
         lines.append(f"{emoji} {_direct_link(label, link)}")
-    lines.append(f"⚽ {_direct_link('Футбол', football_link)}")
     music_links = music_links or {}
     linked_music = [
         (key, music_links[key])
@@ -712,7 +734,8 @@ def build_activities(
     if linked_music:
         lines.extend(["", "🎵 <b>Музыка</b>"])
         for key, link in linked_music:
-            emoji, label = MUSIC_ACTIVITY_META[key]
+            emoji, default_label = MUSIC_ACTIVITY_META[key]
+            label = MUSIC_ACTIVITY_INDEX_LABELS.get(key, default_label)
             lines.append(f"{emoji} {_direct_link(label, link)}")
     return _with_back_link(
         with_footer("\n".join(lines)),

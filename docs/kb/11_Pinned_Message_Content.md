@@ -42,10 +42,15 @@ Escuela de Música. Do not flatten every source room/field into a place card.
 
 `🎓 Занятия и секции` remains one message. Sports are visually grouped under
 `🏃 Спорт и движение`; music is visually grouped under `🎵 Музыка`. These are
-presentation only and do not create another Telegram navigation layer. The music
-group contains `Музыкальное развитие и грамота`, `Вокал и хор`, and
-`Музыкальные инструменты`. Source-managed and durable static activities share
-the same index while retaining their different source/recovery semantics.
+presentation only and do not create another Telegram navigation layer. The index
+is mobile-first: use a curated resident-facing order instead of source/insertion
+order, keep labels short where meaning is preserved, and surface age directly
+when it materially helps selection. Current compact labels include
+`Психомоторика · 2–6 лет`, `Инклюзивный мультиспорт · 7+`,
+`Гимнастика для старших`, `Гимнастика Mujeres`, `Музыкальная грамота`,
+`Вокал и хор`, and `Инструменты`. Detail-card titles remain explicit and may be
+longer than their index labels. Source-managed and durable static activities
+share the same index while retaining their different source/recovery semantics.
 
 When an activity uses a supported durable venue, link the recognized place
 name to that internal Telegram place card. Palau Sant Jaume, Complejo Deportivo
