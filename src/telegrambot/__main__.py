@@ -984,6 +984,8 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 agenda_state_path=agenda_path,
                 library_agenda_state_path=library_path,
                 am_guardamar_state_path=am_guardamar_path,
+                facv_state_path=facv_path,
+                pesca_cv_state_path=pesca_cv_path,
                 translation_cache_path=translations_path,
                 diagnostics=diagnostics,
             )
@@ -1009,6 +1011,8 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 agenda_state_path=agenda_path,
                 library_agenda_state_path=library_path,
                 am_guardamar_state_path=am_guardamar_path,
+                facv_state_path=facv_path,
+                pesca_cv_state_path=pesca_cv_path,
                 translation_cache_path=translations_path,
             )
             if message is None:
