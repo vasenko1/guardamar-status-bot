@@ -1,93 +1,123 @@
 # Recurring activities source production probe — 2026-09-18
 
-Status: **PENDING OPERATOR RUN ON PRODUCTION TERMUX**.
+Status: **COMPLETED ON PRODUCTION TERMUX**.
 
-Purpose: verify transport shape from the actual Android/Termux production
-network before recurring-card code is written. This probe is read-only with
-respect to the project and Telegram. It creates only a temporary directory,
-performs HTTP GETs, prints metadata/marker checks, then removes the temporary
-files.
+Production device: Android / Termux used by `guardamar-status-bot`.
 
-It does not load `.env`, does not send Telegram messages, does not modify
-`state/`, and does not invoke bot code.
+The operator ran the read-only curl probe from the production network. The
+probe did not load bot secrets, modify project state or send Telegram messages.
 
-## Probe
+## Results
 
-```sh
-set -u
+| Source | HTTP | Final URL | MIME | Bytes | Seconds | Marker result |
+| --- | ---: | --- | --- | ---: | ---: | --- |
+| Ayuntamiento RSS | 200 | unchanged | `application/rss+xml; charset=UTF-8` | 4,579 | 1.431302 | Dinamización 2026/27 **YES** |
+| Ayuntamiento REST latest 10 | 200 | unchanged | `application/json; charset=UTF-8` | 1,057 | 0.923805 | Dinamización 2026/27 **NO** |
+| Dinamización detail | 200 | unchanged | `text/html; charset=UTF-8` | 38,290 | 1.594606 | `Inscripción online` **YES** |
+| Dinamización Google Form | 200 | unchanged | `text/html; charset=utf-8` | 35,307 | 0.723254 | registration + Movimiento + Emociones **YES** |
+| Turismo agenda | 200 | unchanged | `text/html; charset=UTF-8` | 30,532 | 1.319692 | stale season label + September registration markers **YES** |
+| Chess | 200 | unchanged | `text/html; charset=UTF-8` | 25,841 | 0.969265 | school + Tue/Thu + Iniciación **YES** |
+| Tertulia | 200 | unchanged | `text/html;charset=UTF-8` | 6,484 | 0.604255 | Tuesday + 11:00 + 13:00 **YES** |
+| EPA | 200 | unchanged | `text/html; charset=UTF-8` | 35,923 | 1.483431 | current 2026/27 markers **YES** |
+| EOI vacancy entry | 200 | unchanged | `text/html;charset=ISO-8859-1` | 13,409 | 0.292422 | 2026/27 **YES**, Guardamar **NO** |
 
-TMP_ROOT="${TMPDIR:-/data/data/com.termux/files/usr/tmp}"
-WORK_DIR="$(mktemp -d "${TMP_ROOT%/}/guardamar-recurring-probe.XXXXXX")" || exit 1
-trap 'rm -rf "$WORK_DIR"' EXIT HUP INT TERM
+## Decisions
 
-UA='guardamar-status-bot-source-probe/1.0'
+### Ayuntamiento discovery
 
-probe() {
-    name="$1"
-    url="$2"
-    shift 2
-    body="$WORK_DIR/$name.body"
+Use the RSS feed:
 
-    printf '\n=== %s ===\n' "$name"
+`https://www.guardamardelsegura.es/feed/`
 
-    meta="$(
-        curl -sS -L --compressed             --connect-timeout 10             --max-time 30             -A "$UA"             -o "$body"             -w 'http=%{http_code}\nfinal=%{url_effective}\ncontent_type=%{content_type}\nbytes=%{size_download}\ntime=%{time_total}\n'             "$url"
-    )"
-    rc=$?
+The generic REST latest-ten-posts request is about 3.5 KB smaller and roughly
+0.5 seconds faster, but it does not contain the 7 September Dinamización
+campaign on 18 September. It is therefore not a sufficient discovery contract
+as tested.
 
-    printf 'curl_rc=%s\n%s' "$rc" "$meta"
-    printf '\n'
+Do not add REST search/pagination machinery just to save a few kilobytes per
+day. One 4.6 KB RSS request in the existing daily guide sync is simpler and
+operationally negligible.
 
-    if [ "$rc" -ne 0 ]; then
-        return
-    fi
+### Dinamización
 
-    for marker in "$@"; do
-        if grep -Fqi -- "$marker" "$body"; then
-            printf 'marker[%s]=YES\n' "$marker"
-        else
-            printf 'marker[%s]=NO\n' "$marker"
-        fi
-    done
-}
+**ACCEPTED.**
 
-probe ayto_rss   'https://www.guardamardelsegura.es/feed/'   'PROGRAMA DINAMIZACIÓN SOCIAL 2026 / 2027'
+Both the campaign detail and linked Google Form are reachable from production
+with ordinary GETs and expose the expected markers. No browser, JavaScript
+execution, OCR or LLM parser is required.
 
-probe ayto_rest   'https://www.guardamardelsegura.es/wp-json/wp/v2/posts?per_page=10&_fields=id,date,modified,link,title'   'PROGRAMA DINAMIZACIÓN SOCIAL 2026 / 2027'
+Contract:
 
-probe dinamizacion_detail   'https://www.guardamardelsegura.es/2026/09/07/programa-dinamizacion-social-2026-2027/'   'Inscripción online'
+- RSS discovery daily;
+- detail only on a new/changed campaign fingerprint;
+- linked form only on a new/changed campaign/detail fingerprint;
+- compact normalized last-good facts locally.
 
-probe dinamizacion_form   'https://docs.google.com/forms/d/e/1FAIpQLSdG1kkxJhCHLSd-aZ7j55MFybZMfGHS6FytHgVrOTPo_66Oiw/viewform'   'PLAZO DE INSCRIPCIÓN'   'MOVIMIENTO CONSCIENTE'   'ESCUELA DE EMOCIONES'
+### Chess
 
-probe turismo_agenda   'https://guardamarturismo.com/agenda-cultural/'   'TALLERES 2025/2026'   'Inscripciones del 21 al 25 de septiembre'
+**ACCEPTED.**
 
-probe chess   'https://ajedrezdamadeguardamar.com/cuotas/'   'ESCUELA DE AJEDREZ'   'martes y jueves'   'INICIACIÓN'
+The production response is a small server-rendered HTML page and all expected
+school/schedule/level markers are present.
 
-probe tertulia   'https://www.bibliotecaspublicas.es/guardamardelsegura/actividades-programas/Tertulia-Literaria-de-Guardamar.html'   'todos los martes'   '11:00'   '13:00'
+Use a low-frequency automatic check from the existing guide sync rather than a
+new cron or manual seasonal validation.
 
-probe epa   'https://www.guardamardelsegura.es/2024/07/24/epa-escuela-de-personas-adultas-curso-2024-2025/'   'CURSO 2026 / 2027'   '2026-2027'
+### Tertulia
 
-probe eoi_vacancies   'https://appweb1.edu.gva.es/CiudadanosWeb/public/vacadmisioneoi.do?metodo=generarInicio&tipo=EXS'   '2026-2027'   'Guardamar'
-```
+**ACCEPTED.**
 
-## Acceptance rules
+The production response is only about 6.5 KB and exposes the durable weekly
+schedule directly. Use a low-frequency automatic check from the existing guide
+sync.
 
-- HTTP 200 is expected for candidate GET sources.
-- Redirects are acceptable only when the final host/path is stable and belongs
-  to the intended source.
-- RSS and REST are compared by payload size and stability; choose the smaller
-  deterministic Ayuntamiento discovery surface that actually exposes the
-  target campaign.
-- Dinamización Form must expose the expected text in a normal GET. No browser
-  execution is allowed.
-- Turismo, Chess and Tertulia must expose their expected markers in the body.
-- EPA may pass transport while still remaining **not sufficient** as a dynamic
-  language source because its public page/forms omit the current detailed
-  Spanish timetable/vacancy/price contract.
-- EOI vacancy entry is exploratory. Failure to expose `Guardamar` in the
-  initial GET does not mean the official service is unusable; it means a
-  filtered request contract still needs separate proof and the source remains
-  deferred.
+### Creative workshops
 
-After the operator pastes the full output, record the measured results here and
-make the final READY/DEFER decisions before production code changes.
+**TRANSPORT ACCEPTED; PUBLICATION DEFERRED.**
+
+The already-used Turismo agenda exposes the target workshop block, so parsing
+it adds zero network requests. However the September 2026 page still labels the
+block `TALLERES 2025/2026`. Do not publish a recurring card until this
+publisher-side season ambiguity is resolved or there is an independent
+explicit current-season official fact that safely disambiguates it.
+
+### EPA
+
+**TRANSPORT ACCEPTED; DYNAMIC LANGUAGE CARD DEFERRED.**
+
+The official page is current for 2026/27, but the public machine surface still
+does not expose the complete current Spanish timetable/vacancy/price contract.
+Transport success does not make those missing facts safe to infer.
+
+### EOI
+
+**DEFERRED.**
+
+The official vacancy entry surface is reachable and current-year, but its
+initial response does not expose Guardamar. A Guardamar-specific machine query
+contract would need separate proof before automation. No further work is needed
+for the first recurring-card slice.
+
+## Product rule added after the probe
+
+Commercial language schools and private academies are excluded from the guide.
+Do not use Educare, Kairós, private tutors or similar commercial providers to
+fill public-language-source gaps.
+
+## Final readiness for first implementation
+
+Ready now:
+
+- `♟️ Шахматы`;
+- `✍️ Литературное творчество`;
+- `🤝 Муниципальные занятия и мастерские`.
+
+Not ready for public card now:
+
+- `🎨 Творческие мастерские` — source season ambiguity;
+- EPA / EOI / Cruz Roja language cards — current source contracts insufficient;
+- PANGEA / INTEGRA — only when a current campaign/intake appears;
+- commercial providers — excluded by product rule.
+
+No further production transport probe is required before implementing the
+first ready slice.
