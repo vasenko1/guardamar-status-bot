@@ -231,6 +231,51 @@ class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
         self.music_patch.start()
         self.addCleanup(self.music_patch.stop)
 
+        self.chess_fetch = AsyncMock(
+            side_effect=lambda now: {
+                "observed_at": now.isoformat(),
+                "source_url": "https://ajedrezdamadeguardamar.com/cuotas/",
+                "days": ["tuesday", "thursday"],
+                "start_time": "16:00",
+                "end_time": "20:00",
+                "level_from": "INICIACIÓN",
+                "level_to": "AVANZADO",
+            }
+        )
+        self.chess_patch = patch(
+            "telegrambot.guide.fetch_chess_school_snapshot",
+            new=self.chess_fetch,
+        )
+        self.chess_patch.start()
+        self.addCleanup(self.chess_patch.stop)
+
+        self.literary_fetch = AsyncMock(
+            side_effect=lambda now: {
+                "observed_at": now.isoformat(),
+                "source_url": (
+                    "https://www.bibliotecaspublicas.es/guardamardelsegura/"
+                    "actividades-programas/Tertulia-Literaria-de-Guardamar.html"
+                ),
+                "day": "tuesday",
+                "start_time": "11:00",
+                "end_time": "13:00",
+            }
+        )
+        self.literary_patch = patch(
+            "telegrambot.guide.fetch_literary_group_snapshot",
+            new=self.literary_fetch,
+        )
+        self.literary_patch.start()
+        self.addCleanup(self.literary_patch.stop)
+
+        self.dinamizacion_discovery = AsyncMock(return_value=None)
+        self.dinamizacion_patch = patch(
+            "telegrambot.guide.discover_dinamizacion_campaign",
+            new=self.dinamizacion_discovery,
+        )
+        self.dinamizacion_patch.start()
+        self.addCleanup(self.dinamizacion_patch.stop)
+
     def _environment(self, directory):
         return {
             "TELEGRAM_BOT_TOKEN": "token",
