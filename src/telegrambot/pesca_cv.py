@@ -95,13 +95,16 @@ def _parse_date(value: str) -> date:
 
 
 def _header_map(rows: list[list[str]]) -> tuple[int, dict[str, int]]:
+    # Current production table: FECHA | CLUB | ENTIDAD | AMBITO |
+    # MODALIDAD | ESCENARIO | PROVINCIA | ZONA. Keep a few language aliases,
+    # but deliberately do not treat CLUB (the short code) as the organizer.
     aliases = {
         "date": {"fecha", "data"},
-        "organizer": {"organizador", "organiza", "club", "entidad"},
-        "level": {"nivel", "tipo", "ambito", "ámbito"},
+        "organizer": {"entidad", "organizador", "organiza"},
+        "level": {"ambito", "ámbito", "nivel", "tipo"},
         "modality": {"modalidad", "modalitat"},
-        "location": {"localidad", "poblacion", "población", "lugar"},
-        "zone": {"zona", "escenario", "pesquero"},
+        "location": {"escenario", "localidad", "poblacion", "población", "lugar"},
+        "zone": {"zona", "pesquero"},
     }
     folded_aliases = {key: {_fold(item) for item in values} for key, values in aliases.items()}
     for row_index, row in enumerate(rows):
@@ -148,7 +151,7 @@ def parse_pesca_cv_html(payload: bytes, local_day: date, observed_at: datetime) 
         organizer = " ".join(row[columns["organizer"]].split())
         zone = ""
         if "zone" in columns and columns["zone"] < len(row):
-            zone = " ".join(row[columns["zone"]].split())
+            zone = " ".join(row[columns["zone"]].split()).rstrip("*# ")
         if not modality or not organizer or len(modality) > 180 or len(organizer) > 180 or len(zone) > 120:
             raise PescaCvSourceError("Pesca CV target row is invalid", code="SCHEMA")
         day = _parse_date(row[columns["date"]])
