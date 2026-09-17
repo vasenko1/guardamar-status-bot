@@ -24,8 +24,8 @@ names are provenance, not guide navigation.
 
 | Area | Responsible source | Technical shape | Guardamar value | Decision |
 | --- | --- | --- | --- | --- |
-| Chess | FACV official calendar | One server-rendered HTML annual calendar; explicit name/start/end/place/organizer | High. Multiple 2026 Guardamar events, including events not found in the municipal web search | **Candidate** |
-| Surfcasting / sport fishing | Federación de Pesca CV | Server-rendered HTML tables; date/organizer/level/modality/place/province/zone | High, but very noisy. Contains a Nov 23–28 national Mar Costa Dúos event in Guardamar and many low-value club qualifiers | **Candidate with strict level filter** |
+| Chess | FACV official calendar | One server-rendered HTML annual calendar; explicit name/start/end/place/organizer | High. Multiple 2026 Guardamar events, including events not found in the municipal web search | **Implement** |
+| Surfcasting / sport fishing | Federación de Pesca CV | Server-rendered HTML tables; date/organizer/level/modality/place/province/zone | High, but very noisy. Contains a Nov 23–29 national Mar Costa Dúos event in Guardamar and many low-value club qualifiers | **Implement with strict level filter** |
 | Running / Cross / road races | ChipLevante / ChampionChip Levante when it is the event's actual registration/timing platform | Server-rendered calendar and event pages; event pages can carry registration window, price, races, rules | Medium-high. Strong registration facts, but Cross/Media Maratón are often also announced by Turismo | **Conditional candidate; wait for a live Guardamar future event** |
 | Tennis | RFET Circuito Nacional | Server-rendered annual table plus official Fact Sheet PDF | Medium. 2026 Open Real Villa is well structured, but currently one annual event | **Defer adapter** |
 | Basketball | FBCV | Federation competition/event pages | Low for current product: most data is routine league activity; occasional training events exist | **Defer** |
@@ -87,9 +87,11 @@ The page is intentionally too broad to publish wholesale. It contains many
 resident-relevant merely because the venue is local.
 
 High-value confirmed gap: `FED. ESPAÑOLA PESCA Y C.` lists a `NACIONAL — MAR
-COSTA DÚOS` event in `GUARDAMAR`, `PLAYA`, on 23, 24, 25, 26, 27 and 28 November
-2026. This is exactly the kind of event a narrow source can discover before or
-without the monthly municipal agenda.
+COSTA DÚOS` event in `GUARDAMAR`, `PLAYA`, on 23, 24, 25, 26, 27, 28 and 29
+November 2026. The production parser confirmed the same 23–29 November range;
+the earlier manual audit that stopped at 28 November was incomplete. This is
+exactly the kind of event a narrow source can discover before or without the
+monthly municipal agenda.
 
 Proposed initial inclusion allowlist if implemented:
 
@@ -100,7 +102,7 @@ Proposed initial inclusion allowlist if implemented:
 
 Do **not** include `SOCIAL CLASIF.`, ordinary club qualifiers, or `ESPECIAL`
 without a separate product reason. Multiple consecutive rows describing the
-same competition must normalize into one date range, not six events.
+same competition must normalize into one date range, not seven events.
 
 ### ChipLevante
 
@@ -152,15 +154,12 @@ parallel event system.
 
 ## Minimal implementation direction
 
-Do not implement code until the production Termux network probe below confirms
-the candidate pages are reachable with the same simple bounded HTTP assumptions.
-
-If probes pass, the first useful implementation slice should be deliberately
-small:
+The production Termux probe has passed, so the accepted first implementation
+slice remains deliberately small:
 
 1. `facv.py`: one bounded annual-calendar GET, parse only future rows whose
-   exact place is `Guardamar del Segura`, normalize to the existing `Event`
-   shape (or an equally small source snapshot consumed by the guide).
+   exact place is `Guardamar del Segura`, normalize to the small sports-event
+   snapshot consumed by the guide.
 2. `pesca_cv.py`: one bounded GET, exact `GUARDAMAR` filter, strict competition
    level allowlist, collapse consecutive identical competition rows into one
    event/date range.
@@ -170,21 +169,27 @@ small:
 4. Do not add RFET, FBCV, FVBCV, FFCV, FTACV, FEMECV adapters yet.
 
 The first resident-facing sports-event surface should be one aggregate durable
-`🏆 Спортивные мероприятия` guide card, created only when current/future
-eligible events exist. No permanent per-event Telegram messages and no
-cross-link graph are needed for the first slice.
+`🏆 Спортивные мероприятия` guide card. No permanent per-event Telegram
+messages and no cross-link graph are needed for the first slice.
 
-## Production probe still required
+## Production probe — completed 2026-09-17
 
-Web inspection proves current page content and HTML structure, but not exact
-behaviour from the production Android/Termux network path. Before accepting an
-adapter contract, verify response status, MIME, redirects, size and latency on
-the phone for:
+The candidate pages were fetched directly from the production Android/Termux
+runtime with the same simple network path expected by the bot:
 
-- FACV calendar;
-- Federación Pesca CV club-competition page;
-- ChipLevante calendar (candidate only);
-- RFET calendar (comparison only).
+| Source | HTTP | MIME | Bytes | Seconds | Redirect | Guardamar matches |
+| --- | ---: | --- | ---: | ---: | --- | ---: |
+| FACV | 200 | `text/html` | 637691 | 0.514 | none | 37 |
+| Federación Pesca CV | 200 | `text/html` | 1037513 | 3.402 | none | 50 |
+| ChipLevante | 200 | `text/html` | 169756 | 1.034 | none | 0 |
+| RFET | 200 | `text/html` | 96847 | 1.768 | none | 6 |
 
-No code/source contract should claim those production transport properties
-until that probe is recorded.
+A second production run executed the actual source adapters. FACV correctly
+returned no current/future Guardamar event on 2026-09-17. Pesca CV returned the
+future `PROVINCIAL — MAR COSTA` event on 17 October and the `NACIONAL — Mar
+Costa Dúos` event on 23–29 November. This accepts the FACV/Pesca transport and
+parser contracts for the first slice.
+
+Pesca CV is intentionally bounded at roughly 1.5 MiB because the observed page
+is already about 1.04 MiB. It must be attempted at most once per local day in
+the existing guide sync; no separate or more frequent polling is justified.
