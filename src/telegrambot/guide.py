@@ -25,6 +25,12 @@ from zoneinfo import ZoneInfo
 from ._transport import BoundedFetchError, fetch_bounded
 from .branding import with_footer
 from .commands import parse_allowed_user_ids
+from .music_school import (
+    MusicSchoolSourceError,
+    fetch_music_school_catalog,
+    merge_music_school_catalog,
+    valid_music_school_snapshot,
+)
 from .pinned import (
     DEFAULT_PINNED_STATE_PATH,
     PinnedGuideState,
@@ -105,6 +111,19 @@ class GuideState:
             except ValueError as exc:
                 raise StateError(
                     "guide state has an invalid Sporttia attempt day"
+                ) from exc
+        music_school = value.get("music_school_catalog")
+        if music_school is not None and not valid_music_school_snapshot(music_school):
+            raise StateError("guide state has an invalid music-school snapshot")
+        music_school_attempt_day = value.get("music_school_last_attempt_day")
+        if music_school_attempt_day is not None:
+            if not isinstance(music_school_attempt_day, str):
+                raise StateError("guide state has an invalid music-school attempt day")
+            try:
+                date.fromisoformat(music_school_attempt_day)
+            except ValueError as exc:
+                raise StateError(
+                    "guide state has an invalid music-school attempt day"
                 ) from exc
         notice = value.get("season_notice")
         if notice is not None and (
@@ -641,6 +660,26 @@ async def sync_guide(now: datetime) -> str:
                 )
                 guide_state.write(state)
 
+        previous_music_school = state.get("music_school_catalog")
+        if state.get("music_school_last_attempt_day") != local_day.isoformat():
+            # Use the same once-per-local-day guard as Sporttia.  A failed
+            # observation keeps last-good normalized facts and is not retried by
+            # manual same-day guide syncs.
+            state["music_school_last_attempt_day"] = local_day.isoformat()
+            guide_state.write(state)
+            try:
+                observed_music_school = await fetch_music_school_catalog(now)
+            except MusicSchoolSourceError as exc:
+                logging.warning(
+                    "Music school catalogue deferred [GUIDE-%s]",
+                    exc.diagnostic_code,
+                )
+            else:
+                state["music_school_catalog"] = merge_music_school_catalog(
+                    previous_music_school, observed_music_school
+                )
+                guide_state.write(state)
+
         await _check_wifi_source(bot_token, state, guide_state)
 
         with pinned_state.exclusive_run():
@@ -664,6 +703,7 @@ async def sync_guide(now: datetime) -> str:
                     disable_notification=True,
                 ),
                 sporttia_catalog=state.get("sporttia_catalog"),
+                music_school_catalog=state.get("music_school_catalog"),
                 local_day=local_day,
             )
 
