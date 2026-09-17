@@ -99,8 +99,8 @@ SPORT_ACTIVITY_INDEX_KEYS = (
     "women_gymnastics",
 )
 SPORT_ACTIVITY_INDEX_LABELS = {
-    "psychomotricity": "Психомоторика · 3–5 лет",
-    "inclusive_multisport": "Инклюзивный мультиспорт · 6+",
+    "psychomotricity": "Психомоторика · 2–6 лет",
+    "inclusive_multisport": "Инклюзивный мультиспорт · 7+",
     "senior_gymnastics": "Гимнастика для старших",
     "women_gymnastics": "Гимнастика Mujeres",
 }

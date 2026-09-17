@@ -46,7 +46,7 @@ presentation only and do not create another Telegram navigation layer. The index
 is mobile-first: use a curated resident-facing order instead of source/insertion
 order, keep labels short where meaning is preserved, and surface age directly
 when it materially helps selection. Current compact labels include
-`Психомоторика · 3–5 лет`, `Инклюзивный мультиспорт · 6+`,
+`Психомоторика · 2–6 лет`, `Инклюзивный мультиспорт · 7+`,
 `Гимнастика для старших`, `Гимнастика Mujeres`, `Музыкальная грамота`,
 `Вокал и хор`, and `Инструменты`. Detail-card titles remain explicit and may be
 longer than their index labels. Source-managed and durable static activities
