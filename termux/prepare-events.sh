@@ -5,5 +5,7 @@ cd "$PROJECT"
 set -a
 . ./.env
 set +a
-exec ./.venv/bin/python -m telegrambot prepare-event-translations \
-  >> state/event-preparation.log 2>&1
+
+exec >> state/event-preparation.log 2>&1
+./.venv/bin/python -m telegrambot prepare-event-translations
+./.venv/bin/python -m telegrambot.federation_event_translations
