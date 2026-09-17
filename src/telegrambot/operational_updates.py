@@ -20,6 +20,7 @@ from .digest import (
     _beach_operational_lines,
     _warning_description,
     _warning_interval,
+    _warning_parameter_line,
     _warning_text,
 )
 from .models import BeachNotice, BeachStatus, Warning
@@ -721,26 +722,6 @@ def _joined_warning_labels(labels: Sequence[str]) -> str:
     if len(unique) <= 1:
         return unique[0] if unique else ""
     return ", ".join(unique[:-1]) + " и " + unique[-1]
-
-
-def _warning_parameter_line(warning: Warning) -> Optional[str]:
-    if warning.parameter_code is None or warning.parameter_value is None:
-        return None
-    value = f"{warning.parameter_value:g}".replace(".", ",")
-    code = warning.parameter_code
-    if code == "P1" and warning.parameter_unit == "mm":
-        return f"{value} л/м² за 1 час"
-    if code == "P2" and warning.parameter_unit == "mm":
-        return f"{value} л/м² за 12 часов"
-    if code == "NV" and warning.parameter_unit == "cm":
-        return f"Снег: {value} см за 24 часа"
-    if code == "RM" and warning.parameter_unit == "km/h":
-        return f"Порывы ветра: {value} км/ч"
-    if code == "TA" and warning.parameter_unit == "°C":
-        return f"Максимальная температура: {value} °C"
-    if code == "TI" and warning.parameter_unit == "°C":
-        return f"Минимальная температура: {value} °C"
-    return None
 
 
 def _warning_probability_text(value: Optional[str]) -> Optional[str]:
