@@ -1,6 +1,6 @@
 import unittest
 
-from telegrambot.pinned import build_activities
+from telegrambot.pinned import SPORT_ACTIVITY_INDEX_KEYS, build_activities
 from telegrambot.sporttia import SPORTTIA_ACTIVITY_KEYS
 
 
@@ -21,6 +21,9 @@ class ActivityIndexUxTests(unittest.TestCase):
             football_link="https://t.me/c/123/91",
             music_links=music_links,
         )
+
+    def test_curated_sport_keys_cover_every_supported_sporttia_activity(self):
+        self.assertEqual(set(SPORT_ACTIVITY_INDEX_KEYS), set(SPORTTIA_ACTIVITY_KEYS))
 
     def test_sport_order_is_curated_for_mobile_scan(self):
         text = self._render()
