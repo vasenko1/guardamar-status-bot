@@ -1,6 +1,6 @@
 # Activities and Programs
 
-Status: implementation ledger — Deploy 2 completed 2026-09-17
+Status: implementation ledger — Deploy 3 completed 2026-09-17
 
 This note is the living product/technical plan for the linked Guardamar guide. It records agreed scope, source contracts, information architecture, implementation gaps and deployment order so future work does not depend on chat history.
 
@@ -41,7 +41,9 @@ Do not create an additional `Досуг`, `Образование`, `Спорт`
 …
 
 🎵 Музыка
-🎼 Школа музыки
+🎶 Музыкальное развитие и грамота
+🎤 Вокал и хор
+🎷 Музыкальные инструменты
 
 🤝 Другие программы
 🧩 Муниципальные занятия и мастерские
@@ -55,7 +57,7 @@ This is presentation grouping only; it does not create category messages or cate
 Use one durable card per resident-recognizable activity/program, not one card per source row or timetable group.
 
 - Several Sporttia `turno` rows for the same activity stay inside one activity card.
-- `Школа музыки` may contain Jardín Musical and the school’s related enrolment facts/offer inside one card initially.
+- Music is activity-first: Jardín/Lenguaje Musical share `Музыкальное развитие и грамота`, while vocal and instruments have their own compact cards; the provider/place is linked separately.
 - `Муниципальные занятия и мастерские` may contain several workshops/groups inside one program card.
 - `Программы на каникулы` is an aggregate current-program card; do not create a permanent Telegram card for every historical camp.
 
@@ -75,9 +77,10 @@ Current justified durable place cards in this scope:
 - Palau Sant Jaume;
 - Complejo Deportivo Les Raboses;
 - CEIP Molivent (current recurring municipal psychomotor activity plus durable school location);
-- Centro Social Juvenil.
+- Centro Social Juvenil;
+- Escuela de Música (shared place/contact card for several music activities).
 
-Future places such as CEIP Reyes Católicos or the music school should receive cards only when their actual guide value justifies one, not merely because a source mentions the venue.
+Future places such as CEIP Reyes Católicos should receive cards only when their actual guide value justifies one, not merely because a source mentions the venue.
 
 ## Code architecture audit
 
@@ -195,15 +198,25 @@ Implemented as a separate irreversible-public-side-effect slice while preserving
 
 This contract is recorded in ADR 0070. No additional GET, cron row, daemon, dependency, database, browser automation, per-activity request or polling loop was added. The only runtime cost is one additional short Python process after the existing guide process, reading small local JSON state once per day.
 
-### Deploy 3 — music school
+### Deploy 3 — music activities and linked school — completed 2026-09-17
 
-Add `🎼 Школа музыки` under recurring activities.
+Implemented as an activity-first extension of the existing linked guide:
 
-The project already has a bounded Agrupación Musical Guardamar WordPress REST adapter reading twelve recently modified posts. Its event path deliberately rejects `matrícula`, `curso`, `horarios`, `plazas`, etc. For the program feature, prefer a small deterministic program extractor over broadening event semantics.
+- one visual `🎵 Музыка` group inside the existing `🎓 Занятия и секции` message;
+- three resident-facing cards: `🎶 Музыкальное развитие и грамота`, `🎤 Вокал и хор`, and `🎷 Музыкальные инструменты`;
+- one durable `🎼 Escuela de Música` place card under `📍 Места`, owning map/address, phone/email, website and reverse links to the music cards;
+- music activity cards keep only programme/audience/schedule facts, a programme-specific registration action when explicitly open, the internal `📍 Escuela de Música` link, the standard upward navigation link and shared footer; contacts are not duplicated;
+- Jardín Musical uses its explicit dated form/window only. The general Escuela form is not presented as if it were a group-specific CTA;
+- published schedule actions link to the official AM Guardamar schedule post, never directly to Google Drive documents that can also contain enrolled-student lists;
+- `music_school.py` is a deterministic programme adapter separate from the existing `am_guardamar.py` event semantics;
+- the existing 16:30 guide sync performs at most one additional bounded REST GET per Europe/Madrid local day for twelve recently modified AM Guardamar posts, with a 300 KiB response cap and 15-second timeout;
+- `state/guide.json` stores only the accepted normalized season/schedule/registration snapshot plus `music_school_last_attempt_day`; raw posts are not persisted;
+- same-season last-good schedule/registration facts survive when older posts leave the twelve-post window, while a new season never inherits old links;
+- only programme-shaped posts can establish a season, preventing unrelated future-season concert/news text from rolling the school snapshot forward;
+- source failure preserves accepted last-good state and linked cards; manual reruns do not repeat a same-day failed/finished source attempt;
+- no public music-change notifications are introduced in this deploy.
 
-One additional bounded daily GET to the same endpoint is acceptable if that keeps event and programme logic isolated. Refactor shared fetching only later if measured cost justifies it.
-
-Track only explicit current facts: Jardín Musical/other school offer, enrollment window, audience/age, schedule facts, contact and registration URL.
+This contract is recorded in ADR 0071. No new cron row, daemon, database, browser, LLM extraction, PDF/Drive parser, provider framework, or generic navigation layer was added.
 
 ### Deploy 4 — recurring municipal/non-sport programs
 

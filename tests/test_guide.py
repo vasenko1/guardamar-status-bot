@@ -215,6 +215,21 @@ class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
         )
         self.sporttia_patch.start()
         self.addCleanup(self.sporttia_patch.stop)
+        self.music_fetch = AsyncMock(
+            side_effect=lambda now: {
+                "observed_at": now.isoformat(),
+                "season": "2026/27",
+                "schedule_url": None,
+                "jardin_registration": None,
+                "school_registration": None,
+            }
+        )
+        self.music_patch = patch(
+            "telegrambot.guide.fetch_music_school_catalog",
+            new=self.music_fetch,
+        )
+        self.music_patch.start()
+        self.addCleanup(self.music_patch.stop)
 
     def _environment(self, directory):
         return {
@@ -275,6 +290,29 @@ class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(self.sporttia_fetch.await_count, 1)
             saved = GuideState(Path(directory) / "guide.json").read()
             self.assertEqual(saved["sporttia_last_attempt_day"], "2026-09-16")
+
+    async def test_music_school_is_attempted_at_most_once_per_local_day(self):
+        with tempfile.TemporaryDirectory() as directory:
+            moment = datetime(2026, 9, 16, 14, 0, tzinfo=MADRID)
+            later = datetime(2026, 9, 16, 16, 30, tzinfo=MADRID)
+            current = snapshot(moment)
+            publish = AsyncMock(return_value=self._pinned_messages())
+            with (
+                patch.dict("os.environ", self._environment(directory), clear=False),
+                patch(
+                    "telegrambot.guide.fetch_aqualider_catalog",
+                    new=AsyncMock(return_value=current),
+                ),
+                patch("telegrambot.guide.publish_pinned_guide", new=publish),
+            ):
+                await sync_guide(moment)
+                await sync_guide(later)
+            self.assertEqual(self.music_fetch.await_count, 1)
+            saved = GuideState(Path(directory) / "guide.json").read()
+            self.assertEqual(
+                saved["music_school_last_attempt_day"], "2026-09-16"
+            )
+            self.assertEqual(saved["music_school_catalog"]["season"], "2026/27")
 
     async def test_sporttia_failure_is_not_retried_same_day(self):
         with tempfile.TemporaryDirectory() as directory:

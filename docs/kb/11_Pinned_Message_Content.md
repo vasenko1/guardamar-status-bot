@@ -3,7 +3,7 @@
 ## Status
 
 This page stores the approved copy and editorial rules for the linked pinned
-city guide implemented by ADR 0041 and extended by ADR 0067/0069. The guide is
+city guide implemented by ADR 0041 and extended by ADR 0067/0069/0071. The guide is
 a recoverable set of managed Telegram messages. Ongoing reconciliation happens
 inside the existing daily `sync-guide` one-shot; it does not interact with the
 Morning Digest.
@@ -37,18 +37,20 @@ root links so they remain separate touch targets on a phone. Write
 
 `📍 Места` is one durable place index. It contains the municipal
 Polideportivo hierarchy (including the two pool cards and Palau Sant Jaume),
-Complejo Deportivo Les Raboses, CEIP Molivent, and Centro Social Juvenil.
-Do not flatten every Sporttia room/field into a place card.
+Complejo Deportivo Les Raboses, CEIP Molivent, Centro Social Juvenil, and
+Escuela de Música. Do not flatten every source room/field into a place card.
 
 `🎓 Занятия и секции` remains one message. Sports are visually grouped under
-`🏃 Спорт и движение`; this is presentation only and does not create another
-Telegram navigation layer. Source-managed Sporttia cards and durable static
-activities such as Guardamar Soccer C.D. football share this index but retain
-their different source/recovery semantics.
+`🏃 Спорт и движение`; music is visually grouped under `🎵 Музыка`. These are
+presentation only and do not create another Telegram navigation layer. The music
+group contains `Музыкальное развитие и грамота`, `Вокал и хор`, and
+`Музыкальные инструменты`. Source-managed and durable static activities share
+the same index while retaining their different source/recovery semantics.
 
 When an activity uses a supported durable venue, link the recognized place
 name to that internal Telegram place card. Palau Sant Jaume, Complejo Deportivo
-Les Raboses, and CEIP Molivent are the current explicit venue mappings. Any
+Les Raboses, CEIP Molivent, and Escuela de Música are the current explicit
+linked-place mappings. Any
 source sublocation after the recognized place name remains plain text. A
 verified map is only the fallback when the internal place message is not yet
 available during recovery.
