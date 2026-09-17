@@ -112,8 +112,8 @@ class MusicPinnedRenderingTests(unittest.TestCase):
             }
         )
         self.assertEqual(text.count("🎵 <b>Музыка</b>"), 1)
-        self.assertLess(text.index("Музыкальное развитие и грамота"), text.index("Вокал и хор"))
-        self.assertLess(text.index("Вокал и хор"), text.index("Музыкальные инструменты"))
+        self.assertLess(text.index("Музыкальная грамота"), text.index("Вокал и хор"))
+        self.assertLess(text.index("Вокал и хор"), text.index("Инструменты"))
         self.assertTrue(text.endswith(FOOTER))
 
 
