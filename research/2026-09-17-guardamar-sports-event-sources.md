@@ -4,28 +4,38 @@
 
 Find the smallest reliable set of official/responsible sources that adds useful
 Guardamar sports events not already covered by the existing municipal event
-catalogs. This is a source audit, not permission to implement every source.
+catalogs.
 
-Public information architecture remains activity/event-first. Club/operator
-names are provenance, not guide navigation.
+This is a source audit plus the implementation contract for the first accepted
+sources. Sports competitions are normal city events: they belong in the same
+normalized `Event` stream used by the Morning Digest and the Friday weekend
+digest. They do **not** get a separate sports-events guide card, navigation
+branch, or parallel publication system.
+
+Recurring classes and sections remain a different product surface under
+`🎓 Занятия и секции`.
 
 ## Existing architecture to preserve
 
 - Recurring activities stay in the existing `Занятия и секции` branch.
-- Sports events should reuse the existing normalized `Event` contract.
-- Source parsing stays in small source-specific modules; `guide.py` / morning
-  orchestration must not become parsers.
+- Sports competitions reuse the existing normalized `Event` contract and the
+  existing `_merge_events(...)` deduplication path.
+- Morning and weekend output read local event catalogs; source network reads
+  stay in the existing pre-publication catalog refresh flow.
+- Source parsing stays in small source-specific modules.
 - No provider registry, generic scraper engine, source YAML, database, browser,
   per-sport daemon, per-sport cron, or generic relation graph.
 - Before adding a source, check whether the municipal/Turismo/Agenda catalogs
   already provide the same resident value.
+- Federation sources are supplements. Absence from a federation page is never
+  interpreted as cancellation of a municipal event.
 
 ## Source matrix
 
 | Area | Responsible source | Technical shape | Guardamar value | Decision |
 | --- | --- | --- | --- | --- |
-| Chess | FACV official calendar | One server-rendered HTML annual calendar; explicit name/start/end/place/organizer | High. Multiple 2026 Guardamar events, including events not found in the municipal web search | **Implement** |
-| Surfcasting / sport fishing | Federación de Pesca CV | Server-rendered HTML tables; date/organizer/level/modality/place/province/zone | High, but very noisy. Contains a Nov 23–29 national Mar Costa Dúos event in Guardamar and many low-value club qualifiers | **Implement with strict level filter** |
+| Chess | FACV official calendar | One server-rendered HTML annual calendar; explicit name/start/end/place/organizer | High. Multiple 2026 Guardamar events, including events not found in the municipal web search | **Implement as Event supplement** |
+| Surfcasting / sport fishing | Federación de Pesca CV | Server-rendered HTML tables; date/organizer/level/modality/place/province/zone | High, but very noisy. Contains provincial/national Guardamar competitions and many low-value club qualifiers | **Implement as Event supplement with strict level filter** |
 | Running / Cross / road races | ChipLevante / ChampionChip Levante when it is the event's actual registration/timing platform | Server-rendered calendar and event pages; event pages can carry registration window, price, races, rules | Medium-high. Strong registration facts, but Cross/Media Maratón are often also announced by Turismo | **Conditional candidate; wait for a live Guardamar future event** |
 | Tennis | RFET Circuito Nacional | Server-rendered annual table plus official Fact Sheet PDF | Medium. 2026 Open Real Villa is well structured, but currently one annual event | **Defer adapter** |
 | Basketball | FBCV | Federation competition/event pages | Low for current product: most data is routine league activity; occasional training events exist | **Defer** |
@@ -36,14 +46,12 @@ names are provenance, not guide navigation.
 | Road cycling | FCCV preferred; Peña Cicloturista site secondary only | Federation data preferred | Local club site is not suitable as an automated factual source because its pages contain unrelated spam/SEO contamination | **Federation discovery only** |
 | MTB | Federation/municipal sources preferred | Club site exists but current public content is stale | No stable current event feed established | **Municipal/federation discovery only** |
 | Nautical / regattas | Relevant federation + municipal source | Club/Marina pages are not a complete structured event calendar | No stable complete Guardamar event feed established | **Federation/municipal discovery only** |
-| Roller skating | No confirmed Guardamar club/source | None | No current local `Patinafis/Patinafís` or Guardamar roller club verified. A Guardamar athlete competing elsewhere does not establish a local activity source | **Unresolved; no card/source** |
+| Roller skating | No confirmed Guardamar club/source | None | No current local `Patinafis/Patinafís` or Guardamar roller club verified | **Unresolved; no source** |
 | Petanque | Municipal agenda | No current local club feed verified | Facilities exist, but a facility is not proof of a current club/program | **Event discovery only** |
 | Skate | Ayuntamiento/Sporttia/municipal programme source | Existing municipal-source pattern | Activity/program exists independently of any old skate association | **Handle as activity/program, not sports-event source** |
-| Nautilus camps / water courses | Operator's current programme pages | Structured enough for programme-specific extraction | Better fit for `Программы на каникулы` / recurring activities than the sports-event catalog | **Keep out of sports-events slice** |
+| Nautilus camps / water courses | Operator's current programme pages | Programme-specific pages | Better fit for holiday/program research; not a sports competition source | **Keep out of sports-events slice** |
 
-## Evidence of coverage gaps
-
-### FACV
+## Accepted source 1 — FACV chess calendar
 
 Official calendar:
 `https://www.facv.org/appwebfacv/public/staff/torneos/calendario_oficial.php`
@@ -51,7 +59,7 @@ Official calendar:
 Observed technical shape on 2026-09-17:
 
 - `text/html`, server-rendered table;
-- one annual page, no browser or JavaScript execution required for the facts;
+- one annual page, no browser or JavaScript execution required;
 - explicit `Nombre`, `Inicio`, `Final`, `Lugar`, `Organizador` fields;
 - exact `Guardamar del Segura` location is available for filtering.
 
@@ -63,17 +71,23 @@ Examples present in 2026 include:
 - `S1800 Esphouses`, `Esphouses S2400`, and `Open Dama Guardamar`, 1–6 September.
 
 The September Esphouses programme was also present in municipal/Todo Cultura
-coverage, so the source must not create duplicate resident messages. However,
-web searches of the current municipal sources did not find the April/June FACV
-Guardamar rows, which demonstrates useful federation-only coverage.
+coverage, so the federation source must pass through the same event merge path
+and must not create a second resident-facing event surface.
 
-### Federación de Pesca CV
+Implementation contract:
 
-Primary audit page:
+- one bounded annual-calendar GET;
+- exact-place filter `Guardamar del Segura`;
+- retain current/future rows only in the local catalog;
+- no event-detail fetches;
+- source failure preserves the last valid local snapshot;
+- Morning Digest/weekend selection reads the local snapshot with zero FACV
+  network requests.
+
+## Accepted source 2 — Federación de Pesca CV
+
+Primary page:
 `https://federacionpescacv.com/competiciones-de-nuestros-clubes/`
-
-Also useful for federation-level competitions:
-`https://federacionpescacv.com/convocatorias-clasificaciones-2026/`
 
 Observed technical shape:
 
@@ -86,14 +100,7 @@ The page is intentionally too broad to publish wholesale. It contains many
 `SOCIAL CLASIF.` club events on Guardamar beaches. Those are not automatically
 resident-relevant merely because the venue is local.
 
-High-value confirmed gap: `FED. ESPAÑOLA PESCA Y C.` lists a `NACIONAL — MAR
-COSTA DÚOS` event in `GUARDAMAR`, `PLAYA`, on 23, 24, 25, 26, 27, 28 and 29
-November 2026. The production parser confirmed the same 23–29 November range;
-the earlier manual audit that stopped at 28 November was incomplete. This is
-exactly the kind of event a narrow source can discover before or without the
-monthly municipal agenda.
-
-Proposed initial inclusion allowlist if implemented:
+Initial inclusion allowlist:
 
 - `MUNDIAL`
 - `NACIONAL`
@@ -102,30 +109,33 @@ Proposed initial inclusion allowlist if implemented:
 
 Do **not** include `SOCIAL CLASIF.`, ordinary club qualifiers, or `ESPECIAL`
 without a separate product reason. Multiple consecutive rows describing the
-same competition must normalize into one date range, not seven events.
+same competition normalize into one date range.
+
+The production parser confirmed a `PROVINCIAL — MAR COSTA` event on 17 October
+2026 and a `NACIONAL — MAR COSTA DÚOS` event on 23–29 November 2026.
+
+Implementation contract:
+
+- one bounded table GET;
+- exact `GUARDAMAR` filter plus the explicit level allowlist;
+- collapse consecutive identical competition rows into a date range;
+- no detail crawling;
+- source failure preserves the last valid local snapshot;
+- Morning Digest/weekend selection reads the local snapshot with zero Pesca CV
+  network requests.
+
+## Deferred candidates
 
 ### ChipLevante
 
 Calendar:
 `https://www.chiplevante.com/recomendadas.asp`
 
-Observed technical shape:
-
-- `text/html`, server-rendered calendar;
-- public event pages can expose race date/place, races, prices, organiser,
-  regulations and registration links/windows;
-- no Guardamar event is present in the currently visible future calendar on
-  2026-09-17.
-
-The source is not a general public authority. It is suitable only when it is
-the actual timing/registration platform chosen by the organiser for that
-specific event. Turismo Guardamar has historically linked to ChipLevante for
-the Cross, so this can be a responsible event-specific source, not a generic
-fallback aggregator.
-
-Do not implement a permanent Guardamar race claim from historical recurrence.
-Wait until the 2026 Cross (or another future Guardamar event) actually appears
-on the responsible platform or an official municipal source.
+The public calendar/event pages are technically usable and can expose race
+date/place, races, prices, organiser, regulations and registration windows.
+There was no current future Guardamar row on 2026-09-17. Use it only when it is
+the actual timing/registration platform chosen for a real future Guardamar
+event. Do not infer annual recurrence from history.
 
 ### RFET
 
@@ -133,44 +143,10 @@ Calendar:
 `https://www.rfet.es/es/circuito-nacional-rfet-torneos.html`
 
 The 2026 table contains `24º OPEN REAL VILLA DE GUARDAMAR`, Club de Tenis
-Guardamar, 1–8 August, and links an official Fact Sheet. The Fact Sheet gives
-Guardamar venue, registration price and closing date.
-
-Technical quality is good, but current observed value is one annual event. A
-new dedicated adapter is not justified yet. Keep RFET in the source register
-and re-evaluate if more Guardamar events appear or municipal coverage proves
-repeatedly late/incomplete.
-
-## Existing-source overlap
-
-The municipal stack already catches many locally promoted sports events:
-
-- September 2026 Esphouses chess festival;
-- September 2026 Club Tenis de Mesa presentation tournament;
-- Cross Urbano in previous seasons through Turismo/municipal publication.
-
-Therefore the sports work should be a **gap-filling supplement**, not a second
-parallel event system.
-
-## Minimal implementation direction
-
-The production Termux probe has passed, so the accepted first implementation
-slice remains deliberately small:
-
-1. `facv.py`: one bounded annual-calendar GET, parse only future rows whose
-   exact place is `Guardamar del Segura`, normalize to the small sports-event
-   snapshot consumed by the guide.
-2. `pesca_cv.py`: one bounded GET, exact `GUARDAMAR` filter, strict competition
-   level allowlist, collapse consecutive identical competition rows into one
-   event/date range.
-3. Do **not** add ChipLevante yet while it has no future Guardamar row. Keep it
-   as a validated source candidate and add it when a real future event proves
-   the contract.
-4. Do not add RFET, FBCV, FVBCV, FFCV, FTACV, FEMECV adapters yet.
-
-The first resident-facing sports-event surface should be one aggregate durable
-`🏆 Спортивные мероприятия` guide card. No permanent per-event Telegram
-messages and no cross-link graph are needed for the first slice.
+Guardamar, 1–8 August, with an official Fact Sheet. Technical quality is good,
+but one annual event does not justify another adapter yet. Re-evaluate if
+Guardamar coverage becomes recurrent or the municipal sources are repeatedly
+late/incomplete.
 
 ## Production probe — completed 2026-09-17
 
@@ -186,10 +162,37 @@ runtime with the same simple network path expected by the bot:
 
 A second production run executed the actual source adapters. FACV correctly
 returned no current/future Guardamar event on 2026-09-17. Pesca CV returned the
-future `PROVINCIAL — MAR COSTA` event on 17 October and the `NACIONAL — Mar
-Costa Dúos` event on 23–29 November. This accepts the FACV/Pesca transport and
-parser contracts for the first slice.
+future provincial 17 October event and the national 23–29 November event.
+
+This accepts the FACV/Pesca transport and parser contracts. No further
+production source probe is required before integrating them into the normal
+event catalog flow.
 
 Pesca CV is intentionally bounded at roughly 1.5 MiB because the observed page
-is already about 1.04 MiB. It must be attempted at most once per local day in
-the existing guide sync; no separate or more frequent polling is justified.
+is already about 1.04 MiB. Both sources should be refreshed once in the
+existing pre-publication event-catalog sync. No separate cron or more frequent
+polling is justified.
+
+## Implementation sequence from here
+
+1. Keep `facv.py` and `pesca_cv.py` as source-specific adapters.
+2. Give each source a compact atomic last-good catalog and a deterministic
+   `fetch_today_*_events(...) -> tuple[Event, ...]` reader.
+3. Add their refreshes to the existing event-catalog synchronization script;
+   do not add a cron row.
+4. Add both cached readers to Morning Digest and Friday weekend collection, then
+   pass them through the existing `_merge_events(...)` path.
+5. Prepare/cached title translations through the existing event translation
+   mechanism instead of introducing sport-specific translation logic.
+6. Add targeted duplicate tests for known municipal/federation overlap.
+7. Keep ChipLevante/RFET and all other federation adapters deferred until a
+   real Guardamar coverage gap justifies them.
+
+## Explicit non-goals
+
+- no `sports_events.py` aggregate catalog;
+- no `🏆 Спортивные мероприятия` pinned guide card;
+- no permanent per-event Telegram cards;
+- no separate sports-event notification system;
+- no provider registry or generic sports scraper;
+- no new daemon, browser automation, database, or cron schedule.
