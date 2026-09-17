@@ -25,6 +25,22 @@ from zoneinfo import ZoneInfo
 from ._transport import BoundedFetchError, fetch_bounded
 from .branding import with_footer
 from .commands import parse_allowed_user_ids
+from .chess_school import (
+    ChessSchoolSourceError,
+    fetch_chess_school_snapshot,
+    valid_chess_school_snapshot,
+)
+from .dinamizacion import (
+    DinamizacionSourceError,
+    discover_dinamizacion_campaign,
+    fetch_dinamizacion_snapshot,
+    valid_dinamizacion_snapshot,
+)
+from .literary_group import (
+    LiteraryGroupSourceError,
+    fetch_literary_group_snapshot,
+    valid_literary_group_snapshot,
+)
 from .music_school import (
     MusicSchoolSourceError,
     fetch_music_school_catalog,
@@ -105,6 +121,15 @@ class GuideState:
         music_school = value.get("music_school_catalog")
         if music_school is not None and not valid_music_school_snapshot(music_school):
             raise StateError("guide state has an invalid music-school snapshot")
+        chess_school = value.get("chess_school_snapshot")
+        if chess_school is not None and not valid_chess_school_snapshot(chess_school):
+            raise StateError("guide state has an invalid chess-school snapshot")
+        literary_group = value.get("literary_group_snapshot")
+        if literary_group is not None and not valid_literary_group_snapshot(literary_group):
+            raise StateError("guide state has an invalid literary-group snapshot")
+        dinamizacion = value.get("dinamizacion_snapshot")
+        if dinamizacion is not None and not valid_dinamizacion_snapshot(dinamizacion):
+            raise StateError("guide state has an invalid Dinamización snapshot")
         music_attempt_day = value.get("music_school_last_attempt_day")
         if music_attempt_day is not None:
             if not isinstance(music_attempt_day, str):
@@ -124,6 +149,23 @@ class GuideState:
             except ValueError as exc:
                 raise StateError(
                     "guide state has an invalid Sporttia attempt day"
+                ) from exc
+        for field, label in (
+            ("chess_school_last_attempt_day", "chess-school"),
+            ("literary_group_last_attempt_day", "literary-group"),
+            ("dinamizacion_discovery_last_attempt_day", "Dinamización discovery"),
+            ("dinamizacion_detail_last_attempt_day", "Dinamización detail"),
+        ):
+            attempt_day = value.get(field)
+            if attempt_day is None:
+                continue
+            if not isinstance(attempt_day, str):
+                raise StateError(f"guide state has an invalid {label} attempt day")
+            try:
+                date.fromisoformat(attempt_day)
+            except ValueError as exc:
+                raise StateError(
+                    f"guide state has an invalid {label} attempt day"
                 ) from exc
         notice = value.get("season_notice")
         if notice is not None and (
@@ -209,6 +251,19 @@ def active_pool(local_day: date) -> str:
     summer_start = date(local_day.year, 6, 16)
     summer_end = date(local_day.year, 9, 15)
     return "outdoor" if summer_start <= local_day <= summer_end else "indoor"
+
+
+def _attempt_due(
+    last_attempt_day: Optional[str],
+    local_day: date,
+    interval_days: int,
+) -> bool:
+    """Return whether a low-frequency source is due inside the daily guide run."""
+
+    if last_attempt_day is None:
+        return True
+    previous = date.fromisoformat(last_attempt_day)
+    return (local_day - previous).days >= interval_days
 
 
 def _required_environment(name: str) -> str:
@@ -677,6 +732,90 @@ async def sync_guide(now: datetime) -> str:
                 )
                 guide_state.write(state)
 
+        if _attempt_due(
+            state.get("chess_school_last_attempt_day"),
+            local_day,
+            7,
+        ):
+            state["chess_school_last_attempt_day"] = local_day.isoformat()
+            guide_state.write(state)
+            try:
+                state["chess_school_snapshot"] = await fetch_chess_school_snapshot(now)
+            except ChessSchoolSourceError as exc:
+                logging.warning(
+                    "Chess-school source deferred [GUIDE-%s]",
+                    exc.diagnostic_code,
+                )
+            else:
+                guide_state.write(state)
+
+        if _attempt_due(
+            state.get("literary_group_last_attempt_day"),
+            local_day,
+            7,
+        ):
+            state["literary_group_last_attempt_day"] = local_day.isoformat()
+            guide_state.write(state)
+            try:
+                state["literary_group_snapshot"] = (
+                    await fetch_literary_group_snapshot(now)
+                )
+            except LiteraryGroupSourceError as exc:
+                logging.warning(
+                    "Literary-group source deferred [GUIDE-%s]",
+                    exc.diagnostic_code,
+                )
+            else:
+                guide_state.write(state)
+
+        if (
+            state.get("dinamizacion_discovery_last_attempt_day")
+            != local_day.isoformat()
+        ):
+            state["dinamizacion_discovery_last_attempt_day"] = (
+                local_day.isoformat()
+            )
+            guide_state.write(state)
+            try:
+                discovered = await discover_dinamizacion_campaign()
+            except DinamizacionSourceError as exc:
+                logging.warning(
+                    "Dinamización discovery deferred [GUIDE-%s]",
+                    exc.diagnostic_code,
+                )
+            else:
+                if discovered is not None:
+                    campaign_url, season = discovered
+                    previous_program = state.get("dinamizacion_snapshot")
+                    campaign_changed = (
+                        previous_program is None
+                        or previous_program.get("campaign_url") != campaign_url
+                    )
+                    detail_due = _attempt_due(
+                        state.get("dinamizacion_detail_last_attempt_day"),
+                        local_day,
+                        7,
+                    )
+                    if campaign_changed or detail_due:
+                        state["dinamizacion_detail_last_attempt_day"] = (
+                            local_day.isoformat()
+                        )
+                        guide_state.write(state)
+                        try:
+                            observed_program = await fetch_dinamizacion_snapshot(
+                                campaign_url,
+                                season,
+                                now,
+                            )
+                        except DinamizacionSourceError as exc:
+                            logging.warning(
+                                "Dinamización detail deferred [GUIDE-%s]",
+                                exc.diagnostic_code,
+                            )
+                        else:
+                            state["dinamizacion_snapshot"] = observed_program
+                            guide_state.write(state)
+
         await _check_wifi_source(bot_token, state, guide_state)
 
         with pinned_state.exclusive_run():
@@ -701,6 +840,9 @@ async def sync_guide(now: datetime) -> str:
                 ),
                 sporttia_catalog=state.get("sporttia_catalog"),
                 music_school_catalog=state.get("music_school_catalog"),
+                chess_school_snapshot=state.get("chess_school_snapshot"),
+                literary_group_snapshot=state.get("literary_group_snapshot"),
+                dinamizacion_snapshot=state.get("dinamizacion_snapshot"),
                 local_day=local_day,
             )
 
