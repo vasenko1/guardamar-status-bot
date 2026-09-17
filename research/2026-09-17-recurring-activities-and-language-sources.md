@@ -290,7 +290,10 @@ existing sports notification design.
 
 ## Remaining production verification
 
-A single read-only Termux probe is still required before implementation to
+The exact read-only script is stored in
+`research/2026-09-18-recurring-source-production-probe.md`.
+
+A single Termux probe is still required before implementation to
 record final URL, HTTP status, MIME, bytes and time for:
 
 - Ayuntamiento RSS feed;
