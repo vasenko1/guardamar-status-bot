@@ -1,16 +1,26 @@
 """Bounded official FACV calendar source for Guardamar chess events."""
 
 import asyncio
+import json
+import logging
+import os
 import re
+import tempfile
 import unicodedata
 import urllib.parse
 from datetime import date, datetime
 from html.parser import HTMLParser
+from pathlib import Path
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 from ._transport import BoundedFetchError, fetch_bounded
+from .event_translations import cached_title
+from .models import Event
 
 FACV_URL = "https://www.facv.org/appwebfacv/public/staff/torneos/calendario_oficial.php"
+DEFAULT_STATE_PATH = "state/facv_events.json"
+GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 _HTML_TYPES = frozenset({"text/html", "application/xhtml+xml"})
 _HEADERS = {
     "Accept": "text/html,application/xhtml+xml",
@@ -22,7 +32,7 @@ _MAX_EVENTS = 64
 
 
 class FacvSourceError(RuntimeError):
-    """An FACV observation that is unsafe to use."""
+    """An FACV observation or local snapshot that is unsafe to use."""
 
     def __init__(self, message: str, *, code: str) -> None:
         super().__init__(message)
@@ -174,13 +184,18 @@ def valid_facv_snapshot(value: Any) -> bool:
     events = value.get("events")
     if not isinstance(events, list) or len(events) > _MAX_EVENTS:
         return False
-    required = {"sport", "title", "start", "end", "place", "organizer", "source_url"}
+    required = {
+        "sport", "title", "start", "end", "place", "organizer", "source_url"
+    }
     for event in events:
         if not isinstance(event, dict) or set(event) != required:
             return False
         if event.get("sport") != "chess" or event.get("source_url") != FACV_URL:
             return False
-        if not all(isinstance(event.get(key), str) and event[key] for key in ("title", "place", "organizer")):
+        if not all(
+            isinstance(event.get(key), str) and event[key]
+            for key in ("title", "place", "organizer")
+        ):
             return False
         try:
             start = date.fromisoformat(event["start"])
@@ -207,4 +222,128 @@ async def fetch_facv_snapshot(now: datetime) -> dict:
         )
     except BoundedFetchError as exc:
         raise FacvSourceError("FACV request failed", code=exc.code) from exc
-    return parse_facv_html(payload, now.date(), now)
+    return parse_facv_html(payload, now.astimezone(GUARDAMAR_TIMEZONE).date(), now)
+
+
+def _load_snapshot(path: Path) -> Optional[dict]:
+    if not path.exists():
+        return None
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise FacvSourceError("FACV local catalog is unreadable", code="STATE") from exc
+    if not valid_facv_snapshot(value):
+        raise FacvSourceError("FACV local catalog is invalid", code="STATE")
+    return value
+
+
+def _write_snapshot(path: Path, value: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(
+        dir=str(path.parent), prefix=f".{path.name}."
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+            json.dump(value, output, ensure_ascii=False, separators=(",", ":"))
+            output.write("\n")
+            output.flush()
+            os.fsync(output.fileno())
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+
+
+def _usable_events(snapshot: dict, local_day: date, *, active_only: bool) -> tuple[dict, ...]:
+    result = []
+    for raw in snapshot["events"]:
+        start = date.fromisoformat(raw["start"])
+        end = date.fromisoformat(raw["end"])
+        if active_only:
+            if not start <= local_day <= end:
+                continue
+        elif end < local_day:
+            continue
+        result.append(raw)
+    return tuple(result)
+
+
+async def refresh_facv_catalog(now: datetime, state_path: Path) -> tuple[dict, ...]:
+    """Refresh once and preserve a valid last-good snapshot on source failure."""
+
+    previous = None
+    try:
+        previous = await asyncio.to_thread(_load_snapshot, state_path)
+    except FacvSourceError as exc:
+        logging.warning("FACV local catalog ignored [FACV-%s]", exc.diagnostic_code)
+    try:
+        current = await fetch_facv_snapshot(now)
+    except FacvSourceError:
+        if previous is None:
+            raise
+        logging.warning("FACV source unavailable; preserving last-good catalog")
+        return _usable_events(
+            previous, now.astimezone(GUARDAMAR_TIMEZONE).date(), active_only=False
+        )
+    await asyncio.to_thread(_write_snapshot, state_path, current)
+    return tuple(current["events"])
+
+
+async def fetch_today_facv_events(
+    now: datetime,
+    state_path: Path = Path(DEFAULT_STATE_PATH),
+    translation_cache_path: Path = Path("state/event_translations.json"),
+) -> tuple[Event, ...]:
+    """Return today's FACV rows from local state with no network access."""
+
+    snapshot = await asyncio.to_thread(_load_snapshot, state_path)
+    if snapshot is None:
+        return ()
+    local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
+    result = []
+    for raw in _usable_events(snapshot, local_day, active_only=True):
+        start = date.fromisoformat(raw["start"])
+        end = date.fromisoformat(raw["end"])
+        result.append(
+            Event(
+                title=cached_title(translation_cache_path, "facv", raw["title"]),
+                starts_at=None,
+                place=raw["place"],
+                active_until=end if start != end else None,
+                category="event",
+                is_final_day=start != end and local_day == end,
+            )
+        )
+    return tuple(result)
+
+
+async def facv_translation_items(
+    now: datetime, state_path: Path = Path(DEFAULT_STATE_PATH)
+) -> tuple[tuple[str, str], ...]:
+    snapshot = await asyncio.to_thread(_load_snapshot, state_path)
+    if snapshot is None:
+        return ()
+    local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
+    return tuple(
+        ("facv", raw["title"])
+        for raw in _usable_events(snapshot, local_day, active_only=False)
+    )
+
+
+def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    state_path = Path(os.environ.get("FACV_EVENTS_STATE_PATH", DEFAULT_STATE_PATH))
+    now = datetime.now(GUARDAMAR_TIMEZONE)
+    try:
+        events = asyncio.run(refresh_facv_catalog(now, state_path))
+    except (FacvSourceError, ValueError) as exc:
+        print(f"Command failed: {exc}", file=os.sys.stderr)
+        raise SystemExit(2) from exc
+    logging.info("FACV event catalog synchronized: %d facts", len(events))
+
+
+if __name__ == "__main__":
+    main()
