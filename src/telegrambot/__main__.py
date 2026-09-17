@@ -73,6 +73,8 @@ from .municipal_agenda import (
     refresh_municipal_catalog,
 )
 from .event_translations import prepare_translations
+from .facv import FacvSourceError, facv_translation_items
+from .pesca_cv import PescaCvSourceError, pesca_cv_translation_items
 from .hidraqua import HidraquaError, HidraquaState, monitor_once
 from .gemini import GeminiError
 from .pharmacy import PharmacyError, refresh_pharmacy_catalog
@@ -127,6 +129,8 @@ DEFAULT_MUNICIPAL_AGENDA_STATE_PATH = "state/municipal_agenda.json"
 DEFAULT_AGENDA_STATE_PATH = "state/agenda_guardamar.json"
 DEFAULT_LIBRARY_AGENDA_STATE_PATH = "state/library_agenda.json"
 DEFAULT_AM_GUARDAMAR_STATE_PATH = "state/am_guardamar.json"
+DEFAULT_FACV_EVENTS_STATE_PATH = "state/facv_events.json"
+DEFAULT_PESCA_CV_EVENTS_STATE_PATH = "state/pesca_cv_events.json"
 DEFAULT_ELECTRICITY_STATE_PATH = "state/electricity.json"
 DEFAULT_ELECTRICITY_SNAPSHOT_PATH = "state/electricity_prices.json"
 DEFAULT_EVENT_TRANSLATIONS_PATH = "state/event_translations.json"
@@ -323,6 +327,12 @@ async def _produce_message(api_key: str, now: datetime) -> str:
             am_guardamar_state_path=Path(os.environ.get(
                 "AM_GUARDAMAR_STATE_PATH", DEFAULT_AM_GUARDAMAR_STATE_PATH
             )),
+            facv_state_path=Path(os.environ.get(
+                "FACV_EVENTS_STATE_PATH", DEFAULT_FACV_EVENTS_STATE_PATH
+            )),
+            pesca_cv_state_path=Path(os.environ.get(
+                "PESCA_CV_EVENTS_STATE_PATH", DEFAULT_PESCA_CV_EVENTS_STATE_PATH
+            )),
             diagnostics=diagnostics,
             translation_cache_path=Path(os.environ.get(
                 "EVENT_TRANSLATIONS_PATH", DEFAULT_EVENT_TRANSLATIONS_PATH
@@ -405,6 +415,12 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
     am_guardamar_path = Path(os.environ.get(
         "AM_GUARDAMAR_STATE_PATH", DEFAULT_AM_GUARDAMAR_STATE_PATH
     ))
+    facv_path = Path(os.environ.get(
+        "FACV_EVENTS_STATE_PATH", DEFAULT_FACV_EVENTS_STATE_PATH
+    ))
+    pesca_cv_path = Path(os.environ.get(
+        "PESCA_CV_EVENTS_STATE_PATH", DEFAULT_PESCA_CV_EVENTS_STATE_PATH
+    ))
     translations_path = Path(os.environ.get(
         "EVENT_TRANSLATIONS_PATH", DEFAULT_EVENT_TRANSLATIONS_PATH
     ))
@@ -448,6 +464,8 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             agenda_state_path=agenda_path,
             library_agenda_state_path=library_path,
             am_guardamar_state_path=am_guardamar_path,
+            facv_state_path=facv_path,
+            pesca_cv_state_path=pesca_cv_path,
             translation_cache_path=translations_path,
             aemet_digest=fallback,
             fetch_aemet=fallback is None,
@@ -944,6 +962,14 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 items.extend(await agenda_translation_items(moment, agenda_path))
                 items.extend(await library_translation_items(moment, library_path))
                 items.extend(await am_guardamar_translation_items(moment, am_guardamar_path))
+                try:
+                    items.extend(await facv_translation_items(moment, facv_path))
+                except FacvSourceError as exc:
+                    logging.warning("FACV weekend translations skipped: %s", exc)
+                try:
+                    items.extend(await pesca_cv_translation_items(moment, pesca_cv_path))
+                except PescaCvSourceError as exc:
+                    logging.warning("Pesca CV weekend translations skipped: %s", exc)
             try:
                 await prepare_translations(gemini_key, items, translations_path, now)
             except (AgendaError, GeminiError, MunicipalAgendaError, ValueError) as exc:
@@ -958,6 +984,8 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 agenda_state_path=agenda_path,
                 library_agenda_state_path=library_path,
                 am_guardamar_state_path=am_guardamar_path,
+                facv_state_path=facv_path,
+                pesca_cv_state_path=pesca_cv_path,
                 translation_cache_path=translations_path,
                 diagnostics=diagnostics,
             )
@@ -983,6 +1011,8 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 agenda_state_path=agenda_path,
                 library_agenda_state_path=library_path,
                 am_guardamar_state_path=am_guardamar_path,
+                facv_state_path=facv_path,
+                pesca_cv_state_path=pesca_cv_path,
                 translation_cache_path=translations_path,
             )
             if message is None:
@@ -1001,6 +1031,14 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             *await library_translation_items(now, library_path),
             *await am_guardamar_translation_items(now, am_guardamar_path),
         ]
+        try:
+            items.extend(await facv_translation_items(now, facv_path))
+        except FacvSourceError as exc:
+            logging.warning("FACV translations skipped: %s", exc)
+        try:
+            items.extend(await pesca_cv_translation_items(now, pesca_cv_path))
+        except PescaCvSourceError as exc:
+            logging.warning("Pesca CV translations skipped: %s", exc)
         translated = await prepare_translations(
             gemini_key, items, translations_path, now
         )
@@ -1280,6 +1318,8 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 )),
                 library_agenda_state_path=library_path,
                 am_guardamar_state_path=am_guardamar_path,
+                facv_state_path=facv_path,
+                pesca_cv_state_path=pesca_cv_path,
                 collect_beach=False,
                 translation_cache_path=translations_path,
                 aemet_digest=prepared,

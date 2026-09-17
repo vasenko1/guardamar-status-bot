@@ -31,6 +31,8 @@ from .municipal_agenda import (
 )
 from .library_agenda import LibraryAgendaError, fetch_today_library_events
 from .am_guardamar import AmGuardamarError, fetch_today_am_guardamar_events
+from .facv import FacvSourceError, fetch_today_facv_events
+from .pesca_cv import PescaCvSourceError, fetch_today_pesca_cv_events
 from .pharmacy import duty_pharmacies_on
 from .police import PoliceTrafficError, fetch_traffic_notices
 from .safebeach import SafeBeachError, fetch_beach_status
@@ -195,6 +197,8 @@ def _merge_events(*groups):
                     meeting_point=current.meeting_point or event.meeting_point,
                     schedule_note=current.schedule_note or event.schedule_note,
                     access_note=current.access_note or event.access_note,
+                    active_until=current.active_until or event.active_until,
+                    is_final_day=current.is_final_day or event.is_final_day,
                     programme_title=(
                         current.programme_title or event.programme_title
                     ),
@@ -229,6 +233,8 @@ async def produce_message(
     agenda_state_path: Path = Path("state/agenda_guardamar.json"),
     library_agenda_state_path: Path = Path("state/library_agenda.json"),
     am_guardamar_state_path: Path = Path("state/am_guardamar.json"),
+    facv_state_path: Path = Path("state/facv_events.json"),
+    pesca_cv_state_path: Path = Path("state/pesca_cv_events.json"),
     collect_beach: bool = True,
     beach_status: Optional[BeachStatus] = None,
     beach_notice: Optional[BeachNotice] = None,
@@ -253,6 +259,7 @@ async def produce_message(
 ) -> str:
     """Build a digest; SafeBeach failure must not block AEMET delivery."""
 
+    translation_path = translation_cache_path or Path("state/event_translations.json")
     beach_task = (
         asyncio.create_task(fetch_beach_status())
         if collect_beach and _safebeach_is_in_season(now)
@@ -290,14 +297,28 @@ async def produce_message(
         fetch_today_library_events(
             now,
             library_agenda_state_path,
-            translation_cache_path or Path("state/event_translations.json"),
+            translation_path,
         )
     )
     am_guardamar_task = asyncio.create_task(
         fetch_today_am_guardamar_events(
             now,
             am_guardamar_state_path,
-            translation_cache_path or Path("state/event_translations.json"),
+            translation_path,
+        )
+    )
+    facv_task = asyncio.create_task(
+        fetch_today_facv_events(
+            now,
+            facv_state_path,
+            translation_path,
+        )
+    )
+    pesca_cv_task = asyncio.create_task(
+        fetch_today_pesca_cv_events(
+            now,
+            pesca_cv_state_path,
+            translation_path,
         )
     )
     traffic_task = asyncio.create_task(
@@ -358,8 +379,6 @@ async def produce_message(
             warnings_available=False,
         )
     if not collect_beach:
-        # Operational SafeBeach flags have their own seasonal root. Never
-        # resurrect them from an older AEMET snapshot in the 07:30 digest.
         digest = replace(digest, beach=None, beach_notice=None)
 
     try:
@@ -525,6 +544,22 @@ async def produce_message(
                 "AM-GUARDAMAR", "AM Guardamar", exc
             ))
         am_guardamar_events = ()
+    try:
+        facv_events = await facv_task
+    except FacvSourceError as exc:
+        LOGGER.warning("FACV local catalog unavailable; omitting events: %s", exc)
+        if diagnostics is not None:
+            diagnostics.append(source_error("FACV", "FACV", exc))
+        facv_events = ()
+    try:
+        pesca_cv_events = await pesca_cv_task
+    except PescaCvSourceError as exc:
+        LOGGER.warning("Pesca CV local catalog unavailable; omitting events: %s", exc)
+        if diagnostics is not None:
+            diagnostics.append(source_error(
+                "PESCA-CV", "Federación Pesca CV", exc
+            ))
+        pesca_cv_events = ()
 
     try:
         traffic_notices = await traffic_task
@@ -598,6 +633,8 @@ async def produce_message(
                 events,
                 library_events,
                 am_guardamar_events,
+                facv_events,
+                pesca_cv_events,
             ),
             heat_health_risk=heat_health_risk,
             cold_health_risk=cold_health_risk,
