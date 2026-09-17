@@ -1,0 +1,46 @@
+name: Temporary CAMS attribution and refresh validation
+
+on:
+  push:
+    branches:
+      - feature/aemet-morning-warning-ux
+    paths:
+      - .github/tmp_apply_cams_refresh.py
+      - .github/workflows/tmp-cams-refresh.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/aemet-morning-warning-ux
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply product patch
+        run: python .github/tmp_apply_cams_refresh.py
+      - name: Install project
+        run: python -m pip install -e .
+      - name: Focused tests
+        run: |
+          python -m unittest \
+            tests.test_cams_attribution \
+            tests.test_environment_updates \
+            tests.test_main \
+            tests.test_aemet_morning_warning_ux \
+            tests.test_digest \
+            -q
+      - name: Full test suite
+        run: python -m unittest discover -s tests -q
+      - name: Commit validated product changes
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/telegrambot/digest.py src/telegrambot/environment_updates.py src/telegrambot/__main__.py tests/test_environment_updates.py tests/test_main.py tests/test_digest.py tests/test_cams_attribution.py
+          git commit -m "Polish CAMS attribution and allow explicit morning refresh"
+          git push origin HEAD:feature/aemet-morning-warning-ux
