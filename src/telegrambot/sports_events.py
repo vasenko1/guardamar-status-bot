@@ -1,6 +1,6 @@
 """Small aggregate sports-event catalogue for the linked Guardamar guide.
 
-This module is deliberately not a generic provider framework.  It combines the
+This module is deliberately not a generic provider framework. It combines the
 two currently approved source-specific snapshots, preserves last-good data per
 source when one source fails, and formats one aggregate resident-facing card.
 """
@@ -52,7 +52,11 @@ async def refresh_sports_events_catalog(
 
     if now.tzinfo is None or now.utcoffset() is None:
         raise ValueError("sports-event observation time must be timezone-aware")
-    prior = dict(previous) if previous is not None and valid_sports_events_catalog(previous) else {}
+    prior = (
+        dict(previous)
+        if previous is not None and valid_sports_events_catalog(previous)
+        else {}
+    )
     result: dict[str, Any] = {"observed_at": now.isoformat()}
     successful = False
 
@@ -72,7 +76,10 @@ async def refresh_sports_events_catalog(
         if "pesca_cv" in prior:
             result["pesca_cv"] = prior["pesca_cv"]
 
-    if not successful and not ("facv" in result or "pesca_cv" in result):
+    if not successful:
+        if prior:
+            # Do not pretend stale last-good data was freshly observed today.
+            return prior
         raise SportsEventsSourceError("sports-event sources are unavailable")
     if not valid_sports_events_catalog(result):
         raise SportsEventsSourceError("sports-event catalogue is invalid")
@@ -100,7 +107,13 @@ def current_sports_events(
                 continue
             if end < local_day:
                 continue
-            identity = (raw.get("sport"), raw.get("title"), start, end, raw.get("place"))
+            identity = (
+                raw.get("sport"),
+                raw.get("title"),
+                start,
+                end,
+                raw.get("place"),
+            )
             if identity in seen:
                 continue
             seen.add(identity)
@@ -121,8 +134,19 @@ def current_sports_events(
 
 
 _RU_MONTHS = (
-    "", "января", "февраля", "марта", "апреля", "мая", "июня",
-    "июля", "августа", "сентября", "октября", "ноября", "декабря",
+    "",
+    "января",
+    "февраля",
+    "марта",
+    "апреля",
+    "мая",
+    "июня",
+    "июля",
+    "августа",
+    "сентября",
+    "октября",
+    "ноября",
+    "декабря",
 )
 
 
@@ -151,7 +175,13 @@ def build_sports_events_card(
 
     lines = ["🏆 <b>Спортивные мероприятия</b>"]
     if not events:
-        lines.extend(["", "Сейчас ближайшие мероприятия из подключённых официальных источников не опубликованы."])
+        lines.extend(
+            [
+                "",
+                "Сейчас ближайшие мероприятия из подключённых официальных "
+                "источников не опубликованы.",
+            ]
+        )
     else:
         for event in events:
             emoji = "♟" if event.get("sport") == "chess" else "🎣"
@@ -167,8 +197,11 @@ def build_sports_events_card(
             if isinstance(level, str) and level:
                 lines.append(f"🏅 {html.escape(level.capitalize())}")
             source_url = html.escape(str(event["source_url"]), quote=True)
-            lines.append(f'🔎 <a href="{source_url}">Подробнее у организаторов соревнования</a>')
+            lines.append(f'🔎 <a href="{source_url}">Источник и подробности</a>')
     target = "<b>Полезное о Гуардамаре</b>"
     if root_link is not None:
-        target = f'<a href="{html.escape(root_link, quote=True)}"><b>Полезное о Гуардамаре</b></a>'
+        target = (
+            f'<a href="{html.escape(root_link, quote=True)}">'
+            "<b>Полезное о Гуардамаре</b></a>"
+        )
     return with_footer("\n".join(lines) + f"\n\n⬅️ {target}")
