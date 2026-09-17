@@ -17,6 +17,8 @@ from .municipal_agenda import (
 )
 from .library_agenda import LibraryAgendaError, fetch_today_library_events
 from .am_guardamar import AmGuardamarError, fetch_today_am_guardamar_events
+from .facv import FacvSourceError, fetch_today_facv_events
+from .pesca_cv import PescaCvSourceError, fetch_today_pesca_cv_events
 
 LOGGER = logging.getLogger(__name__)
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
@@ -42,7 +44,7 @@ async def _day_events(
     translation_cache_path: Path,
     diagnostics: Optional[List[SourceDiagnostic]] = None,
 ):
-    """Collect one weekend day from the two catalogs and recurring rules."""
+    """Collect one weekend day from local catalogs and recurring rules."""
 
     try:
         agenda_events = await fetch_today_events(
@@ -103,12 +105,34 @@ async def _day_events(
                 "AM-GUARDAMAR", "AM Guardamar", exc
             ))
         am_guardamar_events = ()
+    try:
+        facv_events = await fetch_today_facv_events(
+            day,
+            translation_cache_path=translation_cache_path,
+        )
+    except FacvSourceError as exc:
+        LOGGER.warning("FACV catalog unavailable for %s; omitting: %s", day.date(), exc)
+        if diagnostics is not None:
+            diagnostics.append(source_error("FACV", "FACV", exc))
+        facv_events = ()
+    try:
+        pesca_cv_events = await fetch_today_pesca_cv_events(
+            day,
+            translation_cache_path=translation_cache_path,
+        )
+    except PescaCvSourceError as exc:
+        LOGGER.warning("Pesca CV catalog unavailable for %s; omitting: %s", day.date(), exc)
+        if diagnostics is not None:
+            diagnostics.append(source_error("PESCA-CV", "Federación Pesca CV", exc))
+        pesca_cv_events = ()
     return _merge_events(
         recurring_events(day),
         municipal_events,
         agenda_events,
         library_events,
         am_guardamar_events,
+        facv_events,
+        pesca_cv_events,
     )
 
 
