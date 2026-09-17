@@ -18,7 +18,8 @@ disabled, a 15-second timeout and a 1 MiB+1 read cap.
 - Federación Pesca CV transport contract is accepted for a bounded source
   adapter. Its current payload is already about 1.04 MB, so the implementation
   uses a 1.5 MiB response limit and exactly one source read in the existing
-  daily guide observation; no event-detail requests or inner retry loop.
+  daily event-catalog synchronization; no event-detail requests or inner retry
+  loop.
 - ChipLevante is production-reachable but still has no current future Guardamar
   row. Keep it as a candidate, not implemented code.
 - RFET is production-reachable but remains deferred because the currently
@@ -43,6 +44,11 @@ The live parser result corrected the earlier manual audit: `MAR COSTA DÚOS`
 also has a row on 29 November, so the supported range is 23–29 November, not
 23–28 November.
 
+A second read-only adapter run from the production Termux device on
+2026-09-18 at 00:29 Europe/Madrid confirmed the same contract: FACV returned
+a valid empty future set, while Pesca CV returned exactly the provincial
+17 October event and the national 23–29 November event.
+
 This completes the production transport and parser-shape acceptance for FACV
 and Federación Pesca CV. No further production source probe is required before
-running the normal test suite and previewing the guide integration.
+running the normal test suite and previewing the Morning/Weekend integration.
