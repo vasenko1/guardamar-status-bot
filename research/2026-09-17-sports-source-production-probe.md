@@ -24,7 +24,25 @@ disabled, a 15-second timeout and a 1 MiB+1 read cap.
 - RFET is production-reachable but remains deferred because the currently
   demonstrated resident value is one annual Guardamar Open.
 
-Before wiring FACV/Pesca CV into the guide, run the source modules themselves on
-the production device once to confirm that the current raw HTML is parsed by
-the deterministic table contracts. This is a parser-shape verification, not a
-new recurring runtime requirement.
+## Parser-shape verification on the production device
+
+The source modules themselves were then executed against the live HTML from the
+same Android / Termux runtime.
+
+FACV parsed successfully and returned an empty future Guardamar event set on
+2026-09-17. This is expected because the Guardamar chess events visible in the
+2026 FACV calendar before this date had already ended.
+
+Federación Pesca CV parsed successfully and returned two eligible future rows
+after the strict level filter:
+
+- `PROVINCIAL — MAR COSTA`, 17 October 2026, `ZONA B - CENTRO, LA ROQUETA Y MONCAYO`;
+- `NACIONAL — MAR COSTA DÚOS`, 23–29 November 2026, `PLAYA`.
+
+The live parser result corrected the earlier manual audit: `MAR COSTA DÚOS`
+also has a row on 29 November, so the supported range is 23–29 November, not
+23–28 November.
+
+This completes the production transport and parser-shape acceptance for FACV
+and Federación Pesca CV. No further production source probe is required before
+running the normal test suite and previewing the guide integration.
