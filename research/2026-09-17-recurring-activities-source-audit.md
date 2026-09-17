@@ -64,7 +64,10 @@ Implementation shape:
 - last-good snapshot on source failure;
 - one durable `chess` activity card linked from `Занятия и секции`;
 - no new cron, daemon, database, browser, generic provider layer or LLM parser;
-- no public change notification in the first slice.
+- the durable card must use the existing deleted-message recovery/relinking
+  behavior;
+- notify only resident-relevant semantic changes such as schedule, venue,
+  season or registration changes; raw HTML/minor churn stays silent.
 
 Before implementation, verify from production: final URL, HTTP status,
 content type, response size, redirect and that the expected school markers are
