@@ -143,7 +143,7 @@ def parse_facv_html(payload: bytes, local_day: date, observed_at: datetime) -> d
             continue
         title = " ".join(row[columns["title"]].split())
         organizer = " ".join(row[columns["organizer"]].split())
-        if not title or len(title) > 180 or len(organizer) > 180:
+        if not title or not organizer or len(title) > 180 or len(organizer) > 180:
             raise FacvSourceError("FACV target row is invalid", code="SCHEMA")
         start = _parse_date(row[columns["start"]])
         end = _parse_date(row[columns["end"]])
