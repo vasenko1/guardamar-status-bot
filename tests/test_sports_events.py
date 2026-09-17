@@ -41,7 +41,7 @@ class SportsEventsTests(unittest.TestCase):
                         "sport": "fishing",
                         "title": "Mar Costa Dúos",
                         "start": "2026-11-23",
-                        "end": "2026-11-28",
+                        "end": "2026-11-29",
                         "place": "Guardamar · Playa",
                         "organizer": "FED. ESPAÑOLA PESCA Y C.",
                         "level": "NACIONAL",
@@ -60,7 +60,7 @@ class SportsEventsTests(unittest.TestCase):
         self.assertIn("🏆 <b>Спортивные мероприятия</b>", text)
         self.assertIn("♟ <b>Open Futuro</b>", text)
         self.assertIn("🎣 <b>Mar Costa Dúos</b>", text)
-        self.assertIn("23–28 ноября 2026", text)
+        self.assertIn("23–29 ноября 2026", text)
         self.assertIn("https://t.me/c/1/99", text)
         self.assertEqual(text.count(FOOTER), 1)
         self.assertNotIn("Club Dama", text)
@@ -69,7 +69,7 @@ class SportsEventsTests(unittest.TestCase):
 
     def test_past_events_drop_from_last_good_snapshot(self):
         catalog = self._catalog()
-        events = current_sports_events(catalog, date(2026, 11, 29))
+        events = current_sports_events(catalog, date(2026, 11, 30))
         self.assertEqual(events, ())
 
     def test_empty_card_is_quiet_and_durable(self):
