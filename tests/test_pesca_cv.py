@@ -3,6 +3,7 @@ import json
 import tempfile
 import unittest
 from datetime import date, datetime
+from unittest.mock import AsyncMock, patch
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -11,6 +12,7 @@ from telegrambot.pesca_cv import (
     fetch_today_pesca_cv_events,
     parse_pesca_cv_html,
     pesca_cv_translation_items,
+    refresh_pesca_cv_catalog,
     valid_pesca_cv_snapshot,
 )
 
@@ -97,9 +99,102 @@ class PescaCvParserTests(unittest.TestCase):
             ))
             items = asyncio.run(pesca_cv_translation_items(observed, state))
         self.assertEqual(len(events), 1)
-        self.assertEqual(events[0].title, "Mar Costa Dúos")
+        self.assertEqual(
+            events[0].title,
+            "Национальные соревнования — Mar Costa Dúos",
+        )
         self.assertEqual(events[0].active_until, date(2026, 11, 29))
         self.assertEqual(items, (("pesca_cv", "Mar Costa Dúos"),))
+
+    def test_validator_rejects_non_guardamar_place(self):
+        observed = datetime(2026, 9, 17, 5, 10, tzinfo=MADRID)
+        snapshot = parse_pesca_cv_html(
+            _html(
+                "<tr><td>17/10/2026</td><td>0</td>"
+                "<td>DELEGACIÓN ALICANTE</td><td>PROVINCIAL</td>"
+                "<td>MAR COSTA</td><td>GUARDAMAR</td>"
+                "<td>ALICANTE</td><td>PLAYA</td></tr>"
+            ),
+            date(2026, 9, 17),
+            observed,
+        )
+        snapshot["events"][0]["place"] = "Torrevieja"
+        self.assertFalse(valid_pesca_cv_snapshot(snapshot))
+
+    def test_refresh_preserves_last_good_on_source_failure(self):
+        observed = datetime(2026, 9, 17, 5, 10, tzinfo=MADRID)
+        snapshot = parse_pesca_cv_html(
+            _html(
+                "<tr><td>17/10/2026</td><td>0</td>"
+                "<td>DELEGACIÓN ALICANTE</td><td>PROVINCIAL</td>"
+                "<td>MAR COSTA</td><td>GUARDAMAR</td>"
+                "<td>ALICANTE</td><td>PLAYA</td></tr>"
+            ),
+            date(2026, 9, 17),
+            observed,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "pesca.json"
+            state.write_text(json.dumps(snapshot), encoding="utf-8")
+            with patch(
+                "telegrambot.pesca_cv.fetch_pesca_cv_snapshot",
+                new=AsyncMock(
+                    side_effect=PescaCvSourceError("down", code="NETWORK")
+                ),
+            ):
+                events = asyncio.run(refresh_pesca_cv_catalog(observed, state))
+            saved = json.loads(state.read_text(encoding="utf-8"))
+        self.assertEqual(len(events), 1)
+        self.assertEqual(saved, snapshot)
+
+    def test_successful_empty_refresh_replaces_old_future_event(self):
+        observed = datetime(2026, 9, 17, 5, 10, tzinfo=MADRID)
+        previous = parse_pesca_cv_html(
+            _html(
+                "<tr><td>17/10/2026</td><td>0</td>"
+                "<td>DELEGACIÓN ALICANTE</td><td>PROVINCIAL</td>"
+                "<td>MAR COSTA</td><td>GUARDAMAR</td>"
+                "<td>ALICANTE</td><td>PLAYA</td></tr>"
+            ),
+            date(2026, 9, 17),
+            observed,
+        )
+        current = {"observed_at": observed.isoformat(), "events": []}
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "pesca.json"
+            state.write_text(json.dumps(previous), encoding="utf-8")
+            with patch(
+                "telegrambot.pesca_cv.fetch_pesca_cv_snapshot",
+                new=AsyncMock(return_value=current),
+            ):
+                events = asyncio.run(refresh_pesca_cv_catalog(observed, state))
+            saved = json.loads(state.read_text(encoding="utf-8"))
+        self.assertEqual(events, ())
+        self.assertEqual(saved["events"], [])
+
+    def test_corrupt_local_state_recovers_from_valid_remote(self):
+        observed = datetime(2026, 9, 17, 5, 10, tzinfo=MADRID)
+        current = parse_pesca_cv_html(
+            _html(
+                "<tr><td>17/10/2026</td><td>0</td>"
+                "<td>DELEGACIÓN ALICANTE</td><td>PROVINCIAL</td>"
+                "<td>MAR COSTA</td><td>GUARDAMAR</td>"
+                "<td>ALICANTE</td><td>PLAYA</td></tr>"
+            ),
+            date(2026, 9, 17),
+            observed,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "pesca.json"
+            state.write_text("{broken", encoding="utf-8")
+            with patch(
+                "telegrambot.pesca_cv.fetch_pesca_cv_snapshot",
+                new=AsyncMock(return_value=current),
+            ):
+                events = asyncio.run(refresh_pesca_cv_catalog(observed, state))
+            saved = json.loads(state.read_text(encoding="utf-8"))
+        self.assertEqual(len(events), 1)
+        self.assertTrue(valid_pesca_cv_snapshot(saved))
 
 
 if __name__ == "__main__":
