@@ -1,10 +1,16 @@
+import asyncio
+import json
+import tempfile
 import unittest
 from datetime import date, datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from telegrambot.pesca_cv import (
     PescaCvSourceError,
+    fetch_today_pesca_cv_events,
     parse_pesca_cv_html,
+    pesca_cv_translation_items,
     valid_pesca_cv_snapshot,
 )
 
@@ -67,6 +73,33 @@ class PescaCvParserTests(unittest.TestCase):
                 date(2026, 9, 17),
                 datetime(2026, 9, 17, 16, 30, tzinfo=MADRID),
             )
+
+    def test_cached_reader_returns_active_multi_day_competition(self):
+        observed = datetime(2026, 9, 17, 5, 10, tzinfo=MADRID)
+        rows = []
+        for day in range(23, 30):
+            rows.append(
+                f"<tr><td>{day:02d}/11/2026</td><td>0</td><td>FED. ESPAÑOLA PESCA Y C.</td><td>NACIONAL</td><td>MAR COSTA DÚOS</td><td>GUARDAMAR</td><td>ALICANTE</td><td>PLAYA *</td></tr>"
+            )
+        snapshot = parse_pesca_cv_html(
+            _html("".join(rows)),
+            date(2026, 9, 17),
+            observed,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "pesca.json"
+            translations = Path(directory) / "translations.json"
+            state.write_text(json.dumps(snapshot), encoding="utf-8")
+            events = asyncio.run(fetch_today_pesca_cv_events(
+                datetime(2026, 11, 25, 7, 30, tzinfo=MADRID),
+                state,
+                translations,
+            ))
+            items = asyncio.run(pesca_cv_translation_items(observed, state))
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].title, "Mar Costa Dúos")
+        self.assertEqual(events[0].active_until, date(2026, 11, 29))
+        self.assertEqual(items, (("pesca_cv", "Mar Costa Dúos"),))
 
 
 if __name__ == "__main__":
