@@ -1,8 +1,18 @@
+import asyncio
+import json
+import tempfile
 import unittest
 from datetime import date, datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from telegrambot.facv import FacvSourceError, parse_facv_html, valid_facv_snapshot
+from telegrambot.facv import (
+    FacvSourceError,
+    facv_translation_items,
+    fetch_today_facv_events,
+    parse_facv_html,
+    valid_facv_snapshot,
+)
 
 
 MADRID = ZoneInfo("Europe/Madrid")
@@ -54,6 +64,36 @@ class FacvParserTests(unittest.TestCase):
                 date(2026, 9, 17),
                 datetime(2026, 9, 17, 16, 30, tzinfo=MADRID),
             )
+
+    def test_cached_reader_returns_only_event_active_on_requested_day(self):
+        observed = datetime(2026, 9, 17, 5, 10, tzinfo=MADRID)
+        snapshot = parse_facv_html(
+            _html(
+                """
+                <tr><td>1</td><td>Festival Guardamar</td><td>18/09/2026</td><td>20/09/2026</td><td>Guardamar del Segura</td><td>Club Dama</td><td></td></tr>
+                <tr><td>2</td><td>Open futuro</td><td>25/09/2026</td><td>25/09/2026</td><td>Guardamar del Segura</td><td>Club Dama</td><td></td></tr>
+                """
+            ),
+            date(2026, 9, 17),
+            observed,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "facv.json"
+            translations = Path(directory) / "translations.json"
+            state.write_text(json.dumps(snapshot), encoding="utf-8")
+            events = asyncio.run(fetch_today_facv_events(
+                datetime(2026, 9, 19, 7, 30, tzinfo=MADRID),
+                state,
+                translations,
+            ))
+            items = asyncio.run(facv_translation_items(observed, state))
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].title, "Festival Guardamar")
+        self.assertEqual(events[0].active_until, date(2026, 9, 20))
+        self.assertEqual(
+            items,
+            (("facv", "Festival Guardamar"), ("facv", "Open futuro")),
+        )
 
 
 if __name__ == "__main__":
