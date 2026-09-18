@@ -148,6 +148,23 @@ class AgendaNormalizationTests(unittest.TestCase):
         self.assertEqual(event.ticket_price_cents, 2500)
         self.assertIn("webfecha=07/08/2026", event.ticket_url)
 
+    def test_reads_from_price_before_crossed_reference_price(self):
+        payload = b"""
+        <script type="application/ld+json">
+        {"@type":"Event","name":"VISITA GUIADA MEMORIA DE ARENA",
+         "startDate":"2026-09-18T10:00"}
+        </script>
+        <p>Regular: 5\x80</p>
+        <p>Des de: 4\x80 <del>5\x80</del></p>
+        <a href=//www.agendaguardamar.com/entradas/12/tour.html?webfecha=18/09/2026&amp;webhora=10:00&amp;websala=12>
+        """
+
+        event = normalize_event_page(payload, date(2026, 9, 18))
+
+        self.assertIsNotNone(event)
+        self.assertEqual(event.ticket_price_cents, 400)
+        self.assertTrue(event.ticket_price_is_from)
+
     def test_calendar_fallback_recovers_event_with_quoted_stage_name(self):
         payload = """
         <script type="application/ld+json">
@@ -647,7 +664,8 @@ class AgendaCollectionTests(unittest.IsolatedAsyncioTestCase):
             starts_at=datetime(2026, 8, 2, 10, 0, tzinfo=TZ),
             ends_at=datetime(2026, 8, 2, 12, 0, tzinfo=TZ),
             place="Castillo de Guardamar",
-            ticket_price_cents=500,
+            ticket_price_cents=400,
+            ticket_price_is_from=True,
             ticket_url=(
                 "https://www.agendaguardamar.com/entradas/12/tour.html"
                 "?webfecha=02/08/2026&webhora=10:00"

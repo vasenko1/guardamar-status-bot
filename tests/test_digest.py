@@ -1146,6 +1146,29 @@ class DigestMessageTests(unittest.TestCase):
             message,
         )
 
+    def test_ticket_link_with_lower_bound_price_uses_from_label(self):
+        digest = MorningDigest(
+            weather=None,
+            warnings=(),
+            warnings_available=True,
+            events=(Event(
+                title="Экскурсия «Memoria de Arena»",
+                starts_at=None,
+                ticket_price_cents=400,
+                ticket_price_is_from=True,
+                ticket_url="https://www.agendaguardamar.com/entradas/12/tour.html",
+            ),),
+        )
+
+        message = build_message(digest)
+
+        self.assertIn(
+            '🎟 <a href="https://www.agendaguardamar.com/entradas/12/tour.html">'
+            'Билеты от 4 €</a>',
+            message,
+        )
+        self.assertNotIn(">Билет 4 €</a>", message)
+
     def test_non_geographic_meeting_instruction_is_not_a_map_link(self):
         digest = MorningDigest(
             weather=None,

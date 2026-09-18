@@ -1063,7 +1063,11 @@ def _render_event_details(event, indent: str) -> List[str]:
         amount = f"{int(price)}" if price.is_integer() else (
             f"{price:.2f}".replace(".", ",")
         )
-        ticket_label = f"Билет {amount} €"
+        ticket_label = (
+            f"Билеты от {amount} €"
+            if event.ticket_price_is_from
+            else f"Билет {amount} €"
+        )
     else:
         ticket_label = "Билеты" if event.ticket_url else ""
     if ticket_label:
