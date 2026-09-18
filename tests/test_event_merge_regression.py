@@ -69,15 +69,25 @@ class MunicipalAdmissionRegressionTests(unittest.TestCase):
             end_time=None,
             place="Castillo de Guardamar",
             category="event",
-            sources=("todo_cultura", "todo_cultura_detail"),
-            ticket_price_cents=400,
-            admission_evidence=(
+            sources=("todo_cultura",),
+        )
+        admission = TodoCulturaAdmission(
+            title_hint="10 h.: Visita guiada Memoria de arena",
+            price_cents=400,
+            evidence=(
                 "El precio de las entradas es de 4 euros para niños, "
                 "estudiantes y jubilados; y de 5 euros para el resto."
             ),
+            event_date=date(2026, 9, 18),
+            start_time="10:00",
+            event_dates=(date(2026, 9, 18),),
+            distance_label="1,5 км",
         )
 
-        self.assertIsNone(_display_ticket_price_cents(source))
+        enriched, = _enrich_admissions((source,), (admission,))
+
+        self.assertEqual(enriched.details, ("1,5 км",))
+        self.assertIsNone(_display_ticket_price_cents(enriched))
 
     def test_free_admission_remains_free_without_competing_tariffs(self):
         source = SourceEvent(
