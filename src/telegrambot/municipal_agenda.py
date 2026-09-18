@@ -246,8 +246,6 @@ def extract_official_cinema(
         if identity is None:
             continue
         place = canonical_event_place(" ".join(identity.group("place").split()))
-        if place.casefold() in {"escuela de música", "escola de música"}:
-            place = "Escola de Música"
         title = " ".join(identity.group("title").split()).strip(" .")
         attributes = body[identity.end():]
         age_match = re.search(r"\+\s*(\d{1,2})\s*/", attributes)
