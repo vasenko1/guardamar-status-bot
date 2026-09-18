@@ -46,6 +46,7 @@ def literary(**changes):
         "day": "tuesday",
         "start_time": "11:00",
         "end_time": "13:00",
+        "venue": "library_auditorium",
     }
     value.update(changes)
     return value
