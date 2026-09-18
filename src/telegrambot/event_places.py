@@ -46,6 +46,8 @@ def canonical_event_place(value: str) -> str:
     """Return a compact venue without treating event prose as an address."""
 
     compact = " ".join(value.split()).strip(" ,.;")
+    if compact.casefold() in {"escuela de música", "escola de música"}:
+        return "Escola de Música"
     if _LIBRARY_HALL.fullmatch(compact):
         return "Biblioteca Municipal (Hall)"
     match = _EMBEDDED_STREET.search(compact)
