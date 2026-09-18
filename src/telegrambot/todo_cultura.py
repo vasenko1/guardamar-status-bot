@@ -457,7 +457,7 @@ def _ticket_url(fragment: str) -> Optional[str]:
                 "agendaguardamar.com",
                 "www.agendaguardamar.com",
             }
-            and not parsed.path.startswith("/entradas/")
+            and not parsed.path.startswith(("/entradas/", "/espectaculo/"))
         ):
             continue
         return normalized
