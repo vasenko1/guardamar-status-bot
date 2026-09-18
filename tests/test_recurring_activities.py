@@ -56,7 +56,8 @@ def _chess_snapshot():
 def _literary_snapshot():
     payload = (
         "<html><body>Tertulia Literaria de Guardamar. "
-        "Todos los martes de 11:00 a 13:00.</body></html>"
+        "Todos los martes de 11:00 a 13:00 en el salón de actos "
+        "de la Biblioteca Pública Municipal.</body></html>"
     ).encode("utf-8")
     return extract_literary(payload, NOW)
 
