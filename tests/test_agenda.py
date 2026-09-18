@@ -74,6 +74,8 @@ class AgendaNormalizationTests(unittest.TestCase):
          "location":{"name":"ayuntamientoguardamardelsegura"}}
         </script>
         <p>Punto de encuentro: Castillo de Guardamar
+        Itinerario: Castillo - Parque Alfonso XIII - Fonteta - R\xe1bita
+        Distancia: 1,5 km
         Duraci\xf3n 2 horas aprox
         ENTRADA:
         Regular: 5\x80</p>
@@ -91,6 +93,7 @@ class AgendaNormalizationTests(unittest.TestCase):
         self.assertIsNone(events[0].place)
         self.assertEqual(events[0].meeting_point, "Castillo de Guardamar")
         self.assertEqual(events[0].duration_minutes, 120)
+        self.assertEqual(events[0].details, ("1,5 км",))
         self.assertEqual(events[0].ticket_price_cents, 500)
         self.assertIn("webfecha=08/08/2026", events[0].ticket_url)
         later = normalize_event_page(payload, date(2026, 8, 15))

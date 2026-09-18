@@ -210,6 +210,7 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
             starts_at=start,
             place="Castell",
             ticket_url=booking_url,
+            details=("1,5 км",),
         )
 
         corrected = _prefer_agenda_guardamar_venues((municipal,), (agenda,))
@@ -218,8 +219,23 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
         self.assertEqual(corrected[0].title, municipal.title)
         self.assertEqual(corrected[0].place, municipal.place)
         self.assertEqual(corrected[0].ticket_url, booking_url)
+        self.assertEqual(
+            corrected[0].route,
+            "замок, парк Альфонсо XIII, Фонтета и Рабита",
+        )
         self.assertEqual(len(merged), 1)
         self.assertEqual(merged[0].ticket_url, booking_url)
+        self.assertEqual(merged[0].details, ("1,5 км",))
+        self.assertEqual(merged[0].route, corrected[0].route)
+        rendered = "\n".join(build_event_section(
+            merged,
+            "🎭 <b>События</b>",
+        ))
+        self.assertIn(
+            "Маршрут: замок, парк Альфонсо XIII, Фонтета и Рабита",
+            rendered,
+        )
+        self.assertIn("1,5 км", rendered)
 
     def test_different_agenda_id_does_not_bypass_title_matching(self):
         start = datetime(2026, 9, 18, 10, 0, tzinfo=MADRID)
@@ -247,6 +263,7 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
         corrected = _prefer_agenda_guardamar_venues((municipal,), (other,))
 
         self.assertEqual(corrected[0].ticket_url, detail_url)
+        self.assertIsNone(corrected[0].route)
 
     def test_existing_direct_agenda_booking_is_not_replaced(self):
         existing = (

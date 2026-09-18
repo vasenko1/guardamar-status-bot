@@ -419,8 +419,8 @@ def _ticket_url(value: str, starts_at: datetime) -> Optional[str]:
 
 def _page_facts(
     payload: bytes,
-) -> Tuple[Optional[int], Optional[int], Optional[str]]:
-    """Read bounded duration, regular price and meeting point from official text."""
+) -> Tuple[Optional[int], Optional[int], Optional[str], Tuple[str, ...]]:
+    """Read bounded event facts from one official detail page."""
 
     markup = payload.decode("cp1252", "replace")
     text = " ".join(
@@ -465,7 +465,22 @@ def _page_facts(
     )
     if place_match is not None:
         place = " ".join(html.unescape(place_match.group(1)).split())
-    return duration, price, place
+    details = []
+    distance_match = re.search(
+        r"\bDistancia\s*:?\s*(\d{1,3}(?:[,.]\d{1,2})?)\s*"
+        r"(?:km(?:s)?|kil[oó]metros?)\b",
+        text,
+        re.IGNORECASE,
+    )
+    if distance_match is not None:
+        raw_distance = distance_match.group(1)
+        distance = float(raw_distance.replace(",", "."))
+        if 0 < distance <= 100:
+            label = raw_distance.replace(".", ",")
+            if label.endswith(",0"):
+                label = label[:-2]
+            details.append(f"{label} км")
+    return duration, price, place, tuple(details)
 
 
 def _page_sessions(payload: bytes) -> Tuple[Tuple[datetime, str], ...]:
@@ -537,7 +552,9 @@ def normalize_event_pages(
     if base_event is None:
         return ()
 
-    duration_hours, price_cents, meeting_point = _page_facts(payload)
+    duration_hours, price_cents, meeting_point, page_details = _page_facts(
+        payload
+    )
     place = base_event.place or _calendar_place(payload)
     if (
         meeting_point is None
@@ -570,6 +587,7 @@ def normalize_event_pages(
             ticket_price_cents=price_cents,
             ticket_url=ticket_url or None,
             duration_minutes=duration_hours * 60 if duration_hours is not None else None,
+            details=tuple(dict.fromkeys((*base_event.details, *page_details))),
         ))
     return tuple(result)
 

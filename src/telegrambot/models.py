@@ -76,6 +76,7 @@ class Event:
     schedule_note: Optional[str] = None
     access_note: Optional[str] = None
     active_from: Optional[date] = None
+    route: Optional[str] = None
 
 
 @dataclass(frozen=True)

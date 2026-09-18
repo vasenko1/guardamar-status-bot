@@ -1021,6 +1021,8 @@ def _render_event_details(event, indent: str) -> List[str]:
     """One optional detail contract for standalone and programme events."""
 
     rows = []
+    if event.route:
+        rows.append(indent + "Маршрут: " + html.escape(event.route))
     facts = [*event.details]
     if event.duration_minutes is not None:
         facts.append(f"{event.duration_minutes} мин")
