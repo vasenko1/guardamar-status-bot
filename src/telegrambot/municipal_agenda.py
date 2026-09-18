@@ -158,10 +158,14 @@ def _detail_label(value: str) -> str:
 
 
 def _cinema_title(value: str) -> str:
-    """Mark verified cinema without inventing metadata."""
+    """Mark verified cinema while preserving the established Monday label."""
 
     value = " ".join(value.split()).strip()
     folded = value.casefold()
+    monday_prefix = "cine de los lunes: "
+    if folded.startswith(monday_prefix):
+        film = spanish_fallback(value[len(monday_prefix):].strip())
+        return f"Кино по понедельникам: «{film}»"
     for prefix in ("cine: ", "кино: "):
         if folded.startswith(prefix):
             return "🎬 " + value[len(prefix):].strip()
@@ -3292,7 +3296,13 @@ async def fetch_today_municipal_events(
         result.append(
             Event(
                 title=(
-                    _cinema_title(title)
+                    _cinema_title(
+                        source.title_es
+                        if source.title_es.casefold().startswith(
+                            "cine de los lunes:"
+                        )
+                        else title
+                    )
                     if "turismo_cinema" in source.sources else title
                 ),
                 starts_at=starts_at,
@@ -3337,6 +3347,10 @@ async def municipal_translation_items(
     items = [
         ("municipal_agenda", event.title_es)
         for event in events
+        if not (
+            "turismo_cinema" in event.sources
+            and event.title_es.casefold().startswith("cine de los lunes:")
+        )
     ]
     items.extend(("municipal_agenda_teaser", event.teaser_es)
                  for event in events if event.teaser_es)
