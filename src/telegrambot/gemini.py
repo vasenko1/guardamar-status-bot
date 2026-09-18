@@ -105,6 +105,18 @@ EVENT_TRANSLATION_SCHEMA = {
     },
     "required": ["titles_ru"],
 }
+EVENT_TEASER_TRANSLATION_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "teasers_ru": {
+            "type": "array",
+            "maxItems": 80,
+            "items": {"type": "string"},
+        }
+    },
+    "required": ["teasers_ru"],
+}
 MARKET_STATUS_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
