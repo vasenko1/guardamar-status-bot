@@ -64,8 +64,7 @@ class OfficialCinemaFactsTests(unittest.TestCase):
             self.assertIn(title, event.title_es)
             self.assertEqual(event.duration_minutes, duration)
             self.assertEqual(event.audience_label, audience)
-            self.assertEqual(event.details[0], genre)
-            self.assertTrue(any(item.startswith("реж. ") for item in event.details))
+            self.assertEqual(event.details, (genre,))
             self.assertEqual(event.ticket_price_cents, 0)
             self.assertTrue(event.capacity_limited)
             self.assertEqual(event.access_note, "до заполнения зала")
@@ -79,7 +78,7 @@ class OfficialCinemaFactsTests(unittest.TestCase):
         self.assertEqual(event.audience_label, "13+")
         self.assertEqual(
             event.details,
-            ("Comedia", "Испания", "реж. Directora Desconocida"),
+            ("Comedia",),
         )
         self.assertEqual(event.ticket_price_cents, 0)
         self.assertTrue(event.capacity_limited)
@@ -95,18 +94,12 @@ class OfficialCinemaFactsTests(unittest.TestCase):
             FUTURE.replace("103 min", "sin duración"), "2026-10"
         )
         self.assertIsNone(no_duration.duration_minutes)
-        self.assertEqual(
-            no_duration.details,
-            ("Испания", "реж. Directora Desconocida"),
-        )
+        self.assertEqual(no_duration.details, ())
         no_genre, = extract_official_cinema(
             FUTURE.replace("Comedia / ", ""), "2026-10"
         )
         self.assertEqual(no_genre.duration_minutes, 103)
-        self.assertEqual(
-            no_genre.details,
-            ("Испания", "реж. Directora Desconocida"),
-        )
+        self.assertEqual(no_genre.details, ())
         paid, = extract_official_cinema(
             FUTURE.replace(
                 "Entrada libre hasta completar aforo", "Precio: 5 €"
@@ -171,17 +164,14 @@ class OfficialCinemaFactsTests(unittest.TestCase):
         self.assertEqual(event.title, "Кино по понедельникам: «Respect»")
         self.assertEqual(event.duration_minutes, 144)
         self.assertEqual(event.audience_label, "12+")
-        self.assertEqual(
-            event.details,
-            ("Драма", "США", "реж. Liesl Tommy"),
-        )
+        self.assertEqual(event.details, ("Драма",))
         self.assertEqual(event.ticket_price_cents, 0)
         self.assertTrue(event.capacity_limited)
         self.assertIn("госпела", event.teaser)
         rendered = event_lines(event)
         self.assertIn("<b>18:00</b>", rendered)
         self.assertNotIn("20:00", rendered)
-        self.assertIn("Драма • США • реж. Liesl Tommy • 144 мин • 12+", rendered)
+        self.assertIn("Драма • 144 мин • 12+", rendered)
         self.assertIn("🎟 Бесплатно · до заполнения зала", rendered)
         self.assertIn("Biblioteca", rendered)
 
