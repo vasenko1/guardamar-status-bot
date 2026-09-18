@@ -284,7 +284,57 @@ class TodoCulturaTests(unittest.TestCase):
 
         details.assert_called_once_with([128245])
         self.assertEqual(window.programs[0].dates, (date(2026, 8, 9),))
-        self.assertEqual(window.source_state["parser_version"], 11)
+        self.assertEqual(window.source_state["parser_version"], 12)
+
+    def test_parser_upgrade_reopens_processed_date_with_free_admission(self):
+        prior = {
+            "parser_version": 11,
+            "cursor_modified_gmt": "2026-09-17T10:00:00",
+            "covered_dates": ["2026-09-18"],
+            "candidates": [{
+                "id": 181,
+                "modified_gmt": "2026-09-17T10:00:00",
+                "link": "https://todoculturavegabaja.es/eventos/agenda-septiembre/",
+                "dates": ["2026-09-18"],
+                "processed_dates": ["2026-09-18"],
+                "detail_checked": True,
+            }],
+        }
+        document = {
+            "id": 181,
+            "modified_gmt": "2026-09-17T10:00:00",
+            "link": "https://todoculturavegabaja.es/eventos/agenda-septiembre/",
+            "content": {"rendered": (
+                "<p>El Ayuntamiento de Guardamar publica la agenda municipal.</p>"
+                "<p>Viernes 18 de septiembre</p>"
+                "<p>19 h.: Sesión de cine en la Escola de Música con la "
+                "película alemana titulada ‘Todos nos llamamos Ali’.</p>"
+                "<p>La entrada es gratuita con invitación. Las reservas se "
+                "realizarán a través de página web de ‘Agenda de Guardamar’.</p>"
+            )},
+        }
+        with (
+            patch("telegrambot.todo_cultura._read_metadata", return_value=[]),
+            patch(
+                "telegrambot.todo_cultura._read_documents",
+                return_value=[document],
+            ) as details,
+        ):
+            window = _read_program_window(date(2026, 9, 18), prior)
+
+        details.assert_called_once_with([181])
+        self.assertEqual(window.source_state["parser_version"], 12)
+        self.assertEqual(len(window.programs), 1)
+        self.assertEqual(window.programs[0].dates, (date(2026, 9, 18),))
+        admissions = window.programs[0].admissions
+        self.assertTrue(admissions)
+        matching = next(
+            admission for admission in admissions
+            if "Todos nos llamamos Ali" in admission.title_hint
+        )
+        self.assertEqual(matching.price_cents, 0)
+        self.assertEqual(matching.start_time, "19:00")
+        self.assertIn(date(2026, 9, 18), matching.event_dates)
 
     def test_same_date_candidates_are_each_processed(self):
         prior = {
