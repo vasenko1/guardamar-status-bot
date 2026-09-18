@@ -93,6 +93,61 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
         )
         self.assertIn(">Бесплатно · Получить билет</a>", rendered)
 
+    def test_direct_booking_replaces_same_event_agenda_detail_page(self):
+        municipal = Event(
+            title="Все мы зовемся Али",
+            starts_at=START,
+            place="Escola de Música",
+            ticket_price_cents=0,
+            ticket_url=(
+                "https://www.agendaguardamar.com/espectaculo/2/"
+                "todos-nos-llamamos-ali-de-rainer-werner-fassbinder-1973.html"
+            ),
+        )
+        agenda = Event(
+            title="Все мы зовемся Али, Райнер Вернер Фассбиндер, 1973",
+            starts_at=START,
+            place="Escola de Música",
+            ticket_url=AGENDA_URL,
+        )
+
+        corrected = _prefer_agenda_guardamar_venues(
+            (municipal,),
+            (agenda,),
+        )
+
+        self.assertEqual(corrected[0].place, "Escola de Música")
+        self.assertEqual(corrected[0].ticket_price_cents, 0)
+        self.assertEqual(corrected[0].ticket_url, AGENDA_URL)
+
+    def test_existing_direct_agenda_booking_is_not_replaced(self):
+        existing = (
+            "https://www.agendaguardamar.com/entradas/9/existing.html"
+            "?webfecha=18/09/2026&webhora=19:00"
+        )
+        municipal = Event(
+            title="Concierto Alpha",
+            starts_at=START,
+            place="Casa de Cultura",
+            ticket_url=existing,
+        )
+        agenda = Event(
+            title="Concierto Alpha",
+            starts_at=START,
+            place="Casa de Cultura",
+            ticket_url=(
+                "https://www.agendaguardamar.com/entradas/2/alpha.html"
+                "?webfecha=18/09/2026&webhora=19:00"
+            ),
+        )
+
+        corrected = _prefer_agenda_guardamar_venues(
+            (municipal,),
+            (agenda,),
+        )
+
+        self.assertEqual(corrected[0].ticket_url, existing)
+
     def test_non_agenda_ticket_url_cannot_replace_existing_venue(self):
         municipal = Event(
             title="Концерт Alpha",
