@@ -473,6 +473,33 @@ async def fetch_dinamizacion_snapshot(
     return _extract_snapshot(form, campaign_url, form_url, season, now)
 
 
+async def refresh_dinamizacion_snapshot(
+    previous: Any,
+    now: datetime,
+) -> dict:
+    """Refresh the already-discovered current form without refetching its detail."""
+
+    if not valid_dinamizacion_snapshot(previous):
+        raise DinamizacionSourceError(
+            "previous Dinamización snapshot is invalid", code="SCHEMA"
+        )
+    form_url = previous["form_url"]
+    form = await asyncio.to_thread(
+        _fetch,
+        form_url,
+        allowed=_allowed_form_url,
+        limit_bytes=FORM_LIMIT_BYTES,
+        accepted_types=frozenset({"text/html", "application/xhtml+xml"}),
+    )
+    return _extract_snapshot(
+        form,
+        previous["campaign_url"],
+        form_url,
+        previous["season"],
+        now,
+    )
+
+
 def valid_dinamizacion_snapshot(value: Any) -> bool:
     if not isinstance(value, dict):
         return False
