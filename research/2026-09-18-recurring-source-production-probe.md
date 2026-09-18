@@ -126,9 +126,9 @@ Results:
 The production source/parser acceptance for Chess, Tertulia and Dinamización
 is therefore complete.
 
-## Final readiness for first implementation
+## Final readiness / implementation status
 
-Ready now:
+Source/parser accepted and implemented in draft PR #110, not yet deployed:
 
 - `♟️ Шахматы`;
 - `✍️ Литературное творчество`;
