@@ -81,6 +81,69 @@ def _is_routine_event(event) -> bool:
     return _normalized_event_title(event.title) in _ROUTINE_EVENT_TITLES
 
 
+def _prefer_agenda_guardamar_venues(municipal_events, agenda_events):
+    """Repair only strong municipal/Agenda Guardamar venue conflicts."""
+
+    def words(value):
+        aliases = {"castell": "castillo"}
+        return {
+            aliases.get(word, word)
+            for word in _normalized_event_title(value).split()
+            if len(word) > 2 and word != "guardamar"
+        }
+
+    def overlap(left, right):
+        left_words = words(left)
+        right_words = words(right)
+        if not left_words or not right_words:
+            return 0.0
+        return len(left_words & right_words) / min(
+            len(left_words), len(right_words)
+        )
+
+    result = []
+    for current in municipal_events:
+        if (
+            current.place is None
+            or current.ticket_url is not None
+            or current.starts_at is None
+        ):
+            result.append(current)
+            continue
+        candidates = []
+        current_words = words(current.title)
+        for candidate in agenda_events:
+            if (
+                candidate.starts_at != current.starts_at
+                or candidate.place is None
+                or candidate.ticket_url is None
+            ):
+                continue
+            normalized_url = normalize_ticket_url(candidate.ticket_url)
+            if normalized_url is None:
+                continue
+            parsed = urllib.parse.urlparse(normalized_url)
+            shared = current_words & words(candidate.title)
+            if (
+                parsed.hostname not in {
+                    "agendaguardamar.com",
+                    "www.agendaguardamar.com",
+                }
+                or not parsed.path.startswith("/entradas/")
+                or len(shared) < 2
+                or overlap(current.title, candidate.title) < 0.75
+                or _normalized_event_title(candidate.place)
+                == "guardamar del segura"
+                or overlap(current.place, candidate.place) >= 0.5
+            ):
+                continue
+            candidates.append(candidate)
+        if len(candidates) == 1:
+            current = replace(current, place=candidates[0].place)
+        result.append(current)
+    return tuple(result)
+
+
 def _merge_events(*groups):
     result = []
 
@@ -136,33 +199,6 @@ def _merge_events(*groups):
             len(left_words), len(right_words)
         )
 
-    def preferred_place(current, candidate):
-        """Use Agenda Guardamar's structured venue only for a strong match."""
-
-        if current.place is None:
-            return candidate.place
-        if candidate.place is None or current.ticket_url is not None:
-            return current.place
-        normalized_url = normalize_ticket_url(candidate.ticket_url or "")
-        if normalized_url is None:
-            return current.place
-        parsed = urllib.parse.urlparse(normalized_url)
-        if (
-            parsed.hostname not in {
-                "agendaguardamar.com",
-                "www.agendaguardamar.com",
-            }
-            or not parsed.path.startswith("/entradas/")
-            or current.starts_at is None
-            or candidate.starts_at is None
-            or current.starts_at != candidate.starts_at
-            or overlap(current.title, candidate.title) < 0.75
-            or normalize_title(candidate.place) == "guardamar del segura"
-            or overlap(current.place, candidate.place) >= 0.5
-        ):
-            return current.place
-        return candidate.place
-
     for group in groups:
         for event in group:
             if _is_routine_event(event):
@@ -194,7 +230,7 @@ def _merge_events(*groups):
                     title=richer_title(current.title, event.title),
                     starts_at=current.starts_at or event.starts_at,
                     ends_at=current.ends_at or event.ends_at,
-                    place=preferred_place(current, event),
+                    place=current.place or event.place,
                     ticket_price_cents=(
                         current.ticket_price_cents
                         if current.ticket_price_cents is not None
@@ -644,6 +680,11 @@ async def produce_message(
                 diagnostics.append(source_error(
                     "PHARMACY", "Дежурные аптеки", exc
                 ))
+
+    municipal_events = _prefer_agenda_guardamar_venues(
+        municipal_events,
+        events,
+    )
 
     return build_message(
         replace(
