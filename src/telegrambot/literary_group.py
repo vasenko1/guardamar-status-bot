@@ -21,6 +21,11 @@ _SCHEDULE_RE = re.compile(
     r"todos\s+los\s+martes.*?(\d{1,2}:\d{2}).*?(\d{1,2}:\d{2})",
     re.IGNORECASE | re.DOTALL,
 )
+_VENUE_RE = re.compile(
+    r"sal[oó]n\s+de\s+actos.*?biblioteca\s+p[uú]blica\s+municipal",
+    re.IGNORECASE | re.DOTALL,
+)
+VENUE = "library_auditorium"
 
 
 class LiteraryGroupSourceError(RuntimeError):
@@ -77,6 +82,10 @@ def _extract_snapshot(payload: bytes, now: datetime) -> dict:
         raise LiteraryGroupSourceError(
             "literary-group schedule markers are missing", code="SCHEMA"
         )
+    if _VENUE_RE.search(text) is None:
+        raise LiteraryGroupSourceError(
+            "literary-group venue marker is missing", code="SCHEMA-VENUE"
+        )
     start_time, end_time = match.group(1), match.group(2)
     if start_time >= end_time:
         raise LiteraryGroupSourceError(
@@ -88,6 +97,7 @@ def _extract_snapshot(payload: bytes, now: datetime) -> dict:
         "day": "tuesday",
         "start_time": start_time,
         "end_time": end_time,
+        "venue": VENUE,
     }
 
 
@@ -121,6 +131,7 @@ def valid_literary_group_snapshot(value: Any) -> bool:
         "day",
         "start_time",
         "end_time",
+        "venue",
     }:
         return False
     observed = value.get("observed_at")
@@ -140,4 +151,5 @@ def valid_literary_group_snapshot(value: Any) -> bool:
         and re.fullmatch(r"\d{2}:\d{2}", value["start_time"]) is not None
         and re.fullmatch(r"\d{2}:\d{2}", value["end_time"]) is not None
         and value["start_time"] < value["end_time"]
+        and value.get("venue") == VENUE
     )
