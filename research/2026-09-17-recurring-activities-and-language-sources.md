@@ -326,6 +326,31 @@ Final decisions:
 7. no further production transport probe is required before implementing the
    first recurring-card slice.
 
+## Exact production parser acceptance — completed 2026-09-18
+
+The exact feature-branch parsers were executed from a temporary directory on
+the production Android/Termux device without loading bot secrets, changing the
+production checkout, sending Telegram messages, or mutating bot state.
+
+Measured/observed results:
+
+- Google Form raw transfer without compression: HTTP 200, 168,479 bytes,
+  0.554 s;
+- Dinamización detail raw transfer without compression: HTTP 200, 196,084
+  bytes, 1.577 s;
+- Chess parser: **valid**, Tue/Thu 16:00–20:00,
+  INICIACIÓN–AVANZADO;
+- Tertulia parser: **valid**, Tuesday 11:00–13:00;
+- Dinamización RSS discovery: **valid**, campaign 2026/27 discovered;
+- Dinamización initial detail + Form normalization: **valid**, registration
+  9–16 September 2026, eight normalized groups;
+- direct Form-only refresh: **valid**, eight groups;
+- all semantic normalized fields from the initial load and direct Form refresh
+  were identical.
+
+This closes the production source/parser acceptance for the first recurring
+slice. No additional source probe is required before code review/merge.
+
 ## Current implementation order
 
 1. Chess + Tertulia;
