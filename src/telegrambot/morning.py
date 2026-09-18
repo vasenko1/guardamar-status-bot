@@ -256,10 +256,15 @@ def _merge_events(*groups):
             return current
         current_words = normalized_words(current)
         candidate_words = normalized_words(candidate)
+        added_words = candidate_words - current_words
+        venue_detail_words = {
+            "hall", "sala", "salon", "salón", "auditorio",
+            "patio", "terraza", "vestibulo", "vestíbulo", "exposiciones",
+        }
         if (
             current_words
             and current_words < candidate_words
-            and current_words <= candidate_words
+            and added_words <= venue_detail_words
         ):
             return candidate
         return current
