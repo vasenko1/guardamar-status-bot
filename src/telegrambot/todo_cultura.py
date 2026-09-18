@@ -449,8 +449,18 @@ def _ticket_url(fragment: str) -> Optional[str]:
         r"href\s*=\s*['\"]([^'\"]+)['\"]", fragment, re.IGNORECASE
     ):
         normalized = normalize_ticket_url(html.unescape(raw_url))
-        if normalized is not None:
-            return normalized
+        if normalized is None:
+            continue
+        parsed = urllib.parse.urlparse(normalized)
+        if (
+            parsed.hostname in {
+                "agendaguardamar.com",
+                "www.agendaguardamar.com",
+            }
+            and not parsed.path.startswith(("/entradas/", "/espectaculo/"))
+        ):
+            continue
+        return normalized
     return None
 
 

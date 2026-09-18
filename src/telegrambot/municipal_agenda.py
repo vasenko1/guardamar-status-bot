@@ -157,6 +157,28 @@ def _detail_label(value: str) -> str:
     return _CINEMA_GENRES.get(value.casefold(), value)
 
 
+def _sanitize_generic_agenda_ticket_url(
+    event: "SourceEvent",
+) -> "SourceEvent":
+    """Drop navigation-only Agenda URLs; keep real ticket providers intact."""
+
+    if event.ticket_url is None:
+        return event
+    normalized = normalize_ticket_url(event.ticket_url)
+    if normalized is None:
+        return replace(event, ticket_url=None)
+    parsed = urllib.parse.urlparse(normalized)
+    if (
+        parsed.hostname in {
+            "agendaguardamar.com",
+            "www.agendaguardamar.com",
+        }
+        and not parsed.path.startswith(("/entradas/", "/espectaculo/"))
+    ):
+        return replace(event, ticket_url=None)
+    return replace(event, ticket_url=normalized)
+
+
 def _cinema_title(value: str) -> str:
     """Mark verified cinema while preserving the established Monday label."""
 
@@ -2506,7 +2528,13 @@ async def refresh_municipal_catalog(
             and isinstance(snapshot.get("sources", {}), dict)
             else {}
         )
-        old_events = snapshot["_events"] if snapshot is not None else ()
+        old_events = (
+            tuple(
+                _sanitize_generic_agenda_ticket_url(event)
+                for event in snapshot["_events"]
+            )
+            if snapshot is not None else ()
+        )
         transition_events = (
             _apply_reviewed_corrections(
                 str(snapshot.get("poster_url", "")), old_events
@@ -2673,12 +2701,14 @@ async def refresh_municipal_catalog(
         )
         todo_events = prior_todo_events
         todo_window = None
+        todo_enrichment_programs: Tuple[object, ...] = ()
         todo_explicit_rows: Tuple[Tuple[date, str, str], ...] = ()
         try:
             todo_window = await fetch_program_window(
                 local_now.date(),
                 todo_source if isinstance(todo_source, dict) else None,
             )
+            todo_enrichment_programs = todo_window.programs
             for todo_program in todo_window.programs:
                 todo_explicit_rows += todo_program.event_rows
                 todo_result = await extract_agenda_text_events(
@@ -2940,9 +2970,10 @@ async def refresh_municipal_catalog(
             )
             if current_admissions:
                 events = _enrich_admissions(events, current_admissions)
+        if todo_enrichment_programs:
             events = _enrich_todo_cinema_synopses(
                 events,
-                todo_window.programs,
+                todo_enrichment_programs,
             )
         cultura_state: Dict[str, Any] = {"checked_at": now.isoformat()}
         try:

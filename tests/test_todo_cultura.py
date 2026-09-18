@@ -892,6 +892,28 @@ class TodoCulturaTests(unittest.TestCase):
                 )
                 self.assertEqual(admissions[0].price_cents, 0)
 
+    def test_ticket_url_rejects_generic_agenda_navigation(self):
+        for candidate in (
+            "https://www.agendaguardamar.com/",
+            "https://www.agendaguardamar.com/index.html",
+            "https://www.agendaguardamar.com/PROGRAMACION-ESPECTACULOS.html",
+        ):
+            with self.subTest(candidate=candidate):
+                self.assertIsNone(_ticket_url(
+                    f'<a href="{candidate}">Agenda Guardamar</a>'
+                ))
+
+    def test_ticket_url_keeps_event_specific_agenda_pages(self):
+        for candidate in (
+            "https://www.agendaguardamar.com/entradas/2/alpha.html",
+            "https://www.agendaguardamar.com/espectaculo/48/alpha.html",
+        ):
+            with self.subTest(candidate=candidate):
+                self.assertEqual(
+                    _ticket_url(f'<a href="{candidate}">Entradas</a>'),
+                    candidate,
+                )
+
     def test_ticket_url_rejects_userinfo_and_ports(self):
         for candidate in (
             "https://operator@giglon.com/event",

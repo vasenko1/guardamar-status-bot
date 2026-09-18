@@ -197,6 +197,37 @@ candidate/program limits are reprocessed, and no new polling loop or source is
 introduced. The tradeoff is one bounded re-read/re-extraction of current
 TodoCultura programme rows after deployment.
 
+## Production-path follow-up
+
+The first production preview after deployment exposed two source-pipeline
+details that unit-shaped cinema data had not exercised:
+
+1. the official municipal admission text linked to the generic
+   `https://www.agendaguardamar.com/index.html`; the shared host allowlist
+   correctly accepted the authority but that navigation page is not an
+   actionable ticket target;
+2. TodoCultura successfully returned deterministic dated `event_rows`, but
+   an unrelated row failed the supplemental Gemini completeness gate, causing
+   the accepted Todo state to remain unchanged.
+
+The production rule is therefore:
+
+- Agenda Guardamar navigation/root/program pages are not ticket URLs;
+  event-specific `/entradas/...` and legacy `/espectaculo/...` pages remain
+  allowed, and Giglon behavior is unchanged;
+- generic Agenda URLs already persisted in a municipal snapshot are dropped on
+  the next refresh before merging;
+- TodoCultura cursor/processed state still advances only after the whole
+  selected supplement passes its existing completeness gate;
+- independently, already fetched deterministic Todo `event_rows` may provide
+  optional cinema synopsis enrichment during that same run even when unrelated
+  Todo normalization later fails. The synopsis matcher retains all cinema
+  identity/date/time/ambiguity guards, so this does not admit partial
+  Todo-created events.
+
+This keeps supplemental state fail-closed while avoiding loss of a deterministic
+optional fact already present in the fetched official row.
+
 ## Rejected designs
 
 Do not:
