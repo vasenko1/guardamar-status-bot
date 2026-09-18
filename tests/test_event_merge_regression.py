@@ -87,8 +87,11 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
         ))
         self.assertIn("Escola de Música", rendered)
         self.assertNotIn("Casa de Cultura", rendered)
-        self.assertIn("Бесплатно", rendered)
-        self.assertIn("agendaguardamar.com/entradas/", rendered)
+        self.assertIn(
+            'Бесплатно · <a href="https://www.agendaguardamar.com/entradas/',
+            rendered,
+        )
+        self.assertIn(">Получить билет</a>", rendered)
 
     def test_non_agenda_ticket_url_cannot_replace_existing_venue(self):
         municipal = Event(
