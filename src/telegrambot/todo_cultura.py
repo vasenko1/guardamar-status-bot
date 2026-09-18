@@ -27,7 +27,7 @@ METADATA_PAGE_SIZE = 100
 METADATA_LIMIT_BYTES = 300_000
 ROLLING_WINDOW_DAYS = 7
 CURSOR_OVERLAP_MINUTES = 5
-PARSER_VERSION = 13
+PARSER_VERSION = 14
 API_URL = "https://todoculturavegabaja.es/wp-json/wp/v2/mec-events"
 
 
@@ -50,6 +50,7 @@ class TodoCulturaAdmission:
     event_date: Optional[date] = None
     start_time: Optional[str] = None
     event_dates: Tuple[date, ...] = ()
+    distance_label: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -541,6 +542,28 @@ def _all_mentioned_dates(text: str, reference_date: date) -> Tuple[date, ...]:
     return tuple(sorted(result))
 
 
+def _distance_label(value: str) -> Optional[str]:
+    """Return one explicit walking distance without inferring a route."""
+
+    match = re.search(
+        r"\b(?:el\s+)?(?:recorrido\s+de|distancia\s*:?\s*)"
+        r"(\d{1,3}(?:[,.]\d{1,2})?)\s*"
+        r"(?:km(?:s)?|kil[oó]metros?)\b",
+        value,
+        re.IGNORECASE,
+    )
+    if match is None:
+        return None
+    raw = match.group(1)
+    distance = float(raw.replace(",", "."))
+    if not 0 < distance <= 100:
+        return None
+    label = raw.replace(".", ",")
+    if label.endswith(",0"):
+        label = label[:-2]
+    return f"{label} км"
+
+
 def _admissions(
     rendered: str,
     reference_date: Optional[date] = None,
@@ -558,6 +581,7 @@ def _admissions(
     title_dates: Tuple[date, ...] = ()
     title_time = None
     current_date = None
+    pending_distance = None
     anchor = reference_date or date.today()
     for paragraph, plain in _paragraphs(rendered):
         admission_marker = re.search(
@@ -578,6 +602,7 @@ def _admissions(
         header_date = _header_date(event_context, anchor.year)
         if header_date is not None:
             current_date = header_date
+            pending_distance = None
         mentioned = _all_mentioned_dates(event_context, anchor)
         mentioned_date = min(
             mentioned,
@@ -601,6 +626,11 @@ def _admissions(
                 (current_date,) if current_date is not None else ()
             )
             title_time = explicit_time
+            pending_distance = _distance_label(event_context)
+        elif title_hint is not None and admission_marker is None:
+            explicit_distance = _distance_label(plain)
+            if explicit_distance is not None:
+                pending_distance = explicit_distance
         price_match = re.search(
             r"(?:\bprecio\s+de\s+(?:(?:la|las)\s+)?(?:entrada|entradas)"
             r"\s+es\s+de\s+(\d{1,4})(?:[,.](\d{1,2}))?\s+euros?\b|"
@@ -659,9 +689,10 @@ def _admissions(
         evidence = (
             plain if plain == title_hint else f"{title_hint} {plain}"
         )[:600]
+        distance_label = _distance_label(plain) or pending_distance
         key = (
             title_hint.casefold(), title_dates, title_time,
-            price_cents, ticket_url,
+            price_cents, ticket_url, distance_label,
         )
         if key not in seen:
             seen.add(key)
@@ -673,7 +704,9 @@ def _admissions(
                 event_date=title_dates[0] if len(title_dates) == 1 else None,
                 start_time=title_time,
                 event_dates=title_dates,
+                distance_label=distance_label,
             ))
+        pending_distance = None
         if len(result) == 20:
             break
     return tuple(result)

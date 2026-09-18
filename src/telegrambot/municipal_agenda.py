@@ -1789,6 +1789,10 @@ def _enrich_admissions(
                 admission_evidence=(
                     event.admission_evidence or best.evidence or None
                 ),
+                details=tuple(dict.fromkeys((
+                    *event.details,
+                    *((best.distance_label,) if best.distance_label else ()),
+                ))),
             )
         enriched.append(event)
     return tuple(enriched)

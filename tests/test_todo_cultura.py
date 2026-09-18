@@ -229,7 +229,7 @@ class TodoCulturaTests(unittest.TestCase):
 
     def test_unchanged_complete_window_makes_no_detail_request(self):
         prior = {
-            "parser_version": 13,
+            "parser_version": 14,
             "cursor_modified_gmt": "2026-08-07T10:00:00",
             "candidates": [{
                 "id": 128245,
@@ -284,11 +284,11 @@ class TodoCulturaTests(unittest.TestCase):
 
         details.assert_called_once_with([128245])
         self.assertEqual(window.programs[0].dates, (date(2026, 8, 9),))
-        self.assertEqual(window.source_state["parser_version"], 13)
+        self.assertEqual(window.source_state["parser_version"], 14)
 
     def test_parser_upgrade_reopens_processed_date_with_free_admission(self):
         prior = {
-            "parser_version": 12,
+            "parser_version": 13,
             "cursor_modified_gmt": "2026-09-17T10:00:00",
             "covered_dates": ["2026-09-18"],
             "candidates": [{
@@ -307,6 +307,13 @@ class TodoCulturaTests(unittest.TestCase):
             "content": {"rendered": (
                 "<p>El Ayuntamiento de Guardamar publica la agenda municipal.</p>"
                 "<p>Viernes 18 de septiembre</p>"
+                "<p>10 h.: Visita guiada titulada ‘Memoria de arena’ para "
+                "visitar el Castillo, el parque Alfonso XIII, La Fonteta y "
+                "la Rábita Califal.</p>"
+                "<p>El recorrido de 1,5 kilómetros de 2 y media horas "
+                "aproximadamente comenzará en el Castillo de Guardamar.</p>"
+                "<p>El precio de las entradas es de 4 euros para niños y "
+                "jubilados; y de 5 euros para el resto de personas.</p>"
                 "<p>19 h.: Sesión de cine en la Escola de Música con la "
                 "película alemana titulada ‘Todos nos llamamos Ali’.</p>"
                 "<p>La entrada es gratuita con invitación. Las reservas se "
@@ -335,6 +342,15 @@ class TodoCulturaTests(unittest.TestCase):
         self.assertEqual(matching.price_cents, 0)
         self.assertEqual(matching.start_time, "19:00")
         self.assertIn(date(2026, 9, 18), matching.event_dates)
+        self.assertIsNone(matching.distance_label)
+
+        tour = next(
+            admission for admission in admissions
+            if "Memoria de arena" in admission.title_hint
+        )
+        self.assertEqual(tour.distance_label, "1,5 км")
+        self.assertIn("4 euros", tour.evidence)
+        self.assertIn("5 euros", tour.evidence)
 
     def test_same_date_candidates_are_each_processed(self):
         prior = {
