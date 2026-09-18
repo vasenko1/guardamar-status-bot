@@ -3,6 +3,7 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from telegrambot.digest import build_event_section
+from telegrambot.event_places import canonical_event_place
 from telegrambot.event_translations import reviewed_translation
 from telegrambot.models import Event
 from telegrambot.morning import _merge_events, _prefer_agenda_guardamar_venues
@@ -92,6 +93,18 @@ class MunicipalAdmissionRegressionTests(unittest.TestCase):
         )
 
         self.assertEqual(_display_ticket_price_cents(source), 0)
+
+
+class EventPlaceRegressionTests(unittest.TestCase):
+    def test_music_school_uses_one_spanish_display_name(self):
+        self.assertEqual(
+            canonical_event_place("Escuela de Música"),
+            "Escuela de Música",
+        )
+        self.assertEqual(
+            canonical_event_place("Escola de Música"),
+            "Escuela de Música",
+        )
 
 
 class ReviewedTranslationRegressionTests(unittest.TestCase):
