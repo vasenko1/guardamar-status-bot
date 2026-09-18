@@ -34,6 +34,7 @@ from .dinamizacion import (
     DinamizacionSourceError,
     discover_dinamizacion_campaign,
     fetch_dinamizacion_snapshot,
+    refresh_dinamizacion_snapshot,
     valid_dinamizacion_snapshot,
 )
 from .literary_group import (
@@ -154,7 +155,7 @@ class GuideState:
             ("chess_school_last_attempt_day", "chess-school"),
             ("literary_group_last_attempt_day", "literary-group"),
             ("dinamizacion_discovery_last_attempt_day", "Dinamización discovery"),
-            ("dinamizacion_detail_last_attempt_day", "Dinamización detail"),
+            ("dinamizacion_form_last_attempt_day", "Dinamización form"),
         ):
             attempt_day = value.get(field)
             if attempt_day is None:
@@ -783,38 +784,55 @@ async def sync_guide(now: datetime) -> str:
                     "Dinamización discovery deferred [GUIDE-%s]",
                     exc.diagnostic_code,
                 )
-            else:
-                if discovered is not None:
-                    campaign_url, season = discovered
-                    previous_program = state.get("dinamizacion_snapshot")
-                    campaign_changed = (
-                        previous_program is None
-                        or previous_program.get("campaign_url") != campaign_url
+                discovered = None
+
+            previous_program = state.get("dinamizacion_snapshot")
+            campaign_changed = (
+                discovered is not None
+                and (
+                    previous_program is None
+                    or previous_program.get("campaign_url") != discovered[0]
+                )
+            )
+
+            if campaign_changed:
+                campaign_url, season = discovered
+                state["dinamizacion_form_last_attempt_day"] = local_day.isoformat()
+                guide_state.write(state)
+                try:
+                    observed_program = await fetch_dinamizacion_snapshot(
+                        campaign_url,
+                        season,
+                        now,
                     )
-                    detail_due = _attempt_due(
-                        state.get("dinamizacion_detail_last_attempt_day"),
-                        local_day,
-                        7,
+                except DinamizacionSourceError as exc:
+                    logging.warning(
+                        "Dinamización detail/form deferred [GUIDE-%s]",
+                        exc.diagnostic_code,
                     )
-                    if campaign_changed or detail_due:
-                        state["dinamizacion_detail_last_attempt_day"] = (
-                            local_day.isoformat()
-                        )
-                        guide_state.write(state)
-                        try:
-                            observed_program = await fetch_dinamizacion_snapshot(
-                                campaign_url,
-                                season,
-                                now,
-                            )
-                        except DinamizacionSourceError as exc:
-                            logging.warning(
-                                "Dinamización detail deferred [GUIDE-%s]",
-                                exc.diagnostic_code,
-                            )
-                        else:
-                            state["dinamizacion_snapshot"] = observed_program
-                            guide_state.write(state)
+                else:
+                    state["dinamizacion_snapshot"] = observed_program
+                    guide_state.write(state)
+            elif (
+                previous_program is not None
+                and state.get("dinamizacion_form_last_attempt_day")
+                != local_day.isoformat()
+            ):
+                state["dinamizacion_form_last_attempt_day"] = local_day.isoformat()
+                guide_state.write(state)
+                try:
+                    observed_program = await refresh_dinamizacion_snapshot(
+                        previous_program,
+                        now,
+                    )
+                except DinamizacionSourceError as exc:
+                    logging.warning(
+                        "Dinamización form refresh deferred [GUIDE-%s]",
+                        exc.diagnostic_code,
+                    )
+                else:
+                    state["dinamizacion_snapshot"] = observed_program
+                    guide_state.write(state)
 
         await _check_wifi_source(bot_token, state, guide_state)
 
