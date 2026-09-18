@@ -248,6 +248,26 @@ def _normalized_form_parts(payload: bytes) -> list[str]:
     return parser.parts
 
 
+def _time(value: str) -> str:
+    """Normalize source times to zero-padded HH:MM after validating them."""
+
+    try:
+        hour_text, minute_text = value.split(":", 1)
+        hour = int(hour_text)
+        minute = int(minute_text)
+    except (ValueError, AttributeError) as exc:
+        raise DinamizacionSourceError(
+            "Dinamización workshop time is invalid",
+            code="SCHEMA",
+        ) from exc
+    if not 0 <= hour <= 23 or not 0 <= minute <= 59:
+        raise DinamizacionSourceError(
+            "Dinamización workshop time is invalid",
+            code="SCHEMA",
+        )
+    return f"{hour:02d}:{minute:02d}"
+
+
 def _days(line: str) -> Optional[str]:
     folded = line.casefold()
     if "lunes y miércoles" in folded or "lunes y miercoles" in folded:
@@ -297,7 +317,7 @@ def _extract_groups(parts: list[str], season_start_year: int) -> list[dict]:
                 "Dinamización workshop schedule is invalid",
                 code="SCHEMA",
             )
-        start_time, end_time = times[0]
+        start_time, end_time = (_time(value) for value in times[0])
         if start_time >= end_time:
             raise DinamizacionSourceError(
                 "Dinamización workshop time is reversed",
