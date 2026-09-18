@@ -112,8 +112,9 @@ Preferred contract:
 2. fingerprint only explicit target campaigns;
 3. detail fetch only for a new/changed campaign, to discover the official Form URL;
 4. once discovered, refresh the current Google Form directly once per day so edits/extensions inside the same form are not missed;
-5. store compact normalized facts, never raw HTML;
-6. preserve last-good on failures.
+5. if that direct Form refresh fails, perform one recovery fetch through the existing campaign detail to rediscover a changed Form URL before preserving last-good;
+6. store compact normalized facts, never raw HTML;
+7. preserve last-good on failures.
 
 Production probe selected RSS as the municipal discovery contract.
 
@@ -160,7 +161,9 @@ Official source:
 
 The durable official page states that the group meets every Tuesday 11:00–13:00
 in the auditorium of the Municipal Public Library and works by sharing texts and
-literary creation.
+literary creation. The accepted snapshot validates the current auditorium/library
+venue marker as well as the schedule, so the resident card does not carry an
+unverified hard-coded place.
 
 This is a recurring group, not a dated Event. Existing `library_agenda.py`
 should remain responsible for dated agenda items; do not force the static
