@@ -109,6 +109,27 @@ MUSIC_ACTIVITY_INDEX_LABELS = {
     "music_instruments": "Инструменты",
 }
 
+RECURRING_ACTIVITY_KEYS = (
+    "chess",
+    "literary_group",
+    "dinamizacion",
+)
+RECURRING_ACTIVITY_META = {
+    "chess": ("♟️", "Шахматы"),
+    "literary_group": ("✍️", "Литературное творчество"),
+    "dinamizacion": ("🤝", "Муниципальные занятия и мастерские"),
+}
+DINAMIZACION_GROUP_TITLES = {
+    "mindful_movement": "Осознанное движение",
+    "mobile": "Как пользоваться смартфоном",
+    "recycled_art": "Творчество из переработанных материалов",
+    "textile_painting": "Роспись по ткани",
+    "senior_hiking": "Прогулки для старшего возраста",
+    "senior_memory": "Тренировка памяти",
+    "senior_computing": "Компьютерная грамотность",
+    "emotions_school": "Школа эмоций",
+}
+
 Send = Callable[[str], Awaitable[int]]
 Edit = Callable[[int, str], Awaitable[None]]
 Pin = Callable[[int], Awaitable[None]]
@@ -707,6 +728,7 @@ def build_activities(
     sport_links: Optional[Mapping[str, str]] = None,
     football_link: Optional[str] = None,
     music_links: Optional[Mapping[str, str]] = None,
+    recurring_links: Optional[Mapping[str, str]] = None,
 ) -> str:
     """Build the recurring activities branch."""
 
@@ -736,6 +758,18 @@ def build_activities(
         for key, link in linked_music:
             emoji, default_label = MUSIC_ACTIVITY_META[key]
             label = MUSIC_ACTIVITY_INDEX_LABELS.get(key, default_label)
+            lines.append(f"{emoji} {_direct_link(label, link)}")
+
+    recurring_links = recurring_links or {}
+    linked_recurring = [
+        (key, recurring_links[key])
+        for key in RECURRING_ACTIVITY_KEYS
+        if key in recurring_links
+    ]
+    if linked_recurring:
+        lines.extend(["", "🧩 <b>Другие занятия</b>"])
+        for key, link in linked_recurring:
+            emoji, label = RECURRING_ACTIVITY_META[key]
             lines.append(f"{emoji} {_direct_link(label, link)}")
     return _with_back_link(
         with_footer("\n".join(lines)),
@@ -1083,6 +1117,138 @@ def build_music_activity(
     )
 
 
+def build_chess_activity(
+    snapshot: Mapping[str, object],
+    activities_link: Optional[str] = None,
+) -> str:
+    """Build the current source-backed chess-school card."""
+
+    source_url = html.escape(str(snapshot["source_url"]), quote=True)
+    start_time = html.escape(str(snapshot["start_time"]))
+    end_time = html.escape(str(snapshot["end_time"]))
+    level_from = str(snapshot["level_from"])
+    level_to = str(snapshot["level_to"])
+    if (level_from, level_to) == ("INICIACIÓN", "AVANZADO"):
+        level_line = "Школа шахмат — от начинающего до продвинутого уровня."
+    else:
+        level_line = (
+            "Школа шахмат · уровни: "
+            f"{html.escape(level_from)}–{html.escape(level_to)}."
+        )
+    message = with_footer(
+        "♟️ <b>Шахматы</b>\n\n"
+        f"{level_line}\n\n"
+        f"🗓 <b>Вторник и четверг · {start_time}–{end_time}</b>\n"
+        "Конкретное время зависит от уровня группы.\n\n"
+        f'🔎 <a href="{source_url}"><b>Информация о занятиях</b></a>'
+    )
+    return _with_back_link(
+        message,
+        "К занятиям и секциям",
+        activities_link,
+    )
+
+
+def build_literary_activity(
+    snapshot: Mapping[str, object],
+    activities_link: Optional[str] = None,
+) -> str:
+    """Build the current Tertulia Literaria card."""
+
+    source_url = html.escape(str(snapshot["source_url"]), quote=True)
+    start_time = html.escape(str(snapshot["start_time"]))
+    end_time = html.escape(str(snapshot["end_time"]))
+    if snapshot.get("venue") != "library_auditorium":
+        raise ValueError("unknown literary-group venue")
+    venue_line = "📍 Актовый зал муниципальной библиотеки"
+    message = with_footer(
+        "✍️ <b>Литературное творчество</b>\n\n"
+        "<b>Tertulia Literaria de Guardamar</b>\n"
+        "Еженедельная литературная группа.\n\n"
+        f"🗓 <b>Каждый вторник · {start_time}–{end_time}</b>\n"
+        f"{venue_line}\n\n"
+        f'🔎 <a href="{source_url}"><b>Подробнее</b></a>'
+    )
+    return _with_back_link(
+        message,
+        "К занятиям и секциям",
+        activities_link,
+    )
+
+
+def _short_date_ru(value: str) -> str:
+    parsed = date.fromisoformat(value)
+    return f"{parsed.day} {_RU_MONTHS[parsed.month]}"
+
+
+def build_dinamizacion_activity(
+    snapshot: Mapping[str, object],
+    local_day: date,
+    activities_link: Optional[str] = None,
+) -> str:
+    """Build the current Dinamización Social aggregate card."""
+
+    season = html.escape(str(snapshot["season"]))
+    lines = [
+        "🤝 <b>Муниципальные занятия и мастерские</b>",
+        "",
+        f"Программа Dinamización Social {season}.",
+        "",
+    ]
+    for group in snapshot["groups"]:
+        key = group["key"]
+        title = DINAMIZACION_GROUP_TITLES.get(key, str(key))
+        lines.append(f"• <b>{html.escape(title)}</b>")
+        for schedule in group["schedules"]:
+            lines.append(f"  {html.escape(schedule)}")
+        start_date = group.get("start_date")
+        end_date = group.get("end_date")
+        if isinstance(start_date, str) and isinstance(end_date, str):
+            lines.append(
+                f"  {_short_date_ru(start_date)} — {_short_date_ru(end_date)}"
+            )
+        elif isinstance(start_date, str):
+            lines.append(f"  С {_short_date_ru(start_date)}")
+        lines.append("")
+    if lines[-1] == "":
+        lines.pop()
+
+    registration_start = date.fromisoformat(snapshot["registration_start"])
+    registration_end = date.fromisoformat(snapshot["registration_end"])
+    lines.append("")
+    if local_day < registration_start:
+        lines.append(
+            "📝 <b>Запись:</b> "
+            f"{_short_date_ru(snapshot['registration_start'])} — "
+            f"{_short_date_ru(snapshot['registration_end'])}"
+        )
+    elif local_day <= registration_end:
+        lines.append(
+            "📝 <b>Запись:</b> до "
+            f"{_short_date_ru(snapshot['registration_end'])}"
+        )
+    else:
+        lines.extend([
+            "📝 Основной период записи завершился "
+            f"{_short_date_ru(snapshot['registration_end'])}.",
+            "После него запись может продолжаться, пока остаются места.",
+        ])
+
+    if snapshot.get("resident_priority") is True:
+        lines.extend(["", "🏠 Приоритет — жителям Guardamar."])
+
+    form_url = html.escape(str(snapshot["form_url"]), quote=True)
+    lines.extend([
+        "",
+        f'📝 <a href="{form_url}"><b>Форма записи</b></a>',
+    ])
+    return _with_back_link(
+        with_footer("\n".join(lines)),
+        "К занятиям и секциям",
+        activities_link,
+    )
+
+
 def build_football(
     activities_link: Optional[str] = None,
     les_raboses_link: Optional[str] = None,
@@ -1415,6 +1581,11 @@ def _render_messages(
         link = _known_link(chat_id, messages, key)
         if link is not None:
             music_links[key] = link
+    recurring_links = {}
+    for key in RECURRING_ACTIVITY_KEYS:
+        link = _known_link(chat_id, messages, key)
+        if link is not None:
+            recurring_links[key] = link
     leaf_links = None
     if all(key in messages for key in LEAF_MESSAGES):
         leaf_links = {
@@ -1468,6 +1639,7 @@ def _render_messages(
             sport_links,
             football_link,
             music_links,
+            recurring_links,
         ),
         "swimming": build_swimming(
             indoor_link, outdoor_link, activities_link
@@ -1524,6 +1696,9 @@ async def publish_pinned_guide(
     skip_keys: Sequence[str] = (),
     sporttia_catalog: Optional[Mapping[str, object]] = None,
     music_school_catalog: Optional[Mapping[str, object]] = None,
+    chess_school_snapshot: Optional[Mapping[str, object]] = None,
+    literary_group_snapshot: Optional[Mapping[str, object]] = None,
+    dinamizacion_snapshot: Optional[Mapping[str, object]] = None,
     local_day: Optional[date] = None,
 ) -> Dict[str, int]:
     """Create or update all linked messages, then pin the compact root."""
@@ -1533,6 +1708,8 @@ async def publish_pinned_guide(
         raise ValueError("local_day is required with Sporttia catalogue")
     if music_school_catalog is not None and local_day is None:
         raise ValueError("local_day is required with music-school catalogue")
+    if dinamizacion_snapshot is not None and local_day is None:
+        raise ValueError("local_day is required with Dinamización snapshot")
     payload = await asyncio.to_thread(state.read_payload, chat_id)
     if payload["uncertain_messages"]:
         raise StateError(
@@ -1596,6 +1773,43 @@ async def publish_pinned_guide(
                 send,
                 edit,
             )
+        await _reconcile_messages(
+            chat_id, messages, state, send, edit, managed_elsewhere
+        )
+
+    activities_link = _known_link(chat_id, messages, "activities")
+    recurring_payloads = []
+    if chess_school_snapshot is not None:
+        recurring_payloads.append((
+            "chess",
+            build_chess_activity(chess_school_snapshot, activities_link),
+        ))
+    if literary_group_snapshot is not None:
+        recurring_payloads.append((
+            "literary_group",
+            build_literary_activity(literary_group_snapshot, activities_link),
+        ))
+    if dinamizacion_snapshot is not None:
+        assert local_day is not None
+        recurring_payloads.append((
+            "dinamizacion",
+            build_dinamizacion_activity(
+                dinamizacion_snapshot,
+                local_day,
+                activities_link,
+            ),
+        ))
+    for key, message in recurring_payloads:
+        await _upsert(
+            key,
+            message,
+            messages,
+            state,
+            chat_id,
+            send,
+            edit,
+        )
+    if recurring_payloads:
         await _reconcile_messages(
             chat_id, messages, state, send, edit, managed_elsewhere
         )
