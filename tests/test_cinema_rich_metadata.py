@@ -84,7 +84,7 @@ class OfficialCinemaSectionTests(unittest.TestCase):
         self.assertEqual(by_day[14].audience_label, "12+")
         self.assertEqual(
             by_day[14].details,
-            ("Drama", "США", "реж. Liesl Tommy"),
+            ("Drama",),
         )
         self.assertTrue(by_day[14].capacity_limited)
         self.assertEqual(by_day[14].access_note, "до заполнения зала")
@@ -96,7 +96,7 @@ class OfficialCinemaSectionTests(unittest.TestCase):
         self.assertEqual(ali.audience_label, "13+")
         self.assertEqual(
             ali.details,
-            ("Drama", "Германия", "реж. Rainer Werner Fassbinder"),
+            ("Drama",),
         )
         self.assertEqual(ali.ticket_price_cents, 0)
         self.assertFalse(ali.capacity_limited)
@@ -108,7 +108,7 @@ class OfficialCinemaSectionTests(unittest.TestCase):
         self.assertEqual(romeria.audience_label, "16+")
         self.assertEqual(
             romeria.details,
-            ("Drama", "Испания", "реж. Carla Simón"),
+            ("Drama",),
         )
         self.assertFalse(romeria.capacity_limited)
 
@@ -122,7 +122,7 @@ class OfficialCinemaSectionTests(unittest.TestCase):
         )
         self.assertEqual(
             by_day[28].details,
-            ("Tragicomedia", "Испания–Бельгия", "реж. Elena Manrique"),
+            ("Tragicomedia",),
         )
 
     def test_declared_weekday_must_match_calendar(self):
@@ -293,7 +293,7 @@ class CinemaRenderPipelineTests(unittest.TestCase):
             teaser_es=_bounded_synopsis_excerpt(ALI_SYNOPSIS),
             duration_minutes=93,
             audience_label="13+",
-            details=("Drama", "Германия", "реж. Rainer Werner Fassbinder"),
+            details=("Drama",),
         )
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -326,7 +326,7 @@ class CinemaRenderPipelineTests(unittest.TestCase):
         self.assertEqual(event.title, "🎬 Все мы зовемся Али")
         rendered = "\n".join(build_event_section(events, "События"))
         self.assertIn(
-            "Драма • Германия • реж. Rainer Werner Fassbinder • 93 мин • 13+",
+            "Драма • 93 мин • 13+",
             rendered,
         )
         self.assertIn("вдова Эмми", rendered)
