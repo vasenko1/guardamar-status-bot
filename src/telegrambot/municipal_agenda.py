@@ -1472,14 +1472,18 @@ def _todo_cinema_synopsis_candidates(
     for program in programs:
         for event_day, start_time, row in getattr(program, "event_rows", ()):
             lines = [line.strip() for line in row.splitlines() if line.strip()]
-            synopsis_lines = []
-            for line in lines:
-                match = _SYNOPSIS_MARKER.search(line)
-                if match is not None:
-                    synopsis_lines.append((line, match))
-            if len(synopsis_lines) != 1:
+            synopsis_matches = [
+                (line, match)
+                for line in lines
+                for match in _SYNOPSIS_MARKER.finditer(line)
+            ]
+            marker_count = sum(
+                len(re.findall(r"\bLa\s+sinopsis\b", line, re.IGNORECASE))
+                for line in lines
+            )
+            if marker_count != 1 or len(synopsis_matches) != 1:
                 continue
-            synopsis_line, synopsis_match = synopsis_lines[0]
+            synopsis_line, synopsis_match = synopsis_matches[0]
             synopsis = _bounded_synopsis_excerpt(synopsis_match.group(1))
             if synopsis is None:
                 continue
