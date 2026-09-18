@@ -510,11 +510,13 @@ class SourceEvent:
     programme_order: Optional[int] = None
 
 
-def _display_ticket_price_cents(source: SourceEvent) -> Optional[int]:
-    """Withhold a scalar price when source evidence contains multiple tariffs."""
+def _display_ticket_price(
+    source: SourceEvent,
+) -> Tuple[Optional[int], bool]:
+    """Return a fixed price or a safe lower bound for explicit tariff sets."""
 
     if source.ticket_price_cents is None or not source.admission_evidence:
-        return source.ticket_price_cents
+        return source.ticket_price_cents, False
     prices = {
         int(match.group(1)) * 100
         + int((match.group(2) or "0").ljust(2, "0"))
@@ -524,7 +526,15 @@ def _display_ticket_price_cents(source: SourceEvent) -> Optional[int]:
             re.IGNORECASE,
         )
     }
-    return None if len(prices) > 1 else source.ticket_price_cents
+    if len(prices) > 1:
+        return min(prices), True
+    return source.ticket_price_cents, False
+
+
+def _display_ticket_price_cents(source: SourceEvent) -> Optional[int]:
+    """Backward-compatible scalar accessor for tests and callers."""
+
+    return _display_ticket_price(source)[0]
 
 
 _CAMPO_PROGRAMME_ORDER = {
@@ -3476,6 +3486,7 @@ async def fetch_today_municipal_events(
         ):
             schedule_note = schedule_note or participation_note
             participation_note = None
+        ticket_price_cents, ticket_price_is_from = _display_ticket_price(source)
         result.append(
             Event(
                 title=(
@@ -3496,7 +3507,8 @@ async def fetch_today_municipal_events(
                     if source.start_date != source.end_date else None
                 ),
                 category=source.category,
-                ticket_price_cents=_display_ticket_price_cents(source),
+                ticket_price_cents=ticket_price_cents,
+                ticket_price_is_from=ticket_price_is_from,
                 ticket_url=source.ticket_url,
                 participation_note=participation_note,
                 registration_contact=source.registration_contact,
