@@ -130,6 +130,14 @@ def _prefer_agenda_guardamar_venues(
         )
         return match.group(1) if match is not None else None
 
+    def route_from_title(value):
+        match = re.match(
+            r"^Экскурсия(?:\s+«[^»]{1,80}»)?\s*:\s*(.{3,160})$",
+            value.strip(),
+            re.IGNORECASE,
+        )
+        return match.group(1).strip(" .") if match is not None else None
+
     result = []
     for current in municipal_events:
         if current.starts_at is None:
@@ -166,13 +174,17 @@ def _prefer_agenda_guardamar_venues(
                 )
             ):
                 continue
-            direct_candidates.append((candidate, candidate_ticket[1]))
+            direct_candidates.append((
+                candidate,
+                candidate_ticket[1],
+                same_event_id,
+            ))
 
         if len(direct_candidates) != 1:
             result.append(current)
             continue
 
-        candidate, direct_url = direct_candidates[0]
+        candidate, direct_url, same_event_id = direct_candidates[0]
 
         # Keep existing non-Agenda ticket providers and already-direct Agenda
         # booking links untouched.
@@ -198,11 +210,19 @@ def _prefer_agenda_guardamar_venues(
         replacement_ticket = (
             direct_url if may_upgrade_ticket else current.ticket_url
         )
+        replacement_route = current.route
+        if (
+            replacement_route is None
+            and same_event_id
+            and _normalized_event_title(current.title).startswith("экскурсия")
+        ):
+            replacement_route = route_from_title(candidate.title)
 
         current = replace(
             current,
             place=replacement_place,
             ticket_url=replacement_ticket,
+            route=replacement_route,
         )
         result.append(current)
 
@@ -349,6 +369,7 @@ def _merge_events(*groups):
                     meeting_point=current.meeting_point or event.meeting_point,
                     schedule_note=current.schedule_note or event.schedule_note,
                     access_note=current.access_note or event.access_note,
+                    route=current.route or event.route,
                     active_until=current.active_until or event.active_until,
                     is_final_day=current.is_final_day or event.is_final_day,
                     programme_title=(
