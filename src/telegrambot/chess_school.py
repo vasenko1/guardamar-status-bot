@@ -17,12 +17,15 @@ _ALLOWED_HOSTS = frozenset({
 REQUEST_TIMEOUT_SECONDS = 15
 RESPONSE_LIMIT_BYTES = 128 * 1024
 
+_SCHOOL_RE = re.compile(r"\bESCUELA\s+DE\s+AJEDREZ\b", re.IGNORECASE)
 _SCHEDULE_RE = re.compile(
-    r"escuela\s+de\s+ajedrez.*?"
     r"(?:todos\s+los\s+)?martes\s+y\s+jueves.*?"
-    r"(\d{1,2}:\d{2})\s+a\s+(\d{1,2}:\d{2}).*?"
-    r"niveles?\s*:\s*([A-ZÁÉÍÓÚÜÑ]+)\s*[–—-]\s*([A-ZÁÉÍÓÚÜÑ]+)",
+    r"(\d{1,2}:\d{2})\s+a\s+(\d{1,2}:\d{2})",
     re.IGNORECASE | re.DOTALL,
+)
+_LEVELS_RE = re.compile(
+    r"niveles?\s*:\s*([A-ZÁÉÍÓÚÜÑ]+)\s*[–—-]\s*([A-ZÁÉÍÓÚÜÑ]+)",
+    re.IGNORECASE,
 )
 
 
@@ -77,12 +80,13 @@ def _extract_snapshot(payload: bytes, now: datetime) -> dict:
     if now.tzinfo is None or now.utcoffset() is None:
         raise ValueError("chess-school observation time must be timezone-aware")
     text = _plain(payload)
-    match = _SCHEDULE_RE.search(text)
-    if match is None:
+    schedule = _SCHEDULE_RE.search(text)
+    levels = _LEVELS_RE.search(text)
+    if _SCHOOL_RE.search(text) is None or schedule is None or levels is None:
         raise ChessSchoolSourceError(
             "chess-school schedule markers are missing", code="SCHEMA"
         )
-    start_time, end_time = match.group(1), match.group(2)
+    start_time, end_time = schedule.group(1), schedule.group(2)
     if start_time >= end_time:
         raise ChessSchoolSourceError(
             "chess-school schedule is invalid", code="SCHEMA"
@@ -93,8 +97,8 @@ def _extract_snapshot(payload: bytes, now: datetime) -> dict:
         "days": ["tuesday", "thursday"],
         "start_time": start_time,
         "end_time": end_time,
-        "level_from": match.group(3).upper(),
-        "level_to": match.group(4).upper(),
+        "level_from": levels.group(1).upper(),
+        "level_to": levels.group(2).upper(),
     }
 
 
