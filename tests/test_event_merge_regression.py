@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 
 from telegrambot.digest import build_event_section
 from telegrambot.models import Event
-from telegrambot.morning import _merge_events
+from telegrambot.morning import _merge_events, _prefer_agenda_guardamar_venues
 from telegrambot.municipal_agenda import SourceEvent, _enrich_admissions
 from telegrambot.todo_cultura import TodoCulturaAdmission
 
@@ -70,7 +70,11 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
             ticket_url=AGENDA_URL,
         )
 
-        merged = _merge_events((municipal,), (agenda,))
+        municipal_events = _prefer_agenda_guardamar_venues(
+            (municipal,),
+            (agenda,),
+        )
+        merged = _merge_events(municipal_events, (agenda,))
 
         self.assertEqual(len(merged), 1)
         self.assertEqual(merged[0].place, "Escola de Música")
@@ -99,9 +103,12 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
             ticket_url="https://www.giglon.com/event/alpha",
         )
 
-        merged = _merge_events((municipal,), (other,))
+        corrected = _prefer_agenda_guardamar_venues(
+            (municipal,),
+            (other,),
+        )
 
-        self.assertEqual(merged[0].place, "Casa de Cultura")
+        self.assertEqual(corrected[0].place, "Casa de Cultura")
 
     def test_existing_municipal_ticket_url_blocks_venue_override(self):
         municipal = Event(
@@ -120,11 +127,14 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
             ),
         )
 
-        merged = _merge_events((municipal,), (agenda,))
+        corrected = _prefer_agenda_guardamar_venues(
+            (municipal,),
+            (agenda,),
+        )
 
-        self.assertEqual(merged[0].place, "Casa de Cultura")
+        self.assertEqual(corrected[0].place, "Casa de Cultura")
         self.assertEqual(
-            merged[0].ticket_url,
+            corrected[0].ticket_url,
             "https://www.giglon.com/event/alpha",
         )
 
@@ -144,9 +154,44 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
             ),
         )
 
-        merged = _merge_events((municipal,), (agenda,))
+        corrected = _prefer_agenda_guardamar_venues(
+            (municipal,),
+            (agenda,),
+        )
 
-        self.assertEqual(merged[0].place, "Casa de Cultura")
+        self.assertEqual(corrected[0].place, "Casa de Cultura")
+
+    def test_ambiguous_agenda_candidates_do_not_replace_existing_venue(self):
+        municipal = Event(
+            title="Concierto Alpha Beta",
+            starts_at=START,
+            place="Casa de Cultura",
+        )
+        first = Event(
+            title="Concierto Alpha Beta",
+            starts_at=START,
+            place="Escola de Música",
+            ticket_url=(
+                "https://www.agendaguardamar.com/entradas/2/alpha.html"
+                "?webfecha=18/09/2026&webhora=19:00"
+            ),
+        )
+        second = Event(
+            title="Concierto Alpha Beta",
+            starts_at=START,
+            place="Parque Reina Sofía",
+            ticket_url=(
+                "https://www.agendaguardamar.com/entradas/3/beta.html"
+                "?webfecha=18/09/2026&webhora=19:00"
+            ),
+        )
+
+        corrected = _prefer_agenda_guardamar_venues(
+            (municipal,),
+            (first, second),
+        )
+
+        self.assertEqual(corrected[0].place, "Casa de Cultura")
 
 
 if __name__ == "__main__":
