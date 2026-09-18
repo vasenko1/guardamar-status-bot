@@ -274,7 +274,7 @@ class CinemaRenderPipelineTests(unittest.TestCase):
                     _key("municipal_agenda", source.title_es): {
                         "translation": "Кино: Все мы зовемся Али",
                     },
-                    _key("municipal_agenda_teaser", source.teaser_es): {
+                    _key("municipal_cinema_teaser", source.teaser_es): {
                         "translation": (
                             "В кафе для рабочих-иммигрантов вдова Эмми "
                             "знакомится с молодым марокканцем Салемом."
