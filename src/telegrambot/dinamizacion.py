@@ -50,6 +50,13 @@ _START_NOTE_RE = re.compile(
     r"septiembre|octubre|noviembre|diciembre)",
     re.IGNORECASE,
 )
+_WORKSHOP_ROW_RE = re.compile(
+    r"\d+\s*h(?:\s*\d+\s*min)?\s*/\s*semana\.\s*"
+    r"(.*?)(?="
+    r"\d+\s*h(?:\s*\d+\s*min)?\s*/\s*semana\."
+    r"|¿Quiere indicarnos|$)",
+    re.IGNORECASE | re.DOTALL,
+)
 _MONTHS = {
     "enero": 1, "febrero": 2, "marzo": 3, "abril": 4,
     "mayo": 5, "junio": 6, "julio": 7, "agosto": 8,
