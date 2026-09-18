@@ -39,7 +39,7 @@ sync runs daily.
 | Item | Primary source | Current technical status | Proposed unattended cost | Decision |
 | --- | --- | --- | ---: | --- |
 | Creative workshops | existing Turismo agenda fetch | Server-rendered text already downloaded by `municipal_agenda.py`; current September 2026 page exposes `TALLERES 2025/2026` and registration facts | **0 new GET/day** | **TECH READY; semantic guard required** |
-| Dinamización Social 2026/27 | Ayuntamiento RSS -> detail -> linked Google Form | Production probe confirms RSS, detail and Form are ordinary text-readable responses; no browser/JS/OCR/LLM required | 1 RSS GET/day (~4.6 KB); detail/form only on fingerprint change | **READY** |
+| Dinamización Social 2026/27 | Ayuntamiento RSS -> detail -> linked Google Form | Production probe confirms RSS, detail and Form are ordinary text-readable responses; no browser/JS/OCR/LLM required | 1 RSS + 1 current Form GET/day; detail only on campaign change | **READY** |
 | Chess school | Club Dama 2026 page | Production probe: HTTP 200, ~25.8 KB, all expected markers present | one low-frequency bounded GET, suggested weekly; no new cron | **READY** |
 | Tertulia Literaria | official Biblioteca static page | Production probe: HTTP 200, ~6.5 KB, Tuesday + 11:00–13:00 markers present | one low-frequency bounded GET, suggested weekly/monthly; no new cron | **READY** |
 | EPA Spanish | municipal EPA page + current-year forms + reviewed 2026/27 flyer evidence | Official page is current-year, but public machine source does not expose current A1/A2/B1/B1.2 timetable, vacancies or price | piggyback municipal discovery; linked docs only on change | **DEFER dynamic card until current machine-readable offer is sufficient** |
@@ -108,10 +108,10 @@ Do not translate `registration may remain open while places remain` into
 
 Preferred contract:
 
-1. one Ayuntamiento discovery read during existing guide sync;
+1. one Ayuntamiento RSS discovery read during existing guide sync;
 2. fingerprint only explicit target campaigns;
-3. detail fetch only for new/changed campaign;
-4. follow the explicit Google Form link only for new/changed campaign/detail;
+3. detail fetch only for a new/changed campaign, to discover the official Form URL;
+4. once discovered, refresh the current Google Form directly once per day so edits/extensions inside the same form are not missed;
 5. store compact normalized facts, never raw HTML;
 6. preserve last-good on failures.
 
