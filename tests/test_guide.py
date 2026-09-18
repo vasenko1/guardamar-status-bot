@@ -259,6 +259,7 @@ class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
                 "day": "tuesday",
                 "start_time": "11:00",
                 "end_time": "13:00",
+                "venue": "library_auditorium",
             }
         )
         self.literary_patch = patch(
