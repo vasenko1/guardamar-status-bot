@@ -3,6 +3,7 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from telegrambot.digest import build_event_section
+from telegrambot.event_places import canonical_event_place
 from telegrambot.event_translations import reviewed_translation
 from telegrambot.models import Event
 from telegrambot.morning import _merge_events, _prefer_agenda_guardamar_venues
@@ -94,6 +95,18 @@ class MunicipalAdmissionRegressionTests(unittest.TestCase):
         self.assertEqual(_display_ticket_price_cents(source), 0)
 
 
+class EventPlaceRegressionTests(unittest.TestCase):
+    def test_music_school_uses_one_spanish_display_name(self):
+        self.assertEqual(
+            canonical_event_place("Escuela de Música"),
+            "Escuela de Música",
+        )
+        self.assertEqual(
+            canonical_event_place("Escola de Música"),
+            "Escuela de Música",
+        )
+
+
 class ReviewedTranslationRegressionTests(unittest.TestCase):
     def test_generic_memoria_title_does_not_invent_molino_route(self):
         self.assertEqual(
@@ -139,7 +152,8 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
             merged,
             "🎭 <b>События</b>",
         ))
-        self.assertIn("Escola de Música", rendered)
+        self.assertIn("Escuela de Música", rendered)
+        self.assertNotIn("Escola de Música", rendered)
         self.assertNotIn("Casa de Cultura", rendered)
         self.assertIn(
             '<a href="https://www.agendaguardamar.com/entradas/',
