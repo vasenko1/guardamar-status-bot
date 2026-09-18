@@ -2767,6 +2767,14 @@ async def refresh_municipal_catalog(
         events = merge_text_and_poster_events(events, programme_events)
         events = merge_text_and_poster_events(events, todo_events)
         events = merge_text_and_poster_events(events, facebook_events)
+        if todo_window is not None:
+            current_admissions = tuple(
+                admission
+                for program in todo_window.programs
+                for admission in program.admissions
+            )
+            if current_admissions:
+                events = _enrich_admissions(events, current_admissions)
         cultura_state: Dict[str, Any] = {"checked_at": now.isoformat()}
         try:
             cultura_posts = await fetch_facebook_posts(CULTURA_GUARDAMAR_PAGE_URL)
