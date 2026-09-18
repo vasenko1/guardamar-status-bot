@@ -1,5 +1,7 @@
 # Guardamar sports event source audit — 2026-09-17
 
+> **Status update — 2026-09-18:** FACV and Federación Pesca CV are implemented, tested, merged via PR #109 and deployed to production. The source contracts and deferred-source analysis below remain useful, but any wording that describes FACV/Pesca integration as future work is superseded by this status.
+
 ## Goal
 
 Find the smallest reliable set of official/responsible sources that adds useful
@@ -173,20 +175,29 @@ is already about 1.04 MiB. Both sources should be refreshed once in the
 existing pre-publication event-catalog sync. No separate cron or more frequent
 polling is justified.
 
-## Implementation sequence from here
+## Implementation status — completed 2026-09-18
 
-1. Keep `facv.py` and `pesca_cv.py` as source-specific adapters.
-2. Give each source a compact atomic last-good catalog and a deterministic
-   `fetch_today_*_events(...) -> tuple[Event, ...]` reader.
-3. Add their refreshes to the existing event-catalog synchronization script;
-   do not add a cron row.
-4. Add both cached readers to Morning Digest and Friday weekend collection, then
-   pass them through the existing `_merge_events(...)` path.
-5. Prepare/cached title translations through the existing event translation
-   mechanism instead of introducing sport-specific translation logic.
-6. Add targeted duplicate tests for known municipal/federation overlap.
-7. Keep ChipLevante/RFET and all other federation adapters deferred until a
-   real Guardamar coverage gap justifies them.
+FACV and Federación Pesca CV are no longer future work.
+
+Production/main contains both source-specific adapters and their integration
+into the existing local event-catalog path. The fully tested research tree was
+squash-merged through PR #109 as commit
+`2d1ec861c07a264f11dbf5e0c5689e420a6b4c37` (`Add FACV and Pesca CV event
+sources`), then deployed to the Android/Termux production checkout.
+
+Production validation after deploy confirmed:
+
+- FACV accepted snapshot: valid, zero current/future Guardamar facts at the
+  observation time;
+- Pesca CV accepted snapshot: two eligible future facts;
+- provincial Mar Costa on 17 October 2026;
+- national Mar Costa Dúos on 23–29 November 2026;
+- Morning/Weekend consume local snapshots and do not issue federation network
+  requests.
+
+Do not re-merge or redeploy the historical sports research branch. Further
+sports source adapters (ChipLevante, RFET, etc.) remain deferred until a real
+Guardamar coverage gap justifies them.
 
 ## Explicit non-goals
 
