@@ -128,11 +128,15 @@ is therefore complete.
 
 ## Final readiness / implementation status
 
-Source/parser accepted and implemented in draft PR #110, not yet deployed:
+Source/parser accepted, implemented and validated against the current
+production `main` codebase:
 
 - `♟️ Шахматы`;
 - `✍️ Литературное творчество`;
 - `🤝 Муниципальные занятия и мастерские`.
+
+Actual Telegram publication is an operational deployment step and is not used as
+a durable source-readiness flag in this research record.
 
 Not ready for public card now:
 
