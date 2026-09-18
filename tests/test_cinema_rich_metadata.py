@@ -91,7 +91,7 @@ class OfficialCinemaSectionTests(unittest.TestCase):
         self.assertTrue(by_day[14].title_es.startswith("Cine de los Lunes:"))
 
         ali = by_day[18]
-        self.assertEqual(ali.place, "Escola de Música")
+        self.assertEqual(ali.place, "Escuela de Música")
         self.assertEqual(ali.duration_minutes, 93)
         self.assertEqual(ali.audience_label, "13+")
         self.assertEqual(
@@ -341,7 +341,7 @@ class CinemaRenderPipelineTests(unittest.TestCase):
         )
         self.assertIn("вдова Эмми", rendered)
         self.assertIn("📍 ", rendered)
-        self.assertIn("Escola de Música", rendered)
+        self.assertIn("Escuela de Música", rendered)
         self.assertIn(
             '<a href="https://www.agendaguardamar.com/entradas/2/'
             'todos-nos-llamamos-ali.html">Бесплатно · Получить билет</a>',
