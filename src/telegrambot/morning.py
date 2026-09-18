@@ -121,6 +121,15 @@ def _prefer_agenda_guardamar_venues(
             return None
         return parsed.path, normalized
 
+    def agenda_event_id(ticket):
+        if ticket is None:
+            return None
+        match = re.match(
+            r"^/(?:espectaculo|entradas)/(\d+)(?:/|$)",
+            ticket[0],
+        )
+        return match.group(1) if match is not None else None
+
     result = []
     for current in municipal_events:
         if current.starts_at is None:
@@ -128,6 +137,7 @@ def _prefer_agenda_guardamar_venues(
             continue
 
         current_ticket = agenda_path(current.ticket_url)
+        current_event_id = agenda_event_id(current_ticket)
         direct_candidates = []
         current_words = words(current.title)
 
@@ -144,9 +154,16 @@ def _prefer_agenda_guardamar_venues(
             ):
                 continue
             shared = current_words & words(candidate.title)
+            same_event_id = (
+                current_event_id is not None
+                and current_event_id == agenda_event_id(candidate_ticket)
+            )
             if (
-                len(shared) < 2
-                or overlap(current.title, candidate.title) < 0.75
+                not same_event_id
+                and (
+                    len(shared) < 2
+                    or overlap(current.title, candidate.title) < 0.75
+                )
             ):
                 continue
             direct_candidates.append((candidate, candidate_ticket[1]))
