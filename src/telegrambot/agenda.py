@@ -419,7 +419,13 @@ def _ticket_url(value: str, starts_at: datetime) -> Optional[str]:
 
 def _page_facts(
     payload: bytes,
-) -> Tuple[Optional[int], Optional[int], Optional[str], Tuple[str, ...]]:
+) -> Tuple[
+    Optional[int],
+    Optional[int],
+    bool,
+    Optional[str],
+    Tuple[str, ...],
+]:
     """Read bounded event facts from one official detail page."""
 
     markup = payload.decode("cp1252", "replace")
@@ -437,7 +443,14 @@ def _page_facts(
         if 1 <= candidate <= 12:
             duration = candidate
     price = None
-    price_match = re.search(
+    price_is_from = False
+    from_price_match = re.search(
+        r"\b(?:Desde|Des\s+de)\s*:\s*"
+        r"(\d{1,4})(?:[,.](\d{1,2}))?\s*[€\x80]",
+        text,
+        re.IGNORECASE,
+    )
+    price_match = from_price_match or re.search(
         r"(?:Regular|Precio|Preu)\s*:\s*"
         r"(\d{1,4})(?:[,.](\d{1,2}))?\s*[€\x80]",
         text,
@@ -449,6 +462,7 @@ def _page_facts(
         candidate = euros * 100 + cents
         if 0 <= candidate <= 100_000:
             price = candidate
+            price_is_from = from_price_match is not None
     elif re.search(
         r"\b(?:entrada|actividad|acceso)\s+(?:es\s+)?"
         r"(?:libre|gratuit[oa])\b",
@@ -480,7 +494,7 @@ def _page_facts(
             if label.endswith(",0"):
                 label = label[:-2]
             details.append(f"{label} км")
-    return duration, price, place, tuple(details)
+    return duration, price, price_is_from, place, tuple(details)
 
 
 def _page_sessions(payload: bytes) -> Tuple[Tuple[datetime, str], ...]:
@@ -552,9 +566,13 @@ def normalize_event_pages(
     if base_event is None:
         return ()
 
-    duration_hours, price_cents, meeting_point, page_details = _page_facts(
-        payload
-    )
+    (
+        duration_hours,
+        price_cents,
+        price_is_from,
+        meeting_point,
+        page_details,
+    ) = _page_facts(payload)
     place = base_event.place or _calendar_place(payload)
     if (
         meeting_point is None
@@ -585,6 +603,7 @@ def normalize_event_pages(
             place=place,
             meeting_point=meeting_point,
             ticket_price_cents=price_cents,
+            ticket_price_is_from=price_is_from,
             ticket_url=ticket_url or None,
             duration_minutes=duration_hours * 60 if duration_hours is not None else None,
             details=tuple(dict.fromkeys((*base_event.details, *page_details))),
@@ -606,6 +625,7 @@ def _write_agenda_snapshot(path: Path, now: datetime, events: Tuple[Event, ...])
                 if event.ends_at else None,
                 "place": event.place,
                 "ticket_price_cents": event.ticket_price_cents,
+                "ticket_price_is_from": event.ticket_price_is_from,
                 "ticket_url": event.ticket_url,
                 "place_query": event.place_query,
                 "meeting_point": event.meeting_point,
@@ -693,6 +713,11 @@ def _load_agenda_snapshot(path: Path) -> Tuple[Event, ...]:
                 or not 0 <= ticket_price_cents <= 100_000
             ):
                 raise ValueError
+            ticket_price_is_from = raw.get("ticket_price_is_from", False)
+            if type(ticket_price_is_from) is not bool:
+                raise ValueError
+            if ticket_price_cents is None and ticket_price_is_from:
+                raise ValueError
             ticket_url = raw.get("ticket_url")
             if ticket_url is not None:
                 if not isinstance(ticket_url, str):
@@ -708,6 +733,7 @@ def _load_agenda_snapshot(path: Path) -> Tuple[Event, ...]:
                 if ends_at else None,
                 place=place,
                 ticket_price_cents=ticket_price_cents,
+                ticket_price_is_from=ticket_price_is_from,
                 ticket_url=ticket_url,
                 duration_minutes=duration,
                 details=tuple(details),
