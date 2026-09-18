@@ -2772,6 +2772,11 @@ async def refresh_municipal_catalog(
                 admission
                 for program in todo_window.programs
                 for admission in program.admissions
+                if admission.start_time is not None
+                and (
+                    admission.event_date is not None
+                    or bool(admission.event_dates)
+                )
             )
             if current_admissions:
                 events = _enrich_admissions(events, current_admissions)
