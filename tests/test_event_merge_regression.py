@@ -253,7 +253,7 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
             "🎭 <b>События</b>",
         ))
         self.assertIn("<b>20:00</b>", rendered)
-        self.assertIn("Hall de la Biblioteca", rendered)
+        self.assertIn("Biblioteca Municipal (Hall)", rendered)
         self.assertNotIn("До 16 октября", rendered)
 
     def test_ambiguous_agenda_candidates_do_not_replace_existing_venue(self):
