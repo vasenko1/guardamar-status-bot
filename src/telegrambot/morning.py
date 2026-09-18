@@ -343,6 +343,11 @@ def _merge_events(*groups):
                         if current.ticket_price_cents is not None
                         else event.ticket_price_cents
                     ),
+                    ticket_price_is_from=(
+                        current.ticket_price_is_from
+                        if current.ticket_price_cents is not None
+                        else event.ticket_price_is_from
+                    ),
                     ticket_url=current.ticket_url or event.ticket_url,
                     participation_note=(
                         current.participation_note
