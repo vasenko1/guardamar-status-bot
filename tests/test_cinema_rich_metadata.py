@@ -88,7 +88,7 @@ class OfficialCinemaSectionTests(unittest.TestCase):
         self.assertTrue(by_day[14].title_es.startswith("Cine de los Lunes:"))
 
         ali = by_day[18]
-        self.assertEqual(ali.place, "Escuela de Música")
+        self.assertEqual(ali.place, "Escola de Música")
         self.assertEqual(ali.duration_minutes, 93)
         self.assertEqual(ali.audience_label, "13+")
         self.assertEqual(ali.details, ("Drama",))
@@ -167,6 +167,19 @@ class TodoCulturaSynopsisSafetyTests(unittest.TestCase):
             "– 22 h.: Sesión de cine con la película ‘Gremlins’.\n"
             "La sinopsis de la cinta es la siguiente: Un joven recibe un mogwai.\n"
             "La sinopsis de la cinta ganadora de cuatro Oscars es la siguiente: "
+            "Un pequeño ser de otro planeta se queda abandonado en la Tierra."
+        )
+        candidates = _todo_cinema_synopsis_candidates((
+            programme((date(2026, 7, 29), "22:00", row)),
+        ))
+        self.assertEqual(candidates, ())
+
+    def test_multiple_synopsis_markers_in_one_line_fail_closed(self):
+        row = (
+            "2026-07-29\n"
+            "– 22 h.: Sesión de cine con la película ‘Gremlins’.\n"
+            "La sinopsis de la cinta es la siguiente: Un joven recibe un mogwai. "
+            "La sinopsis de otra cinta es la siguiente: "
             "Un pequeño ser de otro planeta se queda abandonado en la Tierra."
         )
         candidates = _todo_cinema_synopsis_candidates((
