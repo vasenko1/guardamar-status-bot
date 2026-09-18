@@ -2088,7 +2088,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
 
         extract_text.assert_awaited_once()
         self.assertEqual(
-            stored["sources"]["turismo_html"]["extractor_version"], 3
+            stored["sources"]["turismo_html"]["extractor_version"], 4
         )
 
     async def test_todo_cultura_adds_only_requested_daily_section(self):
@@ -2266,7 +2266,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                             official_text.encode()
                         ).hexdigest(),
                         "month": month,
-                        "extractor_version": 3,
+                        "extractor_version": 4,
                     },
                     "todo_cultura": old_todo_state,
                 },
