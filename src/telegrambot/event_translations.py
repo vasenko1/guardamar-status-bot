@@ -143,11 +143,12 @@ async def prepare_translations(
             and _key(*item) not in current["entries"]
         )
     ]
-    title_missing = [
-        item for item in missing if not item[0].endswith("_teaser")
-    ]
     teaser_missing = [
-        item for item in missing if item[0].endswith("_teaser")
+        item for item in missing if item[0] == "municipal_cinema_teaser"
+    ]
+    teaser_items = set(teaser_missing)
+    title_missing = [
+        item for item in missing if item not in teaser_items
     ]
     translated_by_item = {}
     if title_missing:
