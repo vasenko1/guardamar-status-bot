@@ -546,7 +546,7 @@ def _distance_label(value: str) -> Optional[str]:
     """Return one explicit walking distance without inferring a route."""
 
     match = re.search(
-        r"\b(?:el\s+)?(?:recorrido\s+de|distancia\s*:?\s*)"
+        r"\b(?:el\s+)?(?:recorrido\s+de\s+|distancia\s*:?\s*)"
         r"(\d{1,3}(?:[,.]\d{1,2})?)\s*"
         r"(?:km(?:s)?|kil[oó]metros?)\b",
         value,
