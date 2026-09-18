@@ -25,6 +25,7 @@ from telegrambot.municipal_agenda import (
     _apply_reviewed_daily_schedules,
     _load_snapshot,
     _merge_transition_events,
+    _normalize_exhibition_opening_times,
     _snapshot_data,
     _write_snapshot,
     _sanitize_generic_agenda_ticket_url,
@@ -799,6 +800,118 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(events[1].start_date, date(2026, 9, 7))
         self.assertEqual(events[1].end_date, date(2026, 9, 23))
         self.assertTrue(all(event.category == "exhibition" for event in events))
+
+    def test_official_exhibition_opening_is_a_distinct_occurrence(self):
+        programme = (
+            "AGENDA CULTURAL SEPTIEMBRE 2026 EXPOSICIONES "
+            "Del 25 de septiembre al 16 de octubre. Biblioteca Pública "
+            "Municipal. CALENDARIO SOLIDARIO ADIMAR 2027 Exposición "
+            "fotográfica Inauguración: viernes 25 de septiembre a las "
+            "20:00 h. TEATRO 2 de septiembre, a las 20:00h."
+        )
+
+        events = extract_official_exhibitions(programme, "2026-09")
+
+        self.assertEqual(len(events), 2)
+        exhibition = next(
+            event for event in events if event.category == "exhibition"
+        )
+        opening = next(
+            event for event in events
+            if event.category == "exhibition_opening"
+        )
+        self.assertEqual(exhibition.start_date, date(2026, 9, 25))
+        self.assertEqual(exhibition.end_date, date(2026, 10, 16))
+        self.assertIsNone(exhibition.start_time)
+        self.assertEqual(opening.start_date, date(2026, 9, 25))
+        self.assertEqual(opening.end_date, date(2026, 9, 25))
+        self.assertEqual(opening.start_time, "20:00")
+        self.assertIn("CALENDARIO SOLIDARIO ADIMAR 2027", opening.title_es)
+
+    def test_opening_time_is_not_reused_as_daily_exhibition_time(self):
+        exhibition = SourceEvent(
+            "CALENDARIO SOLIDARIO ADIMAR 2027",
+            date(2026, 9, 25),
+            date(2026, 10, 16),
+            "20:00",
+            None,
+            "Biblioteca Pública Municipal",
+            "exhibition",
+            ("turismo_html",),
+        )
+        opening = SourceEvent(
+            "Inauguración de la exposición CALENDARIO SOLIDARIO ADIMAR 2027",
+            date(2026, 9, 25),
+            date(2026, 9, 25),
+            "20:00",
+            None,
+            "Biblioteca Pública Municipal",
+            "exhibition_opening",
+            ("turismo_html", "turismo_exhibition_opening"),
+        )
+
+        normalized = _normalize_exhibition_opening_times(
+            (exhibition, opening)
+        )
+
+        self.assertIsNone(normalized[0].start_time)
+        self.assertEqual(normalized[1].start_time, "20:00")
+
+    async def test_opening_replaces_generic_exhibition_only_on_first_day(self):
+        exhibition = SourceEvent(
+            "CALENDARIO SOLIDARIO ADIMAR 2027",
+            date(2026, 9, 25),
+            date(2026, 10, 16),
+            None,
+            None,
+            "Biblioteca Pública Municipal",
+            "exhibition",
+            ("turismo_html",),
+        )
+        opening = SourceEvent(
+            "Inauguración de la exposición CALENDARIO SOLIDARIO ADIMAR 2027",
+            date(2026, 9, 25),
+            date(2026, 9, 25),
+            "20:00",
+            None,
+            "Biblioteca Pública Municipal",
+            "exhibition_opening",
+            ("turismo_html", "turismo_exhibition_opening"),
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agenda.json"
+            translations = Path(directory) / "translations.json"
+            _write_snapshot(
+                path,
+                _snapshot_data(
+                    "",
+                    "",
+                    datetime(2026, 9, 25, 5, 10, tzinfo=TZ),
+                    (exhibition, opening),
+                ),
+            )
+            first_day = await fetch_today_municipal_events(
+                datetime(2026, 9, 25, 7, 0, tzinfo=TZ),
+                "",
+                path,
+                translation_cache_path=translations,
+            )
+            next_day = await fetch_today_municipal_events(
+                datetime(2026, 9, 26, 7, 0, tzinfo=TZ),
+                "",
+                path,
+                translation_cache_path=translations,
+            )
+
+        self.assertEqual(len(first_day), 1)
+        self.assertEqual(first_day[0].category, "exhibition_opening")
+        self.assertEqual(
+            first_day[0].starts_at.strftime("%H:%M"), "20:00"
+        )
+        self.assertEqual(len(next_day), 1)
+        self.assertEqual(next_day[0].category, "exhibition")
+        self.assertIsNone(next_day[0].starts_at)
 
     async def test_invalid_structured_text_keeps_official_exhibitions(self):
         page = b"""
@@ -1975,7 +2088,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
 
         extract_text.assert_awaited_once()
         self.assertEqual(
-            stored["sources"]["turismo_html"]["extractor_version"], 3
+            stored["sources"]["turismo_html"]["extractor_version"], 4
         )
 
     async def test_todo_cultura_adds_only_requested_daily_section(self):
@@ -2153,7 +2266,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                             official_text.encode()
                         ).hexdigest(),
                         "month": month,
-                        "extractor_version": 3,
+                        "extractor_version": 4,
                     },
                     "todo_cultura": old_todo_state,
                 },

@@ -75,6 +75,7 @@ class Event:
     meeting_point: Optional[str] = None
     schedule_note: Optional[str] = None
     access_note: Optional[str] = None
+    active_from: Optional[date] = None
 
 
 @dataclass(frozen=True)

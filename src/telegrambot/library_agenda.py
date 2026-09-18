@@ -277,6 +277,7 @@ def extract_events(payload: bytes, now: datetime) -> Tuple[Tuple[Event, str], ..
             place=place_text,
             active_until=end_day,
             category="exhibition" if end_day else "event",
+            active_from=start_day if end_day else None,
         ), urllib.parse.urljoin(LIBRARY_AGENDA_URL, html.unescape(record["link"]))))
         if len(events) == MAX_EVENTS:
             break
@@ -310,7 +311,7 @@ def _write_snapshot(
     open_weekdays: Optional[Tuple[int, ...]] = None,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = {"version": 2, "fetched_at": now.isoformat(),
+    data = {"version": 3, "fetched_at": now.isoformat(),
             "open_weekdays": list(open_weekdays) if open_weekdays is not None else None,
             "events": [
         {
@@ -319,6 +320,7 @@ def _write_snapshot(
             "ends_at": record.event.ends_at.isoformat() if record.event.ends_at else None,
             "place": record.event.place,
             "active_until": record.event.active_until.isoformat() if record.event.active_until else None,
+            "active_from": record.event.active_from.isoformat() if record.event.active_from else None,
             "category": record.event.category,
             "teaser": record.event.teaser,
             "place_query": record.event.place_query,
@@ -352,7 +354,7 @@ def _write_snapshot(
 def _load_snapshot(path: Path) -> Tuple[_LibraryRecord, ...]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict) or data.get("version") not in {1, 2}:
+        if not isinstance(data, dict) or data.get("version") not in {1, 2, 3}:
             raise ValueError
         raw_events = data.get("events")
         if not isinstance(raw_events, list) or len(raw_events) > MAX_EVENTS:
@@ -364,6 +366,7 @@ def _load_snapshot(path: Path) -> Tuple[_LibraryRecord, ...]:
             starts_at = datetime.fromisoformat(raw["starts_at"]) if isinstance(raw.get("starts_at"), str) else None
             ends_at = datetime.fromisoformat(raw["ends_at"]) if isinstance(raw.get("ends_at"), str) else None
             active_until = date.fromisoformat(raw["active_until"]) if isinstance(raw.get("active_until"), str) else None
+            active_from = date.fromisoformat(raw["active_from"]) if isinstance(raw.get("active_from"), str) else None
             if (starts_at and starts_at.tzinfo is None) or (ends_at and ends_at.tzinfo is None):
                 raise ValueError
             extra = {name: raw.get(name) for name in (
@@ -385,9 +388,17 @@ def _load_snapshot(path: Path) -> Tuple[_LibraryRecord, ...]:
             ):
                 raise ValueError
             event = Event(
-                raw["title"], starts_at, ends_at, raw.get("place"), active_until,
-                raw.get("category", "event"), teaser=raw.get("teaser"),
-                duration_minutes=duration, details=tuple(details), **extra,
+                title=raw["title"],
+                starts_at=starts_at,
+                ends_at=ends_at,
+                place=raw.get("place"),
+                active_until=active_until,
+                category=raw.get("category", "event"),
+                teaser=raw.get("teaser"),
+                duration_minutes=duration,
+                details=tuple(details),
+                active_from=active_from,
+                **extra,
             )
             if data["version"] == 1:
                 records.append(_LibraryRecord(event, "", False))
@@ -468,7 +479,9 @@ async def fetch_today_library_events(now: datetime, state_path: Path, translatio
     for record in await asyncio.to_thread(_load_snapshot, state_path):
         event = record.event
         active = ((event.starts_at is not None and event.starts_at.date() == local_day) or
-                  (event.starts_at is None and event.active_until is not None and event.active_until >= local_day))
+                  (event.starts_at is None and event.active_from is not None
+                   and event.active_until is not None
+                   and event.active_from <= local_day <= event.active_until))
         if not active:
             continue
         if (
@@ -498,7 +511,9 @@ async def library_translation_items(now: datetime, state_path: Path) -> Tuple[Tu
     for record in await asyncio.to_thread(_load_snapshot, state_path):
         event = record.event
         active = ((event.starts_at is not None and event.starts_at.date() == local_day) or
-                  (event.starts_at is None and event.active_until is not None and event.active_until >= local_day))
+                  (event.starts_at is None and event.active_from is not None
+                   and event.active_until is not None
+                   and event.active_from <= local_day <= event.active_until))
         if active:
             if (
                 event.category == "exhibition"

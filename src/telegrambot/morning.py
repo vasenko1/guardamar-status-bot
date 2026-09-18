@@ -247,6 +247,28 @@ def _merge_events(*groups):
             len(left_words), len(right_words)
         )
 
+    def richer_place(current, candidate):
+        """Prefer a strictly more specific compatible venue label."""
+
+        if current is None:
+            return candidate
+        if candidate is None:
+            return current
+        current_words = normalized_words(current)
+        candidate_words = normalized_words(candidate)
+        added_words = candidate_words - current_words
+        venue_detail_words = {
+            "hall", "sala", "salon", "salón", "auditorio",
+            "patio", "terraza", "vestibulo", "vestíbulo", "exposiciones",
+        }
+        if (
+            current_words
+            and current_words < candidate_words
+            and added_words <= venue_detail_words
+        ):
+            return candidate
+        return current
+
     for group in groups:
         for event in group:
             if _is_routine_event(event):
@@ -278,7 +300,7 @@ def _merge_events(*groups):
                     title=richer_title(current.title, event.title),
                     starts_at=current.starts_at or event.starts_at,
                     ends_at=current.ends_at or event.ends_at,
-                    place=current.place or event.place,
+                    place=richer_place(current.place, event.place),
                     ticket_price_cents=(
                         current.ticket_price_cents
                         if current.ticket_price_cents is not None

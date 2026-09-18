@@ -59,7 +59,7 @@ REQUEST_TIMEOUT_SECONDS = 15
 MAX_EVENTS = 100
 MAX_INDIVIDUAL_TRANSLATION_RECOVERY = 12
 TRANSITION_HORIZON_DAYS = 7
-TEXT_EXTRACTOR_VERSION = 3
+TEXT_EXTRACTOR_VERSION = 4
 FACEBOOK_SOURCE_PREFIX = "facebook:"
 MAX_FACEBOOK_POSTS = 12
 MAX_TODO_ROW_RECOVERIES = 8
@@ -103,6 +103,16 @@ _EXHIBITION_DATE = re.compile(
     r"(?P<end_month>[a-záéíóúñ]+)))\s*\.",
     re.IGNORECASE,
 )
+_EXHIBITION_OPENING = re.compile(
+    r"\bInauguraci[oó]n\s*:\s*"
+    r"(?:(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)"
+    r",?\s+)?"
+    r"(?P<day>\d{1,2})\s+de\s+(?P<month>[a-záéíóúñ]+)"
+    r"(?:\s+de\s+(?P<year>\d{4}))?\s+a\s+las\s+"
+    r"(?P<hour>\d{1,2})[:.](?P<minute>\d{2})\s*h?\.?",
+    re.IGNORECASE,
+)
+
 
 _CINEMA_SECTION = re.compile(
     r"\bCINE\b(?P<body>.*?)(?=\b(?:EXPOSICIONES|TEATRO|CONCIERTO|"
@@ -406,15 +416,53 @@ def extract_official_exhibitions(
             or start_date > agenda_month + timedelta(days=62)
         ):
             continue
+        title_es = " ".join(identity.group("title").split())
+        place = canonical_event_place(identity.group("place"))
         events.append(SourceEvent(
-            title_es=" ".join(identity.group("title").split()),
+            title_es=title_es,
             start_date=start_date,
             end_date=end_date,
             start_time=None,
             end_time=None,
-            place=canonical_event_place(identity.group("place")),
+            place=place,
             category="exhibition",
             sources=("turismo_html",),
+        ))
+        opening = _EXHIBITION_OPENING.search(block)
+        if opening is None:
+            continue
+        opening_month = _SPANISH_MONTHS.get(opening.group("month").casefold())
+        if opening_month is None:
+            continue
+        opening_year = (
+            int(opening.group("year"))
+            if opening.group("year")
+            else agenda_month.year + (1 if opening_month < agenda_month.month else 0)
+        )
+        try:
+            opening_day = date(
+                opening_year, opening_month, int(opening.group("day"))
+            )
+            opening_time = datetime(
+                opening_year,
+                opening_month,
+                opening_day.day,
+                int(opening.group("hour")),
+                int(opening.group("minute")),
+            ).strftime("%H:%M")
+        except ValueError:
+            continue
+        if not start_date <= opening_day <= end_date:
+            continue
+        events.append(SourceEvent(
+            title_es=f"Inauguración de la exposición {title_es}",
+            start_date=opening_day,
+            end_date=opening_day,
+            start_time=opening_time,
+            end_time=None,
+            place=place,
+            category="exhibition_opening",
+            sources=("turismo_html", "turismo_exhibition_opening"),
         ))
     return tuple(events)
 
@@ -1325,6 +1373,77 @@ def _same_occurrence(left: SourceEvent, right: SourceEvent) -> bool:
     return _word_overlap(left.title_es, right.title_es) >= required_overlap
 
 
+def _opening_matches_exhibition(
+    opening: SourceEvent,
+    exhibition: SourceEvent,
+) -> bool:
+    """Match one explicit inauguration to the exhibition it opens."""
+
+    if (
+        opening.category != "exhibition_opening"
+        or exhibition.category != "exhibition"
+        or opening.start_date != exhibition.start_date
+        or opening.end_date != opening.start_date
+        or opening.start_time is None
+    ):
+        return False
+    if (
+        opening.place is not None
+        and exhibition.place is not None
+        and _word_overlap(opening.place, exhibition.place) < 0.5
+    ):
+        return False
+    return _word_overlap(opening.title_es, exhibition.title_es) >= 0.5
+
+
+def _normalize_exhibition_opening_times(
+    events: Tuple[SourceEvent, ...],
+) -> Tuple[SourceEvent, ...]:
+    """Keep an inauguration time from becoming a daily exhibition time."""
+
+    openings = tuple(
+        event for event in events if event.category == "exhibition_opening"
+    )
+    normalized = []
+    for event in events:
+        if (
+            event.category == "exhibition"
+            and event.start_time is not None
+            and event.end_time is None
+            and any(
+                _opening_matches_exhibition(opening, event)
+                and opening.start_time == event.start_time
+                for opening in openings
+            )
+        ):
+            event = replace(event, start_time=None)
+        normalized.append(event)
+    return tuple(normalized)
+
+
+def _prefer_openings_for_day(
+    events: Tuple[SourceEvent, ...],
+) -> Tuple[SourceEvent, ...]:
+    """On opening day show the inauguration instead of the generic range."""
+
+    openings = tuple(
+        event for event in events if event.category == "exhibition_opening"
+    )
+    if not openings:
+        return events
+    return tuple(
+        event
+        for event in events
+        if not (
+            event.category == "exhibition"
+            and any(
+                _opening_matches_exhibition(opening, event)
+                for opening in openings
+            )
+        )
+    )
+
+
 def _poster_conflicts_with_text(
     text_event: SourceEvent,
     poster_event: SourceEvent,
@@ -1867,6 +1986,7 @@ def normalize_extraction(
         if category not in {
             "event",
             "exhibition",
+            "exhibition_opening",
             "workshop",
             "municipal_service",
             "opening_hours",
@@ -2957,6 +3077,7 @@ async def refresh_municipal_catalog(
         events = merge_text_and_poster_events(events, programme_events)
         events = merge_text_and_poster_events(events, todo_events)
         events = merge_text_and_poster_events(events, facebook_events)
+        events = _normalize_exhibition_opening_times(events)
         if todo_window is not None:
             current_admissions = tuple(
                 admission
@@ -3181,6 +3302,7 @@ async def _cached_current_events(
         for event in events
         if event.start_date <= local_day <= event.end_date
     ]
+    active = list(_prefer_openings_for_day(tuple(active)))
     active.sort(
         key=lambda event: (
             event.start_date != event.end_date,
