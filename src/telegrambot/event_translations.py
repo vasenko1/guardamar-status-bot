@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Iterable, Optional, Tuple
 
-from .gemini import translate_event_teasers, translate_event_titles
+from .gemini import GeminiError, translate_event_teasers, translate_event_titles
 from .reviewed import ReviewedDataError, reviewed_translations
 
 LOGGER = logging.getLogger(__name__)
@@ -157,17 +157,26 @@ async def prepare_translations(
         )
         translated_by_item.update(zip(title_missing, translated))
     if teaser_missing:
-        translated = await translate_event_teasers(
-            api_key, [title for _, title in teaser_missing]
-        )
-        translated_by_item.update(zip(teaser_missing, translated))
+        try:
+            translated = await translate_event_teasers(
+                api_key, [title for _, title in teaser_missing]
+            )
+        except GeminiError as exc:
+            LOGGER.warning(
+                "Cinema synopsis translations unavailable; omitting teasers: %s",
+                exc,
+            )
+        else:
+            translated_by_item.update(zip(teaser_missing, translated))
     timestamp = now.isoformat()
     cutoff = now - timedelta(days=RETENTION_DAYS)
     with _exclusive(path):
         data = _read(path)
         entries = data["entries"]
         for source, title in missing:
-            translated = translated_by_item[(source, title)]
+            translated = translated_by_item.get((source, title))
+            if translated is None:
+                continue
             entries[_key(source, title)] = {
                 "source": source,
                 "title": title,
@@ -192,4 +201,4 @@ async def prepare_translations(
             key: entry for key, entry, _ in valid[:MAX_ENTRIES]
         }
         _write(path, data)
-    return len(missing)
+    return len(translated_by_item)
