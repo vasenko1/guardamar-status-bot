@@ -19,7 +19,7 @@ GOOGLE_FORM_HOST = "docs.google.com"
 REQUEST_TIMEOUT_SECONDS = 15
 FEED_LIMIT_BYTES = 64 * 1024
 DETAIL_LIMIT_BYTES = 128 * 1024
-FORM_LIMIT_BYTES = 512 * 1024
+FORM_LIMIT_BYTES = 1536 * 1024
 
 _CAMPAIGN_TITLE_RE = re.compile(
     r"programa\s+(?:de\s+)?dinamizaci[oó]n\s+social.*?"
