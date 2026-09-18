@@ -1158,12 +1158,15 @@ def build_literary_activity(
     source_url = html.escape(str(snapshot["source_url"]), quote=True)
     start_time = html.escape(str(snapshot["start_time"]))
     end_time = html.escape(str(snapshot["end_time"]))
+    if snapshot.get("venue") != "library_auditorium":
+        raise ValueError("unknown literary-group venue")
+    venue_line = "📍 Актовый зал муниципальной библиотеки"
     message = with_footer(
         "✍️ <b>Литературное творчество</b>\n\n"
         "<b>Tertulia Literaria de Guardamar</b>\n"
         "Еженедельная литературная группа.\n\n"
         f"🗓 <b>Каждый вторник · {start_time}–{end_time}</b>\n"
-        "📍 Актовый зал муниципальной библиотеки\n\n"
+        f"{venue_line}\n\n"
         f'🔎 <a href="{source_url}"><b>Подробнее</b></a>'
     )
     return _with_back_link(
