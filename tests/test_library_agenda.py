@@ -2,7 +2,7 @@ import asyncio
 import tempfile
 import unittest
 from dataclasses import replace
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
@@ -39,6 +39,11 @@ SECOND_ACTIVE = b'''<div class="registro pagina1"><div class="row actividades">
 <div class="list-info"><span class="fecha"><h4>8 de septiembre - 24 de septiembre de 2026</h4></span></div>
 <div class="list-desc"><a href="/Bibliotecas/guardamardelsegura/actividades-programas/Agenda-de-actividades/segunda.html"><li class="titulo"><h3>Segunda exposici\xc3\xb3n</h3></li></a></div>
 <div class="list-opc"><li>Biblioteca P\xc3\xbablica Municipal</li></div>
+</div></div>'''
+FUTURE_ADIMAR = b'''<div class="registro pagina1"><div class="row actividades">
+<div class="list-info"><span class="fecha"><h4>25 de septiembre - 16 de octubre de 2026</h4></span></div>
+<div class="list-desc"><a href="/Bibliotecas/guardamardelsegura/actividades-programas/Agenda-de-actividades/adimar-2027.html"><li class="titulo"><h3>Exposici\xc3\xb3n Fotograf\xc3\xadas CALENDARIO SOLIDARIO ADIMAR 2027</h3></li></a></div>
+<div class="list-opc"><li>Hall de la Biblioteca P\xc3\xbablica Municipal</li></div>
 </div></div>'''
 
 
@@ -91,9 +96,38 @@ class LibraryAgendaTests(unittest.IsolatedAsyncioTestCase):
         records = extract_events(LIST, NOW)
         event, link = records[0]
         self.assertEqual(len(records), 1)
+        self.assertEqual(event.active_from.isoformat(), "2026-09-07")
         self.assertEqual(event.active_until.isoformat(), "2026-09-23")
         self.assertEqual(event.place, "Hall de la Biblioteca P\xfablica Municipal")
         self.assertTrue(link.endswith("exposicion-dibujos.html"))
+
+    async def test_future_range_is_cached_but_not_published_before_start(self):
+        before_start = datetime(2026, 9, 18, 7, 30, tzinfo=TZ)
+        event, link = extract_events(FUTURE_ADIMAR, before_start)[0]
+        self.assertEqual(event.active_from.isoformat(), "2026-09-25")
+        self.assertEqual(event.active_until.isoformat(), "2026-10-16")
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "library.json"
+            translations = Path(directory) / "translations.json"
+            _write_snapshot(
+                path,
+                before_start,
+                (_LibraryRecord(event, link, True),),
+                (0, 1, 2, 3, 4),
+            )
+            early = await fetch_today_library_events(
+                before_start, path, translations
+            )
+            first_day = await fetch_today_library_events(
+                datetime(2026, 9, 25, 7, 30, tzinfo=TZ),
+                path,
+                translations,
+            )
+
+        self.assertEqual(early, ())
+        self.assertEqual(len(first_day), 1)
+        self.assertEqual(first_day[0].active_from, date(2026, 9, 25))
 
     def test_extracts_single_date_time_and_absolute_detail_url(self):
         event, link = extract_events(SINGLE, NOW)[0]
