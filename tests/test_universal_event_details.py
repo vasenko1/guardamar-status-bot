@@ -181,7 +181,7 @@ class OfficialCinemaFactsTests(unittest.TestCase):
         rendered = event_lines(event)
         self.assertIn("<b>18:00</b>", rendered)
         self.assertNotIn("20:00", rendered)
-        self.assertIn("Драма • 144 мин • 12+", rendered)
+        self.assertIn("Драма • США • реж. Liesl Tommy • 144 мин • 12+", rendered)
         self.assertIn("🎟 Бесплатно · до заполнения зала", rendered)
         self.assertIn("Biblioteca", rendered)
 
