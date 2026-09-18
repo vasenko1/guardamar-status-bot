@@ -291,7 +291,7 @@ class UnchangedTextRefreshTests(unittest.IsolatedAsyncioTestCase):
                     "turismo_html": {
                         "sha256": hashlib.sha256(programme.encode()).hexdigest(),
                         "month": month,
-                        "extractor_version": 3,
+                        "extractor_version": 4,
                     },
                 },
             ))
