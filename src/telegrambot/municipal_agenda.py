@@ -128,6 +128,28 @@ _CINEMA_GENRES = {
     "comedia": "Комедия",
     "documental": "Документальный фильм",
 }
+_CINEMA_WEEKDAYS = {
+    "lunes": 0,
+    "dilluns": 0,
+    "martes": 1,
+    "dimarts": 1,
+    "miércoles": 2,
+    "miercoles": 2,
+    "dimecres": 2,
+    "jueves": 3,
+    "dijous": 3,
+    "viernes": 4,
+    "divendres": 4,
+    "sábado": 5,
+    "sabado": 5,
+    "dissabte": 5,
+    "domingo": 6,
+    "diumenge": 6,
+}
+_SYNOPSIS_MARKER = re.compile(
+    r"\bLa\s+sinopsis\b[^:\n]{0,200}\bes\s+(?:la|el)\s+siguiente\s*:\s*(.+)$",
+    re.IGNORECASE,
+)
 
 
 def _detail_label(value: str) -> str:
@@ -135,19 +157,20 @@ def _detail_label(value: str) -> str:
 
 
 def _cinema_title(value: str) -> str:
-    """Keep the official film name while localizing its known series label."""
+    """Mark verified cinema without inventing metadata."""
 
-    _, separator, film = value.partition(": ")
-    if not separator or not film.strip():
-        return value
-    name = spanish_fallback(film.strip())
-    return f"Кино по понедельникам: «{name[0].upper() + name[1:]}»"
+    value = " ".join(value.split()).strip()
+    folded = value.casefold()
+    for prefix in ("cine: ", "кино: "):
+        if folded.startswith(prefix):
+            return "🎬 " + value[len(prefix):].strip()
+    return "🎬 " + value
 
 
 def extract_official_cinema(
     programme: str, expected_month: str,
 ) -> Tuple["SourceEvent", ...]:
-    """Read dated library film rows from the already fetched Turismo text."""
+    """Read every explicit row from the already fetched official CINE section."""
 
     section = _CINEMA_SECTION.search(programme)
     if section is None:
@@ -160,10 +183,9 @@ def extract_official_cinema(
     markers = list(_CINEMA_ROW.finditer(section.group("body")))
     events = []
     for index, marker in enumerate(markers):
-        if marker.group("weekday").casefold() not in {"lunes", "dilluns"}:
-            continue
         month = _SPANISH_MONTHS.get(marker.group("month").casefold())
-        if month is None:
+        weekday = _CINEMA_WEEKDAYS.get(marker.group("weekday").casefold())
+        if month is None or weekday is None:
             continue
         event_year = year + (month < base_month)
         try:
@@ -174,7 +196,7 @@ def extract_official_cinema(
             )
         except ValueError:
             continue
-        if event_day.weekday() != 0 or len(events) == MAX_EVENTS:
+        if event_day.weekday() != weekday or len(events) == MAX_EVENTS:
             continue
         window_start, window_end = _month_window(expected_month)
         if not window_start <= event_day <= window_end:
@@ -186,7 +208,7 @@ def extract_official_cinema(
         identity = _CINEMA_IDENTITY.search(body)
         if identity is None:
             continue
-        place = " ".join(identity.group("place").split())
+        place = canonical_event_place(" ".join(identity.group("place").split()))
         title = " ".join(identity.group("title").split()).strip(" .")
         attributes = body[identity.end():]
         age_match = re.search(r"\+\s*(\d{1,2})\s*/", attributes)
@@ -198,14 +220,19 @@ def extract_official_cinema(
         duration_match = re.search(r"\b(\d{1,3})\s*min\b", attributes)
         duration = int(duration_match.group(1)) if duration_match else None
         if (
-            "biblioteca" not in place.casefold()
+            not place
+            or not event_place_is_map_safe(place)
             or not 1 <= len(title) <= 90
             or duration is not None and not 1 <= duration <= 720
         ):
             continue
         admission = attributes
-        free = re.search(
+        free_capacity = re.search(
             r"\bEntrada\s+libre\s+hasta\s+completar\s+aforo\b",
+            admission, re.IGNORECASE,
+        ) is not None
+        free_invitation = re.search(
+            r"\bEntrada\s+(?:libre|gratuita)\s+con\s+invitaci[oó]n\b",
             admission, re.IGNORECASE,
         ) is not None
         price_match = re.search(
@@ -213,31 +240,37 @@ def extract_official_cinema(
             admission, re.IGNORECASE,
         )
         price = None
-        if free:
+        if free_capacity or free_invitation:
             price = 0
         elif price_match:
             price = (
                 int(price_match.group(1)) * 100
                 + int((price_match.group(2) or "0").ljust(2, "0"))
             )
+        monday_series = (
+            weekday == 0 and "biblioteca" in place.casefold()
+        )
         events.append(SourceEvent(
-            title_es=f"Cine de los Lunes: {title}",
+            title_es=(
+                f"Cine de los Lunes: {title}"
+                if monday_series else f"Cine: {title}"
+            ),
             start_date=event_day,
             end_date=event_day,
             start_time=starts_at.strftime("%H:%M"),
             end_time=None,
-            place=canonical_event_place(place),
+            place=place,
             category="event",
             sources=("turismo_html", "turismo_cinema"),
             ticket_price_cents=price,
-            capacity_limited=free,
+            capacity_limited=free_capacity,
             duration_minutes=duration,
             audience_label=(
                 f"{int(age_match.group(1))}+" if age_match else None
             ),
             details=((" ".join(genre_match.group(1).split()),)
                      if genre_match else ()),
-            access_note="до заполнения зала" if free else None,
+            access_note="до заполнения зала" if free_capacity else None,
         ))
     return tuple(events)
 
@@ -1390,6 +1423,122 @@ def merge_text_and_poster_events(
             }
         )
     return tuple(merged[:MAX_EVENTS])
+
+
+def _bounded_synopsis_excerpt(value: str) -> Optional[str]:
+    """Keep a source-only synopsis excerpt; never generate or infer prose."""
+
+    value = " ".join(value.split()).strip()
+    if len(value) < 20:
+        return None
+    if len(value) <= 220:
+        return value
+    sentences = [
+        sentence.strip()
+        for sentence in re.split(
+            r"(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÜÑ¿¡0-9])",
+            value,
+        )
+        if sentence.strip()
+    ]
+    if not sentences:
+        sentences = [value]
+    selected = sentences[0]
+    index = 1
+    while len(selected) < 80 and index < len(sentences):
+        candidate = selected + " " + sentences[index]
+        if len(candidate) > 220:
+            break
+        selected = candidate
+        index += 1
+    if len(selected) <= 220:
+        return selected
+    clipped = selected[:210].rsplit(" ", 1)[0].rstrip(" ,;:-")
+    return (clipped or selected[:210].rstrip()) + "…"
+
+
+def _todo_cinema_synopsis_candidates(
+    programs: Tuple[object, ...],
+) -> Tuple[Tuple[date, str, str, str], ...]:
+    """Extract only unambiguous explicit synopsis paragraphs from event rows."""
+
+    result = []
+    seen = set()
+    for program in programs:
+        for event_day, start_time, row in getattr(program, "event_rows", ()):
+            lines = [line.strip() for line in row.splitlines() if line.strip()]
+            synopsis_lines = []
+            for line in lines:
+                match = _SYNOPSIS_MARKER.search(line)
+                if match is not None:
+                    synopsis_lines.append((line, match))
+            if len(synopsis_lines) != 1:
+                continue
+            synopsis_line, synopsis_match = synopsis_lines[0]
+            synopsis = _bounded_synopsis_excerpt(synopsis_match.group(1))
+            if synopsis is None:
+                continue
+            event_line = next(
+                (
+                    line for line in lines
+                    if re.search(
+                        r"\b(?:sesi[oó]n\s+de\s+cine|pel[ií]cula)\b",
+                        line,
+                        re.IGNORECASE,
+                    )
+                    and _event_time(line) == start_time
+                ),
+                None,
+            )
+            if event_line is None:
+                continue
+            key = (event_day, start_time, event_line.casefold(), synopsis)
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append((event_day, start_time, event_line[:300], synopsis))
+    return tuple(result)
+
+
+def _enrich_todo_cinema_synopses(
+    events: Tuple[SourceEvent, ...],
+    programs: Tuple[object, ...],
+) -> Tuple[SourceEvent, ...]:
+    """Attach a source excerpt only to a uniquely matched verified cinema event."""
+
+    candidates = _todo_cinema_synopsis_candidates(programs)
+    enriched = []
+    for event in events:
+        if "turismo_cinema" not in event.sources or event.teaser_es:
+            enriched.append(event)
+            continue
+        matches = []
+        for event_day, start_time, title_hint, synopsis in candidates:
+            if event.start_date != event_day or event.start_time != start_time:
+                continue
+            overlap = _word_overlap(event.title_es, title_hint)
+            shared = _normalized_words(event.title_es) & _normalized_words(title_hint)
+            if overlap >= 0.5 and len(shared) >= 2:
+                matches.append((overlap, synopsis))
+        if not matches:
+            enriched.append(event)
+            continue
+        best_overlap = max(value[0] for value in matches)
+        best_synopses = {
+            synopsis for overlap, synopsis in matches if overlap == best_overlap
+        }
+        if len(best_synopses) != 1:
+            enriched.append(event)
+            continue
+        synopsis = next(iter(best_synopses))
+        enriched.append(replace(
+            event,
+            teaser_es=synopsis,
+            sources=tuple(dict.fromkeys(
+                event.sources + ("todo_cultura_synopsis",)
+            )),
+        ))
+    return tuple(enriched)
 
 
 def _enrich_admissions(
@@ -2780,6 +2929,10 @@ async def refresh_municipal_catalog(
             )
             if current_admissions:
                 events = _enrich_admissions(events, current_admissions)
+            events = _enrich_todo_cinema_synopses(
+                events,
+                todo_window.programs,
+            )
         cultura_state: Dict[str, Any] = {"checked_at": now.isoformat()}
         try:
             cultura_posts = await fetch_facebook_posts(CULTURA_GUARDAMAR_PAGE_URL)
@@ -3138,7 +3291,7 @@ async def fetch_today_municipal_events(
         result.append(
             Event(
                 title=(
-                    _cinema_title(source.title_es)
+                    _cinema_title(title)
                     if "turismo_cinema" in source.sources else title
                 ),
                 starts_at=starts_at,
@@ -3182,7 +3335,7 @@ async def municipal_translation_items(
     events = await _cached_current_events(now, state_path)
     items = [
         ("municipal_agenda", event.title_es)
-        for event in events if "turismo_cinema" not in event.sources
+        for event in events
     ]
     items.extend(("municipal_agenda_teaser", event.teaser_es)
                  for event in events if event.teaser_es)
