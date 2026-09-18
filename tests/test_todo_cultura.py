@@ -229,7 +229,7 @@ class TodoCulturaTests(unittest.TestCase):
 
     def test_unchanged_complete_window_makes_no_detail_request(self):
         prior = {
-            "parser_version": 12,
+            "parser_version": 13,
             "cursor_modified_gmt": "2026-08-07T10:00:00",
             "candidates": [{
                 "id": 128245,
@@ -284,11 +284,11 @@ class TodoCulturaTests(unittest.TestCase):
 
         details.assert_called_once_with([128245])
         self.assertEqual(window.programs[0].dates, (date(2026, 8, 9),))
-        self.assertEqual(window.source_state["parser_version"], 12)
+        self.assertEqual(window.source_state["parser_version"], 13)
 
     def test_parser_upgrade_reopens_processed_date_with_free_admission(self):
         prior = {
-            "parser_version": 11,
+            "parser_version": 12,
             "cursor_modified_gmt": "2026-09-17T10:00:00",
             "covered_dates": ["2026-09-18"],
             "candidates": [{
@@ -323,7 +323,7 @@ class TodoCulturaTests(unittest.TestCase):
             window = _read_program_window(date(2026, 9, 18), prior)
 
         details.assert_called_once_with([181])
-        self.assertEqual(window.source_state["parser_version"], 12)
+        self.assertEqual(window.source_state["parser_version"], 13)
         self.assertEqual(len(window.programs), 1)
         self.assertEqual(window.programs[0].dates, (date(2026, 9, 18),))
         admissions = window.programs[0].admissions

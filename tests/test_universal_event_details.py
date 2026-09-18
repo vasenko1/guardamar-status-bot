@@ -76,7 +76,10 @@ class OfficialCinemaFactsTests(unittest.TestCase):
         self.assertIn("PELÍCULA NUEVA", event.title_es)
         self.assertEqual(event.duration_minutes, 103)
         self.assertEqual(event.audience_label, "13+")
-        self.assertEqual(event.details, ("Comedia",))
+        self.assertEqual(
+            event.details,
+            ("Comedia",),
+        )
         self.assertEqual(event.ticket_price_cents, 0)
         self.assertTrue(event.capacity_limited)
         self.assertEqual(event.access_note, "до заполнения зала")

@@ -178,6 +178,20 @@ class AdditiveContractTests(unittest.TestCase):
             self.assertIn(fact, text)
         self.assertEqual(rendered(events[2]).count("На испанском • 90 мин"), 1)
 
+    def test_free_ticket_link_is_shared_by_non_cinema_events(self):
+        event = Event(
+            "Спектакль",
+            WHEN,
+            ticket_price_cents=0,
+            ticket_url="https://www.agendaguardamar.com/entradas/1/teatro.html",
+        )
+        text = rendered(event)
+        self.assertIn(
+            '>Бесплатно · Получить билет</a>',
+            text,
+        )
+        self.assertEqual(text.count("Бесплатно"), 1)
+
     def test_length_guard_omits_whole_event_or_programme(self):
         rich = Event("Экскурсия", WHEN, teaser="Описание", place="Castillo",
                      schedule_note="Продажа билетов: 17:30–19:30")
