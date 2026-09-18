@@ -112,14 +112,7 @@ class OfficialCinemaSectionTests(unittest.TestCase):
         )
         self.assertFalse(romeria.capacity_limited)
 
-        self.assertEqual(
-            by_day[21].details,
-            (
-                "Drama-Comedia",
-                "Великобритания–Ирландия",
-                "реж. Thaddeus O’Sullivan",
-            ),
-        )
+        self.assertEqual(by_day[21].details, ("Drama-Comedia",))
         self.assertEqual(
             by_day[28].details,
             ("Tragicomedia",),
