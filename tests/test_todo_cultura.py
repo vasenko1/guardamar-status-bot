@@ -330,7 +330,7 @@ class TodoCulturaTests(unittest.TestCase):
             window = _read_program_window(date(2026, 9, 18), prior)
 
         details.assert_called_once_with([181])
-        self.assertEqual(window.source_state["parser_version"], 13)
+        self.assertEqual(window.source_state["parser_version"], 14)
         self.assertEqual(len(window.programs), 1)
         self.assertEqual(window.programs[0].dates, (date(2026, 9, 18),))
         admissions = window.programs[0].admissions
