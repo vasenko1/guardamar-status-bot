@@ -507,10 +507,11 @@ async def sync_recurring_notifications(
             chat_id,
             message,
             disable_notification=False,
+            max_attempts=3,
             retry_only_rate_limits=True,
         )
     except TelegramError as exc:
-        if exc.status == 429:
+        if exc.server_status == 429:
             retryable = dict(sending)
             retryable["delivery_state"] = "idle"
             save_state(path, retryable)
