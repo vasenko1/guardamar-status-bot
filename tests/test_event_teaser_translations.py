@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
 from telegrambot.event_translations import cached_translation, prepare_translations
+from telegrambot.gemini import GeminiError
 
 
 TZ = ZoneInfo("Europe/Madrid")
@@ -67,6 +68,45 @@ class EventTeaserTranslationTests(unittest.IsolatedAsyncioTestCase):
                 ),
                 "В кафе вдова Эмми знакомится с молодым марокканцем Салемом.",
             )
+
+    async def test_teaser_failure_does_not_block_non_cinema_titles(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "translations.json"
+            title_translate = AsyncMock(return_value=["Концерт Alpha"])
+            teaser_translate = AsyncMock(side_effect=GeminiError("offline"))
+            with (
+                patch(
+                    "telegrambot.event_translations.translate_event_titles",
+                    new=title_translate,
+                ),
+                patch(
+                    "telegrambot.event_translations.translate_event_teasers",
+                    new=teaser_translate,
+                ),
+            ):
+                count = await prepare_translations(
+                    "key",
+                    (
+                        ("municipal_agenda", "Concierto Alpha"),
+                        (
+                            "municipal_cinema_teaser",
+                            "Una descripción suficientemente larga del filme.",
+                        ),
+                    ),
+                    path,
+                    datetime(2026, 9, 18, 8, 0, tzinfo=TZ),
+                )
+
+            self.assertEqual(count, 1)
+            self.assertEqual(
+                cached_translation(path, "municipal_agenda", "Concierto Alpha"),
+                "Концерт Alpha",
+            )
+            self.assertIsNone(cached_translation(
+                path,
+                "municipal_cinema_teaser",
+                "Una descripción suficientemente larga del filme.",
+            ))
 
     async def test_cached_teaser_is_not_retranslated(self):
         with tempfile.TemporaryDirectory() as directory:
