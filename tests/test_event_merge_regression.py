@@ -219,6 +219,36 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
 
         self.assertEqual(corrected[0].place, "Casa de Cultura")
 
+    def test_exhibition_opening_keeps_title_and_more_specific_library_hall(self):
+        opening = Event(
+            title="Открытие выставки «Благотворительный календарь ADIMAR 2027»",
+            starts_at=datetime(2026, 9, 25, 20, 0, tzinfo=MADRID),
+            place="Biblioteca Pública Municipal",
+            category="exhibition_opening",
+        )
+        exhibition = Event(
+            title="Выставка фотографий благотворительного календаря ADIMAR на 2027 год",
+            starts_at=None,
+            place="Hall de la Biblioteca Pública Municipal",
+            active_until=date(2026, 10, 16),
+            category="exhibition",
+            active_from=date(2026, 9, 25),
+        )
+
+        merged = _merge_events((opening,), (exhibition,))
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0].category, "exhibition_opening")
+        self.assertTrue(merged[0].title.startswith("Открытие выставки"))
+        self.assertEqual(
+            merged[0].place,
+            "Hall de la Biblioteca Pública Municipal",
+        )
+        self.assertEqual(
+            merged[0].starts_at.strftime("%H:%M"),
+            "20:00",
+        )
+
     def test_ambiguous_agenda_candidates_do_not_replace_existing_venue(self):
         municipal = Event(
             title="Concierto Alpha Beta",
