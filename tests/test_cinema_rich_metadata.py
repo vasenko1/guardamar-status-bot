@@ -118,6 +118,23 @@ class OfficialCinemaSectionTests(unittest.TestCase):
             ("Tragicomedia",),
         )
 
+    def test_cinema_section_does_not_consume_following_theatre(self):
+        programme_text = (
+            "AGENDA CULTURAL SEPTIEMBRE 2026 CINE "
+            "Viernes, 18 de septiembre a las 19:00 h. Escuela de Música. "
+            "TODOS NOS LLAMAMOS ALI (Rainer Werner Fassbinder, 1973. Alemania) "
+            "+ 13 / Drama / 93 min Entrada libre con invitación "
+            "TEATRO "
+            "Sábado, 19 de septiembre a las 20:00 h. Casa de Cultura. "
+            "LA FUNCIÓN (Compañía Municipal, 2026. España) "
+            "+ 12 / Drama / 90 min Precio: 5 €"
+        )
+        events = extract_official_cinema(programme_text, "2026-09")
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].start_date, date(2026, 9, 18))
+        self.assertIn("TODOS NOS LLAMAMOS ALI", events[0].title_es)
+        self.assertNotIn("LA FUNCIÓN", events[0].title_es)
+
     def test_declared_weekday_must_match_calendar(self):
         broken = PROGRAMME.replace(
             "Viernes, 18 de septiembre",
