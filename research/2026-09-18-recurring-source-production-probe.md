@@ -49,8 +49,8 @@ execution, OCR or LLM parser is required.
 Contract:
 
 - RSS discovery daily;
-- detail only on a new/changed campaign fingerprint;
-- linked form only on a new/changed campaign/detail fingerprint;
+- detail only on a new/changed campaign, to discover the official Form URL;
+- current Form direct refresh once daily so same-link semantic changes are visible;
 - compact normalized last-good facts locally.
 
 ### Chess
