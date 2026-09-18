@@ -82,7 +82,10 @@ class OfficialCinemaSectionTests(unittest.TestCase):
 
         self.assertEqual(by_day[14].duration_minutes, 144)
         self.assertEqual(by_day[14].audience_label, "12+")
-        self.assertEqual(by_day[14].details, ("Drama",))
+        self.assertEqual(
+            by_day[14].details,
+            ("Drama", "США", "реж. Liesl Tommy"),
+        )
         self.assertTrue(by_day[14].capacity_limited)
         self.assertEqual(by_day[14].access_note, "до заполнения зала")
         self.assertTrue(by_day[14].title_es.startswith("Cine de los Lunes:"))
@@ -91,7 +94,10 @@ class OfficialCinemaSectionTests(unittest.TestCase):
         self.assertEqual(ali.place, "Escola de Música")
         self.assertEqual(ali.duration_minutes, 93)
         self.assertEqual(ali.audience_label, "13+")
-        self.assertEqual(ali.details, ("Drama",))
+        self.assertEqual(
+            ali.details,
+            ("Drama", "Германия", "реж. Rainer Werner Fassbinder"),
+        )
         self.assertEqual(ali.ticket_price_cents, 0)
         self.assertFalse(ali.capacity_limited)
         self.assertIsNone(ali.access_note)
@@ -100,11 +106,24 @@ class OfficialCinemaSectionTests(unittest.TestCase):
         romeria = by_day[25]
         self.assertEqual(romeria.duration_minutes, 111)
         self.assertEqual(romeria.audience_label, "16+")
-        self.assertEqual(romeria.details, ("Drama",))
+        self.assertEqual(
+            romeria.details,
+            ("Drama", "Испания", "реж. Carla Simón"),
+        )
         self.assertFalse(romeria.capacity_limited)
 
-        self.assertEqual(by_day[21].details, ("Drama-Comedia",))
-        self.assertEqual(by_day[28].details, ("Tragicomedia",))
+        self.assertEqual(
+            by_day[21].details,
+            (
+                "Drama-Comedia",
+                "Великобритания–Ирландия",
+                "реж. Thaddeus O’Sullivan",
+            ),
+        )
+        self.assertEqual(
+            by_day[28].details,
+            ("Tragicomedia", "Испания–Бельгия", "реж. Elena Manrique"),
+        )
 
     def test_declared_weekday_must_match_calendar(self):
         broken = PROGRAMME.replace(
@@ -274,7 +293,7 @@ class CinemaRenderPipelineTests(unittest.TestCase):
             teaser_es=_bounded_synopsis_excerpt(ALI_SYNOPSIS),
             duration_minutes=93,
             audience_label="13+",
-            details=("Drama",),
+            details=("Drama", "Германия", "реж. Rainer Werner Fassbinder"),
         )
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -306,7 +325,10 @@ class CinemaRenderPipelineTests(unittest.TestCase):
         event = events[0]
         self.assertEqual(event.title, "🎬 Все мы зовемся Али")
         rendered = "\n".join(build_event_section(events, "События"))
-        self.assertIn("Драма • 93 мин • 13+", rendered)
+        self.assertIn(
+            "Драма • Германия • реж. Rainer Werner Fassbinder • 93 мин • 13+",
+            rendered,
+        )
         self.assertIn("вдова Эмми", rendered)
         self.assertIn("📍 ", rendered)
         self.assertIn("Escola de Música", rendered)
