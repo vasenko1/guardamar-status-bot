@@ -827,10 +827,23 @@ async def sync_guide(now: datetime) -> str:
                     )
                 except DinamizacionSourceError as exc:
                     logging.warning(
-                        "Dinamización form refresh deferred [GUIDE-%s]",
+                        "Dinamización form refresh failed [GUIDE-%s]; "
+                        "retrying through campaign detail",
                         exc.diagnostic_code,
                     )
-                else:
+                    try:
+                        observed_program = await fetch_dinamizacion_snapshot(
+                            previous_program["campaign_url"],
+                            previous_program["season"],
+                            now,
+                        )
+                    except DinamizacionSourceError as recovery_exc:
+                        logging.warning(
+                            "Dinamización detail recovery deferred [GUIDE-%s]",
+                            recovery_exc.diagnostic_code,
+                        )
+                        observed_program = None
+                if observed_program is not None:
                     state["dinamizacion_snapshot"] = observed_program
                     guide_state.write(state)
 
