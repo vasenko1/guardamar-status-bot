@@ -80,11 +80,20 @@ def _extract_snapshot(payload: bytes, now: datetime) -> dict:
     if now.tzinfo is None or now.utcoffset() is None:
         raise ValueError("chess-school observation time must be timezone-aware")
     text = _plain(payload)
+    school = _SCHOOL_RE.search(text)
     schedule = _SCHEDULE_RE.search(text)
     levels = _LEVELS_RE.search(text)
-    if _SCHOOL_RE.search(text) is None or schedule is None or levels is None:
+    if school is None:
         raise ChessSchoolSourceError(
-            "chess-school schedule markers are missing", code="SCHEMA"
+            "chess-school identity marker is missing", code="SCHEMA-SCHOOL"
+        )
+    if schedule is None:
+        raise ChessSchoolSourceError(
+            "chess-school schedule marker is missing", code="SCHEMA-SCHEDULE"
+        )
+    if levels is None:
+        raise ChessSchoolSourceError(
+            "chess-school level marker is missing", code="SCHEMA-LEVELS"
         )
     start_time, end_time = schedule.group(1), schedule.group(2)
     if start_time >= end_time:
