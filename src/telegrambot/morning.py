@@ -4,6 +4,7 @@ import asyncio
 import logging
 import re
 import unicodedata
+import urllib.parse
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -19,6 +20,7 @@ from .agenda import (
 from .aemet import AemetError, fetch_morning_digest
 from .digest import build_message
 from .diagnostics import SourceDiagnostic, source_error
+from .event_urls import normalize_ticket_url
 from .holidays import official_holidays_on
 from .mayor import (
     MayorChannelError,
@@ -134,6 +136,33 @@ def _merge_events(*groups):
             len(left_words), len(right_words)
         )
 
+    def preferred_place(current, candidate):
+        """Use Agenda Guardamar's structured venue only for a strong match."""
+
+        if current.place is None:
+            return candidate.place
+        if candidate.place is None or current.ticket_url is not None:
+            return current.place
+        normalized_url = normalize_ticket_url(candidate.ticket_url or "")
+        if normalized_url is None:
+            return current.place
+        parsed = urllib.parse.urlparse(normalized_url)
+        if (
+            parsed.hostname not in {
+                "agendaguardamar.com",
+                "www.agendaguardamar.com",
+            }
+            or not parsed.path.startswith("/entradas/")
+            or current.starts_at is None
+            or candidate.starts_at is None
+            or current.starts_at != candidate.starts_at
+            or overlap(current.title, candidate.title) < 0.75
+            or normalize_title(candidate.place) == "guardamar del segura"
+            or overlap(current.place, candidate.place) >= 0.5
+        ):
+            return current.place
+        return candidate.place
+
     for group in groups:
         for event in group:
             if _is_routine_event(event):
@@ -165,7 +194,7 @@ def _merge_events(*groups):
                     title=richer_title(current.title, event.title),
                     starts_at=current.starts_at or event.starts_at,
                     ends_at=current.ends_at or event.ends_at,
-                    place=current.place or event.place,
+                    place=preferred_place(current, event),
                     ticket_price_cents=(
                         current.ticket_price_cents
                         if current.ticket_price_cents is not None
