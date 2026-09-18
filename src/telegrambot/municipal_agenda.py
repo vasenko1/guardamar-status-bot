@@ -105,8 +105,8 @@ _EXHIBITION_DATE = re.compile(
 )
 
 _CINEMA_SECTION = re.compile(
-    r"\bCINE\b(?P<body>.*?)(?=\b(?:CONCIERTO\s+CORAL|FIESTAS|"
-    r"TALLERES|BALL\s+D[’']ESTIU|VISITAS\s+GUIADAS)\b|$)",
+    r"\bCINE\b(?P<body>.*?)(?=\b(?:EXPOSICIONES|TEATRO|CONCIERTO|"
+    r"FIESTAS|TALLERES|BALL\s+D[’']ESTIU|VISITAS\s+GUIADAS)\b|$)",
     re.IGNORECASE | re.DOTALL,
 )
 _CINEMA_ROW = re.compile(
