@@ -104,6 +104,28 @@ Commercial language schools and private academies are excluded from the guide.
 Do not use Educare, Kairós, private tutors or similar commercial providers to
 fill public-language-source gaps.
 
+## Exact feature-parser acceptance
+
+A second production Termux run executed the exact feature-branch source code
+from a temporary directory.
+
+Results:
+
+- Dinamización detail, identity encoding: HTTP 200, 196,084 bytes, 1.577 s;
+- Chess: `valid=True`, Tue/Thu 16:00–20:00,
+  INICIACIÓN–AVANZADO;
+- Tertulia: `valid=True`, 11:00–13:00;
+- Dinamización discovery: current 2026/27 campaign found;
+- Dinamización initial normalization: `valid=True`, eight groups,
+  registration 2026-09-09 through 2026-09-16;
+- direct Form-only refresh: `valid=True`, eight groups;
+- season, campaign URL, Form URL, registration window,
+  `registration_until_full`, resident priority and all normalized groups were
+  identical between the initial load and the direct Form refresh.
+
+The production source/parser acceptance for Chess, Tertulia and Dinamización
+is therefore complete.
+
 ## Final readiness for first implementation
 
 Ready now:
