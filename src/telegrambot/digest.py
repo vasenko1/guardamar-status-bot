@@ -1051,27 +1051,24 @@ def _render_event_details(event, indent: str) -> List[str]:
     if event.participation_note:
         rows.append(indent + "ℹ️ " + html.escape(event.participation_note))
     access = []
-    if event.ticket_price_cents == 0 and event.ticket_url:
-        ticket_url = html.escape(event.ticket_url, quote=True)
-        access.append(
-            f'Бесплатно · <a href="{ticket_url}">Получить билет</a>'
+    if event.ticket_price_cents == 0:
+        ticket_label = (
+            "Бесплатно · Получить билет"
+            if event.ticket_url else "Бесплатно"
         )
+    elif event.ticket_price_cents is not None:
+        price = event.ticket_price_cents / 100
+        amount = f"{int(price)}" if price.is_integer() else (
+            f"{price:.2f}".replace(".", ",")
+        )
+        ticket_label = f"Билет {amount} €"
     else:
-        if event.ticket_price_cents == 0:
-            ticket_label = "Бесплатно"
-        elif event.ticket_price_cents is not None:
-            price = event.ticket_price_cents / 100
-            amount = f"{int(price)}" if price.is_integer() else (
-                f"{price:.2f}".replace(".", ",")
-            )
-            ticket_label = f"Билет {amount} €"
-        else:
-            ticket_label = "Билеты" if event.ticket_url else ""
-        if ticket_label:
-            access.append(
-                '<a href="' + html.escape(event.ticket_url, quote=True)
-                + f'">{ticket_label}</a>' if event.ticket_url else ticket_label
-            )
+        ticket_label = "Билеты" if event.ticket_url else ""
+    if ticket_label:
+        access.append(
+            '<a href="' + html.escape(event.ticket_url, quote=True)
+            + f'">{ticket_label}</a>' if event.ticket_url else ticket_label
+        )
     if event.access_note:
         access.append(html.escape(event.access_note))
     if event.registration_contact:
