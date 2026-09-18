@@ -119,7 +119,7 @@ _CINEMA_ROW = re.compile(
 )
 _CINEMA_IDENTITY = re.compile(
     r"(?P<place>[^.]{3,120})\.\s+"
-    r"(?P<title>[^()]{2,120}?)\s*\((?P<meta>[^()]{3,180})\)",
+    r"(?P<title>[^()]{2,120}?)\s*\([^()]{3,180}\)",
     re.IGNORECASE,
 )
 _CINEMA_GENRES = {
@@ -128,17 +128,6 @@ _CINEMA_GENRES = {
     "tragicomedia": "Трагикомедия",
     "comedia": "Комедия",
     "documental": "Документальный фильм",
-}
-_CINEMA_COUNTRIES = {
-    "alemania": "Германия",
-    "usa": "США",
-    "reino unido-irlanda": "Великобритания–Ирландия",
-    "españa-bélgica": "Испания–Бельгия",
-    "espana-belgica": "Испания–Бельгия",
-    "españa": "Испания",
-    "espana": "Испания",
-    "francia": "Франция",
-    "italia": "Италия",
 }
 _CINEMA_WEEKDAYS = {
     "lunes": 0,
@@ -225,24 +214,10 @@ def extract_official_cinema(
         if identity is None:
             continue
         place = canonical_event_place(" ".join(identity.group("place").split()))
+        if place.casefold() in {"escuela de música", "escola de música"}:
+            place = "Escola de Música"
         title = " ".join(identity.group("title").split()).strip(" .")
         attributes = body[identity.end():]
-        credits = re.fullmatch(
-            r"\s*(?P<director>[^,]{2,80}),\s*"
-            r"(?P<year>(?:19|20)\d{2})\.\s*"
-            r"(?P<country>[^.]{2,80})\s*",
-            " ".join(identity.group("meta").split()),
-        )
-        director = (
-            " ".join(credits.group("director").split())
-            if credits is not None else None
-        )
-        country = (
-            _CINEMA_COUNTRIES.get(
-                " ".join(credits.group("country").split()).casefold()
-            )
-            if credits is not None else None
-        )
         age_match = re.search(r"\+\s*(\d{1,2})\s*/", attributes)
         genre_match = re.search(
             r"(?:\+\s*\d{1,2}\s*/\s*)?"
@@ -300,15 +275,8 @@ def extract_official_cinema(
             audience_label=(
                 f"{int(age_match.group(1))}+" if age_match else None
             ),
-            details=tuple(
-                value for value in (
-                    " ".join(genre_match.group(1).split())
-                    if genre_match else None,
-                    country,
-                    f"реж. {director}" if director else None,
-                )
-                if value
-            ),
+            details=((" ".join(genre_match.group(1).split()),)
+                     if genre_match else ()),
             access_note="до заполнения зала" if free_capacity else None,
         ))
     return tuple(events)
