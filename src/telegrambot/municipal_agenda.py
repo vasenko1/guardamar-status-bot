@@ -44,6 +44,7 @@ from .todo_cultura import (
     TodoCulturaParticipation,
     _all_mentioned_dates,
     _admissions,
+    _event_time,
     fetch_program_window,
 )
 
