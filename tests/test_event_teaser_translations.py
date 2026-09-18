@@ -34,7 +34,7 @@ class EventTeaserTranslationTests(unittest.IsolatedAsyncioTestCase):
                     (
                         ("municipal_agenda", "Todos nos llamamos Ali"),
                         (
-                            "municipal_agenda_teaser",
+                            "municipal_cinema_teaser",
                             "En un café Emmi conoce a Salem.",
                         ),
                     ),
@@ -62,7 +62,7 @@ class EventTeaserTranslationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(
                 cached_translation(
                     path,
-                    "municipal_agenda_teaser",
+                    "municipal_cinema_teaser",
                     "En un café Emmi conoce a Salem.",
                 ),
                 "В кафе вдова Эмми знакомится с молодым марокканцем Салемом.",
@@ -79,13 +79,13 @@ class EventTeaserTranslationTests(unittest.IsolatedAsyncioTestCase):
             ):
                 await prepare_translations(
                     "key",
-                    (("municipal_agenda_teaser", teaser),),
+                    (("municipal_cinema_teaser", teaser),),
                     path,
                     datetime(2026, 9, 18, 8, 0, tzinfo=TZ),
                 )
                 await prepare_translations(
                     "key",
-                    (("municipal_agenda_teaser", teaser),),
+                    (("municipal_cinema_teaser", teaser),),
                     path,
                     datetime(2026, 9, 18, 9, 0, tzinfo=TZ),
                 )
