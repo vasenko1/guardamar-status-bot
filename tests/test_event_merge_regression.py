@@ -9,6 +9,7 @@ from telegrambot.models import Event
 from telegrambot.morning import _merge_events, _prefer_agenda_guardamar_venues
 from telegrambot.municipal_agenda import (
     SourceEvent,
+    _display_ticket_price,
     _display_ticket_price_cents,
     _enrich_admissions,
 )
@@ -60,7 +61,7 @@ class MunicipalAdmissionRegressionTests(unittest.TestCase):
         self.assertIn("entrada es gratuita", enriched[0].admission_evidence)
         self.assertIn("todo_cultura_detail", enriched[0].sources)
 
-    def test_multiple_explicit_tariffs_are_not_rendered_as_one_price(self):
+    def test_multiple_explicit_tariffs_render_as_lower_bound(self):
         source = SourceEvent(
             title_es="Visita guiada Memoria de arena",
             start_date=date(2026, 9, 18),
@@ -87,7 +88,8 @@ class MunicipalAdmissionRegressionTests(unittest.TestCase):
         enriched, = _enrich_admissions((source,), (admission,))
 
         self.assertEqual(enriched.details, ("1,5 км",))
-        self.assertIsNone(_display_ticket_price_cents(enriched))
+        self.assertEqual(_display_ticket_price(enriched), (400, True))
+        self.assertEqual(_display_ticket_price_cents(enriched), 400)
 
     def test_free_admission_remains_free_without_competing_tariffs(self):
         source = SourceEvent(
@@ -102,6 +104,7 @@ class MunicipalAdmissionRegressionTests(unittest.TestCase):
             admission_evidence="La entrada es gratuita con invitación.",
         )
 
+        self.assertEqual(_display_ticket_price(source), (0, False))
         self.assertEqual(_display_ticket_price_cents(source), 0)
 
 
@@ -213,12 +216,15 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
             title="Экскурсия «Memoria de Arena»",
             starts_at=start,
             place="Castillo de Guardamar",
+            ticket_price_cents=400,
+            ticket_price_is_from=True,
             ticket_url=detail_url,
         )
         agenda = Event(
             title="Экскурсия: замок, парк Альфонсо XIII, Фонтета и Рабита",
             starts_at=start,
             place="Castell",
+            ticket_price_cents=500,
             ticket_url=booking_url,
             details=("1,5 км",),
         )
@@ -235,6 +241,8 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
         )
         self.assertEqual(len(merged), 1)
         self.assertEqual(merged[0].ticket_url, booking_url)
+        self.assertEqual(merged[0].ticket_price_cents, 400)
+        self.assertTrue(merged[0].ticket_price_is_from)
         self.assertEqual(merged[0].details, ("1,5 км",))
         self.assertEqual(merged[0].route, corrected[0].route)
         rendered = "\n".join(build_event_section(
@@ -246,6 +254,8 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
             rendered,
         )
         self.assertIn("1,5 км", rendered)
+        self.assertIn("Билеты от 4 €", rendered)
+        self.assertNotIn("Билет 5 €", rendered)
 
     def test_different_agenda_id_does_not_bypass_title_matching(self):
         start = datetime(2026, 9, 18, 10, 0, tzinfo=MADRID)
