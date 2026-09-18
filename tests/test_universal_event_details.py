@@ -242,8 +242,21 @@ class SharedRendererTests(unittest.TestCase):
 
     def test_universal_excursion_and_grouped_programme(self):
         when = datetime(2026, 10, 5, 10, tzinfo=TZ)
-        excursion = Event("Экскурсия", when, duration_minutes=90, audience_label="8+")
-        self.assertIn("90 мин • 8+", event_lines(excursion))
+        excursion = Event(
+            "Экскурсия",
+            when,
+            duration_minutes=90,
+            audience_label="8+",
+            route="замок — археологический комплекс",
+        )
+        rendered_excursion = event_lines(excursion)
+        self.assertIn(
+            "Маршрут: замок — археологический комплекс",
+            rendered_excursion,
+        )
+        self.assertIn("90 мин • 8+", rendered_excursion)
+        self.assertNotIn("🧭", rendered_excursion)
+        self.assertNotIn("🚶", rendered_excursion)
         grouped = Event("Праздничный концерт", when, programme_title="Праздник")
         self.assertIn("• 🎉 Праздник", event_lines(grouped))
 
