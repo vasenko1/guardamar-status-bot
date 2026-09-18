@@ -1126,9 +1126,18 @@ def build_chess_activity(
     source_url = html.escape(str(snapshot["source_url"]), quote=True)
     start_time = html.escape(str(snapshot["start_time"]))
     end_time = html.escape(str(snapshot["end_time"]))
+    level_from = str(snapshot["level_from"])
+    level_to = str(snapshot["level_to"])
+    if (level_from, level_to) == ("INICIACIÓN", "AVANZADO"):
+        level_line = "Школа шахмат — от начинающего до продвинутого уровня."
+    else:
+        level_line = (
+            "Школа шахмат · уровни: "
+            f"{html.escape(level_from)}–{html.escape(level_to)}."
+        )
     message = with_footer(
         "♟️ <b>Шахматы</b>\n\n"
-        "Школа шахмат — от начинающего до продвинутого уровня.\n\n"
+        f"{level_line}\n\n"
         f"🗓 <b>Вторник и четверг · {start_time}–{end_time}</b>\n"
         "Конкретное время зависит от уровня группы.\n\n"
         f'🔎 <a href="{source_url}"><b>Информация о занятиях</b></a>'
