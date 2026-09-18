@@ -342,6 +342,7 @@ class TodoCulturaTests(unittest.TestCase):
         self.assertEqual(matching.price_cents, 0)
         self.assertEqual(matching.start_time, "19:00")
         self.assertIn(date(2026, 9, 18), matching.event_dates)
+        self.assertIsNone(matching.distance_label)
 
         tour = next(
             admission for admission in admissions
