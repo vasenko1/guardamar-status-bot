@@ -63,21 +63,19 @@ cinema marker.
 The existing `details`, `duration_minutes` and `audience_label` fields
 carry the metadata; no cinema-specific Event subclass or schema is introduced.
 
-## Director / country / year
+## Deliberately omitted film credits
 
-The same official parenthetical block consistently has
-`director, year. country`.
+The official parenthetical block also contains `director, year. country`, and
+TodoCultura may contain original title and cast.
 
-Director and recognized country are retained as ordinary event details because
-they are explicit in the primary official source.
+These facts are deliberately not added to the morning digest. The user-facing
+gap being solved is genre, duration, age rating and a short source-backed
+synopsis. Adding credits would require extra parsing/presentation policy without
+improving that core use case.
 
-Year is deliberately not rendered. The current Ali occurrence demonstrates a
-real conflict: Turismo/Agenda Guardamar state 1973 while TodoCultura states
-1974. The bot must not silently resolve that conflict.
-
-Cast and original title are also not included in the morning digest. They are
-available in TodoCultura but add substantial noise without improving the
-compact event decision context.
+The current Ali occurrence also demonstrates a real year conflict:
+Turismo/Agenda Guardamar state 1973 while TodoCultura states 1974. The bot must
+not silently resolve it.
 
 ## Safe synopsis rule
 
@@ -153,9 +151,10 @@ No cinema-specific ticket branch exists.
 
 ## Venue normalization
 
-`Escuela de Música` and `Escola de Música` are canonicalized to
-`Escola de Música` so the official Spanish and Valencian source forms do not
-produce competing venues.
+For cinema rows only, `Escuela de Música` and `Escola de Música` are
+canonicalized to `Escola de Música`. The shared venue normalizer is left
+unchanged so unrelated concerts, talks and other event types do not acquire a
+cinema-driven behavior change.
 
 ## Expected Ali presentation
 
@@ -164,13 +163,32 @@ can render approximately as:
 
 ```text
 19:00 — 🎬 Все мы зовемся Али
-Драма • Германия • реж. Rainer Werner Fassbinder • 93 мин • 13+
+Драма • 93 мин • 13+
 <bounded translated source synopsis>
 📍 Escola de Música
 🎟 Бесплатно · Получить билет
 ```
 
 The year is intentionally absent because the official source set conflicts.
+
+## Non-cinema blast radius
+
+The implementation intentionally leaves non-cinema extraction and rendering
+unchanged except for one previously approved shared UX rule:
+
+- any free event with an explicit ticket URL renders the whole label
+  `Бесплатно · Получить билет` as one link.
+
+Cinema synopsis translation is optional. Failure of the dedicated synopsis
+translator is logged and the teaser is omitted; it must not block translation
+or caching of ordinary event titles.
+
+TodoCultura `PARSER_VERSION` advances from 12 to 13 once so already-processed
+rows can expose their existing `event_rows` to the new synopsis matcher. This
+uses the source's existing bounded migration mechanism: at most the existing
+candidate/program limits are reprocessed, and no new polling loop or source is
+introduced. The tradeoff is one bounded re-read/re-extraction of current
+TodoCultura programme rows after deployment.
 
 ## Rejected designs
 
