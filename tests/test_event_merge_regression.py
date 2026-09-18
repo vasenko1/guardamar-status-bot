@@ -139,7 +139,8 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
             merged,
             "🎭 <b>События</b>",
         ))
-        self.assertIn("Escola de Música", rendered)
+        self.assertIn("Escuela de Música", rendered)
+        self.assertNotIn("Escola de Música", rendered)
         self.assertNotIn("Casa de Cultura", rendered)
         self.assertIn(
             '<a href="https://www.agendaguardamar.com/entradas/',
