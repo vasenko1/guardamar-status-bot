@@ -49,12 +49,19 @@ section.
 
 A row is accepted only when:
 
-1. its Spanish/Valencian weekday is recognized;
-2. the declared weekday equals the actual calendar weekday;
-3. date is inside the accepted monthly window;
-4. place/title metadata match the known compact row grammar;
-5. the venue is map-safe;
-6. duration, when present, is in the existing safe range.
+1. it is inside the bounded `CINE` section, which stops at the known peer
+   agenda headings such as `EXPOSICIONES`, `TEATRO`, `CONCIERTO`,
+   `FIESTAS`, `TALLERES`, `BALL D’ESTIU` and `VISITAS GUIADAS`;
+2. its Spanish/Valencian weekday is recognized;
+3. the declared weekday equals the actual calendar weekday;
+4. date is inside the accepted monthly window;
+5. place/title metadata match the known compact row grammar;
+6. the venue is map-safe;
+7. duration, when present, is in the existing safe range.
+
+The peer-section boundary is important after generalizing beyond Monday-library
+films: it prevents a following theatre/concert row from being reclassified as
+cinema if the monthly section order changes.
 
 Monday library screenings retain the established
 `Cine de los Lunes` presentation. Other verified cinema rows render with a
