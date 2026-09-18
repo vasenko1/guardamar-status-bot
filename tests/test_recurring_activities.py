@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from datetime import date, datetime
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
 from telegrambot.chess_school import (
@@ -13,6 +13,7 @@ from telegrambot.dinamizacion import (
     _campaign_from_feed,
     _extract_snapshot as extract_dinamizacion,
     _form_link,
+    refresh_dinamizacion_snapshot,
     valid_dinamizacion_snapshot,
 )
 from telegrambot.literary_group import (
@@ -146,6 +147,22 @@ class SourceParserTests(unittest.TestCase):
         )
         self.assertEqual(emotions["start_date"], "2026-10-14")
         self.assertEqual(emotions["end_date"], "2026-12-16")
+
+
+class DinamizacionRefreshTests(unittest.IsolatedAsyncioTestCase):
+    async def test_refresh_reads_known_form_directly(self):
+        previous = _dinamizacion_snapshot()
+        later = NOW.replace(hour=17)
+        with patch(
+            "telegrambot.dinamizacion._fetch",
+            return_value=_form_payload(),
+        ) as fetch:
+            refreshed = await refresh_dinamizacion_snapshot(previous, later)
+
+        self.assertTrue(valid_dinamizacion_snapshot(refreshed))
+        self.assertEqual(refreshed["observed_at"], later.isoformat())
+        fetch.assert_called_once()
+        self.assertEqual(fetch.call_args.args[0], FORM)
 
 
 class CardRenderingTests(unittest.TestCase):
