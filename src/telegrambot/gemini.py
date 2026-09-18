@@ -633,6 +633,53 @@ async def translate_event_titles(
     return [title.strip() for title in translated]
 
 
+def _translate_event_teasers(
+    api_key: str,
+    teasers: Sequence[str],
+) -> Dict[str, Any]:
+    prompt = (
+        "Translate these exact short Spanish event descriptions into natural "
+        "Russian. Translation only: preserve every factual claim, named entity "
+        "and uncertainty from the source. Do not add, infer, explain, summarize, "
+        "embellish, or merge details. Preserve an ellipsis when present. Return "
+        "exactly one Russian text for each input in the same order; each result "
+        "must be at most 260 characters:\\n"
+        + json.dumps(list(teasers), ensure_ascii=False)
+    )
+    return _request_json(
+        api_key,
+        [{"text": prompt}],
+        EVENT_TEASER_TRANSLATION_SCHEMA,
+        500,
+    )
+
+
+async def translate_event_teasers(
+    api_key: str,
+    teasers: Sequence[str],
+) -> List[str]:
+    """Translate bounded source excerpts without summarizing them."""
+
+    if not 1 <= len(teasers) <= 80:
+        raise ValueError("between one and 80 event teasers are required")
+    result = await asyncio.to_thread(
+        _translate_event_teasers,
+        api_key,
+        teasers,
+    )
+    translated = result.get("teasers_ru")
+    if (
+        not isinstance(translated, list)
+        or len(translated) != len(teasers)
+        or not all(
+            isinstance(teaser, str) and 1 <= len(teaser.strip()) <= 260
+            for teaser in translated
+        )
+    ):
+        raise GeminiError("Gemini returned invalid event teaser translations")
+    return [teaser.strip() for teaser in translated]
+
+
 def _request_market_status(
     api_key: str,
     source_text: str,
