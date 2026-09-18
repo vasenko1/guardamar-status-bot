@@ -517,6 +517,8 @@ def _display_ticket_price(
 
     if source.ticket_price_cents is None or not source.admission_evidence:
         return source.ticket_price_cents, False
+    if source.ticket_price_cents == 0:
+        return 0, False
     prices = {
         int(match.group(1)) * 100
         + int((match.group(2) or "0").ljust(2, "0"))
