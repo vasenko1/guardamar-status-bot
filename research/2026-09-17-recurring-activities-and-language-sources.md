@@ -1,11 +1,12 @@
 # Recurring activities and language sources — synchronized 2026-09-18
 
 Status: current research source of truth. The first recurring slice (Chess,
-Tertulia Literaria and Dinamización Social) is implemented in draft PR #110 but
-is not merged or deployed to production. Creative Workshops and language cards
-remain deferred as documented below. This document supersedes stale planning
-conclusions in `2026-09-17-recurring-activities-source-audit.md` where they
-conflict.
+Tertulia Literaria and Dinamización Social) is implemented and validated against
+the current production `main` codebase. Creative Workshops and language cards
+remain deferred as documented below. Deployment/publication is an operational
+step and is intentionally not encoded as durable research state here. This
+document supersedes stale planning conclusions in
+`2026-09-17-recurring-activities-source-audit.md` where they conflict.
 
 ## Product boundary
 
