@@ -24,3 +24,33 @@ jobs:
         env:
           PYTHONPATH: src
         run: python -m unittest discover -s tests
+      - name: Run live read-only recurring source parsers
+        env:
+          PYTHONPATH: src
+        run: |
+          python - <<'PY'
+          import asyncio
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+          from telegrambot.chess_school import fetch_chess_school_snapshot, valid_chess_school_snapshot
+          from telegrambot.literary_group import fetch_literary_group_snapshot, valid_literary_group_snapshot
+          from telegrambot.dinamizacion import discover_dinamizacion_campaign, fetch_dinamizacion_snapshot, valid_dinamizacion_snapshot
+
+          async def main():
+              now = datetime.now(ZoneInfo("Europe/Madrid"))
+              chess = await fetch_chess_school_snapshot(now)
+              literary = await fetch_literary_group_snapshot(now)
+              campaign = await discover_dinamizacion_campaign()
+              if campaign is None:
+                  raise SystemExit("Dinamizacion campaign not discovered")
+              url, season = campaign
+              dinamizacion = await fetch_dinamizacion_snapshot(url, season, now)
+              assert valid_chess_school_snapshot(chess)
+              assert valid_literary_group_snapshot(literary)
+              assert valid_dinamizacion_snapshot(dinamizacion)
+              print("chess", chess["start_time"], chess["end_time"], chess["level_from"], chess["level_to"])
+              print("literary", literary["start_time"], literary["end_time"])
+              print("dinamizacion", season, len(dinamizacion["groups"]), dinamizacion["registration_end"])
+
+          asyncio.run(main())
+          PY
