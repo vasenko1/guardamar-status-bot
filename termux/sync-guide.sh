@@ -25,3 +25,9 @@ export PYTHONPATH="$PROJECT_DIR/src"
 if ! ./.venv/bin/python -m telegrambot.sports_notifications_runner; then
     echo "Sports notification sync deferred; guide sync remains complete" >&2
 fi
+
+# Recurring notifications consume only the accepted guide/message state above.
+# They perform no source-network requests and must not block guide reconciliation.
+if ! ./.venv/bin/python -m telegrambot.recurring_notifications_runner; then
+    echo "Recurring notification sync deferred; guide sync remains complete" >&2
+fi
