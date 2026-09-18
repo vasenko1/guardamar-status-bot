@@ -3274,9 +3274,14 @@ async def fetch_today_municipal_events(
         participation_note = source.participation_note
         audience_label = source.audience_label
         schedule_note = source.schedule_note
+        teaser_source = (
+            "municipal_cinema_teaser"
+            if "todo_cultura_synopsis" in source.sources
+            else "municipal_agenda_teaser"
+        )
         teaser = (
             cached_translation(
-                translation_cache_path, "municipal_agenda_teaser", source.teaser_es
+                translation_cache_path, teaser_source, source.teaser_es
             ) if translation_cache_path is not None and source.teaser_es else None
         )
         activities = re.fullmatch(
@@ -3352,6 +3357,12 @@ async def municipal_translation_items(
             and event.title_es.casefold().startswith("cine de los lunes:")
         )
     ]
-    items.extend(("municipal_agenda_teaser", event.teaser_es)
-                 for event in events if event.teaser_es)
+    items.extend((
+        (
+            "municipal_cinema_teaser"
+            if "todo_cultura_synopsis" in event.sources
+            else "municipal_agenda_teaser"
+        ),
+        event.teaser_es,
+    ) for event in events if event.teaser_es)
     return tuple(items)
