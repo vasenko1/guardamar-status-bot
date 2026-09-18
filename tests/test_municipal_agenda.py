@@ -27,6 +27,7 @@ from telegrambot.municipal_agenda import (
     _merge_transition_events,
     _snapshot_data,
     _write_snapshot,
+    _sanitize_generic_agenda_ticket_url,
     extract_poster_url,
     extract_official_agenda_text,
     extract_official_exhibitions,
@@ -2076,6 +2077,155 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             stored["sources"]["todo_cultura"]["parser_version"], 4
+        )
+
+    async def test_incomplete_todo_still_enriches_verified_cinema_synopsis(self):
+        programme_text = (
+            "AGENDA CULTURAL SEPTIEMBRE 2026 CINE "
+            "Viernes, 18 de septiembre a las 19:00 h. Escuela de Música. "
+            "TODOS NOS LLAMAMOS ALI (Rainer Werner Fassbinder, 1973. Alemania) "
+            "+ 13 / Drama / 93 min Entrada libre con invitación "
+            "CONCIERTO CORAL"
+        )
+        page = f"<article>{programme_text}</article>".encode()
+        official_text, month = extract_official_agenda_text(page)
+        old_todo_state = {
+            "parser_version": 12,
+            "cursor_modified_gmt": "2026-09-17T08:00:00",
+            "covered_dates": ["2026-09-18"],
+            "candidates": [],
+        }
+        old = SourceEvent(
+            "Cine: TODOS NOS LLAMAMOS ALI",
+            date(2026, 9, 18),
+            date(2026, 9, 18),
+            "19:00",
+            None,
+            "Escola de Música",
+            "event",
+            ("turismo_html", "turismo_cinema"),
+            ticket_price_cents=0,
+            ticket_url="https://www.agendaguardamar.com/index.html",
+            duration_minutes=93,
+            audience_label="13+",
+            details=("Drama",),
+        )
+        ali_row = (
+            "2026-09-18\n"
+            "– 19 h.: Sesión de cine en la Escola de Música con la película "
+            "alemana titulada ‘Todos nos llamamos Ali’.\n"
+            "La sinopsis de la cinta es la siguiente: "
+            "En un café al que acuden trabajadores inmigrantes, Emmi conoce "
+            "a Salem, un marroquí treintañero."
+        )
+        unmatched_row = (
+            "2026-09-18\n"
+            "– 20 h.: Actividad experimental sin coincidencia."
+        )
+        program = TodoCulturaProgram(
+            text=ali_row + "\n" + unmatched_row,
+            sha256="todo-hash",
+            source_url="https://todoculturavegabaja.es/eventos/agenda/",
+            modified="2026-09-18T08:00:00",
+            dates=(date(2026, 9, 18),),
+            event_rows=(
+                (date(2026, 9, 18), "19:00", ali_row),
+                (date(2026, 9, 18), "20:00", unmatched_row),
+            ),
+        )
+        window = TodoCulturaWindow(
+            programs=(program,),
+            source_state={
+                **old_todo_state,
+                "parser_version": 13,
+                "cursor_modified_gmt": "2026-09-18T08:00:00",
+            },
+        )
+        empty = {"month": "2026-09", "events": []}
+        now = datetime(2026, 9, 18, 5, 10, tzinfo=TZ)
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agenda.json"
+            _write_snapshot(path, _snapshot_data(
+                "", "", now, (old,), {
+                    "turismo_html": {
+                        "sha256": hashlib.sha256(
+                            official_text.encode()
+                        ).hexdigest(),
+                        "month": month,
+                        "extractor_version": 3,
+                    },
+                    "todo_cultura": old_todo_state,
+                },
+            ))
+            with (
+                patch(
+                    "telegrambot.municipal_agenda._read_url",
+                    return_value=(page, "text/html"),
+                ),
+                patch(
+                    "telegrambot.municipal_agenda.fetch_program_window",
+                    new=AsyncMock(return_value=window),
+                ),
+                patch(
+                    "telegrambot.municipal_agenda.extract_agenda_text_events",
+                    new=AsyncMock(side_effect=(empty, empty)),
+                ),
+                patch(
+                    "telegrambot.municipal_agenda.fetch_facebook_posts",
+                    new=AsyncMock(return_value=()),
+                ),
+                patch(
+                    "telegrambot.municipal_agenda._turismo_programme_events",
+                    new=AsyncMock(return_value=((), {})),
+                ),
+            ):
+                current = await refresh_municipal_catalog("key", now, path)
+            stored = json.loads(path.read_text(encoding="utf-8"))
+
+        cinema = next(
+            event for event in current if "turismo_cinema" in event.sources
+        )
+        self.assertIn("todo_cultura_synopsis", cinema.sources)
+        self.assertIn("Emmi conoce a Salem", cinema.teaser_es)
+        self.assertIsNone(cinema.ticket_url)
+        self.assertEqual(
+            stored["sources"]["todo_cultura"]["cursor_modified_gmt"],
+            old_todo_state["cursor_modified_gmt"],
+        )
+
+    def test_generic_agenda_ticket_url_is_removed_from_stale_event(self):
+        generic = SourceEvent(
+            "Evento",
+            date(2026, 9, 18),
+            date(2026, 9, 18),
+            "19:00",
+            None,
+            "Casa de Cultura",
+            "event",
+            ("turismo_html",),
+            ticket_url="https://www.agendaguardamar.com/index.html",
+        )
+        specific = SourceEvent(
+            "Evento",
+            date(2026, 9, 18),
+            date(2026, 9, 18),
+            "19:00",
+            None,
+            "Casa de Cultura",
+            "event",
+            ("turismo_html",),
+            ticket_url=(
+                "https://www.agendaguardamar.com/espectaculo/48/alpha.html"
+            ),
+        )
+
+        self.assertIsNone(
+            _sanitize_generic_agenda_ticket_url(generic).ticket_url
+        )
+        self.assertEqual(
+            _sanitize_generic_agenda_ticket_url(specific).ticket_url,
+            specific.ticket_url,
         )
 
     async def test_todo_llm_failure_does_not_advance_incremental_state(self):
