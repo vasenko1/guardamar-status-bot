@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
 from telegrambot._transport import BoundedFetchError
+from telegrambot.dinamizacion import DinamizacionSourceError
 from telegrambot.guide import (
     GuideSourceError,
     GuideState,
@@ -382,6 +383,88 @@ class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
             saved = GuideState(Path(directory) / "guide.json").read()
             self.assertEqual(saved["sporttia_last_attempt_day"], "2026-09-16")
             self.assertNotIn("sporttia_catalog", saved)
+
+    async def test_dinamizacion_form_failure_recovers_via_campaign_detail(self):
+        with tempfile.TemporaryDirectory() as directory:
+            moment = datetime(2026, 9, 18, 16, 30, tzinfo=MADRID)
+            campaign_url = (
+                "https://www.guardamardelsegura.es/2026/09/07/"
+                "programa-dinamizacion-social-2026-2027/"
+            )
+            previous = {
+                "observed_at": datetime(
+                    2026, 9, 17, 16, 30, tzinfo=MADRID
+                ).isoformat(),
+                "season": "2026/27",
+                "campaign_url": campaign_url,
+                "form_url": "https://docs.google.com/forms/d/e/old/viewform",
+                "registration_start": "2026-09-09",
+                "registration_end": "2026-09-16",
+                "registration_until_full": True,
+                "resident_priority": True,
+                "groups": [
+                    {
+                        "key": "mindful_movement",
+                        "schedules": ["Пн/Ср · 11:15–12:15"],
+                        "start_date": None,
+                        "end_date": None,
+                    }
+                ],
+            }
+            recovered = dict(previous)
+            recovered["observed_at"] = moment.isoformat()
+            recovered["form_url"] = (
+                "https://docs.google.com/forms/d/e/new/viewform"
+            )
+
+            state = GuideState(Path(directory) / "guide.json")
+            state.write({
+                "version": 1,
+                "dinamizacion_snapshot": previous,
+            })
+            publish = AsyncMock(return_value=self._pinned_messages())
+            discovery = AsyncMock(return_value=(campaign_url, "2026/27"))
+            refresh = AsyncMock(
+                side_effect=DinamizacionSourceError(
+                    "old form unavailable",
+                    code="HTTP-404",
+                )
+            )
+            recover = AsyncMock(return_value=recovered)
+
+            with (
+                patch.dict("os.environ", self._environment(directory), clear=False),
+                patch(
+                    "telegrambot.guide.fetch_aqualider_catalog",
+                    new=AsyncMock(return_value=snapshot(moment)),
+                ),
+                patch(
+                    "telegrambot.guide.discover_dinamizacion_campaign",
+                    new=discovery,
+                ),
+                patch(
+                    "telegrambot.guide.refresh_dinamizacion_snapshot",
+                    new=refresh,
+                ),
+                patch(
+                    "telegrambot.guide.fetch_dinamizacion_snapshot",
+                    new=recover,
+                ),
+                patch("telegrambot.guide.publish_pinned_guide", new=publish),
+            ):
+                await sync_guide(moment)
+
+            refresh.assert_awaited_once_with(previous, moment)
+            recover.assert_awaited_once_with(
+                campaign_url,
+                "2026/27",
+                moment,
+            )
+            saved = state.read()
+            self.assertEqual(
+                saved["dinamizacion_snapshot"]["form_url"],
+                "https://docs.google.com/forms/d/e/new/viewform",
+            )
 
     async def test_sync_lock_covers_pinned_reconciliation(self):
         with tempfile.TemporaryDirectory() as directory:
