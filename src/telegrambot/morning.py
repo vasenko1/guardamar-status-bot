@@ -81,11 +81,17 @@ def _is_routine_event(event) -> bool:
     return _normalized_event_title(event.title) in _ROUTINE_EVENT_TITLES
 
 
-def _prefer_agenda_guardamar_venues(municipal_events, agenda_events):
-    """Repair only strong municipal/Agenda Guardamar venue conflicts."""
+def _prefer_agenda_guardamar_venues(
+    municipal_events,
+    agenda_events,
+):
+    """Use a unique direct Agenda booking occurrence to repair venue/URL."""
 
     def words(value):
-        aliases = {"castell": "castillo"}
+        aliases = {
+            "todos": "todo",
+            "llamamos": "llamar",
+        }
         return {
             aliases.get(word, word)
             for word in _normalized_event_title(value).split()
@@ -101,46 +107,88 @@ def _prefer_agenda_guardamar_venues(municipal_events, agenda_events):
             len(left_words), len(right_words)
         )
 
+    def agenda_path(value):
+        if value is None:
+            return None
+        normalized = normalize_ticket_url(value)
+        if normalized is None:
+            return None
+        parsed = urllib.parse.urlparse(normalized)
+        if parsed.hostname not in {
+            "agendaguardamar.com",
+            "www.agendaguardamar.com",
+        }:
+            return None
+        return parsed.path, normalized
+
     result = []
     for current in municipal_events:
-        if (
-            current.place is None
-            or current.ticket_url is not None
-            or current.starts_at is None
-        ):
+        if current.starts_at is None:
             result.append(current)
             continue
-        candidates = []
+
+        current_ticket = agenda_path(current.ticket_url)
+        direct_candidates = []
         current_words = words(current.title)
+
         for candidate in agenda_events:
             if (
                 candidate.starts_at != current.starts_at
-                or candidate.place is None
                 or candidate.ticket_url is None
             ):
                 continue
-            normalized_url = normalize_ticket_url(candidate.ticket_url)
-            if normalized_url is None:
-                continue
-            parsed = urllib.parse.urlparse(normalized_url)
-            shared = current_words & words(candidate.title)
+            candidate_ticket = agenda_path(candidate.ticket_url)
             if (
-                parsed.hostname not in {
-                    "agendaguardamar.com",
-                    "www.agendaguardamar.com",
-                }
-                or not parsed.path.startswith("/entradas/")
-                or len(shared) < 2
-                or overlap(current.title, candidate.title) < 0.75
-                or _normalized_event_title(candidate.place)
-                == "guardamar del segura"
-                or overlap(current.place, candidate.place) >= 0.5
+                candidate_ticket is None
+                or not candidate_ticket[0].startswith("/entradas/")
             ):
                 continue
-            candidates.append(candidate)
-        if len(candidates) == 1:
-            current = replace(current, place=candidates[0].place)
+            shared = current_words & words(candidate.title)
+            if (
+                len(shared) < 2
+                or overlap(current.title, candidate.title) < 0.75
+            ):
+                continue
+            direct_candidates.append((candidate, candidate_ticket[1]))
+
+        if len(direct_candidates) != 1:
+            result.append(current)
+            continue
+
+        candidate, direct_url = direct_candidates[0]
+
+        # Keep existing non-Agenda ticket providers and already-direct Agenda
+        # booking links untouched.
+        may_upgrade_ticket = (
+            current.ticket_url is None
+            or (
+                current_ticket is not None
+                and current_ticket[0].startswith("/espectaculo/")
+            )
+        )
+
+        replacement_place = current.place
+        if (
+            current.place is not None
+            and candidate.place is not None
+            and _normalized_event_title(candidate.place)
+            != "guardamar del segura"
+            and overlap(current.place, candidate.place) < 0.5
+            and current.ticket_url is None
+        ):
+            replacement_place = candidate.place
+
+        replacement_ticket = (
+            direct_url if may_upgrade_ticket else current.ticket_url
+        )
+
+        current = replace(
+            current,
+            place=replacement_place,
+            ticket_url=replacement_ticket,
+        )
         result.append(current)
+
     return tuple(result)
 
 
