@@ -173,7 +173,7 @@ def _sanitize_generic_agenda_ticket_url(
             "agendaguardamar.com",
             "www.agendaguardamar.com",
         }
-        and not parsed.path.startswith("/entradas/")
+        and not parsed.path.startswith(("/entradas/", "/espectaculo/"))
     ):
         return replace(event, ticket_url=None)
     return replace(event, ticket_url=normalized)
