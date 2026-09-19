@@ -626,9 +626,30 @@ class TodoCulturaTests(unittest.TestCase):
         )
         self.assertEqual(
             details[0].participation_note,
-            "маршрут низкой–средней сложности; "
             "возьмите воду и удобную обувь",
         )
+        self.assertEqual(
+            details[0].difficulty_label,
+            "Сложность маршрута: низкая–средняя",
+        )
+
+    def test_route_difficulty_accepts_known_levels_only(self):
+        moderate = _participation(
+            "8,30 horas: Free tour guiada.\n"
+            "La ruta es de dificultad moderada.\n"
+            "Inscripciones: info@example.com"
+        )
+        self.assertEqual(
+            moderate[0].difficulty_label,
+            "Сложность маршрута: средняя",
+        )
+
+        unknown = _participation(
+            "8,30 horas: Free tour guiada.\n"
+            "La ruta tiene dificultad técnica variable.\n"
+            "Inscripciones: info@example.com"
+        )
+        self.assertIsNone(unknown[0].difficulty_label)
 
     def test_binds_drawing_signup_age_and_limited_places(self):
         details = _participation(
