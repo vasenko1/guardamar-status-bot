@@ -342,6 +342,66 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
         self.assertNotIn("4 €", rendered)
         self.assertNotIn("Музыкальные обмены 2026", rendered)
 
+    def test_generic_agenda_provider_hint_upgrades_unique_same_place_booking(self):
+        start = datetime(2026, 9, 19, 20, 0, tzinfo=MADRID)
+        booking_url = (
+            "https://www.agendaguardamar.com/entradas/2/"
+            "intercambios-musicals.html"
+            "?webfecha=19/09/2026&webhora=20:00&websala=2&webfuncion=180"
+        )
+        municipal = Event(
+            title=(
+                "Концерт хора Amics Cantors d'Elx и ансамбля "
+                "Aromas de Guardamar в Музыкальной школе"
+            ),
+            starts_at=start,
+            place="Escuela de Música",
+            ticket_price_cents=0,
+            ticket_url="https://www.agendaguardamar.com/",
+        )
+        agenda = Event(
+            title="Музыкальные обмены 2026",
+            starts_at=start,
+            place="Escuela de Música",
+            ticket_url=booking_url,
+            details=("Музыкальная школа / Вход по пригласительным",),
+        )
+
+        corrected = _prefer_agenda_guardamar_venues((municipal,), (agenda,))
+        merged = _merge_events(corrected, (agenda,))
+
+        self.assertEqual(corrected[0].ticket_url, booking_url)
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0].title, municipal.title)
+        self.assertEqual(merged[0].ticket_price_cents, 0)
+        self.assertEqual(merged[0].details, ())
+
+    def test_generic_agenda_provider_hint_is_cleared_without_place_match(self):
+        start = datetime(2026, 9, 19, 20, 0, tzinfo=MADRID)
+        municipal = Event(
+            title="Концерт хора Alpha",
+            starts_at=start,
+            place="Escuela de Música",
+            ticket_price_cents=0,
+            ticket_url="https://www.agendaguardamar.com/",
+        )
+        unrelated = Event(
+            title="Музыкальные обмены 2026",
+            starts_at=start,
+            place="Casa de Cultura",
+            ticket_url=(
+                "https://www.agendaguardamar.com/entradas/2/other.html"
+                "?webfecha=19/09/2026&webhora=20:00&webfuncion=999"
+            ),
+        )
+
+        corrected = _prefer_agenda_guardamar_venues(
+            (municipal,), (unrelated,)
+        )
+
+        self.assertIsNone(corrected[0].ticket_url)
+        self.assertEqual(corrected[0].place, municipal.place)
+
     def test_same_numeric_agenda_segment_different_slugs_are_not_identity(self):
         start = datetime(2026, 9, 19, 20, 0, tzinfo=MADRID)
         municipal = Event(
