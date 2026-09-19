@@ -727,7 +727,11 @@ def _admissions(
                         re.IGNORECASE,
                     )
                 )
-                or (title_hint is not None and reservation is not None)
+                or (
+                    title_hint is not None
+                    and title_time is not None
+                    and reservation is not None
+                )
             )
         )
         if (
