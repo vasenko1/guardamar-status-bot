@@ -113,8 +113,16 @@ class AgendaNormalizationTests(unittest.TestCase):
         <p>Dificultat: Mitjana</p>
         <a href=//www.agendaguardamar.com/entradas/12/tour.html?webfecha=08/08/2026&amp;webhora=10:00>
         """
-        event = normalize_event_page(payload, date(2026, 8, 8))
-        self.assertEqual(event.details, ("Сложность маршрута: средняя",))
+        cases = (
+            (b"Dificultat: Mitjana", "Сложность маршрута: средняя"),
+            (b"Dificultat: Baixa", "Сложность маршрута: низкая"),
+            (b"Dificultad: Alta", "Сложность маршрута: высокая"),
+            (b"Dificultad: Media Baja", "Сложность маршрута: низкая–средняя"),
+        )
+        for raw, expected in cases:
+            candidate = payload.replace(b"Dificultat: Mitjana", raw)
+            event = normalize_event_page(candidate, date(2026, 8, 8))
+            self.assertEqual(event.details, (expected,))
 
         unknown = payload.replace(b"Dificultat: Mitjana", b"Dificultad: tecnica")
         unknown_event = normalize_event_page(unknown, date(2026, 8, 8))
