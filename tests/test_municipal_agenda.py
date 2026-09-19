@@ -677,6 +677,11 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             "talentojovenguardamar@gmail.com",
         )
         self.assertEqual(
+            enriched[0].details,
+            ("Сложность маршрута: низкая–средняя",),
+        )
+        self.assertIsNone(enriched[0].participation_note)
+        self.assertEqual(
             enriched[1].registration_contact,
             "WhatsApp 609 00 67 54",
         )
