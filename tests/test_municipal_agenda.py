@@ -1542,6 +1542,45 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         rendered = "\n".join(build_event_section(events, "События"))
         self.assertIn("Пейзаж хранит следы всего, чем он был.", rendered)
 
+    async def test_todo_activity_summary_uses_dedicated_teaser_cache_key(self):
+        event = SourceEvent(
+            "III Chupinazo", date(2026, 9, 19), date(2026, 9, 19),
+            "11:00", "15:00", "Plaza de la Constitución", "event",
+            ("todo_cultura", "todo_cultura_summary"),
+            teaser_es="Habrá animación, música, fiesta, barra, dj's y regalos.",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agenda.json"
+            translations = Path(directory) / "translations.json"
+            _write_snapshot(path, _snapshot_data(
+                "", "", datetime(2026, 9, 19, tzinfo=TZ), (event,)
+            ))
+            with (
+                patch(
+                    "telegrambot.municipal_agenda.cached_title",
+                    return_value="III Chupinazo",
+                ),
+                patch(
+                    "telegrambot.municipal_agenda.cached_translation",
+                    return_value="Анимация, музыка, праздник, бар, DJ и подарки.",
+                ) as translated,
+            ):
+                events = await fetch_today_municipal_events(
+                    datetime(2026, 9, 19, 8, 0, tzinfo=TZ), "", path,
+                    translation_cache_path=translations,
+                )
+
+        translated.assert_called_once_with(
+            translations,
+            "municipal_activity_teaser",
+            "Habrá animación, música, fiesta, barra, dj's y regalos.",
+        )
+        rendered = "\n".join(build_event_section(events, "События"))
+        self.assertIn(
+            "Анимация, музыка, праздник, бар, DJ и подарки.",
+            rendered,
+        )
+
     def test_repairs_reviewed_august_poster_facts(self):
         incorrect = (
             SourceEvent(
