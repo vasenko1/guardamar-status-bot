@@ -6,7 +6,11 @@ from telegrambot.digest import build_event_section
 from telegrambot.event_places import canonical_event_place
 from telegrambot.event_translations import reviewed_translation
 from telegrambot.models import Event
-from telegrambot.morning import _merge_events, _prefer_agenda_guardamar_venues
+from telegrambot.morning import (
+    _merge_events,
+    _merge_municipal_admission_aliases,
+    _prefer_agenda_guardamar_venues,
+)
 from telegrambot.municipal_agenda import (
     SourceEvent,
     _display_ticket_price,
@@ -341,6 +345,100 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
         self.assertIn("Бесплатно · Получить билет", rendered)
         self.assertNotIn("4 €", rendered)
         self.assertNotIn("Музыкальные обмены 2026", rendered)
+
+    def test_identical_admission_evidence_collapses_municipal_alias_after_booking(self):
+        start = datetime(2026, 9, 19, 20, 0, tzinfo=MADRID)
+        booking_url = (
+            "https://www.agendaguardamar.com/entradas/2/"
+            "intercambios-musicals.html"
+            "?webfecha=19/09/2026&webhora=20:00&websala=2&webfuncion=180"
+        )
+        evidence = (
+            "20 h.: Concierto de la coral Amics Cantors d'Elx y de la coral "
+            "Aromas de Guardamar en la Escola de Música, dentro de la XXIII "
+            "Campaña de Intercambios Musicales. La entrada es con invitación."
+        )
+        specific = Event(
+            title=(
+                "Концерт хора Amics Cantors d'Elx и ансамбля "
+                "Aromas de Guardamar в Музыкальной школе"
+            ),
+            starts_at=start,
+            place="Escuela de Música",
+            ticket_price_cents=0,
+            admission_evidence=evidence,
+        )
+        generic = Event(
+            title="Музыкальные обмены 2026",
+            starts_at=start,
+            ticket_price_cents=0,
+            admission_evidence=evidence,
+        )
+        agenda = Event(
+            title="Музыкальные обмены",
+            starts_at=start,
+            place="Escola de Música",
+            ticket_price_cents=400,
+            ticket_price_is_from=True,
+            ticket_url=booking_url,
+            duration_minutes=90,
+        )
+
+        corrected = _prefer_agenda_guardamar_venues(
+            (specific, generic), (agenda,)
+        )
+        collapsed = _merge_municipal_admission_aliases(corrected)
+        merged = _merge_events(collapsed, (agenda,))
+
+        self.assertIsNone(corrected[0].ticket_url)
+        self.assertEqual(corrected[1].ticket_url, booking_url)
+        self.assertEqual(len(collapsed), 1)
+        self.assertEqual(collapsed[0].title, specific.title)
+        self.assertEqual(collapsed[0].place, specific.place)
+        self.assertEqual(collapsed[0].ticket_price_cents, 0)
+        self.assertEqual(collapsed[0].ticket_url, booking_url)
+        self.assertEqual(collapsed[0].admission_evidence, evidence)
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0].title, specific.title)
+        self.assertEqual(merged[0].ticket_price_cents, 0)
+        self.assertFalse(merged[0].ticket_price_is_from)
+        self.assertEqual(merged[0].ticket_url, booking_url)
+        self.assertIsNone(merged[0].duration_minutes)
+
+    def test_municipal_alias_collapse_requires_same_evidence_and_price(self):
+        start = datetime(2026, 9, 19, 20, 0, tzinfo=MADRID)
+        first = Event(
+            title="Концерт хора Alpha",
+            starts_at=start,
+            place="Escuela de Música",
+            ticket_price_cents=0,
+            admission_evidence="La entrada es con invitación para Alpha.",
+        )
+        different_evidence = Event(
+            title="Музыкальные обмены 2026",
+            starts_at=start,
+            ticket_price_cents=0,
+            admission_evidence="La entrada es con invitación para Beta.",
+        )
+        conflicting_price = Event(
+            title="Музыкальные обмены 2026",
+            starts_at=start,
+            ticket_price_cents=400,
+            admission_evidence=first.admission_evidence,
+        )
+
+        self.assertEqual(
+            len(_merge_municipal_admission_aliases(
+                (first, different_evidence)
+            )),
+            2,
+        )
+        self.assertEqual(
+            len(_merge_municipal_admission_aliases(
+                (first, conflicting_price)
+            )),
+            2,
+        )
 
     def test_generic_agenda_provider_hint_upgrades_unique_same_place_booking(self):
         start = datetime(2026, 9, 19, 20, 0, tzinfo=MADRID)
