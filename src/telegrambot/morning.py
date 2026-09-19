@@ -373,6 +373,26 @@ def _merge_events(*groups):
             ), None)
             if duplicate_index is not None:
                 current = result[duplicate_index]
+                current_booking = agenda_booking_identity(current.ticket_url)
+                same_booking = (
+                    current_booking is not None
+                    and current_booking == agenda_booking_identity(event.ticket_url)
+                )
+                title_or_place_match = (
+                    normalized_title == normalize_title(current.title)
+                    or overlap(current.title, event.title) >= 0.5
+                    or (
+                        overlap(current.title, event.title) >= 0.2
+                        and current.place is not None
+                        and event.place is not None
+                        and overlap(current.place, event.place) >= 0.5
+                    )
+                )
+                if same_booking and not title_or_place_match:
+                    # The booking occurrence proves identity, but not that every
+                    # loosely parsed Agenda detail should override the richer
+                    # earlier event.  Deduplicate only.
+                    continue
                 result[duplicate_index] = replace(
                     current,
                     title=richer_title(current.title, event.title),
