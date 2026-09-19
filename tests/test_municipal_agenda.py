@@ -751,6 +751,47 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("con invitación", enriched[0].admission_evidence)
         self.assertIn("Reservas de entradas", enriched[0].admission_evidence)
 
+    def test_duplicate_admissions_coalesce_across_different_match_scores(self):
+        day = date(2026, 9, 19)
+        choir = SourceEvent(
+            "Concierto de la coral Amics Cantors d'Elx y de la coral "
+            "Aromas de Guardamar",
+            day, day, "20:00", None,
+            "Escuela de Música", "event", ("turismo_html",),
+        )
+        admissions = (
+            TodoCulturaAdmission(
+                title_hint=(
+                    "20 h.: Concierto de la coral Amics Cantors d'Elx "
+                    "y de la coral Aromas de Guardamar"
+                ),
+                price_cents=0,
+                ticket_url=None,
+                evidence="La entrada es con invitación.",
+                event_dates=(day,),
+                start_time="20:00",
+            ),
+            TodoCulturaAdmission(
+                title_hint=(
+                    "20 h.: Concierto de intercambio coral con Amics "
+                    "Cantors d'Elx en la Escola de Música"
+                ),
+                price_cents=None,
+                ticket_url="https://www.agendaguardamar.com/",
+                evidence="Reservas de entradas: Agenda de Guardamar.",
+                event_dates=(day,),
+                start_time="20:00",
+            ),
+        )
+
+        enriched = _enrich_admissions((choir,), admissions)
+
+        self.assertEqual(enriched[0].ticket_price_cents, 0)
+        self.assertEqual(
+            enriched[0].ticket_url,
+            "https://www.agendaguardamar.com/",
+        )
+
     def test_duplicate_admissions_with_conflicting_urls_are_withheld(self):
         day = date(2026, 9, 19)
         event = SourceEvent(
