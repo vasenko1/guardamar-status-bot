@@ -13,7 +13,7 @@ from telegrambot.municipal_agenda import (
     _display_ticket_price_cents,
     _enrich_admissions,
 )
-from telegrambot.todo_cultura import TodoCulturaAdmission
+from telegrambot.todo_cultura import TodoCulturaAdmission, _admissions
 
 
 MADRID = ZoneInfo("Europe/Madrid")
@@ -60,6 +60,40 @@ class MunicipalAdmissionRegressionTests(unittest.TestCase):
         self.assertEqual(enriched[0].ticket_price_cents, 0)
         self.assertIn("entrada es gratuita", enriched[0].admission_evidence)
         self.assertIn("todo_cultura_detail", enriched[0].sources)
+
+    def test_intercambios_invitation_and_agenda_link_enrich_one_source_event(self):
+        rendered = """
+        <p>Sábado 19 de septiembre</p>
+        <p>20 h.: Concierto de la coral ‘Amics Cantors d’Elx’ y de la
+        coral ‘Aromas de Guardamar’ en la Escola de Música, dentro de la
+        XXIII Campaña de Intercambios Musicales.</p>
+        <p>Está organizado por la FSMCV.</p>
+        <p>La entrada es con invitación.</p>
+        <p>Reservas de entradas:
+        <a href="https://www.agendaguardamar.com/espectaculo/2/intercambios-musicals.html">
+        Página web de Agenda de Guardamar</a></p>
+        """
+        admissions = _admissions(rendered, date(2026, 9, 19))
+        source = SourceEvent(
+            title_es=(
+                "Concierto de la coral Amics Cantors d'Elx y de la coral "
+                "Aromas de Guardamar"
+            ),
+            start_date=date(2026, 9, 19),
+            end_date=date(2026, 9, 19),
+            start_time="20:00",
+            end_time=None,
+            place="Escola de Música",
+            category="event",
+            sources=("todo_cultura",),
+        )
+
+        enriched, = _enrich_admissions((source,), admissions)
+
+        self.assertEqual(enriched.ticket_price_cents, 0)
+        self.assertIn("intercambios-musicals", enriched.ticket_url)
+        self.assertIn("con invitación", enriched.admission_evidence)
+        self.assertIn("todo_cultura_detail", enriched.sources)
 
     def test_multiple_explicit_tariffs_render_as_lower_bound(self):
         source = SourceEvent(
