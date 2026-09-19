@@ -363,6 +363,7 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
             title="Музыкальные обмены 2026",
             starts_at=start,
             place="Escuela de Música",
+            ticket_price_cents=0,
             ticket_url=booking_url,
             details=("Музыкальная школа / Вход по пригласительным",),
         )
@@ -389,6 +390,7 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
             title="Музыкальные обмены 2026",
             starts_at=start,
             place="Casa de Cultura",
+            ticket_price_cents=0,
             ticket_url=(
                 "https://www.agendaguardamar.com/entradas/2/other.html"
                 "?webfecha=19/09/2026&webhora=20:00&webfuncion=999"
