@@ -28,7 +28,7 @@ METADATA_PAGE_SIZE = 100
 METADATA_LIMIT_BYTES = 300_000
 ROLLING_WINDOW_DAYS = 7
 CURSOR_OVERLAP_MINUTES = 5
-PARSER_VERSION = 14
+PARSER_VERSION = 15
 API_URL = "https://todoculturavegabaja.es/wp-json/wp/v2/mec-events"
 
 
@@ -69,6 +69,16 @@ class TodoCulturaParticipation:
 
 
 @dataclass(frozen=True)
+class TodoCulturaSummary:
+    """One short source-explicit summary bound to a dated event occurrence."""
+
+    title_hint: str
+    teaser_es: str
+    event_dates: Tuple[date, ...] = ()
+    start_time: Optional[str] = None
+
+
+@dataclass(frozen=True)
 class TodoCulturaProgram:
     text: str
     sha256: str
@@ -76,6 +86,7 @@ class TodoCulturaProgram:
     modified: Optional[str]
     admissions: Tuple[TodoCulturaAdmission, ...] = ()
     participation: Tuple[TodoCulturaParticipation, ...] = ()
+    summaries: Tuple[TodoCulturaSummary, ...] = ()
     dates: Tuple[date, ...] = ()
     event_rows: Tuple[Tuple[date, str, str], ...] = ()
 
@@ -133,6 +144,48 @@ def _event_rows(section: str) -> Tuple[Tuple[str, str], ...]:
     if current_time is not None:
         rows.append((current_time, "\n".join((section.splitlines()[0], *current))))
     return tuple(rows)
+
+
+_SUMMARY_START = re.compile(
+    r"^(?:habr[aá]|incluye|incluir[aá]|el\s+programa\s+incluye|"
+    r"contar[aá]\s+con|se\s+podr[aá]\s+disfrutar\s+de)\b",
+    re.IGNORECASE,
+)
+_SUMMARY_REJECT = re.compile(
+    r"\b(?:precio|entrada|entradas|reserva|reservas|inscripci[oó]n|"
+    r"inscripciones|whatsapp|tel[eé]fono|duraci[oó]n|distancia|recorrido|"
+    r"punto\s+de\s+encuentro|aforo)\b|https?://|\S+@\S+",
+    re.IGNORECASE,
+)
+
+
+def _activity_summaries(section: str) -> Tuple[TodoCulturaSummary, ...]:
+    """Extract only short event-local activity summaries from dated rows."""
+
+    result = []
+    for start_time, row in _event_rows(section):
+        lines = [" ".join(line.split()) for line in row.splitlines() if line.strip()]
+        if len(lines) < 3:
+            continue
+        title_hint = lines[1][:300]
+        candidates = []
+        for line in lines[2:]:
+            if (
+                20 <= len(line) <= 220
+                and _SUMMARY_START.search(line)
+                and _SUMMARY_REJECT.search(line) is None
+            ):
+                candidates.append(line.rstrip(" .") + ".")
+        if len(candidates) != 1:
+            continue
+        result.append(TodoCulturaSummary(
+            title_hint=title_hint,
+            teaser_es=candidates[0],
+            start_time=start_time,
+        ))
+        if len(result) == 12:
+            break
+    return tuple(result)
 
 
 class _TextParser(HTMLParser):
@@ -588,8 +641,11 @@ def _admissions(
     for paragraph, plain in _paragraphs(rendered):
         admission_marker = re.search(
             r"\b(?:precio\s*:|el\s+precio\b|venta\s+de\s+entradas\b|"
+            r"reservas?\s+de\s+entradas?\b|"
             r"(?:(?:la|las)\s+)?entradas?\s+(?:(?:es|son)\s+)?"
             r"(?:libres?|gratuitas?)\b|"
+            r"(?:(?:la|las)\s+)?entradas?\s+(?:(?:es|son)\s+)?"
+            r"con\s+invitaci[oó]n(?:es)?\b|"
             r"(?:(?:el|los)\s+)?accesos?\s+(?:(?:es|son)\s+)?"
             r"(?:libres?|gratuitos?)\b|"
             r"entradas?\s+en\b)",
@@ -648,17 +704,47 @@ def _admissions(
             plain,
             re.IGNORECASE,
         )
+        invitation = re.search(
+            r"\b(?:(?:la|las)\s+)?entradas?"
+            r"(?:\s+(?:es|son))?\s+con\s+invitaci[oó]n(?:es)?\b",
+            plain,
+            re.IGNORECASE,
+        )
+        reservation = re.search(
+            r"\breservas?\s+de\s+entradas?\b",
+            plain,
+            re.IGNORECASE,
+        )
         ticket_url = _ticket_url(paragraph)
         ticket_only = bool(
-            (is_event_row or bool(mentioned and event_context))
-            and ticket_url
-            and re.search(
-                r"\b(?:entradas?|tickets?|venta|compra)\b",
-                plain,
-                re.IGNORECASE,
+            ticket_url
+            and (
+                (
+                    (is_event_row or bool(mentioned and event_context))
+                    and re.search(
+                        r"\b(?:entradas?|tickets?|venta|compra)\b",
+                        plain,
+                        re.IGNORECASE,
+                    )
+                )
+                or (
+                    title_hint is not None
+                    and title_time is not None
+                    and reservation is not None
+                    and (
+                        current_date is None
+                        or not title_dates
+                        or current_date in title_dates
+                    )
+                )
             )
         )
-        if price_match is None and free is None and not ticket_only:
+        if (
+            price_match is None
+            and free is None
+            and invitation is None
+            and not ticket_only
+        ):
             continue
         if mentioned and event_context:
             # A dated paragraph carrying its own admission fact is a complete
@@ -682,7 +768,7 @@ def _admissions(
                 .ljust(2, "0")
             )
             price_cents = euros * 100 + cents
-        elif free is not None:
+        elif free is not None or invitation is not None:
             price_cents = 0
         else:
             price_cents = None
@@ -696,7 +782,56 @@ def _admissions(
             title_hint.casefold(), title_dates, title_time,
             price_cents, ticket_url, distance_label,
         )
-        if key not in seen:
+        identity = (title_hint.casefold(), title_dates, title_time)
+        merged = False
+        for index, existing in enumerate(result):
+            existing_identity = (
+                existing.title_hint.casefold(),
+                existing.event_dates,
+                existing.start_time,
+            )
+            if existing_identity != identity:
+                continue
+            prices_compatible = (
+                existing.price_cents is None
+                or price_cents is None
+                or existing.price_cents == price_cents
+            )
+            urls_compatible = (
+                existing.ticket_url is None
+                or ticket_url is None
+                or existing.ticket_url == ticket_url
+            )
+            distances_compatible = (
+                existing.distance_label is None
+                or distance_label is None
+                or existing.distance_label == distance_label
+            )
+            if not (prices_compatible and urls_compatible and distances_compatible):
+                continue
+            combined_evidence = " ".join(
+                part for part in (existing.evidence, evidence) if part
+            )[:600]
+            result[index] = TodoCulturaAdmission(
+                title_hint=existing.title_hint,
+                price_cents=(
+                    existing.price_cents
+                    if existing.price_cents is not None
+                    else price_cents
+                ),
+                ticket_url=existing.ticket_url or ticket_url,
+                evidence=combined_evidence,
+                event_date=existing.event_date or (
+                    title_dates[0] if len(title_dates) == 1 else None
+                ),
+                start_time=existing.start_time or title_time,
+                event_dates=existing.event_dates or title_dates,
+                distance_label=existing.distance_label or distance_label,
+            )
+            seen.add(key)
+            merged = True
+            break
+        if not merged and key not in seen:
             seen.add(key)
             result.append(TodoCulturaAdmission(
                 title_hint=title_hint,
@@ -1307,6 +1442,11 @@ def _read_program_window(
                 for day, section in dated_sections
                 for detail in _participation(section)
             )),
+            summaries=tuple(dict.fromkeys(
+                replace(detail, event_dates=(day,))
+                for day, section in dated_sections
+                for detail in _activity_summaries(section)
+            )),
             dates=tuple(dict.fromkeys(day for day, _ in dated_sections)),
             event_rows=tuple(
                 (day, start_time, row)
@@ -1331,6 +1471,10 @@ def _read_program_window(
             participation=tuple(
                 replace(detail, event_dates=(day,))
                 for detail in _participation(text)
+            ),
+            summaries=tuple(
+                replace(detail, event_dates=(day,))
+                for detail in _activity_summaries(text)
             ),
             dates=(day,),
             event_rows=tuple(

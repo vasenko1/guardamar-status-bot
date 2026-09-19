@@ -13,7 +13,7 @@ from telegrambot.municipal_agenda import (
     _display_ticket_price_cents,
     _enrich_admissions,
 )
-from telegrambot.todo_cultura import TodoCulturaAdmission
+from telegrambot.todo_cultura import TodoCulturaAdmission, _admissions
 
 
 MADRID = ZoneInfo("Europe/Madrid")
@@ -60,6 +60,40 @@ class MunicipalAdmissionRegressionTests(unittest.TestCase):
         self.assertEqual(enriched[0].ticket_price_cents, 0)
         self.assertIn("entrada es gratuita", enriched[0].admission_evidence)
         self.assertIn("todo_cultura_detail", enriched[0].sources)
+
+    def test_intercambios_invitation_and_agenda_link_enrich_one_source_event(self):
+        rendered = """
+        <p>Sábado 19 de septiembre</p>
+        <p>20 h.: Concierto de la coral ‘Amics Cantors d’Elx’ y de la
+        coral ‘Aromas de Guardamar’ en la Escola de Música, dentro de la
+        XXIII Campaña de Intercambios Musicales.</p>
+        <p>Está organizado por la FSMCV.</p>
+        <p>La entrada es con invitación.</p>
+        <p>Reservas de entradas:
+        <a href="https://www.agendaguardamar.com/espectaculo/2/intercambios-musicals.html">
+        Página web de Agenda de Guardamar</a></p>
+        """
+        admissions = _admissions(rendered, date(2026, 9, 19))
+        source = SourceEvent(
+            title_es=(
+                "Concierto de la coral Amics Cantors d'Elx y de la coral "
+                "Aromas de Guardamar"
+            ),
+            start_date=date(2026, 9, 19),
+            end_date=date(2026, 9, 19),
+            start_time="20:00",
+            end_time=None,
+            place="Escola de Música",
+            category="event",
+            sources=("todo_cultura",),
+        )
+
+        enriched, = _enrich_admissions((source,), admissions)
+
+        self.assertEqual(enriched.ticket_price_cents, 0)
+        self.assertIn("intercambios-musicals", enriched.ticket_url)
+        self.assertIn("con invitación", enriched.admission_evidence)
+        self.assertIn("todo_cultura_detail", enriched.sources)
 
     def test_multiple_explicit_tariffs_render_as_lower_bound(self):
         source = SourceEvent(
@@ -256,6 +290,189 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
         self.assertIn("1,5 км", rendered)
         self.assertIn("Билеты от 4 €", rendered)
         self.assertNotIn("Билет 5 €", rendered)
+
+    def test_intercambios_detail_upgrades_by_slug_and_merges_exact_booking(self):
+        start = datetime(2026, 9, 19, 20, 0, tzinfo=MADRID)
+        detail_url = (
+            "https://www.agendaguardamar.com/espectaculo/2/"
+            "intercambios-musicals.html"
+        )
+        booking_url = (
+            "https://www.agendaguardamar.com/entradas/2/"
+            "intercambios-musicals.html"
+            "?webfecha=19/09/2026&webhora=20:00&websala=2&webfuncion=180"
+        )
+        municipal = Event(
+            title=(
+                "Концерт хора Amics Cantors d'Elx и ансамбля "
+                "Aromas de Guardamar в Музыкальной школе"
+            ),
+            starts_at=start,
+            place="Escuela de Música",
+            ticket_price_cents=0,
+            ticket_url=detail_url,
+        )
+        agenda = Event(
+            title="Музыкальные обмены 2026",
+            starts_at=start,
+            place="Escuela de Música",
+            ticket_price_cents=400,
+            ticket_price_is_from=True,
+            ticket_url=booking_url,
+            duration_minutes=90,
+            details=("Музыкальная школа / Вход по пригласительным",),
+        )
+
+        corrected = _prefer_agenda_guardamar_venues((municipal,), (agenda,))
+        merged = _merge_events(corrected, (agenda,))
+
+        self.assertEqual(corrected[0].ticket_url, booking_url)
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0].title, municipal.title)
+        self.assertEqual(merged[0].ticket_price_cents, 0)
+        self.assertFalse(merged[0].ticket_price_is_from)
+        self.assertEqual(merged[0].ticket_url, booking_url)
+        self.assertIsNone(merged[0].duration_minutes)
+        self.assertEqual(merged[0].details, ())
+
+        rendered = "\n".join(build_event_section(
+            merged, "🎭 <b>События</b>",
+        ))
+        self.assertIn("Бесплатно · Получить билет", rendered)
+        self.assertNotIn("4 €", rendered)
+        self.assertNotIn("Музыкальные обмены 2026", rendered)
+
+    def test_same_numeric_agenda_segment_different_slugs_are_not_identity(self):
+        start = datetime(2026, 9, 19, 20, 0, tzinfo=MADRID)
+        municipal = Event(
+            title="Концерт хора Alpha",
+            starts_at=start,
+            place="Escuela de Música",
+            ticket_url=(
+                "https://www.agendaguardamar.com/espectaculo/2/"
+                "intercambios-musicals.html"
+            ),
+        )
+        unrelated = Event(
+            title="Фильм Beta",
+            starts_at=start,
+            place="Escuela de Música",
+            ticket_url=(
+                "https://www.agendaguardamar.com/entradas/2/"
+                "otro-evento.html?webfecha=19/09/2026&webhora=20:00"
+            ),
+        )
+
+        corrected = _prefer_agenda_guardamar_venues(
+            (municipal,), (unrelated,),
+        )
+        merged = _merge_events(corrected, (unrelated,))
+
+        self.assertEqual(corrected[0].ticket_url, municipal.ticket_url)
+        self.assertEqual(len(merged), 2)
+
+    def test_same_slug_different_numeric_path_key_is_not_identity(self):
+        start = datetime(2026, 9, 19, 20, 0, tzinfo=MADRID)
+        municipal = Event(
+            title="Концерт Alpha",
+            starts_at=start,
+            place="Escuela de Música",
+            ticket_url=(
+                "https://www.agendaguardamar.com/espectaculo/2/"
+                "shared-slug.html"
+            ),
+        )
+        other = Event(
+            title="Спектакль Beta",
+            starts_at=start,
+            place="Escuela de Música",
+            ticket_url=(
+                "https://www.agendaguardamar.com/entradas/9/"
+                "shared-slug.html?webfecha=19/09/2026&webhora=20:00"
+            ),
+        )
+
+        corrected = _prefer_agenda_guardamar_venues((municipal,), (other,))
+
+        self.assertEqual(corrected[0].ticket_url, municipal.ticket_url)
+
+    def test_exact_booking_identity_merges_different_titles_only_same_occurrence(self):
+        first = Event(
+            title="Название из муниципальной программы",
+            starts_at=datetime(2026, 9, 19, 20, 0, tzinfo=MADRID),
+            ticket_url=(
+                "https://www.agendaguardamar.com/entradas/2/shared.html"
+                "?webhora=20:00&webfecha=19/09/2026&websala=2&webfuncion=180"
+            ),
+        )
+        same = Event(
+            title="Совсем другое название Agenda",
+            starts_at=first.starts_at,
+            ticket_url=(
+                "https://www.agendaguardamar.com/entradas/2/shared.html"
+                "?webfuncion=180&websala=2&webfecha=19/09/2026&webhora=20:00"
+            ),
+        )
+        next_session = Event(
+            title="Совсем другое название Agenda",
+            starts_at=datetime(2026, 9, 19, 21, 0, tzinfo=MADRID),
+            ticket_url=(
+                "https://www.agendaguardamar.com/entradas/2/shared.html"
+                "?webfecha=19/09/2026&webhora=21:00&webfuncion=181"
+            ),
+        )
+
+        merged = _merge_events((first,), (same,), (next_session,))
+
+        self.assertEqual(len(merged), 2)
+        self.assertEqual(merged[0].title, first.title)
+        self.assertEqual(
+            merged[1].starts_at.strftime("%H:%M"), "21:00"
+        )
+
+    def test_same_path_date_time_but_different_function_remains_distinct(self):
+        start = datetime(2026, 9, 19, 20, 0, tzinfo=MADRID)
+        first = Event(
+            title="Сеанс Alpha",
+            starts_at=start,
+            ticket_url=(
+                "https://www.agendaguardamar.com/entradas/2/shared.html"
+                "?webfecha=19/09/2026&webhora=20:00&websala=2&webfuncion=180"
+            ),
+        )
+        second = Event(
+            title="Сеанс Beta",
+            starts_at=start,
+            ticket_url=(
+                "https://www.agendaguardamar.com/entradas/2/shared.html"
+                "?webfecha=19/09/2026&webhora=20:00&websala=2&webfuncion=181"
+            ),
+        )
+
+        self.assertEqual(len(_merge_events((first,), (second,))), 2)
+
+    def test_same_time_place_different_booking_urls_remain_distinct(self):
+        start = datetime(2026, 9, 19, 20, 0, tzinfo=MADRID)
+        first = Event(
+            title="Концерт Alpha",
+            starts_at=start,
+            place="Escuela de Música",
+            ticket_url=(
+                "https://www.agendaguardamar.com/entradas/2/alpha.html"
+                "?webfecha=19/09/2026&webhora=20:00"
+            ),
+        )
+        second = Event(
+            title="Спектакль Beta",
+            starts_at=start,
+            place="Escuela de Música",
+            ticket_url=(
+                "https://www.agendaguardamar.com/entradas/2/beta.html"
+                "?webfecha=19/09/2026&webhora=20:00"
+            ),
+        )
+
+        self.assertEqual(len(_merge_events((first,), (second,))), 2)
 
     def test_conflicting_distances_render_safe_max_after_three_source_merge(self):
         start = datetime(2026, 9, 19, 10, 0, tzinfo=MADRID)

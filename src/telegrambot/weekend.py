@@ -10,7 +10,7 @@ from .agenda import AgendaError, fetch_today_events, recurring_events
 from .branding import with_footer
 from .digest import MONTHS_GENITIVE, build_event_section
 from .diagnostics import SourceDiagnostic, source_error
-from .morning import _merge_events
+from .morning import _merge_events, _prefer_agenda_guardamar_venues
 from .municipal_agenda import (
     MunicipalAgendaError,
     fetch_today_municipal_events,
@@ -129,6 +129,10 @@ async def _day_events(
         if diagnostics is not None:
             diagnostics.append(source_error("PESCA-CV", "Federación Pesca CV", exc))
         pesca_cv_events = ()
+    municipal_events = _prefer_agenda_guardamar_venues(
+        municipal_events,
+        agenda_events,
+    )
     return _merge_events(
         recurring_events(day),
         municipal_events,

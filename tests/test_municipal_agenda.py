@@ -20,6 +20,7 @@ from telegrambot.municipal_agenda import (
     _enrich_admissions,
     _enrich_cultura_teasers,
     _enrich_todo_participation,
+    _enrich_todo_summaries,
     _facebook_fingerprint,
     _apply_reviewed_corrections,
     _apply_reviewed_daily_schedules,
@@ -48,6 +49,7 @@ from telegrambot.todo_cultura import (
     TodoCulturaError,
     TodoCulturaParticipation,
     TodoCulturaProgram,
+    TodoCulturaSummary,
     TodoCulturaWindow,
     _participation,
 )
@@ -437,6 +439,27 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(merged[0].title_es, "TRIVOX")
 
+    def test_same_occurrence_merge_preserves_todo_summary(self):
+        day = date(2026, 9, 19)
+        official = SourceEvent(
+            "III Chupinazo", day, day, "11:00", "15:00",
+            "Plaza de la Constitución", "event", ("turismo_html",),
+        )
+        supplement = SourceEvent(
+            "III Chupinazo de Guardamar", day, day, "11:00", "15:00",
+            "Plaza de la Constitución", "event",
+            ("todo_cultura", "todo_cultura_summary"),
+            teaser_es="Habrá animación, música, fiesta, barra, dj's y regalos.",
+        )
+
+        merged = merge_text_and_poster_events((official,), (supplement,))
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(
+            merged[0].teaser_es,
+            "Habrá animación, música, fiesta, barra, dj's y regalos.",
+        )
+
     def test_unrelated_todo_event_at_same_slot_remains_distinct(self):
         official = SourceEvent(
             "Concierto Alpha", date(2026, 8, 30), date(2026, 8, 30),
@@ -686,6 +709,77 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             "WhatsApp 609 00 67 54",
         )
         self.assertTrue(enriched[1].capacity_limited)
+
+    def test_todo_summary_enriches_only_matching_occurrence(self):
+        day = date(2026, 9, 19)
+        chupinazo = SourceEvent(
+            "III Chupinazo", day, day, "11:00", "15:00",
+            "Plaza de la Constitución", "event", ("todo_cultura",),
+        )
+        concert = SourceEvent(
+            "Concierto coral", day, day, "20:00", None,
+            "Escuela de Música", "event", ("todo_cultura",),
+        )
+        details = (
+            TodoCulturaSummary(
+                title_hint="11 a 15 h.: III Chupinazo en Plaza de la Constitución",
+                teaser_es="Habrá animación, música, fiesta, barra, dj's y regalos.",
+                event_dates=(day,),
+                start_time="11:00",
+            ),
+        )
+
+        enriched = _enrich_todo_summaries(
+            (chupinazo, concert), details, day
+        )
+
+        self.assertEqual(
+            enriched[0].teaser_es,
+            "Habrá animación, música, fiesta, barra, dj's y regalos.",
+        )
+        self.assertIn("todo_cultura_summary", enriched[0].sources)
+        self.assertIsNone(enriched[1].teaser_es)
+
+    def test_todo_summary_does_not_overwrite_existing_teaser(self):
+        day = date(2026, 9, 19)
+        existing = SourceEvent(
+            "III Chupinazo", day, day, "11:00", "15:00",
+            "Plaza de la Constitución", "event", ("turismo_html",),
+            teaser_es="Descripción oficial existente.",
+        )
+        details = (
+            TodoCulturaSummary(
+                title_hint="11 a 15 h.: III Chupinazo",
+                teaser_es="Habrá animación, música y regalos.",
+                event_dates=(day,),
+                start_time="11:00",
+            ),
+        )
+
+        enriched = _enrich_todo_summaries((existing,), details, day)
+
+        self.assertEqual(enriched[0].teaser_es, "Descripción oficial existente.")
+
+    def test_todo_summary_without_time_is_withheld_for_multiple_sessions(self):
+        day = date(2026, 9, 19)
+        sessions = tuple(
+            SourceEvent(
+                "Festival Alpha", day, day, start, None,
+                "Plaza", "event", ("todo_cultura",),
+            )
+            for start in ("11:00", "18:00")
+        )
+        details = (
+            TodoCulturaSummary(
+                title_hint="Festival Alpha",
+                teaser_es="Habrá música y actividades para toda la familia.",
+                event_dates=(day,),
+            ),
+        )
+
+        enriched = _enrich_todo_summaries(sessions, details, day)
+
+        self.assertTrue(all(event.teaser_es is None for event in enriched))
 
     def test_todo_registration_does_not_leak_to_same_title_other_time(self):
         sessions = tuple(
@@ -1447,6 +1541,45 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                 )
         rendered = "\n".join(build_event_section(events, "События"))
         self.assertIn("Пейзаж хранит следы всего, чем он был.", rendered)
+
+    async def test_todo_activity_summary_uses_dedicated_teaser_cache_key(self):
+        event = SourceEvent(
+            "III Chupinazo", date(2026, 9, 19), date(2026, 9, 19),
+            "11:00", "15:00", "Plaza de la Constitución", "event",
+            ("todo_cultura", "todo_cultura_summary"),
+            teaser_es="Habrá animación, música, fiesta, barra, dj's y regalos.",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agenda.json"
+            translations = Path(directory) / "translations.json"
+            _write_snapshot(path, _snapshot_data(
+                "", "", datetime(2026, 9, 19, tzinfo=TZ), (event,)
+            ))
+            with (
+                patch(
+                    "telegrambot.municipal_agenda.cached_title",
+                    return_value="III Chupinazo",
+                ),
+                patch(
+                    "telegrambot.municipal_agenda.cached_translation",
+                    return_value="Анимация, музыка, праздник, бар, DJ и подарки.",
+                ) as translated,
+            ):
+                events = await fetch_today_municipal_events(
+                    datetime(2026, 9, 19, 8, 0, tzinfo=TZ), "", path,
+                    translation_cache_path=translations,
+                )
+
+        translated.assert_called_once_with(
+            translations,
+            "municipal_activity_teaser",
+            "Habrá animación, música, fiesta, barra, dj's y regalos.",
+        )
+        rendered = "\n".join(build_event_section(events, "События"))
+        self.assertIn(
+            "Анимация, музыка, праздник, бар, DJ и подарки.",
+            rendered,
+        )
 
     def test_repairs_reviewed_august_poster_facts(self):
         incorrect = (

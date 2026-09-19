@@ -121,14 +121,20 @@ def _prefer_agenda_guardamar_venues(
             return None
         return parsed.path, normalized
 
-    def agenda_event_id(ticket):
+    def agenda_event_key(ticket):
+        """Use Agenda's path key, never the non-unique number by itself."""
+
         if ticket is None:
             return None
         match = re.match(
-            r"^/(?:espectaculo|entradas)/(\d+)(?:/|$)",
+            r"^/(?:espectaculo|entradas)/(\d+)/([^/?#]+\.html)$",
             ticket[0],
+            re.IGNORECASE,
         )
-        return match.group(1) if match is not None else None
+        return (
+            match.group(1),
+            match.group(2).casefold(),
+        ) if match is not None else None
 
     def route_from_title(value):
         match = re.match(
@@ -145,7 +151,7 @@ def _prefer_agenda_guardamar_venues(
             continue
 
         current_ticket = agenda_path(current.ticket_url)
-        current_event_id = agenda_event_id(current_ticket)
+        current_event_key = agenda_event_key(current_ticket)
         direct_candidates = []
         current_words = words(current.title)
 
@@ -162,12 +168,12 @@ def _prefer_agenda_guardamar_venues(
             ):
                 continue
             shared = current_words & words(candidate.title)
-            same_event_id = (
-                current_event_id is not None
-                and current_event_id == agenda_event_id(candidate_ticket)
+            same_event_identity = (
+                current_event_key is not None
+                and current_event_key == agenda_event_key(candidate_ticket)
             )
             if (
-                not same_event_id
+                not same_event_identity
                 and (
                     len(shared) < 2
                     or overlap(current.title, candidate.title) < 0.75
@@ -177,14 +183,14 @@ def _prefer_agenda_guardamar_venues(
             direct_candidates.append((
                 candidate,
                 candidate_ticket[1],
-                same_event_id,
+                same_event_identity,
             ))
 
         if len(direct_candidates) != 1:
             result.append(current)
             continue
 
-        candidate, direct_url, same_event_id = direct_candidates[0]
+        candidate, direct_url, same_event_identity = direct_candidates[0]
 
         # Keep existing non-Agenda ticket providers and already-direct Agenda
         # booking links untouched.
@@ -213,7 +219,7 @@ def _prefer_agenda_guardamar_venues(
         replacement_route = current.route
         if (
             replacement_route is None
-            and same_event_id
+            and same_event_identity
             and _normalized_event_title(current.title).startswith("экскурсия")
         ):
             replacement_route = route_from_title(candidate.title)
@@ -284,6 +290,36 @@ def _merge_events(*groups):
             len(left_words), len(right_words)
         )
 
+    def agenda_booking_identity(value):
+        """Return one occurrence-specific Agenda booking identity."""
+
+        if value is None:
+            return None
+        normalized = normalize_ticket_url(value)
+        if normalized is None:
+            return None
+        parsed = urllib.parse.urlparse(normalized)
+        if (
+            parsed.hostname not in {
+                "agendaguardamar.com",
+                "www.agendaguardamar.com",
+            }
+            or not parsed.path.startswith("/entradas/")
+        ):
+            return None
+        query = urllib.parse.parse_qs(parsed.query)
+        event_date = (query.get("webfecha") or [None])[0]
+        event_time = (query.get("webhora") or [None])[0]
+        if not isinstance(event_date, str) or not isinstance(event_time, str):
+            return None
+        return (
+            parsed.path.casefold(),
+            tuple(sorted(urllib.parse.parse_qsl(
+                parsed.query,
+                keep_blank_values=True,
+            ))),
+        )
+
     def richer_place(current, candidate):
         """Prefer a strictly more specific compatible venue label."""
 
@@ -323,6 +359,11 @@ def _merge_events(*groups):
                     normalized_title == normalize_title(current.title)
                     or overlap(current.title, event.title) >= 0.5
                     or (
+                        agenda_booking_identity(current.ticket_url) is not None
+                        and agenda_booking_identity(current.ticket_url)
+                        == agenda_booking_identity(event.ticket_url)
+                    )
+                    or (
                         overlap(current.title, event.title) >= 0.2
                         and current.place is not None
                         and event.place is not None
@@ -332,6 +373,26 @@ def _merge_events(*groups):
             ), None)
             if duplicate_index is not None:
                 current = result[duplicate_index]
+                current_booking = agenda_booking_identity(current.ticket_url)
+                same_booking = (
+                    current_booking is not None
+                    and current_booking == agenda_booking_identity(event.ticket_url)
+                )
+                title_or_place_match = (
+                    normalized_title == normalize_title(current.title)
+                    or overlap(current.title, event.title) >= 0.5
+                    or (
+                        overlap(current.title, event.title) >= 0.2
+                        and current.place is not None
+                        and event.place is not None
+                        and overlap(current.place, event.place) >= 0.5
+                    )
+                )
+                if same_booking and not title_or_place_match:
+                    # The booking occurrence proves identity, but not that every
+                    # loosely parsed Agenda detail should override the richer
+                    # earlier event.  Deduplicate only.
+                    continue
                 result[duplicate_index] = replace(
                     current,
                     title=richer_title(current.title, event.title),

@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from telegrambot.todo_cultura import (
     TodoCulturaError,
+    _activity_summaries,
     _admissions,
     _bounded_candidates,
     _date_sections,
@@ -67,6 +68,34 @@ class TodoCulturaTests(unittest.TestCase):
         )
         self.assertIn("Torneo", rows[1][1])
         self.assertNotIn("Actividades del Centro", rows[-1][1])
+
+    def test_activity_summary_is_bound_to_its_event_row(self):
+        section = """2026-09-19
+– 11 a 15 h.: III Chupinazo en Plaza de la Constitución.
+Habrá animación, música, fiesta, barra, dj's y regalos.
+– 17 a 22 h.: Actividades del Centro Social Juvenil.
+En el centro se podrá disfrutar de ping-pong y futbolín.
+– 20 h.: Concierto coral en la Escuela de Música.
+La entrada es con invitación.
+"""
+        summaries = _activity_summaries(section)
+
+        self.assertEqual(len(summaries), 1)
+        self.assertEqual(summaries[0].start_time, "11:00")
+        self.assertIn("III Chupinazo", summaries[0].title_hint)
+        self.assertEqual(
+            summaries[0].teaser_es,
+            "Habrá animación, música, fiesta, barra, dj's y regalos.",
+        )
+
+    def test_activity_summary_rejects_admission_and_route_facts(self):
+        section = """2026-09-19
+– 10 h.: Visita guiada Memoria de Arena.
+El recorrido de 1,5 kilómetros dura 2 horas.
+La entrada es con invitación.
+Reservas de entradas: https://www.agendaguardamar.com/espectaculo/2/x.html
+"""
+        self.assertEqual(_activity_summaries(section), ())
 
     def test_event_time_does_not_read_compact_date_list_as_clock(self):
         self.assertEqual(
@@ -284,7 +313,7 @@ class TodoCulturaTests(unittest.TestCase):
 
         details.assert_called_once_with([128245])
         self.assertEqual(window.programs[0].dates, (date(2026, 8, 9),))
-        self.assertEqual(window.source_state["parser_version"], 14)
+        self.assertEqual(window.source_state["parser_version"], 15)
 
     def test_parser_upgrade_reopens_processed_date_with_free_admission(self):
         prior = {
@@ -330,7 +359,7 @@ class TodoCulturaTests(unittest.TestCase):
             window = _read_program_window(date(2026, 9, 18), prior)
 
         details.assert_called_once_with([181])
-        self.assertEqual(window.source_state["parser_version"], 14)
+        self.assertEqual(window.source_state["parser_version"], 15)
         self.assertEqual(len(window.programs), 1)
         self.assertEqual(window.programs[0].dates, (date(2026, 9, 18),))
         admissions = window.programs[0].admissions
@@ -842,6 +871,61 @@ class TodoCulturaTests(unittest.TestCase):
 
         self.assertIn("Representación", admissions[0].title_hint)
         self.assertEqual(admissions[0].event_date, date(2026, 9, 2))
+
+    def test_invitation_and_following_reservation_link_are_coalesced(self):
+        rendered = """
+        <p>Sábado 19 de septiembre</p>
+        <p>20 h.: Concierto de la Coral Amics Cantors d'Elx y
+        Coral Aromas de Guardamar.</p>
+        <p>La entrada es con invitación.</p>
+        <p>Reservas de entradas:
+        <a href="https://www.agendaguardamar.com/espectaculo/2/intercambios-musicals.html">
+        Página web de Agenda de Guardamar</a></p>
+        """
+        admissions = _admissions(rendered, date(2026, 9, 19))
+
+        self.assertEqual(len(admissions), 1)
+        self.assertEqual(admissions[0].price_cents, 0)
+        self.assertEqual(admissions[0].start_time, "20:00")
+        self.assertIn("intercambios-musicals", admissions[0].ticket_url)
+        self.assertIn("con invitación", admissions[0].evidence)
+        self.assertIn("Reservas de entradas", admissions[0].evidence)
+
+    def test_invitation_link_does_not_cross_into_next_event(self):
+        rendered = """
+        <p>Sábado 19 de septiembre</p>
+        <p>18 h.: Teatro Alpha.</p>
+        <p>La entrada es con invitación.</p>
+        <p>20 h.: Concierto Beta.</p>
+        <p>Reservas de entradas:
+        <a href="https://www.agendaguardamar.com/espectaculo/2/beta.html">
+        Agenda</a></p>
+        """
+        admissions = _admissions(rendered, date(2026, 9, 19))
+
+        alpha = next(item for item in admissions if "Teatro Alpha" in item.title_hint)
+        beta = next(item for item in admissions if "Concierto Beta" in item.title_hint)
+        self.assertEqual(alpha.price_cents, 0)
+        self.assertIsNone(alpha.ticket_url)
+        self.assertIsNone(beta.price_cents)
+        self.assertIn("/beta.html", beta.ticket_url)
+
+    def test_reservation_link_cannot_cross_date_section(self):
+        rendered = """
+        <p>Sábado 19 de septiembre</p>
+        <p>20 h.: Concierto Alpha.</p>
+        <p>La entrada es con invitación.</p>
+        <p>Domingo 20 de septiembre</p>
+        <p>Reservas de entradas:
+        <a href="https://www.agendaguardamar.com/espectaculo/2/beta.html">
+        Agenda</a></p>
+        """
+        admissions = _admissions(rendered, date(2026, 9, 19))
+
+        self.assertEqual(len(admissions), 1)
+        self.assertIn("Concierto Alpha", admissions[0].title_hint)
+        self.assertEqual(admissions[0].price_cents, 0)
+        self.assertIsNone(admissions[0].ticket_url)
 
     def test_reads_event_local_free_admission_without_link(self):
         admissions = _admissions(
