@@ -347,21 +347,28 @@ def _merge_events(*groups):
             if _is_routine_event(event):
                 continue
             normalized_title = normalize_title(event.title)
-            duplicate_index = next((
-                index
-                for index, current in enumerate(result)
+            event_booking = agenda_booking_identity(event.ticket_url)
+            duplicate_index = None
+            for index, current in enumerate(result):
+                current_booking = agenda_booking_identity(current.ticket_url)
                 if (
+                    current_booking is not None
+                    and event_booking is not None
+                    and current_booking != event_booking
+                ):
+                    continue
+                if not (
                     current.starts_at is None
                     or event.starts_at is None
                     or current.starts_at == event.starts_at
-                )
-                and (
+                ):
+                    continue
+                if (
                     normalized_title == normalize_title(current.title)
                     or overlap(current.title, event.title) >= 0.5
                     or (
-                        agenda_booking_identity(current.ticket_url) is not None
-                        and agenda_booking_identity(current.ticket_url)
-                        == agenda_booking_identity(event.ticket_url)
+                        current_booking is not None
+                        and current_booking == event_booking
                     )
                     or (
                         overlap(current.title, event.title) >= 0.2
@@ -369,8 +376,9 @@ def _merge_events(*groups):
                         and event.place is not None
                         and overlap(current.place, event.place) >= 0.5
                     )
-                )
-            ), None)
+                ):
+                    duplicate_index = index
+                    break
             if duplicate_index is not None:
                 current = result[duplicate_index]
                 current_booking = agenda_booking_identity(current.ticket_url)

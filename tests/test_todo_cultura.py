@@ -6,6 +6,7 @@ from email.message import Message
 from unittest.mock import patch
 
 from telegrambot.todo_cultura import (
+    PARSER_VERSION,
     TodoCulturaError,
     _activity_summaries,
     _admissions,
@@ -258,7 +259,7 @@ Reservas de entradas: https://www.agendaguardamar.com/espectaculo/2/x.html
 
     def test_unchanged_complete_window_makes_no_detail_request(self):
         prior = {
-            "parser_version": 14,
+            "parser_version": PARSER_VERSION,
             "cursor_modified_gmt": "2026-08-07T10:00:00",
             "candidates": [{
                 "id": 128245,
