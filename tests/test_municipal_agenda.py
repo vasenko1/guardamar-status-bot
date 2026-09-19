@@ -2106,6 +2106,40 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(events[0].is_final_day)
 
+    async def test_admission_evidence_reaches_morning_event(self):
+        evidence = (
+            "20 h.: Concierto coral en la Escola de Música. "
+            "La entrada es con invitación."
+        )
+        source = SourceEvent(
+            title_es="Concierto coral",
+            start_date=date(2026, 9, 19),
+            end_date=date(2026, 9, 19),
+            start_time="20:00",
+            end_time=None,
+            place="Escuela de Música",
+            category="event",
+            ticket_price_cents=0,
+            admission_evidence=evidence,
+        )
+        with (
+            patch(
+                "telegrambot.municipal_agenda._cached_current_events",
+                new=AsyncMock(return_value=(source,)),
+            ),
+            patch(
+                "telegrambot.municipal_agenda.translate_event_titles",
+                new=AsyncMock(return_value=["Концерт хора"]),
+            ),
+        ):
+            events = await fetch_today_municipal_events(
+                datetime(2026, 9, 19, 7, 30, tzinfo=TZ),
+                "key",
+                Path("unused.json"),
+            )
+
+        self.assertEqual(events[0].admission_evidence, evidence)
+
     async def test_batch_translation_failure_recovers_titles_individually(self):
         first = SourceEvent(
             title_es="Primera actividad",
