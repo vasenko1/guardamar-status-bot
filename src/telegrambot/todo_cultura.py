@@ -731,6 +731,11 @@ def _admissions(
                     title_hint is not None
                     and title_time is not None
                     and reservation is not None
+                    and (
+                        current_date is None
+                        or not title_dates
+                        or current_date in title_dates
+                    )
                 )
             )
         )
