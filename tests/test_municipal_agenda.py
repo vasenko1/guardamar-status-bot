@@ -740,6 +740,39 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("todo_cultura_summary", enriched[0].sources)
         self.assertIsNone(enriched[1].teaser_es)
 
+    def test_todo_summary_matches_short_title_by_time_and_place(self):
+        day = date(2026, 9, 19)
+        chupinazo = SourceEvent(
+            "Chupinazo del Segura", day, day, "11:00", "15:00",
+            "Plaza del Ayuntamiento", "event", ("todo_cultura",),
+        )
+        other_same_time = SourceEvent(
+            "Visita al Molino", day, day, "11:00", "12:00",
+            "Molino de San Antonio", "event", ("todo_cultura",),
+        )
+        details = (
+            TodoCulturaSummary(
+                title_hint=(
+                    "11 a 15 h.: III chupinazo de inicio de las fiestas "
+                    "patronales en honor a la Virgen del Rosario en la "
+                    "plaza del Ayuntamiento"
+                ),
+                teaser_es="Habrá animación, música, fiesta, barra, dj’s y regalos.",
+                event_dates=(day,),
+                start_time="11:00",
+            ),
+        )
+
+        enriched = _enrich_todo_summaries(
+            (chupinazo, other_same_time), details, day
+        )
+
+        self.assertEqual(
+            enriched[0].teaser_es,
+            "Habrá animación, música, fiesta, barra, dj’s y regalos.",
+        )
+        self.assertIsNone(enriched[1].teaser_es)
+
     def test_todo_summary_does_not_overwrite_existing_teaser(self):
         day = date(2026, 9, 19)
         existing = SourceEvent(
