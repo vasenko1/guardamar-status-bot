@@ -40,7 +40,7 @@ class EventTeaserTranslationTests(unittest.IsolatedAsyncioTestCase):
                             "En un café Emmi conoce a Salem.",
                         ),
                         (
-                            "municipal_agenda_teaser",
+                            "municipal_activity_teaser",
                             "Habrá animación, música, barra y regalos.",
                         ),
                     ),
@@ -79,7 +79,7 @@ class EventTeaserTranslationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(
                 cached_translation(
                     path,
-                    "municipal_agenda_teaser",
+                    "municipal_activity_teaser",
                     "Habrá animación, música, barra y regalos.",
                 ),
                 "Будут анимация, музыка, бар и подарки.",
