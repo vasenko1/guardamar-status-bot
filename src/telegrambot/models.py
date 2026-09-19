@@ -78,6 +78,7 @@ class Event:
     access_note: Optional[str] = None
     active_from: Optional[date] = None
     route: Optional[str] = None
+    admission_evidence: Optional[str] = None
 
 
 @dataclass(frozen=True)
