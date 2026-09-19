@@ -152,6 +152,10 @@ def _prefer_agenda_guardamar_venues(
 
         current_ticket = agenda_path(current.ticket_url)
         current_event_key = agenda_event_key(current_ticket)
+        generic_agenda_reservation = (
+            current_ticket is not None
+            and current_ticket[0] in {"", "/"}
+        )
         direct_candidates = []
         current_words = words(current.title)
 
@@ -172,11 +176,22 @@ def _prefer_agenda_guardamar_venues(
                 current_event_key is not None
                 and current_event_key == agenda_event_key(candidate_ticket)
             )
+            same_place = (
+                current.place is not None
+                and candidate.place is not None
+                and _normalized_event_title(candidate.place)
+                != "guardamar del segura"
+                and overlap(current.place, candidate.place) >= 0.75
+            )
             if (
                 not same_event_identity
-                and (
-                    len(shared) < 2
-                    or overlap(current.title, candidate.title) < 0.75
+                and not (
+                    len(shared) >= 2
+                    and overlap(current.title, candidate.title) >= 0.75
+                )
+                and not (
+                    generic_agenda_reservation
+                    and same_place
                 )
             ):
                 continue
@@ -187,6 +202,8 @@ def _prefer_agenda_guardamar_venues(
             ))
 
         if len(direct_candidates) != 1:
+            if generic_agenda_reservation:
+                current = replace(current, ticket_url=None)
             result.append(current)
             continue
 
@@ -196,6 +213,7 @@ def _prefer_agenda_guardamar_venues(
         # booking links untouched.
         may_upgrade_ticket = (
             current.ticket_url is None
+            or generic_agenda_reservation
             or (
                 current_ticket is not None
                 and current_ticket[0].startswith("/espectaculo/")
