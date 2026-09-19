@@ -183,21 +183,6 @@ def _prefer_agenda_guardamar_venues(
                 != "guardamar del segura"
                 and overlap(current.place, candidate.place) >= 0.75
             )
-            invitation_evidence = any(
-                marker in _normalized_event_title(detail)
-                for detail in candidate.details
-                for marker in (
-                    "invitacion",
-                    "invitacio",
-                    "приглас",
-                )
-            )
-            corroborated_free_invitation = (
-                same_place
-                and current.ticket_price_cents == 0
-                and candidate.ticket_price_cents == 0
-                and invitation_evidence
-            )
             if (
                 not same_event_identity
                 and not (
@@ -210,7 +195,6 @@ def _prefer_agenda_guardamar_venues(
                     and current.ticket_price_cents == 0
                     and candidate.ticket_price_cents == 0
                 )
-                and not corroborated_free_invitation
             ):
                 continue
             direct_candidates.append((
