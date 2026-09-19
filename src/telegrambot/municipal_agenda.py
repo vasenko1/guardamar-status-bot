@@ -1836,8 +1836,17 @@ def _enrich_todo_participation(
             and event.start_time != detail.start_time
         ):
             return None
-        overlap = _word_overlap(event.title_es, detail.title_hint)
-        return overlap if overlap >= 0.5 else None
+        title_overlap = _word_overlap(event.title_es, detail.title_hint)
+        if title_overlap >= 0.5:
+            return title_overlap
+        place_overlap = _word_overlap(event.place or "", detail.title_hint)
+        if (
+            detail.start_time is not None
+            and title_overlap > 0
+            and place_overlap >= 0.75
+        ):
+            return place_overlap
+        return None
 
     enriched = []
     for event in events:
