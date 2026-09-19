@@ -13,6 +13,7 @@ from .branding import with_footer
 from .event_places import (
     canonical_event_place, event_place_is_map_safe, same_event_place,
 )
+from .event_facts import ROUTE_DIFFICULTY_PREFIX
 from .models import (
     AirQualitySummary, BeachNotice, BeachStatus, ColdHealthRisk, HeatHealthRisk,
     MorningDigest, PollenSummary, Warning,
@@ -1017,41 +1018,77 @@ def _event_heading(event, indent: str, *, bullet: bool) -> str:
     return f"{indent}{'• ' if bullet else ''}{when}{title}"
 
 
-def _conflict_safe_event_details(details: Sequence[str]) -> List[str]:
-    """Hide distance facts when merged sources disagree."""
+def _format_distance_detail(value: int, approximate: bool) -> str:
+    whole, hundredths = divmod(value, 100)
+    if hundredths == 0:
+        amount = str(whole)
+    elif hundredths % 10 == 0:
+        amount = f"{whole},{hundredths // 10}"
+    else:
+        amount = f"{whole},{hundredths:02d}"
+    return ("≈ " if approximate else "") + amount + " км"
+
+
+def _normalized_event_details(
+    details: Sequence[str],
+) -> tuple[List[str], Optional[str]]:
+    """Normalize only canonical distance/difficulty route facts."""
 
     classified = []
     distance_values = set()
+    difficulty_values = set()
     for detail in details:
-        match = re.fullmatch(
+        distance_match = re.fullmatch(
             r"\s*(\d{1,3})(?:[,.](\d{1,2}))?\s*км\s*",
             detail,
             re.IGNORECASE,
         )
-        distance_value = None
-        if match is not None:
-            distance_value = (
-                int(match.group(1)) * 100
-                + int((match.group(2) or "0").ljust(2, "0"))
+        if distance_match is not None:
+            value = (
+                int(distance_match.group(1)) * 100
+                + int((distance_match.group(2) or "0").ljust(2, "0"))
             )
-            distance_values.add(distance_value)
-        classified.append((detail, distance_value))
+            distance_values.add(value)
+            classified.append(("distance", detail))
+            continue
 
-    if len(distance_values) > 1:
-        return [
-            detail for detail, distance_value in classified
-            if distance_value is None
-        ]
+        if detail.casefold().startswith(ROUTE_DIFFICULTY_PREFIX.casefold()):
+            level = detail[len(ROUTE_DIFFICULTY_PREFIX):].strip().casefold()
+            level = level.replace("-", "–")
+            if level in {
+                "низкая",
+                "низкая–средняя",
+                "средняя",
+                "средняя–высокая",
+                "высокая",
+            }:
+                difficulty_values.add(level)
+                classified.append(("difficulty", detail))
+                continue
+        classified.append(("other", detail))
+
+    distance_label = None
+    if distance_values:
+        distance_label = _format_distance_detail(
+            max(distance_values),
+            approximate=len(distance_values) > 1,
+        )
+    difficulty_label = (
+        next(iter(difficulty_values))
+        if len(difficulty_values) == 1
+        else None
+    )
 
     result = []
     distance_added = False
-    for detail, distance_value in classified:
-        if distance_value is None:
+    for kind, detail in classified:
+        if kind == "distance":
+            if distance_label is not None and not distance_added:
+                result.append(distance_label)
+                distance_added = True
+        elif kind == "other":
             result.append(detail)
-        elif not distance_added:
-            result.append(detail)
-            distance_added = True
-    return result
+    return result, difficulty_label
 
 
 def _render_event_details(event, indent: str) -> List[str]:
@@ -1060,13 +1097,17 @@ def _render_event_details(event, indent: str) -> List[str]:
     rows = []
     if event.route:
         rows.append(indent + "Маршрут: " + html.escape(event.route))
-    facts = _conflict_safe_event_details(event.details)
+    facts, route_difficulty = _normalized_event_details(event.details)
     if event.duration_minutes is not None:
         facts.append(f"{event.duration_minutes} мин")
     if event.audience_label:
         facts.append(event.audience_label)
     if facts:
         rows.append(indent + html.escape(" • ".join(facts)))
+    if route_difficulty:
+        rows.append(
+            indent + "Сложность маршрута: " + html.escape(route_difficulty)
+        )
     if event.teaser and not _event_teaser_is_redundant(event.title, event.teaser):
         rows.append(indent + html.escape(event.teaser))
     if (
