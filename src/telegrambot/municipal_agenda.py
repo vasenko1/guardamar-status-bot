@@ -3668,6 +3668,7 @@ async def fetch_today_municipal_events(
                 access_note=source.access_note,
                 teaser=teaser,
                 programme_title=source.programme_title,
+                admission_evidence=source.admission_evidence,
                 programme_order=source.programme_order,
                 is_final_day=(
                     source.start_date != source.end_date
