@@ -20,6 +20,7 @@ from .event_translations import cached_title
 from .holidays import is_market_day
 from .models import Event
 from .event_places import event_place_is_map_safe
+from .event_facts import route_difficulty_detail
 
 AGENDA_URL = (
     "https://www.agendaguardamar.com/"
@@ -494,6 +495,9 @@ def _page_facts(
             if label.endswith(",0"):
                 label = label[:-2]
             details.append(f"{label} км")
+    difficulty = route_difficulty_detail(text)
+    if difficulty is not None:
+        details.append(difficulty)
     return duration, price, price_is_from, place, tuple(details)
 
 

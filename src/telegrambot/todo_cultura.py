@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ._transport import BoundedFetchError, fetch_bounded
 from .event_urls import normalize_ticket_url
+from .event_facts import route_difficulty_detail
 
 
 API_HOSTS = {"todoculturavegabaja.es", "www.todoculturavegabaja.es"}
@@ -64,6 +65,7 @@ class TodoCulturaParticipation:
     evidence: str = ""
     event_dates: Tuple[date, ...] = ()
     start_time: Optional[str] = None
+    difficulty_label: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -372,8 +374,7 @@ def _participation(text: str) -> Tuple[TodoCulturaParticipation, ...]:
             skill_parts.append("практика игры в группе")
         if skill_parts:
             note_parts.append(" или ".join(skill_parts))
-        if re.search(r"dificultad baja[-–]moderada", context, re.I):
-            note_parts.append("маршрут низкой–средней сложности")
+        difficulty_label = route_difficulty_detail(context)
         if re.search(r"llevar agua.*calzado c[oó]modo", context, re.I):
             note_parts.append("возьмите воду и удобную обувь")
         available_activities = []
@@ -407,6 +408,7 @@ def _participation(text: str) -> Tuple[TodoCulturaParticipation, ...]:
             )),
             evidence=evidence,
             start_time=_event_time(anchor),
+            difficulty_label=difficulty_label,
         ))
         if len(result) == 12:
             break

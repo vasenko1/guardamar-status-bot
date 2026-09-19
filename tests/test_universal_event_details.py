@@ -240,19 +240,31 @@ class SharedRendererTests(unittest.TestCase):
         self.assertIn("18:00–20:00", plain)
         self.assertNotIn("  •", plain)
 
-    def test_distance_details_are_conflict_safe(self):
+    def test_distance_and_difficulty_details_are_route_safe(self):
         when = datetime(2026, 9, 19, 10, tzinfo=TZ)
 
         conflicting = Event(
             "Экскурсия",
             when,
             duration_minutes=120,
-            details=("1,5 км", "1 км", "Для всей семьи"),
+            details=(
+                "1,5 км",
+                "1 км",
+                "Сложность маршрута: низкая–средняя",
+                "Для всей семьи",
+            ),
         )
         rendered_conflicting = event_lines(conflicting)
-        self.assertNotIn("1,5 км", rendered_conflicting)
-        self.assertNotIn("1 км", rendered_conflicting)
-        self.assertIn("Для всей семьи • 120 мин", rendered_conflicting)
+        self.assertIn("≈ 1,5 км • Для всей семьи • 120 мин", rendered_conflicting)
+        self.assertNotIn("≈ 1 км", rendered_conflicting)
+        self.assertIn(
+            "\n  Сложность маршрута: низкая–средняя",
+            rendered_conflicting,
+        )
+        self.assertNotIn(
+            "120 мин • Сложность маршрута",
+            rendered_conflicting,
+        )
 
         agreeing = Event(
             "Экскурсия",
@@ -261,8 +273,31 @@ class SharedRendererTests(unittest.TestCase):
         )
         rendered_agreeing = event_lines(agreeing)
         self.assertEqual(rendered_agreeing.count("1,5 км"), 1)
+        self.assertNotIn("≈ 1,5 км", rendered_agreeing)
         self.assertNotIn("1.50 км", rendered_agreeing)
         self.assertIn("Низкая сложность", rendered_agreeing)
+
+        difficulty_conflict = Event(
+            "Экскурсия",
+            when,
+            details=(
+                "Сложность маршрута: низкая",
+                "Сложность маршрута: средняя",
+                "1 км",
+            ),
+        )
+        rendered_difficulty_conflict = event_lines(difficulty_conflict)
+        self.assertIn("1 км", rendered_difficulty_conflict)
+        self.assertNotIn("Сложность маршрута:", rendered_difficulty_conflict)
+
+        out_of_scope = Event(
+            "Спортивный маршрут",
+            when,
+            details=("250 км", "Сложность маршрута: экстремальная"),
+        )
+        rendered_out_of_scope = event_lines(out_of_scope)
+        self.assertIn("250 км", rendered_out_of_scope)
+        self.assertNotIn("Сложность маршрута:", rendered_out_of_scope)
 
     def test_universal_excursion_and_grouped_programme(self):
         when = datetime(2026, 10, 5, 10, tzinfo=TZ)

@@ -29,6 +29,7 @@ from .gemini import (
 from .event_translations import cached_title, cached_translation, spanish_fallback
 from .event_urls import normalize_ticket_url
 from .event_places import canonical_event_place, event_place_is_map_safe
+from .event_facts import ROUTE_DIFFICULTY_PREFIX
 from .facebook import FacebookError, FacebookPost, fetch_facebook_posts
 from .reviewed import (
     ReviewedDataError,
@@ -1857,6 +1858,7 @@ def _enrich_todo_participation(
                     detail.participation_note,
                     detail.capacity_limited,
                     detail.start_time,
+                    detail.difficulty_label,
                 )
                 for detail in tied
             }
@@ -1877,6 +1879,13 @@ def _enrich_todo_participation(
         if best is None:
             enriched.append(event)
             continue
+        enriched_details = event.details
+        if (
+            best.difficulty_label
+            and best.difficulty_label not in enriched_details
+            and len(enriched_details) < 3
+        ):
+            enriched_details = (*enriched_details, best.difficulty_label)
         enriched.append(replace(
             event,
             sources=tuple(dict.fromkeys(
@@ -1891,6 +1900,7 @@ def _enrich_todo_participation(
             capacity_limited=(
                 event.capacity_limited or best.capacity_limited
             ),
+            details=enriched_details,
         ))
     return tuple(enriched)
 
@@ -3462,6 +3472,27 @@ async def fetch_today_municipal_events(
             meeting_point = meeting_point or place
             place = None
         participation_note = source.participation_note
+        event_details = tuple(_detail_label(item) for item in source.details)
+        legacy_difficulty = "маршрут низкой–средней сложности"
+        if participation_note:
+            note_parts = [
+                part.strip()
+                for part in participation_note.split(";")
+                if part.strip()
+            ]
+            if legacy_difficulty in note_parts:
+                difficulty = ROUTE_DIFFICULTY_PREFIX + "низкая–средняя"
+                can_preserve = (
+                    difficulty in event_details or len(event_details) < 3
+                )
+                if can_preserve:
+                    if difficulty not in event_details:
+                        event_details = (*event_details, difficulty)
+                    note_parts = [
+                        part for part in note_parts
+                        if part != legacy_difficulty
+                    ]
+                    participation_note = "; ".join(note_parts) or None
         audience_label = source.audience_label
         schedule_note = source.schedule_note
         teaser_source = (
@@ -3517,7 +3548,7 @@ async def fetch_today_municipal_events(
                 capacity_limited=source.capacity_limited,
                 duration_minutes=source.duration_minutes,
                 audience_label=audience_label,
-                details=tuple(_detail_label(item) for item in source.details),
+                details=event_details,
                 place_query=source.place_query,
                 meeting_point=meeting_point,
                 schedule_note=schedule_note,

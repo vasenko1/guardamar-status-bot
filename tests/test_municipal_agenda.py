@@ -677,6 +677,11 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             "talentojovenguardamar@gmail.com",
         )
         self.assertEqual(
+            enriched[0].details,
+            ("Сложность маршрута: низкая–средняя",),
+        )
+        self.assertIsNone(enriched[0].participation_note)
+        self.assertEqual(
             enriched[1].registration_contact,
             "WhatsApp 609 00 67 54",
         )
@@ -1830,6 +1835,48 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             "https://www.giglon.com/event/trivox",
         )
         self.assertIn("20 euros", merged[0].admission_evidence)
+
+    async def test_legacy_route_difficulty_is_preserved_without_snapshot_migration(self):
+        day = date(2026, 9, 19)
+        legacy_note = (
+            "маршрут низкой–средней сложности; "
+            "возьмите воду и удобную обувь"
+        )
+        route = SourceEvent(
+            "Free tour guiada", day, day, "08:30", None, None, "event",
+            ("todo_cultura",), participation_note=legacy_note,
+        )
+        full = SourceEvent(
+            "Ruta con detalles completos", day, day, "09:30", None, None,
+            "event", ("todo_cultura",), participation_note=legacy_note,
+            details=("факт 1", "факт 2", "факт 3"),
+        )
+        with (
+            patch(
+                "telegrambot.municipal_agenda._cached_current_events",
+                new=AsyncMock(return_value=(route, full)),
+            ),
+            patch(
+                "telegrambot.municipal_agenda.translate_event_titles",
+                new=AsyncMock(return_value=["Бесплатная экскурсия", "Маршрут"]),
+            ),
+        ):
+            events = await fetch_today_municipal_events(
+                datetime(2026, 9, 19, 7, 0, tzinfo=TZ),
+                "key",
+                Path("unused.json"),
+            )
+
+        self.assertEqual(
+            events[0].details,
+            ("Сложность маршрута: низкая–средняя",),
+        )
+        self.assertEqual(
+            events[0].participation_note,
+            "возьмите воду и удобную обувь",
+        )
+        self.assertEqual(events[1].details, ("факт 1", "факт 2", "факт 3"))
+        self.assertEqual(events[1].participation_note, legacy_note)
 
     async def test_marks_only_last_day_of_multiday_event(self):
         source = SourceEvent(
