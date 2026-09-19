@@ -257,7 +257,7 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
         self.assertIn("Билеты от 4 €", rendered)
         self.assertNotIn("Билет 5 €", rendered)
 
-    def test_conflicting_distances_stay_hidden_after_three_source_merge(self):
+    def test_conflicting_distances_render_safe_max_after_three_source_merge(self):
         start = datetime(2026, 9, 19, 10, 0, tzinfo=MADRID)
         ticket_url = (
             "https://www.agendaguardamar.com/entradas/49/"
@@ -296,8 +296,8 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
             merged,
             "🎭 <b>События</b>",
         ))
-        self.assertNotIn("1,5 км", rendered)
-        self.assertNotIn("1 км", rendered)
+        self.assertIn("≈ 1,5 км", rendered)
+        self.assertNotIn("≈ 1 км", rendered)
         self.assertIn("120 мин", rendered)
         self.assertIn("Castillo de Guardamar", rendered)
         self.assertIn("Билеты от 4 €", rendered)
