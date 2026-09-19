@@ -18,7 +18,8 @@ class EventTeaserTranslationTests(unittest.IsolatedAsyncioTestCase):
             path = Path(directory) / "translations.json"
             title_translate = AsyncMock(return_value=["Все мы зовемся Али"])
             teaser_translate = AsyncMock(return_value=[
-                "В кафе вдова Эмми знакомится с молодым марокканцем Салемом."
+                "В кафе вдова Эмми знакомится с молодым марокканцем Салемом.",
+                "Будут анимация, музыка, бар и подарки.",
             ])
             with (
                 patch(
@@ -38,19 +39,26 @@ class EventTeaserTranslationTests(unittest.IsolatedAsyncioTestCase):
                             "municipal_cinema_teaser",
                             "En un café Emmi conoce a Salem.",
                         ),
+                        (
+                            "municipal_agenda_teaser",
+                            "Habrá animación, música, barra y regalos.",
+                        ),
                     ),
                     path,
                     datetime(2026, 9, 18, 8, 0, tzinfo=TZ),
                 )
 
-            self.assertEqual(count, 2)
+            self.assertEqual(count, 3)
             title_translate.assert_awaited_once_with(
                 "key",
                 ["Todos nos llamamos Ali"],
             )
             teaser_translate.assert_awaited_once_with(
                 "key",
-                ["En un café Emmi conoce a Salem."],
+                [
+                    "En un café Emmi conoce a Salem.",
+                    "Habrá animación, música, barra y regalos.",
+                ],
             )
             self.assertEqual(
                 cached_translation(
@@ -67,6 +75,14 @@ class EventTeaserTranslationTests(unittest.IsolatedAsyncioTestCase):
                     "En un café Emmi conoce a Salem.",
                 ),
                 "В кафе вдова Эмми знакомится с молодым марокканцем Салемом.",
+            )
+            self.assertEqual(
+                cached_translation(
+                    path,
+                    "municipal_agenda_teaser",
+                    "Habrá animación, música, barra y regalos.",
+                ),
+                "Будут анимация, музыка, бар и подарки.",
             )
 
     async def test_teaser_failure_does_not_block_non_cinema_titles(self):
