@@ -76,6 +76,7 @@ class AgendaNormalizationTests(unittest.TestCase):
         <p>Punto de encuentro: Castillo de Guardamar
         Itinerario: Castillo - Parque Alfonso XIII - Fonteta - R\xe1bita
         Distancia: 1,5 km
+        Dificultad: Baja-Moderada
         Duraci\xf3n 2 horas aprox
         ENTRADA:
         Regular: 5\x80</p>
@@ -93,12 +94,31 @@ class AgendaNormalizationTests(unittest.TestCase):
         self.assertIsNone(events[0].place)
         self.assertEqual(events[0].meeting_point, "Castillo de Guardamar")
         self.assertEqual(events[0].duration_minutes, 120)
-        self.assertEqual(events[0].details, ("1,5 км",))
+        self.assertEqual(
+            events[0].details,
+            ("1,5 км", "Сложность маршрута: низкая–средняя"),
+        )
         self.assertEqual(events[0].ticket_price_cents, 500)
         self.assertIn("webfecha=08/08/2026", events[0].ticket_url)
         later = normalize_event_page(payload, date(2026, 8, 15))
         self.assertIsNotNone(later)
         self.assertEqual(later.starts_at.date(), date(2026, 8, 15))
+
+    def test_route_difficulty_is_bounded_to_explicit_known_labels(self):
+        payload = b"""
+        <script type="application/ld+json">
+        {"@type":"Event","name":"Ruta guiada",
+         "startDate":"2026-08-08T10:00"}
+        </script>
+        <p>Dificultat: Mitjana</p>
+        <a href=//www.agendaguardamar.com/entradas/12/tour.html?webfecha=08/08/2026&amp;webhora=10:00>
+        """
+        event = normalize_event_page(payload, date(2026, 8, 8))
+        self.assertEqual(event.details, ("Сложность маршрута: средняя",))
+
+        unknown = payload.replace(b"Dificultat: Mitjana", b"Dificultad: tecnica")
+        unknown_event = normalize_event_page(unknown, date(2026, 8, 8))
+        self.assertEqual(unknown_event.details, ())
 
     def test_rejects_ticket_url_outside_official_host(self):
         payload = b"""
