@@ -255,6 +255,63 @@ def _prefer_agenda_guardamar_venues(
     return tuple(result)
 
 
+def _merge_municipal_admission_aliases(events):
+    """Collapse translated aliases proven to be the same municipal occurrence."""
+
+    def evidence_key(event):
+        if not event.admission_evidence:
+            return ""
+        return _normalized_event_title(event.admission_evidence)
+
+    def title_size(event):
+        return len([
+            word for word in _normalized_event_title(event.title).split()
+            if len(word) > 2
+        ])
+
+    result = []
+    for event in events:
+        key = evidence_key(event)
+        if event.starts_at is None or not key:
+            result.append(event)
+            continue
+
+        duplicate_index = next((
+            index
+            for index, current in enumerate(result)
+            if current.starts_at == event.starts_at
+            and current.category == event.category
+            and evidence_key(current) == key
+            and not (
+                current.ticket_price_cents is not None
+                and event.ticket_price_cents is not None
+                and current.ticket_price_cents != event.ticket_price_cents
+            )
+            and not (
+                current.ticket_url is not None
+                and event.ticket_url is not None
+                and current.ticket_url != event.ticket_url
+            )
+        ), None)
+        if duplicate_index is None:
+            result.append(event)
+            continue
+
+        current = result[duplicate_index]
+        preferred, alias = (
+            (event, current)
+            if title_size(event) > title_size(current)
+            else (current, event)
+        )
+        result[duplicate_index] = replace(
+            preferred,
+            ticket_url=preferred.ticket_url or alias.ticket_url,
+            place=preferred.place or alias.place,
+        )
+
+    return tuple(result)
+
+
 def _merge_events(*groups):
     result = []
 
@@ -886,6 +943,9 @@ async def produce_message(
     municipal_events = _prefer_agenda_guardamar_venues(
         municipal_events,
         events,
+    )
+    municipal_events = _merge_municipal_admission_aliases(
+        municipal_events
     )
 
     return build_message(
