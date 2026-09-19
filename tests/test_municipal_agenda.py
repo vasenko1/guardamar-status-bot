@@ -710,6 +710,75 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(enriched[1].capacity_limited)
 
+    def test_duplicate_admissions_coalesce_missing_and_provider_url(self):
+        day = date(2026, 9, 19)
+        choir = SourceEvent(
+            "Concierto de la coral Amics Cantors d'Elx y de la coral "
+            "Aromas de Guardamar",
+            day, day, "20:00", None,
+            "Escuela de Música", "event", ("turismo_html",),
+        )
+        title_hint = (
+            "20 h.: Concierto de la coral Amics Cantors d'Elx y de la "
+            "coral Aromas de Guardamar en la Escola de Música"
+        )
+        admissions = (
+            TodoCulturaAdmission(
+                title_hint=title_hint,
+                price_cents=0,
+                ticket_url=None,
+                evidence="La entrada es con invitación.",
+                event_dates=(day,),
+                start_time="20:00",
+            ),
+            TodoCulturaAdmission(
+                title_hint=title_hint,
+                price_cents=None,
+                ticket_url="https://www.agendaguardamar.com/",
+                evidence="Reservas de entradas: Agenda de Guardamar.",
+                event_dates=(day,),
+                start_time="20:00",
+            ),
+        )
+
+        enriched = _enrich_admissions((choir,), admissions)
+
+        self.assertEqual(enriched[0].ticket_price_cents, 0)
+        self.assertEqual(
+            enriched[0].ticket_url,
+            "https://www.agendaguardamar.com/",
+        )
+        self.assertIn("con invitación", enriched[0].admission_evidence)
+        self.assertIn("Reservas de entradas", enriched[0].admission_evidence)
+
+    def test_duplicate_admissions_with_conflicting_urls_are_withheld(self):
+        day = date(2026, 9, 19)
+        event = SourceEvent(
+            "Concierto Alpha", day, day, "20:00", None,
+            "Escuela de Música", "event", ("turismo_html",),
+        )
+        admissions = (
+            TodoCulturaAdmission(
+                title_hint="20 h.: Concierto Alpha en la Escuela de Música",
+                price_cents=0,
+                ticket_url="https://www.agendaguardamar.com/",
+                event_dates=(day,),
+                start_time="20:00",
+            ),
+            TodoCulturaAdmission(
+                title_hint="20 h.: Concierto Alpha en la Escuela de Música",
+                price_cents=0,
+                ticket_url="https://www.giglon.com/event/alpha",
+                event_dates=(day,),
+                start_time="20:00",
+            ),
+        )
+
+        enriched = _enrich_admissions((event,), admissions)
+
+        self.assertIsNone(enriched[0].ticket_price_cents)
+        self.assertIsNone(enriched[0].ticket_url)
+
     def test_todo_admission_matches_short_title_by_time_and_place(self):
         day = date(2026, 9, 19)
         choir = SourceEvent(
