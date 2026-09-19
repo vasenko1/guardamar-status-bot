@@ -910,6 +910,23 @@ Reservas de entradas: https://www.agendaguardamar.com/espectaculo/2/x.html
         self.assertIsNone(beta.price_cents)
         self.assertIn("/beta.html", beta.ticket_url)
 
+    def test_reservation_link_cannot_cross_date_section(self):
+        rendered = """
+        <p>Sábado 19 de septiembre</p>
+        <p>20 h.: Concierto Alpha.</p>
+        <p>La entrada es con invitación.</p>
+        <p>Domingo 20 de septiembre</p>
+        <p>Reservas de entradas:
+        <a href="https://www.agendaguardamar.com/espectaculo/2/beta.html">
+        Agenda</a></p>
+        """
+        admissions = _admissions(rendered, date(2026, 9, 19))
+
+        self.assertEqual(len(admissions), 1)
+        self.assertIn("Concierto Alpha", admissions[0].title_hint)
+        self.assertEqual(admissions[0].price_cents, 0)
+        self.assertIsNone(admissions[0].ticket_url)
+
     def test_reads_event_local_free_admission_without_link(self):
         admissions = _admissions(
             "<p>– 21,30 h.: Sesión de baile de verano.</p>"
