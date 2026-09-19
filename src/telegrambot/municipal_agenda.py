@@ -1759,9 +1759,22 @@ def _enrich_admissions(
             & _normalized_words(admission.title_hint)
         )
         discriminating = len(shared) >= 2 or bool(shared - generic_words)
-        if overlap < 0.5 or not discriminating:
-            return None
-        return overlap
+        if overlap >= 0.5 and discriminating:
+            return overlap
+        place_overlap = _word_overlap(
+            event.place or "", admission.title_hint
+        )
+        meaningful_shared = (
+            _claim_words(event.title_es)
+            & _claim_words(admission.title_hint)
+        )
+        if (
+            admission.start_time is not None
+            and place_overlap >= 0.75
+            and meaningful_shared
+        ):
+            return place_overlap
+        return None
 
     for event in events:
         ranked = []
@@ -3023,18 +3036,8 @@ async def refresh_municipal_catalog(
                         f"{day.isoformat()} {start_time}"
                         for day, start_time, _ in pending_rows
                     )
-                    missing_rows = "; ".join(
-                        (
-                            f"{day.isoformat()} {start_time} "
-                            + " ".join(row.splitlines()[1:2])[:140]
-                        ).strip()
-                        for day, start_time, row in pending_rows
-                    )
                     raise MunicipalAgendaError(
-                        (
-                            "Todo Cultura extraction was incomplete: "
-                            f"{missing_rows}"
-                        ),
+                        "Todo Cultura extraction was incomplete",
                         code="TODO-INCOMPLETE",
                         description=(
                             "не все строки программы распознаны; "
@@ -3228,6 +3231,20 @@ async def refresh_municipal_catalog(
             )
             if current_admissions:
                 events = _enrich_admissions(events, current_admissions)
+            current_summaries = tuple(
+                summary
+                for program in todo_window.programs
+                for summary in program.summaries
+            )
+            if current_summaries:
+                for target_date in tuple(dict.fromkeys(
+                    day
+                    for program in todo_window.programs
+                    for day in program.dates
+                )):
+                    events = _enrich_todo_summaries(
+                        events, current_summaries, target_date
+                    )
         if todo_enrichment_programs:
             events = _enrich_todo_cinema_synopses(
                 events,
