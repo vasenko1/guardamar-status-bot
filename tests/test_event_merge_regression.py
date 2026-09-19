@@ -319,6 +319,8 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
             ticket_price_cents=400,
             ticket_price_is_from=True,
             ticket_url=booking_url,
+            duration_minutes=90,
+            details=("Музыкальная школа / Вход по пригласительным",),
         )
 
         corrected = _prefer_agenda_guardamar_venues((municipal,), (agenda,))
@@ -330,6 +332,8 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
         self.assertEqual(merged[0].ticket_price_cents, 0)
         self.assertFalse(merged[0].ticket_price_is_from)
         self.assertEqual(merged[0].ticket_url, booking_url)
+        self.assertIsNone(merged[0].duration_minutes)
+        self.assertEqual(merged[0].details, ())
 
         rendered = "\n".join(build_event_section(
             merged, "🎭 <b>События</b>",
