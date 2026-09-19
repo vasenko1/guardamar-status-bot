@@ -28,7 +28,7 @@ METADATA_PAGE_SIZE = 100
 METADATA_LIMIT_BYTES = 300_000
 ROLLING_WINDOW_DAYS = 7
 CURSOR_OVERLAP_MINUTES = 5
-PARSER_VERSION = 15
+PARSER_VERSION = 16
 API_URL = "https://todoculturavegabaja.es/wp-json/wp/v2/mec-events"
 
 
@@ -520,6 +520,28 @@ def _ticket_url(fragment: str) -> Optional[str]:
     return None
 
 
+def _agenda_root_reservation_url(fragment: str) -> Optional[str]:
+    """Keep Agenda's root URL only as an explicit reservation-provider hint."""
+
+    for raw_url in re.findall(
+        r"href\s*=\s*['\"]([^'\"]+)['\"]", fragment, re.IGNORECASE
+    ):
+        normalized = normalize_ticket_url(html.unescape(raw_url))
+        if normalized is None:
+            continue
+        parsed = urllib.parse.urlparse(normalized)
+        if (
+            parsed.hostname in {
+                "agendaguardamar.com",
+                "www.agendaguardamar.com",
+            }
+            and parsed.path in {"", "/"}
+            and not parsed.query
+        ):
+            return normalized
+    return None
+
+
 def _event_time(value: str) -> Optional[str]:
     """Read the explicit leading or inline time that introduces an event."""
 
@@ -716,6 +738,8 @@ def _admissions(
             re.IGNORECASE,
         )
         ticket_url = _ticket_url(paragraph)
+        if ticket_url is None and reservation is not None:
+            ticket_url = _agenda_root_reservation_url(paragraph)
         ticket_only = bool(
             ticket_url
             and (

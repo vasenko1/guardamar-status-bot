@@ -152,6 +152,10 @@ def _prefer_agenda_guardamar_venues(
 
         current_ticket = agenda_path(current.ticket_url)
         current_event_key = agenda_event_key(current_ticket)
+        generic_agenda_reservation = (
+            current_ticket is not None
+            and current_ticket[0] in {"", "/"}
+        )
         direct_candidates = []
         current_words = words(current.title)
 
@@ -172,11 +176,24 @@ def _prefer_agenda_guardamar_venues(
                 current_event_key is not None
                 and current_event_key == agenda_event_key(candidate_ticket)
             )
+            same_place = (
+                current.place is not None
+                and candidate.place is not None
+                and _normalized_event_title(candidate.place)
+                != "guardamar del segura"
+                and overlap(current.place, candidate.place) >= 0.75
+            )
             if (
                 not same_event_identity
-                and (
-                    len(shared) < 2
-                    or overlap(current.title, candidate.title) < 0.75
+                and not (
+                    len(shared) >= 2
+                    and overlap(current.title, candidate.title) >= 0.75
+                )
+                and not (
+                    generic_agenda_reservation
+                    and same_place
+                    and current.ticket_price_cents == 0
+                    and candidate.ticket_price_cents == 0
                 )
             ):
                 continue
@@ -187,6 +204,8 @@ def _prefer_agenda_guardamar_venues(
             ))
 
         if len(direct_candidates) != 1:
+            if generic_agenda_reservation:
+                current = replace(current, ticket_url=None)
             result.append(current)
             continue
 
@@ -196,6 +215,7 @@ def _prefer_agenda_guardamar_venues(
         # booking links untouched.
         may_upgrade_ticket = (
             current.ticket_url is None
+            or generic_agenda_reservation
             or (
                 current_ticket is not None
                 and current_ticket[0].startswith("/espectaculo/")
@@ -231,6 +251,63 @@ def _prefer_agenda_guardamar_venues(
             route=replacement_route,
         )
         result.append(current)
+
+    return tuple(result)
+
+
+def _merge_municipal_admission_aliases(events):
+    """Collapse translated aliases proven to be the same municipal occurrence."""
+
+    def evidence_key(event):
+        if not event.admission_evidence:
+            return ""
+        return _normalized_event_title(event.admission_evidence)
+
+    def title_size(event):
+        return len([
+            word for word in _normalized_event_title(event.title).split()
+            if len(word) > 2
+        ])
+
+    result = []
+    for event in events:
+        key = evidence_key(event)
+        if event.starts_at is None or not key:
+            result.append(event)
+            continue
+
+        duplicate_index = next((
+            index
+            for index, current in enumerate(result)
+            if current.starts_at == event.starts_at
+            and current.category == event.category
+            and evidence_key(current) == key
+            and not (
+                current.ticket_price_cents is not None
+                and event.ticket_price_cents is not None
+                and current.ticket_price_cents != event.ticket_price_cents
+            )
+            and not (
+                current.ticket_url is not None
+                and event.ticket_url is not None
+                and current.ticket_url != event.ticket_url
+            )
+        ), None)
+        if duplicate_index is None:
+            result.append(event)
+            continue
+
+        current = result[duplicate_index]
+        preferred, alias = (
+            (event, current)
+            if title_size(event) > title_size(current)
+            else (current, event)
+        )
+        result[duplicate_index] = replace(
+            preferred,
+            ticket_url=preferred.ticket_url or alias.ticket_url,
+            place=preferred.place or alias.place,
+        )
 
     return tuple(result)
 
@@ -866,6 +943,9 @@ async def produce_message(
     municipal_events = _prefer_agenda_guardamar_venues(
         municipal_events,
         events,
+    )
+    municipal_events = _merge_municipal_admission_aliases(
+        municipal_events
     )
 
     return build_message(

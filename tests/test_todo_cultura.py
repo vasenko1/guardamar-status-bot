@@ -314,7 +314,7 @@ Reservas de entradas: https://www.agendaguardamar.com/espectaculo/2/x.html
 
         details.assert_called_once_with([128245])
         self.assertEqual(window.programs[0].dates, (date(2026, 8, 9),))
-        self.assertEqual(window.source_state["parser_version"], 15)
+        self.assertEqual(window.source_state["parser_version"], PARSER_VERSION)
 
     def test_parser_upgrade_reopens_processed_date_with_free_admission(self):
         prior = {
@@ -360,7 +360,7 @@ Reservas de entradas: https://www.agendaguardamar.com/espectaculo/2/x.html
             window = _read_program_window(date(2026, 9, 18), prior)
 
         details.assert_called_once_with([181])
-        self.assertEqual(window.source_state["parser_version"], 15)
+        self.assertEqual(window.source_state["parser_version"], PARSER_VERSION)
         self.assertEqual(len(window.programs), 1)
         self.assertEqual(window.programs[0].dates, (date(2026, 9, 18),))
         admissions = window.programs[0].admissions
@@ -890,6 +890,27 @@ Reservas de entradas: https://www.agendaguardamar.com/espectaculo/2/x.html
         self.assertEqual(admissions[0].start_time, "20:00")
         self.assertIn("intercambios-musicals", admissions[0].ticket_url)
         self.assertIn("con invitación", admissions[0].evidence)
+        self.assertIn("Reservas de entradas", admissions[0].evidence)
+
+    def test_generic_agenda_reservation_keeps_provider_hint(self):
+        rendered = """
+        <p>Sábado 19 de septiembre</p>
+        <p>20 h.: Concierto de la Coral Amics Cantors d'Elx y
+        Coral Aromas de Guardamar.</p>
+        <p>La entrada es con invitación.</p>
+        <p>Reservas de entradas:
+        <a href="https://www.agendaguardamar.com/">
+        Página web de Agenda de Guardamar</a></p>
+        """
+        admissions = _admissions(rendered, date(2026, 9, 19))
+
+        self.assertEqual(len(admissions), 1)
+        self.assertEqual(admissions[0].price_cents, 0)
+        self.assertEqual(admissions[0].start_time, "20:00")
+        self.assertEqual(
+            admissions[0].ticket_url,
+            "https://www.agendaguardamar.com/",
+        )
         self.assertIn("Reservas de entradas", admissions[0].evidence)
 
     def test_invitation_link_does_not_cross_into_next_event(self):

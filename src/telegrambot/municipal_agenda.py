@@ -1759,9 +1759,18 @@ def _enrich_admissions(
             & _normalized_words(admission.title_hint)
         )
         discriminating = len(shared) >= 2 or bool(shared - generic_words)
-        if overlap < 0.5 or not discriminating:
-            return None
-        return overlap
+        if overlap >= 0.5 and discriminating:
+            return overlap
+        place_overlap = _word_overlap(
+            event.place or "", admission.title_hint
+        )
+        if (
+            admission.start_time is not None
+            and place_overlap >= 0.75
+            and discriminating
+        ):
+            return place_overlap
+        return None
 
     for event in events:
         ranked = []
@@ -1927,8 +1936,20 @@ def _enrich_todo_summaries(
             and event.start_time != detail.start_time
         ):
             return None
-        overlap = _word_overlap(event.title_es, detail.title_hint)
-        return overlap if overlap >= 0.5 else None
+        title_overlap = _word_overlap(event.title_es, detail.title_hint)
+        if title_overlap >= 0.5:
+            return title_overlap
+        place_overlap = _word_overlap(event.place or "", detail.title_hint)
+        if (
+            detail.start_time is not None
+            and bool(
+                _claim_words(event.title_es)
+                & _claim_words(detail.title_hint)
+            )
+            and place_overlap >= 0.75
+        ):
+            return place_overlap
+        return None
 
     enriched = []
     for event in events:
@@ -3206,6 +3227,20 @@ async def refresh_municipal_catalog(
             )
             if current_admissions:
                 events = _enrich_admissions(events, current_admissions)
+            current_summaries = tuple(
+                summary
+                for program in todo_window.programs
+                for summary in program.summaries
+            )
+            if current_summaries:
+                for target_date in tuple(dict.fromkeys(
+                    day
+                    for program in todo_window.programs
+                    for day in program.dates
+                )):
+                    events = _enrich_todo_summaries(
+                        events, current_summaries, target_date
+                    )
         if todo_enrichment_programs:
             events = _enrich_todo_cinema_synopses(
                 events,
@@ -3633,6 +3668,7 @@ async def fetch_today_municipal_events(
                 access_note=source.access_note,
                 teaser=teaser,
                 programme_title=source.programme_title,
+                admission_evidence=source.admission_evidence,
                 programme_order=source.programme_order,
                 is_final_day=(
                     source.start_date != source.end_date

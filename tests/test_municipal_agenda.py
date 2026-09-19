@@ -710,6 +710,40 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(enriched[1].capacity_limited)
 
+    def test_todo_admission_matches_short_title_by_time_and_place(self):
+        day = date(2026, 9, 19)
+        choir = SourceEvent(
+            "Concierto coral", day, day, "20:00", None,
+            "Escuela de Música", "event", ("turismo_html",),
+        )
+        unrelated = SourceEvent(
+            "Charla cultural", day, day, "20:00", None,
+            "Escuela de Música", "event", ("turismo_html",),
+        )
+        admissions = (
+            TodoCulturaAdmission(
+                title_hint=(
+                    "20 h.: Concierto de la coral Amics Cantors d'Elx "
+                    "y de la coral Aromas de Guardamar en la Escola de Música"
+                ),
+                price_cents=0,
+                ticket_url="https://www.agendaguardamar.com/",
+                evidence="La entrada es con invitación. Reservas de entradas.",
+                event_dates=(day,),
+                start_time="20:00",
+            ),
+        )
+
+        enriched = _enrich_admissions((choir, unrelated), admissions)
+
+        self.assertEqual(enriched[0].ticket_price_cents, 0)
+        self.assertEqual(
+            enriched[0].ticket_url,
+            "https://www.agendaguardamar.com/",
+        )
+        self.assertIsNone(enriched[1].ticket_url)
+        self.assertIsNone(enriched[1].ticket_price_cents)
+
     def test_todo_summary_enriches_only_matching_occurrence(self):
         day = date(2026, 9, 19)
         chupinazo = SourceEvent(
@@ -738,6 +772,39 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             "Habrá animación, música, fiesta, barra, dj's y regalos.",
         )
         self.assertIn("todo_cultura_summary", enriched[0].sources)
+        self.assertIsNone(enriched[1].teaser_es)
+
+    def test_todo_summary_matches_short_title_by_time_and_place(self):
+        day = date(2026, 9, 19)
+        chupinazo = SourceEvent(
+            "Chupinazo del Segura", day, day, "11:00", "15:00",
+            "Plaza del Ayuntamiento", "event", ("todo_cultura",),
+        )
+        other_same_time = SourceEvent(
+            "Visita al Molino", day, day, "11:00", "12:00",
+            "Molino de San Antonio", "event", ("todo_cultura",),
+        )
+        details = (
+            TodoCulturaSummary(
+                title_hint=(
+                    "11 a 15 h.: III chupinazo de inicio de las fiestas "
+                    "patronales en honor a la Virgen del Rosario en la "
+                    "plaza del Ayuntamiento"
+                ),
+                teaser_es="Habrá animación, música, fiesta, barra, dj’s y regalos.",
+                event_dates=(day,),
+                start_time="11:00",
+            ),
+        )
+
+        enriched = _enrich_todo_summaries(
+            (chupinazo, other_same_time), details, day
+        )
+
+        self.assertEqual(
+            enriched[0].teaser_es,
+            "Habrá animación, música, fiesta, barra, dj’s y regalos.",
+        )
         self.assertIsNone(enriched[1].teaser_es)
 
     def test_todo_summary_does_not_overwrite_existing_teaser(self):
@@ -2038,6 +2105,40 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertTrue(events[0].is_final_day)
+
+    async def test_admission_evidence_reaches_morning_event(self):
+        evidence = (
+            "20 h.: Concierto coral en la Escola de Música. "
+            "La entrada es con invitación."
+        )
+        source = SourceEvent(
+            title_es="Concierto coral",
+            start_date=date(2026, 9, 19),
+            end_date=date(2026, 9, 19),
+            start_time="20:00",
+            end_time=None,
+            place="Escuela de Música",
+            category="event",
+            ticket_price_cents=0,
+            admission_evidence=evidence,
+        )
+        with (
+            patch(
+                "telegrambot.municipal_agenda._cached_current_events",
+                new=AsyncMock(return_value=(source,)),
+            ),
+            patch(
+                "telegrambot.municipal_agenda.translate_event_titles",
+                new=AsyncMock(return_value=["Концерт хора"]),
+            ),
+        ):
+            events = await fetch_today_municipal_events(
+                datetime(2026, 9, 19, 7, 30, tzinfo=TZ),
+                "key",
+                Path("unused.json"),
+            )
+
+        self.assertEqual(events[0].admission_evidence, evidence)
 
     async def test_batch_translation_failure_recovers_titles_individually(self):
         first = SourceEvent(
