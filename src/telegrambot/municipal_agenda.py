@@ -1764,14 +1764,10 @@ def _enrich_admissions(
         place_overlap = _word_overlap(
             event.place or "", admission.title_hint
         )
-        meaningful_shared = (
-            _claim_words(event.title_es)
-            & _claim_words(admission.title_hint)
-        )
         if (
             admission.start_time is not None
             and place_overlap >= 0.75
-            and meaningful_shared
+            and discriminating
         ):
             return place_overlap
         return None
