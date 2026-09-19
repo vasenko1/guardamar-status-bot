@@ -3023,8 +3023,18 @@ async def refresh_municipal_catalog(
                         f"{day.isoformat()} {start_time}"
                         for day, start_time, _ in pending_rows
                     )
+                    missing_rows = "; ".join(
+                        (
+                            f"{day.isoformat()} {start_time} "
+                            + " ".join(row.splitlines()[1:2])[:140]
+                        ).strip()
+                        for day, start_time, row in pending_rows
+                    )
                     raise MunicipalAgendaError(
-                        "Todo Cultura extraction was incomplete",
+                        (
+                            "Todo Cultura extraction was incomplete: "
+                            f"{missing_rows}"
+                        ),
                         code="TODO-INCOMPLETE",
                         description=(
                             "не все строки программы распознаны; "
