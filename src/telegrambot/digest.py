@@ -1048,9 +1048,10 @@ def _normalized_event_details(
                 int(distance_match.group(1)) * 100
                 + int((distance_match.group(2) or "0").ljust(2, "0"))
             )
-            distance_values.add(value)
-            classified.append(("distance", detail))
-            continue
+            if 0 < value <= 10_000:
+                distance_values.add(value)
+                classified.append(("distance", detail))
+                continue
 
         if detail.casefold().startswith(ROUTE_DIFFICULTY_PREFIX.casefold()):
             level = detail[len(ROUTE_DIFFICULTY_PREFIX):].strip().casefold()
@@ -1063,8 +1064,8 @@ def _normalized_event_details(
                 "высокая",
             }:
                 difficulty_values.add(level)
-                classified.append(("difficulty", detail))
-                continue
+            classified.append(("difficulty", detail))
+            continue
         classified.append(("other", detail))
 
     distance_label = None
