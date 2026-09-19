@@ -167,7 +167,7 @@ async def prepare_translations(
             )
         except GeminiError as exc:
             LOGGER.warning(
-                "Cinema synopsis translations unavailable; omitting teasers: %s",
+                "Event teaser translations unavailable; omitting teasers: %s",
                 exc,
             )
         else:
