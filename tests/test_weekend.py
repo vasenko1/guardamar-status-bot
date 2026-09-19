@@ -131,6 +131,63 @@ class WeekendMessageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Рынок Campo de Guardamar", message)
         self.assertTrue(message.endswith("обЪявления Гуардамар</b></a>"))
 
+    async def test_weekend_deduplicates_intercambios_by_booking_occurrence(self):
+        now = datetime(2026, 9, 18, 18, 0, tzinfo=TZ)
+        with tempfile.TemporaryDirectory() as directory:
+            paths = _paths(directory)
+            booking_url = (
+                "https://www.agendaguardamar.com/entradas/2/"
+                "intercambios-musicals.html"
+                "?webfecha=19/09/2026&webhora=20:00&websala=2&webfuncion=180"
+            )
+            _write_agenda_snapshot(
+                paths["agenda_state_path"],
+                now,
+                (Event(
+                    title="Intercambios Musicals 2026",
+                    starts_at=datetime(2026, 9, 19, 20, 0, tzinfo=TZ),
+                    place="Escuela de Música",
+                    ticket_price_cents=400,
+                    ticket_price_is_from=True,
+                    ticket_url=booking_url,
+                    details=("Музыкальная школа / Вход по пригласительным",),
+                ),),
+            )
+            _write_municipal(paths["municipal_agenda_state_path"], (
+                SourceEvent(
+                    title_es=(
+                        "Concierto de la coral Amics Cantors d'Elx y de la "
+                        "coral Aromas de Guardamar"
+                    ),
+                    start_date=date(2026, 9, 19),
+                    end_date=date(2026, 9, 19),
+                    start_time="20:00",
+                    end_time=None,
+                    place="Escuela de Música",
+                    category="event",
+                    sources=("todo_cultura", "todo_cultura_detail"),
+                    ticket_price_cents=0,
+                    ticket_url=(
+                        "https://www.agendaguardamar.com/espectaculo/2/"
+                        "intercambios-musicals.html"
+                    ),
+                ),
+            ))
+
+            message = await produce_weekend_message(
+                now, "", paths["municipal_agenda_state_path"],
+                agenda_state_path=paths["agenda_state_path"],
+                library_agenda_state_path=paths["library_agenda_state_path"],
+                am_guardamar_state_path=paths["am_guardamar_state_path"],
+                translation_cache_path=paths["translation_cache_path"],
+            )
+
+        self.assertEqual(message.count("Amics Cantors"), 1)
+        self.assertNotIn("Intercambios Musicals 2026", message)
+        self.assertIn("Бесплатно · Получить билет", message)
+        self.assertNotIn("4 €", message)
+        self.assertNotIn("Музыкальная школа / Вход по пригласительным", message)
+
     async def test_day_without_events_omits_its_heading(self):
         now = datetime(2026, 8, 12, 18, 0, tzinfo=TZ)
         with tempfile.TemporaryDirectory() as directory:
