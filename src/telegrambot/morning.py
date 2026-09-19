@@ -311,8 +311,10 @@ def _merge_events(*groups):
             return None
         return (
             parsed.path.casefold(),
-            event_date,
-            event_time,
+            tuple(sorted(urllib.parse.parse_qsl(
+                parsed.query,
+                keep_blank_values=True,
+            ))),
         )
 
     def richer_place(current, candidate):
