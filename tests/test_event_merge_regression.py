@@ -430,6 +430,27 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
             merged[1].starts_at.strftime("%H:%M"), "21:00"
         )
 
+    def test_same_path_date_time_but_different_function_remains_distinct(self):
+        start = datetime(2026, 9, 19, 20, 0, tzinfo=MADRID)
+        first = Event(
+            title="Сеанс Alpha",
+            starts_at=start,
+            ticket_url=(
+                "https://www.agendaguardamar.com/entradas/2/shared.html"
+                "?webfecha=19/09/2026&webhora=20:00&websala=2&webfuncion=180"
+            ),
+        )
+        second = Event(
+            title="Сеанс Beta",
+            starts_at=start,
+            ticket_url=(
+                "https://www.agendaguardamar.com/entradas/2/shared.html"
+                "?webfecha=19/09/2026&webhora=20:00&websala=2&webfuncion=181"
+            ),
+        )
+
+        self.assertEqual(len(_merge_events((first,), (second,))), 2)
+
     def test_same_time_place_different_booking_urls_remain_distinct(self):
         start = datetime(2026, 9, 19, 20, 0, tzinfo=MADRID)
         first = Event(
