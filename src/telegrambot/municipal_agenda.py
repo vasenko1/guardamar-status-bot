@@ -3572,7 +3572,11 @@ async def fetch_today_municipal_events(
         teaser_source = (
             "municipal_cinema_teaser"
             if "todo_cultura_synopsis" in source.sources
-            else "municipal_agenda_teaser"
+            else (
+                "municipal_activity_teaser"
+                if "todo_cultura_summary" in source.sources
+                else "municipal_agenda_teaser"
+            )
         )
         teaser = (
             cached_translation(
@@ -3658,7 +3662,11 @@ async def municipal_translation_items(
         (
             "municipal_cinema_teaser"
             if "todo_cultura_synopsis" in event.sources
-            else "municipal_agenda_teaser"
+            else (
+                "municipal_activity_teaser"
+                if "todo_cultura_summary" in event.sources
+                else "municipal_agenda_teaser"
+            )
         ),
         event.teaser_es,
     ) for event in events if event.teaser_es)
