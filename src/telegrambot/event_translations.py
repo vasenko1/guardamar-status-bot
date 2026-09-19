@@ -147,7 +147,7 @@ async def prepare_translations(
         item for item in missing
         if item[0] in {
             "municipal_cinema_teaser",
-            "municipal_agenda_teaser",
+            "municipal_activity_teaser",
         }
     ]
     teaser_items = set(teaser_missing)
