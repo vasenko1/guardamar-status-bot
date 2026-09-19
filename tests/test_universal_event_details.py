@@ -290,6 +290,15 @@ class SharedRendererTests(unittest.TestCase):
         self.assertIn("1 км", rendered_difficulty_conflict)
         self.assertNotIn("Сложность маршрута:", rendered_difficulty_conflict)
 
+        out_of_scope = Event(
+            "Спортивный маршрут",
+            when,
+            details=("250 км", "Сложность маршрута: экстремальная"),
+        )
+        rendered_out_of_scope = event_lines(out_of_scope)
+        self.assertIn("250 км", rendered_out_of_scope)
+        self.assertNotIn("Сложность маршрута:", rendered_out_of_scope)
+
     def test_universal_excursion_and_grouped_programme(self):
         when = datetime(2026, 10, 5, 10, tzinfo=TZ)
         excursion = Event(
