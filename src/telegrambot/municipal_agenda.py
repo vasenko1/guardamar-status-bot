@@ -1933,7 +1933,10 @@ def _enrich_todo_summaries(
         place_overlap = _word_overlap(event.place or "", detail.title_hint)
         if (
             detail.start_time is not None
-            and title_overlap > 0
+            and bool(
+                _claim_words(event.title_es)
+                & _claim_words(detail.title_hint)
+            )
             and place_overlap >= 0.75
         ):
             return place_overlap
