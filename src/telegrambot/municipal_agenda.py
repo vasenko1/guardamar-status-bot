@@ -1787,63 +1787,18 @@ def _enrich_admissions(
                 if candidate.start_date == event.start_date
                 and matches(best, candidate) is not None
             }
-            compatible = [
-                candidate for _, candidate in ranked
-                if _word_overlap(
-                    best.title_hint, candidate.title_hint
-                ) >= 0.5
+            tied = [
+                candidate for overlap, candidate in ranked
+                if overlap == ranked[0][0]
             ]
-            prices = {
-                candidate.price_cents
-                for candidate in compatible
-                if candidate.price_cents is not None
-            }
-            urls = {
-                candidate.ticket_url
-                for candidate in compatible
-                if candidate.ticket_url is not None
-            }
-            times = {
-                candidate.start_time
-                for candidate in compatible
-                if candidate.start_time is not None
-            }
-            distances = {
-                candidate.distance_label
-                for candidate in compatible
-                if candidate.distance_label is not None
+            ambiguous_facts = {
+                (candidate.price_cents, candidate.ticket_url, candidate.start_time)
+                for candidate in tied
             }
             if (
                 best.start_time is None and len(same_identity_sessions) > 1
-            ) or (
-                len(prices) > 1
-                or len(urls) > 1
-                or len(times) > 1
-                or len(distances) > 1
-            ):
+            ) or len(ambiguous_facts) > 1:
                 best = None
-            elif len(compatible) > 1:
-                best = replace(
-                    best,
-                    price_cents=(
-                        next(iter(prices)) if prices else None
-                    ),
-                    ticket_url=(
-                        next(iter(urls)) if urls else None
-                    ),
-                    evidence=" ".join(dict.fromkeys(
-                        candidate.evidence
-                        for candidate in compatible
-                        if candidate.evidence
-                    ))[:600],
-                    start_time=(
-                        next(iter(times)) if times else best.start_time
-                    ),
-                    distance_label=(
-                        next(iter(distances))
-                        if distances else best.distance_label
-                    ),
-                )
         if best is not None:
             event = replace(
                 event,
