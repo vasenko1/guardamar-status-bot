@@ -121,17 +121,20 @@ def _prefer_agenda_guardamar_venues(
             return None
         return parsed.path, normalized
 
-    def agenda_event_slug(ticket):
-        """Use the event slug, not Agenda's non-unique numeric segment."""
+    def agenda_event_key(ticket):
+        """Use Agenda's path key, never the non-unique number by itself."""
 
         if ticket is None:
             return None
         match = re.match(
-            r"^/(?:espectaculo|entradas)/\d+/([^/?#]+\.html)$",
+            r"^/(?:espectaculo|entradas)/(\d+)/([^/?#]+\.html)$",
             ticket[0],
             re.IGNORECASE,
         )
-        return match.group(1).casefold() if match is not None else None
+        return (
+            match.group(1),
+            match.group(2).casefold(),
+        ) if match is not None else None
 
     def route_from_title(value):
         match = re.match(
@@ -148,7 +151,7 @@ def _prefer_agenda_guardamar_venues(
             continue
 
         current_ticket = agenda_path(current.ticket_url)
-        current_event_slug = agenda_event_slug(current_ticket)
+        current_event_key = agenda_event_key(current_ticket)
         direct_candidates = []
         current_words = words(current.title)
 
@@ -166,8 +169,8 @@ def _prefer_agenda_guardamar_venues(
                 continue
             shared = current_words & words(candidate.title)
             same_event_identity = (
-                current_event_slug is not None
-                and current_event_slug == agenda_event_slug(candidate_ticket)
+                current_event_key is not None
+                and current_event_key == agenda_event_key(candidate_ticket)
             )
             if (
                 not same_event_identity
