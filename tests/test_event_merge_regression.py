@@ -257,6 +257,51 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
         self.assertIn("Билеты от 4 €", rendered)
         self.assertNotIn("Билет 5 €", rendered)
 
+    def test_conflicting_distances_stay_hidden_after_three_source_merge(self):
+        start = datetime(2026, 9, 19, 10, 0, tzinfo=MADRID)
+        ticket_url = (
+            "https://www.agendaguardamar.com/entradas/49/"
+            "visita-guiada-castillo-y-molino-de-san-antonio.html"
+            "?webfecha=19/09/2026&webhora=10:00&websala=49&webfuncion=1"
+        )
+        title = "Экскурсия «Memoria de Arena» по замку и мельнице Сан-Антонио"
+        municipal = Event(
+            title=title,
+            starts_at=start,
+            place="Castillo de Guardamar",
+            ticket_price_cents=400,
+            ticket_price_is_from=True,
+            ticket_url=ticket_url,
+            duration_minutes=120,
+            details=("1,5 км",),
+        )
+        agenda = Event(
+            title=title,
+            starts_at=start,
+            place="Castillo de Guardamar",
+            details=("1 км",),
+        )
+        third_source = Event(
+            title=title,
+            starts_at=start,
+            place="Castillo de Guardamar",
+            details=("1,5 км",),
+        )
+
+        merged = _merge_events((municipal,), (agenda,), (third_source,))
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0].details, ("1,5 км", "1 км"))
+        rendered = "\n".join(build_event_section(
+            merged,
+            "🎭 <b>События</b>",
+        ))
+        self.assertNotIn("1,5 км", rendered)
+        self.assertNotIn("1 км", rendered)
+        self.assertIn("120 мин", rendered)
+        self.assertIn("Castillo de Guardamar", rendered)
+        self.assertIn("Билеты от 4 €", rendered)
+
     def test_different_agenda_id_does_not_bypass_title_matching(self):
         start = datetime(2026, 9, 18, 10, 0, tzinfo=MADRID)
         detail_url = (

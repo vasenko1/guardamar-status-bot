@@ -1017,13 +1017,50 @@ def _event_heading(event, indent: str, *, bullet: bool) -> str:
     return f"{indent}{'• ' if bullet else ''}{when}{title}"
 
 
+def _conflict_safe_event_details(details: Sequence[str]) -> List[str]:
+    """Hide distance facts when merged sources disagree."""
+
+    classified = []
+    distance_values = set()
+    for detail in details:
+        match = re.fullmatch(
+            r"\s*(\d{1,3})(?:[,.](\d{1,2}))?\s*км\s*",
+            detail,
+            re.IGNORECASE,
+        )
+        distance_value = None
+        if match is not None:
+            distance_value = (
+                int(match.group(1)) * 100
+                + int((match.group(2) or "0").ljust(2, "0"))
+            )
+            distance_values.add(distance_value)
+        classified.append((detail, distance_value))
+
+    if len(distance_values) > 1:
+        return [
+            detail for detail, distance_value in classified
+            if distance_value is None
+        ]
+
+    result = []
+    distance_added = False
+    for detail, distance_value in classified:
+        if distance_value is None:
+            result.append(detail)
+        elif not distance_added:
+            result.append(detail)
+            distance_added = True
+    return result
+
+
 def _render_event_details(event, indent: str) -> List[str]:
     """One optional detail contract for standalone and programme events."""
 
     rows = []
     if event.route:
         rows.append(indent + "Маршрут: " + html.escape(event.route))
-    facts = [*event.details]
+    facts = _conflict_safe_event_details(event.details)
     if event.duration_minutes is not None:
         facts.append(f"{event.duration_minutes} мин")
     if event.audience_label:
