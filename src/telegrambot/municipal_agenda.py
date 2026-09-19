@@ -3482,13 +3482,17 @@ async def fetch_today_municipal_events(
             ]
             if legacy_difficulty in note_parts:
                 difficulty = ROUTE_DIFFICULTY_PREFIX + "низкая–средняя"
-                if difficulty not in event_details and len(event_details) < 3:
-                    event_details = (*event_details, difficulty)
-                note_parts = [
-                    part for part in note_parts
-                    if part != legacy_difficulty
-                ]
-                participation_note = "; ".join(note_parts) or None
+                can_preserve = (
+                    difficulty in event_details or len(event_details) < 3
+                )
+                if can_preserve:
+                    if difficulty not in event_details:
+                        event_details = (*event_details, difficulty)
+                    note_parts = [
+                        part for part in note_parts
+                        if part != legacy_difficulty
+                    ]
+                    participation_note = "; ".join(note_parts) or None
         audience_label = source.audience_label
         schedule_note = source.schedule_note
         teaser_source = (
