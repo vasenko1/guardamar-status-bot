@@ -1787,34 +1787,32 @@ def _enrich_admissions(
                 if candidate.start_date == event.start_date
                 and matches(best, candidate) is not None
             }
-            tied = [
-                candidate for overlap, candidate in ranked
-                if overlap == ranked[0][0]
+            compatible = [
+                candidate for _, candidate in ranked
+                if _word_overlap(
+                    best.title_hint, candidate.title_hint
+                ) >= 0.5
             ]
             prices = {
                 candidate.price_cents
-                for candidate in tied
+                for candidate in compatible
                 if candidate.price_cents is not None
             }
             urls = {
                 candidate.ticket_url
-                for candidate in tied
+                for candidate in compatible
                 if candidate.ticket_url is not None
             }
             times = {
                 candidate.start_time
-                for candidate in tied
+                for candidate in compatible
                 if candidate.start_time is not None
             }
             distances = {
                 candidate.distance_label
-                for candidate in tied
+                for candidate in compatible
                 if candidate.distance_label is not None
             }
-            compatible_titles = all(
-                _word_overlap(best.title_hint, candidate.title_hint) >= 0.5
-                for candidate in tied
-            )
             if (
                 best.start_time is None and len(same_identity_sessions) > 1
             ) or (
@@ -1822,10 +1820,9 @@ def _enrich_admissions(
                 or len(urls) > 1
                 or len(times) > 1
                 or len(distances) > 1
-                or not compatible_titles
             ):
                 best = None
-            elif len(tied) > 1:
+            elif len(compatible) > 1:
                 best = replace(
                     best,
                     price_cents=(
@@ -1836,7 +1833,7 @@ def _enrich_admissions(
                     ),
                     evidence=" ".join(dict.fromkeys(
                         candidate.evidence
-                        for candidate in tied
+                        for candidate in compatible
                         if candidate.evidence
                     ))[:600],
                     start_time=(
