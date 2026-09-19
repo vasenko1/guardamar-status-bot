@@ -192,6 +192,8 @@ def _prefer_agenda_guardamar_venues(
                 and not (
                     generic_agenda_reservation
                     and same_place
+                    and current.ticket_price_cents == 0
+                    and candidate.ticket_price_cents == 0
                 )
             ):
                 continue
