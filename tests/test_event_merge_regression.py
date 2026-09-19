@@ -333,6 +333,31 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
         self.assertEqual(corrected[0].ticket_url, municipal.ticket_url)
         self.assertEqual(len(merged), 2)
 
+    def test_same_slug_different_numeric_path_key_is_not_identity(self):
+        start = datetime(2026, 9, 19, 20, 0, tzinfo=MADRID)
+        municipal = Event(
+            title="Концерт Alpha",
+            starts_at=start,
+            place="Escuela de Música",
+            ticket_url=(
+                "https://www.agendaguardamar.com/espectaculo/2/"
+                "shared-slug.html"
+            ),
+        )
+        other = Event(
+            title="Спектакль Beta",
+            starts_at=start,
+            place="Escuela de Música",
+            ticket_url=(
+                "https://www.agendaguardamar.com/entradas/9/"
+                "shared-slug.html?webfecha=19/09/2026&webhora=20:00"
+            ),
+        )
+
+        corrected = _prefer_agenda_guardamar_venues((municipal,), (other,))
+
+        self.assertEqual(corrected[0].ticket_url, municipal.ticket_url)
+
     def test_exact_booking_identity_merges_different_titles_only_same_occurrence(self):
         first = Event(
             title="Название из муниципальной программы",
