@@ -9,7 +9,7 @@ ROUTE_DIFFICULTY_PREFIX = "Сложность маршрута: "
 _LOW = r"(?:baja|baixa|facil)"
 _MEDIUM = r"(?:moderada|media|mitjana)"
 _HIGH = r"(?:alta|dificil)"
-_JOIN = r"(?:\s*[-–/]\s*|\s+a\s+)"
+_JOIN = r"(?:\s*[-–/]\s*|\s+a\s+|\s+)"
 
 
 def route_difficulty_detail(value: str) -> Optional[str]:
