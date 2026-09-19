@@ -339,7 +339,7 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
             starts_at=datetime(2026, 9, 19, 20, 0, tzinfo=MADRID),
             ticket_url=(
                 "https://www.agendaguardamar.com/entradas/2/shared.html"
-                "?webhora=20:00&webfecha=19/09/2026&websala=2"
+                "?webhora=20:00&webfecha=19/09/2026&websala=2&webfuncion=180"
             ),
         )
         same = Event(
@@ -347,7 +347,7 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
             starts_at=first.starts_at,
             ticket_url=(
                 "https://www.agendaguardamar.com/entradas/2/shared.html"
-                "?webfecha=19/09/2026&webhora=20:00&webfuncion=180"
+                "?webfuncion=180&websala=2&webfecha=19/09/2026&webhora=20:00"
             ),
         )
         next_session = Event(
