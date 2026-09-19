@@ -43,6 +43,7 @@ from .todo_cultura import (
     TodoCulturaAdmission,
     TodoCulturaError,
     TodoCulturaParticipation,
+    TodoCulturaSummary,
     _all_mentioned_dates,
     _admissions,
     _event_time,
@@ -1578,6 +1579,9 @@ def merge_text_and_poster_events(
                 "admission_evidence": current.admission_evidence or (
                     poster_event.admission_evidence if same_occurrence else None
                 ),
+                "teaser_es": current.teaser_es or (
+                    poster_event.teaser_es if same_occurrence else None
+                ),
                 "duration_minutes": (
                     current.duration_minutes or poster_event.duration_minutes
                 ),
@@ -1901,6 +1905,71 @@ def _enrich_todo_participation(
                 event.capacity_limited or best.capacity_limited
             ),
             details=enriched_details,
+        ))
+    return tuple(enriched)
+
+
+def _enrich_todo_summaries(
+    events: Tuple[SourceEvent, ...],
+    details: Tuple[TodoCulturaSummary, ...],
+    target_date: date,
+) -> Tuple[SourceEvent, ...]:
+    """Attach one short event-local source summary without guessing."""
+
+    def matches(detail: TodoCulturaSummary, event: SourceEvent) -> Optional[float]:
+        if detail.event_dates and not any(
+            event.start_date <= candidate <= event.end_date
+            for candidate in detail.event_dates
+        ):
+            return None
+        if (
+            detail.start_time is not None
+            and event.start_time != detail.start_time
+        ):
+            return None
+        overlap = _word_overlap(event.title_es, detail.title_hint)
+        return overlap if overlap >= 0.5 else None
+
+    enriched = []
+    for event in events:
+        if (
+            event.teaser_es
+            or not event.start_date <= target_date <= event.end_date
+        ):
+            enriched.append(event)
+            continue
+        ranked = []
+        for detail in details:
+            candidate_overlap = matches(detail, event)
+            if candidate_overlap is not None:
+                ranked.append((candidate_overlap, detail))
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        if not ranked:
+            enriched.append(event)
+            continue
+        tied = [
+            detail for overlap, detail in ranked
+            if overlap == ranked[0][0]
+        ]
+        if len({detail.teaser_es for detail in tied}) != 1:
+            enriched.append(event)
+            continue
+        best = tied[0]
+        matching_sessions = {
+            candidate.start_time
+            for candidate in events
+            if candidate.start_date == event.start_date
+            and matches(best, candidate) is not None
+        }
+        if best.start_time is None and len(matching_sessions) > 1:
+            enriched.append(event)
+            continue
+        enriched.append(replace(
+            event,
+            teaser_es=best.teaser_es,
+            sources=tuple(dict.fromkeys(
+                event.sources + ("todo_cultura_summary",)
+            )),
         ))
     return tuple(enriched)
 
@@ -2961,6 +3030,11 @@ async def refresh_municipal_catalog(
                     new_todo_events = _enrich_todo_participation(
                         new_todo_events,
                         todo_program.participation,
+                        target_date,
+                    )
+                    new_todo_events = _enrich_todo_summaries(
+                        new_todo_events,
+                        todo_program.summaries,
                         target_date,
                     )
                 if not new_todo_events:
