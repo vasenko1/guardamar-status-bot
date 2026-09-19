@@ -819,6 +819,7 @@ def _admissions(
                 event_dates=existing.event_dates or title_dates,
                 distance_label=existing.distance_label or distance_label,
             )
+            seen.add(key)
             merged = True
             break
         if not merged and key not in seen:
