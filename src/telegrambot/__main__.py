@@ -869,9 +869,9 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
     if command == "check-112":
         bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
         chat_id = _required_environment("TELEGRAM_CHAT_ID")
-        risk_state = EmergencyRiskState(Path(os.environ.get(
-            "EMERGENCY_RISK_STATE_PATH", DEFAULT_EMERGENCY_RISK_STATE_PATH
-        )))
+        risk_state = EmergencyRiskState(
+            Path(DEFAULT_EMERGENCY_RISK_STATE_PATH)
+        )
 
         async def publish_risk(message: str) -> int:
             try:
