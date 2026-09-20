@@ -228,7 +228,7 @@ Implemented as an activity-first extension of the existing linked guide:
   matrícula window and is never presented as a group-specific CTA;
 - published schedule actions link to the official AM Guardamar schedule post, never directly to Google Drive documents that can also contain enrolled-student lists;
 - `music_school.py` is a deterministic programme adapter separate from the existing `am_guardamar.py` event semantics;
-- the existing 16:30 guide sync performs at most one additional bounded REST GET per Europe/Madrid local day for twelve recently modified AM Guardamar posts, with a 300 KiB response cap and 15-second timeout;
+- the existing 09:02 guide sync performs at most one additional bounded REST GET per Europe/Madrid local day for twelve recently modified AM Guardamar posts, with a 300 KiB response cap and 15-second timeout;
 - `state/guide.json` stores only the accepted normalized season/schedule/registration snapshot plus `music_school_last_attempt_day`; raw posts are not persisted;
 - same-season last-good schedule/registration facts survive when older posts leave the twelve-post window, while a new season never inherits old links;
 - only programme-shaped posts can establish a season, preventing unrelated future-season concert/news text from rolling the school snapshot forward;
