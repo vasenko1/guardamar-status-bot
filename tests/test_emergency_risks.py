@@ -160,6 +160,26 @@ def test_fire_level_two_is_morning_only_but_extreme_is_standalone():
     assert "экстремальный" in transition
 
 
+def test_high_fire_transitions_are_standalone_after_baseline():
+    value = EmergencyRiskState.empty()
+    value["published"]["fire_level"] = 1
+    value["previfoc"] = {
+        "fire_level": 2,
+        "dry_thunderstorm_level": 1,
+        "alert_id": 2,
+        "observed_at": NOW.isoformat(),
+    }
+    message = _transition(value)
+    assert message is not None
+    assert "повышена до <b>высокой</b>" in message
+
+    value["published"]["fire_level"] = 2
+    value["previfoc"]["fire_level"] = 1
+    message = _transition(value)
+    assert message is not None
+    assert "Высокая пожарная опасность снята" in message
+
+
 def test_extreme_fire_downgrade_is_published_after_acknowledgement():
     value = EmergencyRiskState.empty()
     value["previfoc"] = {
@@ -169,7 +189,7 @@ def test_extreme_fire_downgrade_is_published_after_acknowledgement():
         "observed_at": NOW.isoformat(),
     }
     _acknowledge(value)
-    assert value["published"]["fire_extreme"] is True
+    assert value["published"]["fire_level"] == 3
 
     value["previfoc"]["fire_level"] = 2
     message = _transition(value)
