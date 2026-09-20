@@ -1863,6 +1863,7 @@ async def publish_pinned_guide(
             for key in MUSIC_ACTIVITY_KEYS
             if key in messages
         }
+        previous_school_id = messages.get("music_school")
         await _upsert(
             "music_school",
             build_music_school(
@@ -1877,4 +1878,32 @@ async def publish_pinned_guide(
             send,
             edit,
         )
+        if messages.get("music_school") != previous_school_id:
+            await _reconcile_messages(
+                chat_id,
+                messages,
+                state,
+                send,
+                edit,
+                (*managed_elsewhere, "music_school"),
+            )
+            music_links = {
+                key: telegram_message_link(chat_id, messages[key])
+                for key in MUSIC_ACTIVITY_KEYS
+                if key in messages
+            }
+            await _upsert(
+                "music_school",
+                build_music_school(
+                    music_links,
+                    _known_link(chat_id, messages, "places"),
+                    music_school_catalog,
+                    local_day,
+                ),
+                messages,
+                state,
+                chat_id,
+                send,
+                edit,
+            )
     return messages
