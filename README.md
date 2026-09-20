@@ -19,9 +19,10 @@ festival traffic restriction from Policía Local Guardamar.
 The linked pinned city guide uses one recoverable Telegram graph for cameras,
 transport, durable places, and recurring activities. Its first places/activity
 slice covers `Polideportivo Municipal`, the indoor and outdoor municipal pools,
-and swimming. One bounded 09:02 guide sync refreshes the accepted public
-SimplyBook catalogue JSON surface; it does not infer registration availability
-from catalogue visibility.
+and swimming. One bounded 09:02 guide sync refreshes the accepted recurring
+activity/program sources and reconciles their linked cards. Source adapters
+remain independent and fail closed; catalogue visibility alone is never treated
+as proof of registration availability.
 
 ## Repository map
 
