@@ -144,11 +144,20 @@ Sports/program notifications should use those same small invariants but should n
 
 ## Termux/runtime budget
 
-Keep the existing daily `sync-guide` one-shot at 16:30 Europe/Madrid. It runs as one short process, writes a bounded rotating log and exits. New guide/program collectors should normally run inside this same invocation.
+The daily `sync-guide` one-shot now runs at 09:02 Europe/Madrid so explicit
+same-day registration boundaries can be observed before resident
+notifications. It remains one short process, writes a bounded rotating log and
+exits. Source request counts did not increase; only the time of day changed.
 
-Accept a handful of small sequential bounded GETs per day. On this project, engineering isolation is more valuable than saving 1–4 HTTP requests/day. Do not add a daemon, resident watcher, thread pool, browser automation, database, message broker or new cron merely to avoid a few requests.
+`course_notifications` runs at 09:42 with an 11:42 same-day retry slot. It
+performs zero source-network requests and reads only accepted local
+`guide.json` / `pinned_guide.json` state. The second invocation is normally
+an immediate no-op.
 
-A separate schedule is justified only if a real product requirement needs a materially different time of day. Registration/program guide discovery does not currently justify one.
+Accept a handful of small sequential bounded GETs per day. On this project,
+engineering isolation is more valuable than saving 1–4 HTTP requests/day. Do
+not add a daemon, resident watcher, thread pool, browser automation, database,
+message broker or generic notification framework.
 
 ## Deployment sequence
 
@@ -178,25 +187,33 @@ Implementation notes / small deliberate deviations from example wording:
 
 No new production-source probe was required for this slice: it uses the Sporttia centre-page contract already validated on 2026-09-16. `guide.py` orchestration, the `sync-guide` schedule, and cron layout are unchanged. No new ADR was added because Deploy 1 does not introduce a new source or architectural contract beyond ADR 0067 and ADR 0069.
 
-### Deploy 2 — sports notifications — completed 2026-09-17
+### Deploy 2 — notifications — superseded 2026-09-20
 
-Implemented as a separate irreversible-public-side-effect slice while preserving the existing Sporttia source contract:
+The original Sporttia-only `sports_notifications.py` implementation and the
+later separate recurring-activity notification path were removed. ADR 0070 is
+superseded by ADR 0072.
 
-- the existing 16:30 `sync-guide.sh` remains the only schedule;
-- `telegrambot.guide sync` still performs the single bounded Sporttia observation and linked-card reconciliation first;
-- `telegrambot.sports_notifications_runner` then reads only the accepted local `guide.json` / `pinned_guide.json` state and performs zero source requests;
-- `sports_notifications.py` owns explicit semantic diffing, rendering, compact state and Telegram delivery safety; no generic notification framework was introduced;
-- `state/sports_notifications.json` keeps the notification baseline, known activity keys, at most one pending batch, date-trigger dedupe IDs, launch completion, `idle/uncertain` delivery state and last message ID;
-- the first fresh observation establishes a silent baseline and may publish one deliberate `Спорт · сейчас открыта запись` overview for explicit registration windows already open at launch; it never calls existing activities newly discovered;
-- after launch, material changes cover genuinely new activities, new groups/seasons, registration-window changes, schedule, venue, age/audience, season dates, explicit participation conditions and `hasta completar` wording;
-- registration opening is date-triggered from the accepted snapshot, and one deadline reminder is eligible exactly three local calendar days before the explicit end date;
-- date triggers require a Sporttia snapshot observed on that same Europe/Madrid date, so stale last-good state after source failure cannot generate an opening/deadline alert;
-- disappearance from the open-registration surface, row ordering, raw HTML churn, `Abierta/Cerrada`, occupancy and source failure remain non-events;
-- multiple eligible changes are batched into one calm message linking to the already-reconciled activity cards;
-- before `sendMessage`, delivery state is persisted as `uncertain`; HTTP 429 restores `idle` for a safe retry, while ambiguous failures block automatic resend until operator inspection;
-- a notification failure is logged/deferred without undoing or blocking the already successful guide reconciliation.
+All recurring course/section sources now feed one
+`course_notifications.py` domain state machine. Source adapters stay
+independent, while notification projection, semantic grouping, direct internal
+card links, first/last registration-day triggers and Telegram
+`pending/uncertain/sent` safety are shared.
 
-This contract is recorded in ADR 0070. No additional GET, cron row, daemon, dependency, database, browser automation, per-activity request or polling loop was added. The only runtime cost is one additional short Python process after the existing guide process, reading small local JSON state once per day.
+Public messages are grouped by resident meaning rather than source:
+registration closing, registration opening, changed registration dates, new
+courses/groups, and other course changes. Different meanings may produce
+separate messages in one run; several courses of the same meaning are batched
+together.
+
+The first unified run is a silent baseline. Adding a new source is also
+baseline-only for its already-existing catalogue, while a genuinely fresh
+same-day registration boundary may still notify. Source-row disappearance is
+never interpreted as cancellation.
+
+Sporttia retained last-good rows continue to support durable cards, but the
+merged catalogue records which source IDs were actually observed in the
+current daily fetch. Retained rows therefore cannot create false same-day
+opening/deadline or semantic-change notifications.
 
 ### Deploy 3 — music activities and linked school — completed 2026-09-17
 
@@ -322,7 +339,9 @@ First observation after a parser/source rollout is a silent alert baseline so de
 - Create place cards for resident value, not automatically for every venue string.
 - One extra bounded GET/day is acceptable when it keeps features isolated.
 - No browser automation for ordinary public program discovery.
-- No new daemon/cron when the existing daily guide/catalog refresh can carry the work.
+- No new daemon or source poller; the separate 09:42/11:42 course notification
+  schedule is justified by the resident-facing morning timing requirement and
+  performs no network collection.
 - Persist normalized facts and message IDs, not raw unbounded pages.
 - Reuse delivery invariants (baseline, pending, uncertain) without inventing a universal notification framework.
 - Update this note after each deploy: mark completed scope, record final source contract, and leave deferred/open items explicit.
