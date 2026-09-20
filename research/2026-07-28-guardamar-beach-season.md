@@ -35,8 +35,11 @@ This is deliberately a **product monitoring window**, not a claim that
 SafeBeach data is still accepted only when the page is current and the record
 itself is active (`hasActividad`) and not ended (`serviceEnded`).
 
-The outdoor municipal pool remains a separate lifecycle because its reviewed
-published period starts on 16 June and ends on 15 September.
+The outdoor municipal pool remains a separate lifecycle. The municipal sports
+page currently exposes a summer **2023** schedule from 16 June through
+15 September; that page does not by itself prove that every later year keeps
+the same opening dates, so the pool should not be folded into this shared
+15 June transition without its own annual verification.
 
 ## Sources
 
