@@ -318,9 +318,10 @@ class CourseNotificationCollectionTests(unittest.TestCase):
         old = record(registrations=[
             {"start": "2026-09-01", "end": "2026-09-20"}
         ])
-        current = record(registrations=[
-            {"start": "2026-09-01", "end": "2026-09-30"}
-        ])
+        current = record(
+            observed_day="2026-09-21",
+            registrations=[{"start": "2026-09-01", "end": "2026-09-30"}],
+        )
         result = collect_changes(
             {current["record_id"]: current},
             {"sporttia"},
@@ -332,6 +333,26 @@ class CourseNotificationCollectionTests(unittest.TestCase):
             [item["kind"] for item in result["pending"]["messages"]],
             ["registration_changes"],
         )
+
+    def test_new_sporttia_season_is_not_mislabelled_as_new_group(self):
+        old = record()
+        old["season"] = "2026-09-01|2027-06-30"
+        current = record(
+            record_id="sporttia:99",
+            observed_day="2027-09-01",
+        )
+        current["season"] = "2027-09-01|2028-06-30"
+        state = baseline_state(old)
+        result = collect_changes(
+            {current["record_id"]: current},
+            {"sporttia"},
+            state,
+            date(2027, 9, 1),
+            {"judo": 501},
+        )
+        item = result["pending"]["messages"][0]
+        self.assertEqual(item["kind"], "new_courses")
+        self.assertEqual(item["events"][0]["type"], "new_season")
 
     def test_missing_internal_card_fails_closed(self):
         old = record(schedule="Вт/Чт · 18:00–19:00")
