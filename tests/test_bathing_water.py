@@ -65,12 +65,12 @@ class BathingWaterProgrammeTests(unittest.TestCase):
         self.assertEqual(caught.exception.diagnostic_code, "YEAR")
 
     def test_report_link_must_be_official_pdf(self):
-        payload = b"""
-        <p>AnalÃ­sis de las aguas e inspecciÃ³n semanal del
+        payload = """
+        <p>Análisis de las aguas e inspección semanal del
         1 de junio al 15 de septiembre. 2026</p>
         <a href="https://evil.example/report.pdf">
         Fecha: 07.09.2026 - 13.09.2026</a>
-        """
+        """.encode("utf-8")
         snapshot = _parse_programme_page(
             payload,
             expected_year=2026,
