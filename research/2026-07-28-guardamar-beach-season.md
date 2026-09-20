@@ -1,27 +1,49 @@
 # Guardamar operational beach season
 
-Checked on 2026-07-28.
+Originally checked on 2026-07-28; corrected and rechecked on 2026-09-20.
 
 ## Official findings
 
-- A municipal lifeguard-service examination referencing the governing
-  specification states that the high season lasts 92 days selected by the
-  Ayuntamiento inside 15 June through 15 September. It does not establish
-  immutable annual start and end dates.
-- The municipal bathing-water control program uses 1 June through
-  15 September. This is a sampling period, not proof of lifeguard flag service.
-- The municipal beach-cleaning plan defines high season as 1 May through
-  31 October. This applies to cleaning, not flags.
+Guardamar does not expose one universal summer date range that can safely be
+called the official season for every beach service.
+
+- The signed municipal environment-technician examination references the
+  lifeguard specification. Question 28 offers a 15 June–15 September
+  92-day option, but the official answer key marks option **b** as correct:
+  high lifeguard season is 62 days during July and August. The underlying
+  service project also describes a separate medium season during parts of
+  June and September.
+- The municipal bathing-water control programme runs from 1 June through
+  15 September. This is a water-quality sampling period, not proof of the
+  lifeguard or flag-service calendar.
+- The municipal beach-cleaning plan defines its own high season as 1 May
+  through 31 October.
+- Seasonal beach concessions use several different periods depending on the
+  beach and service. Some are 15 June–15 September, while others start or end
+  on different dates.
+- Guardamar's seasonal Zona Azul has a stable reviewed period of 15 June
+  through 15 September, daily 10:00–20:00.
 
 ## Product conclusion
 
-No exact annually stable official flag-service dates were found. The operator
-accepted 20 June through 14 September, inclusive, as a deliberately
-conservative display window. SafeBeach's own `hasActividad` and
-`serviceEnded` fields remain mandatory inside that window.
+The bot uses **15 June through 15 September, inclusive**, as its SafeBeach
+monitoring window so the resident-facing beach-status lifecycle and seasonal
+Zona Azul transition happen together.
+
+This is deliberately a **product monitoring window**, not a claim that
+15 June–15 September is a universal official municipal beach season.
+SafeBeach data is still accepted only when the page is current and the record
+itself is active (`hasActividad`) and not ended (`serviceEnded`).
+
+The outdoor municipal pool remains a separate lifecycle because its reviewed
+published period starts on 16 June and ends on 15 September.
 
 ## Sources
 
 - `https://www.guardamardelsegura.es/wp-content/uploads/2024/01/20240119_Publicacion_Anuncio_ANUNCIO-RESULTADOS-PRIMER-EJERCICIIO2.pdf`
+- `https://www.guardamardelsegura.es/wp-content/uploads/2023/10/20231004_9-P.C.-T.-SERVICIO-DE-SALVAMENTO-2019.pdf`
 - `https://www.guardamardelsegura.es/programa-de-control-de-las-zonas-de-bano/`
 - `https://www.guardamardelsegura.es/wp-content/uploads/2023/10/20231004_12-INFORME-SERVICIOS-PLAYAS-GUARDAMAR-DEL-SEGURA.pdf`
+- `https://www.guardamardelsegura.es/wp-content/uploads/2023/10/20231004_10-P.C.T.-SERVICIOS-DE-TEMPORADA-EN-LAS-PLAYAS-2019.pdf`
+- `https://oraguardamar.gruposetex.es/tarifas-y-horarios`
+- `https://www.guardamardelsegura.es/deportes-2/`
