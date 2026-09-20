@@ -125,14 +125,29 @@ class ParkingSeasonTests(unittest.TestCase):
             with self.subTest(local_day=local_day):
                 self.assertEqual(_parking_notice_key(local_day), expected)
 
-    def test_free_notice_copy_links_parking_card(self):
+    def test_paid_notice_copy_links_beach_season_and_parking_card(self):
+        text = _parking_notice_text(
+            "2026:paid",
+            "-100123",
+            {"parking": 104},
+        )
+        self.assertIn("Летний режим: пляжи и парковка", text)
+        self.assertIn("С <b>15 июня</b>", text)
+        self.assertIn("SafeBeach", text)
+        self.assertIn("10:00 до 20:00", text)
+        self.assertIn("https://t.me/c/123/104", text)
+
+    def test_free_notice_copy_links_beach_season_and_parking_card(self):
         text = _parking_notice_text(
             "2026:free",
             "-100123",
             {"parking": 104},
         )
-        self.assertIn("с завтрашнего дня бесплатно", text)
-        self.assertIn("С <b>16 сентября</b>", text)
+        self.assertIn("Летний режим: пляжи и парковка завершаются", text)
+        self.assertIn("<b>15 сентября</b>", text)
+        self.assertIn("<b>16 сентября</b>", text)
+        self.assertIn("SafeBeach", text)
+        self.assertIn("сезонная синяя зона снова бесплатна", text)
         self.assertIn("https://t.me/c/123/104", text)
 
     def test_ora_url_policy_is_exact_https(self):
