@@ -28,7 +28,7 @@ METADATA_PAGE_SIZE = 100
 METADATA_LIMIT_BYTES = 300_000
 ROLLING_WINDOW_DAYS = 7
 CURSOR_OVERLAP_MINUTES = 5
-PARSER_VERSION = 16
+PARSER_VERSION = 17
 API_URL = "https://todoculturavegabaja.es/wp-json/wp/v2/mec-events"
 
 
@@ -89,6 +89,7 @@ class TodoCulturaProgram:
     summaries: Tuple[TodoCulturaSummary, ...] = ()
     dates: Tuple[date, ...] = ()
     event_rows: Tuple[Tuple[date, str, str], ...] = ()
+    standalone: bool = False
 
 
 @dataclass(frozen=True)
@@ -967,6 +968,22 @@ def _read_metadata(cursor: Optional[str]) -> List[Dict[str, Any]]:
     return [item for item in payload if isinstance(item, dict)]
 
 
+def _metadata_scope(title: str, link: str) -> str:
+    """Classify the event card itself, not incidental article mentions."""
+
+    parsed = urllib.parse.urlparse(link)
+    slug = urllib.parse.unquote(parsed.path.rstrip("/").split("/")[-1]).casefold()
+    if "-evento-" in slug:
+        locality = slug.split("-evento-", 1)[0]
+        return "local" if "guardamar" in locality else "foreign"
+
+    title_text = " ".join(_plain_lines(title)).casefold()
+    match = re.match(r"^(.{1,160}?),\s*evento\b", title_text)
+    if match is not None:
+        return "local" if "guardamar" in match.group(1) else "foreign"
+    return "unknown"
+
+
 def _metadata_candidate(
     item: Dict[str, Any], reference_date: date
 ) -> Dict[str, Any]:
@@ -1002,6 +1019,7 @@ def _metadata_candidate(
         " ".join(_plain_lines(f"{title}\n{excerpt}")), reference_date
     )
     hinted_dates = set(hinted) | mentioned
+    scope = _metadata_scope(title, link)
     detail_priority = 0
     if any(word in metadata_text for word in (
         "taller", "curso", "ruta", "visita", "escape room", "museo",
@@ -1027,6 +1045,7 @@ def _metadata_candidate(
         "processed_dates": [],
         "detail_checked": not hinted_dates,
         "detail_priority": detail_priority,
+        "scope": scope,
     }
 
 
@@ -1050,7 +1069,7 @@ def _candidate_priority(
     start: date,
     end: date,
     horizon: date,
-) -> Tuple[int, int, int, float]:
+) -> Tuple[int, int, int, int, int, float]:
     dates = _candidate_dates(candidate, "dates")
     processed = _candidate_dates(candidate, "processed_dates")
     pending_window = sorted(
@@ -1077,6 +1096,12 @@ def _candidate_priority(
     else:
         rank = 3
         day_distance = 999
+    scope_rank = {
+        "local": 0,
+        "unknown": 1,
+        "foreign": 2,
+    }.get(candidate.get("scope"), 1)
+    specificity = len(dates) if dates else 999
     detail_priority = candidate.get("detail_priority", 0)
     if not isinstance(detail_priority, int) or not 0 <= detail_priority <= 3:
         detail_priority = 0
@@ -1084,6 +1109,8 @@ def _candidate_priority(
     return (
         rank,
         day_distance,
+        scope_rank,
+        specificity,
         -detail_priority,
         -(modified.timestamp() if modified is not None else 0.0),
     )
@@ -1263,6 +1290,14 @@ def _read_program_window(
             incoming = _metadata_candidate(item, local_day)
         except ValueError:
             continue
+        modified = _parse_modified(incoming.get("modified_gmt"))
+        if modified is not None and (
+            newest_cursor is None or modified > newest_cursor
+        ):
+            newest_cursor = modified
+        if incoming.get("scope") == "foreign":
+            by_id.pop(incoming["id"], None)
+            continue
         existing = by_id.get(incoming["id"])
         if (
             existing is not None
@@ -1287,11 +1322,6 @@ def _read_program_window(
                 _candidate_dates(incoming, "dates")
             )
         by_id[incoming["id"]] = incoming
-        modified = _parse_modified(incoming.get("modified_gmt"))
-        if modified is not None and (
-            newest_cursor is None or modified > newest_cursor
-        ):
-            newest_cursor = modified
 
     candidates = _bounded_candidates(list(by_id.values()), local_day)
     start = local_day
@@ -1320,6 +1350,7 @@ def _read_program_window(
     admissions_by_month: Dict[str, List[TodoCulturaAdmission]] = {}
     sources_by_month: Dict[str, List[Tuple[str, str]]] = {}
     standalone_programs = []
+    local_event_programs: List[TodoCulturaProgram] = []
     for candidate in selected:
         item = documents_by_id.get(candidate["id"])
         if item is None:
@@ -1352,10 +1383,44 @@ def _read_program_window(
         lines = _plain_lines(rendered)
         attributed = " ".join(lines).casefold()
         candidate["detail_checked"] = True
-        if (
-            "ayuntamiento de guardamar" not in attributed
-            or "agenda municipal" not in attributed
-        ):
+        is_municipal_program = (
+            "ayuntamiento de guardamar" in attributed
+            and "agenda municipal" in attributed
+        )
+        if not is_municipal_program:
+            if candidate.get("scope") != "local":
+                continue
+            processed = _candidate_dates(candidate, "processed_dates")
+            pending = tuple(sorted(
+                day for day in _candidate_dates(candidate, "dates")
+                if start <= day <= end and day not in processed
+            ))
+            if not pending:
+                continue
+            if (
+                len(sections_by_month)
+                + len(standalone_programs)
+                + len(local_event_programs)
+                >= MAX_PROGRAMS_PER_WINDOW
+            ):
+                continue
+            text = "\n".join(lines)
+            if not text or len(text) > PROGRAM_TEXT_LIMIT:
+                continue
+            local_event_programs.append(TodoCulturaProgram(
+                text=text,
+                sha256=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                source_url=link,
+                modified=modified,
+                admissions=_admissions(rendered, local_day),
+                dates=pending,
+                standalone=True,
+            ))
+            processed.update(pending)
+            candidate["processed_dates"] = sorted(
+                day.isoformat() for day in processed
+            )
+            covered_dates.update(pending)
             continue
         sections = _date_sections(lines, local_day.year, local_day)
         document_admissions = _admissions(rendered, local_day)
@@ -1404,6 +1469,7 @@ def _read_program_window(
                 available_slots = max(0, (
                     MAX_PROGRAMS_PER_WINDOW
                     - len(standalone_programs)
+                    - len(local_event_programs)
                     - len(sections_by_month)
                 ))
                 for chunk_hash, chunk in pending_chunks[:available_slots]:
@@ -1434,8 +1500,12 @@ def _read_program_window(
                 continue
             if (
                 month not in sections_by_month
-                and len(sections_by_month) + len(standalone_programs)
-                >= MAX_PROGRAMS_PER_WINDOW
+                and (
+                    len(sections_by_month)
+                    + len(standalone_programs)
+                    + len(local_event_programs)
+                    >= MAX_PROGRAMS_PER_WINDOW
+                )
             ):
                 continue
             sections_by_month.setdefault(month, []).append((day, section))
@@ -1450,7 +1520,7 @@ def _read_program_window(
         processed.update(included)
         candidate["processed_dates"] = sorted(day.isoformat() for day in processed)
 
-    programs = []
+    programs = list(local_event_programs)
     for month, dated_sections in sorted(sections_by_month.items()):
         dated_sections = sorted(dated_sections, key=lambda item: item[0])
         text = "\n".join(section for _, section in dated_sections)
