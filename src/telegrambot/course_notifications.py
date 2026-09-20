@@ -384,6 +384,16 @@ def project_course_records(
             raise CourseNotificationError("accepted Sporttia snapshot is invalid")
         present_sources.add("sporttia")
         observed = _observed_day(sporttia)
+        observed_ids_raw = sporttia.get("observed_source_ids")
+        observed_ids = (
+            set(observed_ids_raw)
+            if isinstance(observed_ids_raw, list)
+            and all(
+                isinstance(value, int) and not isinstance(value, bool)
+                for value in observed_ids_raw
+            )
+            else {item["source_id"] for item in sporttia["activities"]}
+        )
         for item in sporttia["activities"]:
             key = item["key"]
             emoji, title = SPORT_ACTIVITY_META[key]
@@ -398,7 +408,11 @@ def project_course_records(
                 title=title,
                 emoji=emoji,
                 group=_group_label(key, int(item["group_order"])),
-                observed_day=observed,
+                observed_day=(
+                    observed
+                    if item["source_id"] in observed_ids
+                    else "1970-01-01"
+                ),
                 schedule=str(item["schedule"]),
                 venue=str(item["venue"]),
                 audience=item.get("audience"),
