@@ -77,9 +77,11 @@ mv "$UPDATED" "$CURRENT"
         "$BEGIN_MARKER" \
         'CRON_TZ=Europe/Madrid' \
         "2 9 * * * $SH_BIN $SYNC" \
+        "45 19 14 6 * $SH_BIN $SYNC" \
+        "45 19 15 9 * $SH_BIN $SYNC" \
         "42 9,11 * * * $SH_BIN $PUBLISH" \
         "$END_MARKER"
 } | crontab -
 
 sv up crond
-echo "Справочник: синхронизация 09:02; уведомления о занятиях 09:42 и retry 11:42 Europe/Madrid"
+echo "Справочник: 09:02 ежедневно; Zona Azul 19:45 14.06/15.09; занятия 09:42 и retry 11:42 Europe/Madrid"
