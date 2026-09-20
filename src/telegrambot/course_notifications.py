@@ -39,6 +39,26 @@ MESSAGE_ORDER = (
     "new_courses",
     "course_changes",
 )
+EVENT_TYPES = frozenset({
+    "registration_open",
+    "registration_close",
+    "registration_single_day",
+    "registration_changed",
+    "new_course",
+    "new_group",
+    "new_season",
+    "course_changed",
+})
+EVENT_KINDS = {
+    "registration_open": "registration_opening",
+    "registration_single_day": "registration_opening",
+    "registration_close": "registration_closing",
+    "registration_changed": "registration_changes",
+    "new_course": "new_courses",
+    "new_group": "new_courses",
+    "new_season": "new_courses",
+    "course_changed": "course_changes",
+}
 CONDITION_FIELDS = (
     "medical_certificate",
     "group_may_change",
@@ -192,6 +212,8 @@ def _valid_event(event: Any) -> bool:
     for field in ("type", "record_id", "course_key", "card_key", "title", "emoji"):
         if not isinstance(event.get(field), str) or not event[field]:
             return False
+    if event["type"] not in EVENT_TYPES:
+        return False
     group = event.get("group")
     return group is None or isinstance(group, str)
 
@@ -243,7 +265,10 @@ def _valid_pending(value: Any) -> bool:
         events = item.get("events")
         if not isinstance(events, list) or not events or len(events) > 256:
             return False
-        if not all(_valid_event(event) for event in events):
+        if not all(
+            _valid_event(event) and EVENT_KINDS[event["type"]] == item["kind"]
+            for event in events
+        ):
             return False
         identifiers = item.get("date_event_ids")
         if (
@@ -528,6 +553,7 @@ def project_course_records(
                 observed_day=observed,
                 schedule="; ".join(str(item) for item in group["schedules"]),
                 period=[group.get("start_date"), group.get("end_date")],
+                season=str(dinamizacion["season"]),
                 registrations=registrations,
                 until_full=bool(dinamizacion["registration_until_full"]),
                 conditions=(
@@ -574,7 +600,20 @@ def _semantic_events(
             if record["course_key"] not in known_course_keys:
                 events.append(_event("new_course", record))
             elif record["record_id"] not in known_record_ids:
-                events.append(_event("new_group", record))
+                previous_seasons = {
+                    item.get("season")
+                    for item in baseline.values()
+                    if item.get("course_key") == record["course_key"]
+                    and item.get("season") is not None
+                }
+                if (
+                    record.get("season") is not None
+                    and previous_seasons
+                    and record["season"] not in previous_seasons
+                ):
+                    events.append(_event("new_season", record))
+                else:
+                    events.append(_event("new_group", record))
             continue
 
         registration_changed = (
@@ -684,7 +723,7 @@ def _bucket_events(
         if event_type == "registration_changed":
             if event["record_id"] not in dated_records:
                 buckets["registration_changes"].append(dict(event))
-        elif event_type in {"new_course", "new_group"}:
+        elif event_type in {"new_course", "new_group", "new_season"}:
             if event["course_key"] not in opening_courses:
                 buckets["new_courses"].append(dict(event))
         elif event_type == "course_changed":
@@ -1032,7 +1071,9 @@ def build_message(
         lines.append("")
         for event in sorted(events, key=lambda item: str(item["title"]).casefold()):
             target = _linked_title(event, chat_id, messages)
-            if event["type"] == "new_group" and event.get("group"):
+            if event["type"] == "new_season":
+                lines.append(f"• {target} — опубликован новый сезон")
+            elif event["type"] == "new_group" and event.get("group"):
                 lines.append(
                     f"• {target} — появилась {html.escape(str(event['group']).casefold())}"
                 )
