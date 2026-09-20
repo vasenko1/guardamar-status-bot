@@ -237,8 +237,7 @@ class CourseNotificationCollectionTests(unittest.TestCase):
                     "source_id": 1,
                     "key": "judo",
                     "activity_url": (
-                        "https://app.sporttia.com/scs/actividad/"
-                        "guardamar-del-segura/1"
+                        "https://play.sporttia.com/activities/1"
                     ),
                     "season_start": "2026-09-01",
                     "season_end": "2027-06-30",
