@@ -344,6 +344,27 @@ def test_missing_route_card_fails_closed():
         )
 
 
+def test_pending_transport_message_id_must_match_delivery_status():
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "transport.json"
+        state = _baseline()
+        state["pending"] = {
+            "created_date": "2026-09-20",
+            "messages": [{
+                "kind": "schedule_changes",
+                "status": "pending",
+                "events": [{
+                    "type": "timetable_changed",
+                    "route": "line_1",
+                }],
+                "message_id": 999,
+            }],
+        }
+        path.write_text(json.dumps(state), encoding="utf-8")
+        with pytest.raises(TransportNotificationError):
+            load_state(path)
+
+
 def test_legacy_v1_idle_state_migrates_pending_batch():
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "transport.json"
