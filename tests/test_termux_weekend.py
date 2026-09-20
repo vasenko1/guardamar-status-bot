@@ -47,6 +47,6 @@ class WeekendTermuxTests(unittest.TestCase):
         self.assertIn(unrelated.strip(), installed)
         self.assertEqual(installed.count("15 19 * * 5"), 1)
         self.assertIn("run-weekend.sh --fresh", installed)
-        self.assertEqual(installed.count("45 19 * * 5"), 1)
+        self.assertEqual(installed.count("15 20 * * 5"), 1)
         self.assertNotIn("0,20 18 * * 5", installed)
         self.assertIn("# BEGIN guardamar-status weekend digest", installed)
