@@ -1,8 +1,9 @@
-name: Temporary PR test run
+name: Temporary branch test run
 
 on:
-  pull_request:
-    branches: [main]
+  push:
+    branches:
+      - docs/112-previfoc-kb-20260920
 
 permissions:
   contents: read
