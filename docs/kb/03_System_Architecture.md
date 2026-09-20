@@ -156,13 +156,12 @@ availability polling.
 
 ### Unified 112/Previfoc watcher
 
-Approved design, pending implementation: one short-lived `check-112` command
-runs at minute `:19` of each hour. It is the only Telegram publication
+One short-lived `check-112` command runs at minute `:19` of each hour. It is the only Telegram publication
 boundary for CCE/Previfoc risk transitions.
 
 Each invocation performs bounded reads of the public CCE active-emergencies
-page, the current CCE text-readable PDF, and the tiny Previfoc zone-6 ArcGIS
-state. The CCE PDF is **not** conditional on a local AEMET rain/thunderstorm
+page, the current CCE text-readable PDF, and the tiny current-day Previfoc
+zone-6 ArcGIS state. The CCE PDF is **not** conditional on a local AEMET rain/thunderstorm
 warning because lower-Segura hydrological risk may originate upstream. AEMET
 remains an independent source and is not re-requested by this watcher.
 
