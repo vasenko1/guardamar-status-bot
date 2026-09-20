@@ -32,6 +32,9 @@ Production probe on 2026-09-20:
 - about 2.7 KB
 - no browser, token, API key, or authenticated session required for a simple GET
 - current no-event text: `SIN EMERGENCIAS VIGENTES`
+- only that explicit global no-event marker is a clear observation when no
+  Segura hydrological status is parsed; a generic emergencies page with no
+  matching Segura status is UNKNOWN rather than an inferred all-clear
 
 Product use:
 
@@ -68,6 +71,9 @@ Production probe on 2026-09-20:
 - text layer is machine-readable; OCR is not required
 - document contains its own `FECHA` / `HORA`
 - current document includes a `PLANES DE EMERGENCIA ACTIVADOS` section
+- the URL may legitimately keep the previous day's last bulletin when no new
+  bulletin has been issued; runtime therefore validates the embedded local date
+  and treats an older document as unavailable, never as an all-clear
 
 This source must **not** duplicate ordinary AEMET warning messages.
 
