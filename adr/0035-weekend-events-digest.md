@@ -39,7 +39,7 @@ from the two existing normalized catalogs plus the recurring market rules:
   non-blocking lock and success-only marker pattern as the electricity
   feature. External Termux cron runs the primary `run-weekend.sh --fresh`
   Friday at `19:15`, after the existing evening monitor cluster, and one
-  delivery-only retry at `19:45`. A confirmed success makes the retry a
+  delivery-only retry at `20:15`. A confirmed success makes the retry a
   no-op. The retry deliberately does not repeat source refreshes.
 - `weekend-preview` prints the message without Telegram or state changes.
   Like the morning preview, it is strictly read-only: it never fills the
