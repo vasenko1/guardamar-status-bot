@@ -80,6 +80,17 @@ def test_cce_html_recognizes_segura_situation():
     assert parse_cce_emergencies_html(payload) == HYDRO_SITUATION_1
 
 
+def test_cce_situation_number_without_hydrological_context_is_not_accepted():
+    payload = """
+    <html><body><h1>Emergencias vigentes</h1>
+    <div>Guardamar del Segura</div>
+    <div>SITUACIÓN 1</div>
+    </body></html>
+    """.encode()
+    with pytest.raises(EmergencyRiskError):
+        parse_cce_emergencies_html(payload)
+
+
 def test_cce_html_without_explicit_clear_or_segura_state_is_unknown():
     payload = """
     <html><body><h1>Emergencias vigentes</h1>
@@ -125,6 +136,16 @@ def test_cce_bulletin_requires_current_local_date():
     with pytest.raises(EmergencyRiskError) as exc:
         parse_cce_bulletin(stale, NOW)
     assert exc.value.diagnostic_code == "STALE"
+
+
+def test_cce_bulletin_accepts_nonstandard_pdf_date_separator():
+    text = """
+    FECHA 20·09·2026
+    HORA: 07:00
+    PLANES DE EMERGENCIA ACTIVADOS
+    Sin planes hidrológicos activos.
+    """
+    assert parse_cce_bulletin(text, NOW) == HYDRO_NONE
 
 
 def test_cce_bulletin_rejects_implausible_future_timestamp():
