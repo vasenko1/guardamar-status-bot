@@ -576,7 +576,11 @@ class EmergencyRiskState:
             }
             or (
                 published["fire_level"] is not None
-                and published["fire_level"] not in {1, 2, 3}
+                and (
+                    not isinstance(published["fire_level"], int)
+                    or isinstance(published["fire_level"], bool)
+                    or published["fire_level"] not in {1, 2, 3}
+                )
             )
             or not isinstance(published["dry_high"], bool)
             or (
