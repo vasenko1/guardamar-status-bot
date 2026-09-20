@@ -123,11 +123,63 @@ def _valid_airport_state(value: Any) -> bool:
 
 
 def _valid_event(event: Any) -> bool:
-    return (
-        isinstance(event, dict)
-        and event.get("type") in EVENT_KINDS
-        and event.get("route") in ROUTE_META
-    )
+    if (
+        not isinstance(event, dict)
+        or event.get("type") not in EVENT_KINDS
+        or event.get("route") not in ROUTE_META
+    ):
+        return False
+
+    event_type = event["type"]
+    if event_type == "period_changed":
+        if event.get("period") not in {"summer", "regular"}:
+            return False
+        try:
+            date.fromisoformat(str(event["effective_date"]))
+        except (KeyError, ValueError):
+            return False
+    elif event_type == "departures_changed":
+        for field in ("added_to", "removed_to", "added_from", "removed_from"):
+            values = event.get(field)
+            if (
+                not isinstance(values, list)
+                or len(values) > 64
+                or len(set(values)) != len(values)
+                or not all(
+                    isinstance(value, str)
+                    and len(value) == 5
+                    and value[2] == ":"
+                    and value[:2].isdigit()
+                    and value[3:].isdigit()
+                    and 0 <= int(value[:2]) <= 23
+                    and 0 <= int(value[3:]) <= 59
+                    for value in values
+                )
+            ):
+                return False
+    elif event_type == "fare_changed":
+        old_cents = event.get("old_cents")
+        new_cents = event.get("new_cents")
+        if (
+            not isinstance(old_cents, int)
+            or isinstance(old_cents, bool)
+            or not isinstance(new_cents, int)
+            or isinstance(new_cents, bool)
+            or not 100 <= old_cents <= 2_000
+            or not 100 <= new_cents <= 2_000
+        ):
+            return False
+        try:
+            date.fromisoformat(str(event["effective_date"]))
+        except (KeyError, ValueError):
+            return False
+    elif event_type == "route_changed":
+        detail = event.get("detail")
+        if detail is not None and (
+            not isinstance(detail, str) or not detail.strip() or len(detail) > 512
+        ):
+            return False
+    return True
 
 
 def _valid_pending(value: Any) -> bool:
