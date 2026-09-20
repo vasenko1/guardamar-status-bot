@@ -842,7 +842,7 @@ async def sync_guide(now: datetime) -> str:
             guide_state.write(state)
 
         local_now = now.astimezone(GUARDAMAR_TIMEZONE)
-    local_day = local_now.date()
+        local_day = local_now.date()
         previous_sporttia = state.get("sporttia_catalog")
         if state.get("sporttia_last_attempt_day") != local_day.isoformat():
             # Mark before network I/O so manual reruns cannot hammer the source
