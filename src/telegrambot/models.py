@@ -182,3 +182,6 @@ class MorningDigest:
     air_quality: Optional[AirQualitySummary] = None
     pollen: Optional[PollenSummary] = None
     cold_health_risk: Optional[ColdHealthRisk] = None
+    fire_risk_level: Optional[int] = None
+    dry_thunderstorm_risk_level: Optional[int] = None
+    hydrology_state: Optional[str] = None
