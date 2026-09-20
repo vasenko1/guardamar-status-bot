@@ -213,11 +213,14 @@ def _valid_pending(value: Any) -> bool:
         ):
             return False
         message_id = item.get("message_id")
-        if message_id is not None and (
-            not isinstance(message_id, int)
-            or isinstance(message_id, bool)
-            or message_id <= 0
-        ):
+        if item["status"] == "sent":
+            if (
+                not isinstance(message_id, int)
+                or isinstance(message_id, bool)
+                or message_id <= 0
+            ):
+                return False
+        elif message_id is not None:
             return False
     return True
 
