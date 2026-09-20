@@ -2991,24 +2991,19 @@ async def refresh_municipal_catalog(
                     if exc.diagnostic_code != "NO-VALID-EVENTS":
                         raise
                     new_todo_events = ()
-                if todo_program.standalone:
-                    missing_dates = [
-                        target_date
-                        for target_date in todo_program.dates
-                        if not any(
-                            event.start_date <= target_date <= event.end_date
-                            for event in new_todo_events
-                        )
-                    ]
-                    if missing_dates:
-                        raise MunicipalAgendaError(
-                            "Todo Cultura standalone extraction was incomplete",
-                            code="TODO-STANDALONE-INCOMPLETE",
-                            description=(
-                                "отдельное мероприятие Guardamar не подтверждено "
-                                "для всех заявленных дат"
-                            ),
-                        )
+                if todo_program.standalone and not any(
+                    event.start_date <= target_date <= event.end_date
+                    for target_date in todo_program.dates
+                    for event in new_todo_events
+                ):
+                    raise MunicipalAgendaError(
+                        "Todo Cultura standalone extraction was incomplete",
+                        code="TODO-STANDALONE-INCOMPLETE",
+                        description=(
+                            "отдельное мероприятие Guardamar не подтверждено "
+                            "на заявленной дате"
+                        ),
+                    )
                 corroborating_events = (
                     *text_events, *poster_events, *prior_todo_events
                 )
