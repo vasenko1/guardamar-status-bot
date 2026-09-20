@@ -340,7 +340,8 @@ class CourseNotificationCollectionTests(unittest.TestCase):
         }
         records, _ = project_course_records(guide)
         projected = records["sporttia:1"]
-        self.assertEqual(projected["observed_day"], "1970-01-01")
+        self.assertEqual(projected["observed_day"], "2026-09-20")
+        self.assertFalse(projected["fresh"])
         result = collect_changes(
             records,
             {"sporttia"},
