@@ -58,9 +58,10 @@ registration/source links.
 - Dinamización workshops may share the aggregate
   `Муниципальные занятия и мастерские` card; no per-workshop Telegram-card
   hierarchy is created solely for notifications.
-- Jardín Musical can use its explicit programme registration window. The
-  general music-school matrícula is not attributed to a specific course unless
-  a resident-facing card can represent that fact without overclaiming.
+- Jardín Musical uses its explicit programme registration window and links to
+  the music-basics card. The general music-school matrícula is represented only
+  as general `Escuela de Música` enrollment and links to the school card; it
+  is never attributed to a specific instrument or vocal course.
 - One run may publish several semantic messages. Pending state therefore stores
   per-message `pending/uncertain/sent` status. Before each non-idempotent
   `sendMessage`, that item is persisted as `uncertain`. HTTP 429 restores
