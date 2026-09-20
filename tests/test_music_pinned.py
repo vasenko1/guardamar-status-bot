@@ -103,6 +103,25 @@ class MusicPinnedRenderingTests(unittest.TestCase):
         self.assertIn("⬅️ <a href=\"https://t.me/c/123/7500\"><b>К списку мест</b></a>", text)
         self.assertTrue(text.endswith(FOOTER))
 
+    def test_school_card_shows_general_matricula_only_in_its_window(self):
+        active = build_music_school(
+            {},
+            None,
+            CATALOG,
+            date(2026, 9, 7),
+        )
+        self.assertIn("Matrícula Escuela de Música", active)
+        self.assertIn("https://cutt.ly/AMG_Matricula_EM_2627", active)
+
+        expired = build_music_school(
+            {},
+            None,
+            CATALOG,
+            date(2026, 9, 8),
+        )
+        self.assertNotIn("Matrícula Escuela de Música", expired)
+        self.assertNotIn("AMG_Matricula_EM_2627", expired)
+
     def test_activities_index_adds_one_visual_music_group(self):
         text = build_activities(
             music_links={
