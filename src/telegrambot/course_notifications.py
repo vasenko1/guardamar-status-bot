@@ -25,7 +25,7 @@ from .pinned import (
     telegram_message_link,
 )
 from .sporttia import valid_sporttia_snapshot
-from .state import PublicationState, StateError
+from .state import PublicationState
 from .telegram import TelegramError, send_message
 
 STATE_VERSION = 1
@@ -1338,13 +1338,8 @@ async def sync_course_notifications() -> str:
 
 
 async def _main() -> int:
-    try:
-        with PublicationState(_state_path()).exclusive_run():
-            result = await sync_course_notifications()
-    except StateError as exc:
-        raise CourseNotificationError(
-            "another course notification run is active"
-        ) from exc
+    with PublicationState(_state_path()).exclusive_run():
+        result = await sync_course_notifications()
     logging.info("Course notification run: %s", result)
     return 0
 
