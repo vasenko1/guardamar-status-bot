@@ -24,6 +24,10 @@ if [ ! -x "$MONITOR" ]; then
     echo "ОШИБКА: check-112.sh не найден или не исполняемый" >&2
     exit 1
 fi
+if ! command -v pdftotext >/dev/null 2>&1; then
+    echo "ОШИБКА: pdftotext не найден; установите пакет poppler" >&2
+    exit 1
+fi
 
 mkdir -p "$BACKUP_DIR"
 if ! crontab -l >"$CURRENT" 2>"$ERRORS"; then
