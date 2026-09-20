@@ -84,6 +84,57 @@ class CourseNotificationProjectionTests(unittest.TestCase):
         self.assertEqual(sources, {"music_school"})
 
 
+    def test_dinamizacion_shared_registration_is_projected_once(self):
+        from telegrambot.course_notifications import project_course_records
+
+        guide = {
+            "dinamizacion_snapshot": {
+                "observed_at": "2026-09-20T09:02:00+02:00",
+                "season": "2026/27",
+                "campaign_url": (
+                    "https://www.guardamardelsegura.es/2026/09/07/"
+                    "programa-dinamizacion-social-2026-2027/"
+                ),
+                "form_url": "https://docs.google.com/forms/d/e/test/viewform",
+                "registration_start": "2026-09-09",
+                "registration_end": "2026-09-20",
+                "registration_until_full": True,
+                "resident_priority": True,
+                "groups": [
+                    {
+                        "key": "textile_painting",
+                        "schedules": ["Пн · 17:00–18:30"],
+                        "start_date": "2026-10-01",
+                        "end_date": "2027-05-31",
+                    },
+                    {
+                        "key": "senior_memory",
+                        "schedules": ["Вт · 10:00–11:00"],
+                        "start_date": "2026-10-01",
+                        "end_date": "2027-05-31",
+                    },
+                ],
+            }
+        }
+        records, _ = project_course_records(guide)
+
+        registration_records = [
+            item for item in records.values() if item["registrations"]
+        ]
+        self.assertEqual(len(registration_records), 1)
+        self.assertEqual(
+            registration_records[0]["record_id"],
+            "dinamizacion:program",
+        )
+        self.assertEqual(
+            registration_records[0]["title"],
+            "Муниципальные занятия и мастерские",
+        )
+        self.assertTrue(registration_records[0]["until_full"])
+        self.assertEqual(records["dinamizacion:textile_painting"]["registrations"], [])
+        self.assertEqual(records["dinamizacion:senior_memory"]["registrations"], [])
+
+
 class CourseNotificationCollectionTests(unittest.TestCase):
     def test_first_run_is_silent_baseline(self):
         current = record(
@@ -414,6 +465,37 @@ class CourseNotificationMessageTests(unittest.TestCase):
         self.assertIn("основной период записи", message)
         self.assertIn("при наличии мест", message)
         self.assertNotIn("последний день подачи заявки", message)
+
+    def test_new_course_with_multiple_groups_renders_once(self):
+        events = [
+            {
+                "type": "new_course",
+                "record_id": "sporttia:1",
+                "course_key": "sporttia:judo",
+                "card_key": "judo",
+                "title": "Дзюдо",
+                "emoji": "🥋",
+                "group": "1-я группа",
+            },
+            {
+                "type": "new_course",
+                "record_id": "sporttia:2",
+                "course_key": "sporttia:judo",
+                "card_key": "judo",
+                "title": "Дзюдо",
+                "emoji": "🥋",
+                "group": "2-я группа",
+            },
+        ]
+        message = build_message(
+            "new_courses",
+            events,
+            "-100123",
+            {"judo": 501},
+        )
+        self.assertEqual(message.count("https://t.me/c/123/501"), 1)
+        self.assertEqual(message.count("Дзюдо"), 1)
+
 
     def test_course_changes_group_multiple_fields_for_one_course(self):
         events = [
