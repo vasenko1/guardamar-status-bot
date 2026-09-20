@@ -75,6 +75,47 @@ def _is_sha256(value: Any) -> bool:
     )
 
 
+def _valid_urban_state(value: Any) -> bool:
+    if not isinstance(value, dict) or any(key not in LINE_NUMBERS for key in value):
+        return False
+    for item in value.values():
+        if not isinstance(item, dict):
+            return False
+        if not _is_sha256(item.get("pdf_sha256")) or not _is_sha256(
+            item.get("image_sha256")
+        ):
+            return False
+        if item.get("period") not in {None, "summer", "regular"}:
+            return False
+    return True
+
+
+def _valid_fare_state(value: Any) -> bool:
+    if value is None:
+        return True
+    if not isinstance(value, dict):
+        return False
+    try:
+        cents = int(value["cents"])
+        date.fromisoformat(value["effective_date"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    return (
+        100 <= cents <= 2_000
+        and _is_sha256(value.get("pdf_sha256"))
+    )
+
+
+def _valid_airport_state(value: Any) -> bool:
+    if value is None:
+        return True
+    try:
+        _decode_airport_snapshot(value)
+    except TransportNotificationError:
+        return False
+    return True
+
+
 def _valid_event(event: Any) -> bool:
     return (
         isinstance(event, dict)
@@ -160,11 +201,17 @@ def _migrate_v1(state: Mapping[str, Any]) -> Dict[str, Any]:
     if not isinstance(urban, dict):
         raise TransportNotificationError("legacy transport notification state is invalid")
     migrated = _empty_state()
-    migrated["urban"] = {
-        key: dict(value)
-        for key, value in urban.items()
-        if key in LINE_NUMBERS and isinstance(value, dict)
-    }
+    migrated["urban"] = {}
+    for key, value in urban.items():
+        if key not in LINE_NUMBERS or not isinstance(value, dict):
+            raise TransportNotificationError(
+                "legacy transport notification state is invalid"
+            )
+        migrated["urban"][key] = {
+            "pdf_sha256": value.get("pdf_sha256"),
+            "image_sha256": value.get("image_sha256"),
+            "period": value.get("period"),
+        }
     migrated["fare"] = state.get("fare")
     migrated["airport_next"] = state.get("airport_next")
 
@@ -221,7 +268,9 @@ def load_state(path: Path) -> Dict[str, Any]:
         state = _migrate_v1(state)
     if (
         state.get("version") != STATE_VERSION
-        or not isinstance(state.get("urban"), dict)
+        or not _valid_urban_state(state.get("urban"))
+        or not _valid_fare_state(state.get("fare"))
+        or not _valid_airport_state(state.get("airport_next"))
         or not _valid_pending(state.get("pending"))
     ):
         raise TransportNotificationError(
@@ -231,7 +280,13 @@ def load_state(path: Path) -> Dict[str, Any]:
 
 
 def save_state(path: Path, state: Dict[str, Any]) -> None:
-    if state.get("version") != STATE_VERSION or not _valid_pending(state.get("pending")):
+    if (
+        state.get("version") != STATE_VERSION
+        or not _valid_urban_state(state.get("urban"))
+        or not _valid_fare_state(state.get("fare"))
+        or not _valid_airport_state(state.get("airport_next"))
+        or not _valid_pending(state.get("pending"))
+    ):
         raise TransportNotificationError(
             "transport notification state is invalid"
         )
