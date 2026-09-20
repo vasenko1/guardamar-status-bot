@@ -20,7 +20,6 @@ from .music_school import valid_music_school_snapshot
 from .pinned import (
     DEFAULT_PINNED_STATE_PATH,
     DINAMIZACION_GROUP_TITLES,
-    MUSIC_ACTIVITY_META,
     SPORT_ACTIVITY_META,
     PinnedGuideState,
     telegram_message_link,
