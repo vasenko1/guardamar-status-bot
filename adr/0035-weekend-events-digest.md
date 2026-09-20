@@ -23,8 +23,13 @@ from the two existing normalized catalogs plus the recurring market rules:
   reusing the date-parameterized catalog readers, merges and deduplicates
   them with the existing `_merge_events` rules, and renders each day with the
   shared bounded event-section renderer extracted from the Morning Digest.
-- No new network source is consulted. The Mayor channel, SafeBeach, AEMET,
-  and Policía Local are not part of this message.
+- The message uses no new source. On the primary Friday run, reuse the existing
+  municipal/library/AM Guardamar/FACV/Pesca and Agenda Guardamar refresh
+  scripts immediately before rendering so late Friday event publications can
+  enter the same normalized catalogs. Refresh failures are best-effort and
+  fall back to the last-good snapshots; they never suppress weekend delivery.
+  The Mayor channel, SafeBeach, AEMET, and Policía Local are not part of this
+  message.
 - Missing translations for weekend titles are prepared inline through the
   existing bounded policy-versioned cache; a Gemini outage degrades titles to
   normalized Spanish exactly as in the morning flow.
@@ -32,8 +37,10 @@ from the two existing normalized catalogs plus the recurring market rules:
 - Publication is guarded by one small atomic state file
   (`state/weekend.json`) keyed to the target Saturday, with the same
   non-blocking lock and success-only marker pattern as the electricity
-  feature. External Termux cron runs Friday `18:00` with bounded retries at
-  `18:20` and `19:00`; a confirmed success makes later invocations no-ops.
+  feature. External Termux cron runs the primary `run-weekend.sh --fresh`
+  Friday at `19:15`, after the existing evening monitor cluster, and one
+  delivery-only retry at `19:45`. A confirmed success makes the retry a
+  no-op. The retry deliberately does not repeat source refreshes.
 - `weekend-preview` prints the message without Telegram or state changes.
   Like the morning preview, it is strictly read-only: it never fills the
   translation cache and renders normalized Spanish for an absent entry,
@@ -42,8 +49,9 @@ from the two existing normalized catalogs plus the recurring market rules:
 ## Consequences
 
 - Benefits: forward-looking value from data the bot already maintains; zero
-  new sources; at most two additional bounded translation batches per week,
-  leaving Gemini free-tier usage unchanged in practice.
+  new sources; one bounded late-Friday refresh closes the stale-snapshot gap
+  without polling or post-publication edits. Missing translations are still
+  prepared only through the existing weekend path.
 - Costs: one more cron row, one more small state file, and a second consumer
   of the event renderer that morning-layout changes must keep in mind.
 - Follow-up: observe whether Saturday-morning readers need a repeat and
