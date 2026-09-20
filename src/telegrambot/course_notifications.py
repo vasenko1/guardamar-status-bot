@@ -210,8 +210,10 @@ def _valid_pending(value: Any) -> bool:
     if (
         not isinstance(baseline, dict)
         or len(baseline) > 512
-        or any(key != record.get("record_id") or not _valid_record(record)
-               for key, record in baseline.items())
+        or any(
+            not _valid_record(record) or key != record["record_id"]
+            for key, record in baseline.items()
+        )
     ):
         return False
     for field in (
@@ -274,8 +276,10 @@ def load_state(path: Path) -> Dict[str, Any]:
     if (
         not isinstance(baseline, dict)
         or len(baseline) > 512
-        or any(key != record.get("record_id") or not _valid_record(record)
-               for key, record in baseline.items())
+        or any(
+            not _valid_record(record) or key != record["record_id"]
+            for key, record in baseline.items()
+        )
     ):
         raise CourseNotificationError("course notification baseline is invalid")
     for field in ("known_sources", "known_course_keys", "known_record_ids"):
@@ -522,9 +526,12 @@ def _semantic_events(
     known_sources: set[str],
     known_course_keys: set[str],
     known_record_ids: set[str],
+    local_day: date,
 ) -> list[dict]:
     events: list[dict] = []
     for record in current.values():
+        if record["observed_day"] != local_day.isoformat():
+            continue
         previous = baseline.get(record["record_id"])
         if previous is None:
             if record["source"] not in known_sources:
@@ -747,6 +754,7 @@ def collect_changes(
         known_sources,
         known_course_keys,
         known_record_ids,
+        local_day,
     )
     dated, _ = _date_events(
         current,
