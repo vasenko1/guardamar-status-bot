@@ -23,6 +23,7 @@ from .gemini import (
     GeminiError,
     extract_agenda_events,
     extract_agenda_text_events,
+    extract_guardamar_standalone_events,
     translate_event_titles,
     verify_agenda_poster_events,
 )
@@ -2962,10 +2963,17 @@ async def refresh_municipal_catalog(
             todo_enrichment_programs = todo_window.programs
             for todo_program in todo_window.programs:
                 todo_explicit_rows += todo_program.event_rows
-                todo_result = await extract_agenda_text_events(
-                    api_key,
-                    todo_program.text,
-                )
+                if todo_program.standalone:
+                    todo_result = await extract_guardamar_standalone_events(
+                        api_key,
+                        todo_program.text,
+                        todo_program.dates,
+                    )
+                else:
+                    todo_result = await extract_agenda_text_events(
+                        api_key,
+                        todo_program.text,
+                    )
                 todo_month = (
                     todo_program.dates[0].strftime("%Y-%m")
                     if todo_program.dates
@@ -2983,6 +2991,24 @@ async def refresh_municipal_catalog(
                     if exc.diagnostic_code != "NO-VALID-EVENTS":
                         raise
                     new_todo_events = ()
+                if todo_program.standalone:
+                    missing_dates = [
+                        target_date
+                        for target_date in todo_program.dates
+                        if not any(
+                            event.start_date <= target_date <= event.end_date
+                            for event in new_todo_events
+                        )
+                    ]
+                    if missing_dates:
+                        raise MunicipalAgendaError(
+                            "Todo Cultura standalone extraction was incomplete",
+                            code="TODO-STANDALONE-INCOMPLETE",
+                            description=(
+                                "отдельное мероприятие Guardamar не подтверждено "
+                                "для всех заявленных дат"
+                            ),
+                        )
                 corroborating_events = (
                     *text_events, *poster_events, *prior_todo_events
                 )
