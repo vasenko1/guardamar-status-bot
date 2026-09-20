@@ -861,6 +861,11 @@ async def monitor_emergency_risks(
         try:
             await publish(message)
         except EmergencyRiskDeliveryUncertain:
+            # Treat the target state as possibly visible. This avoids an
+            # automatic duplicate on the next identical run while still
+            # allowing a later downgrade/clearance to correct a message that
+            # Telegram may in fact have accepted.
+            _acknowledge(value)
             value["published"]["uncertain_signature"] = signature
             state.write(value)
             return "uncertain"
