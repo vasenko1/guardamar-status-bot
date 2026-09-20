@@ -2,7 +2,6 @@
 
 import asyncio
 import fcntl
-import hashlib
 import html
 import json
 import logging
@@ -371,8 +370,35 @@ def extract_pdf_text(payload: bytes) -> str:
     return text
 
 
-def parse_cce_pdf(payload: bytes) -> str:
-    return parse_cce_text(extract_pdf_text(payload), bulletin=True)
+def parse_cce_bulletin(text: str, now: datetime) -> str:
+    """Validate bulletin date/time before accepting its hydrological state."""
+
+    folded = _fold(text)
+    date_match = re.search(r"\bFECHA\s*[:\-]?\s*(\d{1,2}/\d{1,2}/\d{4})", folded)
+    time_match = re.search(r"\bHORA\s*[:\-]?\s*(\d{1,2}:\d{2})", folded)
+    if date_match is None or time_match is None:
+        raise EmergencyRiskError(
+            "CCE bulletin timestamp is missing", code="STALE"
+        )
+    try:
+        issued = datetime.strptime(
+            f"{date_match.group(1)} {time_match.group(1)}",
+            "%d/%m/%Y %H:%M",
+        ).replace(tzinfo=GUARDAMAR_TIMEZONE)
+    except ValueError as exc:
+        raise EmergencyRiskError(
+            "CCE bulletin timestamp is invalid", code="STALE"
+        ) from exc
+    local_now = now.astimezone(GUARDAMAR_TIMEZONE)
+    if issued.date() != local_now.date() or issued > local_now + timedelta(minutes=15):
+        raise EmergencyRiskError(
+            "CCE bulletin is not current for today", code="STALE"
+        )
+    return parse_cce_text(text, bulletin=True)
+
+
+def parse_cce_pdf(payload: bytes, now: datetime) -> str:
+    return parse_cce_bulletin(extract_pdf_text(payload), now)
 
 
 def _fetch_previfoc_sync() -> PrevifocRisk:
@@ -431,7 +457,7 @@ async def fetch_cce_emergencies() -> str:
     return await asyncio.to_thread(_fetch_cce_emergencies_sync)
 
 
-def _fetch_cce_pdf_sync() -> str:
+def _fetch_cce_pdf_sync(now: datetime) -> str:
     try:
         payload, _, _ = fetch_bounded(
             CCE_PDF_URL,
@@ -449,11 +475,11 @@ def _fetch_cce_pdf_sync() -> str:
         raise EmergencyRiskError(
             "CCE bulletin is unavailable", code=exc.code
         ) from exc
-    return parse_cce_pdf(payload)
+    return parse_cce_pdf(payload, now)
 
 
-async def fetch_cce_pdf() -> str:
-    return await asyncio.to_thread(_fetch_cce_pdf_sync)
+async def fetch_cce_pdf(now: datetime) -> str:
+    return await asyncio.to_thread(_fetch_cce_pdf_sync, now)
 
 
 def _parse_datetime(value: object) -> datetime:
@@ -480,7 +506,6 @@ class EmergencyRiskState:
     def empty() -> dict:
         return {
             "version": STATE_VERSION,
-            "initialized": False,
             "previfoc": None,
             "cce_html": None,
             "cce_pdf": None,
@@ -488,7 +513,6 @@ class EmergencyRiskState:
                 "fire_extreme": False,
                 "dry_high": False,
                 "hydrology": None,
-                "uncertain_signature": None,
             },
         }
 
@@ -519,11 +543,9 @@ class EmergencyRiskState:
         if (
             not isinstance(value, dict)
             or set(value) != {
-                "version", "initialized", "previfoc",
-                "cce_html", "cce_pdf", "published",
+                "version", "previfoc", "cce_html", "cce_pdf", "published",
             }
             or value.get("version") != STATE_VERSION
-            or not isinstance(value.get("initialized"), bool)
         ):
             raise EmergencyRiskError("risk state is corrupt", code="STATE-CORRUPT")
         previfoc = value["previfoc"]
@@ -551,17 +573,12 @@ class EmergencyRiskState:
             not isinstance(published, dict)
             or set(published) != {
                 "fire_extreme", "dry_high", "hydrology",
-                "uncertain_signature",
             }
             or not isinstance(published["fire_extreme"], bool)
             or not isinstance(published["dry_high"], bool)
             or (
                 published["hydrology"] is not None
                 and published["hydrology"] not in _HYDRO_VALUES - {HYDRO_NONE}
-            )
-            or (
-                published["uncertain_signature"] is not None
-                and not isinstance(published["uncertain_signature"], str)
             )
         ):
             raise EmergencyRiskError("risk state is corrupt", code="STATE-CORRUPT")
@@ -751,23 +768,7 @@ def _transition(value: dict) -> Optional[tuple[str, str]]:
         heading = "✅ <b>Уровень опасности снижен</b>"
     body = [heading, "", *lines, "", "Источник: " + "; ".join(unique_sources)]
     message = with_footer("\n".join(body))
-    signature_data = {
-        "fire_extreme": fire == 3 if fire is not None else published["fire_extreme"],
-        "dry_high": dry == 3 if dry is not None else published["dry_high"],
-        "hydrology": (
-            hydro if hydro not in (None, HYDRO_NONE) else (
-                None if hydro == HYDRO_NONE else published_hydro
-            )
-        ),
-    }
-    signature = hashlib.sha256(
-        json.dumps(
-            signature_data,
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
-    ).hexdigest()
-    return message, signature
+    return message
 
 
 def _acknowledge(value: dict) -> None:
@@ -780,7 +781,6 @@ def _acknowledge(value: dict) -> None:
         published["dry_high"] = dry == 3
     if hydro is not None:
         published["hydrology"] = None if hydro == HYDRO_NONE else hydro
-    published["uncertain_signature"] = None
 
 
 async def monitor_emergency_risks(
@@ -790,7 +790,7 @@ async def monitor_emergency_risks(
     *,
     fetch_previfoc_fn: Callable[[], Awaitable[PrevifocRisk]] = fetch_previfoc,
     fetch_cce_html_fn: Callable[[], Awaitable[str]] = fetch_cce_emergencies,
-    fetch_cce_pdf_fn: Callable[[], Awaitable[str]] = fetch_cce_pdf,
+    fetch_cce_pdf_fn: Optional[Callable[[], Awaitable[str]]] = None,
 ) -> str:
     """Run one bounded collection/normalization/delivery cycle."""
 
@@ -827,7 +827,10 @@ async def monitor_emergency_risks(
             }
 
         try:
-            hydrology = await fetch_cce_pdf_fn()
+            hydrology = await (
+                fetch_cce_pdf_fn() if fetch_cce_pdf_fn is not None
+                else fetch_cce_pdf(now)
+            )
         except EmergencyRiskError as exc:
             logging.warning(
                 "CCE bulletin check failed: RISK-%s", exc.diagnostic_code
@@ -843,20 +846,10 @@ async def monitor_emergency_risks(
             logging.warning("RISK: all official sources unavailable")
             return "unavailable"
 
-        value["initialized"] = True
-        transition = _transition(value)
-        if transition is None:
-            value["published"]["uncertain_signature"] = None
+        message = _transition(value)
+        if message is None:
             state.write(value)
             return "no_update"
-
-        message, signature = transition
-        if value["published"]["uncertain_signature"] == signature:
-            state.write(value)
-            logging.warning(
-                "RISK: prior Telegram outcome is uncertain; not duplicating"
-            )
-            return "uncertain"
 
         try:
             await publish(message)
@@ -866,7 +859,6 @@ async def monitor_emergency_risks(
             # allowing a later downgrade/clearance to correct a message that
             # Telegram may in fact have accepted.
             _acknowledge(value)
-            value["published"]["uncertain_signature"] = signature
             state.write(value)
             return "uncertain"
 
