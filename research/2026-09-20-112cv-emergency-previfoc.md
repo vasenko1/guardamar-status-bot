@@ -73,9 +73,11 @@ This source must **not** duplicate ordinary AEMET warning messages.
 
 Product use:
 
-- AEMET remains primary for meteorological warnings;
-- consult this PDF only during an active AEMET Guardamar warning for
-  `lluvias` or `tormentas`, plus a short post-warning tail;
+- AEMET remains primary for ordinary meteorological warnings;
+- check this PDF once per hourly `check-112` run rather than gating it on a
+  local Guardamar AEMET rain/thunderstorm warning;
+- the lower Segura can deteriorate from upstream rainfall or basin/reservoir
+  operations even when Guardamar itself has no active AEMET warning;
 - search for operational/hydrological decisions not already supplied by AEMET,
   for example:
   - `PREEMERGENCIA HIDROLÓGICA`
@@ -275,9 +277,25 @@ investigating that export only if it can prove that it exposes the current or
 next operational Previfoc value early enough to drive a user-facing message.
 Otherwise close this branch and use another current operational source.
 
+### AEMET versus Previfoc dry thunderstorms
+
+AEMET can forecast and discuss dry thunderstorms meteorologically, but
+Meteoalerta has no separate operational dry-thunderstorm warning type. Its
+`Tormentas` warning is a general adverse-thunderstorm product. AEMET's separate
+forest-fire danger product is also a national meteorological danger model, not
+the Generalitat's Previfoc preemergency decision.
+
+Previfoc therefore adds unique operational value. For Guardamar zone 6 it
+publishes forest-fire preemergency and dry-thunderstorm risk as separate
+official fields. Do not derive one from the other and do not replace Previfoc
+with ordinary AEMET thunderstorm warnings.
+
 ### Previfoc desired behavior
 
-Previfoc is a daily value, so hourly polling is unnecessary.
+Previfoc is primarily a daily value, but the authority can readjust the
+same-day level. Folding its tiny zone-6 query into the already hourly
+`check-112` watcher is accepted because it avoids another scheduler and makes
+official revisions observable at negligible network cost.
 
 Preferred model:
 
@@ -306,6 +324,25 @@ Public-message policy is not finalized. Current product direction:
 No public message wording should be finalized until the current zone-6
 machine-readable source is confirmed.
 
+## Hydrology source closure
+
+The hydrology search was extended beyond 112CV:
+
+- CHS public SAIH/iVisor and public ArcGIS expose river/reservoir measurements,
+  stations and related GIS data, but no suitable ready current
+  yellow/orange/red alert-state for lower Segura;
+- Observatorio GOTA has a real anonymous `/publico/` API and public GIS/OGC
+  services, but the public surfaces found expose catalogues, stations and
+  measurement layers rather than an operational hydrological alert feed;
+- GOTA's `config-avisos-umbrales-por-incumplimiento` endpoints are protected
+  by authentication and are not a runtime source for this bot;
+- the national RAN hydrological alert system is documented in 2026 material as
+  still under development.
+
+Decision: do not infer danger from raw H/Q values and do not continue private
+API/authentication reverse engineering. CCE/112 remains the operational
+hydrology authority source for the bot; CHS/GOTA remain manual/research context.
+
 ## 112 watcher scheduling
 
 Current repository schedule includes:
@@ -326,19 +363,19 @@ Candidate single 112 cron slot:
 At each invocation, run **one orchestrator process**. Individual source
 adapters never publish Telegram messages independently.
 
-1. Read the existing normalized AEMET snapshot; do **not** make another AEMET
-   network request.
-2. GET `emergencias.jsf` always. It is only about 2.7 KB.
-3. If current local time is inside an active Guardamar AEMET `lluvias` or
-   `tormentas` warning, fetch `avisometeorologico.pdf`.
-4. Continue conditional PDF checks for roughly 3 hours after the warning ends.
-5. If an official hydrological/emergency state has already been observed,
-   continue until the authority publishes its end/deactivation.
-6. Parse all source results into normalized candidate states.
-7. Merge/deduplicate candidates with explicit precedence; an official active
+1. Do not make another AEMET network request; AEMET remains an independent
+   weather-warning source.
+2. GET `emergencias.jsf` every run. It is only about 2.7 KB.
+3. Fetch the current CCE `avisometeorologico.pdf` every run. Do not gate this
+   hydrology check on a local Guardamar AEMET warning.
+4. Query the tiny Previfoc ArcGIS state for Guardamar zone 6 so same-day
+   readjustments and the next-day operational value are observable without a
+   second scheduler.
+5. Parse all source results into normalized candidate states.
+6. Merge/deduplicate candidates with explicit precedence; an official active
    emergency state is stronger than a hydrological preemergency observation.
-8. Compare the final merged state with the small persisted prior state.
-9. Publish at most one coherent Telegram transition for the run, or remain
+7. Compare the final merged state with the small persisted prior state.
+8. Publish at most one coherent Telegram transition for the run, or remain
    silent when there is no actionable change.
 
 The fact that the HTML and PDF requests complete at different speeds is
