@@ -160,6 +160,58 @@ The same response exposes INE `3076`. Internal JSF field
 `valorZona=66` must not be interpreted as the public zone number; the
 user-facing zone is 6.
 
+### Operational ArcGIS source — confirmed
+
+The official Previfoc home page uses an ArcGIS FeatureLayer service directly:
+
+`https://vaersa.org/arcgis/rest/services/Nivel_preemergencia_Alerta3_112/MapServer/`
+
+The page JavaScript explicitly selects:
+
+- layer `0` for `Dia 1` (current operational day);
+- layer `1` for `Dia 2` (next-day forecast).
+
+Both layers support `Query` and expose one polygon per Previfoc zone with fields:
+
+- `ZonaID`
+- `RiesgoId`
+- `TormentaID`
+- `Dia`
+- `AlertaDiaID`
+
+Guardamar del Segura belongs to `ZonaID=6`, so the minimal machine-readable
+request can query only that row and omit geometry, for example:
+
+`/0/query?where=ZonaID%3D6&outFields=ZonaID,RiesgoId,TormentaID,Dia,AlertaDiaID&returnGeometry=false&f=json`
+
+and the same against layer `1` for tomorrow.
+
+Confirmed 2026-09-20 probe:
+
+- layer 0 / zone 6: `RiesgoId=1`, `TormentaID=1`, `Dia=1`;
+- layer 1 / zone 6: `RiesgoId=1`, `TormentaID=1`, `Dia=2`.
+
+Official Previfoc semantics:
+
+- `RiesgoId=1`: low-medium forest-fire risk;
+- `RiesgoId=2`: high forest-fire risk;
+- `RiesgoId=3`: extreme forest-fire risk.
+
+Dry-thunderstorm semantics are separate:
+
+- `TormentaID=1`: no dry-thunderstorm risk is reported;
+- `TormentaID=2`: possibility of dry thunderstorm;
+- `TormentaID=3`: high dry-thunderstorm risk.
+
+This ArcGIS service is now the preferred Previfoc source. It is superior to the
+PDF and historical Excel for runtime use because it is current/next-day,
+structured, tiny, and directly queryable for Guardamar's zone without map
+rendering, PDF parsing, OCR, or historical-table latency.
+
+Product consequence: do not schedule the Previfoc PDF or historical Excel for
+routine runtime collection while this ArcGIS endpoint remains available and
+stable. Keep the PDF only as an operator/research cross-check if needed.
+
 ### Current official PDF
 
 URL:
@@ -349,11 +401,8 @@ emergency channels.
 
 ## Open questions
 
-1. Whether the Excel/table can expose today's or tomorrow's operational
-   Previfoc early enough to replace the PDF. If it is historical-only, stop
-   investigating it for runtime use.
-2. Whether a real future Segura hydrological preemergencia appears in
+1. Whether a real future Segura hydrological preemergencia appears in
    `avisometeorologico.pdf`, `emergencias.jsf`, both, or neither.
-3. Exact normalized state schema and final message copy.
-4. Whether Previfoc level 2 deserves public output or only inclusion in the
+2. Exact normalized state schema and final message copy.
+3. Whether Previfoc level 2 deserves public output or only inclusion in the
    morning briefing.
