@@ -280,6 +280,7 @@ class SporttiaSourceTests(unittest.IsolatedAsyncioTestCase):
         }
         merged = merge_sporttia_catalog(previous, current, date(2026, 10, 2))
         self.assertEqual(len(merged["activities"]), len(previous["activities"]))
+        self.assertEqual(merged["observed_source_ids"], [])
         expired = merge_sporttia_catalog(previous, current, date(2027, 7, 1))
         self.assertEqual(expired["activities"], [])
 
