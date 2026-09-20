@@ -37,6 +37,22 @@ class WeekendTermuxTests(unittest.TestCase):
             )
             return result, crontab_state.read_text(encoding="utf-8")
 
+    def test_installer_removes_legacy_unmanaged_weekend_jobs(self):
+        legacy = (
+            "0,20 18 * * 5 /data/data/com.termux/files/home/bots/"
+            "guardamar-status/termux/run-weekend.sh\n"
+            "0 19 * * 5 /data/data/com.termux/files/home/bots/"
+            "guardamar-status/termux/run-weekend.sh\n"
+        )
+
+        result, installed = self._install(legacy)
+
+        self.assertEqual(result.returncode, 0)
+        self.assertNotIn("0,20 18 * * 5", installed)
+        self.assertNotIn("0 19 * * 5", installed)
+        self.assertIn("15 19 * * 5", installed)
+        self.assertIn("15 20 * * 5", installed)
+
     def test_installer_is_idempotent_and_preserves_other_jobs(self):
         unrelated = "12 3 * * * /other/bot.sh\n"
         first, installed = self._install(unrelated)
