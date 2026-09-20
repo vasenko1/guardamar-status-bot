@@ -301,15 +301,37 @@ flag label and known flag color omit that beach. There is no internal retry,
 cookie state, raw-response cache, or status history. A page with no eligible
 record is a valid empty result, not a source error.
 
-SafeBeach is requested only inside the local product monitoring window from
+SafeBeach is currently requested only inside the local safety window from
 15 June through 15 September, inclusive. Outside this window all operational
 SafeBeach values are omitted, preventing a stale active record from exposing a
-winter flag. The window is aligned with Guardamar's official seasonal Zona
-Azul period for a simple resident-facing summer transition; it is not a claim
-that every municipal beach service uses immutable or identical annual dates.
-SafeBeach's current-date, `hasActividad`, and `serviceEnded` checks remain
-mandatory inside the window. AEMET sea temperature and wave forecast remain
-available year-round.
+winter flag. This boundary is an internal guard rail only: it is not presented
+to users as an official beach season and it does not control Zona Azul or any
+other municipal service. SafeBeach's current-date, `hasActividad`, and
+`serviceEnded` checks remain mandatory inside the window. Removing the guard
+rail entirely requires a reviewed off-season observation proving that those
+source flags reliably switch inactive when lifeguard service stops. AEMET sea
+temperature and wave forecast remain available year-round.
+
+## Approved municipal bathing-water programme
+
+`https://www.guardamardelsegura.es/programa-de-control-de-las-zonas-de-bano/`
+is the Ayuntamiento's current index for the annual bathing-water control
+programme. The page publishes the current year's explicit programme dates and
+links weekly PDF reports by covered date range.
+
+The guide sync reads this small HTML page at most once per local day. It accepts
+only the exact municipal HTTPS page and report PDFs below the municipality's
+`/wp-content/uploads/` path. The normalized snapshot stores only the observed
+time, current-year programme start/end, and the newest linked weekly report
+range and URL. Missing or ambiguous current-year headings fail closed and keep
+the previous verified snapshot.
+
+The adapter deliberately does **not** parse or classify the PDF laboratory
+tables yet. Therefore this source currently creates no public quality claim,
+card, or notification. A linked report becoming newer is stored as source
+state only. User-facing quality changes require a separately reviewed stable
+machine-readable contract for the actual sample values; NÁYADE is the preferred
+official candidate for that next step.
 
 ## Approved Agenda Guardamar data
 
