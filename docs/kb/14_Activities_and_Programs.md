@@ -223,7 +223,9 @@ Implemented as an activity-first extension of the existing linked guide:
 - three resident-facing cards: `🎶 Музыкальное развитие и грамота`, `🎤 Вокал и хор`, and `🎷 Музыкальные инструменты`;
 - one durable `🎼 Escuela de Música` place card under `📍 Места`, owning map/address, phone/email, website and reverse links to the music cards;
 - music activity cards keep only programme/audience/schedule facts, a programme-specific registration action when explicitly open, the internal `📍 Escuela de Música` link, the standard upward navigation link and shared footer; contacts are not duplicated;
-- Jardín Musical uses its explicit dated form/window only. The general Escuela form is not presented as if it were a group-specific CTA;
+- Jardín Musical uses its explicit dated form/window only. The general Escuela
+  form is shown only on the shared Escuela de Música card during its explicit
+  matrícula window and is never presented as a group-specific CTA;
 - published schedule actions link to the official AM Guardamar schedule post, never directly to Google Drive documents that can also contain enrolled-student lists;
 - `music_school.py` is a deterministic programme adapter separate from the existing `am_guardamar.py` event semantics;
 - the existing 16:30 guide sync performs at most one additional bounded REST GET per Europe/Madrid local day for twelve recently modified AM Guardamar posts, with a 300 KiB response cap and 15-second timeout;
