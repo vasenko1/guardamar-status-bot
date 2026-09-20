@@ -23,6 +23,11 @@ from typing import Dict, Iterator, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
 from ._transport import BoundedFetchError, fetch_bounded
+from .bathing_water import (
+    BathingWaterSourceError,
+    fetch_bathing_water_snapshot,
+    valid_bathing_water_snapshot,
+)
 from .branding import with_footer
 from .commands import parse_allowed_user_ids
 from .chess_school import (
@@ -121,6 +126,14 @@ class GuideState:
         snapshot = value.get("aqualider_catalog")
         if snapshot is not None and not _valid_snapshot(snapshot):
             raise StateError("guide state has an invalid Aqualider snapshot")
+        bathing_water = value.get("bathing_water_snapshot")
+        if (
+            bathing_water is not None
+            and not valid_bathing_water_snapshot(bathing_water)
+        ):
+            raise StateError(
+                "guide state has an invalid bathing-water snapshot"
+            )
         sporttia = value.get("sporttia_catalog")
         if sporttia is not None and not valid_sporttia_snapshot(sporttia):
             raise StateError("guide state has an invalid Sporttia snapshot")
@@ -157,6 +170,7 @@ class GuideState:
                     "guide state has an invalid Sporttia attempt day"
                 ) from exc
         for field, label in (
+            ("bathing_water_last_attempt_day", "bathing-water"),
             ("chess_school_last_attempt_day", "chess-school"),
             ("literary_group_last_attempt_day", "literary-group"),
             ("dinamizacion_discovery_last_attempt_day", "Dinamización discovery"),
@@ -763,22 +777,17 @@ def _parking_notice_text(
     parking = telegram_message_link(chat_id, messages["parking"])
     if notice_key.endswith(":paid"):
         return with_footer(
-            "🏖️🅿️ <b>Летний режим: пляжи и парковка</b>\n\n"
-            "С <b>15 июня</b> у бота начинается летний период пляжных сводок: "
-            "мы снова проверяем актуальные флаги и ограничения SafeBeach на пляжах "
-            "Гуардамара.\n\n"
-            "С этой же даты включается сезонная <b>Zona Azul</b>: парковка платная "
-            "<b>ежедневно с 10:00 до 20:00</b> и до <b>15 сентября включительно</b>.\n\n"
-            f"Условия и официальный источник по парковке — <a href=\"{parking}\"><b>в карточке Zona Azul</b></a>."
+            "🅿️ <b>Zona Azul — с завтрашнего дня платно</b>\n\n"
+            "С <b>15 июня</b> в Гуардамаре начинается летний платный режим Zona Azul. "
+            "Оплата действует <b>ежедневно с 10:00 до 20:00</b> и продлится до "
+            "<b>15 сентября включительно</b>.\n\n"
+            f"Условия и официальный источник — <a href=\"{parking}\"><b>в карточке парковки</b></a>."
         )
     return with_footer(
-        "🏖️🅿️ <b>Летний режим: пляжи и парковка завершаются</b>\n\n"
-        "<b>15 сентября</b> — последний день летнего периода регулярных пляжных "
-        "сводок SafeBeach. С <b>16 сентября</b> регулярные проверки прекращаются "
-        "до следующего летнего периода.\n\n"
-        "Одновременно заканчивается платный режим <b>Zona Azul</b>: с "
-        "<b>16 сентября</b> сезонная синяя зона снова бесплатна.\n\n"
-        f"Условия и официальный источник по парковке — <a href=\"{parking}\"><b>в карточке Zona Azul</b></a>."
+        "🅿️ <b>Zona Azul — с завтрашнего дня бесплатно</b>\n\n"
+        "Платный летний сезон завершён. С <b>16 сентября</b> сезонная Zona Azul "
+        "в Гуардамаре снова бесплатна.\n\n"
+        f"Условия и официальный источник — <a href=\"{parking}\"><b>в карточке парковки</b></a>."
     )
 
 
@@ -848,6 +857,25 @@ async def sync_guide(now: datetime) -> str:
 
         local_now = now.astimezone(GUARDAMAR_TIMEZONE)
         local_day = local_now.date()
+
+        if (
+            state.get("bathing_water_last_attempt_day")
+            != local_day.isoformat()
+        ):
+            state["bathing_water_last_attempt_day"] = local_day.isoformat()
+            guide_state.write(state)
+            try:
+                state["bathing_water_snapshot"] = (
+                    await fetch_bathing_water_snapshot(now)
+                )
+            except BathingWaterSourceError as exc:
+                logging.warning(
+                    "Bathing-water programme deferred [GUIDE-%s]",
+                    exc.diagnostic_code,
+                )
+            else:
+                guide_state.write(state)
+
         previous_sporttia = state.get("sporttia_catalog")
         if state.get("sporttia_last_attempt_day") != local_day.isoformat():
             # Mark before network I/O so manual reruns cannot hammer the source
