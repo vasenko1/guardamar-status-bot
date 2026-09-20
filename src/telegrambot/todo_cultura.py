@@ -971,17 +971,24 @@ def _read_metadata(cursor: Optional[str]) -> List[Dict[str, Any]]:
 def _metadata_scope(title: str, link: str) -> str:
     """Classify the event card itself, not incidental article mentions."""
 
+    title_text = " ".join(_plain_lines(title)).casefold()
+    title_match = re.match(r"^(.{1,160}?),\s*evento\b", title_text)
+    title_scope = (
+        ("local" if "guardamar" in title_match.group(1) else "foreign")
+        if title_match is not None
+        else None
+    )
+
     parsed = urllib.parse.urlparse(link)
     slug = urllib.parse.unquote(parsed.path.rstrip("/").split("/")[-1]).casefold()
+    slug_scope = None
     if "-evento-" in slug:
         locality = slug.split("-evento-", 1)[0]
-        return "local" if "guardamar" in locality else "foreign"
+        slug_scope = "local" if "guardamar" in locality else "foreign"
 
-    title_text = " ".join(_plain_lines(title)).casefold()
-    match = re.match(r"^(.{1,160}?),\s*evento\b", title_text)
-    if match is not None:
-        return "local" if "guardamar" in match.group(1) else "foreign"
-    return "unknown"
+    if title_scope is not None and slug_scope is not None:
+        return title_scope if title_scope == slug_scope else "unknown"
+    return title_scope or slug_scope or "unknown"
 
 
 def _metadata_candidate(
