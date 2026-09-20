@@ -671,6 +671,13 @@ def _event(event_type: str, record: Mapping[str, Any], **extra: Any) -> dict:
     return value
 
 
+def _fresh_on(record: Mapping[str, Any], local_day: date) -> bool:
+    return (
+        record.get("fresh") is True
+        and record.get("observed_day") == local_day.isoformat()
+    )
+
+
 def _semantic_events(
     baseline: Mapping[str, Mapping[str, Any]],
     current: Mapping[str, Mapping[str, Any]],
@@ -681,7 +688,7 @@ def _semantic_events(
 ) -> list[dict]:
     events: list[dict] = []
     for record in current.values():
-        if not record["fresh"] or record["observed_day"] != local_day.isoformat():
+        if not _fresh_on(record, local_day):
             continue
         previous = baseline.get(record["record_id"])
         if previous is None:
@@ -748,9 +755,8 @@ def _date_events(
 ) -> list[dict]:
     sent = set(sent_ids)
     events: list[dict] = []
-    today = local_day.isoformat()
     for record in current.values():
-        if record["observed_day"] != today:
+        if not _fresh_on(record, local_day):
             continue
         for interval in record["registrations"]:
             start = date.fromisoformat(interval["start"])
