@@ -510,7 +510,7 @@ class EmergencyRiskState:
             "cce_html": None,
             "cce_pdf": None,
             "published": {
-                "fire_extreme": False,
+                "fire_level": None,
                 "dry_high": False,
                 "hydrology": None,
             },
@@ -572,9 +572,12 @@ class EmergencyRiskState:
         if (
             not isinstance(published, dict)
             or set(published) != {
-                "fire_extreme", "dry_high", "hydrology",
+                "fire_level", "dry_high", "hydrology",
             }
-            or not isinstance(published["fire_extreme"], bool)
+            or (
+                published["fire_level"] is not None
+                and published["fire_level"] not in {1, 2, 3}
+            )
             or not isinstance(published["dry_high"], bool)
             or (
                 published["hydrology"] is not None
@@ -689,7 +692,7 @@ def _current_previfoc(value: dict) -> tuple[Optional[int], Optional[int]]:
     return item["fire_level"], item["dry_thunderstorm_level"]
 
 
-def _transition(value: dict) -> Optional[tuple[str, str]]:
+def _transition(value: dict) -> Optional[str]:
     published = value["published"]
     fire, dry = _current_previfoc(value)
     hydro = EmergencyRiskState.current_hydrology(value)
@@ -698,24 +701,43 @@ def _transition(value: dict) -> Optional[tuple[str, str]]:
     sources = []
     worsening = False
 
-    if fire == 3 and not published["fire_extreme"]:
+    previous_fire = published["fire_level"]
+    if fire is not None and previous_fire is not None and fire != previous_fire:
+        if fire > previous_fire:
+            if fire == 3:
+                lines.append(
+                    "🔥 Для Гуардамара пожарная опасность повышена до "
+                    "<b>экстремальной</b>."
+                )
+            else:
+                lines.append(
+                    "🔥 Для Гуардамара пожарная опасность повышена до "
+                    "<b>высокой</b>."
+                )
+            worsening = True
+        elif previous_fire == 3 and fire == 2:
+            lines.append(
+                "🔥 Экстремальная пожарная опасность снята; "
+                "сохраняется <b>высокий</b> уровень."
+            )
+        elif fire == 1:
+            if previous_fire == 3:
+                lines.append(
+                    "🔥 Экстремальная пожарная опасность снята; "
+                    "текущий уровень — низкий/средний."
+                )
+            else:
+                lines.append(
+                    "🔥 Высокая пожарная опасность снята; "
+                    "текущий уровень — низкий/средний."
+                )
+        sources.append("Generalitat Valenciana / Previfoc")
+    elif fire == 3 and previous_fire is None:
         lines.append(
             "🔥 Для Гуардамара установлен <b>экстремальный</b> "
             "уровень пожарной опасности."
         )
         worsening = True
-        sources.append("Generalitat Valenciana / Previfoc")
-    elif fire in {1, 2} and published["fire_extreme"]:
-        if fire == 2:
-            lines.append(
-                "🔥 Экстремальная пожарная опасность снята; "
-                "сохраняется <b>высокий</b> уровень."
-            )
-        else:
-            lines.append(
-                "🔥 Экстремальная пожарная опасность снята; "
-                "текущий уровень — низкий/средний."
-            )
         sources.append("Generalitat Valenciana / Previfoc")
 
     if dry == 3 and not published["dry_high"]:
@@ -776,7 +798,7 @@ def _acknowledge(value: dict) -> None:
     hydro = EmergencyRiskState.current_hydrology(value)
     published = value["published"]
     if fire is not None:
-        published["fire_extreme"] = fire == 3
+        published["fire_level"] = fire
     if dry is not None:
         published["dry_high"] = dry == 3
     if hydro is not None:
@@ -845,6 +867,15 @@ async def monitor_emergency_risks(
         if successes == 0:
             logging.warning("RISK: all official sources unavailable")
             return "unavailable"
+
+        fire, _ = _current_previfoc(value)
+        if (
+            value["published"]["fire_level"] is None
+            and fire in {1, 2}
+        ):
+            # First low/high observation is a silent baseline. Extreme risk is
+            # urgent enough to publish even on the first successful run.
+            value["published"]["fire_level"] = fire
 
         message = _transition(value)
         if message is None:
