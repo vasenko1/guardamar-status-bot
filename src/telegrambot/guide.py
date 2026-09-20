@@ -686,6 +686,8 @@ async def sync_guide(now: datetime) -> str:
     source_result = "unchanged"
     with guide_state.exclusive_run():
         state = guide_state.read()
+        state.pop("last_successful_sync_day", None)
+        guide_state.write(state)
         previous = state.get("aqualider_catalog")
         try:
             current = await fetch_aqualider_catalog(now)
