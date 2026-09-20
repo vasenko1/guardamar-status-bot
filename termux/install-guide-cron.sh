@@ -5,6 +5,7 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PROJECT_DIR=$(dirname "$SCRIPT_DIR")
 SYNC="$PROJECT_DIR/termux/sync-guide.sh"
+PUBLISH="$PROJECT_DIR/termux/publish-course-notifications.sh"
 SH_BIN=$(command -v sh)
 BACKUP_DIR="$HOME/.cache/crontab"
 CURRENT=$(mktemp)
@@ -18,6 +19,10 @@ trap cleanup EXIT HUP INT TERM
 
 if [ ! -f "$SYNC" ]; then
     echo "ОШИБКА: sync-guide.sh не найден" >&2
+    exit 1
+fi
+if [ ! -f "$PUBLISH" ]; then
+    echo "ОШИБКА: publish-course-notifications.sh не найден" >&2
     exit 1
 fi
 
@@ -36,9 +41,10 @@ awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" '
     printf '%s\n' \
         "$BEGIN_MARKER" \
         'CRON_TZ=Europe/Madrid' \
-        "30 16 * * * $SH_BIN $SYNC" \
+        "2 9 * * * $SH_BIN $SYNC" \
+        "42 9,11 * * * $SH_BIN $PUBLISH" \
         "$END_MARKER"
 } | crontab -
 
 sv up crond
-echo "Справочник: синхронизация 16:30 Europe/Madrid"
+echo "Справочник: синхронизация 09:02; уведомления о занятиях 09:42 и retry 11:42 Europe/Madrid"
