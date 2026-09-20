@@ -287,15 +287,9 @@ def _valid_pending(value: Any) -> bool:
     return True
 
 
-def load_state(path: Path) -> Dict[str, Any]:
-    if not path.exists():
-        return _empty_state()
-    try:
-        state = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise CourseNotificationError("course notification state is unreadable") from exc
+def _valid_state(state: Any) -> bool:
     if not isinstance(state, dict) or state.get("version") != STATE_VERSION:
-        raise CourseNotificationError("course notification state is invalid")
+        return False
     baseline = state.get("baseline")
     if (
         not isinstance(baseline, dict)
@@ -305,7 +299,7 @@ def load_state(path: Path) -> Dict[str, Any]:
             for key, record in baseline.items()
         )
     ):
-        raise CourseNotificationError("course notification baseline is invalid")
+        return False
     for field in ("known_sources", "known_course_keys", "known_record_ids"):
         items = state.get(field)
         if (
@@ -314,24 +308,36 @@ def load_state(path: Path) -> Dict[str, Any]:
             or len(set(items)) != len(items)
             or not all(isinstance(item, str) and item for item in items)
         ):
-            raise CourseNotificationError("course notification state is invalid")
+            return False
     sent = state.get("sent_date_events")
     if (
         not isinstance(sent, list)
         or len(sent) > MAX_SENT_DATE_EVENTS
+        or len(set(sent)) != len(sent)
         or not all(isinstance(item, str) and item for item in sent)
     ):
+        return False
+    return _valid_pending(state.get("pending"))
+
+
+def load_state(path: Path) -> Dict[str, Any]:
+    if not path.exists():
+        return _empty_state()
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise CourseNotificationError(
+            "course notification state is unreadable"
+        ) from exc
+    if not _valid_state(state):
         raise CourseNotificationError("course notification state is invalid")
-    if not _valid_pending(state.get("pending")):
-        raise CourseNotificationError("course notification pending batch is invalid")
     return state
 
 
 def save_state(path: Path, state: Mapping[str, Any]) -> None:
-    if state.get("version") != STATE_VERSION:
+    if not _valid_state(state):
         raise CourseNotificationError("course notification state is invalid")
     _atomic_write(path, state)
-
 
 def _observed_day(snapshot: Mapping[str, Any]) -> str:
     try:
@@ -666,10 +672,9 @@ def _date_events(
     current: Mapping[str, Mapping[str, Any]],
     local_day: date,
     sent_ids: Sequence[str],
-) -> tuple[list[dict], list[str]]:
+) -> list[dict]:
     sent = set(sent_ids)
     events: list[dict] = []
-    identifiers: list[str] = []
     today = local_day.isoformat()
     for record in current.values():
         if record["observed_day"] != today:
@@ -699,8 +704,7 @@ def _date_events(
                 until_full=record["until_full"],
                 date_event_id=identifier,
             ))
-            identifiers.append(identifier)
-    return events, identifiers
+    return events
 
 
 def _bucket_events(
@@ -841,7 +845,7 @@ def collect_changes(
         known_record_ids,
         local_day,
     )
-    dated, _ = _date_events(
+    dated = _date_events(
         current,
         local_day,
         updated.get("sent_date_events", []),
