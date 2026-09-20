@@ -2585,7 +2585,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             "2026-09-18T16:15:48",
         )
 
-    async def test_empty_todo_standalone_does_not_advance_state(self):
+    async def test_empty_todo_standalone_fails_closed_and_advances_state(self):
         official = SourceEvent(
             title_es="Concierto oficial",
             start_date=date(2026, 9, 19),
@@ -2667,7 +2667,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([event.title_es for event in current], ["Concierto oficial"])
         self.assertEqual(
             stored["sources"]["todo_cultura"]["cursor_modified_gmt"],
-            old_state["cursor_modified_gmt"],
+            "2026-09-18T16:15:48",
         )
 
     async def test_incomplete_todo_still_enriches_verified_cinema_synopsis(self):
