@@ -771,7 +771,7 @@ async def collect() -> None:
     )
     try:
         airport_schedule = airport_state.read()
-    except Exception as exc:
+    except StateError as exc:
         raise TransportNotificationError(
             "accepted airport schedule state is invalid"
         ) from exc
@@ -896,16 +896,11 @@ async def _main() -> int:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
     )
-    try:
-        with PublicationState(_state_path()).exclusive_run():
-            if args.command == "collect":
-                await collect()
-            else:
-                await publish()
-    except StateError as exc:
-        raise TransportNotificationError(
-            "another transport notification run is active"
-        ) from exc
+    with PublicationState(_state_path()).exclusive_run():
+        if args.command == "collect":
+            await collect()
+        else:
+            await publish()
     return 0
 
 
