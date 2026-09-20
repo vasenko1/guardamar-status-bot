@@ -56,6 +56,34 @@ def baseline_state(*records):
     return state
 
 
+class CourseNotificationProjectionTests(unittest.TestCase):
+    def test_general_music_registration_links_to_school_card(self):
+        from telegrambot.course_notifications import project_course_records
+
+        guide = {
+            "music_school_catalog": {
+                "observed_at": "2026-09-20T09:02:00+02:00",
+                "season": "2026/27",
+                "schedule_url": None,
+                "jardin_registration": None,
+                "school_registration": {
+                    "start": "2026-09-20",
+                    "end": "2026-09-25",
+                    "url": "https://cutt.ly/AMG_Matricula_EM_2627",
+                },
+            }
+        }
+        records, sources = project_course_records(guide)
+        school = records["music_school:school_registration"]
+        self.assertEqual(school["card_key"], "music_school")
+        self.assertEqual(school["title"], "Escuela de Música")
+        self.assertEqual(
+            school["registrations"],
+            [{"start": "2026-09-20", "end": "2026-09-25"}],
+        )
+        self.assertEqual(sources, {"music_school"})
+
+
 class CourseNotificationCollectionTests(unittest.TestCase):
     def test_first_run_is_silent_baseline(self):
         current = record(
