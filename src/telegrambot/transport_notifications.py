@@ -9,7 +9,7 @@ import os
 import tempfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from .airport_schedule import (
@@ -23,9 +23,15 @@ from .pinned import DEFAULT_PINNED_STATE_PATH, PinnedGuideState, telegram_messag
 from .state import PublicationState, StateError
 from .telegram import TelegramError, send_message
 
-STATE_VERSION = 1
+STATE_VERSION = 2
 TIMEZONE = ZoneInfo("Europe/Madrid")
 LINE_NUMBERS = {"line_1": "1", "line_2": "2"}
+ROUTE_META = {
+    "line_1": ("🚌", "Городской автобус · Линия 1"),
+    "line_2": ("🚌", "Городской автобус · Линия 2"),
+    "airport": ("✈️", "Аэропорт Alicante-Elche"),
+}
+MESSAGE_ORDER = ("schedule_changes", "route_changes", "fare_changes")
 MONTHS_RU = (
     "января", "февраля", "марта", "апреля", "мая", "июня",
     "июля", "августа", "сентября", "октября", "ноября", "декабря",
@@ -58,8 +64,6 @@ def _empty_state() -> Dict[str, Any]:
         "fare": None,
         "airport_next": None,
         "pending": None,
-        "delivery_state": "idle",
-        "last_message_id": None,
     }
 
 
@@ -71,6 +75,137 @@ def _is_sha256(value: Any) -> bool:
     )
 
 
+def _valid_event(event: Any) -> bool:
+    return (
+        isinstance(event, dict)
+        and isinstance(event.get("type"), str)
+        and bool(event["type"])
+        and event.get("route") in ROUTE_META
+    )
+
+
+def _valid_pending(value: Any) -> bool:
+    if value is None:
+        return True
+    if not isinstance(value, dict):
+        return False
+    try:
+        date.fromisoformat(value.get("created_date", ""))
+    except (TypeError, ValueError):
+        return False
+    messages = value.get("messages")
+    if not isinstance(messages, list) or len(messages) > len(MESSAGE_ORDER):
+        return False
+    seen = set()
+    for item in messages:
+        if not isinstance(item, dict):
+            return False
+        kind = item.get("kind")
+        if kind not in MESSAGE_ORDER or kind in seen:
+            return False
+        seen.add(kind)
+        if item.get("status") not in {"pending", "uncertain", "sent"}:
+            return False
+        events = item.get("events")
+        if not isinstance(events, list) or not events or len(events) > 64:
+            return False
+        if not all(_valid_event(event) for event in events):
+            return False
+        message_id = item.get("message_id")
+        if message_id is not None and (
+            not isinstance(message_id, int)
+            or isinstance(message_id, bool)
+            or message_id <= 0
+        ):
+            return False
+    return True
+
+
+def _bucket_events(events: List[dict]) -> List[dict]:
+    buckets: Dict[str, list[dict]] = {kind: [] for kind in MESSAGE_ORDER}
+    for event in events:
+        if event["type"] in {
+            "timetable_changed",
+            "departures_changed",
+            "period_changed",
+        }:
+            buckets["schedule_changes"].append(event)
+        elif event["type"] == "route_changed":
+            buckets["route_changes"].append(event)
+        elif event["type"] == "fare_changed":
+            buckets["fare_changes"].append(event)
+        else:
+            raise TransportNotificationError(
+                f"unsupported transport event: {event['type']}"
+            )
+    return [
+        {
+            "kind": kind,
+            "status": "pending",
+            "events": buckets[kind],
+            "message_id": None,
+        }
+        for kind in MESSAGE_ORDER
+        if buckets[kind]
+    ]
+
+
+def _migrate_v1(state: Mapping[str, Any]) -> Dict[str, Any]:
+    if state.get("delivery_state") == "uncertain":
+        raise TransportNotificationError(
+            "legacy transport notification delivery is uncertain; "
+            "inspect Telegram before migration"
+        )
+    urban = state.get("urban", {})
+    if not isinstance(urban, dict):
+        raise TransportNotificationError("legacy transport notification state is invalid")
+    migrated = _empty_state()
+    migrated["urban"] = {
+        key: dict(value)
+        for key, value in urban.items()
+        if key in LINE_NUMBERS and isinstance(value, dict)
+    }
+    migrated["fare"] = state.get("fare")
+    migrated["airport_next"] = state.get("airport_next")
+
+    old_pending = state.get("pending")
+    if old_pending is not None:
+        if not isinstance(old_pending, dict):
+            raise TransportNotificationError(
+                "legacy transport pending notification is invalid"
+            )
+        try:
+            created_date = date.fromisoformat(old_pending["created_date"]).isoformat()
+        except (KeyError, TypeError, ValueError) as exc:
+            raise TransportNotificationError(
+                "legacy transport pending notification is invalid"
+            ) from exc
+        events: List[dict] = []
+        for key in old_pending.get("urban_lines", []):
+            if key in LINE_NUMBERS:
+                events.append({"type": "timetable_changed", "route": key})
+        airport = old_pending.get("airport")
+        if isinstance(airport, dict):
+            events.append({
+                "type": "departures_changed",
+                "route": "airport",
+                **airport,
+            })
+        fare = old_pending.get("fare")
+        if isinstance(fare, dict):
+            events.append({
+                "type": "fare_changed",
+                "route": "airport",
+                **fare,
+            })
+        if events:
+            migrated["pending"] = {
+                "created_date": created_date,
+                "messages": _bucket_events(events),
+            }
+    return migrated
+
+
 def load_state(path: Path) -> Dict[str, Any]:
     if not path.exists():
         return _empty_state()
@@ -80,13 +215,14 @@ def load_state(path: Path) -> Dict[str, Any]:
         raise TransportNotificationError(
             "transport notification state is unreadable"
         ) from exc
+    if not isinstance(state, dict):
+        raise TransportNotificationError("transport notification state is invalid")
+    if state.get("version") == 1:
+        state = _migrate_v1(state)
     if (
-        not isinstance(state, dict)
-        or state.get("version") != STATE_VERSION
-        or state.get("delivery_state") not in {"idle", "uncertain"}
+        state.get("version") != STATE_VERSION
         or not isinstance(state.get("urban"), dict)
-        or state.get("pending") is not None
-        and not isinstance(state.get("pending"), dict)
+        or not _valid_pending(state.get("pending"))
     ):
         raise TransportNotificationError(
             "transport notification state is invalid"
@@ -95,7 +231,7 @@ def load_state(path: Path) -> Dict[str, Any]:
 
 
 def save_state(path: Path, state: Dict[str, Any]) -> None:
-    if state.get("version") != STATE_VERSION:
+    if state.get("version") != STATE_VERSION or not _valid_pending(state.get("pending")):
         raise TransportNotificationError(
             "transport notification state is invalid"
         )
@@ -177,7 +313,6 @@ def _airport_diff(
     if not any((added_to, removed_to, added_from, removed_from)):
         return None
     return {
-        "service_date": today.isoformat(),
         "added_to": added_to,
         "removed_to": removed_to,
         "added_from": added_from,
@@ -197,37 +332,17 @@ def _fare_snapshot(
     }
 
 
-def _merge_pending(
-    existing: Optional[Dict[str, Any]],
-    today: date,
-    urban_lines: List[str],
-    airport_event: Optional[Dict[str, Any]],
-    fare_event: Optional[Dict[str, Any]],
-) -> Optional[Dict[str, Any]]:
-    # Missed 12:30 publication expires silently next morning. Stale notices are
-    # less useful than a delayed surprise, and this keeps the subsystem self-healing.
-    if (
-        existing is not None
-        and existing.get("created_date") != today.isoformat()
-    ):
-        existing = None
-    if not urban_lines and airport_event is None and fare_event is None:
-        return existing
-    if existing is None:
-        return {
-            "created_date": today.isoformat(),
-            "urban_lines": list(urban_lines),
-            "airport": airport_event,
-            "fare": fare_event,
-        }
-    return {
-        "created_date": today.isoformat(),
-        "urban_lines": list(
-            dict.fromkeys([*existing.get("urban_lines", []), *urban_lines])
-        ),
-        "airport": airport_event or existing.get("airport"),
-        "fare": fare_event or existing.get("fare"),
-    }
+def _urban_period(current: Mapping[str, Any], today: date) -> Optional[str]:
+    if current.get("reviewed") is not True:
+        return None
+    return "summer" if today.month in {7, 8} else "regular"
+
+
+def _has_uncertain(pending: Optional[Mapping[str, Any]]) -> bool:
+    return (
+        isinstance(pending, Mapping)
+        and any(item.get("status") == "uncertain" for item in pending["messages"])
+    )
 
 
 def collect_changes(
@@ -239,19 +354,28 @@ def collect_changes(
 ) -> Dict[str, Any]:
     """Collect only changes supported by accepted source data."""
 
-    if state["delivery_state"] == "uncertain":
+    today = now.date()
+    pending = state.get("pending")
+    if _has_uncertain(pending):
         raise TransportNotificationError(
             "previous transport notification delivery is uncertain"
         )
-    today = now.date()
+    if pending is not None:
+        if pending.get("created_date") == today.isoformat():
+            return state
+        logging.warning(
+            "Expired an unpublished transport notification from %s",
+            pending.get("created_date"),
+        )
 
-    new_urban = []
+    events: List[dict] = []
     urban_state = dict(state.get("urban", {}))
     lines = pinned_payload.get("lines", {})
     if not isinstance(lines, dict):
         raise TransportNotificationError(
             "pinned transport line state is invalid"
         )
+
     for key in LINE_NUMBERS:
         current = lines.get(key)
         if not isinstance(current, dict):
@@ -263,31 +387,56 @@ def collect_changes(
         previous = urban_state.get(key)
         if (
             isinstance(previous, dict)
+            and _is_sha256(previous.get("image_sha256"))
             and previous.get("image_sha256") != image_sha
         ):
-            new_urban.append(key)
+            events.append({"type": "timetable_changed", "route": key})
+
+        period = _urban_period(current, today)
+        previous_period = (
+            previous.get("period") if isinstance(previous, dict) else None
+        )
+        if (
+            previous_period in {"summer", "regular"}
+            and period in {"summer", "regular"}
+            and previous_period != period
+        ):
+            events.append({
+                "type": "period_changed",
+                "route": key,
+                "period": period,
+            })
+
         urban_state[key] = {
             "pdf_sha256": pdf_sha,
             "image_sha256": image_sha,
+            "period": period,
         }
 
     airport_event = _airport_diff(
         state.get("airport_next"), airport_schedule, today
     )
+    if airport_event is not None:
+        events.append({
+            "type": "departures_changed",
+            "route": "airport",
+            **airport_event,
+        })
 
     current_fare = _fare_snapshot(airport_schedule)
     previous_fare = state.get("fare")
-    fare_event = None
     if (
         current_fare is not None
         and isinstance(previous_fare, dict)
         and previous_fare.get("cents") != current_fare["cents"]
     ):
-        fare_event = {
+        events.append({
+            "type": "fare_changed",
+            "route": "airport",
             "old_cents": previous_fare["cents"],
             "new_cents": current_fare["cents"],
             "effective_date": current_fare["effective_date"],
-        }
+        })
 
     airport_next = None
     if (
@@ -301,12 +450,13 @@ def collect_changes(
     if current_fare is not None:
         updated["fare"] = current_fare
     updated["airport_next"] = airport_next
-    updated["pending"] = _merge_pending(
-        state.get("pending"),
-        today,
-        new_urban,
-        airport_event,
-        fare_event,
+    updated["pending"] = (
+        {
+            "created_date": today.isoformat(),
+            "messages": _bucket_events(events),
+        }
+        if events
+        else None
     )
     return updated
 
@@ -328,7 +478,7 @@ def _times(values: List[str]) -> str:
     return ", ".join(rendered[:-1]) + f" и {rendered[-1]}"
 
 
-def _airport_lines(event: Dict[str, Any]) -> List[str]:
+def _airport_lines(event: Mapping[str, Any]) -> List[str]:
     result = []
     added_to = list(event.get("added_to", []))
     removed_to = list(event.get("removed_to", []))
@@ -336,121 +486,136 @@ def _airport_lines(event: Dict[str, Any]) -> List[str]:
     removed_from = list(event.get("removed_from", []))
 
     if added_to:
-        prefix = (
-            "Добавлен рейс" if len(added_to) == 1 else "Добавлены рейсы"
-        )
+        prefix = "Добавлен рейс" if len(added_to) == 1 else "Добавлены рейсы"
         result.append(
             f"{prefix} из Гуардамара в аэропорт в {_times(added_to)}."
         )
     if removed_to:
         prefix = "Рейса" if len(removed_to) == 1 else "Рейсов"
         result.append(
-            f"{prefix} из Гуардамара в аэропорт в {_times(removed_to)} "
-            "больше нет."
+            f"{prefix} из Гуардамара в аэропорт в {_times(removed_to)} больше нет."
         )
     if added_from:
-        prefix = (
-            "Добавлен рейс" if len(added_from) == 1 else "Добавлены рейсы"
-        )
+        prefix = "Добавлен рейс" if len(added_from) == 1 else "Добавлены рейсы"
         result.append(
             f"{prefix} из аэропорта в Гуардамар в {_times(added_from)}."
         )
     if removed_from:
         prefix = "Рейса" if len(removed_from) == 1 else "Рейсов"
         result.append(
-            f"{prefix} из аэропорта в Гуардамар в {_times(removed_from)} "
-            "больше нет."
+            f"{prefix} из аэропорта в Гуардамар в {_times(removed_from)} больше нет."
         )
     return result
 
 
+def _route_link(
+    chat_id: str,
+    messages: Mapping[str, int],
+    route: str,
+) -> str:
+    message_id = messages.get(route)
+    if not isinstance(message_id, int) or message_id <= 0:
+        raise TransportNotificationError(
+            f"transport route card is unavailable: {route}"
+        )
+    return telegram_message_link(chat_id, message_id)
+
+
+def _linked_route(
+    route: str,
+    chat_id: str,
+    messages: Mapping[str, int],
+) -> str:
+    if route not in ROUTE_META:
+        raise TransportNotificationError(f"unknown transport route: {route}")
+    emoji, title = ROUTE_META[route]
+    link = html.escape(_route_link(chat_id, messages, route), quote=True)
+    return f'{emoji} <a href="{link}"><b>{html.escape(title)}</b></a>'
+
+
 def build_message(
-    pending: Dict[str, Any],
-    transport_link: str,
+    kind: str,
+    events: List[Mapping[str, Any]],
+    chat_id: str,
+    messages: Mapping[str, int],
     today: date,
 ) -> str:
-    """Render the agreed calm editorial transport notification."""
+    """Render one semantic transport message with direct route-card links."""
 
-    blocks = ["🚌 <b>Транспорт · изменения</b>"]
+    if kind not in MESSAGE_ORDER or not events:
+        raise TransportNotificationError("transport notification message is empty")
 
-    urban = [
-        key for key in pending.get("urban_lines", []) if key in LINE_NUMBERS
-    ]
-    if len(urban) == 1:
-        blocks.append(
-            "Муниципалитет опубликовал новое расписание "
-            f"<b>автобуса №{LINE_NUMBERS[urban[0]]}</b>.\n\n"
-            "Если пользуетесь этой линией, перед следующей поездкой "
-            "стоит свериться с новым расписанием."
-        )
-    elif len(urban) > 1:
-        numbers = " и ".join(
-            f"№{LINE_NUMBERS[key]}" for key in urban
-        )
-        blocks.append(
-            "Муниципалитет опубликовал новые расписания "
-            f"<b>автобусов {numbers}</b>.\n\n"
-            "Если пользуетесь этими линиями, перед следующей поездкой "
-            "стоит свериться с новыми расписаниями."
-        )
-
-    airport = pending.get("airport")
-    airport_lines = (
-        _airport_lines(airport) if isinstance(airport, dict) else []
-    )
-    if airport_lines:
-        blocks.append(
-            "Обновилось расписание автобуса между Гуардамаром и "
-            "аэропортом Alicante-Elche.\n\n"
-            + "\n".join(airport_lines)
-        )
-
-    fare = pending.get("fare")
-    if isinstance(fare, dict):
-        effective = date.fromisoformat(fare["effective_date"])
-        old = _amount(int(fare["old_cents"]))
-        new = _amount(int(fare["new_cents"]))
-        if effective > today:
-            detail = (
-                f"С <b>{_date_label(effective)}</b> обычный билет "
-                f"будет стоить <b>{new}</b> вместо {old}."
-            )
-        else:
-            detail = (
-                f"Обычный билет теперь стоит <b>{new}</b> вместо {old}."
-            )
-        blocks.append(
-            "Изменилась стоимость проезда на автобусе между Гуардамаром и "
-            "аэропортом Alicante-Elche.\n\n"
-            + detail
-        )
-
-    has_schedule = bool(urban) or bool(airport_lines)
-    has_fare = isinstance(fare, dict)
-    if len(blocks) == 1:
-        raise TransportNotificationError(
-            "pending transport notification is empty"
-        )
-    if has_schedule and has_fare:
-        closing = "Актуальные расписания и тарифы уже размещены"
-    elif has_schedule:
-        schedule_count = len(urban) + (1 if airport_lines else 0)
-        closing = (
-            "Актуальное расписание уже размещено"
-            if schedule_count == 1
-            else "Актуальные расписания уже размещены"
-        )
+    lines: List[str] = []
+    if kind == "schedule_changes":
+        lines.extend(["🕒 <b>Обновилось расписание транспорта</b>", ""])
+        grouped: Dict[str, list[Mapping[str, Any]]] = {}
+        for event in events:
+            grouped.setdefault(str(event["route"]), []).append(event)
+        for route in ROUTE_META:
+            route_events = grouped.get(route)
+            if not route_events:
+                continue
+            target = _linked_route(route, chat_id, messages)
+            details: List[str] = []
+            for event in route_events:
+                if event["type"] == "timetable_changed":
+                    details.append("опубликовано новое расписание")
+                elif event["type"] == "period_changed":
+                    if event.get("period") == "summer":
+                        details.append(
+                            "с сегодняшнего дня действует летний режим: автобус ходит ежедневно"
+                        )
+                    else:
+                        details.append(
+                            "с сегодняшнего дня действует обычный режим: "
+                            "с понедельника по субботу, по воскресеньям отдельное расписание"
+                        )
+                elif event["type"] == "departures_changed":
+                    details.extend(_airport_lines(event))
+            if route == "airport":
+                lines.append(f"• {target}")
+                lines.extend(f"  {detail}" for detail in details)
+            else:
+                text = "; ".join(detail.rstrip(".") for detail in details) + "."
+                lines.append(f"• {target}: {text}")
+        lines.extend([
+            "",
+            "Нажмите на маршрут, чтобы открыть его актуальную карточку.",
+        ])
+    elif kind == "route_changes":
+        lines.extend(["📍 <b>Изменился маршрут транспорта</b>", ""])
+        for event in events:
+            target = _linked_route(str(event["route"]), chat_id, messages)
+            detail = str(event.get("detail") or "изменился маршрут или список остановок")
+            lines.append(f"• {target}: {html.escape(detail)}.")
+        lines.extend([
+            "",
+            "Нажмите на маршрут, чтобы открыть актуальную карточку.",
+        ])
     else:
-        closing = "Актуальная информация уже размещена"
+        lines.extend(["💶 <b>Изменилась стоимость проезда</b>", ""])
+        for event in events:
+            target = _linked_route(str(event["route"]), chat_id, messages)
+            effective = date.fromisoformat(str(event["effective_date"]))
+            old = _amount(int(event["old_cents"]))
+            new = _amount(int(event["new_cents"]))
+            if effective > today:
+                detail = (
+                    f"с {_date_label(effective)} обычный билет будет стоить "
+                    f"<b>{new}</b> вместо {old}"
+                )
+            else:
+                detail = f"обычный билет теперь стоит <b>{new}</b> вместо {old}"
+            lines.append(f"• {target}: {detail}.")
+        lines.extend([
+            "",
+            "Нажмите на маршрут, чтобы открыть актуальную карточку.",
+        ])
 
-    link = html.escape(transport_link, quote=True)
-    blocks.append(
-        f'{closing} в разделе <a href="{link}"><b>«Транспорт»</b></a>.'
-    )
-    message = with_footer("\n\n".join(blocks))
+    message = with_footer("\n".join(lines))
     if len(message) > 4096 or message.count(FOOTER) != 1:
         raise TransportNotificationError(
-            "transport notification is not Telegram-safe"
+            "transport notification message exceeds Telegram limit"
         )
     return message
 
@@ -458,7 +623,7 @@ def build_message(
 async def collect() -> None:
     state_path = _state_path()
     state = load_state(state_path)
-    if state["delivery_state"] == "uncertain":
+    if _has_uncertain(state.get("pending")):
         raise TransportNotificationError(
             "previous transport notification delivery is uncertain"
         )
@@ -494,7 +659,6 @@ async def collect() -> None:
             exc,
         )
 
-    before = state.get("pending")
     updated = collect_changes(
         now,
         pinned_payload,
@@ -502,14 +666,6 @@ async def collect() -> None:
         state,
         tomorrow_schedule,
     )
-    if (
-        before is not None
-        and before.get("created_date") != now.date().isoformat()
-    ):
-        logging.warning(
-            "Expired an unpublished transport notification from %s",
-            before.get("created_date"),
-        )
     save_state(state_path, updated)
     logging.info(
         "Transport notification collection complete: %s",
@@ -520,24 +676,21 @@ async def collect() -> None:
 async def publish() -> None:
     state_path = _state_path()
     state = load_state(state_path)
-    if state["delivery_state"] == "uncertain":
+    pending = state.get("pending")
+    if pending is None:
+        logging.info("No pending transport notification")
+        return
+    if _has_uncertain(pending):
         raise TransportNotificationError(
             "transport notification delivery is uncertain; "
             "inspect Telegram before retrying"
         )
 
-    pending = state.get("pending")
-    if pending is None:
-        logging.info("No pending transport notification")
-        return
-
     today = datetime.now(TIMEZONE).date()
     if pending.get("created_date") != today.isoformat():
         state["pending"] = None
         save_state(state_path, state)
-        logging.warning(
-            "Expired stale transport notification without sending"
-        )
+        logging.warning("Expired stale transport notification without sending")
         return
 
     bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -548,49 +701,59 @@ async def publish() -> None:
         )
 
     pinned = PinnedGuideState(_pinned_path()).read_payload(chat_id)
-    transport_id = pinned["messages"].get("transport")
-    if not isinstance(transport_id, int) or transport_id <= 0:
+    if pinned["uncertain_messages"]:
         raise TransportNotificationError(
-            "transport guide message is unavailable"
+            "pinned transport guide delivery is uncertain"
         )
-    message = build_message(
-        pending,
-        telegram_message_link(chat_id, transport_id),
-        today,
-    )
+    messages = pinned["messages"]
 
-    # sendMessage has no idempotency key. Persist uncertainty before sending:
-    # a crash after Telegram accepts the message will not cause a duplicate.
-    state["delivery_state"] = "uncertain"
-    save_state(state_path, state)
-    try:
-        message_id = await send_message(
-            bot_token,
+    for kind in MESSAGE_ORDER:
+        item = next(
+            (
+                candidate
+                for candidate in pending["messages"]
+                if candidate["kind"] == kind
+            ),
+            None,
+        )
+        if item is None or item["status"] == "sent":
+            continue
+        message = build_message(
+            kind,
+            item["events"],
             chat_id,
-            message,
-            disable_notification=False,
-            max_attempts=3,
-            retry_only_rate_limits=True,
+            messages,
+            today,
         )
-    except TelegramError as exc:
-        # HTTP 429 is an explicit rejection, so no message was accepted.
-        if exc.server_status == 429:
-            state["delivery_state"] = "idle"
-            save_state(state_path, state)
-        else:
-            logging.exception(
-                "Transport notification delivery is uncertain; "
-                "automatic resend disabled"
+        item["status"] = "uncertain"
+        save_state(state_path, state)
+        try:
+            message_id = await send_message(
+                bot_token,
+                chat_id,
+                message,
+                disable_notification=False,
+                max_attempts=3,
+                retry_only_rate_limits=True,
             )
-        raise
+        except TelegramError as exc:
+            if exc.server_status == 429:
+                item["status"] = "pending"
+                save_state(state_path, state)
+            else:
+                logging.exception(
+                    "Transport notification delivery is uncertain; "
+                    "automatic resend disabled"
+                )
+            raise
+        item["status"] = "sent"
+        item["message_id"] = message_id
+        save_state(state_path, state)
 
-    state["pending"] = None
-    state["delivery_state"] = "idle"
-    state["last_message_id"] = message_id
-    save_state(state_path, state)
-    logging.info(
-        "Transport notification published as message %d", message_id
-    )
+    if all(item["status"] == "sent" for item in pending["messages"]):
+        state["pending"] = None
+        save_state(state_path, state)
+    logging.info("Transport notification publication complete")
 
 
 async def _main() -> int:
