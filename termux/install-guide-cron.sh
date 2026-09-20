@@ -9,11 +9,13 @@ PUBLISH="$PROJECT_DIR/termux/publish-course-notifications.sh"
 SH_BIN=$(command -v sh)
 BACKUP_DIR="$HOME/.cache/crontab"
 CURRENT=$(mktemp)
+UPDATED=$(mktemp)
+ERRORS=$(mktemp)
 BEGIN_MARKER='# BEGIN guardamar-status guide sync'
 END_MARKER='# END guardamar-status guide sync'
 
 cleanup() {
-    rm -f "$CURRENT"
+    rm -f "$CURRENT" "$UPDATED" "$ERRORS"
 }
 trap cleanup EXIT HUP INT TERM
 
@@ -27,17 +29,50 @@ if [ ! -f "$PUBLISH" ]; then
 fi
 
 mkdir -p "$BACKUP_DIR"
-crontab -l >"$CURRENT" 2>/dev/null || true
+if ! crontab -l >"$CURRENT" 2>"$ERRORS"; then
+    if ! grep -qi 'no crontab for' "$ERRORS"; then
+        echo "ОШИБКА: не удалось безопасно прочитать текущий crontab" >&2
+        exit 1
+    fi
+fi
+
+if ! awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" '
+    $0 == begin {
+        if (active || begins > 0) { exit 2 }
+        active = 1
+        begins++
+        next
+    }
+    $0 == end {
+        if (!active || ends > 0) { exit 2 }
+        active = 0
+        ends++
+        next
+    }
+    END {
+        if (active || begins != ends) { exit 2 }
+    }
+' "$CURRENT"; then
+    echo "ОШИБКА: повреждён служебный блок guide sync в crontab" >&2
+    exit 1
+fi
+
 if [ ! -f "$BACKUP_DIR/crontab.before-guide" ]; then
     cp "$CURRENT" "$BACKUP_DIR/crontab.before-guide"
 fi
 
-awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" '
+awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" -v sync="$SYNC" -v publish="$PUBLISH" -v shbin="$SH_BIN" '
     $0 == begin { managed = 1; next }
     $0 == end { managed = 0; next }
-    !managed { print }
-' "$CURRENT" | {
-    cat
+    managed { next }
+    $0 == "30 16 * * * " shbin " " sync { next }
+    $0 == "42 9,11 * * * " shbin " " publish { next }
+    { print }
+' "$CURRENT" >"$UPDATED"
+mv "$UPDATED" "$CURRENT"
+
+{
+    cat "$CURRENT"
     printf '%s\n' \
         "$BEGIN_MARKER" \
         'CRON_TZ=Europe/Madrid' \
