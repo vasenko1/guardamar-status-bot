@@ -226,6 +226,52 @@ class CourseNotificationCollectionTests(unittest.TestCase):
         self.assertIsNone(result["pending"])
         self.assertEqual(result["baseline"][existing["record_id"]], existing)
 
+    def test_retained_sporttia_row_is_not_treated_as_fresh(self):
+        from telegrambot.course_notifications import project_course_records
+
+        guide = {
+            "sporttia_catalog": {
+                "observed_at": "2026-09-20T09:02:00+02:00",
+                "observed_source_ids": [],
+                "activities": [{
+                    "source_id": 1,
+                    "key": "judo",
+                    "activity_url": (
+                        "https://app.sporttia.com/scs/actividad/"
+                        "guardamar-del-segura/1"
+                    ),
+                    "season_start": "2026-09-01",
+                    "season_end": "2027-06-30",
+                    "group_order": 1,
+                    "audience": "7–12 лет",
+                    "schedule": "Вт/Чт · 18:00–19:00",
+                    "venue": "Palau Sant Jaume",
+                    "registrations": [{
+                        "start": "2026-09-01",
+                        "end": "2026-09-20",
+                    }],
+                    "registration_until_full": False,
+                    "medical_certificate": False,
+                    "group_may_change": False,
+                    "racket_sports": False,
+                    "independent": False,
+                    "requires_companion": False,
+                    "women_membership": False,
+                }],
+            }
+        }
+        records, _ = project_course_records(guide)
+        projected = records["sporttia:1"]
+        self.assertEqual(projected["observed_day"], "1970-01-01")
+        result = collect_changes(
+            records,
+            {"sporttia"},
+            baseline_state(projected),
+            date(2026, 9, 20),
+            {"judo": 501},
+        )
+        self.assertIsNone(result["pending"])
+
     def test_stale_snapshot_never_emits_date_event(self):
         current = record(
             observed_day="2026-09-19",
