@@ -195,6 +195,30 @@ def test_reviewed_summer_transition_is_detected_without_new_pdf():
     assert {event["route"] for event in events} == {"line_1", "line_2"}
     assert all(event["type"] == "period_changed" for event in events)
     assert all(event["period"] == "summer" for event in events)
+    assert all(event["effective_date"] == "2027-07-01" for event in events)
+
+
+def test_delayed_period_transition_keeps_true_effective_date():
+    day = date(2027, 7, 10)
+    state = _baseline(day)
+    result = collect_changes(
+        datetime(2027, 7, 10, 5, tzinfo=TZ),
+        _pinned(),
+        _schedule(day, fare=_fare()),
+        state,
+        _schedule(date(2027, 7, 11)),
+    )
+    event = result["pending"]["messages"][0]["events"][0]
+    assert event["effective_date"] == "2027-07-01"
+    message = build_message(
+        "schedule_changes",
+        [event],
+        "-100123",
+        {event["route"]: 501},
+        day,
+    )
+    assert "с 1 июля" in message
+    assert "с сегодняшнего дня" not in message
 
 
 def test_unreviewed_line_does_not_claim_period_transition():
