@@ -7,7 +7,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -17,13 +17,13 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e . pytest
       - run: python -m compileall -q src
-      - run: >
-          python -m pytest -q
-          tests/test_course_notifications.py
-          tests/test_transport_notifications.py
-          tests/test_transport_schedules.py
-          tests/test_guide.py
-          tests/test_sporttia_guide.py
-          tests/test_music_school.py
-          tests/test_music_pinned.py
-          tests/test_recurring_activities.py
+      - name: Shell syntax
+        run: |
+          sh -n termux/install-guide-cron.sh
+          sh -n termux/install-transport-cron.sh
+          sh -n termux/publish-course-notifications.sh
+          sh -n termux/publish-transport-notifications.sh
+          sh -n termux/sync-guide.sh
+          sh -n termux/sync-transport.sh
+      - name: Full regression suite
+        run: python -m pytest -q
