@@ -111,8 +111,8 @@ class TransportNotificationTests(unittest.TestCase):
             "type": "timetable_changed",
             "route": "line_1",
         }
-    
-    
+
+
     def test_pdf_metadata_change_with_same_rendered_image_is_silent(self):
         today = date(2026, 9, 20)
         pinned = _pinned()
@@ -125,8 +125,8 @@ class TransportNotificationTests(unittest.TestCase):
             _schedule(date(2026, 9, 21)),
         )
         assert result["pending"] is None
-    
-    
+
+
     def test_wrong_airport_baseline_date_is_silent(self):
         today = date(2026, 9, 20)
         state = _baseline(today)
@@ -143,8 +143,8 @@ class TransportNotificationTests(unittest.TestCase):
             _schedule(date(2026, 9, 21)),
         )
         assert result["pending"] is None
-    
-    
+
+
     def test_airport_exact_departure_change_is_schedule_message(self):
         today = date(2026, 9, 20)
         result = collect_changes(
@@ -164,8 +164,8 @@ class TransportNotificationTests(unittest.TestCase):
         assert event["route"] == "airport"
         assert event["added_to"] == ["10:30"]
         assert event["removed_to"] == ["10:00"]
-    
-    
+
+
     def test_fare_and_schedule_become_two_semantic_messages(self):
         today = date(2026, 9, 20)
         result = collect_changes(
@@ -179,8 +179,8 @@ class TransportNotificationTests(unittest.TestCase):
             _schedule(date(2026, 9, 21)),
         )
         assert _kinds(result) == ["schedule_changes", "fare_changes"]
-    
-    
+
+
     def test_reviewed_summer_transition_is_detected_without_new_pdf(self):
         day = date(2027, 7, 1)
         state = _baseline(day)
@@ -197,8 +197,8 @@ class TransportNotificationTests(unittest.TestCase):
         assert all(event["type"] == "period_changed" for event in events)
         assert all(event["period"] == "summer" for event in events)
         assert all(event["effective_date"] == "2027-07-01" for event in events)
-    
-    
+
+
     def test_delayed_period_transition_keeps_true_effective_date(self):
         day = date(2027, 7, 10)
         state = _baseline(day)
@@ -220,8 +220,8 @@ class TransportNotificationTests(unittest.TestCase):
         )
         assert "с 1 июля" in message
         assert "с сегодняшнего дня" not in message
-    
-    
+
+
     def test_unreviewed_line_does_not_claim_period_transition(self):
         day = date(2027, 7, 1)
         state = _baseline(day)
@@ -233,8 +233,8 @@ class TransportNotificationTests(unittest.TestCase):
             _schedule(date(2027, 7, 2)),
         )
         assert result["pending"] is None
-    
-    
+
+
     def test_stale_pending_expires_before_collecting_new_day(self):
         today = date(2026, 9, 20)
         state = _baseline(today)
@@ -255,8 +255,8 @@ class TransportNotificationTests(unittest.TestCase):
             _schedule(date(2026, 9, 21)),
         )
         assert result["pending"] is None
-    
-    
+
+
     def test_same_day_pending_batch_is_immutable(self):
         today = date(2026, 9, 20)
         state = _baseline(today)
@@ -277,8 +277,8 @@ class TransportNotificationTests(unittest.TestCase):
             _schedule(date(2026, 9, 21)),
         )
         assert result == state
-    
-    
+
+
     def test_corrupt_v2_fare_state_fails_closed(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "transport.json"
@@ -287,8 +287,8 @@ class TransportNotificationTests(unittest.TestCase):
             path.write_text(json.dumps(broken), encoding="utf-8")
             with self.assertRaises(TransportNotificationError):
                 load_state(path)
-    
-    
+
+
     def test_schedule_message_links_each_route_directly_to_its_card(self):
         message = build_message(
             "schedule_changes",
@@ -312,8 +312,8 @@ class TransportNotificationTests(unittest.TestCase):
         assert "10:30" in message
         assert "10:00" in message
         assert "К списку транспорта" not in message
-    
-    
+
+
     def test_fare_message_is_separate_and_links_airport_card(self):
         message = build_message(
             "fare_changes",
@@ -332,8 +332,8 @@ class TransportNotificationTests(unittest.TestCase):
         assert "https://t.me/c/123/502" in message
         assert "3,20 €" in message
         assert "2,95 €" in message
-    
-    
+
+
     def test_missing_route_card_fails_closed(self):
         with self.assertRaises(TransportNotificationError):
             build_message(
@@ -343,8 +343,8 @@ class TransportNotificationTests(unittest.TestCase):
                 {},
                 date(2026, 9, 20),
             )
-    
-    
+
+
     def test_pending_transport_message_id_must_match_delivery_status(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "transport.json"
@@ -364,8 +364,8 @@ class TransportNotificationTests(unittest.TestCase):
             path.write_text(json.dumps(state), encoding="utf-8")
             with self.assertRaises(TransportNotificationError):
                 load_state(path)
-    
-    
+
+
     def test_legacy_v1_idle_state_migrates_pending_batch(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "transport.json"
@@ -389,8 +389,8 @@ class TransportNotificationTests(unittest.TestCase):
             state = load_state(path)
         assert state["version"] == 2
         assert _kinds(state) == ["schedule_changes"]
-    
-    
+
+
     def test_legacy_uncertain_delivery_fails_closed(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "transport.json"
@@ -408,4 +408,3 @@ class TransportNotificationTests(unittest.TestCase):
             )
             with self.assertRaises(TransportNotificationError):
                 load_state(path)
-    
