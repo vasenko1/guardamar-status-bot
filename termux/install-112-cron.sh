@@ -1,5 +1,8 @@
 #!/data/data/com.termux/files/usr/bin/sh
 
+PREFIX=${PREFIX:-/data/data/com.termux/files/usr}
+export PATH="$PREFIX/bin:$PATH"
+
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
