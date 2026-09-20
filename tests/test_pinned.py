@@ -8,6 +8,7 @@ from telegrambot.branding import FOOTER
 from telegrambot.pinned import (
     AQUALIDER_BOOKING_URL,
     CAMERAS,
+    ORA_INFO_URL,
     GUIDE_MESSAGE_KEYS,
     LEAF_MESSAGES,
     PINNED_MESSAGE_KEYS,
@@ -15,6 +16,7 @@ from telegrambot.pinned import (
     build_activities,
     build_cameras,
     build_leaf_message,
+    build_parking,
     build_places,
     build_polideportivo,
     build_pool_indoor,
@@ -40,6 +42,7 @@ class PinnedContentTests(unittest.TestCase):
             build_polideportivo(),
             build_pool_indoor(),
             build_pool_outdoor(),
+            build_parking(),
             build_wifi(),
             build_activities(),
             build_swimming(),
@@ -67,17 +70,19 @@ class PinnedContentTests(unittest.TestCase):
         self.assertTrue(any("Polideportivo Municipal" in item for item in messages))
         self.assertTrue(any("Крытый бассейн Manel Estiarte" in item for item in messages))
         self.assertTrue(any("Открытый муниципальный бассейн" in item for item in messages))
+        self.assertTrue(any("Zona Azul" in item for item in messages))
         self.assertTrue(any("Занятия и секции" in item for item in messages))
         self.assertTrue(any("Плавание" in item for item in messages))
         self.assertIn("Полезное о Гуардамаре", messages[-1])
 
-    def test_root_is_compact_five_item_navigator(self):
+    def test_root_is_compact_six_item_navigator(self):
         root = build_root(
             "https://t.me/c/1/20",
             "https://t.me/c/1/21",
             "https://t.me/c/1/22",
             "https://t.me/c/1/23",
             wifi_link="https://t.me/c/1/24",
+            parking_link="https://t.me/c/1/25",
         )
         self.assertEqual(
             root,
@@ -85,6 +90,7 @@ class PinnedContentTests(unittest.TestCase):
             '📹 <a href="https://t.me/c/1/20"><b>Онлайн-камеры</b></a>\n\n'
             '🚌 <a href="https://t.me/c/1/21"><b>Транспорт в Гуардамаре</b></a>\n\n'
             '📍 <a href="https://t.me/c/1/22"><b>Места</b></a>\n\n'
+            '🅿️ <a href="https://t.me/c/1/25"><b>Парковка · Zona Azul</b></a>\n\n'
             '📶 <a href="https://t.me/c/1/24"><b>Бесплатный Wi-Fi</b></a>\n\n'
             '🎓 <a href="https://t.me/c/1/23"><b>Занятия и секции</b></a>',
         )
@@ -136,6 +142,13 @@ class PinnedContentTests(unittest.TestCase):
         self.assertIn("<code>966726335</code>", outdoor)
         self.assertNotIn("966 72 63 35", outdoor)
         self.assertNotIn("965 35 76 93", outdoor)
+
+    def test_parking_card_has_reviewed_season_and_official_source(self):
+        parking = build_parking()
+        self.assertIn("15 июня по 15 сентября включительно", parking)
+        self.assertIn("10:00–20:00", parking)
+        self.assertIn(ORA_INFO_URL, parking)
+        self.assertEqual(parking.count(FOOTER), 1)
 
     def test_transport_navigator_has_navigation_but_no_footer(self):
         index = build_transport_index(root_link="https://t.me/c/1/22")

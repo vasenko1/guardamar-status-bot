@@ -13,11 +13,16 @@ from telegrambot.guide import (
     GuideSourceError,
     GuideState,
     _allowed_aqualider_url,
+    _allowed_ora_url,
     _fetch_json,
     _normalize_providers,
     _normalize_services,
+    _ora_schedule_matches,
+    _parking_notice_key,
+    _parking_notice_text,
     _season_notice_key,
     _validate_cross_references,
+    active_parking,
     active_pool,
     fetch_aqualider_catalog,
     sync_guide,
@@ -92,6 +97,71 @@ class PoolSeasonTests(unittest.TestCase):
         for local_day, expected in cases.items():
             with self.subTest(local_day=local_day):
                 self.assertEqual(_season_notice_key(local_day), expected)
+
+
+class ParkingSeasonTests(unittest.TestCase):
+    def test_fixed_parking_season_boundaries(self):
+        cases = {
+            date(2026, 6, 14): "free",
+            date(2026, 6, 15): "paid",
+            date(2026, 9, 15): "paid",
+            date(2026, 9, 16): "free",
+            date(2027, 1, 1): "free",
+        }
+        for local_day, expected in cases.items():
+            with self.subTest(local_day=local_day):
+                self.assertEqual(active_parking(local_day), expected)
+
+    def test_notice_key_exists_only_before_parking_change(self):
+        cases = {
+            date(2026, 6, 13): None,
+            date(2026, 6, 14): "2026:paid",
+            date(2026, 6, 15): None,
+            date(2026, 9, 14): None,
+            date(2026, 9, 15): "2026:free",
+            date(2026, 9, 16): None,
+        }
+        for local_day, expected in cases.items():
+            with self.subTest(local_day=local_day):
+                self.assertEqual(_parking_notice_key(local_day), expected)
+
+    def test_free_notice_copy_links_parking_card(self):
+        text = _parking_notice_text(
+            "2026:free",
+            "-100123",
+            {"parking": 104},
+        )
+        self.assertIn("с завтрашнего дня бесплатно", text)
+        self.assertIn("С <b>16 сентября</b>", text)
+        self.assertIn("https://t.me/c/123/104", text)
+
+    def test_ora_url_policy_is_exact_https(self):
+        self.assertTrue(
+            _allowed_ora_url(
+                "https://oraguardamar.gruposetex.es/tarifas-y-horarios"
+            )
+        )
+        for invalid in (
+            "http://oraguardamar.gruposetex.es/tarifas-y-horarios",
+            "https://gruposetex.es/tarifas-y-horarios",
+            "https://oraguardamar.gruposetex.es.evil.example/tarifas-y-horarios",
+            "https://oraguardamar.gruposetex.es/otra-ruta",
+        ):
+            with self.subTest(invalid=invalid):
+                self.assertFalse(_allowed_ora_url(invalid))
+
+    def test_ora_schedule_requires_reviewed_dates_days_and_hours(self):
+        valid = """
+        <h6>DEL 15 DE JUNIO AL 15 DE SEPTIEMBRE</h6>
+        <p>Lunes a viernes, sábados, domingos y festivos</p>
+        <p>10:00 AM - 20:00 PM</p>
+        """.encode("utf-8")
+        self.assertTrue(_ora_schedule_matches(valid))
+        self.assertFalse(
+            _ora_schedule_matches(
+                valid.replace(b"20:00", b"21:00")
+            )
+        )
 
 
 class AqualiderSourceTests(unittest.IsolatedAsyncioTestCase):
@@ -190,6 +260,16 @@ class GuideStateTests(unittest.TestCase):
             path.write_text("{}", encoding="utf-8")
             with self.assertRaises(StateError):
                 state.read()
+
+    def test_uncertain_parking_notice_state_requires_a_string_key(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "guide.json"
+            path.write_text(
+                json.dumps({"version": 1, "parking_notice_uncertain": 123}),
+                encoding="utf-8",
+            )
+            with self.assertRaises(StateError):
+                GuideState(path).read()
 
     def test_uncertain_notice_state_requires_a_string_key(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -293,6 +373,7 @@ class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
             "pool_indoor": 101,
             "pool_outdoor": 102,
             "swimming": 103,
+            "parking": 104,
         }
 
     async def test_first_success_is_silent_baseline(self):
@@ -580,6 +661,86 @@ class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result, "catalog-changed")
             send.assert_not_awaited()
             self.assertEqual(state.read()["aqualider_catalog"], changed)
+
+    async def test_due_parking_notice_waits_for_evening(self):
+        with tempfile.TemporaryDirectory() as directory:
+            morning = datetime(2026, 6, 14, 9, 2, tzinfo=MADRID)
+            current = snapshot(morning)
+            send = AsyncMock()
+            verify = AsyncMock()
+            publish = AsyncMock(return_value=self._pinned_messages())
+            with (
+                patch.dict("os.environ", self._environment(directory), clear=False),
+                patch(
+                    "telegrambot.guide.fetch_aqualider_catalog",
+                    new=AsyncMock(return_value=current),
+                ),
+                patch("telegrambot.guide.publish_pinned_guide", new=publish),
+                patch("telegrambot.guide.verify_current_ora_schedule", new=verify),
+                patch("telegrambot.guide.send_message", new=send),
+            ):
+                await sync_guide(morning)
+            verify.assert_not_awaited()
+            send.assert_not_awaited()
+
+    async def test_due_parking_notice_is_verified_and_sent_once_in_evening(self):
+        with tempfile.TemporaryDirectory() as directory:
+            moment = datetime(2026, 6, 14, 19, 45, tzinfo=MADRID)
+            current = snapshot(moment)
+            send = AsyncMock(return_value=601)
+            verify = AsyncMock()
+            publish = AsyncMock(return_value=self._pinned_messages())
+            with (
+                patch.dict("os.environ", self._environment(directory), clear=False),
+                patch(
+                    "telegrambot.guide.fetch_aqualider_catalog",
+                    new=AsyncMock(return_value=current),
+                ),
+                patch("telegrambot.guide.publish_pinned_guide", new=publish),
+                patch("telegrambot.guide.verify_current_ora_schedule", new=verify),
+                patch("telegrambot.guide.send_message", new=send),
+            ):
+                await sync_guide(moment)
+                await sync_guide(moment)
+            verify.assert_awaited_once()
+            send.assert_awaited_once()
+            self.assertTrue(send.await_args.kwargs["retry_only_rate_limits"])
+            text = send.await_args.args[2]
+            self.assertIn("с завтрашнего дня платно", text)
+            self.assertIn("https://t.me/c/123/104", text)
+            saved = GuideState(Path(directory) / "guide.json").read()
+            self.assertEqual(saved["parking_notice"]["key"], "2026:paid")
+            self.assertEqual(saved["parking_notice"]["message_id"], 601)
+
+    async def test_parking_notice_fails_closed_when_ora_contract_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            moment = datetime(2026, 6, 14, 19, 45, tzinfo=MADRID)
+            current = snapshot(moment)
+            send = AsyncMock()
+            verify = AsyncMock(
+                side_effect=GuideSourceError(
+                    "changed",
+                    code="ORA-SCHEDULE",
+                )
+            )
+            publish = AsyncMock(return_value=self._pinned_messages())
+            with (
+                patch.dict("os.environ", self._environment(directory), clear=False),
+                patch(
+                    "telegrambot.guide.fetch_aqualider_catalog",
+                    new=AsyncMock(return_value=current),
+                ),
+                patch("telegrambot.guide.publish_pinned_guide", new=publish),
+                patch("telegrambot.guide.verify_current_ora_schedule", new=verify),
+                patch("telegrambot.guide.send_message", new=send),
+            ):
+                await sync_guide(moment)
+            verify.assert_awaited_once()
+            send.assert_not_awaited()
+            self.assertNotIn(
+                "parking_notice",
+                GuideState(Path(directory) / "guide.json").read(),
+            )
 
     async def test_due_season_notice_is_sent_once(self):
         with tempfile.TemporaryDirectory() as directory:

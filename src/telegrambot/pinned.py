@@ -40,6 +40,7 @@ PINNED_CONTENT_VERSION = 2
 DEFAULT_PINNED_STATE_PATH = "state/pinned_guide.json"
 MAX_RECONCILIATION_PASSES = 3
 AQUALIDER_BOOKING_URL = "https://aqualidernatacion.simplybook.it/v2/"
+ORA_INFO_URL = "https://oraguardamar.gruposetex.es/tarifas-y-horarios"
 AIRPORT_STOP_MAP_URL = "https://maps.app.goo.gl/V3REb7P6CmdJtgom7"
 YOUTH_CENTRE_MAP_URL = "https://maps.app.goo.gl/HhfDRr6tpbbKekjM7"
 POLIDEPORTIVO_MAP_URL = "https://maps.app.goo.gl/KSZV3aVX75UxATQ68"
@@ -201,6 +202,18 @@ WIFI = with_footer(
 )
 
 
+PARKING = with_footer(
+    f"""🅿️ <b>Zona Azul · платная парковка</b>
+
+Платный летний режим действует <b>с 15 июня по 15 сентября включительно</b>.
+<b>Ежедневно · 10:00–20:00</b>.
+
+В остальное время сезонная Zona Azul бесплатна. Ориентируйтесь на дорожные знаки и разметку на месте.
+
+ℹ️ <a href="{ORA_INFO_URL}"><b>Тарифы и часы ORA Guardamar</b></a>"""
+)
+
+
 LEAF_MESSAGES: Dict[str, str] = {
     "line_1": with_footer(
         """🚌 <b>Городской автобус · Линия 1</b>
@@ -338,6 +351,7 @@ GUIDE_MESSAGE_KEYS = (
     "molivent",
     "music_school",
     "youth_centre",
+    "parking",
     "wifi",
     "activities",
     "swimming",
@@ -363,6 +377,7 @@ PINNED_PARENT_KEYS = {
     "molivent": "places",
     "music_school": "places",
     "youth_centre": "places",
+    "parking": "root",
     "wifi": "root",
     "activities": "root",
     "swimming": "activities",
@@ -742,6 +757,12 @@ def build_youth_centre(places_link: Optional[str] = None) -> str:
         "К списку мест",
         places_link,
     )
+
+
+def build_parking(root_link: Optional[str] = None) -> str:
+    """Build the seasonal municipal Zona Azul card."""
+
+    return _with_back_link(PARKING, "Полезное о Гуардамаре", root_link)
 
 
 def build_wifi(root_link: Optional[str] = None) -> str:
@@ -1332,6 +1353,7 @@ def build_root(
     places_link: Optional[str] = None,
     activities_link: Optional[str] = None,
     wifi_link: Optional[str] = None,
+    parking_link: Optional[str] = None,
 ) -> str:
     """Build the compact message intended to remain pinned."""
 
@@ -1340,6 +1362,7 @@ def build_root(
         f"📹 {_direct_link('Онлайн-камеры', camera_link)}\n\n"
         f"🚌 {_direct_link('Транспорт в Гуардамаре', transport_link)}\n\n"
         f"📍 {_direct_link('Места', places_link)}\n\n"
+        f"🅿️ {_direct_link('Парковка · Zona Azul', parking_link)}\n\n"
         f"📶 {_direct_link('Бесплатный Wi-Fi', wifi_link)}\n\n"
         f"🎓 {_direct_link('Занятия и секции', activities_link)}"
     )
@@ -1361,6 +1384,7 @@ def preview_messages() -> Sequence[str]:
         build_molivent(),
         build_music_school(),
         build_youth_centre(),
+        build_parking(),
         build_wifi(),
         build_activities(),
         build_swimming(),
@@ -1600,6 +1624,7 @@ def _render_messages(
     molivent_link = _known_link(chat_id, messages, "molivent")
     music_school_link = _known_link(chat_id, messages, "music_school")
     youth_centre_link = _known_link(chat_id, messages, "youth_centre")
+    parking_link = _known_link(chat_id, messages, "parking")
     wifi_link = _known_link(chat_id, messages, "wifi")
     activities_link = _known_link(chat_id, messages, "activities")
     football_link = _known_link(chat_id, messages, "football")
@@ -1664,6 +1689,7 @@ def _render_messages(
         ),
         "music_school": build_music_school(music_links, places_link),
         "youth_centre": build_youth_centre(places_link),
+        "parking": build_parking(root_link),
         "wifi": build_wifi(root_link),
         "activities": build_activities(
             swimming_link,
@@ -1683,6 +1709,7 @@ def _render_messages(
             places_link,
             activities_link,
             wifi_link,
+            parking_link,
         ),
     }
 
