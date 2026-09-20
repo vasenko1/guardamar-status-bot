@@ -45,7 +45,7 @@ def scheduled_run(now: datetime) -> MonitorRun:
     local = now.astimezone(GUARDAMAR_TIMEZONE)
     day = local.date()
     in_season = (
-        (day.month == 6 and day.day >= 20)
+        (day.month == 6 and day.day >= 15)
         or day.month in {7, 8}
         or (day.month == 9 and day.day <= 15)
     )
