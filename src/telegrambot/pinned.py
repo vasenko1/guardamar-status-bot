@@ -1879,6 +1879,24 @@ async def publish_pinned_guide(
             edit,
         )
         if messages.get("music_school") != previous_school_id:
+            school_link = _known_link(chat_id, messages, "music_school")
+            activities_link = _known_link(chat_id, messages, "activities")
+            for key in MUSIC_ACTIVITY_KEYS:
+                await _upsert(
+                    key,
+                    build_music_activity(
+                        key,
+                        music_school_catalog,
+                        local_day,
+                        activities_link,
+                        school_link,
+                    ),
+                    messages,
+                    state,
+                    chat_id,
+                    send,
+                    edit,
+                )
             await _reconcile_messages(
                 chat_id,
                 messages,
