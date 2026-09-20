@@ -18,8 +18,13 @@ class WeekendTermuxTests(unittest.TestCase):
             crontab_state.write_text(initial, encoding="utf-8")
             (commands / "crontab").write_text(
                 "#!/bin/sh\n"
-                "if [ \"${1-}\" = -l ]; then cat \"$FAKE_CRONTAB\"; "
-                "else cat >\"$FAKE_CRONTAB\"; fi\n",
+                "if [ \"${1-}\" = -l ]; then\n"
+                "  cat \"$FAKE_CRONTAB\"\n"
+                "elif [ -n \"${1-}\" ] && [ \"$1\" != - ]; then\n"
+                "  cat \"$1\" >\"$FAKE_CRONTAB\"\n"
+                "else\n"
+                "  cat >\"$FAKE_CRONTAB\"\n"
+                "fi\n",
                 encoding="utf-8",
             )
             (commands / "sv").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
