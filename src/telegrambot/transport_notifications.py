@@ -134,9 +134,12 @@ def _valid_event(event: Any) -> bool:
     if event_type == "period_changed":
         if event.get("period") not in {"summer", "regular"}:
             return False
+        effective_date = event.get("effective_date")
+        if not isinstance(effective_date, str):
+            return False
         try:
-            date.fromisoformat(str(event["effective_date"]))
-        except (KeyError, ValueError):
+            date.fromisoformat(effective_date)
+        except ValueError:
             return False
     elif event_type == "departures_changed":
         for field in ("added_to", "removed_to", "added_from", "removed_from"):
@@ -169,9 +172,12 @@ def _valid_event(event: Any) -> bool:
             or not 100 <= new_cents <= 2_000
         ):
             return False
+        effective_date = event.get("effective_date")
+        if not isinstance(effective_date, str):
+            return False
         try:
-            date.fromisoformat(str(event["effective_date"]))
-        except (KeyError, ValueError):
+            date.fromisoformat(effective_date)
+        except ValueError:
             return False
     elif event_type == "route_changed":
         detail = event.get("detail")
