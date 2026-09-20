@@ -12,6 +12,11 @@ The bot must not infer flood or fire danger from raw sensor values. It should
 publish only official statuses or decisions and should remain silent when the
 source does not support a useful claim.
 
+Product-value rule: every scheduled source must have a direct path to an
+actionable user-facing message or to suppress/update such a message. Do not
+schedule a source merely because data is available, useful for historical
+analysis, or interesting for diagnostics.
+
 ## Confirmed 112CV surfaces
 
 ### 1. Emergencias vigentes
@@ -205,6 +210,12 @@ Important freshness observation:
 Therefore the historical Excel/table must not be assumed to be the current-day
 operational source until this behavior is verified.
 
+Product decision: a historical-only Excel/table is **not needed** by the bot.
+It must not receive a cron job or network budget merely for analytics. Continue
+investigating that export only if it can prove that it exposes the current or
+next operational Previfoc value early enough to drive a user-facing message.
+Otherwise close this branch and use another current operational source.
+
 ### Previfoc desired behavior
 
 Previfoc is a daily value, so hourly polling is unnecessary.
@@ -251,20 +262,52 @@ Candidate single 112 cron slot:
 
 `:19` every hour.
 
-At each invocation:
+At each invocation, run **one orchestrator process**. Individual source
+adapters never publish Telegram messages independently.
 
-1. GET `emergencias.jsf` always. It is only about 2.7 KB.
-2. Read the existing normalized AEMET snapshot; do **not** make another AEMET
+1. Read the existing normalized AEMET snapshot; do **not** make another AEMET
    network request.
+2. GET `emergencias.jsf` always. It is only about 2.7 KB.
 3. If current local time is inside an active Guardamar AEMET `lluvias` or
    `tormentas` warning, fetch `avisometeorologico.pdf`.
 4. Continue conditional PDF checks for roughly 3 hours after the warning ends.
 5. If an official hydrological/emergency state has already been observed,
    continue until the authority publishes its end/deactivation.
+6. Parse all source results into normalized candidate states.
+7. Merge/deduplicate candidates with explicit precedence; an official active
+   emergency state is stronger than a hydrological preemergency observation.
+8. Compare the final merged state with the small persisted prior state.
+9. Publish at most one coherent Telegram transition for the run, or remain
+   silent when there is no actionable change.
+
+The fact that the HTML and PDF requests complete at different speeds is
+irrelevant to public output because neither source publishes on completion.
+The process waits for the bounded source set required for that run, merges the
+results, and only then reaches the Telegram boundary. If an optional source
+fails, its failure must not erase a stronger valid state from another source.
 
 The existing AEMET snapshot already preserves warning `starts_at` and
 `ends_at`, so the watcher can use the actual active interval instead of the
 earlier publication time.
+
+## PDF lifecycle on the phone
+
+The CCE PDF must not accumulate on Android storage.
+
+Preferred implementation:
+
+- download only bounded PDF bytes into process memory;
+- pipe those bytes directly to Poppler `pdftotext` through stdin and capture
+  text from stdout (for example, `pdftotext -layout - -`);
+- parse the text in memory;
+- discard both PDF bytes and extracted text when the short-lived process exits;
+- persist only the small normalized authority state/hash/timestamps required
+  for deduplication.
+
+No dated PDF archive, raw response cache, or permanent download directory is
+needed. If a future platform limitation ever requires a temporary file, create
+it only in the runtime temp directory and unlink it in a guaranteed cleanup
+path; this is fallback behavior, not the preferred design.
 
 ## Deduplication and attribution
 
@@ -297,12 +340,11 @@ emergency channels.
 
 ## Open questions
 
-1. Exact direct URL and response format of
-   `/Meteorologia/ExportarHistoricoAExcel`.
-2. Whether the Excel/table can expose today's or tomorrow's operational
-   Previfoc early enough to replace the PDF.
-3. Whether a real future Segura hydrological preemergencia appears in
+1. Whether the Excel/table can expose today's or tomorrow's operational
+   Previfoc early enough to replace the PDF. If it is historical-only, stop
+   investigating it for runtime use.
+2. Whether a real future Segura hydrological preemergencia appears in
    `avisometeorologico.pdf`, `emergencias.jsf`, both, or neither.
-4. Exact normalized state schema and final message copy.
-5. Whether Previfoc level 2 deserves public output or only inclusion in the
+3. Exact normalized state schema and final message copy.
+4. Whether Previfoc level 2 deserves public output or only inclusion in the
    morning briefing.
