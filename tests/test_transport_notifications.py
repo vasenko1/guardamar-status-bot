@@ -126,6 +126,24 @@ def test_pdf_metadata_change_with_same_rendered_image_is_silent():
     assert result["pending"] is None
 
 
+def test_wrong_airport_baseline_date_is_silent():
+    today = date(2026, 9, 20)
+    state = _baseline(today)
+    state["airport_next"] = {
+        "service_date": "2026-09-19",
+        "to_airport": ["07:00"],
+        "from_airport": ["08:00"],
+    }
+    result = collect_changes(
+        datetime(2026, 9, 20, 5, tzinfo=TZ),
+        _pinned(),
+        _schedule(today, fare=_fare()),
+        state,
+        _schedule(date(2026, 9, 21)),
+    )
+    assert result["pending"] is None
+
+
 def test_airport_exact_departure_change_is_schedule_message():
     today = date(2026, 9, 20)
     result = collect_changes(
@@ -190,6 +208,60 @@ def test_unreviewed_line_does_not_claim_period_transition():
         _schedule(date(2027, 7, 2)),
     )
     assert result["pending"] is None
+
+
+def test_stale_pending_expires_before_collecting_new_day():
+    today = date(2026, 9, 20)
+    state = _baseline(today)
+    state["pending"] = {
+        "created_date": "2026-09-19",
+        "messages": [{
+            "kind": "schedule_changes",
+            "status": "pending",
+            "events": [{"type": "timetable_changed", "route": "line_1"}],
+            "message_id": None,
+        }],
+    }
+    result = collect_changes(
+        datetime(2026, 9, 20, 5, tzinfo=TZ),
+        _pinned(),
+        _schedule(today, fare=_fare()),
+        state,
+        _schedule(date(2026, 9, 21)),
+    )
+    assert result["pending"] is None
+
+
+def test_same_day_pending_batch_is_immutable():
+    today = date(2026, 9, 20)
+    state = _baseline(today)
+    state["pending"] = {
+        "created_date": today.isoformat(),
+        "messages": [{
+            "kind": "schedule_changes",
+            "status": "pending",
+            "events": [{"type": "timetable_changed", "route": "line_1"}],
+            "message_id": None,
+        }],
+    }
+    result = collect_changes(
+        datetime(2026, 9, 20, 6, tzinfo=TZ),
+        _pinned(line2="e"),
+        _schedule(today, fare=_fare()),
+        state,
+        _schedule(date(2026, 9, 21)),
+    )
+    assert result == state
+
+
+def test_corrupt_v2_fare_state_fails_closed():
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "transport.json"
+        broken = _baseline()
+        broken["fare"] = {"cents": "oops"}
+        path.write_text(json.dumps(broken), encoding="utf-8")
+        with pytest.raises(TransportNotificationError):
+            load_state(path)
 
 
 def test_schedule_message_links_each_route_directly_to_its_card():
