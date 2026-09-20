@@ -9,11 +9,12 @@ WEEKEND="$PROJECT_DIR/termux/run-weekend.sh"
 BACKUP_DIR="$HOME/.cache/crontab"
 CURRENT=$(mktemp)
 JOBS=$(mktemp)
+NEXT=$(mktemp)
 BEGIN_MARKER='# BEGIN guardamar-status weekend digest'
 END_MARKER='# END guardamar-status weekend digest'
 
 cleanup() {
-    rm -f "$CURRENT" "$JOBS"
+    rm -f "$CURRENT" "$JOBS" "$NEXT"
 }
 trap cleanup EXIT HUP INT TERM
 
@@ -42,22 +43,24 @@ printf '%s\n' \
     "15 20 * * 5 $WEEKEND" \
     >"$JOBS"
 
-{
-    awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" -v weekend="$WEEKEND" '
-        NR == FNR { jobs[$0] = 1; next }
-        $0 == begin { managed = 1; next }
-        $0 == end { managed = 0; next }
-        !managed && (
-            $0 == "0,20 18 * * 5 " weekend ||
-            $0 == "0 19 * * 5 " weekend
-        ) { next }
-        !managed && !($0 in jobs) { print }
-    ' "$JOBS" "$CURRENT"
-    printf '%s\n' \
-        "$BEGIN_MARKER" \
-        'CRON_TZ=Europe/Madrid' \
-        "$(cat "$JOBS")" \
-        "$END_MARKER"
-} | crontab -
+if ! awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" -v weekend="$WEEKEND" '
+    NR == FNR { jobs[$0] = 1; next }
+    $0 == begin { managed = 1; next }
+    $0 == end { managed = 0; next }
+    !managed && $0 == "0,20 18 * * 5 " weekend { next }
+    !managed && $0 == "0 19 * * 5 " weekend { next }
+    !managed && !($0 in jobs) { print }
+' "$JOBS" "$CURRENT" >"$NEXT"; then
+    echo "ОШИБКА: не удалось подготовить новый crontab; ничего не изменено" >&2
+    exit 1
+fi
 
+printf '%s\n' \
+    "$BEGIN_MARKER" \
+    'CRON_TZ=Europe/Madrid' \
+    "$(cat "$JOBS")" \
+    "$END_MARKER" \
+    >>"$NEXT"
+
+crontab "$NEXT"
 sv up crond
