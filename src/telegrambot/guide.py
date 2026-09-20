@@ -1053,7 +1053,6 @@ async def sync_guide(now: datetime) -> str:
                 chess_school_snapshot=state.get("chess_school_snapshot"),
                 literary_group_snapshot=state.get("literary_group_snapshot"),
                 dinamizacion_snapshot=state.get("dinamizacion_snapshot"),
-                bathing_water_snapshot=state.get("bathing_water_snapshot"),
                 local_day=local_day,
             )
 
