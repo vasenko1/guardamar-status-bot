@@ -1,260 +1,292 @@
+import json
+import tempfile
 from datetime import date, datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from telegrambot.airport_schedule import AirportSchedule, Fare
-from telegrambot.branding import FOOTER
 from telegrambot.transport_notifications import (
-    _airport_snapshot,
+    TransportNotificationError,
     _empty_state,
     build_message,
     collect_changes,
+    load_state,
 )
 
 
 TZ = ZoneInfo("Europe/Madrid")
 
 
-def _schedule(
-    service_date: date,
-    *,
-    to_airport=("08:00", "10:00"),
-    from_airport=("09:00", "11:00"),
-    fare=None,
-):
-    return AirportSchedule(
-        service_date=service_date,
-        to_airport=tuple(to_airport),
-        from_airport=tuple(from_airport),
-        guardamar_coordinates="38.087834,-0.655759",
-        airport_coordinates="38.282222,-0.558056",
-        fare=fare,
-    )
+def _line(image: str, pdf: str = "a", reviewed: bool = True):
+    return {
+        "pdf_sha256": pdf * 64,
+        "image_sha256": image * 64,
+        "reviewed": reviewed,
+    }
 
 
-def _pinned(
-    image_1="1" * 64,
-    image_2="2" * 64,
-    pdf_1="a" * 64,
-    pdf_2="b" * 64,
-):
+def _pinned(line1="a", line2="b", reviewed=True):
     return {
         "lines": {
-            "line_1": {
-                "pdf_sha256": pdf_1,
-                "image_sha256": image_1,
-            },
-            "line_2": {
-                "pdf_sha256": pdf_2,
-                "image_sha256": image_2,
-            },
+            "line_1": _line(line1, "c", reviewed),
+            "line_2": _line(line2, "d", reviewed),
         }
     }
 
 
-def test_first_collection_only_establishes_baselines():
-    today = date(2026, 9, 15)
-    result = collect_changes(
-        datetime(2026, 9, 15, 5, tzinfo=TZ),
-        _pinned(),
-        _schedule(today),
-        _empty_state(),
-        _schedule(date(2026, 9, 16)),
+def _schedule(
+    service_date: date,
+    *,
+    to=("08:00", "10:00"),
+    from_=("09:00", "11:00"),
+    fare=None,
+):
+    return AirportSchedule(
+        service_date=service_date,
+        to_airport=tuple(to),
+        from_airport=tuple(from_),
+        guardamar_coordinates="38.087834,-0.655759",
+        airport_coordinates="38.2822,-0.5582",
+        fare=fare,
     )
 
-    assert result["pending"] is None
-    assert result["urban"]["line_1"]["image_sha256"] == "1" * 64
-    assert result["airport_next"]["service_date"] == "2026-09-16"
+
+def _fare(cents=295, effective=date(2026, 1, 1), digest="a"):
+    return Fare(
+        cents=cents,
+        effective_date=effective,
+        source_url="https://www.bus-siguenza.com/wbus/tarifas/tarifa.pdf",
+        etag=None,
+        last_modified=None,
+        pdf_sha256=digest * 64,
+    )
 
 
-def test_visual_urban_change_creates_generic_line_event():
-    today = date(2026, 9, 15)
+def _baseline(day=date(2026, 9, 20)):
     state = _empty_state()
     state["urban"] = {
         "line_1": {
-            "pdf_sha256": "a" * 64,
-            "image_sha256": "1" * 64,
+            "pdf_sha256": "c" * 64,
+            "image_sha256": "a" * 64,
+            "period": "regular",
         },
         "line_2": {
-            "pdf_sha256": "b" * 64,
-            "image_sha256": "2" * 64,
+            "pdf_sha256": "d" * 64,
+            "image_sha256": "b" * 64,
+            "period": "regular",
         },
     }
-
-    result = collect_changes(
-        datetime(2026, 9, 15, 5, tzinfo=TZ),
-        _pinned(image_1="3" * 64, pdf_1="c" * 64),
-        _schedule(today),
-        state,
-        _schedule(date(2026, 9, 16)),
-    )
-
-    assert result["pending"]["urban_lines"] == ["line_1"]
-
-
-def test_pdf_metadata_change_without_visual_change_does_not_notify():
-    today = date(2026, 9, 15)
-    state = _empty_state()
-    state["urban"] = {
-        "line_1": {
-            "pdf_sha256": "a" * 64,
-            "image_sha256": "1" * 64,
-        },
-        "line_2": {
-            "pdf_sha256": "b" * 64,
-            "image_sha256": "2" * 64,
-        },
-    }
-
-    result = collect_changes(
-        datetime(2026, 9, 15, 5, tzinfo=TZ),
-        _pinned(image_1="1" * 64, pdf_1="c" * 64),
-        _schedule(today),
-        state,
-        _schedule(date(2026, 9, 16)),
-    )
-
-    assert result["pending"] is None
-
-
-def test_airport_diff_compares_same_service_date_not_yesterday():
-    today = date(2026, 9, 15)
-    state = _empty_state()
-    state["airport_next"] = _airport_snapshot(
-        _schedule(
-            today,
-            to_airport=("08:00", "10:00"),
-            from_airport=("09:00", "11:00"),
-        )
-    )
-
-    result = collect_changes(
-        datetime(2026, 9, 15, 5, tzinfo=TZ),
-        _pinned(),
-        _schedule(
-            today,
-            to_airport=("08:00", "10:30"),
-            from_airport=("09:00", "11:00"),
-        ),
-        state,
-        _schedule(date(2026, 9, 16)),
-    )
-
-    airport = result["pending"]["airport"]
-    assert airport["added_to"] == ["10:30"]
-    assert airport["removed_to"] == ["10:00"]
-
-
-def test_wrong_baseline_date_never_creates_airport_change():
-    today = date(2026, 9, 15)
-    state = _empty_state()
-    state["airport_next"] = _airport_snapshot(
-        _schedule(date(2026, 9, 14), to_airport=("07:00",))
-    )
-
-    result = collect_changes(
-        datetime(2026, 9, 15, 5, tzinfo=TZ),
-        _pinned(),
-        _schedule(today),
-        state,
-        _schedule(date(2026, 9, 16)),
-    )
-
-    assert result["pending"] is None
-
-
-def test_base_fare_change_is_reported_with_effective_date():
-    today = date(2026, 9, 15)
-    state = _empty_state()
     state["fare"] = {
         "cents": 295,
         "effective_date": "2026-01-01",
         "pdf_sha256": "a" * 64,
     }
-    new_fare = Fare(
-        cents=320,
-        effective_date=date(2026, 10, 1),
-        source_url=(
-            "https://www.bus-siguenza.com/wbus/tarifas/tarifa.pdf"
-        ),
-        etag=None,
-        last_modified=None,
-        pdf_sha256="b" * 64,
-    )
+    state["airport_next"] = {
+        "service_date": day.isoformat(),
+        "to_airport": ["08:00", "10:00"],
+        "from_airport": ["09:00", "11:00"],
+    }
+    return state
 
+
+def _kinds(state):
+    pending = state["pending"]
+    return [] if pending is None else [item["kind"] for item in pending["messages"]]
+
+
+def test_visual_urban_change_creates_schedule_message():
+    today = date(2026, 9, 20)
     result = collect_changes(
-        datetime(2026, 9, 15, 5, tzinfo=TZ),
-        _pinned(),
-        _schedule(today, fare=new_fare),
-        state,
-        _schedule(date(2026, 9, 16)),
+        datetime(2026, 9, 20, 5, tzinfo=TZ),
+        _pinned(line1="e"),
+        _schedule(today, fare=_fare()),
+        _baseline(today),
+        _schedule(date(2026, 9, 21)),
     )
-
-    assert result["pending"]["fare"] == {
-        "old_cents": 295,
-        "new_cents": 320,
-        "effective_date": "2026-10-01",
+    assert _kinds(result) == ["schedule_changes"]
+    assert result["pending"]["messages"][0]["events"][0] == {
+        "type": "timetable_changed",
+        "route": "line_1",
     }
 
 
-def test_stale_pending_expires_on_next_collection():
-    today = date(2026, 9, 15)
-    state = _empty_state()
-    state["pending"] = {
-        "created_date": "2026-09-14",
-        "urban_lines": ["line_1"],
-        "airport": None,
-        "fare": None,
-    }
-
+def test_pdf_metadata_change_with_same_rendered_image_is_silent():
+    today = date(2026, 9, 20)
+    pinned = _pinned()
+    pinned["lines"]["line_1"]["pdf_sha256"] = "f" * 64
     result = collect_changes(
-        datetime(2026, 9, 15, 5, tzinfo=TZ),
-        _pinned(),
-        _schedule(today),
-        state,
-        _schedule(date(2026, 9, 16)),
+        datetime(2026, 9, 20, 5, tzinfo=TZ),
+        pinned,
+        _schedule(today, fare=_fare()),
+        _baseline(today),
+        _schedule(date(2026, 9, 21)),
     )
-
     assert result["pending"] is None
 
 
-def test_message_keeps_editorial_style_and_existing_footer():
-    message = build_message(
-        {
-            "created_date": "2026-09-15",
-            "urban_lines": ["line_1"],
-            "airport": None,
-            "fare": None,
-        },
-        "https://t.me/c/123/456",
-        date(2026, 9, 15),
+def test_airport_exact_departure_change_is_schedule_message():
+    today = date(2026, 9, 20)
+    result = collect_changes(
+        datetime(2026, 9, 20, 5, tzinfo=TZ),
+        _pinned(),
+        _schedule(
+            today,
+            to=("08:00", "10:30"),
+            from_=("09:00", "11:00"),
+            fare=_fare(),
+        ),
+        _baseline(today),
+        _schedule(date(2026, 9, 21)),
     )
-
-    assert message.startswith("🚌 <b>Транспорт · изменения</b>")
-    assert "<b>автобуса №1</b>" in message
-    assert "Puerto Deportivo" not in message
-    assert "↔" not in message
-    assert "⚠️" not in message
-    assert "❗" not in message
-    assert message.count(FOOTER) == 1
+    assert _kinds(result) == ["schedule_changes"]
+    event = result["pending"]["messages"][0]["events"][0]
+    assert event["route"] == "airport"
+    assert event["added_to"] == ["10:30"]
+    assert event["removed_to"] == ["10:00"]
 
 
-def test_future_base_fare_message_uses_only_standard_ticket():
+def test_fare_and_schedule_become_two_semantic_messages():
+    today = date(2026, 9, 20)
+    result = collect_changes(
+        datetime(2026, 9, 20, 5, tzinfo=TZ),
+        _pinned(line1="e"),
+        _schedule(
+            today,
+            fare=_fare(320, date(2026, 10, 1), "b"),
+        ),
+        _baseline(today),
+        _schedule(date(2026, 9, 21)),
+    )
+    assert _kinds(result) == ["schedule_changes", "fare_changes"]
+
+
+def test_reviewed_summer_transition_is_detected_without_new_pdf():
+    day = date(2027, 7, 1)
+    state = _baseline(day)
+    result = collect_changes(
+        datetime(2027, 7, 1, 5, tzinfo=TZ),
+        _pinned(),
+        _schedule(day, fare=_fare()),
+        state,
+        _schedule(date(2027, 7, 2)),
+    )
+    assert _kinds(result) == ["schedule_changes"]
+    events = result["pending"]["messages"][0]["events"]
+    assert {event["route"] for event in events} == {"line_1", "line_2"}
+    assert all(event["type"] == "period_changed" for event in events)
+    assert all(event["period"] == "summer" for event in events)
+
+
+def test_unreviewed_line_does_not_claim_period_transition():
+    day = date(2027, 7, 1)
+    state = _baseline(day)
+    result = collect_changes(
+        datetime(2027, 7, 1, 5, tzinfo=TZ),
+        _pinned(reviewed=False),
+        _schedule(day, fare=_fare()),
+        state,
+        _schedule(date(2027, 7, 2)),
+    )
+    assert result["pending"] is None
+
+
+def test_schedule_message_links_each_route_directly_to_its_card():
     message = build_message(
-        {
-            "created_date": "2026-09-15",
-            "urban_lines": [],
-            "airport": None,
-            "fare": {
-                "old_cents": 295,
-                "new_cents": 320,
-                "effective_date": "2026-10-01",
+        "schedule_changes",
+        [
+            {"type": "timetable_changed", "route": "line_1"},
+            {
+                "type": "departures_changed",
+                "route": "airport",
+                "added_to": ["10:30"],
+                "removed_to": ["10:00"],
+                "added_from": [],
+                "removed_from": [],
             },
-        },
-        "https://t.me/c/123/456",
-        date(2026, 9, 15),
+        ],
+        "-100123",
+        {"line_1": 501, "airport": 502},
+        date(2026, 9, 20),
     )
+    assert "https://t.me/c/123/501" in message
+    assert "https://t.me/c/123/502" in message
+    assert "10:30" in message
+    assert "10:00" in message
+    assert "К списку транспорта" not in message
 
-    assert "С <b>1 октября</b> обычный билет" in message
-    assert "<b>3,20 €</b> вместо 2,95 €." in message
-    assert "абонемент" not in message.casefold()
-    assert "карт" not in message.casefold()
+
+def test_fare_message_is_separate_and_links_airport_card():
+    message = build_message(
+        "fare_changes",
+        [{
+            "type": "fare_changed",
+            "route": "airport",
+            "old_cents": 295,
+            "new_cents": 320,
+            "effective_date": "2026-10-01",
+        }],
+        "-100123",
+        {"airport": 502},
+        date(2026, 9, 20),
+    )
+    assert "Изменилась стоимость проезда" in message
+    assert "https://t.me/c/123/502" in message
+    assert "3,20 €" in message
+    assert "2,95 €" in message
+
+
+def test_missing_route_card_fails_closed():
+    with pytest.raises(TransportNotificationError):
+        build_message(
+            "schedule_changes",
+            [{"type": "timetable_changed", "route": "line_1"}],
+            "-100123",
+            {},
+            date(2026, 9, 20),
+        )
+
+
+def test_legacy_v1_idle_state_migrates_pending_batch():
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "transport.json"
+        path.write_text(
+            json.dumps({
+                "version": 1,
+                "urban": {},
+                "fare": None,
+                "airport_next": None,
+                "pending": {
+                    "created_date": "2026-09-20",
+                    "urban_lines": ["line_1"],
+                    "airport": None,
+                    "fare": None,
+                },
+                "delivery_state": "idle",
+                "last_message_id": None,
+            }),
+            encoding="utf-8",
+        )
+        state = load_state(path)
+    assert state["version"] == 2
+    assert _kinds(state) == ["schedule_changes"]
+
+
+def test_legacy_uncertain_delivery_fails_closed():
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "transport.json"
+        path.write_text(
+            json.dumps({
+                "version": 1,
+                "urban": {},
+                "fare": None,
+                "airport_next": None,
+                "pending": None,
+                "delivery_state": "uncertain",
+                "last_message_id": 900,
+            }),
+            encoding="utf-8",
+        )
+        with pytest.raises(TransportNotificationError):
+            load_state(path)
