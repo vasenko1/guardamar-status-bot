@@ -464,10 +464,16 @@ def collect_changes(
             and period in {"summer", "regular"}
             and previous_period != period
         ):
+            effective_date = (
+                date(today.year, 7, 1)
+                if period == "summer"
+                else date(today.year, 9, 1)
+            )
             events.append({
                 "type": "period_changed",
                 "route": key,
                 "period": period,
+                "effective_date": effective_date.isoformat(),
             })
 
         urban_state[key] = {
@@ -624,13 +630,21 @@ def build_message(
                 if event["type"] == "timetable_changed":
                     details.append("опубликовано новое расписание")
                 elif event["type"] == "period_changed":
+                    effective = date.fromisoformat(
+                        str(event["effective_date"])
+                    )
+                    prefix = (
+                        "с сегодняшнего дня"
+                        if effective == today
+                        else f"с {_date_label(effective)}"
+                    )
                     if event.get("period") == "summer":
                         details.append(
-                            "с сегодняшнего дня действует летний режим: автобус ходит ежедневно"
+                            f"{prefix} действует летний режим: автобус ходит ежедневно"
                         )
                     else:
                         details.append(
-                            "с сегодняшнего дня действует обычный режим: "
+                            f"{prefix} действует обычный режим: "
                             "с понедельника по субботу, по воскресеньям отдельное расписание"
                         )
                 elif event["type"] == "departures_changed":
