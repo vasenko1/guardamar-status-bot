@@ -2473,6 +2473,203 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             stored["sources"]["todo_cultura"]["parser_version"], 4
         )
 
+    async def test_todo_standalone_uses_guardamar_scoped_extractor(self):
+        official = SourceEvent(
+            title_es="Concierto oficial",
+            start_date=date(2026, 9, 19),
+            end_date=date(2026, 9, 19),
+            start_time="20:00",
+            end_time=None,
+            place="Escuela de Música",
+            category="event",
+            sources=("mupi",),
+        )
+        todo = TodoCulturaProgram(
+            text=(
+                "Los ayuntamientos de Benijófar, Guardamar, Redován y "
+                "San Isidro organizan el sábado 19 de septiembre a las "
+                "9:30 horas una batida de limpieza ciudadana por el "
+                "World Cleanup Day."
+            ),
+            sha256="todo-standalone-hash",
+            source_url=(
+                "https://todoculturavegabaja.es/eventos/"
+                "benijofar-guardamar-redovan-y-san-isidro-evento-batidas/"
+            ),
+            modified="2026-09-18T16:15:48",
+            dates=(date(2026, 9, 19),),
+            standalone=True,
+        )
+        old_state = {
+            "parser_version": 16,
+            "cursor_modified_gmt": "2026-09-18T08:00:00",
+            "candidates": [],
+        }
+        advanced_state = {
+            **old_state,
+            "parser_version": 17,
+            "cursor_modified_gmt": "2026-09-18T16:15:48",
+        }
+        window = TodoCulturaWindow((todo,), advanced_state)
+        scoped = AsyncMock(return_value={
+            "month": "2026-09",
+            "events": [{
+                "title_es": "World Cleanup Day: batida de limpieza ciudadana",
+                "start_date": "2026-09-19",
+                "end_date": "2026-09-19",
+                "start_time": "09:30",
+                "end_time": None,
+                "place": None,
+                "evidence_es": (
+                    "sábado 19 de septiembre a las 9:30 horas una batida "
+                    "de limpieza ciudadana por el World Cleanup Day"
+                ),
+                "category": "event",
+            }],
+        })
+        poster_url = (
+            "https://www.guardamardelsegura.es/wp-content/uploads/"
+            "2026/09/MUPI-SEPTIEMBRE-2026.jpg"
+        )
+        page = f'<a href="{poster_url}">poster</a>'.encode()
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agenda.json"
+            _write_snapshot(
+                path,
+                _snapshot_data(
+                    poster_url,
+                    "poster-hash",
+                    datetime(2026, 9, 18, tzinfo=TZ),
+                    (official,),
+                    {
+                        "mupi": {"url": poster_url, "sha256": "poster-hash"},
+                        "todo_cultura": old_state,
+                    },
+                ),
+            )
+            with (
+                patch(
+                    "telegrambot.municipal_agenda._read_url",
+                    return_value=(page, "text/html"),
+                ),
+                patch(
+                    "telegrambot.municipal_agenda.fetch_program_window",
+                    new=AsyncMock(return_value=window),
+                ),
+                patch(
+                    "telegrambot.municipal_agenda.extract_guardamar_standalone_events",
+                    new=scoped,
+                ),
+                patch(
+                    "telegrambot.municipal_agenda.extract_agenda_text_events",
+                    new=AsyncMock(),
+                ) as generic,
+            ):
+                current = await _current_events(
+                    "key", datetime(2026, 9, 19, 5, 10, tzinfo=TZ), path
+                )
+
+            stored = json.loads(path.read_text(encoding="utf-8"))
+
+        scoped.assert_awaited_once_with(
+            "key", todo.text, (date(2026, 9, 19),)
+        )
+        generic.assert_not_awaited()
+        self.assertIn(
+            "World Cleanup Day: batida de limpieza ciudadana",
+            [event.title_es for event in current],
+        )
+        self.assertEqual(
+            stored["sources"]["todo_cultura"]["cursor_modified_gmt"],
+            "2026-09-18T16:15:48",
+        )
+
+    async def test_empty_todo_standalone_does_not_advance_state(self):
+        official = SourceEvent(
+            title_es="Concierto oficial",
+            start_date=date(2026, 9, 19),
+            end_date=date(2026, 9, 19),
+            start_time="20:00",
+            end_time=None,
+            place="Escuela de Música",
+            category="event",
+            sources=("mupi",),
+        )
+        todo = TodoCulturaProgram(
+            text="Guardamar, sábado 19 de septiembre, World Cleanup Day.",
+            sha256="todo-standalone-hash",
+            source_url=(
+                "https://todoculturavegabaja.es/eventos/"
+                "guardamar-del-segura-evento-world-cleanup/"
+            ),
+            modified="2026-09-18T16:15:48",
+            dates=(date(2026, 9, 19),),
+            standalone=True,
+        )
+        old_state = {
+            "parser_version": 16,
+            "cursor_modified_gmt": "2026-09-18T08:00:00",
+            "candidates": [],
+        }
+        window = TodoCulturaWindow(
+            (todo,),
+            {
+                **old_state,
+                "parser_version": 17,
+                "cursor_modified_gmt": "2026-09-18T16:15:48",
+            },
+        )
+        poster_url = (
+            "https://www.guardamardelsegura.es/wp-content/uploads/"
+            "2026/09/MUPI-SEPTIEMBRE-2026.jpg"
+        )
+        page = f'<a href="{poster_url}">poster</a>'.encode()
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agenda.json"
+            _write_snapshot(
+                path,
+                _snapshot_data(
+                    poster_url,
+                    "poster-hash",
+                    datetime(2026, 9, 18, tzinfo=TZ),
+                    (official,),
+                    {
+                        "mupi": {"url": poster_url, "sha256": "poster-hash"},
+                        "todo_cultura": old_state,
+                    },
+                ),
+            )
+            with (
+                patch(
+                    "telegrambot.municipal_agenda._read_url",
+                    return_value=(page, "text/html"),
+                ),
+                patch(
+                    "telegrambot.municipal_agenda.fetch_program_window",
+                    new=AsyncMock(return_value=window),
+                ),
+                patch(
+                    "telegrambot.municipal_agenda.extract_guardamar_standalone_events",
+                    new=AsyncMock(return_value={
+                        "month": "2026-09",
+                        "events": [],
+                    }),
+                ),
+            ):
+                current = await _current_events(
+                    "key", datetime(2026, 9, 19, 5, 10, tzinfo=TZ), path
+                )
+
+            stored = json.loads(path.read_text(encoding="utf-8"))
+
+        self.assertEqual([event.title_es for event in current], ["Concierto oficial"])
+        self.assertEqual(
+            stored["sources"]["todo_cultura"]["cursor_modified_gmt"],
+            old_state["cursor_modified_gmt"],
+        )
+
     async def test_incomplete_todo_still_enriches_verified_cinema_synopsis(self):
         programme_text = (
             "AGENDA CULTURAL SEPTIEMBRE 2026 CINE "
