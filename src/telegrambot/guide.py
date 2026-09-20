@@ -168,6 +168,16 @@ class GuideState:
                 raise StateError(
                     f"guide state has an invalid {label} attempt day"
                 ) from exc
+        successful_day = value.get("last_successful_sync_day")
+        if successful_day is not None:
+            if not isinstance(successful_day, str):
+                raise StateError("guide state has an invalid successful sync day")
+            try:
+                date.fromisoformat(successful_day)
+            except ValueError as exc:
+                raise StateError(
+                    "guide state has an invalid successful sync day"
+                ) from exc
         notice = value.get("season_notice")
         if notice is not None and (
             not isinstance(notice, dict)
@@ -676,6 +686,8 @@ async def sync_guide(now: datetime) -> str:
     source_result = "unchanged"
     with guide_state.exclusive_run():
         state = guide_state.read()
+        state.pop("last_successful_sync_day", None)
+        guide_state.write(state)
         previous = state.get("aqualider_catalog")
         try:
             current = await fetch_aqualider_catalog(now)
@@ -876,6 +888,9 @@ async def sync_guide(now: datetime) -> str:
                 dinamizacion_snapshot=state.get("dinamizacion_snapshot"),
                 local_day=local_day,
             )
+
+        state["last_successful_sync_day"] = local_day.isoformat()
+        guide_state.write(state)
 
         notice_key = _season_notice_key(local_day)
         if notice_key is not None:

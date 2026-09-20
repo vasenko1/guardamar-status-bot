@@ -19,9 +19,10 @@ festival traffic restriction from Policía Local Guardamar.
 The linked pinned city guide uses one recoverable Telegram graph for cameras,
 transport, durable places, and recurring activities. Its first places/activity
 slice covers `Polideportivo Municipal`, the indoor and outdoor municipal pools,
-and swimming. One bounded 16:30 guide sync reads only the accepted public
-SimplyBook catalogue JSON surface; it does not infer registration availability
-from catalogue visibility.
+and swimming. One bounded 09:02 guide sync refreshes the accepted recurring
+activity/program sources and reconciles their linked cards. Source adapters
+remain independent and fail closed; catalogue visibility alone is never treated
+as proof of registration availability.
 
 ## Repository map
 
@@ -42,7 +43,7 @@ with [docs/kb/00_Project_Overview.md](docs/kb/00_Project_Overview.md).
 - Python with `asyncio`
 - standard-library HTTP for sources and outbound Telegram delivery
 - one short-lived 07:30 process and bounded seasonal update checks
-- independent short 05:00 transport and 16:30 guide synchronizations
+- independent short 05:00 transport and 09:02 guide synchronizations
 - optional isolated listener for allowlisted private `/preview`
 - small local atomic JSON state per independent workflow
 - no Docker, PostgreSQL, webhooks, or heavy background services
@@ -107,6 +108,7 @@ Use external Termux cron entries in `Europe/Madrid`:
 ```cron
 CRON_TZ=Europe/Madrid
 0 5 * * * /path/to/TelegramBot/termux/sync-transport.sh
+42 8 * * * /path/to/TelegramBot/termux/publish-transport-notifications.sh
 10 5 * * * /path/to/TelegramBot/termux/sync-municipal-events.sh
 30 5 * * * /path/to/TelegramBot/termux/sync-agenda-events.sh
 0,30 6 * * * /path/to/TelegramBot/termux/prepare-events.sh
@@ -122,7 +124,8 @@ CRON_TZ=Europe/Madrid
 0 11,15,19 * 1-5,10-12 * /path/to/TelegramBot/termux/monitor-updates.sh
 0 11,15,19 1-19 6 * /path/to/TelegramBot/termux/monitor-updates.sh
 0 11,15,19 15-30 9 * /path/to/TelegramBot/termux/monitor-updates.sh
-30 16 * * * /path/to/TelegramBot/termux/sync-guide.sh
+2 9 * * * /path/to/TelegramBot/termux/sync-guide.sh
+42 9,11 * * * /path/to/TelegramBot/termux/publish-course-notifications.sh
 30,35,45 20 * * * /path/to/TelegramBot/termux/run-electricity.sh
 0,20 21 * * * /path/to/TelegramBot/termux/run-electricity.sh
 15 19 * * 5 /path/to/TelegramBot/termux/run-weekend.sh --fresh
@@ -140,7 +143,8 @@ The validated Android deployment uses the scripts in `termux/`:
   `guardamar-preview`; its `run` file may be a symlink because the launcher
   resolves the real target path before loading the project `.env`;
 - `termux/sync-transport.sh` at 05:00 to refresh the transport source data and
-  reconcile the shared linked guide;
+  reconcile the shared linked guide; `publish-transport-notifications.sh` runs
+  at 08:42 and reads only accepted local state;
 - `termux/run-daily.sh` at 07:30 and `termux/update-daily.sh` every five
   minutes from 10:10 through 10:40;
 - `termux/monitor-updates.sh` at the bounded seasonal beach windows and the
@@ -151,9 +155,9 @@ The validated Android deployment uses the scripts in `termux/`:
 - `termux/prepare-events.sh` at 06:00, 06:30, and 07:00 to fill only missing
   title translations, and `termux/prepare-aemet.sh` at 07:15 to store one
   normalized same-day weather snapshot;
-- `termux/sync-guide.sh` at 16:30 to read the bounded places/activities source
-  baseline, reconcile the same pinned graph, and publish only a due deterministic
-  pool-season notice;
+- `termux/sync-guide.sh` at 09:02 to read the bounded places/activities source
+  baseline and reconcile the same pinned graph; `publish-course-notifications.sh`
+  runs at 09:42 with an 11:42 same-day retry opportunity;
 - `termux/monitor-earthquakes.sh` at minute 55 of every hour to check the
   official IGN GeoRSS feed for a new qualifying local event;
 - `termux/start-services` copied to `~/.termux/boot/start-services` for the
@@ -194,6 +198,7 @@ Recommended crontab entries:
 ```cron
 CRON_TZ=Europe/Madrid
 0 5 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-transport.sh
+42 8 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/publish-transport-notifications.sh
 10 5 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-municipal-events.sh
 30 5 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-agenda-events.sh
 0,30 6 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/prepare-events.sh
@@ -209,7 +214,8 @@ CRON_TZ=Europe/Madrid
 0 11,15,19 * 1-5,10-12 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
 0 11,15,19 1-19 6 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
 0 11,15,19 15-30 9 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
-30 16 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-guide.sh
+2 9 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-guide.sh
+42 9,11 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/publish-course-notifications.sh
 30,35,45 20 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity.sh
 0,20 21 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity.sh
 15 19 * * 5 /data/data/com.termux/files/home/bots/guardamar-status/termux/run-weekend.sh --fresh
@@ -261,8 +267,9 @@ sh ./termux/install-guide-cron.sh
 
 The guide installer owns only its marked block, preserves unrelated crontab
 lines, saves the original crontab once as
-`~/.cache/crontab/crontab.before-guide`, and schedules one 16:30
-`Europe/Madrid` invocation. It creates no service or resident process.
+`~/.cache/crontab/crontab.before-guide`, and schedules the 09:02 guide sync plus
+09:42/11:42 course-notification one-shots in `Europe/Madrid`. It creates no
+service or resident process.
 
 This idempotent earthquake installer owns only its marked block and saves the
 original crontab once as `~/.cache/crontab/crontab.before-earthquakes`. Minute

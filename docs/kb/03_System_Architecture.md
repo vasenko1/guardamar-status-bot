@@ -138,16 +138,19 @@ and the verified standard fare, then reconciles the complete guide graph. Its
 narrow Let's Encrypt issuer recovery remains limited to the documented Bus
 Sigüenza chain fault and preserves normal TLS and hostname verification.
 
-A separate 16:30 `sync-guide` process reads Aqualider's public SimplyBook
+A separate 09:02 `sync-guide` process reads Aqualider's public SimplyBook
 `/v2/service/` and `/v2/provider/` JSON endpoints sequentially. It accepts only
 the exact HTTPS host, bounded JSON and an internally reciprocal service/provider
-schema. One compact `state/guide.json` stores the last-good normalized catalogue
-and the seasonal-notice delivery marker; raw source responses are not stored.
+schema. One compact `state/guide.json` stores bounded last-good normalized
+guide-source snapshots, source-attempt markers, the reconciliation-success
+day, and the seasonal-notice delivery marker; raw source responses are not
+stored.
 The first successful catalogue read is a silent baseline. A catalogue diff is
 stored and logged but does not itself prove registration availability and does
 not create a public programme alert.
 
-The same 16:30 process reconciles the existing guide graph. On 15 June and 15
+The same 09:02 process reconciles the existing guide graph and records a
+success marker only after card reconciliation. On 15 June and 15
 September it may publish one next-day municipal-pool season notice from the fixed
 calendar. New-message delivery retries only explicit Telegram rate limits;
 ambiguous delivery is recorded rather than automatically resent. There is no
@@ -180,7 +183,7 @@ process-local and are discarded on exit.
   pending; three warning-only AEMET checks per day
 - Up to five short evening electricity attempts; success-only state makes
   later invocations no-ops after the first publication
-- One daily 05:00 transport sync and one daily 16:30 guide/catalog sync; both
+- One daily 05:00 transport sync and one daily 09:02 guide/catalog sync; both
   are short-lived and reconcile the same pinned Telegram graph
 - Optional lightweight operator listener with one idle Telegram long poll
 - One event loop with bounded asynchronous I/O

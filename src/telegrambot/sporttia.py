@@ -634,6 +634,20 @@ def valid_sporttia_snapshot(value) -> bool:
         ):
             if not isinstance(item.get(flag), bool):
                 return False
+    observed_source_ids = value.get("observed_source_ids")
+    if observed_source_ids is not None:
+        if (
+            not isinstance(observed_source_ids, list)
+            or len(observed_source_ids) > 128
+            or len(set(observed_source_ids)) != len(observed_source_ids)
+            or not all(
+                isinstance(source_id, int)
+                and not isinstance(source_id, bool)
+                and source_id in seen
+                for source_id in observed_source_ids
+            )
+        ):
+            return False
     return True
 
 
@@ -673,6 +687,11 @@ def merge_sporttia_catalog(
     )
     return {
         "observed_at": current["observed_at"],
+        "observed_source_ids": sorted(
+            item["source_id"]
+            for item in current["activities"]
+            if date.fromisoformat(item["season_end"]) >= local_day
+        ),
         "activities": activities,
     }
 

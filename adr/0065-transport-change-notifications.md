@@ -2,65 +2,63 @@
 
 ## Status
 
-Accepted
+Accepted, amended 2026-09-20
 
 ## Context
 
-The transport guide is already synchronized at 05:00 Europe/Madrid. Urban
-lines 1 and 2 are sourced from official municipal PDFs, while the airport
-service is sourced from the date-specific Bus Sigüenza planner and its official
-fare PDF. Updating the pinned guide in place is useful, but users do not notice
-meaningful changes unless a separate public message is published.
-
-The sources have different semantic precision. For urban PDFs the application
-can prove that the accepted document and rendered timetable changed, but it
-does not parse individual departures, stops, or route changes. The airport
-planner exposes structured departures for one exact service date, and the fare
-parser intentionally extracts only the standard `TARIFA BASE GENERAL` fare for
-Guardamar del Segura to Aeropuerto.
+The transport guide is synchronized at 05:00 Europe/Madrid. The bot has
+machine-comparable accepted state for municipal lines 1 and 2 and for the
+Guardamar to Alicante-Elche airport service. Other transport cards remain
+useful navigation, but a card alone is not evidence that its timetable, route
+or fare can be monitored safely.
 
 ## Decision
 
-- Keep the existing 05:00 transport synchronization as the source of accepted
-  data, then collect notification candidates immediately afterwards.
-- Publish at most one aggregated public transport notification at 12:30
-  Europe/Madrid.
-- Use the fixed heading `🚌 Транспорт · изменения` and the existing shared
-  Guardamar footer.
-- Urban lines notify only when the accepted rendered timetable image changes.
-  A PDF hash change with the same rendered image is silent. The text says only
-  that the municipality published a new timetable; it never claims a specific
-  trip, stop, or route change.
-- Airport departure changes are compared only for the same service date. Each
-  morning the collector stores tomorrow's structured departures; the next
-  morning that baseline is compared with the newly accepted schedule for that
-  exact date. Ordinary weekday/weekend differences therefore cannot become
-  false change notifications.
-- Airport fare notifications compare only the parsed standard base fare. Card,
-  pass, senior, discount, or other tariff classes are not inferred or shown.
-  The effective date controls whether the message says the new fare will apply
-  in the future or already applies.
-- Multiple urban, airport, and fare changes are aggregated into one message.
-- The first run only establishes baselines and never publishes the already
-  existing state as a new change.
-- A pending notification that was never sent at 12:30 expires the next morning
-  instead of being delivered late. Normal collection then continues from the
-  newest accepted state.
-- Before Telegram delivery the state is marked uncertain. Automatic resend is
-  disabled when the send result is ambiguous, preventing duplicate public
-  posts after a crash or network failure. An explicit rate-limit rejection may
-  be retried because Telegram did not accept the message.
-- Road closures, temporary diversions, mobility measures, and emergency
-  transport disruptions remain outside this subsystem.
+- Keep the 05:00 transport synchronization and collect notification candidates
+  from its accepted state immediately afterwards.
+- Publish at 08:42 Europe/Madrid.
+- Track only routes for which accepted comparable state exists. Today this is
+  line 1, line 2 and the airport route. Alicante, Elche, the south/Zenia route,
+  Orihuela, hospital and university cards stay notification-silent until a
+  bounded reliable adapter is implemented.
+- Store transport changes as small domain events. Current event families are
+  timetable/departure changes, deterministic reviewed seasonal-period changes
+  and the standard airport base-fare change. A future structured route adapter
+  can add route-change events without adding another notification subsystem.
+- Group events by resident meaning, not by source. One run may therefore send
+  separate messages for schedule changes, route changes and fare changes.
+- Link each named route directly to its current Telegram route card. Event
+  state stores stable route/card keys, never Telegram URLs; links are resolved
+  from `PinnedGuideState` immediately before sending.
+- A missing/uncertain route card fails closed. Do not fall back to an external
+  planner URL.
+- Urban lines notify on a changed accepted rendered timetable image. PDF
+  metadata/hash churn with the same rendered image is silent. Because the PDF
+  is not semantically parsed, the public message never invents the exact
+  changed departure, stop or route.
+- Reviewed line 1/2 cards also have a deterministic summer/regular service
+  period. A real transition can notify even when the timetable image itself is
+  unchanged. An unreviewed new PDF does not support this claim.
+- For an unreviewed urban PDF, the card must not display an old hard-coded
+  route summary as authoritative; it points users to the accepted timetable
+  image for current route/stops/times.
+- Airport departure changes are compared only for the same service date using
+  the date-specific Bus Sigüenza planner baseline.
+- Airport fare notifications compare only the parsed standard
+  `TARIFA BASE GENERAL`; discount/card/senior fares are not inferred.
+- A first baseline is silent. Source/card disappearance alone never means
+  cancellation.
+- Multi-message delivery keeps per-message `pending/uncertain/sent` state.
+  Before each Telegram send that item is persisted as uncertain. HTTP 429 may
+  safely return it to pending; an ambiguous result blocks automatic resend
+  without duplicating already-sent sibling messages.
+- Temporary closures, emergency diversions and event traffic measures stay in
+  the existing mobility/emergency subsystem.
 
 ## Consequences
 
-The channel receives human-readable transport updates without pretending that
-urban PDFs provide structured semantic diffs. Airport departure notifications
-remain precise because comparisons are date-for-date, at the cost of one extra
-planner request each morning to establish the following day's baseline.
-
-A missed tomorrow-baseline request means exact airport departure-change
-notification is skipped for the following day rather than guessed. A missed
-12:30 publication is not replayed late on a later day. The pinned transport
-guide still updates normally.
+Users receive short semantic transport notices that link directly to the
+affected route card. Coverage grows only when a route acquires a source whose
+facts can actually be compared. The design remains one short-lived state
+machine with no daemon, database, OCR route inference or generic notification
+framework.

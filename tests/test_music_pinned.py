@@ -103,6 +103,25 @@ class MusicPinnedRenderingTests(unittest.TestCase):
         self.assertIn("⬅️ <a href=\"https://t.me/c/123/7500\"><b>К списку мест</b></a>", text)
         self.assertTrue(text.endswith(FOOTER))
 
+    def test_school_card_shows_general_matricula_only_in_its_window(self):
+        active = build_music_school(
+            {},
+            None,
+            CATALOG,
+            date(2026, 9, 7),
+        )
+        self.assertIn("Matrícula Escuela de Música", active)
+        self.assertIn("https://cutt.ly/AMG_Matricula_EM_2627", active)
+
+        expired = build_music_school(
+            {},
+            None,
+            CATALOG,
+            date(2026, 9, 8),
+        )
+        self.assertNotIn("Matrícula Escuela de Música", expired)
+        self.assertNotIn("AMG_Matricula_EM_2627", expired)
+
     def test_activities_index_adds_one_visual_music_group(self):
         text = build_activities(
             music_links={
@@ -158,6 +177,58 @@ class MusicPinnedRecoveryTests(unittest.IsolatedAsyncioTestCase):
                 if call.args[0] == result[key]
             ][-1]
             self.assertIn(school_link, rendered)
+
+
+
+    async def test_final_matricula_replacement_relinks_music_cards(self):
+        chat_id = "-100123"
+        messages = {
+            key: number for number, key in enumerate(PINNED_MESSAGE_KEYS, start=1)
+        }
+        for offset, key in enumerate(MUSIC_ACTIVITY_KEYS):
+            messages[key] = 300 + offset
+        school_id = messages["music_school"]
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = PinnedGuideState(Path(directory) / "pinned.json")
+            state.write(chat_id, messages)
+            missing_once = True
+
+            async def edit(message_id, message):
+                nonlocal missing_once
+                if (
+                    message_id == school_id
+                    and "Matrícula Escuela de Música" in message
+                    and missing_once
+                ):
+                    missing_once = False
+                    raise TelegramError(
+                        "missing",
+                        retryable=False,
+                        code="MESSAGE-NOT-FOUND",
+                        status=400,
+                    )
+
+            edit_mock = AsyncMock(side_effect=edit)
+            result = await publish_pinned_guide(
+                chat_id,
+                state,
+                AsyncMock(return_value=999),
+                edit_mock,
+                AsyncMock(),
+                music_school_catalog=CATALOG,
+                local_day=date(2026, 9, 7),
+            )
+
+        self.assertEqual(result["music_school"], 999)
+        school_link = telegram_message_link(chat_id, 999)
+        for key in MUSIC_ACTIVITY_KEYS:
+            rendered = [
+                call.args[1]
+                for call in edit_mock.await_args_list
+                if call.args[0] == result[key]
+            ]
+            self.assertTrue(any(school_link in value for value in rendered))
 
 
 if __name__ == "__main__":

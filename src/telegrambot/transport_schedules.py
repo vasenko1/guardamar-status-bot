@@ -313,7 +313,11 @@ def build_line_caption(
         )
     else:
         period = "🗓 Актуальные дни и время отправления указаны на изображении."
-    summary = definition.reviewed_summary if reviewed else definition.route
+    summary = (
+        definition.reviewed_summary
+        if reviewed
+        else "Актуальный маршрут, остановки, дни и время отправления указаны на изображении."
+    )
     note = f"\n\n{definition.reviewed_note}" if reviewed else ""
     message = with_footer(
         f"🚌 <b>Городской автобус · {definition.label}</b>\n"

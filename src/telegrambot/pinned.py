@@ -616,6 +616,8 @@ def build_molivent(
 def build_music_school(
     music_links: Optional[Mapping[str, str]] = None,
     places_link: Optional[str] = None,
+    catalog: Optional[Mapping[str, object]] = None,
+    local_day: Optional[date] = None,
 ) -> str:
     """Build the durable school card shared by music activity cards."""
 
@@ -643,6 +645,36 @@ def build_music_school(
         for key, link in linked:
             emoji, label = MUSIC_ACTIVITY_META[key]
             lines.append(f"{emoji} {_direct_link(label, link)}")
+
+    if catalog is not None:
+        if local_day is None:
+            raise ValueError("local_day is required with music-school catalogue")
+        registration = catalog.get("school_registration")
+        if isinstance(registration, Mapping):
+            start_raw = registration.get("start")
+            end_raw = registration.get("end")
+            url = registration.get("url")
+            if (
+                isinstance(start_raw, str)
+                and isinstance(end_raw, str)
+                and isinstance(url, str)
+                and url
+            ):
+                start = date.fromisoformat(start_raw)
+                end = date.fromisoformat(end_raw)
+                if start <= local_day <= end:
+                    lines.extend([
+                        "",
+                        "📝 <b>Matrícula Escuela de Música:</b> "
+                        f"до {_format_date_ru(end_raw)}",
+                        f'<a href="{html.escape(url, quote=True)}"><b>Открыть форму записи</b></a>',
+                    ])
+                elif local_day < start:
+                    lines.extend([
+                        "",
+                        "📝 <b>Следующая matrícula:</b> "
+                        f"{_format_date_ru(start_raw)} — {_format_date_ru(end_raw)}",
+                    ])
     return _with_back_link(
         with_footer("\n".join(lines)),
         "К списку мест",
@@ -1824,4 +1856,72 @@ async def publish_pinned_guide(
             chat_id, messages, state, send, edit, managed_elsewhere
         )
         await pin(messages["root"])
+    if music_school_catalog is not None:
+        assert local_day is not None
+        music_links = {
+            key: telegram_message_link(chat_id, messages[key])
+            for key in MUSIC_ACTIVITY_KEYS
+            if key in messages
+        }
+        previous_school_id = messages.get("music_school")
+        await _upsert(
+            "music_school",
+            build_music_school(
+                music_links,
+                _known_link(chat_id, messages, "places"),
+                music_school_catalog,
+                local_day,
+            ),
+            messages,
+            state,
+            chat_id,
+            send,
+            edit,
+        )
+        if messages.get("music_school") != previous_school_id:
+            school_link = _known_link(chat_id, messages, "music_school")
+            activities_link = _known_link(chat_id, messages, "activities")
+            for key in MUSIC_ACTIVITY_KEYS:
+                await _upsert(
+                    key,
+                    build_music_activity(
+                        key,
+                        music_school_catalog,
+                        local_day,
+                        activities_link,
+                        school_link,
+                    ),
+                    messages,
+                    state,
+                    chat_id,
+                    send,
+                    edit,
+                )
+            await _reconcile_messages(
+                chat_id,
+                messages,
+                state,
+                send,
+                edit,
+                (*managed_elsewhere, "music_school"),
+            )
+            music_links = {
+                key: telegram_message_link(chat_id, messages[key])
+                for key in MUSIC_ACTIVITY_KEYS
+                if key in messages
+            }
+            await _upsert(
+                "music_school",
+                build_music_school(
+                    music_links,
+                    _known_link(chat_id, messages, "places"),
+                    music_school_catalog,
+                    local_day,
+                ),
+                messages,
+                state,
+                chat_id,
+                send,
+                edit,
+            )
     return messages
