@@ -49,7 +49,7 @@ from .models import (
 
 LOGGER = logging.getLogger(__name__)
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
-SAFEBEACH_SEASON_START = (6, 20)
+SAFEBEACH_SEASON_START = (6, 15)
 SAFEBEACH_SEASON_END = (9, 15)
 _ROUTINE_EVENT_TITLES = frozenset({
     "actividades del centro social juvenil",
