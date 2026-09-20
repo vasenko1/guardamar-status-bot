@@ -125,30 +125,30 @@ class ParkingSeasonTests(unittest.TestCase):
             with self.subTest(local_day=local_day):
                 self.assertEqual(_parking_notice_key(local_day), expected)
 
-    def test_paid_notice_copy_links_beach_season_and_parking_card(self):
+    def test_paid_notice_copy_is_parking_only(self):
         text = _parking_notice_text(
             "2026:paid",
             "-100123",
             {"parking": 104},
         )
-        self.assertIn("Летний режим: пляжи и парковка", text)
+        self.assertIn("с завтрашнего дня платно", text)
         self.assertIn("С <b>15 июня</b>", text)
-        self.assertIn("SafeBeach", text)
         self.assertIn("10:00 до 20:00", text)
         self.assertIn("https://t.me/c/123/104", text)
+        self.assertNotIn("SafeBeach", text)
+        self.assertNotIn("Пляж", text)
 
-    def test_free_notice_copy_links_beach_season_and_parking_card(self):
+    def test_free_notice_copy_is_parking_only(self):
         text = _parking_notice_text(
             "2026:free",
             "-100123",
             {"parking": 104},
         )
-        self.assertIn("Летний режим: пляжи и парковка завершаются", text)
-        self.assertIn("<b>15 сентября</b>", text)
-        self.assertIn("<b>16 сентября</b>", text)
-        self.assertIn("SafeBeach", text)
-        self.assertIn("сезонная синяя зона снова бесплатна", text)
+        self.assertIn("с завтрашнего дня бесплатно", text)
+        self.assertIn("С <b>16 сентября</b>", text)
         self.assertIn("https://t.me/c/123/104", text)
+        self.assertNotIn("SafeBeach", text)
+        self.assertNotIn("Пляж", text)
 
     def test_ora_url_policy_is_exact_https(self):
         self.assertTrue(
@@ -299,6 +299,24 @@ class GuideStateTests(unittest.TestCase):
 
 class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
+        self.bathing_water_fetch = AsyncMock(
+            side_effect=lambda now: {
+                "observed_at": now.isoformat(),
+                "season_year": now.year,
+                "season_start": f"{now.year}-06-01",
+                "season_end": f"{now.year}-09-15",
+                "latest_report_start": None,
+                "latest_report_end": None,
+                "latest_report_url": None,
+            }
+        )
+        self.bathing_water_patch = patch(
+            "telegrambot.guide.fetch_bathing_water_snapshot",
+            new=self.bathing_water_fetch,
+        )
+        self.bathing_water_patch.start()
+        self.addCleanup(self.bathing_water_patch.stop)
+
         self.sporttia_fetch = AsyncMock(
             side_effect=lambda now: {
                 "observed_at": now.isoformat(),
@@ -463,6 +481,33 @@ class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(self.sporttia_fetch.await_count, 1)
             saved = GuideState(Path(directory) / "guide.json").read()
             self.assertEqual(saved["sporttia_last_attempt_day"], "2026-09-16")
+
+    async def test_bathing_water_is_attempted_at_most_once_per_local_day(self):
+        with tempfile.TemporaryDirectory() as directory:
+            moment = datetime(2026, 9, 16, 9, 2, tzinfo=MADRID)
+            later = datetime(2026, 9, 16, 19, 45, tzinfo=MADRID)
+            current = snapshot(moment)
+            publish = AsyncMock(return_value=self._pinned_messages())
+            with (
+                patch.dict("os.environ", self._environment(directory), clear=False),
+                patch(
+                    "telegrambot.guide.fetch_aqualider_catalog",
+                    new=AsyncMock(return_value=current),
+                ),
+                patch("telegrambot.guide.publish_pinned_guide", new=publish),
+            ):
+                await sync_guide(moment)
+                await sync_guide(later)
+            self.assertEqual(self.bathing_water_fetch.await_count, 1)
+            saved = GuideState(Path(directory) / "guide.json").read()
+            self.assertEqual(
+                saved["bathing_water_last_attempt_day"],
+                "2026-09-16",
+            )
+            self.assertEqual(
+                saved["bathing_water_snapshot"]["season_start"],
+                "2026-06-01",
+            )
 
     async def test_music_school_is_attempted_at_most_once_per_local_day(self):
         with tempfile.TemporaryDirectory() as directory:
