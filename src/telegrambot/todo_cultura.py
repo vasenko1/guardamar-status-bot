@@ -1412,7 +1412,6 @@ def _read_program_window(
                 sha256=hashlib.sha256(text.encode("utf-8")).hexdigest(),
                 source_url=link,
                 modified=modified,
-                admissions=_admissions(rendered, local_day),
                 dates=pending,
                 standalone=True,
             ))
