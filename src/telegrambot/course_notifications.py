@@ -142,6 +142,22 @@ def _atomic_write(path: Path, value: Mapping[str, Any]) -> None:
         raise
 
 
+def _valid_registrations(value: Any) -> bool:
+    if not isinstance(value, list) or len(value) > 16:
+        return False
+    for item in value:
+        if not isinstance(item, dict) or set(item) != {"start", "end"}:
+            return False
+        try:
+            start = date.fromisoformat(item["start"])
+            end = date.fromisoformat(item["end"])
+        except (KeyError, TypeError, ValueError):
+            return False
+        if end < start:
+            return False
+    return True
+
+
 def _valid_record(record: Any) -> bool:
     if not isinstance(record, dict):
         return False
@@ -183,19 +199,8 @@ def _valid_record(record: Any) -> bool:
         or not all(value is None or isinstance(value, str) for value in period)
     ):
         return False
-    registrations = record.get("registrations")
-    if not isinstance(registrations, list) or len(registrations) > 16:
+    if not _valid_registrations(record.get("registrations")):
         return False
-    for item in registrations:
-        if not isinstance(item, dict) or set(item) != {"start", "end"}:
-            return False
-        try:
-            start = date.fromisoformat(item["start"])
-            end = date.fromisoformat(item["end"])
-        except (KeyError, TypeError, ValueError):
-            return False
-        if end < start:
-            return False
     if not isinstance(record.get("until_full"), bool):
         return False
     conditions = record.get("conditions")
@@ -212,10 +217,57 @@ def _valid_event(event: Any) -> bool:
     for field in ("type", "record_id", "course_key", "card_key", "title", "emoji"):
         if not isinstance(event.get(field), str) or not event[field]:
             return False
-    if event["type"] not in EVENT_TYPES:
+    event_type = event["type"]
+    if event_type not in EVENT_TYPES:
         return False
     group = event.get("group")
-    return group is None or isinstance(group, str)
+    if group is not None and not isinstance(group, str):
+        return False
+
+    if event_type in {
+        "registration_open",
+        "registration_close",
+        "registration_single_day",
+    }:
+        try:
+            start = date.fromisoformat(str(event["start"]))
+            end = date.fromisoformat(str(event["end"]))
+        except (KeyError, ValueError):
+            return False
+        return (
+            end >= start
+            and isinstance(event.get("until_full"), bool)
+            and isinstance(event.get("date_event_id"), str)
+            and bool(event["date_event_id"])
+        )
+
+    if event_type == "registration_changed":
+        return (
+            _valid_registrations(event.get("old_registrations"))
+            and _valid_registrations(event.get("new_registrations"))
+            and isinstance(event.get("old_until_full"), bool)
+            and isinstance(event.get("new_until_full"), bool)
+        )
+
+    if event_type == "course_changed":
+        fields = event.get("changed_fields")
+        allowed = {
+            "schedule",
+            "venue",
+            "audience",
+            "period",
+            "season",
+            "conditions",
+        }
+        return (
+            isinstance(fields, list)
+            and bool(fields)
+            and len(fields) <= len(allowed)
+            and len(set(fields)) == len(fields)
+            and all(field in allowed for field in fields)
+        )
+
+    return True
 
 
 def _valid_pending(value: Any) -> bool:
