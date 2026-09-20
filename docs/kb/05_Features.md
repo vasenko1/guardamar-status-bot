@@ -211,6 +211,31 @@ Morning Digest. The AEMET Centro / La Roqueta product remains the morning
 source for sea temperature and sea state; no missing SafeBeach flag is inferred
 or substituted into the morning message.
 
+### Risk-message contract
+
+The same normalized official risk state has two presentation modes.
+
+The Morning Digest is intentionally terse. A material Previfoc or CCE state may
+add only one compact line per independent risk, with no explanation paragraph,
+for example:
+
+```text
+🔥 Пожарная опасность: высокая.
+⚡ Сухие грозы: высокий риск.
+🌊 Гидрологическая опасность: повышена.
+```
+
+Do not add routine all-clear lines merely to show that a source was checked.
+Forest-fire danger and dry-thunderstorm risk are separate facts and may appear
+independently.
+
+A standalone transition message may be longer and explain what changed, what
+the official state means for people, any directly supported practical action,
+and the authority source. Escalation, a material new high-risk state, and an
+important downgrade/clearance may each justify one standalone transition.
+When a prior dangerous standalone state was public, its official downgrade or
+end must not leave that stale warning uncorrected.
+
 ### Daily beach root
 
 During the local beach season, verified SafeBeach or explicit Mayor bathing
