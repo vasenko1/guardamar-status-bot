@@ -317,6 +317,36 @@ class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
                 Path(directory, "guide.json").read_text(encoding="utf-8")
             )
             self.assertEqual(saved["aqualider_catalog"], current)
+            self.assertEqual(
+                saved["last_successful_sync_day"],
+                moment.date().isoformat(),
+            )
+
+    async def test_failed_card_reconciliation_does_not_leave_success_marker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            moment = datetime(2026, 9, 16, 9, 2, tzinfo=MADRID)
+            current = snapshot(moment)
+            state = GuideState(Path(directory) / "guide.json")
+            state.write({
+                "version": 1,
+                "last_successful_sync_day": moment.date().isoformat(),
+            })
+            failure = StateError("pinned reconciliation failed")
+            with (
+                patch.dict("os.environ", self._environment(directory), clear=False),
+                patch(
+                    "telegrambot.guide.fetch_aqualider_catalog",
+                    new=AsyncMock(return_value=current),
+                ),
+                patch(
+                    "telegrambot.guide.publish_pinned_guide",
+                    new=AsyncMock(side_effect=failure),
+                ),
+            ):
+                with self.assertRaises(StateError):
+                    await sync_guide(moment)
+            saved = state.read()
+            self.assertNotIn("last_successful_sync_day", saved)
 
     async def test_sporttia_is_attempted_at_most_once_per_local_day(self):
         with tempfile.TemporaryDirectory() as directory:
