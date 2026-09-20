@@ -37,6 +37,21 @@ class WeekendTermuxTests(unittest.TestCase):
             )
             return result, crontab_state.read_text(encoding="utf-8")
 
+    def test_installer_removes_legacy_unmanaged_weekend_jobs(self):
+        weekend = ROOT / "termux" / "run-weekend.sh"
+        legacy = (
+            f"0,20 18 * * 5 {weekend}\n"
+            f"0 19 * * 5 {weekend}\n"
+        )
+
+        result, installed = self._install(legacy)
+
+        self.assertEqual(result.returncode, 0)
+        self.assertNotIn("0,20 18 * * 5", installed)
+        self.assertNotIn("0 19 * * 5", installed)
+        self.assertIn("15 19 * * 5", installed)
+        self.assertIn("15 20 * * 5", installed)
+
     def test_installer_is_idempotent_and_preserves_other_jobs(self):
         unrelated = "12 3 * * * /other/bot.sh\n"
         first, installed = self._install(unrelated)
@@ -45,5 +60,8 @@ class WeekendTermuxTests(unittest.TestCase):
         self.assertEqual((first.returncode, second.returncode), (0, 0))
         self.assertEqual(installed, reinstalled)
         self.assertIn(unrelated.strip(), installed)
-        self.assertEqual(installed.count("0,20 18 * * 5"), 1)
+        self.assertEqual(installed.count("15 19 * * 5"), 1)
+        self.assertIn("run-weekend.sh --fresh", installed)
+        self.assertEqual(installed.count("15 20 * * 5"), 1)
+        self.assertNotIn("0,20 18 * * 5", installed)
         self.assertIn("# BEGIN guardamar-status weekend digest", installed)

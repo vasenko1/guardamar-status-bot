@@ -486,16 +486,26 @@ state a price, so the digest makes no free-admission claim.
 Todo Cultura is queried through its bounded public WordPress REST API during
 the municipal refresh. One metadata page advances a five-minute-overlap cursor
 and maintains a rolling window from today through six days ahead. Up to six
-dated programme candidates are downloaded in at most two size-bounded batches
-of four records, with extra priority
-for explicit museum, child, youth, educational, workshop, and guided-visit
-signals; only new date sections enter the existing structured extractor. Already covered
-dates are shared across duplicate programme reproductions, while a later
+dated detail candidates are downloaded in at most two size-bounded batches of
+four records, while at most three programme inputs reach structured extraction.
+The event card's own title/permalink classifies locality before detail: cards
+whose identity names only another municipality are discarded even when their
+article body mentions Guardamar; an explicit multi-city card remains eligible
+only when Guardamar is one of its primary localities. Unknown standalone cards
+fail closed.
+
+Attributed `Ayuntamiento de Guardamar` / `agenda municipal` reproductions keep
+the existing dated-section extractor and participation/admission enrichment.
+A local standalone card uses a separate Guardamar-scoped structured extractor
+so another city's occurrence cannot be promoted merely from campaign text.
+Within the same rolling date, explicit local and more date-specific cards are
+considered before broad programme copies, while the existing usefulness score
+still favors actionable participation/admission detail. Already covered dates
+are shared across duplicate programme reproductions, while a later
 `modified_gmt` reopens the affected date. Metadata without a discoverable date
-does not trigger a full download. The adapter rejects unattributed articles,
-oversized sections, redirects outside the source hosts and malformed JSON.
-Supplemental results have lower merge priority than official municipal HTML
-and Agenda Guardamar; absence from Todo Cultura never means cancellation.
+does not trigger a full download. Supplemental results have lower merge
+priority than official municipal HTML and Agenda Guardamar; absence from Todo
+Cultura never means cancellation.
 
 A nonempty model response is no longer sufficient to mark a programme date
 covered: each independent timed row must have a normalized occurrence. A

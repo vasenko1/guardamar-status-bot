@@ -587,6 +587,63 @@ async def extract_agenda_text_events(
     )
 
 
+def _extract_guardamar_standalone_events(
+    api_key: str,
+    source_text: str,
+    expected_dates: Sequence[date],
+) -> Dict[str, Any]:
+    source_text = " ".join(source_text.split())
+    if not 1 <= len(source_text) <= MAX_SOURCE_CHARACTERS:
+        raise GeminiError(
+            "Todo Cultura event text has an invalid size",
+            code="SOURCE-SIZE",
+            description="текст отдельного мероприятия имеет неверный размер",
+        )
+    dates = [value.isoformat() for value in expected_dates]
+    prompt = (
+        "Convert this Todo Cultura event article into structured event facts, "
+        "but return only occurrences explicitly taking place in Guardamar del "
+        "Segura. The article may describe a campaign spanning several "
+        "municipalities: ignore occurrences belonging only to other towns and "
+        "never turn a mere mention of Guardamar into a Guardamar event. "
+        "EXPECTED_DATES lists the only dates eligible for this article. For a "
+        "multi-municipality event, return only the Guardamar occurrence. "
+        "Preserve a place only when the article explicitly identifies that "
+        "place for Guardamar; a generic 'different locations' label or a place "
+        "for another municipality must be null. Preserve explicit dates and "
+        "times and do not infer missing facts. Make title_es concise and "
+        "self-contained, at most 120 characters. Use ISO YYYY-MM-DD dates and "
+        "HH:MM times. evidence_es must be one exact contiguous quotation from "
+        "SOURCE that supports the complete title, returned date, every returned "
+        "time, and the Guardamar location when one is returned. If the article "
+        "does not explicitly support a Guardamar occurrence on EXPECTED_DATES, "
+        "return an empty events array.\n\n"
+        f"EXPECTED_DATES: {json.dumps(dates)}\n"
+        "SOURCE:\n" + source_text
+    )
+    return _request_json(
+        api_key,
+        [{"text": prompt}],
+        AGENDA_EXTRACTION_SCHEMA,
+        8_000,
+    )
+
+
+async def extract_guardamar_standalone_events(
+    api_key: str,
+    source_text: str,
+    expected_dates: Sequence[date],
+) -> Dict[str, Any]:
+    """Structure one Todo Cultura article without assuming municipal scope."""
+
+    return await asyncio.to_thread(
+        _extract_guardamar_standalone_events,
+        api_key,
+        source_text,
+        tuple(expected_dates),
+    )
+
+
 def _translate_event_titles(
     api_key: str,
     titles: Sequence[str],

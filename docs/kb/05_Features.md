@@ -46,18 +46,21 @@ avoid an automatic duplicate because Telegram provides no idempotency key for
 ## Weekend events digest
 
 One optional Friday-evening message, «Афиша выходных», previews Saturday and
-Sunday. It is built only from the two existing normalized event catalogs and
-the recurring market rules; no other source is consulted and the Mayor
-channel is not checked. Each day renders under its own dated heading
+Sunday. It is built only from the existing normalized event catalogs and the
+recurring market rules; no new source is introduced and the Mayor channel is
+not checked. The primary Friday run first performs one best-effort refresh of
+the same event catalogs so late announcements can enter before publication.
+Each day renders under its own dated heading
 (`📅 Суббота, 15 августа:`) using the same bounded event renderer, ticket
 rows, and Google-Maps venue links as the Morning Digest. A day without
 verified events omits its heading; a weekend with no verified events sends
 no message. Missing weekend title translations are prepared inline through
 the same bounded cache; a provider outage degrades titles to normalized
-Spanish. Publication runs Friday at `18:00` with bounded retries at `18:20`
-and `19:00`, guarded by one atomic success marker in `state/weekend.json`
-keyed to the target Saturday. Only the publishing command fills missing
-weekend translations; `weekend-preview` reads the existing cache and prints
+Spanish. Publication runs Friday at `19:15` after that best-effort refresh, with
+one delivery-only retry at `20:15`, guarded by one atomic success marker in
+`state/weekend.json` keyed to the target Saturday. A successful first send
+makes the retry a no-op. Only the publishing command fills missing weekend
+translations; `weekend-preview` reads the existing cache and prints
 the message without
 Telegram or state changes. See ADR 0035.
 

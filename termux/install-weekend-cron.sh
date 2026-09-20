@@ -38,15 +38,19 @@ if ! awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" '
 fi
 
 printf '%s\n' \
-    "0,20 18 * * 5 $WEEKEND" \
-    "0 19 * * 5 $WEEKEND" \
+    "15 19 * * 5 $WEEKEND --fresh" \
+    "15 20 * * 5 $WEEKEND" \
     >"$JOBS"
 
 {
-    awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" '
+    awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" -v weekend="$WEEKEND" '
         NR == FNR { jobs[$0] = 1; next }
         $0 == begin { managed = 1; next }
         $0 == end { managed = 0; next }
+        !managed && (
+            $0 == "0,20 18 * * 5 " weekend ||
+            $0 == "0 19 * * 5 " weekend
+        ) { next }
         !managed && !($0 in jobs) { print }
     ' "$JOBS" "$CURRENT"
     printf '%s\n' \
