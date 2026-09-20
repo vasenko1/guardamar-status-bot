@@ -38,8 +38,8 @@ if ! awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" '
 fi
 
 printf '%s\n' \
-    "0,20 18 * * 5 $WEEKEND" \
-    "0 19 * * 5 $WEEKEND" \
+    "15 19 * * 5 $WEEKEND --fresh" \
+    "45 19 * * 5 $WEEKEND" \
     >"$JOBS"
 
 {
