@@ -19,6 +19,7 @@ from telegrambot.guide import (
     _normalize_services,
     _ora_schedule_matches,
     _parking_notice_key,
+    _parking_notice_text,
     _season_notice_key,
     _validate_cross_references,
     active_parking,
@@ -123,6 +124,16 @@ class ParkingSeasonTests(unittest.TestCase):
         for local_day, expected in cases.items():
             with self.subTest(local_day=local_day):
                 self.assertEqual(_parking_notice_key(local_day), expected)
+
+    def test_free_notice_copy_links_parking_card(self):
+        text = _parking_notice_text(
+            "2026:free",
+            "-100123",
+            {"parking": 104},
+        )
+        self.assertIn("с завтрашнего дня бесплатно", text)
+        self.assertIn("С <b>16 сентября</b>", text)
+        self.assertIn("https://t.me/c/123/104", text)
 
     def test_ora_url_policy_is_exact_https(self):
         self.assertTrue(
