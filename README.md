@@ -125,6 +125,8 @@ CRON_TZ=Europe/Madrid
 0 11,15,19 1-19 6 * /path/to/TelegramBot/termux/monitor-updates.sh
 0 11,15,19 15-30 9 * /path/to/TelegramBot/termux/monitor-updates.sh
 2 9 * * * /path/to/TelegramBot/termux/sync-guide.sh
+45 19 14 6 * /path/to/TelegramBot/termux/sync-guide.sh
+45 19 15 9 * /path/to/TelegramBot/termux/sync-guide.sh
 42 9,11 * * * /path/to/TelegramBot/termux/publish-course-notifications.sh
 30,35,45 20 * * * /path/to/TelegramBot/termux/run-electricity.sh
 0,20 21 * * * /path/to/TelegramBot/termux/run-electricity.sh
@@ -156,7 +158,9 @@ The validated Android deployment uses the scripts in `termux/`:
   title translations, and `termux/prepare-aemet.sh` at 07:15 to store one
   normalized same-day weather snapshot;
 - `termux/sync-guide.sh` at 09:02 to read the bounded places/activities source
-  baseline and reconcile the same pinned graph; `publish-course-notifications.sh`
+  baseline and reconcile the same pinned graph; the same one-shot runs at 19:45
+  on 14 June and 15 September to verify the live ORA schedule before a due
+  next-day Zona Azul transition notice; `publish-course-notifications.sh`
   runs at 09:42 with an 11:42 same-day retry opportunity;
 - `termux/monitor-earthquakes.sh` at minute 55 of every hour to check the
   official IGN GeoRSS feed for a new qualifying local event;
@@ -215,6 +219,8 @@ CRON_TZ=Europe/Madrid
 0 11,15,19 1-19 6 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
 0 11,15,19 15-30 9 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
 2 9 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-guide.sh
+45 19 14 6 * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-guide.sh
+45 19 15 9 * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-guide.sh
 42 9,11 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/publish-course-notifications.sh
 30,35,45 20 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity.sh
 0,20 21 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity.sh
@@ -267,9 +273,10 @@ sh ./termux/install-guide-cron.sh
 
 The guide installer owns only its marked block, preserves unrelated crontab
 lines, saves the original crontab once as
-`~/.cache/crontab/crontab.before-guide`, and schedules the 09:02 guide sync plus
-09:42/11:42 course-notification one-shots in `Europe/Madrid`. It creates no
-service or resident process.
+`~/.cache/crontab/crontab.before-guide`, and schedules the 09:02 guide sync,
+19:45 seasonal Zona Azul checks on 14 June / 15 September, plus 09:42/11:42
+course-notification one-shots in `Europe/Madrid`. It creates no service or
+resident process.
 
 This idempotent earthquake installer owns only its marked block and saves the
 original crontab once as `~/.cache/crontab/crontab.before-earthquakes`. Minute
