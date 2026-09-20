@@ -301,12 +301,15 @@ flag label and known flag color omit that beach. There is no internal retry,
 cookie state, raw-response cache, or status history. A page with no eligible
 record is a valid empty result, not a source error.
 
-SafeBeach is requested only inside the conservative local season from 20 June
-through 14 September, inclusive. Outside this window all operational
+SafeBeach is requested only inside the local product monitoring window from
+15 June through 15 September, inclusive. Outside this window all operational
 SafeBeach values are omitted, preventing a stale active record from exposing a
-winter flag. This is an operator-selected safety window, not a claim that the
-municipality uses immutable annual service dates. AEMET sea temperature and
-wave forecast remain available year-round.
+winter flag. The window is aligned with Guardamar's official seasonal Zona
+Azul period for a simple resident-facing summer transition; it is not a claim
+that every municipal beach service uses immutable or identical annual dates.
+SafeBeach's current-date, `hasActividad`, and `serviceEnded` checks remain
+mandatory inside the window. AEMET sea temperature and wave forecast remain
+available year-round.
 
 ## Approved Agenda Guardamar data
 
