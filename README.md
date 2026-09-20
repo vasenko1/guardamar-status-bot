@@ -42,7 +42,7 @@ with [docs/kb/00_Project_Overview.md](docs/kb/00_Project_Overview.md).
 - Python with `asyncio`
 - standard-library HTTP for sources and outbound Telegram delivery
 - one short-lived 07:30 process and bounded seasonal update checks
-- independent short 05:00 transport and 16:30 guide synchronizations
+- independent short 05:00 transport and 09:02 guide synchronizations
 - optional isolated listener for allowlisted private `/preview`
 - small local atomic JSON state per independent workflow
 - no Docker, PostgreSQL, webhooks, or heavy background services
