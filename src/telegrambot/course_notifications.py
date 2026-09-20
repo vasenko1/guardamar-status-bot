@@ -170,6 +170,7 @@ def _valid_record(record: Any) -> bool:
         "emoji",
         "group",
         "observed_day",
+        "fresh",
         "schedule",
         "venue",
         "audience",
@@ -191,6 +192,8 @@ def _valid_record(record: Any) -> bool:
     try:
         date.fromisoformat(record["observed_day"])
     except (TypeError, ValueError):
+        return False
+    if not isinstance(record.get("fresh"), bool):
         return False
     period = record.get("period")
     if period is not None and (
@@ -436,6 +439,7 @@ def _record(
     title: str,
     emoji: str,
     observed_day: str,
+    fresh: bool = True,
     group: Optional[str] = None,
     schedule: Optional[str] = None,
     venue: Optional[str] = None,
@@ -455,6 +459,7 @@ def _record(
         "emoji": emoji,
         "group": group,
         "observed_day": observed_day,
+        "fresh": fresh,
         "schedule": schedule,
         "venue": venue,
         "audience": audience,
@@ -510,11 +515,8 @@ def project_course_records(
                 title=title,
                 emoji=emoji,
                 group=_group_label(key, int(item["group_order"])),
-                observed_day=(
-                    observed
-                    if item["source_id"] in observed_ids
-                    else "1970-01-01"
-                ),
+                observed_day=observed,
+                fresh=item["source_id"] in observed_ids,
                 schedule=str(item["schedule"]),
                 venue=str(item["venue"]),
                 audience=item.get("audience"),
@@ -679,7 +681,7 @@ def _semantic_events(
 ) -> list[dict]:
     events: list[dict] = []
     for record in current.values():
-        if record["observed_day"] != local_day.isoformat():
+        if not record["fresh"] or record["observed_day"] != local_day.isoformat():
             continue
         previous = baseline.get(record["record_id"])
         if previous is None:
