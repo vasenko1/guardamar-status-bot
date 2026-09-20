@@ -24,8 +24,12 @@ fi
 exec >>"$LOG" 2>&1
 
 if [ "$MODE" = "--fresh" ]; then
-    "$SCRIPT_DIR/sync-municipal-events.sh" ||         echo "$(date '+%Y-%m-%d %H:%M:%S') WARNING municipal event refresh failed; using last-good state"
-    "$SCRIPT_DIR/sync-agenda-events.sh" ||         echo "$(date '+%Y-%m-%d %H:%M:%S') WARNING Agenda Guardamar refresh failed; using last-good state"
+    if ! "$SCRIPT_DIR/sync-municipal-events.sh"; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') WARNING municipal event refresh failed; using last-good state"
+    fi
+    if ! "$SCRIPT_DIR/sync-agenda-events.sh"; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') WARNING Agenda Guardamar refresh failed; using last-good state"
+    fi
 fi
 
 exec ./.venv/bin/python -m telegrambot weekend
