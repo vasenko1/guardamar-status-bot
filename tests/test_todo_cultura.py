@@ -147,6 +147,14 @@ Reservas de entradas: https://www.agendaguardamar.com/espectaculo/2/x.html
             ),
             "unknown",
         )
+        self.assertEqual(
+            _metadata_scope(
+                "Guardamar, evento: Actividad",
+                "https://todoculturavegabaja.es/eventos/"
+                "rojales-evento-actividad/",
+            ),
+            "unknown",
+        )
 
     def test_foreign_event_card_is_discarded_before_detail_download(self):
         metadata = [{
