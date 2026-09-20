@@ -39,16 +39,6 @@ MESSAGE_ORDER = (
     "new_courses",
     "course_changes",
 )
-EVENT_TYPES = frozenset({
-    "registration_open",
-    "registration_close",
-    "registration_single_day",
-    "registration_changed",
-    "new_course",
-    "new_group",
-    "new_season",
-    "course_changed",
-})
 EVENT_KINDS = {
     "registration_open": "registration_opening",
     "registration_single_day": "registration_opening",
@@ -221,7 +211,7 @@ def _valid_event(event: Any) -> bool:
         if not isinstance(event.get(field), str) or not event[field]:
             return False
     event_type = event["type"]
-    if event_type not in EVENT_TYPES:
+    if event_type not in EVENT_KINDS:
         return False
     group = event.get("group")
     if group is not None and not isinstance(group, str):
@@ -232,10 +222,14 @@ def _valid_event(event: Any) -> bool:
         "registration_close",
         "registration_single_day",
     }:
+        start_raw = event.get("start")
+        end_raw = event.get("end")
+        if not isinstance(start_raw, str) or not isinstance(end_raw, str):
+            return False
         try:
-            start = date.fromisoformat(str(event["start"]))
-            end = date.fromisoformat(str(event["end"]))
-        except (KeyError, ValueError):
+            start = date.fromisoformat(start_raw)
+            end = date.fromisoformat(end_raw)
+        except ValueError:
             return False
         return (
             end >= start
