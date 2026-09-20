@@ -26,14 +26,21 @@ called the official season for every beach service.
 
 ## Product conclusion
 
-The bot uses **15 June through 15 September, inclusive**, as its SafeBeach
-monitoring window so the resident-facing beach-status lifecycle and seasonal
-Zona Azul transition happen together.
+There is no single municipal date that should drive a user-facing
+"beach season" notification.
 
-This is deliberately a **product monitoring window**, not a claim that
-15 June–15 September is a universal official municipal beach season.
-SafeBeach data is still accepted only when the page is current and the record
-itself is active (`hasActividad`) and not ended (`serviceEnded`).
+Zona Azul keeps its own reviewed seasonal rule and its own resident
+notification. SafeBeach is an independent operational source: its data is
+accepted only when the page is current and the record itself is active
+(`hasActividad`) and not ended (`serviceEnded`). The current
+15 June–15 September request boundary remains only as an internal stale-data
+guard rail while off-season source behaviour is being reviewed; it is not
+presented as an official season and is not coupled to the parking notice.
+
+The annual bathing-water programme is also independent. Its current dates and
+latest weekly report are now discovered from the municipal programme index
+rather than hard-coded. Laboratory result interpretation remains deferred
+until a stable official machine-readable sample contract is verified.
 
 The outdoor municipal pool remains a separate lifecycle. The municipal sports
 page currently exposes a summer **2023** schedule from 16 June through
