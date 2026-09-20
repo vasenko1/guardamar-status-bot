@@ -201,14 +201,21 @@ pagination expose the likely filter fields:
 - `provinciaID`
 - `zonaID`
 
-Important freshness observation:
+Important freshness observations:
 
-- the historical table may lag the current day's operational Previfoc;
-- on 2026-09-20 the current 112 PDF was dated 20/09/2026 while the historical
-  table exposed data only through 19/09/2026.
+- the historical table is daily (one row per calendar date), not hourly;
+- on 2026-09-20 around 02:00 Europe/Madrid it still ended at 19/09/2026;
+- at the same time the operational Previfoc surface already exposed 20/09/2026
+  and 21/09/2026, i.e. current day plus next-day forecast;
+- official/administrative material states that the level is set daily, a
+  next-day Previfoc forecast is also issued, and the daily level may be
+  readjusted if conditions change;
+- multiple Previfoc/municipal fire-prevention documents state that the public
+  112 level is updated daily at approximately 17:00.
 
-Therefore the historical Excel/table must not be assumed to be the current-day
-operational source until this behavior is verified.
+Therefore the historical Excel/table is not the same freshness tier as the
+operational current/next-day Previfoc surface and must not be used as the
+primary current alert source unless future probing proves otherwise.
 
 Product decision: a historical-only Excel/table is **not needed** by the bot.
 It must not receive a cron job or network budget merely for analytics. Continue
@@ -222,19 +229,21 @@ Previfoc is a daily value, so hourly polling is unnecessary.
 
 Preferred model:
 
-1. Try once in the evening to acquire the next day's level for Guardamar zone 6.
-2. Validate the source's internal target date.
-3. If tomorrow is already available, store the normalized value and stop.
-4. If not, retry once early the next morning.
-5. After one valid value for the target date is stored, do not request it again
-   that day unless a future source contract explicitly supports revisions.
+1. Use the operational current/next-day Previfoc surface, not the historical
+   table, as the primary source target.
+2. Probe shortly after the documented approximate daily update time (~17:00)
+   to acquire the next day's Guardamar zone-6 level.
+3. Validate the source's explicit target date.
+4. If tomorrow is already available, store the normalized value and stop.
+5. If not, retry in a later free slot.
+6. Because official material allows same-day readjustment, do not hard-code
+   the value as immutable merely because the first daily value was obtained;
+   any implementation must define whether and how a later official revision is
+   detected without excessive polling.
 
-Candidate schedule under the current repository cron layout:
-
-- primary: 22:36 Europe/Madrid
-- fallback: 04:36 Europe/Madrid
-
-These times avoid current major scheduled jobs.
+Candidate scheduling should reuse the existing quiet `:19` minute when
+possible, e.g. a daily Previfoc acquisition attempt at 17:19 with a bounded
+later retry only if tomorrow's value is not yet available.
 
 Public-message policy is not finalized. Current product direction:
 
