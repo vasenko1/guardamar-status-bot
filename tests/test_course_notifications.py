@@ -1,6 +1,11 @@
+import json
+import tempfile
 import unittest
 from datetime import date
+from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
+from telegrambot.branding import FOOTER
 from telegrambot.course_notifications import (
     CourseNotificationError,
     _empty_state,
@@ -291,7 +296,7 @@ class CourseNotificationMessageTests(unittest.TestCase):
         self.assertIn("Открылась запись", message)
         self.assertIn("https://t.me/c/123/501", message)
         self.assertNotIn("sporttia", message.casefold())
-        self.assertEqual(message.count(FOOTER := "обЪявления Гуардамар"), 1)
+        self.assertEqual(message.count(FOOTER), 1)
 
     def test_closing_until_full_does_not_claim_absolute_deadline(self):
         event = {
@@ -348,6 +353,180 @@ class CourseNotificationMessageTests(unittest.TestCase):
         self.assertEqual(message.count("https://t.me/c/123/501"), 1)
         self.assertIn("расписание", message)
         self.assertIn("место занятий", message)
+
+
+
+class CourseNotificationDeliveryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_partial_batch_timeout_keeps_sent_sibling_and_blocks_resend(self):
+        old_judo = record(
+            registrations=[{"start": "2026-09-01", "end": "2026-09-19"}],
+        )
+        old_multi = record(
+            record_id="sporttia:2",
+            course_key="sporttia:multisport",
+            card_key="multisport",
+            title="Мультиспорт",
+            emoji="🏃",
+            registrations=[{"start": "2026-09-01", "end": "2026-09-25"}],
+            schedule="Вт/Чт · 17:00–18:00",
+        )
+        current_judo = record(
+            registrations=[{"start": "2026-09-01", "end": "2026-09-20"}],
+        )
+        current_multi = record(
+            record_id="sporttia:2",
+            course_key="sporttia:multisport",
+            card_key="multisport",
+            title="Мультиспорт",
+            emoji="🏃",
+            registrations=[{"start": "2026-09-01", "end": "2026-09-25"}],
+            schedule="Вт/Чт · 18:00–19:00",
+        )
+        initial = baseline_state(old_judo, old_multi)
+
+        from telegrambot.course_notifications import (
+            CourseNotificationError,
+            load_state,
+            sync_course_notifications,
+        )
+        from telegrambot.telegram import TelegramError
+
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "course.json"
+            state_path.write_text(
+                json.dumps(initial, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            timeout = TelegramError("timeout", retryable=True, code="TIMEOUT")
+            send = AsyncMock(side_effect=(901, timeout))
+            guide = {"last_successful_sync_day": "2026-09-20"}
+            current = {
+                current_judo["record_id"]: current_judo,
+                current_multi["record_id"]: current_multi,
+            }
+            with (
+                patch.dict(
+                    "os.environ",
+                    {
+                        "TELEGRAM_BOT_TOKEN": "token",
+                        "TELEGRAM_CHAT_ID": "-100123",
+                        "COURSE_NOTIFICATION_STATE_PATH": str(state_path),
+                    },
+                    clear=False,
+                ),
+                patch(
+                    "telegrambot.course_notifications.datetime"
+                ) as clock,
+                patch(
+                    "telegrambot.course_notifications.GuideState.read",
+                    return_value=guide,
+                ),
+                patch(
+                    "telegrambot.course_notifications.project_course_records",
+                    return_value=(current, {"sporttia"}),
+                ),
+                patch(
+                    "telegrambot.course_notifications.PinnedGuideState.read_payload",
+                    return_value={
+                        "messages": {"judo": 501, "multisport": 502},
+                        "uncertain_messages": [],
+                    },
+                ),
+                patch(
+                    "telegrambot.course_notifications.send_message",
+                    new=send,
+                ),
+            ):
+                from datetime import datetime
+                from zoneinfo import ZoneInfo
+
+                clock.now.return_value = datetime(
+                    2026, 9, 20, 9, 42, tzinfo=ZoneInfo("Europe/Madrid")
+                )
+                with self.assertRaises(TelegramError):
+                    await sync_course_notifications()
+
+                saved = load_state(state_path)
+                self.assertEqual(
+                    [item["status"] for item in saved["pending"]["messages"]],
+                    ["sent", "uncertain"],
+                )
+                self.assertEqual(
+                    saved["pending"]["messages"][0]["message_id"],
+                    901,
+                )
+
+                with self.assertRaises(CourseNotificationError):
+                    await sync_course_notifications()
+
+            self.assertEqual(send.await_count, 2)
+
+    async def test_429_keeps_current_message_pending_for_safe_retry(self):
+        old = record(
+            registrations=[{"start": "2026-09-01", "end": "2026-09-19"}],
+        )
+        current = record(
+            registrations=[{"start": "2026-09-01", "end": "2026-09-20"}],
+        )
+        initial = baseline_state(old)
+
+        from telegrambot.course_notifications import load_state, sync_course_notifications
+        from telegrambot.telegram import TelegramError
+
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "course.json"
+            state_path.write_text(
+                json.dumps(initial, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            limited = TelegramError(
+                "rate limited",
+                retryable=True,
+                status=429,
+                code="HTTP-429",
+            )
+            with (
+                patch.dict(
+                    "os.environ",
+                    {
+                        "TELEGRAM_BOT_TOKEN": "token",
+                        "TELEGRAM_CHAT_ID": "-100123",
+                        "COURSE_NOTIFICATION_STATE_PATH": str(state_path),
+                    },
+                    clear=False,
+                ),
+                patch("telegrambot.course_notifications.datetime") as clock,
+                patch(
+                    "telegrambot.course_notifications.GuideState.read",
+                    return_value={"last_successful_sync_day": "2026-09-20"},
+                ),
+                patch(
+                    "telegrambot.course_notifications.project_course_records",
+                    return_value=({current["record_id"]: current}, {"sporttia"}),
+                ),
+                patch(
+                    "telegrambot.course_notifications.PinnedGuideState.read_payload",
+                    return_value={
+                        "messages": {"judo": 501},
+                        "uncertain_messages": [],
+                    },
+                ),
+                patch(
+                    "telegrambot.course_notifications.send_message",
+                    new=AsyncMock(side_effect=limited),
+                ),
+            ):
+                from datetime import datetime
+                from zoneinfo import ZoneInfo
+
+                clock.now.return_value = datetime(
+                    2026, 9, 20, 9, 42, tzinfo=ZoneInfo("Europe/Madrid")
+                )
+                with self.assertRaises(TelegramError):
+                    await sync_course_notifications()
+
+            saved = load_state(state_path)
+            self.assertEqual(saved["pending"]["messages"][0]["status"], "pending")
 
 
 if __name__ == "__main__":
