@@ -23,6 +23,8 @@ official endpoints and lightweight access methods are validated.
 | Official marine service | Sea state and relevant marine warnings | High for its jurisdiction | API or published feed | Yes |
 | SafeBeach public Guardamar page | Active beach flags and jellyfish operational status | High when municipal lifeguards actively maintain it | Small structured payload embedded in the public page | Yes |
 | Civil protection or emergency authority | Safety warnings | Highest priority | Alert feed or official publication | Yes |
+| CCE — 112 Comunitat Valenciana | Active emergency and hydrological authority state relevant to Guardamar/Segura | Highest priority for authority decisions; complements rather than duplicates AEMET | Public `emergencias.jsf` plus current text-readable CCE PDF, checked by one bounded hourly watcher | Yes, narrow operational monitor |
+| Previfoc / Generalitat Valenciana (VAERSA ArcGIS) | Official zone-6 forest-fire preemergency plus dry-thunderstorm risk for Guardamar | High; responsible regional fire-prevention/emergency source | Tiny structured ArcGIS query for the current operational day; same-day level may be readjusted | Yes, narrow operational monitor |
 | Instituto Geografico Nacional (IGN) GeoRSS | Nearby recorded earthquakes | High; official Spanish seismic authority | One bounded public XML feed request per hour; deterministic 10 km and magnitude 2.7 filter | Yes, narrow standalone notice |
 | Policía Local Guardamar | Explicit mobility restrictions | High for direct official notices; publication is irregular | One bounded official HTML page and reviewed linked document | Yes |
 | Agenda Guardamar | Official ticketed events occurring today | High for listed Ayuntamiento events | 05:30 bounded HTML/Schema.org catalog refresh | Yes |
@@ -140,6 +142,43 @@ eight yellow, and the most expensive eight red. A price level tied across a
 third boundary is never split between colors, so tie-heavy days may contain
 unequal group sizes. If both boundaries collapse to one value, that shared
 price level is yellow.
+
+## Approved CCE and Previfoc risk sources
+
+AEMET and Previfoc have different product roles. AEMET Meteoalerta has a
+general `Tormentas` warning whose criteria cover strong electrical activity,
+heavy rain, strong wind and hail. It does **not** expose a separate operational
+`dry thunderstorm` warning state. AEMET also publishes its own meteorological
+forest-fire danger model, but that six-class model is not the Generalitat's
+official fire-preemergency state.
+
+For Guardamar, use Previfoc zone 6 as the operational fire source. The official
+VAERSA ArcGIS service exposes separate normalized fields for forest-fire risk
+(levels 1 low/medium, 2 high, 3 extreme) and dry-thunderstorm risk. Therefore a
+normal AEMET thunderstorm warning must never be treated as proof of a dry
+thunderstorm, and the Previfoc dry-thunderstorm field must never be inferred
+from AEMET rain/lightning data.
+
+Use CCE — 112 Comunitat Valenciana for official emergency/hydrological state.
+The small public `emergencias.jsf` page and the current CCE meteorological PDF
+are observations of one authority state and must be normalized/deduplicated
+before Telegram delivery. Ordinary CCE meteorological warning text must not
+duplicate AEMET.
+
+The CCE PDF check is independent of local AEMET rain/thunderstorm warnings.
+Hydrological deterioration in the lower Segura can originate upstream or from
+basin/reservoir operations, so absence of a local Guardamar AEMET warning is
+not a safe gate. One bounded hourly `check-112` invocation at minute `:19`
+may fetch the small HTML, the current PDF and the tiny Previfoc zone query,
+then publish at most one semantic state transition. Parse the PDF in memory
+through `pdftotext`; do not archive raw PDFs.
+
+Do not derive public flood danger from raw river height or flow. The public CHS
+and GOTA surfaces found in the 2026-09-20 investigation expose measurements,
+stations and GIS layers but no suitable ready current alert-state for the lower
+Segura. GOTA's threshold-rule configuration is authenticated. The national RAN
+hydrological alert system is documented as still under development. These
+sources remain research/manual context, not bot alert inputs.
 
 ## Approved AEMET products
 

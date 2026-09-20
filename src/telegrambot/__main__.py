@@ -51,6 +51,12 @@ from .earthquakes import (
     fetch_earthquakes,
     monitor_earthquakes,
 )
+from .emergency_risks import (
+    EmergencyRiskDeliveryUncertain,
+    EmergencyRiskError,
+    EmergencyRiskState,
+    monitor_emergency_risks,
+)
 from .environment import (
     CAMS_DATA_URL,
     EnvironmentError,
@@ -139,6 +145,7 @@ DEFAULT_OPERATIONAL_UPDATE_STATE_PATH = "state/operational_updates.json"
 DEFAULT_WEEKEND_STATE_PATH = "state/weekend.json"
 DEFAULT_PHARMACY_STATE_PATH = "state/pharmacy.json"
 DEFAULT_EARTHQUAKE_STATE_PATH = "state/earthquakes.json"
+DEFAULT_EMERGENCY_RISK_STATE_PATH = "state/emergency_risks.json"
 DEFAULT_HIDRAQUA_STATE_PATH = "state/hidraqua.json"
 DEFAULT_CAMS_CACHE_PATH = "state/cams.json"
 CAMS_UPDATE_CHECKPOINTS = frozenset({(10, 10), (10, 25), (10, 40)})
@@ -859,6 +866,31 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             logging.info("SUCCESS: operational AEMET update delivered")
             return 0
 
+    if command == "check-112":
+        bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
+        chat_id = _required_environment("TELEGRAM_CHAT_ID")
+        risk_state = EmergencyRiskState(
+            Path(DEFAULT_EMERGENCY_RISK_STATE_PATH)
+        )
+
+        async def publish_risk(message: str) -> int:
+            try:
+                return await send_message(
+                    bot_token,
+                    chat_id,
+                    message,
+                    disable_notification=False,
+                    retry_only_rate_limits=True,
+                )
+            except TelegramError as exc:
+                if exc.server_status is None or exc.server_status >= 500:
+                    raise EmergencyRiskDeliveryUncertain() from exc
+                raise
+
+        result = await monitor_emergency_risks(now, risk_state, publish_risk)
+        logging.info("112/Previfoc risk check: %s", result)
+        return 0
+
     if command == "monitor-earthquakes":
         bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
         chat_id = _required_environment("TELEGRAM_CHAT_ID")
@@ -1432,6 +1464,7 @@ def main() -> None:
             "prepare-event-translations",
             "prepare-aemet",
             "monitor-updates",
+            "check-112",
             "monitor-earthquakes",
             "monitor-hidraqua",
             "weekend", "weekend-preview",
@@ -1475,6 +1508,7 @@ def main() -> None:
         AemetError,
         AgendaError,
         EarthquakeError,
+        EmergencyRiskError,
         LibraryAgendaError,
         AmGuardamarError,
         HidraquaError,

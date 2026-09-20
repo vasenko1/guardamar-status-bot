@@ -42,6 +42,7 @@ from .sun import sun_times
 from .environment import (
     EnvironmentError, fetch_cams, fetch_meteosalud, fetch_meteosalud_cold,
 )
+from .emergency_risks import EmergencyRiskError, EmergencyRiskState
 from .models import (
     BeachNotice, BeachStatus, ColdHealthRisk, HeatHealthRisk, MorningDigest,
 )
@@ -580,6 +581,7 @@ async def produce_message(
     ] = None,
     environment_detail_observer: Optional[Callable] = None,
     fetch_environment: bool = True,
+    emergency_risk_state_path: Path = Path("state/emergency_risks.json"),
 ) -> str:
     """Build a digest; SafeBeach failure must not block AEMET delivery."""
 
@@ -948,6 +950,21 @@ async def produce_message(
         municipal_events
     )
 
+    fire_risk_level = None
+    dry_thunderstorm_risk_level = None
+    hydrology_state = None
+    try:
+        (
+            fire_risk_level,
+            dry_thunderstorm_risk_level,
+            hydrology_state,
+        ) = EmergencyRiskState(emergency_risk_state_path).morning_values(now)
+    except EmergencyRiskError as exc:
+        LOGGER.warning(
+            "Official risk state unavailable; omitting compact risk lines: %s",
+            exc.diagnostic_code,
+        )
+
     return build_message(
         replace(
             digest,
@@ -972,6 +989,9 @@ async def produce_message(
             cold_health_risk=cold_health_risk,
             air_quality=air_quality,
             pollen=pollen,
+            fire_risk_level=fire_risk_level,
+            dry_thunderstorm_risk_level=dry_thunderstorm_risk_level,
+            hydrology_state=hydrology_state,
         ),
         now=now,
     )

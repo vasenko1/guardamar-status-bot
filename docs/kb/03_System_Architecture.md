@@ -154,6 +154,24 @@ ambiguous delivery is recorded rather than automatically resent. There is no
 resident guide worker, database, browser, per-sport process, or per-service
 availability polling.
 
+### Unified 112/Previfoc watcher
+
+One short-lived `check-112` command runs at minute `:19` of each hour. It is the only Telegram publication
+boundary for CCE/Previfoc risk transitions.
+
+Each invocation performs bounded reads of the public CCE active-emergencies
+page, the current CCE text-readable PDF, and the tiny current-day Previfoc
+zone-6 ArcGIS state. The CCE PDF is **not** conditional on a local AEMET rain/thunderstorm
+warning because lower-Segura hydrological risk may originate upstream. AEMET
+remains an independent source and is not re-requested by this watcher.
+
+Adapters normalize observations first. The orchestrator merges equivalent
+authority states, compares them with one small atomic prior-state file and
+publishes at most one coherent transition. Source failure is unknown, never an
+all-clear; it cannot erase a stronger last verified state. Raw HTML, ArcGIS
+responses and PDFs are not archived. PDF bytes and extracted text remain
+process-local and are discarded on exit.
+
 ## Operating model
 
 - One 07:30 process plus up to seven short update checks in season

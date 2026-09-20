@@ -84,6 +84,19 @@ events and 14 days; its log rotates at 1 MiB with one previous file.
 The monitor uses one mutually exclusive runtime lock. A conflicting invocation
 exits successfully without a request.
 
+The 112/Previfoc feature runs as one short-lived process at minute 19 of every
+hour. It makes one bounded read each of the CCE active-emergencies page, the
+current CCE PDF bulletin, and the current-day Previfoc zone-6 ArcGIS row. It
+stores only normalized observations and publication state. CCE PDF bytes and
+extracted text remain process-local and are discarded before exit; raw source
+responses are never archived. The process shares the project runtime lock and
+its log rotates at 1 MiB with one previous file.
+
+The CCE bulletin text extraction uses the already approved Termux `poppler`
+package and `pdftotext`. The adapter validates the bulletin's own `FECHA` and
+`HORA` before accepting its state. No OCR, browser, image rendering, or
+additional Python dependency is introduced.
+
 The linked pinned guide remains one shared recoverable Telegram graph. The
 existing 05:00 transport invocation updates its bounded transport media and
 source snapshots, then reconciles the whole graph. A second short 16:30
@@ -246,8 +259,9 @@ allowed for the guide.
 - Python available in Termux
 - Python `tzdata` package because some Termux builds do not expose the Android
   timezone database to `zoneinfo`
-- Termux `poppler` utilities only for changed one-page municipal timetable PDFs
-  and changed Bus Sigüenza tariff PDFs
+- Termux `poppler` utilities only for changed one-page municipal timetable PDFs,
+  changed Bus Sigüenza tariff PDFs, and bounded in-memory text extraction from
+  the current CCE bulletin used by the 112 watcher
 - Termux `openssl-tool` command only to read the Bus Sigüenza leaf AIA after
   the documented missing-issuer verification failure
 - `asyncio` for bounded network concurrency
