@@ -243,12 +243,16 @@ def _status_from_segura_context(lines) -> Optional[str]:
         " ",
         active,
     )
+    hydrological_context = "INUND" in active or "HIDROLOG" in active
     for number, status in (
         ("2", HYDRO_SITUATION_2),
         ("1", HYDRO_SITUATION_1),
         ("0", HYDRO_SITUATION_0),
     ):
-        if re.search(rf"SITUACION\s*{number}\b", active):
+        if (
+            hydrological_context
+            and re.search(rf"SITUACION\s*{number}\b", active)
+        ):
             return status
     if "PREEMERGENCIA HIDROLOGICA" in active:
         return HYDRO_PREEMERGENCIA
