@@ -33,9 +33,10 @@ calls, state and recovery simple.
 - Keep the existing municipal-programme path for attributed Guardamar agenda
   reproductions. A local standalone card may enter a separate bounded
   Guardamar-scoped structured extraction path; unknown standalone cards fail
-  closed. Standalone metadata dates are a completeness contract: if extraction
-  does not confirm the Guardamar occurrence on every selected date, no cursor
-  or candidate progress is committed.
+  closed. Standalone metadata dates bound the eligible extraction window: if the
+  full article does not confirm any Guardamar occurrence on those selected
+  dates, no cursor or candidate progress is committed. Metadata-only dates are
+  not assumed to be event occurrences.
 - Within the same rolling date, prefer explicit local cards and more specific
   date sets before the existing participation/admission usefulness score.
   Preserve the bounded 100-candidate fairness buffer rather than replacing it
