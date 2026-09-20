@@ -64,8 +64,13 @@ class ScheduleTests(unittest.TestCase):
         )
 
     def test_shoulder_season_and_winter(self):
+        june_before = scheduled_run(
+            datetime(2026, 6, 14, 12, 0, tzinfo=MADRID)
+        )
+        self.assertIsNone(june_before.beach_phase)
+
         june = scheduled_run(
-            datetime(2026, 6, 20, 12, 0, tzinfo=MADRID)
+            datetime(2026, 6, 15, 12, 0, tzinfo=MADRID)
         )
         self.assertEqual(june.beach_phase, 1)
         self.assertTrue(june.check_aemet)
