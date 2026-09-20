@@ -131,7 +131,7 @@ class ParkingSeasonTests(unittest.TestCase):
             "-100123",
             {"parking": 104},
         )
-        self.assertIn("Пляжный сезон — с завтрашнего дня", text)
+        self.assertIn("Летний режим: пляжи и парковка", text)
         self.assertIn("С <b>15 июня</b>", text)
         self.assertIn("SafeBeach", text)
         self.assertIn("10:00 до 20:00", text)
@@ -143,7 +143,7 @@ class ParkingSeasonTests(unittest.TestCase):
             "-100123",
             {"parking": 104},
         )
-        self.assertIn("Пляжный сезон — завершается", text)
+        self.assertIn("Летний режим: пляжи и парковка завершаются", text)
         self.assertIn("<b>15 сентября</b>", text)
         self.assertIn("<b>16 сентября</b>", text)
         self.assertIn("SafeBeach", text)
