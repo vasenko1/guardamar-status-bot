@@ -2,83 +2,84 @@
 
 ## Purpose
 
-Publish one calm, user-facing Telegram message when the already accepted
-transport data changes in a way the bot can prove. This workflow is separate
-from road closures, mobility measures, emergency disruptions, and the pinned
-transport guide itself.
+Publish short resident-facing notices only when already accepted transport data
+proves a meaningful change. Each named route links directly to its current
+Telegram route card. This workflow stays separate from road closures,
+temporary mobility measures and emergency disruptions.
 
 ## Schedule and flow
 
-The existing 05:00 `sync-transport` remains the source of accepted transport
-data. After that sync succeeds, a short collector reads the accepted urban and
-airport state and writes only a small normalized notification baseline/pending
-record. A separate one-shot publisher runs at 12:30 Europe/Madrid and sends at
-most one aggregated message when a same-day pending change exists.
+The 05:00 `sync-transport` job remains the source of accepted transport data
+and immediately collects notification events. The one-shot publisher runs at
+08:42 Europe/Madrid.
 
-The first collector run is bootstrap-only: it records current baselines and
-publishes nothing. A same-day pending message that is not published at 12:30
-expires on the next morning rather than being replayed late.
+A notification batch may contain several semantic messages. Current public
+families are:
 
-## Evidence boundaries
+- schedule/service-period changes;
+- route/stop changes, only when a future source can prove them;
+- fare changes.
+
+Changes of the same family are grouped into one message. Different meanings
+are not mixed merely to force one daily message.
+
+State stores per-message `pending/uncertain/sent` delivery status. Telegram
+has no idempotency key, so each item becomes `uncertain` before
+`sendMessage`. HTTP 429 returns that item to pending; an ambiguous result
+blocks automatic resend while already-sent sibling messages remain committed
+inside the batch.
+
+## Current coverage
 
 ### Urban lines 1 and 2
 
-The municipal source is an official PDF. The existing transport sync already
-requires a stable changed PDF and renders it to a one-page PNG. Notification
-logic compares the accepted rendered-image hash. A PDF hash change with the
-same rendered image is silent.
+Official municipal PDFs are downloaded, stabilized and rendered to the
+accepted timetable image. A changed rendered image proves that the timetable
+changed visually. A PDF/hash metadata change with an identical image is
+silent.
 
-A changed image proves that the published timetable changed visually, but it
-does not prove which departure, stop, route, or calendar rule changed. Public
-copy therefore says only that the municipality published a new timetable. It
-never invents a semantic diff and does not list route stops in the change
-message.
+The code does not OCR or semantically infer exact departures/stops from the
+image, so public copy says only that a new timetable was published.
 
-### Airport departures
+Reviewed cards also have a deterministic service period:
 
-Bus Sigüenza provides structured departures for an exact service date. To avoid
-mistaking normal weekday/weekend differences for a timetable revision, the
-collector fetches tomorrow's schedule once after the 05:00 sync and stores only
-its normalized departure arrays. The next morning it compares that baseline
-with the accepted schedule for the exact same service date.
+- July and August: daily;
+- September through June: Monday-Saturday, with the documented Sunday
+  timetable.
 
-Only then may the public message name added or removed departure times. If the
-next-day baseline could not be obtained, that day's exact departure-change
-notification is skipped rather than inferred.
+A real transition between these reviewed periods can notify even if the image
+did not change. If a new PDF has not been reviewed, no period claim is made and
+the card does not reuse an old hard-coded route summary as if it were current.
 
-### Airport fare
+### Airport Alicante-Elche
 
-The existing parser intentionally extracts only `TARIFA BASE GENERAL` for
-Guardamar del Segura to Aeropuerto. Notifications therefore describe only the
-standard ticket (`обычный билет`). Card, pass, senior, discount, or other fare
-classes are not parsed, inferred, or mentioned.
+Bus Sigüenza provides structured departures for an exact service date. The
+collector stores tomorrow's departure arrays and compares them the next morning
+only against that same date, so normal weekday/weekend differences cannot
+become false change notifications.
 
-The parsed effective date controls the wording: a future tariff says when the
-new price will start; an already effective tariff says the standard ticket now
-costs the new amount.
+The fare parser tracks only the verified standard `TARIFA BASE GENERAL`
+Guardamar-airport amount. Discounts, cards, senior fares and other tariff
+classes are not inferred.
 
-## Public format
+### Other transport cards
 
-Every message starts with:
+Alicante, Elche, Hospital de Torrevieja, the south/Torrevieja-Zenia-Pilar
+route, Orihuela and Universidad de Alicante remain useful linked cards but do
+not currently have accepted comparable state in the bot. They therefore emit
+no change notifications. A future reliable bounded adapter can project route
+events into the same `transport_notifications.py` flow without creating a
+new notification subsystem.
 
-`🚌 Транспорт · изменения`
+## Link and evidence rules
 
-The body uses normal editorial sentences, minimal bold text, and no warning
-icons for routine updates. Multiple supported changes are combined into one
-message. The closing sentence links to the existing pinned `Транспорт` section,
-and the standard shared `обЪявления Гуардамар` footer is appended through the
-common branding helper.
+Notification state stores stable route keys such as `line_1` or `airport`,
+not Telegram URLs. Immediately before delivery the publisher resolves the
+current message ID from `PinnedGuideState` and builds the internal Telegram
+link. Missing or uncertain cards fail closed; there is no external-planner
+fallback.
 
-## Delivery safety
+A missing source row or card never proves cancellation. Temporary diversions
+and event closures belong to the existing mobility/emergency path.
 
-The workflow keeps one small atomic JSON state and uses a local exclusive lock.
-Before a non-idempotent Telegram send, delivery is marked `uncertain`. An
-ambiguous send result is not retried automatically, preventing duplicate public
-posts after a crash or lost response. An explicit Telegram rate-limit rejection
-remains eligible for a later retry because the message was not accepted.
-
-No daemon, database, browser, OCR, continuous polling, or new external service
-is introduced. The only additional source request is one bounded Bus Sigüenza
-planner request each morning for the following day's airport baseline.
-
-See `adr/0065-transport-change-notifications.md` for the durable decision.
+See `adr/0065-transport-change-notifications.md`.
