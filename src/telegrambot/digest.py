@@ -845,6 +845,20 @@ def build_message(
             "Зона: южное побережье Аликанте", *warning_blocks,
         ])
 
+    risk_lines = []
+    if digest.fire_risk_level == 2:
+        risk_lines.append("🔥 Пожарная опасность: <b>высокая</b>.")
+    elif digest.fire_risk_level == 3:
+        risk_lines.append("🔥 Пожарная опасность: <b>экстремальная</b>.")
+    if digest.dry_thunderstorm_risk_level == 2:
+        risk_lines.append("⚡ Сухие грозы: возможны.")
+    elif digest.dry_thunderstorm_risk_level == 3:
+        risk_lines.append("⚡ Сухие грозы: <b>высокий риск</b>.")
+    if digest.hydrology_state:
+        risk_lines.append("🌊 CCE: действует гидрологическое предупреждение.")
+    if risk_lines:
+        lines.extend(["", *risk_lines])
+
     standalone_environment = []
     if (
         digest.heat_health_risk is not None
