@@ -50,6 +50,7 @@ from .music_school import (
 )
 from .pinned import (
     DEFAULT_PINNED_STATE_PATH,
+    ORA_INFO_URL,
     PinnedGuideState,
     publish_pinned_guide,
     telegram_message_link,
@@ -85,6 +86,10 @@ _REQUEST_HEADERS = {
     "User-Agent": "guardamar-status-bot/1.0",
 }
 _WIFI_REQUEST_HEADERS = {
+    "Accept": "text/html,application/xhtml+xml",
+    "User-Agent": "guardamar-status-bot/1.0",
+}
+_ORA_REQUEST_HEADERS = {
     "Accept": "text/html,application/xhtml+xml",
     "User-Agent": "guardamar-status-bot/1.0",
 }
@@ -189,6 +194,17 @@ class GuideState:
         uncertain = value.get("season_notice_uncertain")
         if uncertain is not None and not isinstance(uncertain, str):
             raise StateError("guide state has an invalid uncertain notice")
+        parking_notice = value.get("parking_notice")
+        if parking_notice is not None and (
+            not isinstance(parking_notice, dict)
+            or not isinstance(parking_notice.get("key"), str)
+            or not isinstance(parking_notice.get("message_id"), int)
+            or parking_notice["message_id"] <= 0
+        ):
+            raise StateError("guide state has an invalid parking notice")
+        parking_uncertain = value.get("parking_notice_uncertain")
+        if parking_uncertain is not None and not isinstance(parking_uncertain, str):
+            raise StateError("guide state has an invalid uncertain parking notice")
         wifi_alerted = value.get("wifi_last_alerted_asset_url")
         if wifi_alerted is not None and (
             not isinstance(wifi_alerted, str) or not wifi_alerted.strip()
@@ -264,6 +280,14 @@ def active_pool(local_day: date) -> str:
     return "outdoor" if summer_start <= local_day <= summer_end else "indoor"
 
 
+def active_parking(local_day: date) -> str:
+    """Return the deterministic seasonal Zona Azul mode for a local date."""
+
+    paid_start = date(local_day.year, 6, 15)
+    paid_end = date(local_day.year, 9, 15)
+    return "paid" if paid_start <= local_day <= paid_end else "free"
+
+
 def _attempt_due(
     last_attempt_day: Optional[str],
     local_day: date,
@@ -300,6 +324,22 @@ def _allowed_aqualider_url(url: str) -> bool:
     )
 
 
+def _allowed_ora_url(url: str) -> bool:
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        port = parsed.port
+    except ValueError:
+        return False
+    return (
+        parsed.scheme == "https"
+        and parsed.hostname == "oraguardamar.gruposetex.es"
+        and port in {None, 443}
+        and parsed.path.rstrip("/") == "/tarifas-y-horarios"
+        and parsed.username is None
+        and parsed.password is None
+    )
+
+
 def _allowed_wifi_source_url(url: str) -> bool:
     try:
         parsed = urllib.parse.urlsplit(url)
@@ -317,6 +357,67 @@ def _allowed_wifi_source_url(url: str) -> bool:
         and parsed.username is None
         and parsed.password is None
     )
+
+
+class _VisibleTextParser(HTMLParser):
+    """Collect normalized visible text from a small HTML source."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts = []
+
+    def handle_data(self, data: str) -> None:
+        normalized = " ".join(data.split())
+        if normalized:
+            self.parts.append(normalized)
+
+    def text(self) -> str:
+        return " ".join(self.parts).casefold()
+
+
+def _ora_schedule_matches(payload: bytes) -> bool:
+    try:
+        source = payload.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    parser = _VisibleTextParser()
+    parser.feed(source)
+    value = parser.text()
+    required = (
+        "15 de junio",
+        "15 de septiembre",
+        "lunes a viernes",
+        "sábados",
+        "domingos",
+        "festivos",
+        "10:00",
+        "20:00",
+    )
+    return all(marker in value for marker in required)
+
+
+async def verify_current_ora_schedule() -> None:
+    """Fail closed unless the live ORA page still confirms the reviewed season."""
+
+    try:
+        payload, _, _ = await asyncio.to_thread(
+            fetch_bounded,
+            ORA_INFO_URL,
+            is_allowed_url=_allowed_ora_url,
+            limit_bytes=512 * 1024,
+            timeout_seconds=15.0,
+            headers=_ORA_REQUEST_HEADERS,
+            accepted_types=_HTML_TYPES,
+        )
+    except BoundedFetchError as exc:
+        raise GuideSourceError(
+            "ORA schedule request failed", code=f"ORA-{exc.code}"
+        ) from exc
+    if not _ora_schedule_matches(payload):
+        raise GuideSourceError(
+            "ORA schedule no longer matches the reviewed season",
+            code="ORA-SCHEDULE",
+        )
 
 
 class _WifiAssetParser(HTMLParser):
@@ -644,6 +745,38 @@ def _season_notice_key(local_day: date) -> Optional[str]:
     return f"{local_day.year}:{next_day}"
 
 
+def _parking_notice_key(local_day: date) -> Optional[str]:
+    """Return a notice key only when tomorrow changes seasonal ORA mode."""
+
+    current = active_parking(local_day)
+    next_day = active_parking(local_day + timedelta(days=1))
+    if current == next_day:
+        return None
+    return f"{local_day.year}:{next_day}"
+
+
+def _parking_notice_text(
+    notice_key: str,
+    chat_id: str,
+    messages: Dict[str, int],
+) -> str:
+    parking = telegram_message_link(chat_id, messages["parking"])
+    if notice_key.endswith(":paid"):
+        return with_footer(
+            "🅿️ <b>Zona Azul — с завтрашнего дня платно</b>\n\n"
+            "С <b>15 июня</b> в Гуардамаре начинается летний платный режим Zona Azul. "
+            "Оплата действует <b>ежедневно с 10:00 до 20:00</b> и продлится до "
+            "<b>15 сентября включительно</b>.\n\n"
+            f"Условия и официальный источник — <a href=\"{parking}\"><b>в карточке парковки</b></a>."
+        )
+    return with_footer(
+        "🅿️ <b>Zona Azul — с завтрашнего дня бесплатно</b>\n\n"
+        "Платный летний сезон завершён. С <b>16 сентября</b> сезонная Zona Azul "
+        "в Гуардамаре снова бесплатна.\n\n"
+        f"Условия и официальный источник — <a href=\"{parking}\"><b>в карточке парковки</b></a>."
+    )
+
+
 def _season_notice_text(
     notice_key: str,
     chat_id: str,
@@ -708,7 +841,8 @@ async def sync_guide(now: datetime) -> str:
             state["aqualider_catalog"] = current
             guide_state.write(state)
 
-        local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
+        local_now = now.astimezone(GUARDAMAR_TIMEZONE)
+    local_day = local_now.date()
         previous_sporttia = state.get("sporttia_catalog")
         if state.get("sporttia_last_attempt_day") != local_day.isoformat():
             # Mark before network I/O so manual reruns cannot hammer the source
@@ -891,6 +1025,55 @@ async def sync_guide(now: datetime) -> str:
 
         state["last_successful_sync_day"] = local_day.isoformat()
         guide_state.write(state)
+
+        parking_notice_key = _parking_notice_key(local_day)
+        if parking_notice_key is not None and local_now.hour >= 18:
+            sent_parking = state.get("parking_notice")
+            uncertain_parking = state.get("parking_notice_uncertain")
+            if uncertain_parking == parking_notice_key:
+                logging.warning(
+                    "Seasonal parking notice remains uncertain: %s",
+                    parking_notice_key,
+                )
+            elif (
+                not isinstance(sent_parking, dict)
+                or sent_parking.get("key") != parking_notice_key
+            ):
+                try:
+                    await verify_current_ora_schedule()
+                except GuideSourceError as exc:
+                    logging.warning(
+                        "Seasonal parking notice deferred [GUIDE-%s]",
+                        exc.diagnostic_code,
+                    )
+                else:
+                    try:
+                        parking_notice_id = await send_message(
+                            bot_token,
+                            chat_id,
+                            _parking_notice_text(
+                                parking_notice_key,
+                                chat_id,
+                                messages,
+                            ),
+                            disable_notification=False,
+                            retry_only_rate_limits=True,
+                        )
+                    except TelegramError as exc:
+                        if exc.retryable and exc.server_status != 429:
+                            state["parking_notice_uncertain"] = parking_notice_key
+                            guide_state.write(state)
+                        raise
+                    state.pop("parking_notice_uncertain", None)
+                    state["parking_notice"] = {
+                        "key": parking_notice_key,
+                        "message_id": parking_notice_id,
+                    }
+                    guide_state.write(state)
+                    logging.info(
+                        "Seasonal parking notice published: %s",
+                        parking_notice_key,
+                    )
 
         notice_key = _season_notice_key(local_day)
         if notice_key is not None:
