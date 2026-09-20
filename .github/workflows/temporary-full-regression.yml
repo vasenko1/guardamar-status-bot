@@ -1,0 +1,25 @@
+name: Temporary full regression
+
+on:
+  push:
+    branches:
+      - fix/parking-notice-test-expectation
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e .
+      - run: python -m compileall -q src
+      - name: Shell syntax
+        run: |
+          for f in termux/*.sh; do sh -n "$f"; done
+      - name: Full unittest suite
+        run: python -m unittest discover -s tests -p 'test_*.py'
