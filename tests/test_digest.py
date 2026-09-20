@@ -1225,6 +1225,44 @@ class DigestMessageTests(unittest.TestCase):
         self.assertIn("🎟 Бесплатно · места ограничены", message)
         self.assertNotIn("регистрац", message)
 
+    def test_uses_exact_map_link_for_campo_market(self):
+        digest = MorningDigest(
+            weather=None,
+            warnings=(),
+            warnings_available=True,
+            events=(
+                Event(
+                    title="Рынок Campo de Guardamar",
+                    starts_at=datetime(
+                        2026,
+                        9,
+                        20,
+                        7,
+                        0,
+                        tzinfo=GUARDAMAR_TIMEZONE,
+                    ),
+                    ends_at=datetime(
+                        2026,
+                        9,
+                        20,
+                        16,
+                        0,
+                        tzinfo=GUARDAMAR_TIMEZONE,
+                    ),
+                    place="Camino del Raso, 15",
+                ),
+            ),
+        )
+
+        message = build_message(digest)
+
+        self.assertIn(
+            'href="https://maps.app.goo.gl/JhZBna2cqRixy69o8"',
+            message,
+        )
+        self.assertIn(">Camino del Raso, 15</a>", message)
+        self.assertNotIn("query=Camino+del+Raso", message)
+
     def test_formats_market_time_range_and_place(self):
         digest = MorningDigest(
             weather=Weather(

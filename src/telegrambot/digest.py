@@ -549,14 +549,30 @@ def _event_place(value: str) -> str:
     return _event_title(value)
 
 
+_EVENT_PLACE_MAP_URLS = {
+    "camino del raso, 15": "https://maps.app.goo.gl/JhZBna2cqRixy69o8",
+}
+
+
 def _event_place_link(value: str, place_query: Optional[str] = None) -> str:
-    """Render one fixed-host Google Maps search for a verified place."""
+    """Render a reviewed exact map URL, otherwise a Google Maps search."""
 
     source_place = canonical_event_place(value)
     if not event_place_is_map_safe(source_place) or (
         place_query is not None and not event_place_is_map_safe(place_query)
     ):
         return html.escape(_event_place(source_place))
+
+    exact_url = _EVENT_PLACE_MAP_URLS.get(source_place.casefold())
+    if exact_url is not None and place_query is None:
+        return (
+            '<a href="'
+            + html.escape(exact_url, quote=True)
+            + '">'
+            + html.escape(_event_place(source_place))
+            + "</a>"
+        )
+
     if place_query is not None:
         query = place_query
         if "guardamar" not in query.casefold():
