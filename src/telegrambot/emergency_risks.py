@@ -309,9 +309,9 @@ def parse_cce_text(text: str, *, bulletin: bool) -> str:
         raise EmergencyRiskError(
             "CCE emergencies page contains ambiguous hydrological text"
         )
-    # A valid current-emergencies page with no Segura hydrological signal is
-    # a negative observation for this domain, even if another emergency exists.
-    return HYDRO_NONE
+    raise EmergencyRiskError(
+        "CCE emergencies page has no explicit Segura state", code="UNKNOWN"
+    )
 
 
 def parse_cce_emergencies_html(payload: bytes) -> str:
@@ -374,7 +374,10 @@ def parse_cce_bulletin(text: str, now: datetime) -> str:
     """Validate bulletin date/time before accepting its hydrological state."""
 
     folded = _fold(text)
-    date_match = re.search(r"\bFECHA\s*[:\-]?\s*(\d{1,2}/\d{1,2}/\d{4})", folded)
+    date_match = re.search(
+        r"\bFECHA\s*[:\-]?\s*(\d{1,2})\D{1,3}(\d{1,2})\D{1,3}(\d{4})",
+        folded,
+    )
     time_match = re.search(r"\bHORA\s*[:\-]?\s*(\d{1,2}:\d{2})", folded)
     if date_match is None or time_match is None:
         raise EmergencyRiskError(
@@ -382,7 +385,10 @@ def parse_cce_bulletin(text: str, now: datetime) -> str:
         )
     try:
         issued = datetime.strptime(
-            f"{date_match.group(1)} {time_match.group(1)}",
+            (
+                f"{date_match.group(1)}/{date_match.group(2)}/"
+                f"{date_match.group(3)} {time_match.group(1)}"
+            ),
             "%d/%m/%Y %H:%M",
         ).replace(tzinfo=GUARDAMAR_TIMEZONE)
     except ValueError as exc:
@@ -625,18 +631,18 @@ class EmergencyRiskState:
             item for item in (value["cce_html"], value["cce_pdf"])
             if item is not None
         ]
-        active = [
+        if not observations:
+            return None
+        newest = max(_parse_datetime(item["observed_at"]) for item in observations)
+        current = [
             item["hydrology"]
             for item in observations
-            if item["hydrology"] != HYDRO_NONE
+            if _parse_datetime(item["observed_at"]) == newest
         ]
+        active = [status for status in current if status != HYDRO_NONE]
         if active:
             return max(active, key=lambda status: _HYDRO_RANK[status])
-        # Do not infer an all-clear while either independent CCE observation
-        # has never succeeded.
-        if value["cce_html"] is not None and value["cce_pdf"] is not None:
-            return HYDRO_NONE
-        return None
+        return HYDRO_NONE
 
     def morning_values(
         self, now: datetime
