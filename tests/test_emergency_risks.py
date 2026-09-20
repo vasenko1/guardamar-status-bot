@@ -16,6 +16,7 @@ from telegrambot.emergency_risks import (
     _transition,
     monitor_emergency_risks,
     parse_cce_emergencies_html,
+    parse_cce_bulletin,
     parse_cce_text,
     parse_previfoc,
 )
@@ -100,6 +101,33 @@ def test_cce_bulletin_without_segura_hydrology_is_negative_observation():
     assert parse_cce_text(text, bulletin=True) == HYDRO_NONE
 
 
+def test_cce_bulletin_requires_current_local_date():
+    current = """
+    FECHA 20/09/2026
+    HORA 07:00
+    PLANES DE EMERGENCIA ACTIVADOS
+    Sin planes hidrológicos activos.
+    """
+    assert parse_cce_bulletin(current, NOW) == HYDRO_NONE
+
+    stale = current.replace("20/09/2026", "19/09/2026")
+    with pytest.raises(EmergencyRiskError) as exc:
+        parse_cce_bulletin(stale, NOW)
+    assert exc.value.diagnostic_code == "STALE"
+
+
+def test_cce_bulletin_rejects_implausible_future_timestamp():
+    future = """
+    FECHA 20/09/2026
+    HORA 08:30
+    PLANES DE EMERGENCIA ACTIVADOS
+    Sin planes hidrológicos activos.
+    """
+    with pytest.raises(EmergencyRiskError) as exc:
+        parse_cce_bulletin(future, NOW)
+    assert exc.value.diagnostic_code == "STALE"
+
+
 def test_hydrology_clear_requires_both_cce_surfaces():
     value = EmergencyRiskState.empty()
     value["cce_html"] = _observed(HYDRO_NONE)
@@ -129,7 +157,7 @@ def test_fire_level_two_is_morning_only_but_extreme_is_standalone():
     value["previfoc"]["fire_level"] = 3
     transition = _transition(value)
     assert transition is not None
-    assert "экстремальный" in transition[0]
+    assert "экстремальный" in transition
 
 
 def test_extreme_fire_downgrade_is_published_after_acknowledgement():
@@ -144,7 +172,8 @@ def test_extreme_fire_downgrade_is_published_after_acknowledgement():
     assert value["published"]["fire_extreme"] is True
 
     value["previfoc"]["fire_level"] = 2
-    message, _ = _transition(value)
+    message = _transition(value)
+    assert message is not None
     assert "Экстремальная пожарная опасность снята" in message
     assert "сохраняется <b>высокий</b>" in message
 
@@ -157,7 +186,8 @@ def test_dry_thunderstorm_high_can_publish_without_extreme_fire():
         "alert_id": 1,
         "observed_at": NOW.isoformat(),
     }
-    message, _ = _transition(value)
+    message = _transition(value)
+    assert message is not None
     assert "высокий риск сухих гроз" in message
     assert "экстремальный" not in message
 
