@@ -447,6 +447,28 @@ def project_course_records(
         )
         records[value["record_id"]] = value
 
+        school_registration = music.get("school_registration")
+        school_registrations = (
+            []
+            if school_registration is None
+            else [{
+                "start": school_registration["start"],
+                "end": school_registration["end"],
+            }]
+        )
+        school_value = _record(
+            record_id="music_school:school_registration",
+            source="music_school",
+            course_key="music_school:school_registration",
+            card_key="music_school",
+            title="Escuela de Música",
+            emoji="🎼",
+            observed_day=observed,
+            season=str(music["season"]),
+            registrations=school_registrations,
+        )
+        records[school_value["record_id"]] = school_value
+
     chess = guide_state.get("chess_school_snapshot")
     if chess is not None:
         if not valid_chess_school_snapshot(chess):
