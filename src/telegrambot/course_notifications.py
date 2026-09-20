@@ -326,15 +326,34 @@ def _valid_pending(value: Any) -> bool:
         if (
             not isinstance(identifiers, list)
             or len(identifiers) > 256
-            or not all(isinstance(identifier, str) and identifier for identifier in identifiers)
+            or len(set(identifiers)) != len(identifiers)
+            or not all(
+                isinstance(identifier, str) and identifier
+                for identifier in identifiers
+            )
         ):
             return False
+        expected_identifiers = [
+            event["date_event_id"]
+            for event in events
+            if event["type"] in {
+                "registration_open",
+                "registration_close",
+                "registration_single_day",
+            }
+        ]
+        if identifiers != expected_identifiers:
+            return False
+
         message_id = item.get("message_id")
-        if message_id is not None and (
-            not isinstance(message_id, int)
-            or isinstance(message_id, bool)
-            or message_id <= 0
-        ):
+        if item["status"] == "sent":
+            if (
+                not isinstance(message_id, int)
+                or isinstance(message_id, bool)
+                or message_id <= 0
+            ):
+                return False
+        elif message_id is not None:
             return False
     return True
 
