@@ -532,6 +532,41 @@ class CourseNotificationMessageTests(unittest.TestCase):
 
 
 
+class CourseNotificationStateTests(unittest.TestCase):
+    def test_pending_message_id_must_match_delivery_status(self):
+        from telegrambot.course_notifications import load_state
+
+        current = record()
+        state = baseline_state(current)
+        state["pending"] = {
+            "created_date": "2026-09-20",
+            "candidate_baseline": state["baseline"],
+            "candidate_known_sources": state["known_sources"],
+            "candidate_known_course_keys": state["known_course_keys"],
+            "candidate_known_record_ids": state["known_record_ids"],
+            "messages": [{
+                "kind": "new_courses",
+                "status": "pending",
+                "events": [{
+                    "type": "new_course",
+                    "record_id": current["record_id"],
+                    "course_key": current["course_key"],
+                    "card_key": current["card_key"],
+                    "title": current["title"],
+                    "emoji": current["emoji"],
+                    "group": current["group"],
+                }],
+                "date_event_ids": [],
+                "message_id": 999,
+            }],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "course.json"
+            path.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+            with self.assertRaises(CourseNotificationError):
+                load_state(path)
+
+
 class CourseNotificationDeliveryTests(unittest.IsolatedAsyncioTestCase):
     async def test_partial_batch_timeout_keeps_sent_sibling_and_blocks_resend(self):
         old_judo = record(
