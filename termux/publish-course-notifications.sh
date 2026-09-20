@@ -1,0 +1,20 @@
+#!/data/data/com.termux/files/usr/bin/sh
+
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+PROJECT_DIR=$(dirname "$SCRIPT_DIR")
+STATE_DIR="$PROJECT_DIR/state"
+LOG="$STATE_DIR/course-notifications.log"
+
+mkdir -p "$STATE_DIR"
+if [ -f "$LOG" ] && [ "$(wc -c < "$LOG")" -gt 524288 ]; then
+    mv "$LOG" "$LOG.1"
+fi
+exec >>"$LOG" 2>&1
+
+cd "$PROJECT_DIR"
+. ./.env
+export PYTHONPATH="$PROJECT_DIR/src"
+
+exec ./.venv/bin/python -m telegrambot.course_notifications
