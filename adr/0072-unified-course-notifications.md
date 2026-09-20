@@ -55,9 +55,12 @@ registration/source links.
 - Every public course name links only to an existing Telegram card in the
   group. Missing card state fails closed; there is no fallback to Sporttia,
   Google Forms, source pages or other external URLs.
-- Dinamización workshops may share the aggregate
+- Dinamización workshops share the aggregate
   `Муниципальные занятия и мастерские` card; no per-workshop Telegram-card
-  hierarchy is created solely for notifications.
+  hierarchy is created solely for notifications. Its common registration
+  window, `hasta completar` rule and resident-priority rule are projected
+  once at program level, while workshop records carry only their own
+  schedule/date facts.
 - Jardín Musical uses its explicit programme registration window and links to
   the music-basics card. The general music-school matrícula is represented only
   as general `Escuela de Música` enrollment and links to the school card; it
