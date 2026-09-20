@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted and implemented; same-date candidate selection amended by ADR 0044
+Accepted and implemented; same-date candidate selection amended by ADR 0044; Guardamar standalone scope amended 2026-09-20
 
 ## Context
 
@@ -22,9 +22,24 @@ calls, state and recovery simple.
 - Read one bounded WordPress metadata page. Persist only a five-minute-overlap
   modification cursor, at most 100 lightweight candidates, and at most 45
   covered date strings inside the existing atomic municipal catalog.
-- Download at most three selected full articles in one bounded REST request.
-  Ignore metadata without a discoverable date and send only newly covered
-  dated sections, capped by the existing text limit, to structured extraction.
+- Select at most six dated detail candidates in bounded REST batches and admit
+  at most three programme inputs per refresh. Ignore metadata without a
+  discoverable date.
+- Classify Todo Cultura event-card identity from its own title/permalink as
+  `local`, `foreign`, or `unknown`. A card whose event identity names only
+  another municipality is discarded before detail download even if its article
+  body mentions Guardamar. A multi-municipality card is local only when
+  Guardamar is explicitly one of the card's primary localities.
+- Keep the existing municipal-programme path for attributed Guardamar agenda
+  reproductions. A local standalone card may enter a separate bounded
+  Guardamar-scoped structured extraction path; unknown standalone cards fail
+  closed. Standalone metadata dates are a completeness contract: if extraction
+  does not confirm the Guardamar occurrence on every selected date, no cursor
+  or candidate progress is committed.
+- Within the same rolling date, prefer explicit local cards and more specific
+  date sets before the existing participation/admission usefulness score.
+  Preserve the bounded 100-candidate fairness buffer rather than replacing it
+  with a newest-only queue.
 - Treat the newest candidate as authoritative among duplicate programme
   reproductions for the same date. This date-wide shortcut is superseded by
   ADR 0044: distinct same-date candidates are processed independently and
@@ -50,9 +65,13 @@ catalog calls during beach retries.
 The public WordPress index is supplemental and may omit a date from its title
 and excerpt. Such an item is intentionally not downloaded unless a later
 metadata revision exposes a date; official sources retain completeness
-authority. More than 100 simultaneous changed Guardamar items could require a
-later scheduled run, but ascending cursor order prevents permanent loss under
-the accepted bounded workload.
+authority. Foreign-city event cards no longer consume detail slots or enter the
+Guardamar catalog merely because their article body mentions Guardamar.
+Explicit multi-city cards that include Guardamar remain eligible, while an
+unknown standalone article is omitted. More than 100 simultaneous changed
+eligible items could require a later scheduled run; the bounded fairness model
+continues to prevent a steady stream of newer pages from starving older pending
+work.
 
 ## Alternatives rejected
 
