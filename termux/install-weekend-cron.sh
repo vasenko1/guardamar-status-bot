@@ -39,7 +39,7 @@ fi
 
 printf '%s\n' \
     "15 19 * * 5 $WEEKEND --fresh" \
-    "45 19 * * 5 $WEEKEND" \
+    "15 20 * * 5 $WEEKEND" \
     >"$JOBS"
 
 {
