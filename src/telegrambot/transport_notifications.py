@@ -32,6 +32,13 @@ ROUTE_META = {
     "airport": ("✈️", "Аэропорт Alicante-Elche"),
 }
 MESSAGE_ORDER = ("schedule_changes", "route_changes", "fare_changes")
+EVENT_KINDS = {
+    "timetable_changed": "schedule_changes",
+    "departures_changed": "schedule_changes",
+    "period_changed": "schedule_changes",
+    "route_changed": "route_changes",
+    "fare_changed": "fare_changes",
+}
 MONTHS_RU = (
     "января", "февраля", "марта", "апреля", "мая", "июня",
     "июля", "августа", "сентября", "октября", "ноября", "декабря",
@@ -95,15 +102,14 @@ def _valid_fare_state(value: Any) -> bool:
         return True
     if not isinstance(value, dict):
         return False
+    cents = value.get("cents")
+    if not isinstance(cents, int) or isinstance(cents, bool):
+        return False
     try:
-        cents = int(value["cents"])
         date.fromisoformat(value["effective_date"])
     except (KeyError, TypeError, ValueError):
         return False
-    return (
-        100 <= cents <= 2_000
-        and _is_sha256(value.get("pdf_sha256"))
-    )
+    return 100 <= cents <= 2_000 and _is_sha256(value.get("pdf_sha256"))
 
 
 def _valid_airport_state(value: Any) -> bool:
@@ -119,8 +125,7 @@ def _valid_airport_state(value: Any) -> bool:
 def _valid_event(event: Any) -> bool:
     return (
         isinstance(event, dict)
-        and isinstance(event.get("type"), str)
-        and bool(event["type"])
+        and event.get("type") in EVENT_KINDS
         and event.get("route") in ROUTE_META
     )
 
@@ -150,7 +155,10 @@ def _valid_pending(value: Any) -> bool:
         events = item.get("events")
         if not isinstance(events, list) or not events or len(events) > 64:
             return False
-        if not all(_valid_event(event) for event in events):
+        if not all(
+            _valid_event(event) and EVENT_KINDS[event["type"]] == kind
+            for event in events
+        ):
             return False
         message_id = item.get("message_id")
         if message_id is not None and (
