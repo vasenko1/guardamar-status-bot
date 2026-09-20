@@ -270,4 +270,27 @@ def test_uncertain_delivery_is_not_automatically_duplicated(tmp_path):
             fetch_cce_pdf_fn=cce,
         )
     )
-    assert result == "uncertain"
+    assert result == "no_update"
+
+    async def downgraded_previfoc():
+        return PrevifocRisk(2, 1, 6)
+
+    delivered = []
+
+    async def publish_downgrade(message):
+        delivered.append(message)
+        return 100
+
+    result = asyncio.run(
+        monitor_emergency_risks(
+            NOW + timedelta(hours=2),
+            state,
+            publish_downgrade,
+            fetch_previfoc_fn=downgraded_previfoc,
+            fetch_cce_html_fn=cce,
+            fetch_cce_pdf_fn=cce,
+        )
+    )
+    assert result == "published"
+    assert len(delivered) == 1
+    assert "Экстремальная пожарная опасность снята" in delivered[0]
