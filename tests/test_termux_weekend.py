@@ -38,11 +38,10 @@ class WeekendTermuxTests(unittest.TestCase):
             return result, crontab_state.read_text(encoding="utf-8")
 
     def test_installer_removes_legacy_unmanaged_weekend_jobs(self):
+        weekend = ROOT / "termux" / "run-weekend.sh"
         legacy = (
-            "0,20 18 * * 5 /data/data/com.termux/files/home/bots/"
-            "guardamar-status/termux/run-weekend.sh\n"
-            "0 19 * * 5 /data/data/com.termux/files/home/bots/"
-            "guardamar-status/termux/run-weekend.sh\n"
+            f"0,20 18 * * 5 {weekend}\n"
+            f"0 19 * * 5 {weekend}\n"
         )
 
         result, installed = self._install(legacy)
