@@ -1,9 +1,8 @@
 name: Temporary full regression
 
 on:
-  push:
-    branches:
-      - fix/parking-notice-test-expectation
+  pull_request:
+    branches: [main]
 
 jobs:
   test:
