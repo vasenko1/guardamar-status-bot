@@ -673,6 +673,9 @@ def merge_sporttia_catalog(
     )
     return {
         "observed_at": current["observed_at"],
+        "observed_source_ids": sorted(
+            item["source_id"] for item in current["activities"]
+        ),
         "activities": activities,
     }
 
