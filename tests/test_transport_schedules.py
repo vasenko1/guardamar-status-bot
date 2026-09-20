@@ -53,6 +53,8 @@ class TransportCaptionTests(unittest.TestCase):
         self.assertIn("С сентября по июнь", regular)
         self.assertNotIn("июль и август", regular)
         self.assertIn("Актуальные дни и время", unknown)
+        self.assertIn("Актуальный маршрут, остановки", unknown)
+        self.assertNotIn(LINES["line_1"].route, unknown)
         self.assertNotIn("Los Secanos", unknown)
         for caption in (summer, regular, unknown):
             self.assertLessEqual(len(caption), 1024)
