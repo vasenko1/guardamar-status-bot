@@ -536,10 +536,28 @@ def project_course_records(
             raise CourseNotificationError("accepted Dinamización snapshot is invalid")
         present_sources.add("dinamizacion")
         observed = _observed_day(dinamizacion)
-        registrations = [{
-            "start": dinamizacion["registration_start"],
-            "end": dinamizacion["registration_end"],
-        }]
+        program = _record(
+            record_id="dinamizacion:program",
+            source="dinamizacion",
+            course_key="dinamizacion:program",
+            card_key="dinamizacion",
+            title="Муниципальные занятия и мастерские",
+            emoji="🤝",
+            observed_day=observed,
+            season=str(dinamizacion["season"]),
+            registrations=[{
+                "start": dinamizacion["registration_start"],
+                "end": dinamizacion["registration_end"],
+            }],
+            until_full=bool(dinamizacion["registration_until_full"]),
+            conditions=(
+                ("resident_priority",)
+                if dinamizacion.get("resident_priority") is True
+                else ()
+            ),
+        )
+        records[program["record_id"]] = program
+
         for group in dinamizacion["groups"]:
             key = str(group["key"])
             title = DINAMIZACION_GROUP_TITLES.get(key, key)
@@ -554,13 +572,6 @@ def project_course_records(
                 schedule="; ".join(str(item) for item in group["schedules"]),
                 period=[group.get("start_date"), group.get("end_date")],
                 season=str(dinamizacion["season"]),
-                registrations=registrations,
-                until_full=bool(dinamizacion["registration_until_full"]),
-                conditions=(
-                    ("resident_priority",)
-                    if dinamizacion.get("resident_priority") is True
-                    else ()
-                ),
             )
             records[value["record_id"]] = value
 
@@ -1006,6 +1017,46 @@ def _course_change_text(events: Sequence[Mapping[str, Any]]) -> str:
     return f"{prefix}{verb} {_join_ru(changed)}"
 
 
+def _collapse_new_events(
+    events: Sequence[Mapping[str, Any]],
+) -> list[dict]:
+    """Render one resident-facing row per course, even if several groups appear."""
+
+    grouped: Dict[tuple[str, str], list[Mapping[str, Any]]] = {}
+    for event in events:
+        grouped.setdefault(
+            (str(event["course_key"]), str(event["type"])),
+            [],
+        ).append(event)
+
+    result: list[dict] = []
+    for values in grouped.values():
+        sample = dict(values[0])
+        groups = sorted({
+            str(value["group"])
+            for value in values
+            if isinstance(value.get("group"), str) and value["group"]
+        })
+        if sample["type"] == "new_group":
+            if len(groups) == 1:
+                sample["group"] = groups[0]
+            elif len(groups) > 1:
+                sample["group"] = "несколько новых групп"
+            else:
+                sample["group"] = None
+        else:
+            sample["group"] = None
+        result.append(sample)
+
+    result.sort(
+        key=lambda item: (
+            str(item["title"]).casefold(),
+            str(item.get("group") or ""),
+        )
+    )
+    return result
+
+
 def build_message(
     kind: str,
     events: Sequence[Mapping[str, Any]],
@@ -1069,14 +1120,18 @@ def build_message(
     elif kind == "new_courses":
         lines.append("🎓 <b>Новые занятия</b>")
         lines.append("")
-        for event in sorted(events, key=lambda item: str(item["title"]).casefold()):
+        for event in _collapse_new_events(events):
             target = _linked_title(event, chat_id, messages)
             if event["type"] == "new_season":
                 lines.append(f"• {target} — опубликован новый сезон")
             elif event["type"] == "new_group" and event.get("group"):
-                lines.append(
-                    f"• {target} — появилась {html.escape(str(event['group']).casefold())}"
-                )
+                group = str(event["group"])
+                if group == "несколько новых групп":
+                    lines.append(f"• {target} — появились новые группы")
+                else:
+                    lines.append(
+                        f"• {target} — появилась {html.escape(group.casefold())}"
+                    )
             else:
                 lines.append(f"• {target}")
         lines.extend([
