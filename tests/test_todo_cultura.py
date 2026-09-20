@@ -13,8 +13,10 @@ from telegrambot.todo_cultura import (
     _bounded_candidates,
     _date_sections,
     _event_time,
+    _candidate_priority,
     _metadata_candidate,
     _metadata_query,
+    _metadata_scope,
     _participation,
     _read_documents,
     _read_program_window,
@@ -119,6 +121,139 @@ Reservas de entradas: https://www.agendaguardamar.com/espectaculo/2/x.html
         self.assertEqual(candidate["dates"], ["2026-08-12"])
         self.assertFalse(candidate["detail_checked"])
         self.assertEqual(candidate["detail_priority"], 0)
+
+    def test_metadata_scope_uses_event_identity_not_article_mentions(self):
+        self.assertEqual(
+            _metadata_scope(
+                "Rojales, evento: World Cleanup Day",
+                "https://todoculturavegabaja.es/eventos/"
+                "rojales-evento-batida-de-limpieza/",
+            ),
+            "foreign",
+        )
+        self.assertEqual(
+            _metadata_scope(
+                "Benijófar, Guardamar, Redován y San Isidro, evento: "
+                "World Cleanup Day",
+                "https://todoculturavegabaja.es/eventos/"
+                "benijofar-guardamar-redovan-y-san-isidro-evento-batidas/",
+            ),
+            "local",
+        )
+        self.assertEqual(
+            _metadata_scope(
+                "Agenda cultural",
+                "https://todoculturavegabaja.es/eventos/programa/",
+            ),
+            "unknown",
+        )
+
+    def test_foreign_event_card_is_discarded_before_detail_download(self):
+        metadata = [{
+            "id": 130093,
+            "modified_gmt": "2026-09-18T14:47:01",
+            "link": (
+                "https://todoculturavegabaja.es/eventos/"
+                "rojales-evento-batida-de-limpieza/"
+            ),
+            "title": {"rendered": "Rojales, evento: World Cleanup Day"},
+            "excerpt": {
+                "rendered": "Sábado 19 de septiembre a las 9,30 horas"
+            },
+        }]
+        with (
+            patch("telegrambot.todo_cultura._read_metadata", return_value=metadata),
+            patch("telegrambot.todo_cultura._read_documents") as details,
+        ):
+            window = _read_program_window(date(2026, 9, 19), {})
+
+        details.assert_called_once_with([])
+        self.assertEqual(window.programs, ())
+        self.assertEqual(window.source_state["candidates"], [])
+        self.assertEqual(
+            window.source_state["cursor_modified_gmt"],
+            "2026-09-18T14:47:01",
+        )
+
+    def test_multicity_guardamar_standalone_event_is_collected(self):
+        link = (
+            "https://todoculturavegabaja.es/eventos/"
+            "benijofar-guardamar-redovan-y-san-isidro-evento-batidas-"
+            "de-limpieza-ciudadana-voluntaria/"
+        )
+        metadata = [{
+            "id": 130097,
+            "modified_gmt": "2026-09-18T16:15:48",
+            "link": link,
+            "title": {"rendered": (
+                "Benijófar, Guardamar, Redován y San Isidro, evento: "
+                "World Cleanup Day"
+            )},
+            "excerpt": {"rendered": (
+                "Sábado 19 de septiembre, a partir de las 9,30 horas, "
+                "batidas de limpieza ciudadana voluntaria."
+            )},
+        }]
+        document = {
+            "id": 130097,
+            "modified_gmt": "2026-09-18T16:15:48",
+            "link": link,
+            "content": {"rendered": (
+                "<p>Los ayuntamientos de Benijófar, Guardamar, Redován y "
+                "San Isidro organizan el sábado 19 de septiembre, a partir "
+                "de las 9,30 horas, batidas de limpieza ciudadana voluntaria "
+                "por el World Cleanup Day.</p>"
+            )},
+        }
+        with (
+            patch("telegrambot.todo_cultura._read_metadata", return_value=metadata),
+            patch(
+                "telegrambot.todo_cultura._read_documents",
+                return_value=[document],
+            ),
+        ):
+            window = _read_program_window(date(2026, 9, 19), {})
+
+        self.assertEqual(len(window.programs), 1)
+        self.assertTrue(window.programs[0].standalone)
+        self.assertEqual(window.programs[0].dates, (date(2026, 9, 19),))
+        candidate = window.source_state["candidates"][0]
+        self.assertEqual(candidate["scope"], "local")
+        self.assertIn("2026-09-19", candidate["processed_dates"])
+
+    def test_local_single_day_candidate_precedes_broad_unknown_programme(self):
+        local = {
+            "id": 2,
+            "modified_gmt": "2026-09-18T16:15:48",
+            "dates": ["2026-09-19"],
+            "processed_dates": [],
+            "detail_checked": False,
+            "detail_priority": 0,
+            "scope": "local",
+        }
+        broad = {
+            "id": 1,
+            "modified_gmt": "2026-09-18T17:00:00",
+            "dates": [
+                f"2026-09-{day:02d}" for day in range(19, 26)
+            ],
+            "processed_dates": [],
+            "detail_checked": False,
+            "detail_priority": 3,
+            "scope": "unknown",
+        }
+        start = date(2026, 9, 19)
+        end = date(2026, 9, 25)
+        horizon = date(2026, 11, 2)
+
+        ordered = sorted(
+            (broad, local),
+            key=lambda item: _candidate_priority(
+                item, start, end, horizon
+            ),
+        )
+
+        self.assertEqual([item["id"] for item in ordered], [2, 1])
 
     def test_bounded_index_retains_partially_processed_large_section(self):
         candidates = [{
