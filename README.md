@@ -19,7 +19,7 @@ festival traffic restriction from Policía Local Guardamar.
 The linked pinned city guide uses one recoverable Telegram graph for cameras,
 transport, durable places, and recurring activities. Its first places/activity
 slice covers `Polideportivo Municipal`, the indoor and outdoor municipal pools,
-and swimming. One bounded 16:30 guide sync reads only the accepted public
+and swimming. One bounded 09:02 guide sync refreshes the accepted public
 SimplyBook catalogue JSON surface; it does not infer registration availability
 from catalogue visibility.
 
@@ -266,8 +266,9 @@ sh ./termux/install-guide-cron.sh
 
 The guide installer owns only its marked block, preserves unrelated crontab
 lines, saves the original crontab once as
-`~/.cache/crontab/crontab.before-guide`, and schedules one 16:30
-`Europe/Madrid` invocation. It creates no service or resident process.
+`~/.cache/crontab/crontab.before-guide`, and schedules the 09:02 guide sync plus
+09:42/11:42 course-notification one-shots in `Europe/Madrid`. It creates no
+service or resident process.
 
 This idempotent earthquake installer owns only its marked block and saves the
 original crontab once as `~/.cache/crontab/crontab.before-earthquakes`. Minute
