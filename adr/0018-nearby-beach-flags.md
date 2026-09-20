@@ -32,11 +32,12 @@ published, while listing all six SafeBeach positions would add noise.
   and state follow ADR 0019.
 - Show a separate jellyfish row only for selected beaches with an explicit
   positive SafeBeach value. Do not render routine negative reassurance.
-- Request and use operational SafeBeach data only from 20 June through
-  14 September, inclusive, in `Europe/Madrid`.
-- Treat this as a conservative product window rather than an assertion of
-  exact municipal service dates; retain SafeBeach's active and service-ended
-  checks inside the window.
+- Request and use operational SafeBeach data only from 15 June through
+  15 September, inclusive, in `Europe/Madrid`.
+- Treat this as a product monitoring window aligned with Guardamar's official
+  seasonal Zona Azul period, not as an assertion that every municipal beach
+  service uses the same dates. Retain SafeBeach's current-date, active, and
+  service-ended checks inside the window.
 
 ## Consequences
 
