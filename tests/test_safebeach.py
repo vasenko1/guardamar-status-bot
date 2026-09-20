@@ -68,7 +68,7 @@ def _marker(
 
 
 class SafeBeachNormalizationTests(unittest.TestCase):
-    def test_conservative_season_boundaries_are_inclusive(self):
+    def test_aligned_summer_window_boundaries_are_inclusive(self):
         self.assertFalse(
             _safebeach_is_in_season(
                 datetime(2026, 6, 14, 23, 59, tzinfo=MADRID)
