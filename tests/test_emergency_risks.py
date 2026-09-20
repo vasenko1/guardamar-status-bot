@@ -80,6 +80,17 @@ def test_cce_html_recognizes_segura_situation():
     assert parse_cce_emergencies_html(payload) == HYDRO_SITUATION_1
 
 
+def test_cce_html_without_explicit_clear_or_segura_state_is_unknown():
+    payload = """
+    <html><body><h1>Emergencias vigentes</h1>
+    <div>Otra emergencia activa en Castellón</div>
+    </body></html>
+    """.encode()
+    with pytest.raises(EmergencyRiskError) as exc:
+        parse_cce_emergencies_html(payload)
+    assert exc.value.diagnostic_code == "UNKNOWN"
+
+
 def test_cce_bulletin_recognizes_segura_hydrological_preemergency():
     text = """
     FECHA 20/09/2026
@@ -128,12 +139,12 @@ def test_cce_bulletin_rejects_implausible_future_timestamp():
     assert exc.value.diagnostic_code == "STALE"
 
 
-def test_hydrology_clear_requires_both_cce_surfaces():
+def test_latest_valid_cce_observation_can_clear_older_active_state():
     value = EmergencyRiskState.empty()
-    value["cce_html"] = _observed(HYDRO_NONE)
-    assert EmergencyRiskState.current_hydrology(value) is None
-
-    value["cce_pdf"] = _observed(HYDRO_NONE)
+    value["cce_pdf"] = _observed(
+        HYDRO_SITUATION_1, NOW - timedelta(hours=1)
+    )
+    value["cce_html"] = _observed(HYDRO_NONE, NOW)
     assert EmergencyRiskState.current_hydrology(value) == HYDRO_NONE
 
 
@@ -243,25 +254,23 @@ def test_morning_values_require_fresh_previfoc_observation(tmp_path):
     assert state.morning_values(NOW) == (None, None, None)
 
 
-def test_monitor_preserves_active_pdf_when_html_clears_and_pdf_fails(tmp_path):
+def test_cce_failures_preserve_last_verified_active_state(tmp_path):
     state = EmergencyRiskState(tmp_path / "risk.json")
     value = state.empty()
     value["cce_html"] = _observed(HYDRO_SITUATION_1, NOW - timedelta(hours=1))
     value["cce_pdf"] = _observed(HYDRO_SITUATION_1, NOW - timedelta(hours=1))
     value["published"]["hydrology"] = HYDRO_SITUATION_1
+    value["published"]["fire_level"] = 1
     state.write(value)
 
     async def previfoc():
         return PrevifocRisk(1, 1, 5)
 
-    async def html_clear():
-        return HYDRO_NONE
-
-    async def pdf_failure():
+    async def cce_failure():
         raise EmergencyRiskError("temporary", code="TIMEOUT")
 
     async def publish(_message):
-        raise AssertionError("no false clearance should be published")
+        raise AssertionError("source failure must not publish an all-clear")
 
     result = __import__("asyncio").run(
         monitor_emergency_risks(
@@ -269,8 +278,8 @@ def test_monitor_preserves_active_pdf_when_html_clears_and_pdf_fails(tmp_path):
             state,
             publish,
             fetch_previfoc_fn=previfoc,
-            fetch_cce_html_fn=html_clear,
-            fetch_cce_pdf_fn=pdf_failure,
+            fetch_cce_html_fn=cce_failure,
+            fetch_cce_pdf_fn=cce_failure,
         )
     )
     assert result == "no_update"
