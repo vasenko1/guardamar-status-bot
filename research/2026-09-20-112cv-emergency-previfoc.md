@@ -297,23 +297,17 @@ same-day level. Folding its tiny zone-6 query into the already hourly
 `check-112` watcher is accepted because it avoids another scheduler and makes
 official revisions observable at negligible network cost.
 
-Preferred model:
+Runtime model:
 
-1. Use the operational current/next-day Previfoc surface, not the historical
-   table, as the primary source target.
-2. Probe shortly after the documented approximate daily update time (~17:00)
-   to acquire the next day's Guardamar zone-6 level.
-3. Validate the source's explicit target date.
-4. If tomorrow is already available, store the normalized value and stop.
-5. If not, retry in a later free slot.
-6. Because official material allows same-day readjustment, do not hard-code
-   the value as immutable merely because the first daily value was obtained;
-   any implementation must define whether and how a later official revision is
-   detected without excessive polling.
-
-Candidate scheduling should reuse the existing quiet `:19` minute when
-possible, e.g. a daily Previfoc acquisition attempt at 17:19 with a bounded
-later retry only if tomorrow's value is not yet available.
+1. Use the operational current-day layer 0 for Guardamar zone 6. Layer 1
+   remains a confirmed official next-day surface, but the bot does not poll or
+   store it until a concrete user-facing next-day product needs that value.
+2. Fold the tiny layer-0 query into the existing hourly `check-112` run at
+   minute `:19`. This keeps same-day official readjustments observable
+   without a second scheduler or material network cost.
+3. Validate the explicit zone, `Dia=1`, bounded field values and response
+   shape. A failed observation preserves the previous normalized state and
+   cannot create an all-clear.
 
 Public-message policy is not finalized. Current product direction:
 
@@ -368,9 +362,9 @@ adapters never publish Telegram messages independently.
 2. GET `emergencias.jsf` every run. It is only about 2.7 KB.
 3. Fetch the current CCE `avisometeorologico.pdf` every run. Do not gate this
    hydrology check on a local Guardamar AEMET warning.
-4. Query the tiny Previfoc ArcGIS state for Guardamar zone 6 so same-day
-   readjustments and the next-day operational value are observable without a
-   second scheduler.
+4. Query the tiny current-day Previfoc ArcGIS state for Guardamar zone 6 so
+   same-day readjustments are observable without a second scheduler. The
+   confirmed next-day layer is not polled until a product action needs it.
 5. Parse all source results into normalized candidate states.
 6. Merge/deduplicate candidates with explicit precedence; an official active
    emergency state is stronger than a hydrological preemergency observation.
