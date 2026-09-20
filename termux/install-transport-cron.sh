@@ -42,9 +42,9 @@ awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" '
         "$BEGIN_MARKER" \
         'CRON_TZ=Europe/Madrid' \
         "0 5 * * * $SYNC" \
-        "30 12 * * * $SH_BIN $PUBLISH" \
+        "42 8 * * * $SH_BIN $PUBLISH" \
         "$END_MARKER"
 } | crontab -
 
 sv up crond
-echo "Транспорт: синхронизация 05:00, уведомления 12:30 Europe/Madrid"
+echo "Транспорт: синхронизация 05:00, уведомления 08:42 Europe/Madrid"
