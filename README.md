@@ -161,7 +161,9 @@ The validated Android deployment uses the scripts in `termux/`:
   title translations, and `termux/prepare-aemet.sh` at 07:15 to store one
   normalized same-day weather snapshot;
 - `termux/sync-guide.sh` at 09:02 to read the bounded places/activities source
-  baseline and reconcile the same pinned graph; the same one-shot runs at 19:45
+  baseline, check the municipal bathing-water index and reconcile the same pinned
+  graph; a new weekly bathing-water PDF is parsed only when its report identity
+  changes and may produce one public 🧪 quality notice; the same one-shot runs at 19:45
   on 14 June and 15 September to verify the live ORA schedule before a due
   next-day Zona Azul transition notice; `publish-course-notifications.sh`
   runs at 09:42 with an 11:42 same-day retry opportunity;
