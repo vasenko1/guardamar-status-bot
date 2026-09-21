@@ -126,27 +126,22 @@ class ParkingSeasonTests(unittest.TestCase):
                 self.assertEqual(_parking_notice_key(local_day), expected)
 
     def test_paid_notice_copy_is_parking_only(self):
-        text = _parking_notice_text(
-            "2026:paid",
-            "-100123",
-            {"parking": 104},
-        )
+        text = _parking_notice_text("2026:paid")
         self.assertIn("с завтрашнего дня платно", text)
         self.assertIn("С <b>15 июня</b>", text)
-        self.assertIn("10:00 до 20:00", text)
-        self.assertIn("https://t.me/c/123/104", text)
+        self.assertIn("10:00–20:00", text)
+        self.assertIn("15 сентября включительно", text)
+        self.assertNotIn("http", text)
+        self.assertNotIn("карточк", text)
         self.assertNotIn("SafeBeach", text)
         self.assertNotIn("Пляж", text)
 
     def test_free_notice_copy_is_parking_only(self):
-        text = _parking_notice_text(
-            "2026:free",
-            "-100123",
-            {"parking": 104},
-        )
+        text = _parking_notice_text("2026:free")
         self.assertIn("с завтрашнего дня бесплатно", text)
         self.assertIn("С <b>16 сентября</b>", text)
-        self.assertIn("https://t.me/c/123/104", text)
+        self.assertNotIn("http", text)
+        self.assertNotIn("карточк", text)
         self.assertNotIn("SafeBeach", text)
         self.assertNotIn("Пляж", text)
 
@@ -406,7 +401,6 @@ class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
             "pool_indoor": 101,
             "pool_outdoor": 102,
             "swimming": 103,
-            "parking": 104,
         }
 
     async def test_first_success_is_silent_baseline(self):
