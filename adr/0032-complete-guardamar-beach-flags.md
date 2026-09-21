@@ -42,6 +42,7 @@ SafeBeach response supplies. Partial current coverage is published immediately
 rather than withheld for completeness, and separate responses are never
 combined into a synthetic current snapshot.
 
-The proposed later-day monitor in ADR 0031 remains separate. Its full-beach
-baseline can reuse this normalized six-zone result, but this decision does not
-authorize or schedule monitoring.
+The later-day monitor in ADR 0031 remains separate. Its baseline reuses the
+latest published beach-root facts, which may contain any valid current subset
+of the six known zones; this decision does not authorize or schedule
+monitoring.
