@@ -8,16 +8,18 @@ from zoneinfo import ZoneInfo
 
 from telegrambot.branding import FOOTER
 from telegrambot.guide import (
-    GuideSourceError,
     GuideState,
-    WIFI_SOURCE_PAGE_URL,
-    WIFI_VERIFIED_ASSET_URL,
-    _allowed_wifi_asset_url,
-    _allowed_wifi_source_url,
-    _extract_wifi_asset_url,
-    _parse_wifi_pdf_text,
     _publish_wifi_pending_notice,
     _refresh_wifi_source,
+)
+from telegrambot.wifi import (
+    WIFI_SOURCE_PAGE_URL,
+    WIFI_VERIFIED_ASSET_URL,
+    WifiSourceError,
+    allowed_wifi_asset_url,
+    allowed_wifi_source_url,
+    extract_wifi_asset_url,
+    parse_wifi_pdf_text,
     valid_wifi_snapshot,
 )
 from telegrambot.pinned import build_places, build_root, build_wifi
@@ -58,7 +60,7 @@ Red: vicenteramos - Contraseña: menjallibres
 
 
 def changed_snapshot(password="plaza2026"):
-    return _parse_wifi_pdf_text(
+    return parse_wifi_pdf_text(
         wifi_pdf_text(password),
         CHANGED_ASSET,
         NOW,
@@ -126,9 +128,9 @@ class WifiPinnedContentTests(unittest.TestCase):
 
 class WifiSourceParsingTests(unittest.TestCase):
     def test_source_page_policy_is_narrow(self):
-        self.assertTrue(_allowed_wifi_source_url(WIFI_SOURCE_PAGE_URL))
+        self.assertTrue(allowed_wifi_source_url(WIFI_SOURCE_PAGE_URL))
         self.assertTrue(
-            _allowed_wifi_source_url(
+            allowed_wifi_source_url(
                 "https://guardamardelsegura.es/wifis-municipales/"
             )
         )
@@ -138,11 +140,11 @@ class WifiSourceParsingTests(unittest.TestCase):
             "https://guardamardelsegura.es.evil.example/wifis-municipales/",
         ):
             with self.subTest(invalid=invalid):
-                self.assertFalse(_allowed_wifi_source_url(invalid))
+                self.assertFalse(allowed_wifi_source_url(invalid))
 
     def test_asset_policy_accepts_only_municipal_https_pdf(self):
-        self.assertTrue(_allowed_wifi_asset_url(WIFI_VERIFIED_ASSET_URL))
-        self.assertTrue(_allowed_wifi_asset_url(CHANGED_ASSET))
+        self.assertTrue(allowed_wifi_asset_url(WIFI_VERIFIED_ASSET_URL))
+        self.assertTrue(allowed_wifi_asset_url(CHANGED_ASSET))
         for invalid in (
             "http://www.guardamardelsegura.es/wp-content/uploads/wifi.pdf",
             "https://cdn.example.org/wifi.pdf",
@@ -150,7 +152,7 @@ class WifiSourceParsingTests(unittest.TestCase):
             "https://www.guardamardelsegura.es/wp-content/uploads/wifi.jpg",
         ):
             with self.subTest(invalid=invalid):
-                self.assertFalse(_allowed_wifi_asset_url(invalid))
+                self.assertFalse(allowed_wifi_asset_url(invalid))
 
     def test_extracts_one_municipal_linked_wifi_asset_and_keeps_query(self):
         payload = b"""
@@ -160,7 +162,7 @@ class WifiSourceParsingTests(unittest.TestCase):
           </a>
         </body></html>
         """
-        self.assertEqual(_extract_wifi_asset_url(payload), CHANGED_ASSET)
+        self.assertEqual(extract_wifi_asset_url(payload), CHANGED_ASSET)
 
     def test_rejects_external_missing_or_ambiguous_asset(self):
         payloads = (
@@ -181,8 +183,8 @@ class WifiSourceParsingTests(unittest.TestCase):
         )
         for payload in payloads:
             with self.subTest(payload=payload):
-                with self.assertRaises(GuideSourceError):
-                    _extract_wifi_asset_url(payload)
+                with self.assertRaises(WifiSourceError):
+                    extract_wifi_asset_url(payload)
 
     def test_parses_complete_text_pdf_snapshot(self):
         snapshot = changed_snapshot("plaza2026")
@@ -205,7 +207,7 @@ class WifiSourceParsingTests(unittest.TestCase):
         self.assertEqual(len(library["networks"]), 3)
 
     def test_parses_current_pdf_text_layer_order(self):
-        snapshot = _parse_wifi_pdf_text(
+        snapshot = parse_wifi_pdf_text(
             wifi_pdf_text_live_order(),
             CHANGED_ASSET,
             NOW,
@@ -230,14 +232,14 @@ class WifiSourceParsingTests(unittest.TestCase):
             "AVDA. LOS PINOS\nWifi gratuita WiFi4EU\n",
             "AVDA. LOS PINOS\n",
         )
-        with self.assertRaises(GuideSourceError):
-            _parse_wifi_pdf_text(incomplete, CHANGED_ASSET, NOW)
+        with self.assertRaises(WifiSourceError):
+            parse_wifi_pdf_text(incomplete, CHANGED_ASSET, NOW)
 
         extra = wifi_pdf_text() + (
             "\nPUNTO NUEVO\nRed: unknown\nContraseña: secret\n"
         )
-        with self.assertRaises(GuideSourceError):
-            _parse_wifi_pdf_text(extra, CHANGED_ASSET, NOW)
+        with self.assertRaises(WifiSourceError):
+            parse_wifi_pdf_text(extra, CHANGED_ASSET, NOW)
 
 
 class WifiSourceLifecycleTests(unittest.IsolatedAsyncioTestCase):
@@ -272,7 +274,7 @@ class WifiSourceLifecycleTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn("wifi_snapshot", saved)
 
     async def test_new_asset_with_same_facts_is_silent(self):
-        snapshot = _parse_wifi_pdf_text(
+        snapshot = parse_wifi_pdf_text(
             wifi_pdf_text("vegafibra"),
             CHANGED_ASSET,
             NOW,
@@ -336,7 +338,7 @@ class WifiSourceLifecycleTests(unittest.IsolatedAsyncioTestCase):
                 patch(
                     "telegrambot.guide.fetch_wifi_snapshot",
                     new=AsyncMock(
-                        side_effect=GuideSourceError(
+                        side_effect=WifiSourceError(
                             "schema", code="WIFI-SCHEMA"
                         )
                     ),
