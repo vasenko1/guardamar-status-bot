@@ -1,13 +1,16 @@
-"""Official Guardamar bathing-water programme discovery.
+"""Official Guardamar bathing-water programme and weekly quality reports.
 
-This adapter reads only the small municipal index page. It deliberately does
-not interpret PDF laboratory tables; it keeps the annually published control
-window and the newest linked weekly report so the guide can stay current
-without hard-coded season dates.
+The adapter discovers the current municipal control programme from its small
+index page and, only when a new report period appears, parses the linked
+text-readable PDF. It accepts the reviewed seven-beach table and the official
+EXCELENTE / BUENA / SUFICIENTE / INSUFICIENTE labels; it never derives a
+quality class from microbiological values itself.
 """
 
 import asyncio
 import re
+import subprocess
+import unicodedata
 import urllib.parse
 from datetime import date, datetime
 from html.parser import HTMLParser
@@ -20,10 +23,38 @@ BATHING_WATER_PAGE_URL = (
     "programa-de-control-de-las-zonas-de-bano/"
 )
 _HTML_TYPES = frozenset({"text/html", "application/xhtml+xml"})
+_PDF_TYPES = frozenset({"application/pdf"})
 _REQUEST_HEADERS = {
     "Accept": "text/html,application/xhtml+xml",
     "User-Agent": "guardamar-status-bot/1.0",
 }
+_PDF_REQUEST_HEADERS = {
+    "Accept": "application/pdf",
+    "User-Agent": "guardamar-status-bot/1.0",
+}
+_PDF_LIMIT_BYTES = 4 * 1024 * 1024
+_PDF_TEXT_LIMIT_BYTES = 256 * 1024
+_PDF_PARSE_TIMEOUT_SECONDS = 8.0
+_RATINGS = {
+    "EXCELENTE": "excellent",
+    "BUENA": "good",
+    "SUFICIENTE": "sufficient",
+    "INSUFICIENTE": "insufficient",
+}
+_BEACH_ROWS = (
+    ("PLAYA DE TUSALES", "Tusales"),
+    ("PLAYA DE VIVERS", "Vivers"),
+    ("PLAYA DE BABILONIA", "Babilonia"),
+    ("PLAYA CENTRO", "Centro"),
+    ("PLAYA DE LA ROQUETA", "La Roqueta"),
+    ("PLAYA DEL MONCAYO", "Moncayo"),
+    ("PLAYA DE ORTIGUES", "Ortigues"),
+)
+_REPORT_PERIOD_RE = re.compile(
+    r"Fecha:\s*(\d{2})\.(\d{2})\.(\d{4})\s*[-–—]\s*"
+    r"(\d{2})\.(\d{2})\.(\d{4})",
+    re.IGNORECASE,
+)
 _MONTHS = {
     "enero": 1,
     "febrero": 2,
@@ -312,3 +343,322 @@ async def fetch_bathing_water_snapshot(now: datetime) -> dict:
             code="SCHEMA",
         )
     return snapshot
+
+
+def _fold(value: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", value)
+    without_marks = "".join(
+        character for character in decomposed
+        if not unicodedata.combining(character)
+    )
+    return " ".join(without_marks.upper().split())
+
+
+def _extract_report_text(payload: bytes) -> str:
+    if not payload.startswith(b"%PDF-") or len(payload) > _PDF_LIMIT_BYTES:
+        raise BathingWaterSourceError(
+            "bathing-water report is not a bounded PDF",
+            code="REPORT-PDF",
+        )
+    try:
+        completed = subprocess.run(
+            ["pdftotext", "-layout", "-", "-"],
+            input=payload,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=_PDF_PARSE_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        raise BathingWaterSourceError(
+            "pdftotext is unavailable",
+            code="REPORT-PDF-TO-TEXT",
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise BathingWaterSourceError(
+            "bathing-water PDF parsing timed out",
+            code="REPORT-PDF-TIMEOUT",
+        ) from exc
+    except OSError as exc:
+        raise BathingWaterSourceError(
+            "bathing-water PDF parsing failed",
+            code="REPORT-PDF-TO-TEXT",
+        ) from exc
+    if completed.returncode != 0:
+        raise BathingWaterSourceError(
+            "pdftotext rejected bathing-water PDF",
+            code="REPORT-PDF-PARSE",
+        )
+    if (
+        not completed.stdout
+        or len(completed.stdout) > _PDF_TEXT_LIMIT_BYTES
+    ):
+        raise BathingWaterSourceError(
+            "bathing-water PDF text is empty or too large",
+            code="REPORT-PDF-PARSE",
+        )
+    try:
+        return completed.stdout.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise BathingWaterSourceError(
+            "bathing-water PDF text encoding is invalid",
+            code="REPORT-PDF-PARSE",
+        ) from exc
+
+
+def _rating(value: str) -> str:
+    normalized = _fold(value)
+    matches = [
+        canonical
+        for label, canonical in _RATINGS.items()
+        if re.search(rf"\b{label}\b", normalized)
+    ]
+    if len(matches) != 1:
+        raise BathingWaterSourceError(
+            "bathing-water rating is missing or ambiguous",
+            code="REPORT-SCHEMA",
+        )
+    return matches[0]
+
+
+def _parse_report_text(
+    text: str,
+    *,
+    report_url: str,
+    report_start: date,
+    report_end: date,
+    observed_at: datetime,
+) -> dict:
+    """Parse the reviewed Spanish first-page weekly beach table."""
+
+    if observed_at.tzinfo is None or observed_at.utcoffset() is None:
+        raise ValueError("bathing-water report time must be timezone-aware")
+    if not _allowed_report_url(report_url):
+        raise BathingWaterSourceError(
+            "bathing-water report URL is outside policy",
+            code="REPORT-URL",
+        )
+    if report_start > report_end or report_start.year != report_end.year:
+        raise BathingWaterSourceError(
+            "bathing-water report period is invalid",
+            code="REPORT-PERIOD",
+        )
+
+    first_page = text.split("\f", 1)[0]
+    folded_page = _fold(first_page)
+    if (
+        "PROGRAMA DE CONTROL DE LAS ZONAS DE BANO" not in folded_page
+        or "GUARDAMAR DEL SEGURA" not in folded_page
+    ):
+        raise BathingWaterSourceError(
+            "bathing-water report heading is invalid",
+            code="REPORT-SCHEMA",
+        )
+
+    period = _REPORT_PERIOD_RE.search(first_page)
+    if period is None:
+        raise BathingWaterSourceError(
+            "bathing-water report period is missing",
+            code="REPORT-PERIOD",
+        )
+    try:
+        embedded_start = date(
+            int(period.group(3)),
+            int(period.group(2)),
+            int(period.group(1)),
+        )
+        embedded_end = date(
+            int(period.group(6)),
+            int(period.group(5)),
+            int(period.group(4)),
+        )
+    except ValueError as exc:
+        raise BathingWaterSourceError(
+            "bathing-water report period is invalid",
+            code="REPORT-PERIOD",
+        ) from exc
+    if embedded_start != report_start or embedded_end != report_end:
+        raise BathingWaterSourceError(
+            "bathing-water report period does not match index",
+            code="REPORT-PERIOD",
+        )
+
+    lines = first_page.splitlines()
+    header_index = None
+    positions = None
+    for index, line in enumerate(lines):
+        folded = _fold(line)
+        labels = (
+            "ANALISIS AGUA",
+            "ASPECTO AGUA",
+            "ASPECTO ARENA",
+            "ENTEROCOCOS",
+        )
+        if all(label in folded for label in labels):
+            candidate = tuple(folded.index(label) for label in labels)
+            if candidate == tuple(sorted(candidate)) and len(set(candidate)) == 4:
+                header_index = index
+                positions = candidate
+                break
+    if header_index is None or positions is None:
+        raise BathingWaterSourceError(
+            "bathing-water report table header is missing",
+            code="REPORT-SCHEMA",
+        )
+
+    water_start, water_appearance_start, sand_start, analytics_start = positions
+    rows = []
+    for source_name, public_name in _BEACH_ROWS:
+        matches = []
+        for line in lines[header_index + 1:]:
+            if source_name in _fold(line):
+                matches.append(line)
+        if len(matches) != 1:
+            raise BathingWaterSourceError(
+                f"bathing-water row {source_name} is missing or ambiguous",
+                code="REPORT-SCHEMA",
+            )
+        line = matches[0]
+        if len(line) < analytics_start:
+            line = line.ljust(analytics_start)
+        rows.append({
+            "name": public_name,
+            "water_analysis": _rating(
+                line[water_start:water_appearance_start]
+            ),
+            "water_appearance": _rating(
+                line[water_appearance_start:sand_start]
+            ),
+            "sand_appearance": _rating(
+                line[sand_start:analytics_start]
+            ),
+        })
+
+    snapshot = {
+        "observed_at": observed_at.isoformat(),
+        "report_start": report_start.isoformat(),
+        "report_end": report_end.isoformat(),
+        "report_url": report_url,
+        "beaches": rows,
+    }
+    if not valid_bathing_water_report_snapshot(snapshot):
+        raise BathingWaterSourceError(
+            "bathing-water report snapshot is invalid",
+            code="REPORT-SCHEMA",
+        )
+    return snapshot
+
+
+def valid_bathing_water_report_snapshot(value) -> bool:
+    if not isinstance(value, dict):
+        return False
+    try:
+        observed_at = datetime.fromisoformat(value["observed_at"])
+        report_start = date.fromisoformat(value["report_start"])
+        report_end = date.fromisoformat(value["report_end"])
+        report_url = value["report_url"]
+        beaches = value["beaches"]
+    except (KeyError, TypeError, ValueError):
+        return False
+    if (
+        observed_at.tzinfo is None
+        or observed_at.utcoffset() is None
+        or report_start > report_end
+        or report_start.year != report_end.year
+        or not isinstance(report_url, str)
+        or not _allowed_report_url(report_url)
+        or not isinstance(beaches, list)
+        or len(beaches) != len(_BEACH_ROWS)
+    ):
+        return False
+
+    expected_names = [public_name for _, public_name in _BEACH_ROWS]
+    actual_names = []
+    allowed = set(_RATINGS.values())
+    for beach in beaches:
+        if not isinstance(beach, dict) or set(beach) != {
+            "name",
+            "water_analysis",
+            "water_appearance",
+            "sand_appearance",
+        }:
+            return False
+        if (
+            not isinstance(beach["name"], str)
+            or beach["water_analysis"] not in allowed
+            or beach["water_appearance"] not in allowed
+            or beach["sand_appearance"] not in allowed
+        ):
+            return False
+        actual_names.append(beach["name"])
+    return actual_names == expected_names
+
+
+def bathing_water_report_fingerprint(value: dict) -> tuple:
+    """Return semantic weekly report facts, excluding URL/observation time."""
+
+    return (
+        value["report_start"],
+        value["report_end"],
+        tuple(
+            (
+                beach["name"],
+                beach["water_analysis"],
+                beach["water_appearance"],
+                beach["sand_appearance"],
+            )
+            for beach in value["beaches"]
+        ),
+    )
+
+
+async def fetch_bathing_water_report(
+    programme_snapshot: dict,
+    now: datetime,
+) -> dict:
+    """Fetch and parse the newest weekly report discovered by the index."""
+
+    if not valid_bathing_water_snapshot(programme_snapshot):
+        raise BathingWaterSourceError(
+            "bathing-water programme snapshot is invalid",
+            code="REPORT-PROGRAMME",
+        )
+    report_url = programme_snapshot.get("latest_report_url")
+    report_start_raw = programme_snapshot.get("latest_report_start")
+    report_end_raw = programme_snapshot.get("latest_report_end")
+    if not all((report_url, report_start_raw, report_end_raw)):
+        raise BathingWaterSourceError(
+            "bathing-water programme has no weekly report",
+            code="REPORT-MISSING",
+        )
+    try:
+        report_start = date.fromisoformat(report_start_raw)
+        report_end = date.fromisoformat(report_end_raw)
+    except (TypeError, ValueError) as exc:
+        raise BathingWaterSourceError(
+            "bathing-water programme report period is invalid",
+            code="REPORT-PERIOD",
+        ) from exc
+    try:
+        payload, _, _ = await asyncio.to_thread(
+            fetch_bounded,
+            report_url,
+            is_allowed_url=_allowed_report_url,
+            limit_bytes=_PDF_LIMIT_BYTES,
+            timeout_seconds=15.0,
+            headers=_PDF_REQUEST_HEADERS,
+            accepted_types=_PDF_TYPES,
+        )
+    except BoundedFetchError as exc:
+        raise BathingWaterSourceError(
+            "bathing-water report request failed",
+            code=f"REPORT-{exc.code}",
+        ) from exc
+    text = await asyncio.to_thread(_extract_report_text, payload)
+    return _parse_report_text(
+        text,
+        report_url=report_url,
+        report_start=report_start,
+        report_end=report_end,
+        observed_at=now,
+    )
