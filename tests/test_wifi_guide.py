@@ -65,6 +65,31 @@ def changed_snapshot(password="plaza2026"):
     )
 
 
+def wifi_pdf_text_live_order():
+    return """
+WIFIS PÚBLICAS en GUARDAMAR DEL SEGURA
+ESCOLA DE MÚSICA
+C/ Mercat, 2 - Wifi gratuita WiFi4EU
+PLAZA DE LA CONSTITUCIÓN
+Red: vegafibra_gratis
+Contraseña: vegafibra
+PASEO MARÍTIMO. Avda. de Europa
+Red: vegafibra_gratis
+Contraseña: vegafibra
+BIBLIOTECA PÚBLICA - C/ San Jaime, 5
+Red: wifibiblioteca - Contraseña: biblimar
+Red: biblioteca infantil - Contraseña: menjallibres
+Red: vicenteramos - Contraseña: menjallibres
+SALA DE ESTUDIOS 24/365 - C/ Mayor, 69
+Red: wifi_1EO9C
+Contraseña: vegafibra
+CASA DE CULTURA
+C/ Colón, 60 - Wifi gratuita WiFi4EU
+AVDA. LOS PINOS
+Wifi gratuita WiFi4EU
+"""
+
+
 class WifiPinnedContentTests(unittest.TestCase):
     def test_static_wifi_card_contains_reviewed_baseline(self):
         message = build_wifi("https://t.me/c/1/22")
@@ -179,6 +204,27 @@ class WifiSourceParsingTests(unittest.TestCase):
         )
         self.assertEqual(len(library["networks"]), 3)
 
+    def test_parses_current_pdf_text_layer_order(self):
+        snapshot = _parse_wifi_pdf_text(
+            wifi_pdf_text_live_order(),
+            CHANGED_ASSET,
+            NOW,
+        )
+
+        self.assertTrue(valid_wifi_snapshot(snapshot))
+        self.assertEqual(
+            [point["key"] for point in snapshot["points"]],
+            [
+                "music_school",
+                "culture_house",
+                "los_pinos",
+                "constitution_square",
+                "seafront",
+                "study_room",
+                "library",
+            ],
+        )
+
     def test_rejects_incomplete_or_extra_network_structure(self):
         incomplete = wifi_pdf_text().replace(
             "AVDA. LOS PINOS\nWifi gratuita WiFi4EU\n",
@@ -224,6 +270,32 @@ class WifiSourceLifecycleTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(saved["wifi_last_attempt_day"], "2026-09-21")
             self.assertNotIn("wifi_pending_asset_url", saved)
             self.assertNotIn("wifi_snapshot", saved)
+
+    async def test_new_asset_with_same_facts_is_silent(self):
+        snapshot = _parse_wifi_pdf_text(
+            wifi_pdf_text("vegafibra"),
+            CHANGED_ASSET,
+            NOW,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state_store = GuideState(Path(directory) / "guide.json")
+            state = state_store.read()
+            with (
+                patch(
+                    "telegrambot.guide.fetch_current_wifi_asset",
+                    new=AsyncMock(return_value=CHANGED_ASSET),
+                ),
+                patch(
+                    "telegrambot.guide.fetch_wifi_snapshot",
+                    new=AsyncMock(return_value=snapshot),
+                ),
+            ):
+                await _refresh_wifi_source(NOW, state, state_store)
+
+            saved = state_store.read()
+            self.assertEqual(saved["wifi_observed_asset_url"], CHANGED_ASSET)
+            self.assertEqual(saved["wifi_snapshot"], snapshot)
+            self.assertNotIn("wifi_pending_asset_url", saved)
 
     async def test_changed_asset_persists_validated_snapshot_and_pending_notice(self):
         snapshot = changed_snapshot()
