@@ -23,6 +23,7 @@ def report_text(
     centre_water="BUENA",
     roqueta_sand="BUENA",
     ortigues_sand="BUENA",
+    sample_dates=None,
 ):
     header = (
         f'{"Playa":<42}'
@@ -41,10 +42,17 @@ def report_text(
         ("PLAYA DEL MONCAYO", "EXCELENTE", "EXCELENTE", "EXCELENTE"),
         ("PLAYA DE ORTIGUES", "EXCELENTE", "EXCELENTE", ortigues_sand),
     ]
-    body = "\n".join(
-        f"{name:<42}{analysis:<20}{water:<20}{sand:<20}{0:<18}0"
-        for name, analysis, water, sand in rows
+    sample_dates = sample_dates or (
+        "17/06/26", "17/06/26", "17/06/26", "17/06/26",
+        "17/06/26", "16/06/26", "16/06/26",
     )
+    body_lines = []
+    for (name, analysis, water, sand), sampled in zip(rows, sample_dates):
+        body_lines.append(
+            f"{name:<42}{analysis:<20}{water:<20}{sand:<20}{0:<18}0"
+        )
+        body_lines.append(f"Fecha desc. punto1: {sampled}")
+    body = "\n".join(body_lines)
     return (
         "Programa de control de las zonas de baño.\n"
         "Análisis de las aguas e inspección semanal del 1 de junio al 15 de septiembre. 2026\n"
@@ -55,6 +63,32 @@ def report_text(
         "Valoración EXCELENTE / BUENA / SUFICIENTE / INSUFICIENTE\n"
         "\fPrograma de control de les zones de bany.\n"
     )
+
+
+def report_text_valencian():
+    value = report_text()
+    replacements = (
+        ("Programa de control de las zonas de baño", "Programa de control de les zones de bany"),
+        ("Análisis de las aguas e inspección semanal", "Anàlisi de les aigües e inspecció setmanal"),
+        ("Fecha:", "Data:"),
+        ("Análisis Agua", "Anàlisi Aigua"),
+        ("Aspecto Agua", "Aspecte Aigua"),
+        ("Aspecto Arena", "Aspecte Arena"),
+        ("PLAYA DE TUSALES", "PLATJA DELS TOSSALS"),
+        ("PLAYA DE VIVERS", "PLATJA DELS VIVERS"),
+        ("PLAYA DE BABILONIA", "PLATJA DE BABILONIA"),
+        ("PLAYA CENTRO", "PLATJA CENTRE"),
+        ("PLAYA DE LA ROQUETA", "PLATJA DE LA ROQUETA"),
+        ("PLAYA DEL MONCAYO", "PLATJA DEL MONCAIO"),
+        ("PLAYA DE ORTIGUES", "PLATJA DE LES ORTIGUES-CAMPO"),
+        ("INSUFICIENTE", "INSUFICIENT"),
+        ("SUFICIENTE", "SUFICIENT"),
+        ("EXCELENTE", "EXCEL·LENT"),
+        ("BUENA", "BONA"),
+    )
+    for source, target in replacements:
+        value = value.replace(source, target)
+    return value
 
 
 def page(*, year=2026, report_year=2026):
@@ -104,10 +138,45 @@ class BathingWaterReportTests(unittest.TestCase):
         centro = snapshot["beaches"][3]
         roqueta = snapshot["beaches"][4]
         ortigues = snapshot["beaches"][6]
+        self.assertEqual(
+            snapshot["sample_dates"],
+            ["2026-06-16", "2026-06-17"],
+        )
         self.assertEqual(centro["water_analysis"], "excellent")
         self.assertEqual(centro["water_appearance"], "good")
         self.assertEqual(roqueta["sand_appearance"], "good")
         self.assertEqual(ortigues["sand_appearance"], "good")
+
+    def test_parses_reviewed_valencian_variant(self):
+        snapshot = self._parse(report_text_valencian())
+
+        self.assertTrue(valid_bathing_water_report_snapshot(snapshot))
+        self.assertEqual(snapshot["beaches"][0]["name"], "Tusales")
+        self.assertEqual(snapshot["beaches"][0]["water_analysis"], "excellent")
+        self.assertEqual(snapshot["beaches"][3]["water_appearance"], "good")
+        self.assertEqual(snapshot["beaches"][4]["sand_appearance"], "good")
+
+    def test_rejects_missing_or_out_of_period_sample_dates(self):
+        missing = report_text().replace("Fecha desc. punto1:", "Muestra:")
+        with self.assertRaises(BathingWaterSourceError) as caught:
+            self._parse(missing)
+        self.assertEqual(
+            caught.exception.diagnostic_code,
+            "REPORT-SAMPLE-DATE",
+        )
+
+        outside = report_text(
+            sample_dates=(
+                "14/06/26", "17/06/26", "17/06/26", "17/06/26",
+                "17/06/26", "16/06/26", "16/06/26",
+            )
+        )
+        with self.assertRaises(BathingWaterSourceError) as caught:
+            self._parse(outside)
+        self.assertEqual(
+            caught.exception.diagnostic_code,
+            "REPORT-SAMPLE-DATE",
+        )
 
     def test_rejects_report_period_that_disagrees_with_index(self):
         with self.assertRaises(BathingWaterSourceError) as caught:
