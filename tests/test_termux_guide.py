@@ -52,7 +52,7 @@ class GuideTermuxTests(unittest.TestCase):
             ROOT / "termux" / "sync-bathing-water.sh"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("state/bathing-water.log", script)
+        self.assertIn('LOG="$STATE_DIR/bathing-water.log"', script)
         self.assertIn("python -m telegrambot.guide bathing-water", script)
         self.assertNotIn("sync-guide.sh", script)
 
