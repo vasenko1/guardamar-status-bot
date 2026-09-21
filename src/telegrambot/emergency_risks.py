@@ -40,7 +40,7 @@ PREVIFOC_URL = (
     "&returnGeometry=false&f=json"
 )
 
-STATE_VERSION = 1
+STATE_VERSION = 2
 HTML_LIMIT_BYTES = 64 * 1024
 JSON_LIMIT_BYTES = 64 * 1024
 PDF_LIMIT_BYTES = 512 * 1024
@@ -521,7 +521,7 @@ class EmergencyRiskState:
             "cce_pdf": None,
             "published": {
                 "fire_level": None,
-                "dry_high": False,
+                "dry_level": None,
                 "hydrology": None,
             },
         }
@@ -550,14 +550,16 @@ class EmergencyRiskState:
             raise EmergencyRiskError(
                 "risk state is corrupt", code="STATE-CORRUPT"
             ) from exc
+
         if (
             not isinstance(value, dict)
             or set(value) != {
                 "version", "previfoc", "cce_html", "cce_pdf", "published",
             }
-            or value.get("version") != STATE_VERSION
+            or value.get("version") not in {1, STATE_VERSION}
         ):
             raise EmergencyRiskError("risk state is corrupt", code="STATE-CORRUPT")
+
         previfoc = value["previfoc"]
         if previfoc is not None:
             if (
@@ -576,13 +578,44 @@ class EmergencyRiskState:
                     "risk state is corrupt", code="STATE-CORRUPT"
                 )
             _parse_datetime(previfoc["observed_at"])
+
         self._validate_observation(value["cce_html"])
         self._validate_observation(value["cce_pdf"])
+
         published = value["published"]
+        if value["version"] == 1:
+            if (
+                not isinstance(published, dict)
+                or set(published) != {
+                    "fire_level", "dry_high", "hydrology",
+                }
+                or not isinstance(published["dry_high"], bool)
+            ):
+                raise EmergencyRiskError(
+                    "risk state is corrupt", code="STATE-CORRUPT"
+                )
+            dry_level = None
+            if published["dry_high"]:
+                dry_level = 3
+            elif previfoc is not None:
+                # Preserve the already observed low/probable state as the
+                # migration baseline; deployment must not invent a transition.
+                dry_level = previfoc["dry_thunderstorm_level"]
+            value = {
+                **value,
+                "version": STATE_VERSION,
+                "published": {
+                    "fire_level": published["fire_level"],
+                    "dry_level": dry_level,
+                    "hydrology": published["hydrology"],
+                },
+            }
+            published = value["published"]
+
         if (
             not isinstance(published, dict)
             or set(published) != {
-                "fire_level", "dry_high", "hydrology",
+                "fire_level", "dry_level", "hydrology",
             }
             or (
                 published["fire_level"] is not None
@@ -592,7 +625,14 @@ class EmergencyRiskState:
                     or published["fire_level"] not in {1, 2, 3}
                 )
             )
-            or not isinstance(published["dry_high"], bool)
+            or (
+                published["dry_level"] is not None
+                and (
+                    not isinstance(published["dry_level"], int)
+                    or isinstance(published["dry_level"], bool)
+                    or published["dry_level"] not in {1, 2, 3}
+                )
+            )
             or (
                 published["hydrology"] is not None
                 and published["hydrology"] not in _HYDRO_VALUES - {HYDRO_NONE}
@@ -711,100 +751,137 @@ def _transition(value: dict) -> Optional[str]:
     fire, dry = _current_previfoc(value)
     hydro = EmergencyRiskState.current_hydrology(value)
 
-    lines = []
+    sections = []
     sources = []
-    worsening = False
 
     previous_fire = published["fire_level"]
-    if fire is not None and previous_fire is not None and fire != previous_fire:
-        if fire > previous_fire:
-            if fire == 3:
-                lines.append(
-                    "🔥 Для Гуардамара пожарная опасность повышена до "
-                    "<b>экстремальной</b>."
-                )
-            else:
-                lines.append(
-                    "🔥 Для Гуардамара пожарная опасность повышена до "
-                    "<b>высокой</b>."
-                )
-            worsening = True
-        elif previous_fire == 3 and fire == 2:
-            lines.append(
-                "🔥 Экстремальная пожарная опасность снята; "
-                "сохраняется <b>высокий</b> уровень."
-            )
-        elif fire == 1:
+    if fire is not None and fire != previous_fire:
+        if fire == 3:
+            sections.append([
+                "🔥 <b>Экстремальный риск лесных пожаров</b>",
+                "",
+                "Для зоны Гуардамара установлен <b>максимальный уровень — 3 из 3</b>.",
+                "",
+                "🚫 Действуют наиболее строгие ограничения на использование огня "
+                "и отдельные пожароопасные работы в лесной зоне и рядом с ней.",
+                "",
+                "Это профилактический уровень риска, а не сообщение "
+                "о возникшем пожаре.",
+            ])
+        elif fire == 2 and previous_fire is not None:
             if previous_fire == 3:
-                lines.append(
-                    "🔥 Экстремальная пожарная опасность снята; "
-                    "текущий уровень — низкий/средний."
-                )
+                sections.append([
+                    "🔥 <b>Риск лесных пожаров снижен</b>",
+                    "",
+                    "Для зоны Гуардамара уровень снижен с <b>экстремального "
+                    "до высокого — 2 из 3</b>.",
+                    "",
+                    "Ограничения максимального уровня сняты, однако высокий "
+                    "риск сохраняется.",
+                    "",
+                    "🚫 Сжигание сельскохозяйственных растительных остатков "
+                    "в лесной зоне и в пределах <b>500 м от неё по-прежнему "
+                    "запрещено</b>.",
+                ])
             else:
-                lines.append(
-                    "🔥 Высокая пожарная опасность снята; "
-                    "текущий уровень — низкий/средний."
-                )
-        sources.append("Generalitat Valenciana / Previfoc")
-    elif fire == 3 and previous_fire is None:
-        lines.append(
-            "🔥 Для Гуардамара установлен <b>экстремальный</b> "
-            "уровень пожарной опасности."
-        )
-        worsening = True
-        sources.append("Generalitat Valenciana / Previfoc")
+                sections.append([
+                    "🔥 <b>Риск лесных пожаров повышен</b>",
+                    "",
+                    "Для зоны Гуардамара установлен <b>уровень 2 из 3 — "
+                    "высокий риск лесных пожаров</b>.",
+                    "",
+                    "🚫 При этом уровне запрещено сжигание сельскохозяйственных "
+                    "растительных остатков в лесной зоне и в пределах "
+                    "<b>500 м от неё</b>.",
+                    "",
+                    "Это профилактический уровень риска, а не сообщение "
+                    "о возникшем пожаре.",
+                ])
+        elif fire == 1 and previous_fire is not None:
+            sections.append([
+                "🔥 <b>Риск лесных пожаров снижен</b>",
+                "",
+                "Для зоны Гуардамара установлен <b>уровень 1 из 3 — "
+                "низкий/средний риск лесных пожаров</b>.",
+                "",
+                "Ограничения, связанные с высоким уровнем риска лесных "
+                "пожаров, сняты. При этом продолжают действовать обычные "
+                "сезонные правила и местные ограничения на использование огня.",
+            ])
+        if sections:
+            sources.append("Generalitat Valenciana / Previfoc")
 
-    if dry == 3 and not published["dry_high"]:
-        lines.append(
-            "⚡ Для зоны Гуардамара установлен <b>высокий риск сухих гроз</b>."
-        )
-        worsening = True
-        sources.append("Generalitat Valenciana / Previfoc")
-    elif dry in {1, 2} and published["dry_high"]:
-        if dry == 2:
-            lines.append(
-                "⚡ Высокий риск сухих гроз снят; "
-                "сухие грозы остаются возможны."
-            )
-        else:
-            lines.append("⚡ Высокий риск сухих гроз снят.")
-        sources.append("Generalitat Valenciana / Previfoc")
+    previous_dry = published["dry_level"]
+    dry_section_count = len(sections)
+    if dry is not None and dry != previous_dry:
+        if dry == 3:
+            sections.append([
+                "⚡ <b>Высокий риск сухих гроз</b>",
+                "",
+                "Для зоны Гуардамара установлен <b>высокий риск сухих гроз</b>.",
+                "",
+                "Это профилактическая информация о погодном риске, "
+                "а не сообщение о произошедшем пожаре или чрезвычайной ситуации.",
+            ])
+        elif dry == 2 and previous_dry is not None:
+            if previous_dry == 3:
+                sections.append([
+                    "⚡ <b>Риск сухих гроз снижен</b>",
+                    "",
+                    "Высокий риск снят, но для зоны Гуардамара "
+                    "<b>сухие грозы остаются возможны</b>.",
+                ])
+            else:
+                sections.append([
+                    "⚡ <b>Сухие грозы возможны</b>",
+                    "",
+                    "Для зоны Гуардамара отмечена <b>вероятность сухих гроз</b>.",
+                    "",
+                    "Это профилактическая информация о погодном риске, "
+                    "а не сообщение о произошедшем пожаре или чрезвычайной ситуации.",
+                ])
+        elif dry == 1 and previous_dry is not None:
+            sections.append([
+                "✅ <b>Риск сухих гроз снят</b>",
+                "",
+                "Повышенный риск сухих гроз для зоны Гуардамара "
+                "<b>больше не действует</b>.",
+            ])
+        if len(sections) > dry_section_count:
+            sources.append("Generalitat Valenciana / Previfoc")
 
     published_hydro = published["hydrology"]
     if hydro not in (None, HYDRO_NONE) and hydro != published_hydro:
         if published_hydro is None:
-            lines.append(
+            sections.append([
                 "🌊 CCE сообщает: для территории Сегуры действует "
                 f"<b>{html.escape(_hydrology_label(hydro))}</b>."
-            )
-            worsening = True
+            ])
         elif _HYDRO_RANK[hydro] > _HYDRO_RANK[published_hydro]:
-            lines.append(
+            sections.append([
                 "🌊 Гидрологический статус CCE повышен до "
                 f"<b>{html.escape(_hydrology_label(hydro))}</b>."
-            )
-            worsening = True
+            ])
         else:
-            lines.append(
+            sections.append([
                 "🌊 Гидрологический статус CCE снижен до "
                 f"<b>{html.escape(_hydrology_label(hydro))}</b>."
-            )
+            ])
         sources.append("CCE — 112 Comunitat Valenciana")
     elif hydro == HYDRO_NONE and published_hydro is not None:
-        lines.append("🌊 Гидрологическое предупреждение CCE снято.")
+        sections.append(["🌊 Гидрологическое предупреждение CCE снято."])
         sources.append("CCE — 112 Comunitat Valenciana")
 
-    if not lines:
+    if not sections:
         return None
 
-    unique_sources = list(dict.fromkeys(sources))
-    if worsening:
-        heading = "⚠️ <b>Изменение уровня опасности</b>"
-    else:
-        heading = "✅ <b>Уровень опасности снижен</b>"
-    body = [heading, "", *lines, "", "Источник: " + "; ".join(unique_sources)]
-    message = with_footer("\n".join(body))
-    return message
+    body = []
+    for section in sections:
+        if body:
+            body.append("")
+        body.extend(section)
+    body.extend(["", "Источник: " + "; ".join(dict.fromkeys(sources))])
+    return with_footer("\n".join(body))
 
 
 def _acknowledge(value: dict) -> None:
@@ -814,7 +891,7 @@ def _acknowledge(value: dict) -> None:
     if fire is not None:
         published["fire_level"] = fire
     if dry is not None:
-        published["dry_high"] = dry == 3
+        published["dry_level"] = dry
     if hydro is not None:
         published["hydrology"] = None if hydro == HYDRO_NONE else hydro
 
@@ -882,7 +959,7 @@ async def monitor_emergency_risks(
             logging.warning("RISK: all official sources unavailable")
             return "unavailable"
 
-        fire, _ = _current_previfoc(value)
+        fire, dry = _current_previfoc(value)
         if (
             value["published"]["fire_level"] is None
             and fire in {1, 2}
@@ -890,6 +967,13 @@ async def monitor_emergency_risks(
             # First low/high observation is a silent baseline. Extreme risk is
             # urgent enough to publish even on the first successful run.
             value["published"]["fire_level"] = fire
+        if (
+            value["published"]["dry_level"] is None
+            and dry in {1, 2}
+        ):
+            # A first no-risk/probable observation establishes a baseline.
+            # High dry-thunderstorm risk remains urgent enough to publish.
+            value["published"]["dry_level"] = dry
 
         message = _transition(value)
         if message is None:
