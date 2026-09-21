@@ -129,6 +129,8 @@ CRON_TZ=Europe/Madrid
 15 19 * * 5 /path/to/TelegramBot/termux/run-weekend.sh --fresh
 15 20 * * 5 /path/to/TelegramBot/termux/run-weekend.sh
 50 5 * * 0 /path/to/TelegramBot/termux/sync-pharmacy.sh
+19 * * * * /path/to/TelegramBot/termux/check-112.sh
+*/30 * * * * /path/to/TelegramBot/termux/monitor-hidraqua.sh
 55 * * * * /path/to/TelegramBot/termux/monitor-earthquakes.sh
 ```
 
@@ -229,6 +231,8 @@ CRON_TZ=Europe/Madrid
 15 19 * * 5 /data/data/com.termux/files/home/bots/guardamar-status/termux/run-weekend.sh --fresh
 15 20 * * 5 /data/data/com.termux/files/home/bots/guardamar-status/termux/run-weekend.sh
 50 5 * * 0 /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-pharmacy.sh
+19 * * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/check-112.sh
+*/30 * * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-hidraqua.sh
 55 * * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-earthquakes.sh
 ```
 
@@ -258,6 +262,19 @@ when the installer is rerun. A final scoped `CRON_TZ=Europe/Madrid` prevents
 another bot's timezone setting from changing
 this schedule. The installer does not install or modify the other Morning
 Digest and electricity entries listed above.
+
+Install the independent CCE/Previfoc and Hidraqua monitors with their own
+idempotent managed blocks:
+
+```sh
+cd ~/bots/guardamar-status
+./termux/install-112-cron.sh
+./termux/install-hidraqua-cron.sh
+```
+
+The 112/Previfoc watcher runs hourly at minute `:19`; Hidraqua runs every 30
+minutes. Both remain short-lived one-shot processes and preserve unrelated cron
+entries.
 
 Install the independent hourly earthquake row without replacing existing cron
 jobs:
