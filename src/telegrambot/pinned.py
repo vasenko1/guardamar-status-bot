@@ -35,7 +35,7 @@ from .sporttia import (
     select_sport_groups,
 )
 from .state import StateError
-from .telegram import TelegramError
+from .telegram import TelegramError, is_ambiguous_send_failure
 
 PINNED_CONTENT_VERSION = 2
 DEFAULT_PINNED_STATE_PATH = "state/pinned_guide.json"
@@ -1649,7 +1649,7 @@ async def _upsert(
     try:
         message_id = await send(text)
     except TelegramError as exc:
-        if exc.retryable and exc.server_status != 429:
+        if is_ambiguous_send_failure(exc):
             await asyncio.to_thread(state.mark_uncertain, chat_id, key)
         raise
     messages[key] = message_id
