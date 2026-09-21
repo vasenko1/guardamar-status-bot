@@ -3,9 +3,9 @@
 ## Local earthquake notices
 
 Once per hour the bot reads the official IGN GeoRSS feed and looks only within
-10 km of Guardamar. It publishes a standalone group message when all of the
+20 km of Guardamar. It publishes a standalone group message when all of the
 following are true: the event is new, no more than six hours old, magnitude
-2.7 or greater, and inside the radius. The first successful run records the
+1.8 or greater, and inside the radius. The first successful run records the
 current feed without publishing old events. Each later event is delivered at
 most once; a failed Telegram send is retried on the next hourly run rather
 than marked successful.
@@ -36,7 +36,7 @@ map links, a count of hidden earlier events, and the strongest magnitude.
 the next event starts a new message.
 
 The state retains the latest normalized parameters and delivery status rather
-than ID alone. A fresh event initially below 2.7 remains eligible if IGN revises
+than ID alone. A fresh event initially below 1.8 remains eligible if IGN revises
 it across the threshold. A corrupt state is replaced only after one bounded
 `.invalid` copy is saved, then the current feed is seeded silently. A failed
 explicit send remains eligible; an ambiguous result is marked uncertain to
