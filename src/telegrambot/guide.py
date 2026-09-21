@@ -647,7 +647,7 @@ def _bathing_water_notice_text(snapshot: dict) -> str:
 
     lines.extend([
         "",
-        "🏛 Данные: Servicio de Calidad de Aguas · Generalitat Valenciana",
+        "🏛 Контроль: Servicio de Calidad de Aguas · Generalitat Valenciana",
     ])
     return with_footer("\n".join(lines))
 
