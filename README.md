@@ -247,8 +247,9 @@ block.
 The installer saves the original crontab once as
 `~/.cache/crontab/crontab.before-monitor`, preserves unrelated lines, and owns
 only its clearly marked operational-monitor block. Repeated execution replaces
-that block and removes exact legacy copies of its eight jobs. A final scoped
-`CRON_TZ=Europe/Madrid` prevents another bot's timezone setting from changing
+that managed block, so the previous fragmented monitor schedule is removed
+when the installer is rerun. A final scoped `CRON_TZ=Europe/Madrid` prevents
+another bot's timezone setting from changing
 this schedule. The installer does not install or modify the other Morning
 Digest and electricity entries listed above.
 
