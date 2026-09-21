@@ -657,7 +657,8 @@ async def _refresh_bathing_water_source(
     state: dict,
     guide_state: GuideState,
 ) -> None:
-    local_day = now.astimezone(GUARDAMAR_TIMEZONE).date().isoformat()
+    local_date = now.astimezone(GUARDAMAR_TIMEZONE).date()
+    local_day = local_date.isoformat()
     if state.get("bathing_water_last_attempt_day") == local_day:
         return
     state["bathing_water_last_attempt_day"] = local_day
@@ -710,7 +711,7 @@ async def _refresh_bathing_water_source(
     report_end = date.fromisoformat(current["report_end"])
     first_report_is_fresh = (
         previous is None
-        and local_day <= report_end + timedelta(days=5)
+        and local_date <= report_end + timedelta(days=5)
     )
     state["bathing_water_report_snapshot"] = current
     if changed or first_report_is_fresh:
