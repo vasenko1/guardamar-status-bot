@@ -4,6 +4,7 @@ import asyncio
 import fcntl
 import html
 import json
+import logging
 import os
 import urllib.parse
 import re
@@ -30,6 +31,10 @@ MADRID = ZoneInfo("Europe/Madrid")
 
 class HidraquaError(RuntimeError):
     """The source response cannot safely drive a notice."""
+
+
+class HidraquaDeliveryUncertain(HidraquaError):
+    """Raised when a new Telegram notice may already be visible."""
 
 
 @dataclass(frozen=True)
@@ -333,10 +338,34 @@ async def monitor_once(state: HidraquaState, now: datetime, send, *, publish_cur
     seen = _prune(value["events"], now)
     new_events = [event for key, event in current.items() if key not in seen]
     sent = 0
+    observed_at = now.isoformat()
     for identifiers, message in format_messages(new_events, max_length=message_limit) if new_events else ():
-        await send(message)
-        for identifier in identifiers:
-            seen[str(identifier)] = {"first_seen_at": now.isoformat(), "published_at": now.isoformat()}
+        keys = tuple(str(identifier) for identifier in identifiers)
+        for key in keys:
+            seen[key] = {
+                "first_seen_at": observed_at,
+                "published_at": None,
+                "uncertain_at": observed_at,
+            }
+        state.write({"version": STATE_VERSION, "events": seen})
+        try:
+            await send(message)
+        except HidraquaDeliveryUncertain:
+            logging.warning(
+                "Hidraqua delivery uncertain for event IDs: %s",
+                ",".join(keys),
+            )
+            raise
+        except Exception:
+            for key in keys:
+                seen.pop(key, None)
+            state.write({"version": STATE_VERSION, "events": seen})
+            raise
+        for key in keys:
+            seen[key] = {
+                "first_seen_at": observed_at,
+                "published_at": observed_at,
+            }
         state.write({"version": STATE_VERSION, "events": seen})
         sent += len(identifiers)
     if sent == 0:
