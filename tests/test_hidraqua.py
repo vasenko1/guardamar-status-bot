@@ -6,7 +6,8 @@ from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
 from telegrambot.hidraqua import (
-    HidraquaError, HidraquaEvent, HidraquaState, format_event,
+    HidraquaDeliveryUncertain, HidraquaError, HidraquaEvent, HidraquaState,
+    format_event,
     format_messages, monitor_once, normalize_events,
 )
 
@@ -88,6 +89,99 @@ class HidraquaMonitorTests(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaises(HidraquaError):
                     await monitor_once(state, NOW, AsyncMock())
             self.assertEqual(state.read(), original)
+
+    async def test_group_is_uncertain_before_send_and_finalized_on_success(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = HidraquaState(Path(directory) / "hidraqua.json")
+            state.write({"version": 1, "events": {}})
+
+            async def send(_message):
+                stored = state.read()["events"]
+                self.assertEqual(set(stored), {"1", "2"})
+                for item in stored.values():
+                    self.assertEqual(item["first_seen_at"], NOW.isoformat())
+                    self.assertIsNone(item["published_at"])
+                    self.assertEqual(item["uncertain_at"], NOW.isoformat())
+
+            with patch(
+                "telegrambot.hidraqua.fetch_active_events",
+                new=AsyncMock(return_value=(event(1), event(2))),
+            ):
+                self.assertEqual(await monitor_once(state, NOW, send), 2)
+
+            stored = state.read()["events"]
+            for item in stored.values():
+                self.assertEqual(item["published_at"], NOW.isoformat())
+                self.assertNotIn("uncertain_at", item)
+
+    async def test_uncertain_send_is_remembered_without_automatic_retry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = HidraquaState(Path(directory) / "hidraqua.json")
+            state.write({"version": 1, "events": {}})
+            rows = (event(1), event(2))
+            with patch(
+                "telegrambot.hidraqua.fetch_active_events",
+                new=AsyncMock(return_value=rows),
+            ):
+                with self.assertRaises(HidraquaDeliveryUncertain):
+                    await monitor_once(
+                        state,
+                        NOW,
+                        AsyncMock(side_effect=HidraquaDeliveryUncertain()),
+                    )
+
+            stored = state.read()["events"]
+            self.assertEqual(set(stored), {"1", "2"})
+            for item in stored.values():
+                self.assertIsNone(item["published_at"])
+                self.assertEqual(item["uncertain_at"], NOW.isoformat())
+
+            retry = AsyncMock()
+            with patch(
+                "telegrambot.hidraqua.fetch_active_events",
+                new=AsyncMock(return_value=rows),
+            ):
+                self.assertEqual(await monitor_once(state, NOW, retry), 0)
+            retry.assert_not_awaited()
+
+    async def test_split_uncertain_group_preserves_only_started_batches(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = HidraquaState(Path(directory) / "hidraqua.json")
+            state.write({"version": 1, "events": {}})
+            rows = tuple(event(index) for index in range(1, 6))
+            groups = format_messages(rows, max_length=1200)
+            self.assertGreaterEqual(len(groups), 3)
+
+            with patch(
+                "telegrambot.hidraqua.fetch_active_events",
+                new=AsyncMock(return_value=rows),
+            ):
+                with self.assertRaises(HidraquaDeliveryUncertain):
+                    await monitor_once(
+                        state,
+                        NOW,
+                        AsyncMock(
+                            side_effect=[None, HidraquaDeliveryUncertain()]
+                        ),
+                        message_limit=1200,
+                    )
+
+            stored = state.read()["events"]
+            first_ids = {str(value) for value in groups[0][0]}
+            uncertain_ids = {str(value) for value in groups[1][0]}
+            untouched_ids = {
+                str(value)
+                for identifiers, _ in groups[2:]
+                for value in identifiers
+            }
+            self.assertEqual(set(stored), first_ids | uncertain_ids)
+            for identifier in first_ids:
+                self.assertIsNotNone(stored[identifier]["published_at"])
+                self.assertNotIn("uncertain_at", stored[identifier])
+            for identifier in uncertain_ids:
+                self.assertIsNone(stored[identifier]["published_at"])
+                self.assertIn("uncertain_at", stored[identifier])
+            self.assertTrue(untouched_ids.isdisjoint(stored))
 
     async def test_failed_group_is_not_marked_seen(self):
         with tempfile.TemporaryDirectory() as directory:
