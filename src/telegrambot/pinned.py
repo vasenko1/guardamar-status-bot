@@ -6,6 +6,7 @@ import html
 import json
 import os
 import tempfile
+import urllib.parse
 from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
@@ -199,6 +200,39 @@ WIFI = with_footer(
 • <code>biblioteca infantil</code> → 🔑 <code>menjallibres</code>
 • <code>vicenteramos</code> → 🔑 <code>menjallibres</code>"""
 )
+
+
+WIFI_POINT_META = {
+    "music_school": (
+        "🎵", "Escola de Música", "C/ Mercat, 2",
+        "Escola de Música, C/ Mercat 2, Guardamar del Segura",
+    ),
+    "culture_house": (
+        "🎭", "Casa de Cultura", "C/ Colón, 60",
+        "Casa de Cultura, C/ Colón 60, Guardamar del Segura",
+    ),
+    "los_pinos": (
+        "🌴", "Avda. Los Pinos", None,
+        "Avenida Los Pinos, Guardamar del Segura",
+    ),
+    "constitution_square": (
+        "🏛", "Plaza de la Constitución", None,
+        "Plaza de la Constitución, Guardamar del Segura",
+    ),
+    "seafront": (
+        "🌊", "Paseo Marítimo · Avda. de Europa", None,
+        "Paseo Marítimo, Avenida de Europa, Guardamar del Segura",
+    ),
+    "study_room": (
+        "📚", "Sala de Estudios 24/365", "C/ Mayor, 69",
+        "C/ Mayor 69, Guardamar del Segura",
+    ),
+    "library": (
+        "📖", "Biblioteca Pública", "C/ San Jaime, 5",
+        "Biblioteca Pública, C/ San Jaime 5, Guardamar del Segura",
+    ),
+}
+WIFI_POINT_ORDER = tuple(WIFI_POINT_META)
 
 
 LEAF_MESSAGES: Dict[str, str] = {
@@ -745,11 +779,68 @@ def build_youth_centre(places_link: Optional[str] = None) -> str:
 
 
 
-def build_wifi(root_link: Optional[str] = None) -> str:
-    """Build the verified municipal Wi-Fi card."""
+def build_wifi(
+    root_link: Optional[str] = None,
+    wifi_snapshot: Optional[Mapping[str, object]] = None,
+) -> str:
+    """Build the municipal Wi-Fi card from the accepted normalized snapshot."""
+
+    if wifi_snapshot is None:
+        body = WIFI
+    else:
+        points = {
+            str(item["key"]): item
+            for item in wifi_snapshot.get("points", ())
+            if isinstance(item, Mapping) and isinstance(item.get("key"), str)
+        }
+        lines = [
+            "📶 <b>Бесплатный Wi-Fi в Гуардамаре</b>",
+            "",
+            f"В городе есть <b>{len(points)} муниципальных точек</b> бесплатного Wi-Fi.",
+        ]
+        if any(
+            any(
+                isinstance(network, Mapping)
+                and network.get("ssid") == "WiFi4EU"
+                and network.get("password") is None
+                for network in item.get("networks", ())
+            )
+            for item in points.values()
+        ):
+            lines.extend([
+                "",
+                "🔓 <b>WiFi4EU · пароль не нужен</b>",
+                "При первом подключении откроется страница входа — достаточно подтвердить подключение.",
+            ])
+        for key in WIFI_POINT_ORDER:
+            item = points.get(key)
+            if item is None:
+                continue
+            emoji, title, address, query = WIFI_POINT_META[key]
+            map_url = (
+                "https://www.google.com/maps/search/?api=1&query="
+                + urllib.parse.quote_plus(query)
+            )
+            lines.extend([
+                "",
+                f'{emoji} <a href="{html.escape(map_url, quote=True)}"><b>{html.escape(title)}</b></a>',
+            ])
+            if address:
+                lines.append(f"📍 {html.escape(address)}")
+            for network in item.get("networks", ()):
+                if not isinstance(network, Mapping):
+                    continue
+                ssid = html.escape(str(network["ssid"]))
+                password = network.get("password")
+                if password is None:
+                    lines.append(f"📡 <code>{ssid}</code>")
+                else:
+                    lines.append(f"📡 <code>{ssid}</code>")
+                    lines.append(f"🔑 <code>{html.escape(str(password))}</code>")
+        body = with_footer("\n".join(lines))
 
     return _with_back_link(
-        WIFI,
+        body,
         "Полезное о Гуардамаре",
         root_link,
     )
@@ -1589,6 +1680,7 @@ def _known_link(
 def _render_messages(
     chat_id: str,
     messages: Mapping[str, int],
+    wifi_snapshot: Optional[Mapping[str, object]] = None,
 ) -> Dict[str, str]:
     """Render the best complete link graph possible from known identifiers."""
 
@@ -1665,7 +1757,7 @@ def _render_messages(
         ),
         "music_school": build_music_school(music_links, places_link),
         "youth_centre": build_youth_centre(places_link),
-        "wifi": build_wifi(root_link),
+        "wifi": build_wifi(root_link, wifi_snapshot),
         "activities": build_activities(
             swimming_link,
             root_link,
@@ -1695,6 +1787,7 @@ async def _reconcile_messages(
     send: Send,
     edit: Edit,
     skip_keys: Sequence[str] = (),
+    wifi_snapshot: Optional[Mapping[str, object]] = None,
 ) -> None:
     """Converge IDs and links after partial runs or deleted messages."""
 
@@ -1702,7 +1795,7 @@ async def _reconcile_messages(
     keys = tuple(key for key in PINNED_MESSAGE_KEYS if key not in skipped)
     for _ in range(MAX_RECONCILIATION_PASSES):
         before = dict(messages)
-        rendered = _render_messages(chat_id, before)
+        rendered = _render_messages(chat_id, before, wifi_snapshot)
         for key in keys:
             await _upsert(
                 key,
@@ -1732,6 +1825,7 @@ async def publish_pinned_guide(
     chess_school_snapshot: Optional[Mapping[str, object]] = None,
     literary_group_snapshot: Optional[Mapping[str, object]] = None,
     dinamizacion_snapshot: Optional[Mapping[str, object]] = None,
+    wifi_snapshot: Optional[Mapping[str, object]] = None,
     local_day: Optional[date] = None,
 ) -> Dict[str, int]:
     """Create or update all linked messages, then pin the compact root."""
@@ -1754,7 +1848,7 @@ async def publish_pinned_guide(
         if value.get("media") is True and key in messages
     ) + tuple(key for key in skip_keys if key in messages)
     await _reconcile_messages(
-        chat_id, messages, state, send, edit, managed_elsewhere
+        chat_id, messages, state, send, edit, managed_elsewhere, wifi_snapshot
     )
     if sporttia_catalog is not None:
         assert local_day is not None
