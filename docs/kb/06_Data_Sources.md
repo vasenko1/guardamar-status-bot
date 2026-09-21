@@ -322,7 +322,7 @@ control programme. The control itself belongs to the Generalitat Valenciana's
 bath­ing-water quality control and surveillance during the season.
 
 A dedicated short-lived one-shot checks the small index once per local day at
-19:35 from 1 June through 20 September. The extra five September days are a
+19:35 from 1 June through 30 September. The second half of September is a
 publication-delay grace after the official 15 September season end. The normal
 09:02 guide sync does not read this source.
 
