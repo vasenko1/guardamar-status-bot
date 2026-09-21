@@ -752,7 +752,10 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 change.get("initial") for change in ready_changes
             )
             root_status = confirmed_beach_status(value, now)
-            if latest_beach is not None or ready_changes:
+            if beach_anchor is None and (latest_beach is not None or ready_changes):
+                # The 10:10-10:40 update cycle owns live edits of an existing
+                # beach root. Later monitoring creates a missing initial root
+                # only as a recovery path; confirmed changes use reply messages.
                 status_for_root = root_status or latest_beach
                 root_result, beach_anchor = await refresh_beach_root(
                     now,
