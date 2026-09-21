@@ -43,6 +43,18 @@ class TelegramError(RuntimeError):
         self.safe_description = description
 
 
+def is_ambiguous_send_failure(exc: TelegramError) -> bool:
+    """Return whether a new sendMessage may already be visible in Telegram."""
+
+    if exc.server_status is not None:
+        return exc.server_status >= 500
+    return exc.diagnostic_code not in {
+        "CONFIG",
+        "MESSAGE-LENGTH",
+        "URL-POLICY",
+    }
+
+
 def _is_telegram_url(url: str) -> bool:
     parsed = urllib.parse.urlparse(url)
     return parsed.scheme == "https" and parsed.hostname == API_HOST
