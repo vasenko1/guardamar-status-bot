@@ -84,6 +84,8 @@ mv "$UPDATED" "$CURRENT"
         "$BEGIN_MARKER" \
         'CRON_TZ=Europe/Madrid' \
         "2 9 * * * $SH_BIN $SYNC" \
+        "35 19 * 6-8 * $SH_BIN $BATHING" \
+        "35 19 1-20 9 * $SH_BIN $BATHING" \
         "45 19 14 6 * $SH_BIN $SYNC" \
         "45 19 15 9 * $SH_BIN $SYNC" \
         "42 9,11 * * * $SH_BIN $PUBLISH" \
