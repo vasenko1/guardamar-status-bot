@@ -707,8 +707,13 @@ async def _refresh_bathing_water_source(
         and bathing_water_report_fingerprint(previous)
         != bathing_water_report_fingerprint(current)
     )
+    report_end = date.fromisoformat(current["report_end"])
+    first_report_is_fresh = (
+        previous is None
+        and local_day <= report_end + timedelta(days=5)
+    )
     state["bathing_water_report_snapshot"] = current
-    if changed:
+    if changed or first_report_is_fresh:
         state["bathing_water_pending_notice"] = _bathing_water_notice_key(current)
         state.pop("bathing_water_notice_uncertain", None)
     guide_state.write(state)
