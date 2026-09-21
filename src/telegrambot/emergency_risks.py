@@ -557,6 +557,7 @@ class EmergencyRiskState:
                 "version", "previfoc", "cce_html", "cce_pdf", "published",
             }
             or value.get("version") not in {1, STATE_VERSION}
+            or isinstance(value["version"], bool)
         ):
             raise EmergencyRiskError("risk state is corrupt", code="STATE-CORRUPT")
 
@@ -569,7 +570,9 @@ class EmergencyRiskState:
                     "alert_id", "observed_at",
                 }
                 or previfoc["fire_level"] not in {1, 2, 3}
+                or isinstance(previfoc["fire_level"], bool)
                 or previfoc["dry_thunderstorm_level"] not in {1, 2, 3}
+                or isinstance(previfoc["dry_thunderstorm_level"], bool)
                 or not isinstance(previfoc["alert_id"], int)
                 or isinstance(previfoc["alert_id"], bool)
                 or previfoc["alert_id"] <= 0
@@ -590,6 +593,11 @@ class EmergencyRiskState:
                     "fire_level", "dry_high", "hydrology",
                 }
                 or not isinstance(published["dry_high"], bool)
+                or (
+                    not published["dry_high"]
+                    and previfoc is not None
+                    and previfoc["dry_thunderstorm_level"] == 3
+                )
             ):
                 raise EmergencyRiskError(
                     "risk state is corrupt", code="STATE-CORRUPT"
