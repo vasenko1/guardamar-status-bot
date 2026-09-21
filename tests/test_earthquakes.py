@@ -106,10 +106,11 @@ class EarthquakePolicyTests(unittest.TestCase):
         self.assertGreater(bearing, 202.5)
         self.assertLess(bearing, 247.5)
 
-    def test_requires_magnitude_2_0_and_distance_at_most_10_km(self):
+    def test_requires_magnitude_2_0_and_distance_at_most_20_km(self):
         self.assertTrue(qualifies(_event(magnitude=2.0)))
         self.assertFalse(qualifies(_event(magnitude=1.99)))
-        self.assertFalse(qualifies(_event(latitude=38.20, longitude=-0.6553)))
+        self.assertTrue(qualifies(_event(latitude=38.20, longitude=-0.6553)))
+        self.assertFalse(qualifies(_event(latitude=38.30, longitude=-0.6553)))
 
     def test_message_uses_one_fact_line_map_and_blank_line_before_footer(self):
         message = build_earthquake_message(_event())
