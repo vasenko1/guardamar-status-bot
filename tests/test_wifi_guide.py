@@ -326,6 +326,48 @@ class WifiSourceLifecycleTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(saved["wifi_observed_asset_url"], CHANGED_ASSET)
             self.assertEqual(saved["wifi_pending_asset_url"], CHANGED_ASSET)
 
+    async def test_reused_asset_url_does_not_suppress_new_semantic_change(self):
+        intermediate_asset = (
+            "https://www.guardamardelsegura.es/wp-content/uploads/2026/11/"
+            "wifi-map.pdf"
+        )
+        intermediate_snapshot = parse_wifi_pdf_text(
+            wifi_pdf_text("intermediate"),
+            intermediate_asset,
+            NOW,
+        )
+        reused_snapshot = changed_snapshot("reused-new")
+        with tempfile.TemporaryDirectory() as directory:
+            state_store = GuideState(Path(directory) / "guide.json")
+            state = {
+                "version": 1,
+                "wifi_observed_asset_url": intermediate_asset,
+                "wifi_snapshot": intermediate_snapshot,
+                "wifi_notice": {
+                    "asset_url": CHANGED_ASSET,
+                    "message_id": 401,
+                },
+                "wifi_notice_uncertain_asset_url": CHANGED_ASSET,
+            }
+            state_store.write(state)
+            with (
+                patch(
+                    "telegrambot.guide.fetch_current_wifi_asset",
+                    new=AsyncMock(return_value=CHANGED_ASSET),
+                ),
+                patch(
+                    "telegrambot.guide.fetch_wifi_snapshot",
+                    new=AsyncMock(return_value=reused_snapshot),
+                ),
+            ):
+                await _refresh_wifi_source(NOW, state, state_store)
+
+            saved = state_store.read()
+            self.assertEqual(saved["wifi_pending_asset_url"], CHANGED_ASSET)
+            self.assertEqual(saved["wifi_snapshot"], reused_snapshot)
+            self.assertNotIn("wifi_notice", saved)
+            self.assertNotIn("wifi_notice_uncertain_asset_url", saved)
+
     async def test_parse_failure_preserves_reviewed_card_and_sends_nothing(self):
         with tempfile.TemporaryDirectory() as directory:
             state_store = GuideState(Path(directory) / "guide.json")
