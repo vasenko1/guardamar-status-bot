@@ -1,6 +1,6 @@
 # ADR 0056: Publish the first verified late beach status
 
-- Status: Accepted
+- Status: Superseded by ADR 0064 on 2026-09-21
 - Date: 2026-09-09
 
 ## Context
@@ -12,11 +12,10 @@ day's first available beach status.
 
 ## Decision
 
-When there is no existing beach baseline, treat the first usable flags as an
-initial status. Confirm it with the next scheduled sample before delivery.
-Publish a compact status without change arrows, then store it as the normal
-baseline. If confirmation is unavailable, publish nothing and wait for a new
-confirmed observation.
+This confirmation-before-first-publication rule is superseded. During the
+10:10–10:40 initial SafeBeach cycle, the first valid current response with at
+least one verified flag creates the daily beach root immediately. Confirmation
+remains required only for later operational changes after the initial cycle.
 
 ## Consequences
 
