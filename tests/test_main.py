@@ -21,6 +21,7 @@ from telegrambot.__main__ import (
 from telegrambot.agenda import AgendaError
 from telegrambot.diagnostics import SourceDiagnostic
 from telegrambot.environment import EnvironmentError
+from telegrambot.hidraqua import HidraquaDeliveryUncertain
 from telegrambot.models import (
     AirQualitySummary,
     BeachNotice,
@@ -780,6 +781,33 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 PublicationState(state_path).morning_environment(now.date())[:2],
                 (2, 1),
             )
+
+    async def test_hidraqua_maps_ambiguous_send_to_domain_uncertainty(self):
+        async def monitor(state, now, publisher, **_kwargs):
+            with self.assertRaises(HidraquaDeliveryUncertain):
+                await publisher("water notice")
+            return 0
+
+        telegram_error = TelegramError(
+            "network", retryable=True, code="NETWORK"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "hidraqua.json"
+            with (
+                patch.dict(os.environ, {
+                    "TELEGRAM_BOT_TOKEN": "telegram",
+                    "TELEGRAM_CHAT_ID": "@group",
+                    "HIDRAQUA_STATE_PATH": str(state_path),
+                }),
+                patch("telegrambot.__main__.monitor_once", new=monitor),
+                patch(
+                    "telegrambot.__main__.send_message",
+                    new=AsyncMock(side_effect=telegram_error),
+                ),
+            ):
+                result = await _run_command("monitor-hidraqua")
+
+        self.assertEqual(result, 0)
 
     async def test_earthquake_monitor_needs_only_telegram_configuration(self):
         monitor = AsyncMock(return_value=0)
