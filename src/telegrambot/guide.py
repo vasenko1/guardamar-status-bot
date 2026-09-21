@@ -58,6 +58,7 @@ from .music_school import (
 from .pinned import (
     DEFAULT_PINNED_STATE_PATH,
     PinnedGuideState,
+    WIFI_BASELINE_POINTS,
     publish_pinned_guide,
     telegram_message_link,
 )
@@ -738,6 +739,36 @@ def valid_wifi_snapshot(value) -> bool:
     return tuple(keys) == _WIFI_POINT_KEYS
 
 
+def _wifi_snapshot_fingerprint(value: dict) -> tuple:
+    return tuple(
+        (
+            point["key"],
+            tuple(
+                (network["ssid"], network["password"])
+                for network in point["networks"]
+            ),
+        )
+        for point in value["points"]
+    )
+
+
+def _wifi_baseline_snapshot(now: datetime) -> dict:
+    return {
+        "observed_at": now.isoformat(),
+        "asset_url": WIFI_VERIFIED_ASSET_URL,
+        "points": [
+            {
+                "key": key,
+                "networks": [
+                    {"ssid": ssid, "password": password}
+                    for ssid, password in networks
+                ],
+            }
+            for key, networks in WIFI_BASELINE_POINTS
+        ],
+    }
+
+
 async def fetch_wifi_snapshot(asset_url: str, now: datetime) -> dict:
     """Fetch and parse one new municipal Wi-Fi PDF deterministically."""
 
@@ -777,26 +808,38 @@ async def _refresh_wifi_source(
         logging.warning("Wi-Fi source check deferred [GUIDE-%s]", exc.diagnostic_code)
         return
 
-    previous = state.get("wifi_observed_asset_url") or WIFI_VERIFIED_ASSET_URL
-    if current == previous:
+    previous_asset = state.get("wifi_observed_asset_url") or WIFI_VERIFIED_ASSET_URL
+    if current == previous_asset:
         if state.get("wifi_observed_asset_url") is None:
             state["wifi_observed_asset_url"] = current
             state.pop("wifi_last_alerted_asset_url", None)
             guide_state.write(state)
         return
 
+    previous_snapshot = state.get("wifi_snapshot")
+    if previous_snapshot is None:
+        previous_snapshot = _wifi_baseline_snapshot(now)
     if current == WIFI_VERIFIED_ASSET_URL:
-        state.pop("wifi_snapshot", None)
+        current_snapshot = _wifi_baseline_snapshot(now)
     else:
         try:
-            snapshot = await fetch_wifi_snapshot(current, now)
+            current_snapshot = await fetch_wifi_snapshot(current, now)
         except GuideSourceError as exc:
             logging.warning("Wi-Fi document deferred [GUIDE-%s]", exc.diagnostic_code)
             return
-        state["wifi_snapshot"] = snapshot
+
+    changed = (
+        _wifi_snapshot_fingerprint(previous_snapshot)
+        != _wifi_snapshot_fingerprint(current_snapshot)
+    )
+    if current == WIFI_VERIFIED_ASSET_URL:
+        state.pop("wifi_snapshot", None)
+    else:
+        state["wifi_snapshot"] = current_snapshot
     state["wifi_observed_asset_url"] = current
-    state["wifi_pending_asset_url"] = current
     state.pop("wifi_last_alerted_asset_url", None)
+    if changed:
+        state["wifi_pending_asset_url"] = current
     guide_state.write(state)
 
 
