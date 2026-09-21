@@ -147,7 +147,8 @@ The validated Android deployment uses the scripts in `termux/`:
   SafeBeach dependency. `termux/update-daily.sh` runs every five minutes
   from 10:10 through 10:40; from 1 June through 30 September its first valid
   SafeBeach response creates the separate beach root immediately and later
-  responses edit that root in place;
+  responses edit that root in place. CAMS uses only the 10:40 invocation for
+  its early late-cycle check;
 - `termux/monitor-updates.sh` uses the same 1 June–30 September beach guard;
   confirmed later beach changes are replies to the root, while AEMET warning
   checks continue year-round on their documented cadence;
@@ -180,9 +181,11 @@ Stop if this command fails. Production must not remain on a feature-only
 branch. Restart only the affected resident service; one-shot cron commands use
 the changed code on their next invocation. The separate public
 `guardamar-cams-data` repository owns one daily CAMS forecast lifecycle with
-bounded scheduled publication attempts. The bot may recheck that small public
-JSON only until today's forecast base is accepted; later environment checkpoints
-reuse the accepted daily cycle and do not keep refetching the same CAMS data.
+bounded scheduled publication attempts. The bot makes one early late-cycle
+check at 10:40; if today's forecast base is still unavailable, the next normal
+`monitor-updates` checkpoint provides recovery. Once today's base is accepted,
+later environment checkpoints reuse it and do not keep refetching the same CAMS
+JSON.
 That repository does not deploy this application. There is no GitHub Actions
 promotion, `deploy` branch, or scheduled self-update. `.env`, `state/`, logs,
 and the virtual environment remain local.
