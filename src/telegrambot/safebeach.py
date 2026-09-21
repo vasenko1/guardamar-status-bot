@@ -463,18 +463,6 @@ def is_current_status(
     )
 
 
-def is_complete_current_status(
-    status: Optional[BeachStatus],
-    now: datetime,
-) -> bool:
-    """Require every known Guardamar beach before the final attempt."""
-
-    if not is_current_status(status, now):
-        return False
-    flags = {name for name, _ in status.nearby_flags}
-    return flags == set(KNOWN_BEACHES)
-
-
 def _current_status(
     status: Optional[BeachStatus],
     now: datetime,
