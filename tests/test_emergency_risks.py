@@ -1,4 +1,5 @@
 import asyncio
+import json
 import tempfile
 import unittest
 from datetime import datetime, timedelta
@@ -344,6 +345,76 @@ class EmergencyRiskTests(unittest.TestCase):
             self.assertEqual(value["version"], 2)
             self.assertEqual(value["published"]["dry_level"], 2)
             self.assertIsNone(_transition(value))
+
+    def test_v1_migration_preserves_fire_hydrology_and_dry_baseline(self):
+        for dry_high, old_dry, expected_dry in (
+            (False, 1, 1), (False, 2, 2), (True, 3, 3),
+            (False, None, None), (True, None, 3),
+        ):
+            with self.subTest(dry_high=dry_high, old_dry=old_dry):
+                with tempfile.TemporaryDirectory() as directory:
+                    path = Path(directory) / "risk.json"
+                    state = EmergencyRiskState(path)
+                    value = state.empty()
+                    value["version"] = 1
+                    value["published"] = {
+                        "fire_level": 2,
+                        "dry_high": dry_high,
+                        "hydrology": HYDRO_SITUATION_1,
+                    }
+                    value["cce_html"] = _observed(HYDRO_SITUATION_1)
+                    if old_dry is not None:
+                        value["previfoc"] = {
+                            "fire_level": 2,
+                            "dry_thunderstorm_level": old_dry,
+                            "alert_id": 9,
+                            "observed_at": NOW.isoformat(),
+                        }
+                    path.write_text(json.dumps(value), encoding="utf-8")
+                    migrated = state.read()
+                    self.assertEqual(migrated["version"], 2)
+                    self.assertEqual(migrated["published"], {
+                        "fire_level": 2,
+                        "dry_level": expected_dry,
+                        "hydrology": HYDRO_SITUATION_1,
+                    })
+                    self.assertIsNone(_transition(migrated))
+                    if old_dry == 3:
+                        for new_dry in (2, 1):
+                            migrated["previfoc"]["dry_thunderstorm_level"] = new_dry
+                            self.assertIn("Риск сухих гроз", _transition(migrated))
+                    elif old_dry == 2:
+                        migrated["previfoc"]["dry_thunderstorm_level"] = 3
+                        self.assertIn("Высокий риск сухих гроз", _transition(migrated))
+
+    def test_corrupt_risk_state_fails_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "risk.json"
+            state = EmergencyRiskState(path)
+            original = state.empty()
+            original["previfoc"] = {
+                "fire_level": 2, "dry_thunderstorm_level": 3,
+                "alert_id": 9, "observed_at": NOW.isoformat(),
+            }
+            cases = []
+            for field in ("version", "fire_level", "dry_thunderstorm_level"):
+                candidate = json.loads(json.dumps(original))
+                if field == "version":
+                    candidate["version"] = True
+                else:
+                    candidate["previfoc"][field] = True
+                cases.append(candidate)
+            candidate = json.loads(json.dumps(original))
+            candidate["version"] = 1
+            candidate["published"] = {
+                "fire_level": 2, "dry_high": False, "hydrology": None,
+            }
+            cases.append(candidate)
+            for candidate in cases:
+                with self.subTest(candidate=candidate):
+                    path.write_text(json.dumps(candidate), encoding="utf-8")
+                    with self.assertRaises(EmergencyRiskError):
+                        state.read()
 
     def test_cce_failures_preserve_last_verified_active_state(self):
         with tempfile.TemporaryDirectory() as directory:
