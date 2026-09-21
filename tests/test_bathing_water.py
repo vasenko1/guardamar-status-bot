@@ -8,10 +8,53 @@ from telegrambot.bathing_water import (
     _allowed_page_url,
     _allowed_report_url,
     _parse_programme_page,
+    _parse_report_text,
+    bathing_water_report_fingerprint,
+    valid_bathing_water_report_snapshot,
     valid_bathing_water_snapshot,
 )
 
 MADRID = ZoneInfo("Europe/Madrid")
+
+
+def report_text(
+    *,
+    period="15.06.2026 - 21.06.2026",
+    centre_water="BUENA",
+    roqueta_sand="BUENA",
+    ortigues_sand="BUENA",
+):
+    header = (
+        f'{"Playa":<42}'
+        f'{"Análisis Agua":<20}'
+        f'{"Aspecto Agua":<20}'
+        f'{"Aspecto Arena":<20}'
+        f'{"Enterococos":<18}'
+        "Escherichia Coli"
+    )
+    rows = [
+        ("PLAYA DE TUSALES", "EXCELENTE", "EXCELENTE", "EXCELENTE"),
+        ("PLAYA DE VIVERS", "EXCELENTE", "EXCELENTE", "EXCELENTE"),
+        ("PLAYA DE BABILONIA", "EXCELENTE", "EXCELENTE", "EXCELENTE"),
+        ("PLAYA CENTRO", "EXCELENTE", centre_water, "EXCELENTE"),
+        ("PLAYA DE LA ROQUETA", "EXCELENTE", "EXCELENTE", roqueta_sand),
+        ("PLAYA DEL MONCAYO", "EXCELENTE", "EXCELENTE", "EXCELENTE"),
+        ("PLAYA DE ORTIGUES", "EXCELENTE", "EXCELENTE", ortigues_sand),
+    ]
+    body = "\n".join(
+        f"{name:<42}{analysis:<20}{water:<20}{sand:<20}{0:<18}0"
+        for name, analysis, water, sand in rows
+    )
+    return (
+        "Programa de control de las zonas de baño.\n"
+        "Análisis de las aguas e inspección semanal del 1 de junio al 15 de septiembre. 2026\n"
+        "Guardamar del Segura\n"
+        f"Fecha: {period}\n"
+        f"{header}\n"
+        f"{body}\n"
+        "Valoración EXCELENTE / BUENA / SUFICIENTE / INSUFICIENTE\n"
+        "\fPrograma de control de les zones de bany.\n"
+    )
 
 
 def page(*, year=2026, report_year=2026):
@@ -32,6 +75,76 @@ def page(*, year=2026, report_year=2026):
       Fecha: 08.09.2025 – 14.09.2025</a>
     </body></html>
     """.encode()
+
+
+class BathingWaterReportTests(unittest.TestCase):
+    def _parse(self, text=None, url=None):
+        return _parse_report_text(
+            text or report_text(),
+            report_url=url or (
+                "https://www.guardamardelsegura.es/wp-content/uploads/"
+                "2026/06/report.pdf"
+            ),
+            report_start=datetime(2026, 6, 15, tzinfo=MADRID).date(),
+            report_end=datetime(2026, 6, 21, tzinfo=MADRID).date(),
+            observed_at=datetime(2026, 6, 22, 9, 2, tzinfo=MADRID),
+        )
+
+    def test_parses_seven_named_beaches_and_three_official_ratings(self):
+        snapshot = self._parse()
+
+        self.assertTrue(valid_bathing_water_report_snapshot(snapshot))
+        self.assertEqual(
+            [beach["name"] for beach in snapshot["beaches"]],
+            [
+                "Tusales", "Vivers", "Babilonia", "Centro",
+                "La Roqueta", "Moncayo", "Ortigues",
+            ],
+        )
+        centro = snapshot["beaches"][3]
+        roqueta = snapshot["beaches"][4]
+        ortigues = snapshot["beaches"][6]
+        self.assertEqual(centro["water_analysis"], "excellent")
+        self.assertEqual(centro["water_appearance"], "good")
+        self.assertEqual(roqueta["sand_appearance"], "good")
+        self.assertEqual(ortigues["sand_appearance"], "good")
+
+    def test_rejects_report_period_that_disagrees_with_index(self):
+        with self.assertRaises(BathingWaterSourceError) as caught:
+            self._parse(report_text(period="16.06.2026 - 22.06.2026"))
+        self.assertEqual(caught.exception.diagnostic_code, "REPORT-PERIOD")
+
+    def test_rejects_missing_beach_or_unknown_rating(self):
+        missing = report_text().replace(
+            "PLAYA DEL MONCAYO", "PLAYA DEL CAMP"
+        )
+        with self.assertRaises(BathingWaterSourceError) as caught:
+            self._parse(missing)
+        self.assertEqual(caught.exception.diagnostic_code, "REPORT-SCHEMA")
+
+        unknown = report_text().replace(
+            "PLAYA CENTRO                             EXCELENTE",
+            "PLAYA CENTRO                             REGULAR  ",
+        )
+        with self.assertRaises(BathingWaterSourceError) as caught:
+            self._parse(unknown)
+        self.assertEqual(caught.exception.diagnostic_code, "REPORT-SCHEMA")
+
+    def test_fingerprint_ignores_source_url_and_observation_time(self):
+        first = self._parse()
+        second = self._parse(
+            url=(
+                "https://www.guardamardelsegura.es/wp-content/uploads/"
+                "2026/06/replacement.pdf"
+            )
+        )
+        second["observed_at"] = datetime(
+            2026, 6, 23, 9, 2, tzinfo=MADRID
+        ).isoformat()
+        self.assertEqual(
+            bathing_water_report_fingerprint(first),
+            bathing_water_report_fingerprint(second),
+        )
 
 
 class BathingWaterProgrammeTests(unittest.TestCase):
