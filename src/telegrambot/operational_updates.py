@@ -24,7 +24,7 @@ from .digest import (
     _warning_text,
 )
 from .models import BeachNotice, BeachStatus, Warning
-from .safebeach import BEACH_ORDER, KNOWN_BEACHES
+from .safebeach import BEACH_ORDER, KNOWN_BEACHES, in_intensive_window
 
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 STATE_VERSION = 1
@@ -44,11 +44,7 @@ def scheduled_run(now: datetime) -> MonitorRun:
     """Return the bounded work assigned to this exact local minute."""
     local = now.astimezone(GUARDAMAR_TIMEZONE)
     day = local.date()
-    intensive_beach_window = (
-        (day.month == 6 and day.day >= 15)
-        or day.month in {7, 8}
-        or (day.month == 9 and day.day <= 15)
-    )
+    intensive_beach_window = in_intensive_window(local)
     shoulder = intensive_beach_window and day.month in {6, 9}
     beach_hours = {12, 14, 16, 18} if shoulder else {11, 13, 15, 17, 19}
     aemet_hours = {12, 16, 20} if shoulder else {11, 15, 19}
