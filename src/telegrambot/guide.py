@@ -533,6 +533,12 @@ _BATHING_QUALITY_RU = {
     "sufficient": "удовлетворительное",
     "insufficient": "недостаточное",
 }
+_BATHING_LAB_RESULT_RU = {
+    "excellent": "отлично",
+    "good": "хорошо",
+    "sufficient": "удовлетворительно",
+    "insufficient": "недостаточно",
+}
 _BATHING_APPEARANCE_RU = {
     "excellent": "отлично",
     "good": "хорошо",
@@ -602,7 +608,7 @@ def _bathing_water_notice_text(snapshot: dict) -> str:
         rating = active_water_ratings[0]
         marker = "✅ " if rating == "excellent" else ""
         lines.append(
-            f"{marker}{_BATHING_APPEARANCE_RU[rating].capitalize()} "
+            f"{marker}{_BATHING_LAB_RESULT_RU[rating].capitalize()} "
             f"— все {len(beaches)} пляжей"
         )
     else:
@@ -610,7 +616,7 @@ def _bathing_water_notice_text(snapshot: dict) -> str:
             names = water_groups[rating]
             if not names:
                 continue
-            lines.append(f"• {_BATHING_APPEARANCE_RU[rating].capitalize()}:")
+            lines.append(f"• {_BATHING_LAB_RESULT_RU[rating].capitalize()}:")
             _append_bathing_names(lines, names, prefix="   ")
 
     visual_exceptions = []
