@@ -218,19 +218,13 @@ or substituted into the morning message.
 
 The same normalized official risk state has two presentation modes.
 
-The Morning Digest is intentionally terse. A material Previfoc or CCE state may
-add only one compact line per independent risk, with no explanation paragraph,
-for example:
+The Morning Digest does not render Previfoc forest-fire or dry-thunderstorm
+state because those values can be readjusted during the day and the morning
+message is not kept synchronized with them. Their user-facing presentation is
+standalone transition notification only.
 
-```text
-🔥 Пожарная опасность: высокая.
-⚡ Сухие грозы: высокий риск.
-🌊 Гидрологическая опасность: повышена.
-```
-
+A fresh active CCE hydrological state may still add one compact morning line.
 Do not add routine all-clear lines merely to show that a source was checked.
-Forest-fire danger and dry-thunderstorm risk are separate facts and may appear
-independently.
 
 A standalone transition message may be longer and explain what changed, what
 the official state means for people, any directly supported practical action,
