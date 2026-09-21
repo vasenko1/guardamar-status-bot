@@ -40,8 +40,8 @@ schemas, and library choices belong in later design work or ADRs.
    A missing initial root may still be created by the first later confirmed
    status. Newer explicit Mayor bathing restrictions remain an independent
    safety signal and may refresh the root.
-10. **Minimal state** keeps the local date, both Telegram message IDs,
-   morning publication time, and cleanup result.
+10. **Minimal state** keeps the local date, Morning Digest and beach-root
+   message IDs, publication time, and compact semantic baselines.
 11. **Exit** ends every process; no collector or watcher remains active.
 
 Externally scheduled operational checks compare current SafeBeach and AEMET
@@ -230,9 +230,9 @@ uses short exponential delays or the server's `Retry-After`, and never retries
 permanent or invalid-data failures. The 05:30 Agenda Guardamar refresh reads
 event details with at most three concurrent same-host requests and saves a
 small atomic catalog. The morning run translates only today's bounded titles.
-If the mandatory forecast remains
-unavailable during replacement, the same-day prepared AEMET snapshot supplies
-the weather blocks alongside the newly verified beach information.
+If the mandatory forecast is unavailable during Morning Digest publication or
+an explicit `refresh-current`, the same-day prepared AEMET snapshot supplies
+the weather blocks independently of the separate SafeBeach lifecycle.
 
 The SafeBeach adapter performs one bounded HTML request per invocation and
 does not add an internal retry or response cache. Scheduled SafeBeach requests
