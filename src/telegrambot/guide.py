@@ -1401,7 +1401,7 @@ async def sync_guide(now: datetime) -> str:
                             retry_only_rate_limits=True,
                         )
                     except TelegramError as exc:
-                        if exc.retryable and exc.server_status != 429:
+                        if is_ambiguous_send_failure(exc):
                             state["parking_notice_uncertain"] = parking_notice_key
                             guide_state.write(state)
                         raise
@@ -1434,7 +1434,7 @@ async def sync_guide(now: datetime) -> str:
                         retry_only_rate_limits=True,
                     )
                 except TelegramError as exc:
-                    if exc.retryable and exc.server_status != 429:
+                    if is_ambiguous_send_failure(exc):
                         state["season_notice_uncertain"] = notice_key
                         guide_state.write(state)
                     raise
