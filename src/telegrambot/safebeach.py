@@ -30,8 +30,6 @@ KNOWN_BEACHES = tuple(BEACH_PRIORITY.values())
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 QUERY_WINDOW_START = (6, 1)
 QUERY_WINDOW_END = (9, 30)
-INTENSIVE_WINDOW_START = (6, 15)
-INTENSIVE_WINDOW_END = (9, 15)
 
 _MARKERS_ASSIGNMENT = re.compile(rb"\bwindow\.SB_MARKERS\s*=\s*")
 _PAGE_DATE_PATTERN = re.compile(
@@ -56,13 +54,6 @@ def in_query_window(now: datetime) -> bool:
     month_day = (local.month, local.day)
     return QUERY_WINDOW_START <= month_day <= QUERY_WINDOW_END
 
-
-def in_intensive_window(now: datetime) -> bool:
-    """Return whether repeated beach-status recovery is justified."""
-
-    local = now.astimezone(GUARDAMAR_TIMEZONE)
-    month_day = (local.month, local.day)
-    return INTENSIVE_WINDOW_START <= month_day <= INTENSIVE_WINDOW_END
 
 
 class SafeBeachError(RuntimeError):
