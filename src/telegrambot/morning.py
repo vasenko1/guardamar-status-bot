@@ -49,8 +49,10 @@ from .models import (
 
 LOGGER = logging.getLogger(__name__)
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
-SAFEBEACH_SEASON_START = (6, 15)
-SAFEBEACH_SEASON_END = (9, 15)
+SAFEBEACH_QUERY_START = (6, 1)
+SAFEBEACH_QUERY_END = (9, 30)
+SAFEBEACH_INTENSIVE_START = (6, 15)
+SAFEBEACH_INTENSIVE_END = (9, 15)
 _ROUTINE_EVENT_TITLES = frozenset({
     "actividades del centro social juvenil",
     "actividades del centro social juvenil csj",
@@ -60,10 +62,20 @@ _ROUTINE_EVENT_TITLES = frozenset({
 })
 
 
-def _safebeach_is_in_season(now: datetime) -> bool:
+def _safebeach_should_query(now: datetime) -> bool:
+    """Return whether a SafeBeach request is useful at this time of year."""
+
     local = now.astimezone(GUARDAMAR_TIMEZONE)
     month_day = (local.month, local.day)
-    return SAFEBEACH_SEASON_START <= month_day <= SAFEBEACH_SEASON_END
+    return SAFEBEACH_QUERY_START <= month_day <= SAFEBEACH_QUERY_END
+
+
+def _safebeach_is_intensive_window(now: datetime) -> bool:
+    """Return whether normal repeated beach-status recovery is justified."""
+
+    local = now.astimezone(GUARDAMAR_TIMEZONE)
+    month_day = (local.month, local.day)
+    return SAFEBEACH_INTENSIVE_START <= month_day <= SAFEBEACH_INTENSIVE_END
 
 
 def _normalized_event_title(value: str) -> str:
@@ -588,7 +600,7 @@ async def produce_message(
     translation_path = translation_cache_path or Path("state/event_translations.json")
     beach_task = (
         asyncio.create_task(fetch_beach_status())
-        if collect_beach and _safebeach_is_in_season(now)
+        if collect_beach and _safebeach_should_query(now)
         else None
     )
     agenda_task = asyncio.create_task(
