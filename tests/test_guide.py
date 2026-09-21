@@ -762,10 +762,11 @@ class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
             text = send.await_args.args[2]
             self.assertIn("Zona Azul — с завтрашнего дня платно", text)
             self.assertIn("С <b>15 июня</b>", text)
-            self.assertIn("10:00 до 20:00", text)
+            self.assertIn("10:00–20:00", text)
             self.assertIn("15 сентября включительно", text)
             self.assertNotIn("SafeBeach", text)
-            self.assertIn("https://t.me/c/123/104", text)
+            self.assertNotIn("http", text)
+            self.assertNotIn("карточк", text)
             saved = GuideState(Path(directory) / "guide.json").read()
             self.assertEqual(saved["parking_notice"]["key"], "2026:paid")
             self.assertEqual(saved["parking_notice"]["message_id"], 601)
