@@ -122,7 +122,7 @@ CRON_TZ=Europe/Madrid
 0 11,15,19 * 1-5,10-12 * /path/to/TelegramBot/termux/monitor-updates.sh
 2 9 * * * /path/to/TelegramBot/termux/sync-guide.sh
 35 19 * 6-8 * /path/to/TelegramBot/termux/sync-bathing-water.sh
-35 19 1-30 9 * /path/to/TelegramBot/termux/sync-bathing-water.sh
+35 19 1-15 9 * /path/to/TelegramBot/termux/sync-bathing-water.sh
 45 19 14 6 * /path/to/TelegramBot/termux/sync-guide.sh
 45 19 15 9 * /path/to/TelegramBot/termux/sync-guide.sh
 42 9,11 * * * /path/to/TelegramBot/termux/publish-course-notifications.sh
@@ -165,7 +165,7 @@ The validated Android deployment uses the scripts in `termux/`:
 - `termux/sync-guide.sh` at 09:02 to read the bounded places/activities
   sources and reconcile the same pinned graph. A separate
   `termux/sync-bathing-water.sh` one-shot runs at 19:35 from 1 June through
-  30 September, reads only the official bathing-zone programme, and downloads a
+  15 September, reads only the official bathing-zone programme, and downloads a
   PDF only for a new weekly report identity; a fresh report may produce one
   public 🧪 notice. The guide one-shot also runs at 19:45 on 14 June and
   15 September to verify the live ORA schedule before a due next-day Zona Azul
@@ -230,7 +230,7 @@ CRON_TZ=Europe/Madrid
 0 11,15,19 * 1-5,10-12 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
 2 9 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-guide.sh
 35 19 * 6-8 * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-bathing-water.sh
-35 19 1-30 9 * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-bathing-water.sh
+35 19 1-15 9 * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-bathing-water.sh
 45 19 14 6 * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-guide.sh
 45 19 15 9 * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-guide.sh
 42 9,11 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/publish-course-notifications.sh
@@ -302,7 +302,7 @@ sh ./termux/install-guide-cron.sh
 The guide installer owns only its marked block, preserves unrelated crontab
 lines, saves the original crontab once as
 `~/.cache/crontab/crontab.before-guide`, and schedules the 09:02 guide sync,
-the dedicated 19:35 bathing-zone check from 1 June through 30 September,
+the dedicated 19:35 bathing-zone check from 1 June through 15 September,
 19:45 seasonal Zona Azul checks on 14 June / 15 September, plus 09:42/11:42
 course-notification one-shots in `Europe/Madrid`. It creates no service or
 resident process.
