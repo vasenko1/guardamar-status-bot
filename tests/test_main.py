@@ -2,7 +2,7 @@ import json
 import os
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, call, patch
 from zoneinfo import ZoneInfo
@@ -20,7 +20,7 @@ from telegrambot.__main__ import (
 from telegrambot.agenda import AgendaError
 from telegrambot.diagnostics import SourceDiagnostic
 from telegrambot.environment import EnvironmentError
-from telegrambot.models import AirQualitySummary, PollenSummary
+from telegrambot.models import AirQualitySummary, BeachStatus, PollenSummary
 from telegrambot.operational_updates import MonitorRun
 from telegrambot.state import PublicationState, StateError
 from telegrambot.telegram import TelegramError
@@ -247,6 +247,82 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 new_base,
             )
 
+    async def test_partial_safebeach_creates_and_refreshes_one_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "delivery.json"
+            first = datetime(2026, 7, 21, 10, 10, tzinfo=MADRID)
+            second = datetime(2026, 7, 21, 10, 15, tzinfo=MADRID)
+            state = PublicationState(state_path)
+            state.mark_morning(first.date(), 10, datetime(
+                2026, 7, 21, 7, 30, tzinfo=MADRID
+            ))
+            first_status = BeachStatus(
+                flag_color="green",
+                sea_temperature_c=26,
+                source_date=first.date(),
+                nearby_flags=(("Centre", "green"),),
+                updated_times=(("Centre", time(10, 5)),),
+            )
+            second_status = BeachStatus(
+                flag_color="green",
+                sea_temperature_c=26,
+                source_date=second.date(),
+                nearby_flags=(
+                    ("Centre", "green"),
+                    ("Roqueta", "yellow"),
+                ),
+                updated_times=(
+                    ("Centre", time(10, 5)),
+                    ("Roqueta", time(10, 12)),
+                ),
+            )
+            sent = AsyncMock(return_value=20)
+            edited = AsyncMock()
+            beach_fetch = AsyncMock(side_effect=[first_status, second_status])
+            with (
+                patch.dict(os.environ, {
+                    "AEMET_API_KEY": "aemet",
+                    "TELEGRAM_BOT_TOKEN": "telegram",
+                    "TELEGRAM_CHAT_ID": "group",
+                    "MORNING_DIGEST_STATE_PATH": str(state_path),
+                }),
+                patch("telegrambot.__main__.datetime") as clock,
+                patch(
+                    "telegrambot.__main__._cams_update_checkpoint",
+                    return_value=False,
+                ),
+                patch(
+                    "telegrambot.__main__._refresh_event_catalogs_once",
+                    new=AsyncMock(),
+                ),
+                patch(
+                    "telegrambot.__main__.fetch_beach_status",
+                    new=beach_fetch,
+                ),
+                patch(
+                    "telegrambot.__main__.latest_beach_notice",
+                    new=AsyncMock(return_value=None),
+                ),
+                patch("telegrambot.__main__.send_message", new=sent),
+                patch("telegrambot.__main__.edit_message", new=edited),
+            ):
+                clock.now.side_effect = [first, second]
+                self.assertEqual(await _run_command("update"), 0)
+                self.assertEqual(await _run_command("update"), 0)
+
+            sent.assert_awaited_once()
+            edited.assert_awaited_once()
+            self.assertEqual(
+                PublicationState(state_path).beach_message_id(first.date()),
+                20,
+            )
+            self.assertEqual(
+                PublicationState(state_path).beach_root_facts(first.date())[
+                    0
+                ].nearby_flags,
+                second_status.nearby_flags,
+            )
+
     async def test_safebeach_query_window_uses_normal_recovery_checkpoint(self):
         with tempfile.TemporaryDirectory() as directory:
             state_path = Path(directory) / "delivery.json"
@@ -279,6 +355,100 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(await _run_command("update"), 0)
 
         beach_fetch.assert_awaited_once_with(now)
+
+    async def test_operational_beach_change_replies_without_editing_existing_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "delivery.json"
+            monitor_path = Path(directory) / "operational.json"
+            first = datetime(2026, 9, 21, 12, 0, tzinfo=MADRID)
+            second = datetime(2026, 9, 21, 12, 5, tzinfo=MADRID)
+            publication = PublicationState(state_path)
+            publication.mark_morning(
+                first.date(),
+                10,
+                datetime(2026, 9, 21, 7, 30, tzinfo=MADRID),
+            )
+            baseline = BeachStatus(
+                flag_color="green",
+                sea_temperature_c=26,
+                source_date=first.date(),
+                nearby_flags=(("Centre", "green"),),
+                jellyfish_states=(("Centre", False),),
+                updated_times=(("Centre", time(10, 40)),),
+            )
+            publication.mark_beach_message(first.date(), 20, baseline)
+
+            changed_first = BeachStatus(
+                flag_color="yellow",
+                sea_temperature_c=26,
+                source_date=first.date(),
+                nearby_flags=(("Centre", "yellow"),),
+                jellyfish_states=(("Centre", False),),
+                updated_times=(("Centre", time(12, 0)),),
+            )
+            changed_second = BeachStatus(
+                flag_color="yellow",
+                sea_temperature_c=26,
+                source_date=second.date(),
+                nearby_flags=(("Centre", "yellow"),),
+                jellyfish_states=(("Centre", False),),
+                updated_times=(("Centre", time(12, 5)),),
+            )
+            sent = AsyncMock(return_value=30)
+            edited = AsyncMock()
+            with (
+                patch.dict(os.environ, {
+                    "AEMET_API_KEY": "aemet",
+                    "TELEGRAM_BOT_TOKEN": "telegram",
+                    "TELEGRAM_CHAT_ID": "group",
+                    "MORNING_DIGEST_STATE_PATH": str(state_path),
+                    "OPERATIONAL_UPDATE_STATE_PATH": str(monitor_path),
+                }),
+                patch("telegrambot.__main__.datetime") as clock,
+                patch(
+                    "telegrambot.__main__._refresh_mayor_beach_notice",
+                    new=AsyncMock(return_value="no_update"),
+                ),
+                patch(
+                    "telegrambot.__main__.check_late_environment",
+                    new=AsyncMock(),
+                ),
+                patch(
+                    "telegrambot.__main__.load_snapshot",
+                    return_value=None,
+                ),
+                patch(
+                    "telegrambot.__main__.fetch_warnings",
+                    new=AsyncMock(return_value=()),
+                ),
+                patch(
+                    "telegrambot.__main__.fetch_beach_status",
+                    new=AsyncMock(side_effect=[
+                        changed_first,
+                        changed_second,
+                    ]),
+                ),
+                patch("telegrambot.__main__.send_message", new=sent),
+                patch("telegrambot.__main__.edit_message", new=edited),
+            ):
+                clock.now.side_effect = [first, second]
+                clock.fromisoformat.side_effect = datetime.fromisoformat
+                self.assertEqual(await _run_command("monitor-updates"), 0)
+                self.assertEqual(await _run_command("monitor-updates"), 0)
+
+            edited.assert_not_awaited()
+            sent.assert_awaited_once()
+            self.assertEqual(
+                sent.await_args.kwargs["reply_to_message_id"],
+                20,
+            )
+            self.assertIn("Жёлтый", sent.await_args.args[2])
+            self.assertEqual(
+                PublicationState(state_path).beach_root_facts(first.date())[
+                    0
+                ].nearby_flags,
+                baseline.nearby_flags,
+            )
 
     async def test_operational_checkpoint_accepts_late_cams_without_editing_digest(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -813,9 +983,9 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
     async def test_appends_diagnostics_only_in_preview_wrapper(self):
         async def produce(*args, diagnostics=None, **kwargs):
             diagnostics.append(SourceDiagnostic(
-                "SB-NO-ACTIVE",
-                "SafeBeach",
-                "активных данных выбранных пляжей нет",
+                "POLICE-NETWORK",
+                "Policía Local",
+                "официальный источник временно недоступен",
             ))
             return "готовый дайджест"
 
@@ -827,7 +997,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("готовый дайджест", message)
         self.assertIn("🔧 Диагностика источников", message)
-        self.assertIn("[SB-NO-ACTIVE] SafeBeach", message)
+        self.assertIn("[POLICE-NETWORK] Policía Local", message)
 
     async def test_weekend_preview_neither_publishes_nor_writes_state(self):
         prepared = AsyncMock(return_value=0)

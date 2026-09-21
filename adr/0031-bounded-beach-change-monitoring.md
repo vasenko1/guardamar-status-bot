@@ -1,14 +1,13 @@
 # ADR 0031: Bounded operational change monitoring
 
-- Status: Accepted (partially superseded by ADR 0056)
+- Status: Accepted; initial-publication rules superseded by ADR 0064
 - Date: 2026-08-07
 
 ## Context
 
-The 07:30 digest and its later full replacement are snapshots. Verified beach
-flags and official AEMET warnings can change materially afterwards. Silently
-editing the full digest hides the change, while continuous polling would be
-noisy and too expensive for the Termux device.
+The immutable 07:30 Morning Digest, the separate daily beach root, and
+official AEMET warnings can all receive later material source changes.
+Continuous polling would be noisy and too expensive for the Termux device.
 
 ## Decision
 
@@ -17,8 +16,8 @@ uses a separate atomically replaced daily JSON state.
 
 ### Beach checks
 
-- Run only from 20 June through 14 September and only inside normal lifeguard
-  hours.
+- Run SafeBeach checks only from 1 June through 30 September and only inside
+  the scheduled daytime windows.
 - In July and August, primary checks run at 11:00, 13:00, 15:00, 17:00 and
   19:00. In June and September they run at 12:00, 14:00, 16:00 and 18:00.
 - Monitor all six known Guardamar zones.
@@ -27,9 +26,10 @@ uses a separate atomically replaced daily JSON state.
   qualify.
 - A missing beach, field, stale page, invalid response or transport failure is
   unknown and never becomes a transition.
-- A newly available flag creates a silent baseline once a public beach
-  baseline exists. The first usable status without one is governed by ADR
-  0056. A first explicit positive jellyfish report remains a safety candidate.
+- A newly available flag outside the initial 10:10–10:40 cycle enters the
+  normal confirmation flow. If no daily beach root exists, the first confirmed
+  status may create it as a recovery path. A first explicit positive jellyfish
+  report remains a safety candidate.
 
 Each possible change is checked again after five minutes. If the second sample
 contains another new explicit state, that state receives one final check after
@@ -61,14 +61,15 @@ Guardamar measurement.
 
 ### Telegram delivery and history
 
-Every operational message is a reply to the current full daily digest. The
-stable anchor is resolved from `delivery.json` at send time: before replacement
-it is the live 07:30 message; afterwards it is the later complete digest. It is
-never the previous operational update, so updates do not form a fragile chain.
+Confirmed beach changes are replies to the daily beach root. Once that root
+exists, the operational monitor does not silently rewrite its SafeBeach
+snapshot; the change message is the audit trail. If no root existed by 10:40,
+a first later confirmed status may create it. If Telegram reports the root
+missing immediately before a reply, recreate it from confirmed state and retry
+the reply.
 
-If the full digest identifier is absent or Telegram reports that the reply
-anchor no longer exists, send the update as a standalone message. Keep older
-updates unchanged as an audit trail; do not delete or silently edit them.
+AEMET operational messages continue to reply to the immutable Morning Digest.
+Older update messages are never deleted or edited.
 
 Advance confirmed source state only after Telegram confirms delivery. The Bot
 API has no idempotency key, so a lost success response retains the existing
@@ -84,15 +85,16 @@ non-blocking file lock.
 
 Seed the AEMET baseline from the same-day prepared morning snapshot only when
 a daily digest record exists. Otherwise a valid active warning found later is
-eligible for notification. The first valid beach response establishes the
-flag baseline silently only when a public beach baseline already exists; ADR
-0056 governs the first late status.
+eligible for notification. Seed beach state from the latest published beach
+root when one exists; otherwise the first later confirmed beach status can
+create that root.
 
 ## Consequences
 
 - Subscribers see every verified beach status transition without hidden
   green/yellow changes and receive changed official warnings.
-- Multiple source changes in one window produce at most one notification.
+- One monitor window produces at most one beach-change reply and one AEMET
+  warning reply; the two products keep their own anchors.
 - The device uses bounded short processes, small state and no new dependency.
 - A beach change may be reported after the next two-hour window plus five or
   ten minutes. This is the accepted tradeoff for source stability and low
@@ -100,13 +102,17 @@ flag baseline silently only when a public beach baseline already exists; ADR
 
 ## Acceptance criteria
 
-- No beach request outside the accepted season or scheduled service window.
-- No confirmation request when there is no pending beach candidate.
+- No SafeBeach request outside 1 June through 30 September or outside the
+  scheduled daytime windows.
+- No phase-two or phase-three confirmation request when there is no pending
+  operational beach transition.
 - At most three SafeBeach requests per primary window.
 - Missing data never clears a known flag or jellyfish value.
 - All explicit confirmed flag colors can generate an update.
 - AEMET failures never manufacture a warning cancellation.
 - Natural warning expiry is silent; early cancellation is visible.
-- Combined changes create one message replying to the full daily digest.
-- A deleted reply anchor falls back to a standalone message.
+- Confirmed beach changes reply to the daily beach root; AEMET changes reply
+  to the immutable Morning Digest.
+- A deleted beach root is recreated from confirmed state before its reply;
+  the existing AEMET reply fallback remains unchanged.
 - No database, daemon, new dependency or raw-source archive is introduced.

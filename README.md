@@ -117,13 +117,9 @@ CRON_TZ=Europe/Madrid
 30 7 * * * /path/to/TelegramBot/termux/run-daily.sh
 10-40/5 10 * * * /path/to/TelegramBot/termux/update-daily.sh
 0,5,10 11,13,15,17,19 * 7,8 * /path/to/TelegramBot/termux/monitor-updates.sh
-0,5,10 12,14,16,18 20-30 6 * /path/to/TelegramBot/termux/monitor-updates.sh
-0,5,10 12,14,16,18 1-14 9 * /path/to/TelegramBot/termux/monitor-updates.sh
-0 20 20-30 6 * /path/to/TelegramBot/termux/monitor-updates.sh
-0 20 1-14 9 * /path/to/TelegramBot/termux/monitor-updates.sh
+0,5,10 12,14,16,18 * 6,9 * /path/to/TelegramBot/termux/monitor-updates.sh
+0 20 * 6,9 * /path/to/TelegramBot/termux/monitor-updates.sh
 0 11,15,19 * 1-5,10-12 * /path/to/TelegramBot/termux/monitor-updates.sh
-0 11,15,19 1-19 6 * /path/to/TelegramBot/termux/monitor-updates.sh
-0 11,15,19 15-30 9 * /path/to/TelegramBot/termux/monitor-updates.sh
 2 9 * * * /path/to/TelegramBot/termux/sync-guide.sh
 45 19 14 6 * /path/to/TelegramBot/termux/sync-guide.sh
 45 19 15 9 * /path/to/TelegramBot/termux/sync-guide.sh
@@ -147,12 +143,14 @@ The validated Android deployment uses the scripts in `termux/`:
 - `termux/sync-transport.sh` at 05:00 to refresh the transport source data and
   reconcile the shared linked guide; `publish-transport-notifications.sh` runs
   at 08:42 and reads only accepted local state;
-- `termux/run-daily.sh` at 07:30 and `termux/update-daily.sh` every five
-  minutes from 10:10 through 10:40; SafeBeach may be queried only from
-  1 June through 30 September, and the rest of the year uses no scheduled
-  SafeBeach request;
-- `termux/monitor-updates.sh` follows its existing cron cadence for beach
-  checks and the three daily AEMET warning windows documented in ADR 0031;
+- `termux/run-daily.sh` at 07:30 publishes a Morning Digest with no
+  SafeBeach dependency. `termux/update-daily.sh` runs every five minutes
+  from 10:10 through 10:40; from 1 June through 30 September its first valid
+  SafeBeach response creates the separate beach root immediately and later
+  responses edit that root in place;
+- `termux/monitor-updates.sh` uses the same 1 June–30 September beach guard;
+  confirmed later beach changes are replies to the root, while AEMET warning
+  checks continue year-round on their documented cadence;
 - `termux/sync-municipal-events.sh` at 05:10 and
   `termux/sync-agenda-events.sh` at 05:30 to atomically refresh small event
   catalogs before publication;
@@ -213,13 +211,9 @@ CRON_TZ=Europe/Madrid
 30 7 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-daily.sh
 10-40/5 10 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/update-daily.sh
 0,5,10 11,13,15,17,19 * 7,8 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
-0,5,10 12,14,16,18 20-30 6 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
-0,5,10 12,14,16,18 1-14 9 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
-0 20 20-30 6 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
-0 20 1-14 9 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
+0,5,10 12,14,16,18 * 6,9 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
+0 20 * 6,9 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
 0 11,15,19 * 1-5,10-12 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
-0 11,15,19 1-19 6 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
-0 11,15,19 15-30 9 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
 2 9 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-guide.sh
 45 19 14 6 * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-guide.sh
 45 19 15 9 * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-guide.sh
@@ -253,8 +247,9 @@ block.
 The installer saves the original crontab once as
 `~/.cache/crontab/crontab.before-monitor`, preserves unrelated lines, and owns
 only its clearly marked operational-monitor block. Repeated execution replaces
-that block and removes exact legacy copies of its eight jobs. A final scoped
-`CRON_TZ=Europe/Madrid` prevents another bot's timezone setting from changing
+that managed block, so the previous fragmented monitor schedule is removed
+when the installer is rerun. A final scoped `CRON_TZ=Europe/Madrid` prevents
+another bot's timezone setting from changing
 this schedule. The installer does not install or modify the other Morning
 Digest and electricity entries listed above.
 
@@ -311,9 +306,9 @@ PYTHONPATH=src python -m telegrambot poll "Что добавить в дайдж
 ```
 
 - `preview` collects and prints without Telegram or publication state.
-- The 07:30 Morning Digest remains the immutable daily snapshot and reply
-  anchor. Later material weather/environment changes are compact replies;
-  seasonal beach status uses its own root message.
+- The 07:30 Morning Digest remains the immutable daily snapshot and never
+  collects SafeBeach. Later material weather/environment changes are compact
+  replies; seasonal beach status uses its own root message.
 - `status` prints the last successfully published local date.
 - `electricity-preview` prints tomorrow's table and its explanatory reply
   without publishing or changing publication state. It reuses, or creates

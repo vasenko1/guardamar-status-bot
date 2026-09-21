@@ -3,17 +3,15 @@ import json
 import unittest
 import urllib.error
 from datetime import date, datetime, time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
-from telegrambot.models import BeachStatus, MorningDigest, Weather
-from telegrambot.morning import produce_message
+from telegrambot.models import BeachStatus
 from telegrambot.safebeach import (
     SafeBeachError,
     _read_page,
     fetch_beach_status,
     in_query_window,
-    is_complete_current_status,
     is_current_status,
     normalize_beach_status,
 )
@@ -209,73 +207,6 @@ class SafeBeachNormalizationTests(unittest.TestCase):
 
         self.assertEqual(raised.exception.diagnostic_code, "NO-DATA")
 
-    def test_completeness_requires_all_six_known_beaches(self):
-        status = _normalize(
-            [
-                _marker("verde", updated="10:05"),
-                _marker(
-                    "amarilla",
-                    beach_name="Platja La Roqueta",
-                    updated="10:04",
-                ),
-                _marker(
-                    "verde",
-                    beach_name="Platja dels Vivers",
-                    updated="10:03",
-                ),
-                _marker(
-                    "roja",
-                    beach_name="Platja del Montcaio",
-                    updated="10:02",
-                ),
-                _marker(
-                    "verde",
-                    beach_name="Platja del Camp",
-                    updated="10:01",
-                ),
-                _marker(
-                    "amarilla",
-                    beach_name="Platja de les Ortigues",
-                    updated="10:00",
-                ),
-            ]
-        )
-        now = datetime(2026, 7, 29, 10, 10, tzinfo=MADRID)
-
-        self.assertTrue(is_complete_current_status(status, now))
-        partial = _normalize([_marker("verde")])
-        self.assertFalse(
-            is_complete_current_status(
-                partial,
-                now,
-            )
-        )
-        self.assertTrue(is_current_status(partial, now))
-        self.assertFalse(
-            is_complete_current_status(
-                _normalize([_marker("verde", updated="")]),
-                now,
-            )
-        )
-        self.assertFalse(
-            is_complete_current_status(
-                _normalize([_marker("verde", updated="10:16")]),
-                now,
-            )
-        )
-        self.assertFalse(
-            is_complete_current_status(
-                BeachStatus(
-                    flag_color="green",
-                    sea_temperature_c=24,
-                    source_date=date(2026, 7, 28),
-                    nearby_flags=(("Centre", "green"),),
-                    updated_times=(("Centre", time(10, 5)),),
-                ),
-                now,
-            )
-        )
-
     def test_current_status_rejects_duplicate_or_unscoped_records(self):
         now = datetime(2026, 7, 29, 10, 10, tzinfo=MADRID)
         duplicate = BeachStatus(
@@ -462,12 +393,6 @@ class SafeBeachTransportTests(unittest.IsolatedAsyncioTestCase):
             ),
         )
         self.assertEqual(status.jellyfish_beaches, ("Ortigues",))
-        self.assertFalse(
-            is_complete_current_status(
-                status,
-                datetime(2026, 7, 29, 10, 10, tzinfo=MADRID),
-            )
-        )
         self.assertTrue(
             is_current_status(
                 status,
@@ -493,163 +418,6 @@ class SafeBeachTransportTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(status.nearby_flags, (("Roqueta", "yellow"),))
-
-
-class SafeBeachFailureTests(unittest.IsolatedAsyncioTestCase):
-    async def test_skips_safebeach_outside_query_window(self):
-        digest = MorningDigest(
-            weather=Weather(
-                current_temperature_c=18,
-                minimum_temperature_c=12,
-                maximum_temperature_c=20,
-                wind_direction="E",
-                wind_speed_kmh=10,
-                observed_at=None,
-            ),
-            warnings=(),
-            warnings_available=True,
-            forecast_sea_temperature_c=18,
-        )
-        now = datetime(2026, 12, 15, 10, 0, tzinfo=MADRID)
-        with (
-            patch(
-                "telegrambot.morning.fetch_morning_digest",
-                new=AsyncMock(return_value=digest),
-            ),
-            patch(
-                "telegrambot.morning.fetch_beach_status",
-                new=AsyncMock(),
-            ) as beach_fetch,
-            patch(
-                "telegrambot.morning.fetch_today_events",
-                new=AsyncMock(return_value=()),
-            ),
-            patch(
-                "telegrambot.morning.fetch_today_mayor_events",
-                new=AsyncMock(return_value=()),
-            ),
-            patch(
-                "telegrambot.morning.fetch_today_municipal_events",
-                new=AsyncMock(return_value=()),
-            ),
-            patch(
-                "telegrambot.morning.fetch_traffic_notices",
-                new=AsyncMock(return_value=()),
-            ),
-        ):
-            message = await produce_message("api-key", now)
-
-        beach_fetch.assert_not_awaited()
-        self.assertIn("<b>Море:</b> 18°", message)
-        self.assertNotIn("🏖 Флаги", message)
-
-    async def test_uses_beach_wind_as_current_and_aemet_as_forecast(self):
-        digest = MorningDigest(
-            weather=Weather(
-                current_temperature_c=None,
-                minimum_temperature_c=23,
-                maximum_temperature_c=31,
-                wind_direction="E",
-                wind_speed_kmh=15,
-                observed_at=None,
-                forecast_wind_speed_kmh=15,
-            ),
-            warnings=(),
-            warnings_available=True,
-        )
-        now = datetime(2026, 7, 27, 8, 0, tzinfo=MADRID)
-        with (
-            patch(
-                "telegrambot.morning.fetch_morning_digest",
-                new=AsyncMock(return_value=digest),
-            ),
-            patch(
-                "telegrambot.morning.fetch_beach_status",
-                new=AsyncMock(
-                    return_value=BeachStatus(
-                        flag_color="yellow",
-                        sea_temperature_c=27,
-                        wind_direction="E",
-                        wind_speed_kmh=11,
-                    )
-                ),
-            ),
-            patch(
-                "telegrambot.morning.fetch_today_events",
-                new=AsyncMock(return_value=()),
-            ),
-            patch(
-                "telegrambot.morning.fetch_today_mayor_events",
-                new=AsyncMock(return_value=()),
-            ),
-            patch(
-                "telegrambot.morning.fetch_today_municipal_events",
-                new=AsyncMock(return_value=()),
-            ),
-            patch(
-                "telegrambot.morning.fetch_traffic_notices",
-                new=AsyncMock(return_value=()),
-            ),
-        ):
-            message = await produce_message("api-key", now)
-
-        self.assertIn("<b>Ветер:</b> В 3 → 4 м/с", message)
-
-    async def test_failure_omits_beach_without_blocking_weather(self):
-        digest = MorningDigest(
-            weather=Weather(
-                current_temperature_c=23.0,
-                minimum_temperature_c=20,
-                maximum_temperature_c=29,
-                wind_direction="E",
-                wind_speed_kmh=12,
-                observed_at=None,
-            ),
-            warnings=(),
-            warnings_available=True,
-        )
-        now = datetime(2026, 7, 26, 8, 0, tzinfo=MADRID)
-
-        diagnostics = []
-        with (
-            patch(
-                "telegrambot.morning.fetch_morning_digest",
-                new=AsyncMock(return_value=digest),
-            ),
-            patch(
-                "telegrambot.morning.fetch_beach_status",
-                new=AsyncMock(
-                    side_effect=SafeBeachError("temporarily unavailable")
-                ),
-            ),
-            patch(
-                "telegrambot.morning.fetch_today_events",
-                new=AsyncMock(return_value=()),
-            ),
-            patch(
-                "telegrambot.morning.fetch_today_mayor_events",
-                new=AsyncMock(return_value=()),
-            ),
-            patch(
-                "telegrambot.morning.fetch_traffic_notices",
-                new=AsyncMock(return_value=()),
-            ),
-        ):
-            message = await produce_message(
-                "api-key",
-                now,
-                diagnostics=diagnostics,
-            )
-
-        self.assertIn("<b>Море:</b> —", message)
-        self.assertNotIn("Источник", message)
-        self.assertNotIn("Флаг", message)
-        self.assertNotIn("SafeBeach", message)
-        safe_beach = [
-            item for item in diagnostics if item.source == "SafeBeach"
-        ]
-        self.assertEqual(len(safe_beach), 1)
-        self.assertEqual(safe_beach[0].code, "SB-INVALID")
 
 
 if __name__ == "__main__":

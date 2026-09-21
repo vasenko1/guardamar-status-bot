@@ -26,7 +26,7 @@ class MorningMeteosaludTests(unittest.IsolatedAsyncioTestCase):
             patch("telegrambot.morning.fetch_cams", new=AsyncMock(return_value=cams)) as cams_fetch,
         ):
             message = await produce_message(
-                "unused", now, fetch_aemet=False, collect_beach=False,
+                "unused", now, fetch_aemet=False,
                 aemet_digest=MorningDigest(
                     weather=Weather(None, 12, 20, None, None, None),
                     warnings=(), warnings_available=True,

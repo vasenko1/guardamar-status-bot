@@ -4,7 +4,7 @@ import fcntl
 import json
 import os
 from contextlib import contextmanager
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time
 from pathlib import Path
 from typing import Iterator, Optional
 
@@ -304,67 +304,6 @@ class PublicationState:
         pollen = _decode_pollen(value.get("cams_pollen"))
         return heat, cold, base, air, pollen
 
-    def remember_beach_candidate(
-        self,
-        local_day: date,
-        status: BeachStatus,
-        observed_at: datetime,
-    ) -> bool:
-        """Keep one whole best SafeBeach response for the final attempt."""
-        if (
-            observed_at.tzinfo is None
-            or observed_at.date() != local_day
-            or status.source_date != local_day
-            or not status.nearby_flags
-        ):
-            return False
-        with self.exclusive_run():
-            value = self.morning_record(local_day)
-            if value is None or isinstance(value.get("update_message_id"), int):
-                return False
-            existing = _decode_beach_candidate(value.get("beach_candidate"))
-            if existing is not None:
-                existing_time, existing_status = existing
-                existing_size = len(existing_status.nearby_flags)
-                candidate_size = len(status.nearby_flags)
-                if candidate_size < existing_size or (
-                    candidate_size == existing_size and observed_at <= existing_time
-                ):
-                    return False
-            value["beach_candidate"] = {
-                "observed_at": observed_at.isoformat(),
-                "status": _encode_beach_status(status),
-            }
-            self._write(value)
-            return True
-
-    def beach_candidate(
-        self,
-        local_day: date,
-        now: datetime,
-        *,
-        max_age: timedelta = timedelta(minutes=45),
-    ) -> Optional[BeachStatus]:
-        """Return a recent same-day candidate without trusting bad state."""
-        if now.tzinfo is None or max_age < timedelta(0):
-            return None
-        value = self.morning_record(local_day)
-        if value is None:
-            return None
-        decoded = _decode_beach_candidate(value.get("beach_candidate"))
-        if decoded is None:
-            return None
-        observed_at, status = decoded
-        age = now - observed_at
-        if (
-            observed_at.date() != local_day
-            or status.source_date != local_day
-            or age < timedelta(0)
-            or age > max_age
-        ):
-            return None
-        return status
-
     def mark_morning_deleted(self, local_day: date) -> None:
         value = self.morning_record(local_day)
         if value is None:
@@ -516,25 +455,6 @@ def _encode_beach_status(status: BeachStatus) -> dict:
         ],
         "source_date": status.source_date.isoformat() if status.source_date else None,
     }
-
-
-def _decode_beach_candidate(value) -> Optional[tuple]:
-    if not isinstance(value, dict):
-        return None
-    observed_raw = value.get("observed_at")
-    status_raw = value.get("status")
-    if not isinstance(observed_raw, str) or not isinstance(status_raw, dict):
-        return None
-    try:
-        observed_at = datetime.fromisoformat(observed_raw)
-    except ValueError:
-        return None
-    if observed_at.tzinfo is None:
-        return None
-    status = _decode_beach_status(status_raw)
-    if status is None:
-        return None
-    return observed_at, status
 
 
 def _decode_beach_status(value) -> Optional[BeachStatus]:
