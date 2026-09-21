@@ -753,20 +753,28 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 return 0
 
             beach_anchor = publication_state.beach_message_id(now.date())
+            published_beach_status, _ = publication_state.beach_root_facts(
+                now.date()
+            )
             ready_changes = value.get("beach_ready") or []
             initial_ready = bool(ready_changes) and all(
                 change.get("initial") for change in ready_changes
             )
             root_status = confirmed_beach_status(value, now)
-            if beach_anchor is None and (latest_beach is not None or ready_changes):
-                # The 10:10-10:40 update cycle owns live edits of an existing
-                # beach root. Later monitoring creates a missing initial root
-                # only as a recovery path; confirmed changes use reply messages.
-                status_for_root = root_status or latest_beach
+            needs_initial_status = (
+                initial_ready
+                and root_status is not None
+                and published_beach_status is None
+            )
+            if ready_changes and (beach_anchor is None or needs_initial_status):
+                # The 10:10-10:40 update cycle owns live SafeBeach root edits.
+                # Later monitoring waits for confirmation before creating a
+                # missing root or adding the first SafeBeach status to a
+                # Mayor-only root. Subsequent confirmed changes remain replies.
                 root_result, beach_anchor = await refresh_beach_root(
                     now,
                     publication_state,
-                    status_for_root,
+                    root_status,
                     None,
                     build_beach_root_message,
                     lambda message: send_message(
@@ -1396,22 +1404,24 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         now, state, municipal_path, agenda_path, translations_path
     )
 
-    if not _safebeach_initial_checkpoint(now):
-        logging.info(
-            "SKIP: SafeBeach root edits are limited to 10:10-10:40 checkpoints"
-        )
-        return 0
     if not in_query_window(now):
         logging.info("SKIP: SafeBeach is outside the annual query window")
         return 0
 
     beach = None
-    try:
-        candidate = await fetch_beach_status(now)
-        if is_current_status(candidate, now):
-            beach = candidate
-    except SafeBeachError as exc:
-        logging.warning("SafeBeach update check failed: SB-%s", exc.diagnostic_code)
+    if _safebeach_initial_checkpoint(now):
+        try:
+            candidate = await fetch_beach_status(now)
+            if is_current_status(candidate, now):
+                beach = candidate
+        except SafeBeachError as exc:
+            logging.warning(
+                "SafeBeach update check failed: SB-%s", exc.diagnostic_code
+            )
+    else:
+        logging.info(
+            "SKIP: SafeBeach root edits are limited to 10:10-10:40 checkpoints"
+        )
 
     _, previous_notice = state.beach_root_facts(now.date())
     since = datetime.fromisoformat(existing["morning_published_at"])
