@@ -114,6 +114,49 @@ class MunicipalCinemaTranslationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(events[0].duration_minutes, 85)
         self.assertEqual(events[0].audience_label, "7+")
 
+    async def test_observed_cinema_title_is_rendered_in_russian(self):
+        source_title = (
+            "Sesión de cine con la película ‘El club de los milagros’ "
+            "en la biblioteca municipal"
+        )
+        event = SourceEvent(
+            source_title,
+            date(2026, 9, 21),
+            date(2026, 9, 21),
+            "18:00",
+            None,
+            "Biblioteca Pública Municipal",
+            "event",
+            ("todo_cultura", "turismo_cinema"),
+            ticket_price_cents=0,
+            capacity_limited=True,
+            duration_minutes=85,
+            audience_label="7+",
+            details=("Drama-Comedia",),
+            access_note="до заполнения зала",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            snapshot = Path(directory) / "agenda.json"
+            translations = Path(directory) / "translations.json"
+            _write_snapshot(
+                snapshot,
+                _snapshot_data(
+                    "",
+                    "",
+                    datetime(2026, 9, 21, 5, 10, tzinfo=TZ),
+                    (event,),
+                ),
+            )
+            events = await fetch_today_municipal_events(
+                datetime(2026, 9, 21, 7, 30, tzinfo=TZ),
+                "",
+                snapshot,
+                translation_cache_path=translations,
+            )
+
+        self.assertEqual(events[0].title, "🎬 Показ фильма «Клуб чудес»")
+
+
 
 class ExplicitTodoDatesTest(unittest.TestCase):
     def test_same_time_different_event_does_not_cover_missing_row(self):
