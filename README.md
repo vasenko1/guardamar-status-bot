@@ -179,10 +179,13 @@ git merge-base --is-ancestor "$TARGET_SHA" origin/main
 Stop if this command fails. Production must not remain on a feature-only
 branch. Restart only the affected resident service; one-shot cron commands use
 the changed code on their next invocation. The separate public
-`guardamar-cams-data` repository uses one daily GitHub Action only to publish
-normalized CAMS data; it does not deploy this application. There is no GitHub
-Actions promotion, `deploy` branch, or scheduled self-update. `.env`, `state/`,
-logs, and the virtual environment remain local.
+`guardamar-cams-data` repository owns one daily CAMS forecast lifecycle with
+bounded scheduled publication attempts. The bot may recheck that small public
+JSON only until today's forecast base is accepted; later environment checkpoints
+reuse the accepted daily cycle and do not keep refetching the same CAMS data.
+That repository does not deploy this application. There is no GitHub Actions
+promotion, `deploy` branch, or scheduled self-update. `.env`, `state/`, logs,
+and the virtual environment remain local.
 
 `DEVICE TEST ONLY` is the narrow exception for behavior that genuinely needs
 Android or Termux. Record the clean production commit, branch, and relevant
