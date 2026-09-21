@@ -5,6 +5,7 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PROJECT_DIR=$(dirname "$SCRIPT_DIR")
 SYNC="$PROJECT_DIR/termux/sync-guide.sh"
+BATHING="$PROJECT_DIR/termux/sync-bathing-water.sh"
 PUBLISH="$PROJECT_DIR/termux/publish-course-notifications.sh"
 SH_BIN=$(command -v sh)
 BACKUP_DIR="$HOME/.cache/crontab"
@@ -21,6 +22,10 @@ trap cleanup EXIT HUP INT TERM
 
 if [ ! -f "$SYNC" ]; then
     echo "ОШИБКА: sync-guide.sh не найден" >&2
+    exit 1
+fi
+if [ ! -f "$BATHING" ]; then
+    echo "ОШИБКА: sync-bathing-water.sh не найден" >&2
     exit 1
 fi
 if [ ! -f "$PUBLISH" ]; then
@@ -61,11 +66,15 @@ if [ ! -f "$BACKUP_DIR/crontab.before-guide" ]; then
     cp "$CURRENT" "$BACKUP_DIR/crontab.before-guide"
 fi
 
-awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" -v sync="$SYNC" -v publish="$PUBLISH" -v shbin="$SH_BIN" '
+awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" -v sync="$SYNC" -v bathing="$BATHING" -v publish="$PUBLISH" -v shbin="$SH_BIN" '
     $0 == begin { managed = 1; next }
     $0 == end { managed = 0; next }
     managed { next }
     $0 == "30 16 * * * " shbin " " sync { next }
+    $0 == "35 19 * 6-8 * " shbin " " bathing { next }
+    $0 == "35 19 1-20 9 * " shbin " " bathing { next }
+    $0 == "35 19 1-30 9 * " shbin " " bathing { next }
+    $0 == "35 19 1-15 9 * " shbin " " bathing { next }
     $0 == "42 9,11 * * * " shbin " " publish { next }
     { print }
 ' "$CURRENT" >"$UPDATED"
@@ -77,6 +86,8 @@ mv "$UPDATED" "$CURRENT"
         "$BEGIN_MARKER" \
         'CRON_TZ=Europe/Madrid' \
         "2 9 * * * $SH_BIN $SYNC" \
+        "35 19 * 6-8 * $SH_BIN $BATHING" \
+        "35 19 1-15 9 * $SH_BIN $BATHING" \
         "45 19 14 6 * $SH_BIN $SYNC" \
         "45 19 15 9 * $SH_BIN $SYNC" \
         "42 9,11 * * * $SH_BIN $PUBLISH" \
@@ -84,4 +95,4 @@ mv "$UPDATED" "$CURRENT"
 } | crontab -
 
 sv up crond
-echo "Справочник: 09:02 ежедневно; Zona Azul 19:45 14.06/15.09; занятия 09:42 и retry 11:42 Europe/Madrid"
+echo "Справочник: 09:02 ежедневно; зоны купания 19:35 ежедневно 01.06-15.09; Zona Azul 19:45 14.06/15.09; занятия 09:42 и retry 11:42 Europe/Madrid"

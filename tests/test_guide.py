@@ -2,7 +2,7 @@ import asyncio
 import json
 import tempfile
 import unittest
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
@@ -14,18 +14,23 @@ from telegrambot.guide import (
     GuideState,
     WIFI_VERIFIED_ASSET_URL,
     _allowed_aqualider_url,
+    _bathing_water_notice_key,
+    _bathing_water_notice_text,
     _allowed_ora_url,
     _fetch_json,
     _normalize_providers,
     _normalize_services,
     _ora_schedule_matches,
     _parking_notice_key,
+    _publish_bathing_water_pending_notice,
+    _refresh_bathing_water_source,
     _parking_notice_text,
     _season_notice_key,
     _validate_cross_references,
     active_parking,
     active_pool,
     fetch_aqualider_catalog,
+    sync_bathing_water,
     sync_guide,
 )
 from telegrambot.sporttia import SporttiaSourceError
@@ -56,6 +61,66 @@ def sample_providers(name="Primera quincena de Julio"):
     ]
 
 
+def bathing_report(
+    moment,
+    *,
+    start="2026-06-15",
+    end="2026-06-21",
+    url=(
+        "https://www.guardamardelsegura.es/wp-content/uploads/"
+        "2026/06/report.pdf"
+    ),
+    centro_water="good",
+    roqueta_sand="good",
+    ortigues_sand="good",
+    sample_dates=None,
+):
+    beaches = []
+    for name in (
+        "Tusales", "Vivers", "Babilonia", "Centro",
+        "La Roqueta", "Moncayo", "Ortigues",
+    ):
+        beaches.append({
+            "name": name,
+            "water_analysis": "excellent",
+            "water_appearance": centro_water if name == "Centro" else "excellent",
+            "sand_appearance": (
+                roqueta_sand if name == "La Roqueta"
+                else ortigues_sand if name == "Ortigues"
+                else "excellent"
+            ),
+        })
+    report_start = date.fromisoformat(start)
+    report_end = date.fromisoformat(end)
+    if sample_dates is None:
+        first_sample = min(report_start + timedelta(days=1), report_end)
+        second_sample = min(first_sample + timedelta(days=1), report_end)
+        sample_dates = sorted({
+            first_sample.isoformat(),
+            second_sample.isoformat(),
+        })
+    return {
+        "observed_at": moment.isoformat(),
+        "report_start": start,
+        "report_end": end,
+        "report_url": url,
+        "sample_dates": list(sample_dates),
+        "beaches": beaches,
+    }
+
+
+def bathing_programme(moment, report):
+    return {
+        "observed_at": moment.isoformat(),
+        "season_year": int(report["report_start"][:4]),
+        "season_start": f'{report["report_start"][:4]}-06-01',
+        "season_end": f'{report["report_start"][:4]}-09-15',
+        "latest_report_start": report["report_start"],
+        "latest_report_end": report["report_end"],
+        "latest_report_url": report["report_url"],
+    }
+
+
 def snapshot(moment, service_name="Natación Bebés"):
     return {
         "observed_at": moment.isoformat(),
@@ -70,6 +135,219 @@ def snapshot(moment, service_name="Natación Bebés"):
             },
         ],
     }
+
+
+class BathingWaterGuideTests(unittest.IsolatedAsyncioTestCase):
+    def test_notice_uses_test_tube_and_separates_lab_from_visual_inspection(self):
+        moment = datetime(2026, 6, 22, 9, 2, tzinfo=MADRID)
+        text = _bathing_water_notice_text(bathing_report(moment))
+
+        self.assertIn("🧪 <b>Контроль зон купания</b>", text)
+        self.assertIn("<b>Лабораторный анализ воды</b>", text)
+        self.assertIn("✅ Отлично — все 7 пляжей", text)
+        self.assertIn("👁 <b>Визуальный контроль</b>", text)
+        self.assertIn("• Вода — хорошо:", text)
+        self.assertIn("   Centro", text)
+        self.assertIn("• Песок — хорошо:", text)
+        self.assertIn("   La Roqueta, Ortigues", text)
+        self.assertIn("Остальные визуальные оценки — отлично", text)
+        self.assertIn("📅 Пробы: 16–17 июня 2026", text)
+        self.assertLess(text.index("Остальные визуальные оценки"), text.index("📅 Пробы:"))
+        self.assertLess(text.index("📅 Пробы:"), text.index("🏛 Данные:"))
+        self.assertIn(
+            "🏛 Данные: Servicio de Calidad de Aguas · Generalitat Valenciana",
+            text,
+        )
+        self.assertIn("<b>обЪявления Гуардамар</b>", text)
+        self.assertNotIn("Официальный отчёт", text)
+        self.assertNotIn("https://www.guardamardelsegura.es/wp-content/uploads/", text)
+        self.assertNotIn("🌊", text)
+
+    def test_notice_groups_nonexcellent_lab_results_by_beach(self):
+        moment = datetime(2026, 6, 22, 9, 2, tzinfo=MADRID)
+        report = bathing_report(moment)
+        report["beaches"][0]["water_analysis"] = "good"
+        report["beaches"][1]["water_analysis"] = "sufficient"
+        report["beaches"][2]["water_analysis"] = "insufficient"
+
+        text = _bathing_water_notice_text(report)
+
+        self.assertIn("• Отлично:", text)
+        self.assertIn("   Centro, La Roqueta", text)
+        self.assertIn("   Moncayo, Ortigues", text)
+        self.assertIn("• Хорошо:", text)
+        self.assertIn("   Tusales", text)
+        self.assertIn("• Удовлетворительно:", text)
+        self.assertIn("   Vivers", text)
+        self.assertIn("• Недостаточно:", text)
+        self.assertIn("   Babilonia", text)
+
+    async def test_stale_first_report_is_silent_baseline(self):
+        moment = datetime(2026, 6, 27, 9, 2, tzinfo=MADRID)
+        report = bathing_report(moment)
+        programme = bathing_programme(moment, report)
+        with tempfile.TemporaryDirectory() as directory:
+            state_store = GuideState(Path(directory) / "guide.json")
+            state = state_store.read()
+            with (
+                patch(
+                    "telegrambot.guide.fetch_bathing_water_snapshot",
+                    new=AsyncMock(return_value=programme),
+                ),
+                patch(
+                    "telegrambot.guide.fetch_bathing_water_report",
+                    new=AsyncMock(return_value=report),
+                ),
+            ):
+                await _refresh_bathing_water_source(moment, state, state_store)
+
+            saved = state_store.read()
+            self.assertEqual(saved["bathing_water_report_snapshot"], report)
+            self.assertNotIn("bathing_water_pending_notice", saved)
+
+    async def test_fresh_first_report_is_pending(self):
+        moment = datetime(2026, 6, 22, 9, 2, tzinfo=MADRID)
+        report = bathing_report(moment)
+        programme = bathing_programme(moment, report)
+        with tempfile.TemporaryDirectory() as directory:
+            state_store = GuideState(Path(directory) / "guide.json")
+            state = state_store.read()
+            with (
+                patch(
+                    "telegrambot.guide.fetch_bathing_water_snapshot",
+                    new=AsyncMock(return_value=programme),
+                ),
+                patch(
+                    "telegrambot.guide.fetch_bathing_water_report",
+                    new=AsyncMock(return_value=report),
+                ),
+            ):
+                await _refresh_bathing_water_source(moment, state, state_store)
+
+            saved = state_store.read()
+            self.assertEqual(
+                saved["bathing_water_pending_notice"],
+                _bathing_water_notice_key(report),
+            )
+
+    async def test_new_report_period_sets_one_pending_notice_even_with_same_url(self):
+        first_moment = datetime(2026, 6, 22, 9, 2, tzinfo=MADRID)
+        next_moment = datetime(2026, 6, 29, 9, 2, tzinfo=MADRID)
+        first = bathing_report(first_moment)
+        second = bathing_report(
+            next_moment,
+            start="2026-06-22",
+            end="2026-06-28",
+            url=first["report_url"],
+        )
+        programme = bathing_programme(next_moment, second)
+        with tempfile.TemporaryDirectory() as directory:
+            state_store = GuideState(Path(directory) / "guide.json")
+            state_store.write({
+                "version": 1,
+                "bathing_water_report_snapshot": first,
+            })
+            state = state_store.read()
+            fetch = AsyncMock(return_value=second)
+            with (
+                patch(
+                    "telegrambot.guide.fetch_bathing_water_snapshot",
+                    new=AsyncMock(return_value=programme),
+                ),
+                patch(
+                    "telegrambot.guide.fetch_bathing_water_report",
+                    new=fetch,
+                ),
+            ):
+                await _refresh_bathing_water_source(next_moment, state, state_store)
+
+            saved = state_store.read()
+            self.assertEqual(fetch.await_count, 1)
+            self.assertEqual(saved["bathing_water_report_snapshot"], second)
+            self.assertEqual(
+                saved["bathing_water_pending_notice"],
+                _bathing_water_notice_key(second),
+            )
+
+    async def test_public_notice_is_recorded_and_not_duplicated(self):
+        moment = datetime(2026, 6, 29, 9, 2, tzinfo=MADRID)
+        report = bathing_report(moment, start="2026-06-22", end="2026-06-28")
+        key = _bathing_water_notice_key(report)
+        with tempfile.TemporaryDirectory() as directory:
+            state_store = GuideState(Path(directory) / "guide.json")
+            state_store.write({
+                "version": 1,
+                "bathing_water_report_snapshot": report,
+                "bathing_water_pending_notice": key,
+            })
+            state = state_store.read()
+            send = AsyncMock(return_value=701)
+            with patch("telegrambot.guide.send_message", new=send):
+                await _publish_bathing_water_pending_notice(
+                    "token", "-100123", state, state_store
+                )
+                await _publish_bathing_water_pending_notice(
+                    "token", "-100123", state, state_store
+                )
+
+            self.assertEqual(send.await_count, 1)
+            saved = state_store.read()
+            self.assertEqual(saved["bathing_water_notice"]["message_id"], 701)
+            self.assertNotIn("bathing_water_pending_notice", saved)
+            self.assertNotIn("bathing_water_notice_uncertain", saved)
+
+    async def test_explicit_public_notice_failure_remains_pending(self):
+        moment = datetime(2026, 6, 29, 9, 2, tzinfo=MADRID)
+        report = bathing_report(moment, start="2026-06-22", end="2026-06-28")
+        key = _bathing_water_notice_key(report)
+        rejected = TelegramError(
+            "bad request", retryable=False, status=400, code="HTTP-400"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state_store = GuideState(Path(directory) / "guide.json")
+            state_store.write({
+                "version": 1,
+                "bathing_water_report_snapshot": report,
+                "bathing_water_pending_notice": key,
+            })
+            state = state_store.read()
+            send = AsyncMock(side_effect=rejected)
+            with patch("telegrambot.guide.send_message", new=send):
+                with self.assertRaises(TelegramError):
+                    await _publish_bathing_water_pending_notice(
+                        "token", "-100123", state, state_store
+                    )
+
+            saved = state_store.read()
+            self.assertEqual(saved["bathing_water_pending_notice"], key)
+            self.assertNotIn("bathing_water_notice_uncertain", saved)
+
+    async def test_ambiguous_public_notice_is_not_blindly_retried(self):
+        moment = datetime(2026, 6, 29, 9, 2, tzinfo=MADRID)
+        report = bathing_report(moment, start="2026-06-22", end="2026-06-28")
+        key = _bathing_water_notice_key(report)
+        timeout = TelegramError("timeout", retryable=True, code="TIMEOUT")
+        with tempfile.TemporaryDirectory() as directory:
+            state_store = GuideState(Path(directory) / "guide.json")
+            state_store.write({
+                "version": 1,
+                "bathing_water_report_snapshot": report,
+                "bathing_water_pending_notice": key,
+            })
+            state = state_store.read()
+            send = AsyncMock(side_effect=timeout)
+            with patch("telegrambot.guide.send_message", new=send):
+                await _publish_bathing_water_pending_notice(
+                    "token", "-100123", state, state_store
+                )
+                await _publish_bathing_water_pending_notice(
+                    "token", "-100123", state, state_store
+                )
+
+            self.assertEqual(send.await_count, 1)
+            saved = state_store.read()
+            self.assertEqual(saved["bathing_water_notice_uncertain"], key)
+            self.assertEqual(saved["bathing_water_pending_notice"], key)
 
 
 class PoolSeasonTests(unittest.TestCase):
@@ -483,10 +761,31 @@ class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
             saved = GuideState(Path(directory) / "guide.json").read()
             self.assertEqual(saved["sporttia_last_attempt_day"], "2026-09-16")
 
-    async def test_bathing_water_is_attempted_at_most_once_per_local_day(self):
+    async def test_bathing_water_has_a_dedicated_once_daily_sync(self):
         with tempfile.TemporaryDirectory() as directory:
-            moment = datetime(2026, 9, 16, 9, 2, tzinfo=MADRID)
-            later = datetime(2026, 9, 16, 19, 45, tzinfo=MADRID)
+            moment = datetime(2026, 9, 14, 19, 35, tzinfo=MADRID)
+            later = datetime(2026, 9, 14, 19, 40, tzinfo=MADRID)
+            with patch.dict(
+                "os.environ",
+                self._environment(directory),
+                clear=False,
+            ):
+                await sync_bathing_water(moment)
+                await sync_bathing_water(later)
+            self.assertEqual(self.bathing_water_fetch.await_count, 1)
+            saved = GuideState(Path(directory) / "guide.json").read()
+            self.assertEqual(
+                saved["bathing_water_last_attempt_day"],
+                "2026-09-14",
+            )
+            self.assertEqual(
+                saved["bathing_water_snapshot"]["season_start"],
+                "2026-06-01",
+            )
+
+    async def test_regular_guide_sync_does_not_fetch_bathing_water(self):
+        with tempfile.TemporaryDirectory() as directory:
+            moment = datetime(2026, 9, 14, 9, 2, tzinfo=MADRID)
             current = snapshot(moment)
             publish = AsyncMock(return_value=self._pinned_messages())
             with (
@@ -498,17 +797,7 @@ class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
                 patch("telegrambot.guide.publish_pinned_guide", new=publish),
             ):
                 await sync_guide(moment)
-                await sync_guide(later)
-            self.assertEqual(self.bathing_water_fetch.await_count, 1)
-            saved = GuideState(Path(directory) / "guide.json").read()
-            self.assertEqual(
-                saved["bathing_water_last_attempt_day"],
-                "2026-09-16",
-            )
-            self.assertEqual(
-                saved["bathing_water_snapshot"]["season_start"],
-                "2026-06-01",
-            )
+            self.bathing_water_fetch.assert_not_awaited()
 
     async def test_music_school_is_attempted_at_most_once_per_local_day(self):
         with tempfile.TemporaryDirectory() as directory:
