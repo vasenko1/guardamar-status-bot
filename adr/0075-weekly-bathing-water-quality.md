@@ -32,8 +32,8 @@ the beach rows and can differ from the report's covered week.
 
 1. Add no resident service, DB, queue, browser, OCR or AI dependency. Use one
    short-lived `sync-bathing-water.sh` one-shot at 19:35 Europe/Madrid during
-   June-August and through 20 September. The September grace allows a final
-   report to arrive up to five days after the official 15 September season end.
+   June-August and through 30 September. The September grace keeps checking
+   for delayed final publications after the official 15 September season end.
 2. Keep bathing-water work out of the normal 09:02 guide sync so the guide's
    other sources are not fetched a second time. Both flows share the existing
    atomic `GuideState` and its exclusive run lock.
