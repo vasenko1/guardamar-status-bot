@@ -295,7 +295,9 @@ screening with a concrete film title, use the stable heading
 `Кино по понедельникам: «<название фильма>»`. Keep the film title inside
 Russian quotation marks; do not append a promotional subtitle from another
 event record. If a prepared translation does not identify the Monday series
-and film, fall back to the official film title.
+and film, fall back to the official film title. The same heading applies when
+the merged event keeps a separate official Todo Cultura title while retaining
+the verified Turismo cinema marker and its explicit film name.
 When the official source has no time, omit only the time prefix and keep the
 event. Preserve an explicit activity type or medium such as painting,
 sculpture, concert, workshop, guided tour, or night route. Include the
