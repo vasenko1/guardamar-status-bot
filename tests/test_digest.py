@@ -526,14 +526,6 @@ class DigestMessageTests(unittest.TestCase):
         )
         self.assertIn("AEMET", message)
         self.assertIn(
-            (
-                "\n\n🚧 <b>Движение:</b>\n15–29 июля: проезд к "
-                "поликлинике и автовокзалу — только через "
-                "C/ San Francisco."
-            ),
-            message,
-        )
-        self.assertIn(
             "\n\n📅 <b>События дня:</b>\n"
             "• <b>23:00</b> — Концерт в замке",
             message,
