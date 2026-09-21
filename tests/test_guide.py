@@ -30,6 +30,7 @@ from telegrambot.guide import (
     active_parking,
     active_pool,
     fetch_aqualider_catalog,
+    sync_bathing_water,
     sync_guide,
 )
 from telegrambot.sporttia import SporttiaSourceError
@@ -93,6 +94,10 @@ def bathing_report(
         "report_start": start,
         "report_end": end,
         "report_url": url,
+        "sample_dates": [
+            f"{start[:8]}16" if start.endswith("15") else start,
+            f"{start[:8]}17" if start.endswith("15") else start,
+        ],
         "beaches": beaches,
     }
 
@@ -130,17 +135,20 @@ class BathingWaterGuideTests(unittest.IsolatedAsyncioTestCase):
         moment = datetime(2026, 6, 22, 9, 2, tzinfo=MADRID)
         text = _bathing_water_notice_text(bathing_report(moment))
 
-        self.assertIn("🧪 <b>Качество воды на пляжах</b>", text)
-        self.assertIn("🗓 15–21 июня 2026", text)
-        self.assertIn("<b>Анализ воды</b>", text)
+        self.assertIn("🧪 <b>Контроль зон купания</b>", text)
+        self.assertIn("📅 Пробы: 16–17 июня 2026", text)
+        self.assertIn("<b>Лабораторный анализ воды</b>", text)
         self.assertIn("✅ Отлично — все 7 пляжей", text)
-        self.assertIn("👁 <b>Внешний осмотр</b>", text)
+        self.assertIn("👁 <b>Визуальный осмотр</b>", text)
         self.assertIn("• Вода — хорошо:", text)
         self.assertIn("   Centro", text)
         self.assertIn("• Песок — хорошо:", text)
         self.assertIn("   La Roqueta, Ortigues", text)
         self.assertIn("Остальные визуальные оценки — отлично", text)
-        self.assertIn("🏛 Источник: Ayuntamiento de Guardamar del Segura", text)
+        self.assertIn(
+            "🏛 Данные: Servicio de Calidad de Aguas · Generalitat Valenciana",
+            text,
+        )
         self.assertIn("<b>обЪявления Гуардамар</b>", text)
         self.assertNotIn("Официальный отчёт", text)
         self.assertNotIn("https://www.guardamardelsegura.es/wp-content/uploads/", text)
@@ -165,8 +173,8 @@ class BathingWaterGuideTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("• Недостаточно:", text)
         self.assertIn("   Babilonia", text)
 
-    async def test_first_parsed_report_is_silent_baseline(self):
-        moment = datetime(2026, 6, 22, 9, 2, tzinfo=MADRID)
+    async def test_stale_first_report_is_silent_baseline(self):
+        moment = datetime(2026, 6, 27, 9, 2, tzinfo=MADRID)
         report = bathing_report(moment)
         programme = bathing_programme(moment, report)
         with tempfile.TemporaryDirectory() as directory:
@@ -187,6 +195,31 @@ class BathingWaterGuideTests(unittest.IsolatedAsyncioTestCase):
             saved = state_store.read()
             self.assertEqual(saved["bathing_water_report_snapshot"], report)
             self.assertNotIn("bathing_water_pending_notice", saved)
+
+    async def test_fresh_first_report_is_pending(self):
+        moment = datetime(2026, 6, 22, 9, 2, tzinfo=MADRID)
+        report = bathing_report(moment)
+        programme = bathing_programme(moment, report)
+        with tempfile.TemporaryDirectory() as directory:
+            state_store = GuideState(Path(directory) / "guide.json")
+            state = state_store.read()
+            with (
+                patch(
+                    "telegrambot.guide.fetch_bathing_water_snapshot",
+                    new=AsyncMock(return_value=programme),
+                ),
+                patch(
+                    "telegrambot.guide.fetch_bathing_water_report",
+                    new=AsyncMock(return_value=report),
+                ),
+            ):
+                await _refresh_bathing_water_source(moment, state, state_store)
+
+            saved = state_store.read()
+            self.assertEqual(
+                saved["bathing_water_pending_notice"],
+                _bathing_water_notice_key(report),
+            )
 
     async def test_new_report_period_sets_one_pending_notice_even_with_same_url(self):
         first_moment = datetime(2026, 6, 22, 9, 2, tzinfo=MADRID)
@@ -719,10 +752,31 @@ class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
             saved = GuideState(Path(directory) / "guide.json").read()
             self.assertEqual(saved["sporttia_last_attempt_day"], "2026-09-16")
 
-    async def test_bathing_water_is_attempted_at_most_once_per_local_day(self):
+    async def test_bathing_water_has_a_dedicated_once_daily_sync(self):
         with tempfile.TemporaryDirectory() as directory:
-            moment = datetime(2026, 9, 16, 9, 2, tzinfo=MADRID)
-            later = datetime(2026, 9, 16, 19, 45, tzinfo=MADRID)
+            moment = datetime(2026, 9, 14, 19, 35, tzinfo=MADRID)
+            later = datetime(2026, 9, 14, 19, 40, tzinfo=MADRID)
+            with patch.dict(
+                "os.environ",
+                self._environment(directory),
+                clear=False,
+            ):
+                await sync_bathing_water(moment)
+                await sync_bathing_water(later)
+            self.assertEqual(self.bathing_water_fetch.await_count, 1)
+            saved = GuideState(Path(directory) / "guide.json").read()
+            self.assertEqual(
+                saved["bathing_water_last_attempt_day"],
+                "2026-09-14",
+            )
+            self.assertEqual(
+                saved["bathing_water_snapshot"]["season_start"],
+                "2026-06-01",
+            )
+
+    async def test_regular_guide_sync_does_not_fetch_bathing_water(self):
+        with tempfile.TemporaryDirectory() as directory:
+            moment = datetime(2026, 9, 14, 9, 2, tzinfo=MADRID)
             current = snapshot(moment)
             publish = AsyncMock(return_value=self._pinned_messages())
             with (
@@ -734,17 +788,7 @@ class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
                 patch("telegrambot.guide.publish_pinned_guide", new=publish),
             ):
                 await sync_guide(moment)
-                await sync_guide(later)
-            self.assertEqual(self.bathing_water_fetch.await_count, 1)
-            saved = GuideState(Path(directory) / "guide.json").read()
-            self.assertEqual(
-                saved["bathing_water_last_attempt_day"],
-                "2026-09-16",
-            )
-            self.assertEqual(
-                saved["bathing_water_snapshot"]["season_start"],
-                "2026-06-01",
-            )
+            self.bathing_water_fetch.assert_not_awaited()
 
     async def test_music_school_is_attempted_at_most_once_per_local_day(self):
         with tempfile.TemporaryDirectory() as directory:
