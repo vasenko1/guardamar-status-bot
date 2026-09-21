@@ -166,6 +166,12 @@ def _cams_update_checkpoint(now: datetime) -> bool:
     return (local.hour, local.minute) in CAMS_UPDATE_CHECKPOINTS
 
 
+def _safebeach_initial_checkpoint(now: datetime) -> bool:
+    """Allow root edits only at the scheduled 10:10-10:40 checkpoints."""
+    local = now.astimezone(GUARDAMAR_TIMEZONE)
+    return local.hour == 10 and local.minute in range(10, 41, 5)
+
+
 def _cams_monitor_checkpoint(schedule) -> bool:
     """Use only the first invocation of an existing monitor window."""
     return schedule.beach_phase == 1 or (
@@ -1390,6 +1396,11 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         now, state, municipal_path, agenda_path, translations_path
     )
 
+    if not _safebeach_initial_checkpoint(now):
+        logging.info(
+            "SKIP: SafeBeach root edits are limited to 10:10-10:40 checkpoints"
+        )
+        return 0
     if not in_query_window(now):
         logging.info("SKIP: SafeBeach is outside the annual query window")
         return 0
