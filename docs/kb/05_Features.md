@@ -278,10 +278,10 @@ Phone-first copy uses:
 - `📅 Пробы:` followed by the actual unique sample dates extracted from the
   report rows;
 - a primary `Лабораторный анализ воды` block;
-- a `👁 Визуальный осмотр` block containing only non-excellent water/sand
+- a `👁 Визуальный контроль` block containing only non-excellent water/sand
   exceptions;
 - no more than two beach names per continuation line;
-- `🏛 Контроль: Servicio de Calidad de Aguas · Generalitat Valenciana`;
+- `🏛 Данные: Servicio de Calidad de Aguas · Generalitat Valenciana`;
 - the standard forwarding-safe group footer;
 - no resident-facing report URL.
 
