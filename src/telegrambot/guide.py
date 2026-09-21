@@ -655,10 +655,7 @@ def _parse_wifi_pdf_text(text: str, asset_url: str, observed_at: datetime) -> di
             if not ssid or len(ssid) > 80 or len(password) > 80:
                 raise GuideSourceError("Wi-Fi credentials are invalid", code="WIFI-SCHEMA")
             networks.append({"ssid": ssid, "password": password})
-        if key == "library":
-            valid_count = 1 <= len(networks) <= 6
-        else:
-            valid_count = len(networks) == 1
+        valid_count = len(networks) == (3 if key == "library" else 1)
         if not valid_count:
             raise GuideSourceError(
                 f"Wi-Fi networks for {key} are incomplete", code="WIFI-SCHEMA"
@@ -713,9 +710,7 @@ def valid_wifi_snapshot(value) -> bool:
         networks = point["networks"]
         if key not in _WIFI_POINT_KEYS or not isinstance(networks, list) or not networks:
             return False
-        if key != "library" and len(networks) != 1:
-            return False
-        if key == "library" and len(networks) > 6:
+        if len(networks) != (3 if key == "library" else 1):
             return False
         seen_ssids = set()
         for network in networks:
