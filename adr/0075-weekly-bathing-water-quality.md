@@ -57,10 +57,10 @@ the beach rows and can differ from the report's covered week.
    - title `🧪 Контроль зон купания`;
    - `📅 Пробы:` shows actual sample dates, not the weekly report range;
    - `Лабораторный анализ воды` is the primary block;
-   - `Визуальный осмотр` lists only non-excellent water/sand exceptions;
+   - `Визуальный контроль` lists only non-excellent water/sand exceptions;
    - beach names wrap at no more than two per line;
    - no resident-facing PDF URL;
-   - attribution is `Servicio de Calidad de Aguas · Generalitat Valenciana`;
+   - the source line is `🏛 Данные: Servicio de Calidad de Aguas · Generalitat Valenciana`;
    - the standard forwarding-safe group footer is appended with `with_footer()`.
 7. The first successfully parsed report is published immediately only when it is
    still fresh: local date no later than `report_end + 5 days`. An older first
