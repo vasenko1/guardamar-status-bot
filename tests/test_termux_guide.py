@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -80,6 +81,23 @@ class GuideTermuxTests(unittest.TestCase):
         self.assertEqual(installed.count("35 19 1-20 9 *"), 0)
         self.assertEqual(installed.count("35 19 1-30 9 *"), 0)
         self.assertEqual(installed.count("2 9 * * *"), 1)
+
+    def test_installer_replaces_legacy_extended_bathing_schedules(self):
+        sh_bin = shutil.which("sh")
+        self.assertIsNotNone(sh_bin)
+        legacy = (
+            f"35 19 1-20 9 * {sh_bin} "
+            f"{ROOT / 'termux' / 'sync-bathing-water.sh'}\n"
+            f"35 19 1-30 9 * {sh_bin} "
+            f"{ROOT / 'termux' / 'sync-bathing-water.sh'}\n"
+        )
+
+        result, installed = self._install(legacy)
+
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(installed.count("35 19 1-15 9 *"), 1)
+        self.assertEqual(installed.count("35 19 1-20 9 *"), 0)
+        self.assertEqual(installed.count("35 19 1-30 9 *"), 0)
 
     def test_installer_rejects_unbalanced_managed_block(self):
         initial = (
