@@ -570,14 +570,23 @@ def _bathing_water_period_text(snapshot: dict) -> str:
     )
 
 
+def _append_bathing_names(lines: list, names: list, *, prefix: str) -> None:
+    """Append a phone-width beach list with at most two names per line."""
+
+    for offset in range(0, len(names), 2):
+        chunk = ", ".join(html.escape(name) for name in names[offset:offset + 2])
+        lines.append(f"{prefix if offset == 0 else '   '}{chunk}")
+
+
 def _bathing_water_notice_text(snapshot: dict) -> str:
     beaches = snapshot["beaches"]
     lines = [
         "🧪 <b>Качество воды на пляжах</b>",
+        f"🗓 {_bathing_water_period_text(snapshot)}",
         "",
-        "Опубликован новый официальный еженедельный отчёт.",
-        "",
+        "<b>Анализ воды</b>",
     ]
+
     water_groups = {
         rating: [
             beach["name"] for beach in beaches
@@ -585,25 +594,29 @@ def _bathing_water_notice_text(snapshot: dict) -> str:
         ]
         for rating in _BATHING_RATING_ORDER
     }
-    if len(water_groups["excellent"]) == len(beaches):
+    active_water_ratings = [
+        rating for rating in _BATHING_RATING_ORDER
+        if water_groups[rating]
+    ]
+    if len(active_water_ratings) == 1:
+        rating = active_water_ratings[0]
+        marker = "✅ " if rating == "excellent" else ""
         lines.append(
-            "✅ По лабораторному анализу "
-            "<b>качество воды отличное на всех 7 пляжах</b>."
+            f"{marker}{_BATHING_APPEARANCE_RU[rating].capitalize()} "
+            f"— все {len(beaches)} пляжей"
         )
     else:
-        lines.append("<b>Качество воды по лабораторному анализу:</b>")
         for rating in _BATHING_RATING_ORDER:
             names = water_groups[rating]
-            if names:
-                lines.append(
-                    f'• {_BATHING_QUALITY_RU[rating].capitalize()} — '
-                    + ", ".join(html.escape(name) for name in names)
-                )
+            if not names:
+                continue
+            lines.append(f"• {_BATHING_APPEARANCE_RU[rating].capitalize()}:")
+            _append_bathing_names(lines, names, prefix="   ")
 
-    visual_lines = []
+    visual_exceptions = []
     for field, label in (
-        ("water_appearance", "Внешний вид воды"),
-        ("sand_appearance", "Состояние песка"),
+        ("water_appearance", "Вода"),
+        ("sand_appearance", "Песок"),
     ):
         for rating in _BATHING_RATING_ORDER[1:]:
             names = [
@@ -611,25 +624,22 @@ def _bathing_water_notice_text(snapshot: dict) -> str:
                 if beach[field] == rating
             ]
             if names:
-                visual_lines.append(
-                    f'• {label}: {_BATHING_APPEARANCE_RU[rating]} — '
-                    + ", ".join(html.escape(name) for name in names)
-                )
-    lines.append("")
-    if visual_lines:
-        lines.append("<b>По визуальному осмотру:</b>")
-        lines.extend(visual_lines)
-        lines.append("Остальные показатели визуального осмотра — отлично.")
-    else:
-        lines.append(
-            "Внешний вид воды и песка — <b>отлично на всех пляжах</b>."
-        )
+                visual_exceptions.append((label, rating, names))
 
-    report_url = html.escape(snapshot["report_url"], quote=True)
+    lines.extend(["", "👁 <b>Внешний осмотр</b>"])
+    if not visual_exceptions:
+        lines.append("✅ Вода и песок — отлично на всех пляжах")
+    else:
+        for label, rating, names in visual_exceptions:
+            lines.append(
+                f"• {label} — {_BATHING_APPEARANCE_RU[rating]}:"
+            )
+            _append_bathing_names(lines, names, prefix="   ")
+        lines.append("Остальные визуальные оценки — отлично.")
+
     lines.extend([
         "",
-        f'🗓 {_bathing_water_period_text(snapshot)}',
-        f'🔗 <a href="{report_url}"><b>Официальный отчёт</b></a>',
+        "🏛 Источник: Ayuntamiento de Guardamar del Segura",
     ])
     return with_footer("\n".join(lines))
 
