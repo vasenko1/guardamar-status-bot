@@ -134,6 +134,7 @@ class BathingWaterGuideTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("качество воды отличное на всех 7 пляжах", text)
         self.assertIn("Внешний вид воды: хорошо — Centro", text)
         self.assertIn("Состояние песка: хорошо — La Roqueta, Ortigues", text)
+        self.assertIn("Остальные показатели визуального осмотра — отлично", text)
         self.assertIn("15–21 июня 2026", text)
         self.assertIn("Официальный отчёт", text)
         self.assertNotIn("🌊", text)
@@ -239,6 +240,32 @@ class BathingWaterGuideTests(unittest.IsolatedAsyncioTestCase):
             saved = state_store.read()
             self.assertEqual(saved["bathing_water_notice"]["message_id"], 701)
             self.assertNotIn("bathing_water_pending_notice", saved)
+            self.assertNotIn("bathing_water_notice_uncertain", saved)
+
+    async def test_explicit_public_notice_failure_remains_pending(self):
+        moment = datetime(2026, 6, 29, 9, 2, tzinfo=MADRID)
+        report = bathing_report(moment, start="2026-06-22", end="2026-06-28")
+        key = _bathing_water_notice_key(report)
+        rejected = TelegramError(
+            "bad request", retryable=False, status=400, code="HTTP-400"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state_store = GuideState(Path(directory) / "guide.json")
+            state_store.write({
+                "version": 1,
+                "bathing_water_report_snapshot": report,
+                "bathing_water_pending_notice": key,
+            })
+            state = state_store.read()
+            send = AsyncMock(side_effect=rejected)
+            with patch("telegrambot.guide.send_message", new=send):
+                with self.assertRaises(TelegramError):
+                    await _publish_bathing_water_pending_notice(
+                        "token", "-100123", state, state_store
+                    )
+
+            saved = state_store.read()
+            self.assertEqual(saved["bathing_water_pending_notice"], key)
             self.assertNotIn("bathing_water_notice_uncertain", saved)
 
     async def test_ambiguous_public_notice_is_not_blindly_retried(self):
