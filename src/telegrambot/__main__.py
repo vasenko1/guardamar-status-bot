@@ -167,7 +167,7 @@ def _cams_update_checkpoint(now: datetime) -> bool:
 
 
 def _safebeach_initial_checkpoint(now: datetime) -> bool:
-    """Allow root edits only at the scheduled 10:10-10:40 checkpoints."""
+    """Allow initial-cycle SafeBeach fetches only at 10:10-10:40 checkpoints."""
     local = now.astimezone(GUARDAMAR_TIMEZONE)
     return local.hour == 10 and local.minute in range(10, 41, 5)
 
@@ -706,7 +706,6 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     seed_warnings(value, snapshot.warnings)
 
             phase = schedule.beach_phase
-            latest_beach = None
             if phase == 1 and value.get("beach_pending") is not None:
                 value["beach_pending"] = None
             elif (
@@ -727,7 +726,6 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 try:
                     beach = await fetch_beach_status(now)
                     if is_current_status(beach, now):
-                        latest_beach = beach
                         observe_beaches(value, beach, phase)
                     else:
                         miss_beach_sample(value, phase)
