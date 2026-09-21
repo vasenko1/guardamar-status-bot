@@ -18,7 +18,8 @@
 - Implement Morning Digest collection and formatting. The AEMET weather and
   warning slice, Platja Centre SafeBeach status, and AEMET beach-temperature
   fallback are implemented. The optional Agenda Guardamar same-day event slice
-  and structured Policía Local mobility measures are implemented. Event
+  are implemented. The former Policía Local traffic slice was later retired
+  after it failed to provide a dependable current feed. Event
   completeness now includes Russian Agenda titles, same-page venue recovery,
   all verified same-day items, a seven-day poster transition, and narrowly
   parsed Fiestas de Barrio from the Mayor channel.
@@ -29,8 +30,8 @@
   group retains one current message.
 - Add one isolated private `/preview` listener for allowlisted operators,
   without publication state changes or source polling between commands.
-- Add a fail-closed Gemini fallback for previously unknown official Policía
-  Local traffic text, with strict evidence, date, street, and length checks.
+- Retired: the Policía Local traffic adapter and its Gemini fallback were
+  removed after production evidence showed no dependable live traffic feed.
 - Done: refined ADR 0012 with ADR 0028: official HTML text is primary,
   changed MUPI needs two agreeing reads, and two staggered pre-morning event
   catalogs remove routine event-site work from the 07:30 run.
@@ -54,9 +55,9 @@
   and check confirmed publication before source access, eliminating redundant
   personal-token requests across scheduled attempts and previews.
 - Improve source failure and stale-data handling.
-- Review changed Policía Local PDFs before accepting a new checksum; unknown
-  HTML notices remain eligible for the fail-closed structured fallback. Do not
-  treat the source as a live traffic feed.
+- Reconsider Policía Local only if a stable current official machine-readable
+  traffic source is demonstrated; do not restore the old festival-page polling
+  or traffic AI fallback without new evidence.
 - Tune relevance and message length from real usage.
 - Add basic operational visibility without heavy services.
 - Review sources and assumptions periodically.

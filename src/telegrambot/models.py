@@ -91,28 +91,6 @@ class Holiday:
 
 
 @dataclass(frozen=True)
-class TrafficMeasure:
-    """One independently active mobility restriction from an official notice."""
-
-    action: str
-    location: str
-    valid_from: date
-    valid_until: date
-    daily_hours: Optional[str] = None
-    affected: Optional[str] = None
-    exceptions: Optional[str] = None
-    alternative: Optional[str] = None
-    destinations: Tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class TrafficNotice:
-    text: str
-    measures: Tuple[TrafficMeasure, ...] = ()
-    source_url: Optional[str] = None
-
-
-@dataclass(frozen=True)
 class PharmacyDuty:
     """One on-call pharmacy row from the official provincial rota."""
 
@@ -173,7 +151,6 @@ class MorningDigest:
     forecast_sea_temperature_c: Optional[int] = None
     forecast_sea_state: Optional[str] = None
     forecast_later_sea_state: Optional[str] = None
-    traffic_notices: Tuple[TrafficNotice, ...] = ()
     holidays: Tuple[Holiday, ...] = ()
     events: Tuple[Event, ...] = ()
     beach_notice: Optional[BeachNotice] = None

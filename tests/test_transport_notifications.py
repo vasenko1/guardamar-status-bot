@@ -2,6 +2,7 @@ import json
 import tempfile
 from datetime import date, datetime
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
 import unittest
@@ -408,3 +409,74 @@ class TransportNotificationTests(unittest.TestCase):
             )
             with self.assertRaises(TransportNotificationError):
                 load_state(path)
+
+
+class TransportDeliveryTests(unittest.IsolatedAsyncioTestCase):
+    def _pending_state(self):
+        state = _baseline(date(2026, 9, 20))
+        state["pending"] = {
+            "created_date": "2026-09-20",
+            "messages": [{
+                "kind": "schedule_changes",
+                "status": "pending",
+                "events": [{
+                    "type": "timetable_changed",
+                    "route": "line_1",
+                }],
+                "message_id": None,
+            }],
+        }
+        return state
+
+    async def _run_failed_publish(self, error):
+        from telegrambot.transport_notifications import publish
+
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "transport.json"
+            state_path.write_text(
+                json.dumps(self._pending_state()), encoding="utf-8"
+            )
+            with (
+                patch.dict(
+                    "os.environ",
+                    {
+                        "TELEGRAM_BOT_TOKEN": "token",
+                        "TELEGRAM_CHAT_ID": "-100123",
+                        "TRANSPORT_NOTIFICATION_STATE_PATH": str(state_path),
+                        "PINNED_GUIDE_STATE_PATH": str(Path(directory) / "pinned.json"),
+                    },
+                    clear=False,
+                ),
+                patch("telegrambot.transport_notifications.datetime") as clock,
+                patch(
+                    "telegrambot.transport_notifications.PinnedGuideState.read_payload",
+                    return_value={
+                        "messages": {"line_1": 501},
+                        "uncertain_messages": [],
+                    },
+                ),
+                patch(
+                    "telegrambot.transport_notifications.send_message",
+                    new=AsyncMock(side_effect=error),
+                ),
+            ):
+                clock.now.return_value = datetime(2026, 9, 20, 8, 42, tzinfo=TZ)
+                with self.assertRaises(type(error)):
+                    await publish()
+            return load_state(state_path)
+
+    async def test_explicit_http_400_returns_transport_message_to_pending(self):
+        from telegrambot.telegram import TelegramError
+
+        state = await self._run_failed_publish(TelegramError(
+            "bad request", retryable=False, status=400, code="HTTP-400"
+        ))
+        self.assertEqual(state["pending"]["messages"][0]["status"], "pending")
+
+    async def test_redirect_keeps_transport_message_uncertain(self):
+        from telegrambot.telegram import TelegramError
+
+        state = await self._run_failed_publish(TelegramError(
+            "redirect", retryable=False, code="REDIRECT"
+        ))
+        self.assertEqual(state["pending"]["messages"][0]["status"], "uncertain")

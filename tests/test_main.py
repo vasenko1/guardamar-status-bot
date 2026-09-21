@@ -21,6 +21,7 @@ from telegrambot.__main__ import (
 from telegrambot.agenda import AgendaError
 from telegrambot.diagnostics import SourceDiagnostic
 from telegrambot.environment import EnvironmentError
+from telegrambot.hidraqua import HidraquaDeliveryUncertain
 from telegrambot.models import (
     AirQualitySummary,
     BeachNotice,
@@ -52,7 +53,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
         """Run one late checkpoint with a separately reconstructed cache."""
         with tempfile.TemporaryDirectory() as directory:
             state_path = Path(directory) / "delivery.json"
-            now = datetime(2026, 9, 11, 10, 25, tzinfo=MADRID)
+            now = datetime(2026, 9, 11, 10, 40, tzinfo=MADRID)
             state = PublicationState(state_path)
             state.mark_morning(now.date(), 10, now)
             state.mark_cams_environment(
@@ -168,18 +169,18 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
         )
         sent.assert_not_awaited()
 
-    def test_cams_refresh_uses_only_bounded_existing_checkpoints(self):
-        self.assertTrue(_cams_update_checkpoint(
+    def test_cams_refresh_uses_one_early_checkpoint_then_normal_monitoring(self):
+        self.assertFalse(_cams_update_checkpoint(
             datetime(2026, 9, 11, 10, 10, tzinfo=MADRID)
         ))
-        self.assertTrue(_cams_update_checkpoint(
+        self.assertFalse(_cams_update_checkpoint(
             datetime(2026, 9, 11, 10, 25, tzinfo=MADRID)
         ))
         self.assertTrue(_cams_update_checkpoint(
             datetime(2026, 9, 11, 10, 40, tzinfo=MADRID)
         ))
         self.assertFalse(_cams_update_checkpoint(
-            datetime(2026, 9, 11, 10, 15, tzinfo=MADRID)
+            datetime(2026, 9, 11, 10, 45, tzinfo=MADRID)
         ))
         self.assertTrue(_cams_monitor_checkpoint(MonitorRun(1, False)))
         self.assertTrue(_cams_monitor_checkpoint(MonitorRun(None, True)))
@@ -208,19 +209,17 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
             datetime.fromisoformat("2026-10-24T00:00:00+00:00"), now
         ))
 
-    async def test_cams_refresh_retries_after_transient_miss_and_accepts_silently(self):
+    async def test_cams_1040_miss_recovers_on_normal_monitor_checkpoint(self):
         with tempfile.TemporaryDirectory() as directory:
             state_path = Path(directory) / "delivery.json"
-            first = datetime(2026, 9, 11, 10, 10, tzinfo=MADRID)
-            second = datetime(2026, 9, 11, 10, 25, tzinfo=MADRID)
+            monitor_path = Path(directory) / "operational.json"
+            first = datetime(2026, 9, 11, 10, 40, tzinfo=MADRID)
+            second = datetime(2026, 9, 11, 12, 0, tzinfo=MADRID)
             old_base = datetime.fromisoformat("2026-09-10T00:00:00+00:00")
             new_base = datetime.fromisoformat("2026-09-11T00:00:00+00:00")
             state = PublicationState(state_path)
             state.mark_morning(first.date(), 10, first)
             state.mark_morning_environment(first.date(), None, old_base)
-            legacy = json.loads(state_path.read_text(encoding="utf-8"))
-            legacy["cams_refresh_attempted"] = True
-            state_path.write_text(json.dumps(legacy), encoding="utf-8")
             fetch = AsyncMock(side_effect=[
                 (None, None, old_base),
                 EnvironmentError("not published yet"),
@@ -233,6 +232,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 "TELEGRAM_BOT_TOKEN": "telegram",
                 "TELEGRAM_CHAT_ID": "group",
                 "MORNING_DIGEST_STATE_PATH": str(state_path),
+                "OPERATIONAL_UPDATE_STATE_PATH": str(monitor_path),
             }
             with (
                 patch.dict(os.environ, common),
@@ -252,14 +252,23 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                     new=AsyncMock(return_value=None),
                 ),
                 patch(
+                    "telegrambot.__main__.fetch_warnings",
+                    new=AsyncMock(return_value=()),
+                ),
+                patch(
                     "telegrambot.__main__._refresh_event_catalogs_once",
                     new=AsyncMock(),
+                ),
+                patch(
+                    "telegrambot.__main__.scheduled_run",
+                    return_value=MonitorRun(None, True),
                 ),
                 patch("telegrambot.__main__.send_message", new=sent),
             ):
                 clock.now.side_effect = [first, second]
+                clock.fromisoformat.side_effect = datetime.fromisoformat
                 self.assertEqual(await _run_command("update"), 0)
-                self.assertEqual(await _run_command("update"), 0)
+                self.assertEqual(await _run_command("monitor-updates"), 0)
             self.assertEqual(fetch.await_count, 4)
             sent.assert_not_awaited()
             self.assertEqual(
@@ -781,6 +790,33 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 (2, 1),
             )
 
+    async def test_hidraqua_maps_ambiguous_send_to_domain_uncertainty(self):
+        async def monitor(state, now, publisher, **_kwargs):
+            with self.assertRaises(HidraquaDeliveryUncertain):
+                await publisher("water notice")
+            return 0
+
+        telegram_error = TelegramError(
+            "network", retryable=True, code="NETWORK"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "hidraqua.json"
+            with (
+                patch.dict(os.environ, {
+                    "TELEGRAM_BOT_TOKEN": "telegram",
+                    "TELEGRAM_CHAT_ID": "@group",
+                    "HIDRAQUA_STATE_PATH": str(state_path),
+                }),
+                patch("telegrambot.__main__.monitor_once", new=monitor),
+                patch(
+                    "telegrambot.__main__.send_message",
+                    new=AsyncMock(side_effect=telegram_error),
+                ),
+            ):
+                result = await _run_command("monitor-hidraqua")
+
+        self.assertEqual(result, 0)
+
     async def test_earthquake_monitor_needs_only_telegram_configuration(self):
         monitor = AsyncMock(return_value=0)
         with tempfile.TemporaryDirectory() as directory:
@@ -1224,9 +1260,9 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
     async def test_appends_diagnostics_only_in_preview_wrapper(self):
         async def produce(*args, diagnostics=None, **kwargs):
             diagnostics.append(SourceDiagnostic(
-                "POLICE-NETWORK",
-                "Policía Local",
-                "официальный источник временно недоступен",
+                "CAMS-NETWORK",
+                "CAMS",
+                "источник прогноза временно недоступен",
             ))
             return "готовый дайджест"
 
@@ -1238,7 +1274,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("готовый дайджест", message)
         self.assertIn("🔧 Диагностика источников", message)
-        self.assertIn("[POLICE-NETWORK] Policía Local", message)
+        self.assertIn("[CAMS-NETWORK] CAMS", message)
 
     async def test_weekend_preview_neither_publishes_nor_writes_state(self):
         prepared = AsyncMock(return_value=0)

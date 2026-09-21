@@ -902,13 +902,6 @@ def build_message(
     if beach_lines:
         lines.extend(["", *beach_lines])
 
-    if digest.traffic_notices:
-        lines.extend(["", "🚧 <b>Движение:</b>"])
-        visible_traffic = digest.traffic_notices[:2]
-        for notice in visible_traffic:
-            prefix = "• " if len(visible_traffic) > 1 else ""
-            lines.append(prefix + html.escape(notice.text))
-
     if digest.pharmacies:
         heading = (
             "💊 <b>Дежурная аптека:</b>"

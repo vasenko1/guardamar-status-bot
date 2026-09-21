@@ -25,9 +25,10 @@ schemas, and library choices belong in later design work or ADRs.
 6. **Digest building** orders the remaining facts and formats one short
    message.
 7. **Telegram delivery** sends the early message and stores its message ID.
-8. **External update checks** run at 10:10–10:40 in five-minute steps. Three
-   bounded checkpoints (10:10, 10:25 and 10:40) may accept a newer CAMS
-   forecast until today's UTC cycle is accepted, compare only the remaining
+8. **External update checks** run at 10:10–10:40 in five-minute steps for the
+   beach lifecycle. CAMS uses only the 10:40 invocation for its early late-cycle
+   check; later recovery uses only the first invocation of already scheduled
+   operational windows until today's UTC cycle is accepted, comparing the remaining
    local day semantically, and send one compact reply only for a material
    change. From 1 June through 30 September, every update invocation also
    checks SafeBeach. The first valid current response with at least one flag
@@ -54,6 +55,27 @@ creates an all-clear message.
 If nothing trustworthy and useful remains after filtering, the run may produce
 no message.
 
+## Runtime lifecycle inventory
+
+| Lifecycle | Trigger | Resident-facing effect |
+| --- | --- | --- |
+| Morning Digest | 07:30 daily | One immutable daily message; pharmacy, events, holidays/markets, AEMET weather/sea/UV, locally computed sunrise/sunset, CAMS/Meteosalud baseline and fresh CCE hydrology contribute here without becoming separate morning processes. |
+| SafeBeach + Mayor bathing status | 10:10–10:40 in season, then bounded operational checks | Separate daily beach root, live early edits, later confirmed replies; explicit Mayor bathing restrictions remain an independent safety signal. |
+| AEMET operational warnings | Existing `monitor-updates` windows | Material warning changes reply to the Morning Digest. |
+| CAMS / Meteosalud late environment | 10:40 CAMS early check plus existing operational recovery; Meteosalud on operational checkpoints | Material air-quality, pollen, heat or cold changes reply to the Morning Digest. |
+| CCE / Previfoc emergency risks | Hourly at `:19` | Standalone transitions for forest-fire risk, dry-thunderstorm risk and Segura hydrological/flood state; fresh active hydrology may also appear in the next Morning Digest. |
+| IGN earthquakes | Hourly at `:55` | Standalone/series notice for new events at M1.8+ within 20 km. |
+| Hidraqua network incidents | Every 30 minutes | Standalone notice for a new confirmed water-network event ID. |
+| Transport | 05:00 sync, 08:42 notification | Reconciles pinned transport cards and publishes accepted schedule/service/fare changes. |
+| Linked guide + courses | 09:02 sync; course notices 09:42/11:42; two seasonal 19:45 checks | Reconciles public guide cards, may send pool/Zona Azul seasonal notices, and publishes accepted course/programme changes. |
+| Electricity | 20:30/20:35/20:45/21:00/21:20 attempts | One next-day PVPC table reply after the first complete official dataset. |
+| Weekend digest | Friday 19:15, retry 20:15 | One weekend-events digest when verified events exist. |
+| Pharmacy catalogue | Sunday 05:50 | Source refresh only; consumed by Morning Digest. |
+| Bathing-water programme | At most once per local day inside guide sync | Source-state only today: programme dates and newest official report link; no public water-quality claim yet. |
+| Event/translation/AEMET preparation | Pre-morning one-shots | Source preparation only; no independent public notification. |
+| Municipal Wi-Fi source watch | Inside guide sync | A changed official municipal PDF is parsed fail-closed; only a semantic point/SSID/password change updates the existing card and, after reconciliation, produces one public group notice linking to that card. |
+| OCI capacity search | Independent GitHub Actions | Infrastructure only; no Telegram city publication. |
+
 ## Logical areas
 
 ### Morning Digest
@@ -78,15 +100,10 @@ Defines deterministic rules for:
 - priority;
 - message length and section order.
 
-Core selection and formatting are deterministic. The optional Policía Local
-fallback may ask Gemini for structured translation of an unknown official
-notice, but application validation—not the model—decides whether it is safe to
-include.
-
-Traffic documents normalize into independent mobility measures rather than one
-document-wide type. A measure has an action, location and validity interval,
-plus only relevant hours, affected users, exceptions, alternative route and
-destinations.
+Core selection and formatting are deterministic. The former Policía Local
+traffic adapter is retired from runtime because the reviewed page did not
+provide a dependable current traffic feed; no daily police request or traffic
+AI fallback remains.
 
 ### Telegram boundary
 
@@ -254,9 +271,9 @@ calendar date and independently valid, timestamped records among the six known
 Guardamar zones; conflicting, duplicate, malformed, inactive or ended records
 are omitted.
 
-Mayor, Policía Local, and municipal-agenda transports accept only their exact
-official HTTPS hosts, expected content types, and bounded responses. Gemini
-uses the same fail-closed protocol checks. One OpenRouter request with a
+Mayor and municipal-agenda transports accept only their exact official HTTPS
+hosts, expected content types, and bounded responses. Gemini uses the same
+fail-closed protocol checks. One OpenRouter request with a
 pinned non-Google model may follow a Gemini failure, using the identical
 bounded public input and JSON schema. Both return structured diagnostics;
 provider response text is never exposed. A corrupt event catalog is ignored.
@@ -283,14 +300,14 @@ update command every five minutes from 10:10 through 10:40 in `Europe/Madrid`.
 The first update invocation that acquires the daily state lock attempts each
 event catalog once, independently of whether SafeBeach succeeds. These facts
 are retained for later publications and do not alone trigger replacement. The
-linked guide/catalog sync runs at 16:30. The electricity command runs at 20:30,
+linked guide/catalog sync runs at 09:02. The electricity command runs at 20:30,
 then after 5, 15 and 30 minutes, with a final 21:20 attempt. It publishes at most
 once for the next local date.
 
 An independent earthquake command runs at minute 55 of every hour. Each
 invocation performs one bounded request to the official IGN GeoRSS endpoint,
 parses at most 128 records with the standard library, filters them to magnitude
-2.7 or greater within 10 km of Guardamar, and exits. Its first successful run
+1.8 or greater within 20 km of Guardamar, and exits. Its first successful run
 seeds existing qualifying events silently while keeping fresh lower-magnitude
 records eligible for an IGN revision. Later qualifying events within a
 six-hour recovery window are sent once. Events observed within the same

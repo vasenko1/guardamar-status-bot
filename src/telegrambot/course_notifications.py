@@ -26,7 +26,7 @@ from .pinned import (
 )
 from .sporttia import valid_sporttia_snapshot
 from .state import PublicationState
-from .telegram import TelegramError, send_message
+from .telegram import TelegramError, is_ambiguous_send_failure, send_message
 
 STATE_VERSION = 1
 TIMEZONE = ZoneInfo("Europe/Madrid")
@@ -1321,7 +1321,7 @@ async def sync_course_notifications() -> str:
                 retry_only_rate_limits=True,
             )
         except TelegramError as exc:
-            if exc.server_status == 429:
+            if not is_ambiguous_send_failure(exc):
                 item["status"] = "pending"
                 save_state(path, state)
             else:

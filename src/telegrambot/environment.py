@@ -1,7 +1,9 @@
-"""Morning-only Meteosalud and CAMS enrichment for the digest.
+"""Morning baseline and bounded late-day Meteosalud/CAMS enrichment.
 
-The module deliberately returns small display-domain records. It neither owns
-operational state nor exposes hourly CAMS fields to the formatter.
+The module deliberately returns small display-domain records. Morning publication
+stores the accepted baseline; later checkpoints may compare a newer CAMS cycle
+or Meteosalud level without exposing hourly CAMS fields to the formatter. The
+module itself does not own publication or operational state.
 """
 
 import asyncio

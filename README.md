@@ -13,8 +13,8 @@ prices, weekend events, and selected bounded operational updates.
 The Morning Digest MVP can fetch official AEMET weather and warning data plus
 Guardamar's public SafeBeach status, format one short message, and deliver it
 to one configured Telegram chat or channel. It may also include all verified
-deduplicated Guardamar events occurring today and an explicit active
-festival traffic restriction from Policía Local Guardamar.
+deduplicated Guardamar events occurring today. Sunrise and sunset are computed
+locally from Guardamar coordinates and do not require another network source.
 
 The linked pinned city guide uses one recoverable Telegram graph for cameras,
 transport, durable places, and recurring activities. Its first places/activity
@@ -129,6 +129,8 @@ CRON_TZ=Europe/Madrid
 15 19 * * 5 /path/to/TelegramBot/termux/run-weekend.sh --fresh
 15 20 * * 5 /path/to/TelegramBot/termux/run-weekend.sh
 50 5 * * 0 /path/to/TelegramBot/termux/sync-pharmacy.sh
+19 * * * * /path/to/TelegramBot/termux/check-112.sh
+*/30 * * * * /path/to/TelegramBot/termux/monitor-hidraqua.sh
 55 * * * * /path/to/TelegramBot/termux/monitor-earthquakes.sh
 ```
 
@@ -147,7 +149,8 @@ The validated Android deployment uses the scripts in `termux/`:
   SafeBeach dependency. `termux/update-daily.sh` runs every five minutes
   from 10:10 through 10:40; from 1 June through 30 September its first valid
   SafeBeach response creates the separate beach root immediately and later
-  responses edit that root in place;
+  responses edit that root in place. CAMS uses only the 10:40 invocation for
+  its early late-cycle check;
 - `termux/monitor-updates.sh` uses the same 1 June–30 September beach guard;
   confirmed later beach changes are replies to the root, while AEMET warning
   checks continue year-round on their documented cadence;
@@ -179,10 +182,15 @@ git merge-base --is-ancestor "$TARGET_SHA" origin/main
 Stop if this command fails. Production must not remain on a feature-only
 branch. Restart only the affected resident service; one-shot cron commands use
 the changed code on their next invocation. The separate public
-`guardamar-cams-data` repository uses one daily GitHub Action only to publish
-normalized CAMS data; it does not deploy this application. There is no GitHub
-Actions promotion, `deploy` branch, or scheduled self-update. `.env`, `state/`,
-logs, and the virtual environment remain local.
+`guardamar-cams-data` repository owns one daily CAMS forecast lifecycle with
+bounded scheduled publication attempts. The bot makes one early late-cycle
+check at 10:40; if today's forecast base is still unavailable, the next normal
+`monitor-updates` checkpoint provides recovery. Once today's base is accepted,
+later environment checkpoints reuse it and do not keep refetching the same CAMS
+JSON.
+That repository does not deploy this application. There is no GitHub Actions
+promotion, `deploy` branch, or scheduled self-update. `.env`, `state/`, logs,
+and the virtual environment remain local.
 
 `DEVICE TEST ONLY` is the narrow exception for behavior that genuinely needs
 Android or Termux. Record the clean production commit, branch, and relevant
@@ -223,6 +231,8 @@ CRON_TZ=Europe/Madrid
 15 19 * * 5 /data/data/com.termux/files/home/bots/guardamar-status/termux/run-weekend.sh --fresh
 15 20 * * 5 /data/data/com.termux/files/home/bots/guardamar-status/termux/run-weekend.sh
 50 5 * * 0 /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-pharmacy.sh
+19 * * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/check-112.sh
+*/30 * * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-hidraqua.sh
 55 * * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-earthquakes.sh
 ```
 
@@ -252,6 +262,19 @@ when the installer is rerun. A final scoped `CRON_TZ=Europe/Madrid` prevents
 another bot's timezone setting from changing
 this schedule. The installer does not install or modify the other Morning
 Digest and electricity entries listed above.
+
+Install the independent CCE/Previfoc and Hidraqua monitors with their own
+idempotent managed blocks:
+
+```sh
+cd ~/bots/guardamar-status
+./termux/install-112-cron.sh
+./termux/install-hidraqua-cron.sh
+```
+
+The 112/Previfoc watcher runs hourly at minute `:19`; Hidraqua runs every 30
+minutes. Both remain short-lived one-shot processes and preserve unrelated cron
+entries.
 
 Install the independent hourly earthquake row without replacing existing cron
 jobs:

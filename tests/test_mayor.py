@@ -352,10 +352,6 @@ class MayorChannelTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value=()),
             ),
             patch(
-                "telegrambot.morning.fetch_traffic_notices",
-                new=AsyncMock(return_value=()),
-            ),
-            patch(
                 "telegrambot.morning.market_is_cancelled",
                 new=AsyncMock(return_value=True),
             ),

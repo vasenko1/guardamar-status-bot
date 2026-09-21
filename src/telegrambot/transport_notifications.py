@@ -21,7 +21,7 @@ from .airport_schedule import (
 from .branding import FOOTER, with_footer
 from .pinned import DEFAULT_PINNED_STATE_PATH, PinnedGuideState, telegram_message_link
 from .state import PublicationState, StateError
-from .telegram import TelegramError, send_message
+from .telegram import TelegramError, is_ambiguous_send_failure, send_message
 
 STATE_VERSION = 2
 TIMEZONE = ZoneInfo("Europe/Madrid")
@@ -875,7 +875,7 @@ async def publish() -> None:
                 retry_only_rate_limits=True,
             )
         except TelegramError as exc:
-            if exc.server_status == 429:
+            if not is_ambiguous_send_failure(exc):
                 item["status"] = "pending"
                 save_state(state_path, state)
             else:

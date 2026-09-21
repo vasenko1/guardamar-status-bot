@@ -6,6 +6,7 @@ import html
 import json
 import os
 import tempfile
+import urllib.parse
 from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
@@ -34,7 +35,8 @@ from .sporttia import (
     select_sport_groups,
 )
 from .state import StateError
-from .telegram import TelegramError
+from .wifi import WIFI_BASELINE_POINTS
+from .telegram import TelegramError, is_ambiguous_send_failure
 
 PINNED_CONTENT_VERSION = 2
 DEFAULT_PINNED_STATE_PATH = "state/pinned_guide.json"
@@ -159,46 +161,37 @@ CAMERAS = with_footer(
 )
 
 
-WIFI = with_footer(
-    """📶 <b>Бесплатный Wi-Fi в Гуардамаре</b>
-
-В городе есть <b>7 муниципальных точек</b> бесплатного Wi-Fi.
-
-🔓 <b>WiFi4EU · пароль не нужен</b>
-При первом подключении откроется страница входа — достаточно подтвердить подключение. Документ и местная регистрация не нужны.
-
-🎵 <a href="https://www.google.com/maps/search/?api=1&amp;query=Escola+de+M%C3%BAsica%2C+C%2F+Mercat+2%2C+Guardamar+del+Segura"><b>Escola de Música</b></a>
-📍 C/ Mercat, 2
-📡 <code>WiFi4EU</code>
-
-🎭 <a href="https://www.google.com/maps/search/?api=1&amp;query=Casa+de+Cultura%2C+C%2F+Col%C3%B3n+60%2C+Guardamar+del+Segura"><b>Casa de Cultura</b></a>
-📍 C/ Colón, 60
-📡 <code>WiFi4EU</code>
-
-🌴 <a href="https://www.google.com/maps/search/?api=1&amp;query=Avenida+Los+Pinos%2C+Guardamar+del+Segura"><b>Avda. Los Pinos</b></a>
-📡 <code>WiFi4EU</code>
-
-🔑 <b>Сети с паролем</b>
-
-🏛 <a href="https://www.google.com/maps/search/?api=1&amp;query=Plaza+de+la+Constituci%C3%B3n%2C+Guardamar+del+Segura"><b>Plaza de la Constitución</b></a>
-📡 <code>vegafibra_gratis</code>
-🔑 <code>vegafibra</code>
-
-🌊 <a href="https://www.google.com/maps/search/?api=1&amp;query=Paseo+Mar%C3%ADtimo%2C+Avenida+de+Europa%2C+Guardamar+del+Segura"><b>Paseo Marítimo · Avda. de Europa</b></a>
-📡 <code>vegafibra_gratis</code>
-🔑 <code>vegafibra</code>
-
-📚 <a href="https://www.google.com/maps/search/?api=1&amp;query=C%2F+Mayor+69%2C+Guardamar+del+Segura"><b>Sala de Estudios 24/365</b></a>
-📍 C/ Mayor, 69
-📡 <code>wifi_1EO9C</code>
-🔑 <code>vegafibra</code>
-
-📖 <a href="https://www.google.com/maps/search/?api=1&amp;query=Biblioteca+P%C3%BAblica%2C+C%2F+San+Jaime+5%2C+Guardamar+del+Segura"><b>Biblioteca Pública</b></a>
-📍 C/ San Jaime, 5
-• <code>wifibiblioteca</code> → 🔑 <code>biblimar</code>
-• <code>biblioteca infantil</code> → 🔑 <code>menjallibres</code>
-• <code>vicenteramos</code> → 🔑 <code>menjallibres</code>"""
-)
+WIFI_POINT_META = {
+    "music_school": (
+        "🎵", "Escola de Música", "C/ Mercat, 2",
+        "Escola de Música, C/ Mercat 2, Guardamar del Segura",
+    ),
+    "culture_house": (
+        "🎭", "Casa de Cultura", "C/ Colón, 60",
+        "Casa de Cultura, C/ Colón 60, Guardamar del Segura",
+    ),
+    "los_pinos": (
+        "🌴", "Avda. Los Pinos", None,
+        "Avenida Los Pinos, Guardamar del Segura",
+    ),
+    "constitution_square": (
+        "🏛", "Plaza de la Constitución", None,
+        "Plaza de la Constitución, Guardamar del Segura",
+    ),
+    "seafront": (
+        "🌊", "Paseo Marítimo · Avda. de Europa", None,
+        "Paseo Marítimo, Avenida de Europa, Guardamar del Segura",
+    ),
+    "study_room": (
+        "📚", "Sala de Estudios 24/365", "C/ Mayor, 69",
+        "C/ Mayor 69, Guardamar del Segura",
+    ),
+    "library": (
+        "📖", "Biblioteca Pública", "C/ San Jaime, 5",
+        "Biblioteca Pública, C/ San Jaime 5, Guardamar del Segura",
+    ),
+}
+WIFI_POINT_ORDER = tuple(key for key, _ in WIFI_BASELINE_POINTS)
 
 
 LEAF_MESSAGES: Dict[str, str] = {
@@ -745,11 +738,88 @@ def build_youth_centre(places_link: Optional[str] = None) -> str:
 
 
 
-def build_wifi(root_link: Optional[str] = None) -> str:
-    """Build the verified municipal Wi-Fi card."""
+def build_wifi(
+    root_link: Optional[str] = None,
+    wifi_snapshot: Optional[Mapping[str, object]] = None,
+) -> str:
+    """Build the municipal Wi-Fi card from the accepted normalized snapshot."""
 
+    if wifi_snapshot is None:
+        points = {
+            key: {
+                "key": key,
+                "networks": [
+                    {"ssid": ssid, "password": password}
+                    for ssid, password in networks
+                ],
+            }
+            for key, networks in WIFI_BASELINE_POINTS
+        }
+    else:
+        points = {
+            str(item["key"]): item
+            for item in wifi_snapshot.get("points", ())
+            if isinstance(item, Mapping) and isinstance(item.get("key"), str)
+        }
+    lines = [
+        "📶 <b>Бесплатный Wi-Fi в Гуардамаре</b>",
+        "",
+        f"В городе есть <b>{len(points)} муниципальных точек</b> бесплатного Wi-Fi.",
+    ]
+    if any(
+        any(
+            isinstance(network, Mapping)
+            and network.get("ssid") == "WiFi4EU"
+            and network.get("password") is None
+            for network in item.get("networks", ())
+        )
+        for item in points.values()
+    ):
+        lines.extend([
+            "",
+            "🔓 <b>WiFi4EU · пароль не нужен</b>",
+            "При первом подключении откроется страница входа — достаточно подтвердить подключение. Документ и местная регистрация не нужны.",
+        ])
+    password_section_added = False
+    for key in WIFI_POINT_ORDER:
+        item = points.get(key)
+        if item is None:
+            continue
+        networks = tuple(
+            network for network in item.get("networks", ())
+            if isinstance(network, Mapping)
+        )
+        if (
+            not password_section_added
+            and any(network.get("password") is not None for network in networks)
+        ):
+            lines.extend(["", "🔑 <b>Сети с паролем</b>"])
+            password_section_added = True
+        emoji, title, address, query = WIFI_POINT_META[key]
+        map_url = (
+            "https://www.google.com/maps/search/?api=1&query="
+            + urllib.parse.quote_plus(query)
+        )
+        lines.extend([
+            "",
+            f'{emoji} <a href="{html.escape(map_url, quote=True)}"><b>{html.escape(title)}</b></a>',
+        ])
+        if address:
+            lines.append(f"📍 {html.escape(address)}")
+        for network in networks:
+            ssid = html.escape(str(network["ssid"]))
+            password = network.get("password")
+            if key == "library" and password is not None:
+                lines.append(
+                    f"• <code>{ssid}</code> → 🔑 <code>{html.escape(str(password))}</code>"
+                )
+            else:
+                lines.append(f"📡 <code>{ssid}</code>")
+                if password is not None:
+                    lines.append(f"🔑 <code>{html.escape(str(password))}</code>")
+    body = with_footer("\n".join(lines))
     return _with_back_link(
-        WIFI,
+        body,
         "Полезное о Гуардамаре",
         root_link,
     )
@@ -1567,7 +1637,7 @@ async def _upsert(
     try:
         message_id = await send(text)
     except TelegramError as exc:
-        if exc.retryable and exc.server_status != 429:
+        if is_ambiguous_send_failure(exc):
             await asyncio.to_thread(state.mark_uncertain, chat_id, key)
         raise
     messages[key] = message_id
@@ -1589,6 +1659,7 @@ def _known_link(
 def _render_messages(
     chat_id: str,
     messages: Mapping[str, int],
+    wifi_snapshot: Optional[Mapping[str, object]] = None,
 ) -> Dict[str, str]:
     """Render the best complete link graph possible from known identifiers."""
 
@@ -1665,7 +1736,7 @@ def _render_messages(
         ),
         "music_school": build_music_school(music_links, places_link),
         "youth_centre": build_youth_centre(places_link),
-        "wifi": build_wifi(root_link),
+        "wifi": build_wifi(root_link, wifi_snapshot),
         "activities": build_activities(
             swimming_link,
             root_link,
@@ -1695,6 +1766,7 @@ async def _reconcile_messages(
     send: Send,
     edit: Edit,
     skip_keys: Sequence[str] = (),
+    wifi_snapshot: Optional[Mapping[str, object]] = None,
 ) -> None:
     """Converge IDs and links after partial runs or deleted messages."""
 
@@ -1702,7 +1774,7 @@ async def _reconcile_messages(
     keys = tuple(key for key in PINNED_MESSAGE_KEYS if key not in skipped)
     for _ in range(MAX_RECONCILIATION_PASSES):
         before = dict(messages)
-        rendered = _render_messages(chat_id, before)
+        rendered = _render_messages(chat_id, before, wifi_snapshot)
         for key in keys:
             await _upsert(
                 key,
@@ -1732,6 +1804,7 @@ async def publish_pinned_guide(
     chess_school_snapshot: Optional[Mapping[str, object]] = None,
     literary_group_snapshot: Optional[Mapping[str, object]] = None,
     dinamizacion_snapshot: Optional[Mapping[str, object]] = None,
+    wifi_snapshot: Optional[Mapping[str, object]] = None,
     local_day: Optional[date] = None,
 ) -> Dict[str, int]:
     """Create or update all linked messages, then pin the compact root."""
@@ -1754,7 +1827,7 @@ async def publish_pinned_guide(
         if value.get("media") is True and key in messages
     ) + tuple(key for key in skip_keys if key in messages)
     await _reconcile_messages(
-        chat_id, messages, state, send, edit, managed_elsewhere
+        chat_id, messages, state, send, edit, managed_elsewhere, wifi_snapshot
     )
     if sporttia_catalog is not None:
         assert local_day is not None
@@ -1784,7 +1857,7 @@ async def publish_pinned_guide(
                 edit,
             )
         await _reconcile_messages(
-            chat_id, messages, state, send, edit, managed_elsewhere
+            chat_id, messages, state, send, edit, managed_elsewhere, wifi_snapshot
         )
     if music_school_catalog is not None:
         assert local_day is not None
@@ -1807,7 +1880,7 @@ async def publish_pinned_guide(
                 edit,
             )
         await _reconcile_messages(
-            chat_id, messages, state, send, edit, managed_elsewhere
+            chat_id, messages, state, send, edit, managed_elsewhere, wifi_snapshot
         )
 
     activities_link = _known_link(chat_id, messages, "activities")
@@ -1844,7 +1917,7 @@ async def publish_pinned_guide(
         )
     if recurring_payloads:
         await _reconcile_messages(
-            chat_id, messages, state, send, edit, managed_elsewhere
+            chat_id, messages, state, send, edit, managed_elsewhere, wifi_snapshot
         )
     try:
         await pin(messages["root"])
@@ -1854,7 +1927,7 @@ async def publish_pinned_guide(
         messages.pop("root", None)
         await asyncio.to_thread(state.write, chat_id, messages)
         await _reconcile_messages(
-            chat_id, messages, state, send, edit, managed_elsewhere
+            chat_id, messages, state, send, edit, managed_elsewhere, wifi_snapshot
         )
         await pin(messages["root"])
     if music_school_catalog is not None:
@@ -1905,6 +1978,7 @@ async def publish_pinned_guide(
                 send,
                 edit,
                 (*managed_elsewhere, "music_school"),
+                wifi_snapshot,
             )
             music_links = {
                 key: telegram_message_link(chat_id, messages[key])

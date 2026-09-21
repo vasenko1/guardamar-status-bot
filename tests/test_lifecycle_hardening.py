@@ -227,7 +227,7 @@ class PreviewIsolationTests(unittest.IsolatedAsyncioTestCase):
 
 class LateEnvironmentTransactionTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        self.now = datetime(2026, 9, 11, 10, 25, tzinfo=MADRID)
+        self.now = datetime(2026, 9, 11, 10, 40, tzinfo=MADRID)
         self.old_base = datetime(2026, 9, 10, tzinfo=timezone.utc)
         self.new_base = datetime(2026, 9, 11, tzinfo=timezone.utc)
         self.old_air = AirQualitySummary(

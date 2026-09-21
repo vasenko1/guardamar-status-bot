@@ -2,13 +2,18 @@
 
 ## Purpose
 
-The linked city guide exposes one durable `📶 Бесплатный Wi-Fi` card directly from the `📌 Полезное о Гуардамаре` root. Wi-Fi is not classified as a place. It is static resident-facing information; it is not a separate bot, scheduled publisher, or automatically rewritten source feed.
+The linked city guide exposes one durable `📶 Бесплатный Wi-Fi` card directly
+from the `📌 Полезное о Гуардамаре` root. Wi-Fi is not a place and does not
+have its own daemon or cron job. The existing daily `telegrambot.guide sync`
+owns both source observation and card reconciliation.
 
-The architecture decision is recorded in `adr/0068-municipal-wifi-guide-source-watch.md`. Dated source verification belongs in `research/2026-09-16-municipal-wifi-source.md`.
+The current architecture decision is ADR 0074. ADR 0068 is superseded. Dated
+source verification remains in
+`research/2026-09-16-municipal-wifi-source.md`.
 
-## Approved public content
+## Reviewed baseline
 
-The card contains seven municipal Wi-Fi locations from the reviewed official Ayuntamiento Wi-Fi map:
+The accepted baseline contains seven municipal Wi-Fi locations:
 
 - Escola de Música, C/ Mercat, 2 — `WiFi4EU`, no password;
 - Casa de Cultura, C/ Colón, 60 — `WiFi4EU`, no password;
@@ -16,34 +21,64 @@ The card contains seven municipal Wi-Fi locations from the reviewed official Ayu
 - Plaza de la Constitución — `vegafibra_gratis` / `vegafibra`;
 - Paseo Marítimo · Avda. de Europa — `vegafibra_gratis` / `vegafibra`;
 - Sala de Estudios 24/365, C/ Mayor, 69 — `wifi_1EO9C` / `vegafibra`;
-- Biblioteca Pública, C/ San Jaime, 5 — `wifibiblioteca` / `biblimar`, `biblioteca infantil` / `menjallibres`, and `vicenteramos` / `menjallibres`.
+- Biblioteca Pública, C/ San Jaime, 5 — `wifibiblioteca` / `biblimar`,
+  `biblioteca infantil` / `menjallibres`, and `vicenteramos` /
+  `menjallibres`.
 
-For WiFi4EU, the user confirms the captive-portal connection; the public card does not require or imply local documentation or registration.
+The baseline card is retained when no dynamic snapshot has been accepted.
+The bounded source adapter and normalized baseline live in `telegrambot.wifi`;
+`telegrambot.guide` owns only lifecycle/state orchestration and
+`telegrambot.pinned` owns card rendering.
 
-Place names are map links. The card returns to `Полезное о Гуардамаре` and uses the standard public-message footer. The pinned root contains Wi-Fi as one direct item alongside the existing guide sections.
-
-## Source policy
+## Source lifecycle
 
 The official landing page is:
 
 `https://www.guardamardelsegura.es/wifis-municipales/`
 
-The currently reviewed asset URL is held explicitly in `telegrambot.guide` as the human-reviewed baseline. The linked asset URL, not the continued existence of an older file, is the source-change signal.
+At most once per local day, the existing guide sync:
 
-## Minimal source watch
+1. performs one bounded GET of that landing page;
+2. requires exactly one linked HTTPS PDF under the municipal
+   `/wp-content/uploads/` path;
+3. compares the linked asset URL with the last accepted asset;
+4. when unchanged, does no PDF download and sends no notice;
+5. when changed, downloads the bounded PDF and extracts its text with the
+   already-installed Poppler `pdftotext -layout`;
+6. accepts only a complete deterministic snapshot of the same seven reviewed
+   point identities and the same network topology: one network per point,
+   except exactly three at Biblioteca;
+7. compares normalized point/network facts, excluding source URL and observation
+   time; a new PDF with identical facts is accepted silently;
+8. stores changed SSID/password values only after the full snapshot validates;
+9. reconciles the existing public Wi-Fi card through the normal pinned-guide
+   graph;
+10. only after that reconciliation succeeds, sends one public group notice
+   linking directly to the updated Wi-Fi card.
 
-Reuse the existing daily `telegrambot.guide sync` run. When `TELEGRAM_ALLOWED_USER_IDS` is configured, the sync performs one bounded GET of the municipal Wi-Fi landing page and extracts exactly one linked Wi-Fi asset.
+A source, PDF, parser, schema, or card-reconciliation failure preserves the
+last accepted public card and sends no public change notice.
 
-- current asset equals the reviewed asset: do nothing;
-- source request or parsing is unavailable/ambiguous: log a warning and preserve state;
-- asset URL differs from the reviewed asset: send one private operator alert and do not change public Wi-Fi facts automatically;
-- after one successful operator delivery, store only `wifi_last_alerted_asset_url` in the existing `state/guide.json` to deduplicate that observed version;
-- if delivery fails, do not store the dedupe value; the next normal guide sync retries without a separate retry subsystem.
+## Delivery safety
 
-The parser preserves query parameters and ignores only URL fragments. A new linked asset may live on another HTTP(S) host; that is still a change worth reviewing.
+The public change notice is a non-idempotent Telegram `sendMessage`. Before
+sending it, the guide state records the pending asset as uncertain. An explicit
+Telegram rejection clears that uncertainty so a later normal guide sync may
+retry; an ambiguous network/server result leaves the uncertainty marker and
+does not blindly resend a message that may already be visible.
+
+No private operator message is part of this lifecycle.
 
 ## Deliberate limits
 
-Do not add SHA-256 polling, ETag/Last-Modified state, OCR, image parsing, BeautifulSoup, Selenium, WordPress API logic, a Wi-Fi daemon, a new cron row, another state file, automatic SSID/password updates, or automatic public change notices.
+The automatic parser updates values only inside the reviewed topology. A new or
+removed municipal point, a new or removed network, an external asset host, or
+an unrecognized document structure fails closed rather than partially rewriting
+resident-facing credentials.
 
-The accepted blind spot is replacement of asset contents under the exact same URL. Add content hashing only after evidence shows the municipality actually uses same-URL replacements.
+Do not add OCR, image parsing, AI, Selenium, another cron row, another state
+file, a resident Wi-Fi worker, ETag history, or a generic document parser.
+
+Replacement of PDF bytes under the exact same linked URL remains an accepted
+blind spot. Add a content fingerprint only after production evidence shows that
+the municipality actually replaces this document in place.

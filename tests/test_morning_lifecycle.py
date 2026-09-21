@@ -21,7 +21,6 @@ class MorningLifecycleTests(unittest.IsolatedAsyncioTestCase):
         with patch("telegrambot.morning.fetch_today_events", new=AsyncMock(return_value=())), \
              patch("telegrambot.morning.fetch_today_mayor_events", new=AsyncMock(return_value=())), \
              patch("telegrambot.morning.recurring_events", return_value=()), \
-             patch("telegrambot.morning.fetch_traffic_notices", new=AsyncMock(return_value=())), \
              patch("telegrambot.morning.fetch_today_municipal_events", new=AsyncMock(return_value=())), \
              patch("telegrambot.morning.fetch_today_library_events", new=AsyncMock(return_value=())), \
              patch("telegrambot.morning.fetch_today_am_guardamar_events", new=AsyncMock(return_value=())), \

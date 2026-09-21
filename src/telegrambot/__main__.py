@@ -81,7 +81,12 @@ from .municipal_agenda import (
 from .event_translations import prepare_translations
 from .facv import FacvSourceError, facv_translation_items
 from .pesca_cv import PescaCvSourceError, pesca_cv_translation_items
-from .hidraqua import HidraquaError, HidraquaState, monitor_once
+from .hidraqua import (
+    HidraquaDeliveryUncertain,
+    HidraquaError,
+    HidraquaState,
+    monitor_once,
+)
 from .gemini import GeminiError
 from .pharmacy import PharmacyError, refresh_pharmacy_catalog
 from .morning import produce_message
@@ -122,6 +127,7 @@ from .telegram import (
     edit_message,
     edit_photo_caption,
     edit_photo_media,
+    is_ambiguous_send_failure,
     pin_chat_message,
     send_message,
     send_photo,
@@ -148,7 +154,7 @@ DEFAULT_EARTHQUAKE_STATE_PATH = "state/earthquakes.json"
 DEFAULT_EMERGENCY_RISK_STATE_PATH = "state/emergency_risks.json"
 DEFAULT_HIDRAQUA_STATE_PATH = "state/hidraqua.json"
 DEFAULT_CAMS_CACHE_PATH = "state/cams.json"
-CAMS_UPDATE_CHECKPOINTS = frozenset({(10, 10), (10, 25), (10, 40)})
+CAMS_UPDATE_CHECKPOINTS = frozenset({(10, 40)})
 
 
 def _cams_cycle_is_current(
@@ -654,14 +660,27 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         publish_current = os.environ.get(
             "HIDRAQUA_PUBLISH_CURRENT_ON_BOOTSTRAP", ""
         ).strip().casefold() == "true"
+
+        async def publish_hidraqua(message: str) -> int:
+            try:
+                return await send_message(
+                    bot_token,
+                    chat_id,
+                    message,
+                    disable_notification=False,
+                    max_attempts=1,
+                    retry_only_rate_limits=True,
+                )
+            except TelegramError as exc:
+                if is_ambiguous_send_failure(exc):
+                    raise HidraquaDeliveryUncertain() from exc
+                raise
+
         with state.exclusive_run():
             sent = await monitor_once(
                 state,
                 now,
-                lambda message: send_message(
-                    bot_token, chat_id, message, disable_notification=False,
-                    max_attempts=1, retry_only_rate_limits=True,
-                ),
+                publish_hidraqua,
                 publish_current_on_bootstrap=publish_current,
             )
         logging.info("Hidraqua monitor delivered: %d", sent)
@@ -876,7 +895,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     retry_only_rate_limits=True,
                 )
             except TelegramError as exc:
-                if exc.server_status is None or exc.server_status >= 500:
+                if is_ambiguous_send_failure(exc):
                     raise EmergencyRiskDeliveryUncertain() from exc
                 raise
 
@@ -910,11 +929,9 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     retry_only_rate_limits=True,
                 )
             except TelegramError as exc:
-                if exc.server_status == 429 or (
-                    exc.server_status is not None and exc.server_status < 500
-                ):
-                    raise
-                raise EarthquakeDeliveryUncertain() from exc
+                if is_ambiguous_send_failure(exc):
+                    raise EarthquakeDeliveryUncertain() from exc
+                raise
 
         delivered = await monitor_earthquakes(
             now, earthquake_state, fetch_earthquakes, publish_earthquake

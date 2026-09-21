@@ -32,8 +32,8 @@ MAX_NEW_EVENT_AGE = timedelta(hours=6)
 MAX_FUTURE_SKEW = timedelta(minutes=5)
 SERIES_WINDOW = timedelta(hours=6)
 MAX_VISIBLE_SERIES_EVENTS = 5
-MAX_DISTANCE_KM = 10.0
-MIN_MAGNITUDE = 2.7
+MAX_DISTANCE_KM = 20.0
+MIN_MAGNITUDE = 1.8
 STATE_VERSION = 2
 
 _GEO_NAMESPACE = "http://www.w3.org/2003/01/geo/wgs84_pos#"
