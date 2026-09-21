@@ -63,28 +63,23 @@ class ScheduleTests(unittest.TestCase):
             3,
         )
 
-    def test_shoulder_season_and_winter(self):
-        june_before = scheduled_run(
-            datetime(2026, 6, 14, 12, 0, tzinfo=MADRID)
+    def test_query_window_and_winter(self):
+        june_start = scheduled_run(
+            datetime(2026, 6, 1, 12, 0, tzinfo=MADRID)
         )
-        self.assertIsNone(june_before.beach_phase)
+        self.assertEqual(june_start.beach_phase, 1)
+        self.assertTrue(june_start.check_aemet)
 
-        june = scheduled_run(
-            datetime(2026, 6, 15, 12, 0, tzinfo=MADRID)
+        september_end = scheduled_run(
+            datetime(2026, 9, 30, 14, 0, tzinfo=MADRID)
         )
-        self.assertEqual(june.beach_phase, 1)
-        self.assertTrue(june.check_aemet)
+        self.assertEqual(september_end.beach_phase, 1)
+        self.assertFalse(september_end.check_aemet)
 
-        september_last = scheduled_run(
-            datetime(2026, 9, 15, 14, 0, tzinfo=MADRID)
+        october = scheduled_run(
+            datetime(2026, 10, 1, 14, 0, tzinfo=MADRID)
         )
-        self.assertEqual(september_last.beach_phase, 1)
-        self.assertFalse(september_last.check_aemet)
-
-        september_after = scheduled_run(
-            datetime(2026, 9, 16, 14, 0, tzinfo=MADRID)
-        )
-        self.assertIsNone(september_after.beach_phase)
+        self.assertIsNone(october.beach_phase)
 
         winter = scheduled_run(
             datetime(2026, 12, 7, 11, 0, tzinfo=MADRID)
