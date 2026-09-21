@@ -1878,7 +1878,7 @@ async def publish_pinned_guide(
                 edit,
             )
         await _reconcile_messages(
-            chat_id, messages, state, send, edit, managed_elsewhere
+            chat_id, messages, state, send, edit, managed_elsewhere, wifi_snapshot
         )
     if music_school_catalog is not None:
         assert local_day is not None
@@ -1901,7 +1901,7 @@ async def publish_pinned_guide(
                 edit,
             )
         await _reconcile_messages(
-            chat_id, messages, state, send, edit, managed_elsewhere
+            chat_id, messages, state, send, edit, managed_elsewhere, wifi_snapshot
         )
 
     activities_link = _known_link(chat_id, messages, "activities")
@@ -1938,7 +1938,7 @@ async def publish_pinned_guide(
         )
     if recurring_payloads:
         await _reconcile_messages(
-            chat_id, messages, state, send, edit, managed_elsewhere
+            chat_id, messages, state, send, edit, managed_elsewhere, wifi_snapshot
         )
     try:
         await pin(messages["root"])
@@ -1948,7 +1948,7 @@ async def publish_pinned_guide(
         messages.pop("root", None)
         await asyncio.to_thread(state.write, chat_id, messages)
         await _reconcile_messages(
-            chat_id, messages, state, send, edit, managed_elsewhere
+            chat_id, messages, state, send, edit, managed_elsewhere, wifi_snapshot
         )
         await pin(messages["root"])
     if music_school_catalog is not None:
@@ -1999,6 +1999,7 @@ async def publish_pinned_guide(
                 send,
                 edit,
                 (*managed_elsewhere, "music_school"),
+                wifi_snapshot,
             )
             music_links = {
                 key: telegram_message_link(chat_id, messages[key])
