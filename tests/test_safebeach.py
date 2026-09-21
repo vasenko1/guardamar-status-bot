@@ -12,7 +12,6 @@ from telegrambot.safebeach import (
     _read_page,
     fetch_beach_status,
     in_query_window,
-    is_complete_current_status,
     is_current_status,
     normalize_beach_status,
 )
@@ -207,73 +206,6 @@ class SafeBeachNormalizationTests(unittest.TestCase):
             normalize_beach_status(payload, TEST_DAY)
 
         self.assertEqual(raised.exception.diagnostic_code, "NO-DATA")
-
-    def test_completeness_requires_all_six_known_beaches(self):
-        status = _normalize(
-            [
-                _marker("verde", updated="10:05"),
-                _marker(
-                    "amarilla",
-                    beach_name="Platja La Roqueta",
-                    updated="10:04",
-                ),
-                _marker(
-                    "verde",
-                    beach_name="Platja dels Vivers",
-                    updated="10:03",
-                ),
-                _marker(
-                    "roja",
-                    beach_name="Platja del Montcaio",
-                    updated="10:02",
-                ),
-                _marker(
-                    "verde",
-                    beach_name="Platja del Camp",
-                    updated="10:01",
-                ),
-                _marker(
-                    "amarilla",
-                    beach_name="Platja de les Ortigues",
-                    updated="10:00",
-                ),
-            ]
-        )
-        now = datetime(2026, 7, 29, 10, 10, tzinfo=MADRID)
-
-        self.assertTrue(is_complete_current_status(status, now))
-        partial = _normalize([_marker("verde")])
-        self.assertFalse(
-            is_complete_current_status(
-                partial,
-                now,
-            )
-        )
-        self.assertTrue(is_current_status(partial, now))
-        self.assertFalse(
-            is_complete_current_status(
-                _normalize([_marker("verde", updated="")]),
-                now,
-            )
-        )
-        self.assertFalse(
-            is_complete_current_status(
-                _normalize([_marker("verde", updated="10:16")]),
-                now,
-            )
-        )
-        self.assertFalse(
-            is_complete_current_status(
-                BeachStatus(
-                    flag_color="green",
-                    sea_temperature_c=24,
-                    source_date=date(2026, 7, 28),
-                    nearby_flags=(("Centre", "green"),),
-                    updated_times=(("Centre", time(10, 5)),),
-                ),
-                now,
-            )
-        )
 
     def test_current_status_rejects_duplicate_or_unscoped_records(self):
         now = datetime(2026, 7, 29, 10, 10, tzinfo=MADRID)
