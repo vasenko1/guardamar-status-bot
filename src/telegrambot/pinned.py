@@ -793,6 +793,8 @@ def build_wifi(
             for item in wifi_snapshot.get("points", ())
             if isinstance(item, Mapping) and isinstance(item.get("key"), str)
         }
+        if set(points) != set(WIFI_POINT_ORDER):
+            raise ValueError("Wi-Fi snapshot does not contain the complete point set")
         lines = [
             "📶 <b>Бесплатный Wi-Fi в Гуардамаре</b>",
             "",
