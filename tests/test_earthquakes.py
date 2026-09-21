@@ -106,9 +106,9 @@ class EarthquakePolicyTests(unittest.TestCase):
         self.assertGreater(bearing, 202.5)
         self.assertLess(bearing, 247.5)
 
-    def test_requires_magnitude_2_7_and_distance_at_most_10_km(self):
-        self.assertTrue(qualifies(_event(magnitude=2.7)))
-        self.assertFalse(qualifies(_event(magnitude=2.69)))
+    def test_requires_magnitude_2_0_and_distance_at_most_10_km(self):
+        self.assertTrue(qualifies(_event(magnitude=2.0)))
+        self.assertFalse(qualifies(_event(magnitude=1.99)))
         self.assertFalse(qualifies(_event(latitude=38.20, longitude=-0.6553)))
 
     def test_message_uses_one_fact_line_map_and_blank_line_before_footer(self):
@@ -207,8 +207,8 @@ class EarthquakeStateTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_first_run_record_can_alert_after_fresh_revision(self):
         now = datetime(2026, 8, 18, 15, 0, tzinfo=MADRID)
-        initial = _event(event_id="esseeded", magnitude=2.6)
-        revised = _event(event_id="esseeded", magnitude=2.8)
+        initial = _event(event_id="esseeded", magnitude=1.9)
+        revised = _event(event_id="esseeded", magnitude=2.0)
         messages = []
         with tempfile.TemporaryDirectory() as directory:
             state = EarthquakeState(Path(directory) / "earthquakes.json")
@@ -245,7 +245,7 @@ class EarthquakeStateTests(unittest.IsolatedAsyncioTestCase):
                         occurred_at=now.astimezone(timezone.utc)
                         - timedelta(hours=7),
                     ),
-                    _event(event_id="esrevised", magnitude=2.6),
+                    _event(event_id="esrevised", magnitude=1.9),
                 )),
                 self._publisher(messages),
             )
@@ -253,7 +253,7 @@ class EarthquakeStateTests(unittest.IsolatedAsyncioTestCase):
                 now + timedelta(hours=1),
                 state,
                 AsyncMock(return_value=(
-                    _event(event_id="esrevised", magnitude=2.8),
+                    _event(event_id="esrevised", magnitude=2.0),
                 )),
                 self._publisher(messages),
             )
