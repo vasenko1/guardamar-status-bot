@@ -31,9 +31,9 @@ the beach rows and can differ from the report's covered week.
 ## Decision
 
 1. Add no resident service, DB, queue, browser, OCR or AI dependency. Use one
-   short-lived `sync-bathing-water.sh` one-shot at 19:35 Europe/Madrid during
-   June-August and through 30 September. The September grace keeps checking
-   for delayed final publications after the official 15 September season end.
+   short-lived `sync-bathing-water.sh` one-shot at 19:35 Europe/Madrid from
+   1 June through 15 September, matching the published official season. Do not
+   poll after the season merely because the last weekly report remains listed.
    Do not add a May/preseason polling window: the municipal index does not
    currently expose a confirmed equivalent weekly `Análisis Previo` item; the
    observed preseason sample appears in the annual season summary instead.
@@ -88,7 +88,7 @@ the beach rows and can differ from the report's covered week.
 ## Consequences
 
 The integration now has a bounded resident-facing purpose with minimal load:
-one small HTML read each evening during the season/grace period and normally one
+one small HTML read each evening during the official season and normally one
 PDF download per newly published weekly report. A template, language, beach
 topology, date or rating outside the reviewed contracts fails closed and keeps
 the last accepted report intact.
