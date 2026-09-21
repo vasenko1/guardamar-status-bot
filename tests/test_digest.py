@@ -14,7 +14,6 @@ from telegrambot.models import (
     Holiday,
     MorningDigest,
     PharmacyDuty,
-    TrafficNotice,
     Warning,
     Weather,
     HeatHealthRisk,
@@ -470,14 +469,6 @@ class DigestMessageTests(unittest.TestCase):
             forecast_sea_temperature_c=29,
             forecast_sea_state="slight",
             forecast_later_sea_state="moderate",
-            traffic_notices=(
-                TrafficNotice(
-                    text=(
-                        "15–29 июля: проезд к поликлинике и "
-                        "автовокзалу — только через C/ San Francisco."
-                    )
-                ),
-            ),
             events=(
                 Event(
                     title="Концерт в замке",
@@ -615,7 +606,7 @@ class DigestMessageTests(unittest.TestCase):
         self.assertNotIn("⚠️ <b>Предупреждения AEMET:</b>", message)
         self.assertNotIn("Предупреждений нет", message)
 
-    def test_marks_multiple_warnings_and_traffic_items(self):
+    def test_marks_multiple_warnings(self):
         digest = MorningDigest(
             weather=Weather(
                 current_temperature_c=None,
@@ -631,10 +622,6 @@ class DigestMessageTests(unittest.TestCase):
                 Warning("Lluvias", "orange", None),
             ),
             warnings_available=True,
-            traffic_notices=(
-                TrafficNotice(text="Перекрыта улица A."),
-                TrafficNotice(text="Изменён маршрут автобуса B."),
-            ),
         )
 
         message = build_message(digest)
@@ -648,12 +635,6 @@ class DigestMessageTests(unittest.TestCase):
             "Зона: южное побережье Аликанте\n"
             "🟠 <b>Сильный дождь</b>\n"
             "🟡 <b>Сильный ветер</b>",
-            message,
-        )
-        self.assertIn(
-            "🚧 <b>Движение:</b>\n"
-            "• Перекрыта улица A.\n"
-            "• Изменён маршрут автобуса B.",
             message,
         )
 
