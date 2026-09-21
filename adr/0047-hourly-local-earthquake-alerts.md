@@ -32,7 +32,9 @@ can be processed with the Python standard library.
   repeated in the description and GeoRSS fields. Fail closed on a malformed or
   wholly unrecognized non-empty feed.
 - Use unrounded great-circle distance from Guardamar. An event qualifies only
-  at magnitude 2.7 or greater and no farther than 10 km.
+  at magnitude 2.0 or greater and no farther than 10 km. This lower near-field
+  floor is intended to include small events that can plausibly be felt in
+  Guardamar while still excluding most sub-2.0 microseismic noise.
 - Seed existing qualifying events silently. Keep a fresh lower-magnitude event
   observable for six hours so a later IGN revision across the threshold can
   produce the notice. Revisions of a current published series update its
