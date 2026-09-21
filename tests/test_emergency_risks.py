@@ -208,10 +208,22 @@ class EmergencyRiskTests(unittest.TestCase):
         }
         message = _transition(value)
         self.assertIsNotNone(message)
-        self.assertIn("Риск лесных пожаров повышен", message)
-        self.assertIn("уровень 2 из 3", message)
-        self.assertIn("500 м от неё", message)
-        self.assertIn("профилактический уровень риска", message)
+        self.assertIn("Повышен риск лесных пожаров", message)
+        self.assertIn(
+            "сегодня действует высокий уровень риска — 2 из 3",
+            message,
+        )
+        self.assertIn(
+            "прогулку, пикник или барбекю в природной зоне",
+            message,
+        )
+        self.assertIn("не бросайте тлеющие окурки", message)
+        self.assertIn(
+            "пожара или непосредственной угрозы городу нет",
+            message,
+        )
+        self.assertNotIn("500 м от неё", message)
+        self.assertNotIn("сельскохозяйственных растительных остатков", message)
 
         value["published"]["fire_level"] = 2
         value["previfoc"]["fire_level"] = 1
