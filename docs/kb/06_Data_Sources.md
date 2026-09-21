@@ -26,7 +26,7 @@ official endpoints and lightweight access methods are validated.
 | Civil protection or emergency authority | Safety warnings | Highest priority | Alert feed or official publication | Yes |
 | CCE — 112 Comunitat Valenciana | Active emergency and hydrological authority state relevant to Guardamar/Segura | Highest priority for authority decisions; complements rather than duplicates AEMET | Public `emergencias.jsf` plus current text-readable CCE PDF, checked by one bounded hourly watcher | Yes, narrow operational monitor |
 | Previfoc / Generalitat Valenciana (VAERSA ArcGIS) | Official zone-6 forest-fire preemergency plus dry-thunderstorm risk for Guardamar | High; responsible regional fire-prevention/emergency source | Tiny structured ArcGIS query for the current operational day; same-day level may be readjusted | Yes, narrow operational monitor |
-| Instituto Geografico Nacional (IGN) GeoRSS | Nearby recorded earthquakes | High; official Spanish seismic authority | One bounded public XML feed request per hour; deterministic 20 km and magnitude 2.0 filter | Yes, narrow standalone notice |
+| Instituto Geografico Nacional (IGN) GeoRSS | Nearby recorded earthquakes | High; official Spanish seismic authority | One bounded public XML feed request per hour; deterministic 20 km and magnitude 1.8 filter | Yes, narrow standalone notice |
 | Policía Local Guardamar | Explicit mobility restrictions | High for direct official notices; publication is irregular | One bounded official HTML page and reviewed linked document | Yes |
 | Agenda Guardamar | Official ticketed events occurring today | High for listed Ayuntamiento events | 05:30 bounded HTML/Schema.org catalog refresh | Yes |
 | Turismo Guardamar municipal agenda | Broader official monthly cultural text plus supplementary MUPI | High for text; image facts require agreement | 05:10 text-first catalog refresh; MUPI only after URL change | Yes |
@@ -104,7 +104,7 @@ description and GeoRSS fields. Malformed or ambiguous records are omitted; a
 non-empty feed with no valid records is rejected.
 
 The monitor uses Guardamar coordinates `38.0896, -0.6553` as its stable local
-reference. It publishes only a new event with magnitude at least 2.0 and an
+reference. It publishes only a new event with magnitude at least 1.8 and an
 unrounded great-circle distance no greater than 20 km. Event time supplied by
 IGN in UTC is converted to `Europe/Madrid`. The user-facing map link points to
 the exact decimal coordinates through Google Maps; Google Maps is presentation
