@@ -66,29 +66,39 @@ def report_text(
 
 
 def report_text_valencian():
-    value = report_text()
-    replacements = (
-        ("Programa de control de las zonas de baño", "Programa de control de les zones de bany"),
-        ("Análisis de las aguas e inspección semanal", "Anàlisi de les aigües e inspecció setmanal"),
-        ("Fecha:", "Data:"),
-        ("Análisis Agua", "Anàlisi Aigua"),
-        ("Aspecto Agua", "Aspecte Aigua"),
-        ("Aspecto Arena", "Aspecte Arena"),
-        ("PLAYA DE TUSALES", "PLATJA DELS TOSSALS"),
-        ("PLAYA DE VIVERS", "PLATJA DELS VIVERS"),
-        ("PLAYA DE BABILONIA", "PLATJA DE BABILONIA"),
-        ("PLAYA CENTRO", "PLATJA CENTRE"),
-        ("PLAYA DE LA ROQUETA", "PLATJA DE LA ROQUETA"),
-        ("PLAYA DEL MONCAYO", "PLATJA DEL MONCAIO"),
-        ("PLAYA DE ORTIGUES", "PLATJA DE LES ORTIGUES-CAMPO"),
-        ("INSUFICIENTE", "INSUFICIENT"),
-        ("SUFICIENTE", "SUFICIENT"),
-        ("EXCELENTE", "EXCEL·LENT"),
-        ("BUENA", "BONA"),
+    header = (
+        f'{"Platja":<42}'
+        f'{"Anàlisi Aigua":<20}'
+        f'{"Aspecte Aigua":<20}'
+        f'{"Aspecte Arena":<20}'
+        f'{"Enterococs":<18}'
+        "Escherichia Coli"
     )
-    for source, target in replacements:
-        value = value.replace(source, target)
-    return value
+    rows = [
+        ("PLATJA DELS TOSSALS", "EXCEL·LENT", "EXCEL·LENT", "EXCEL·LENT"),
+        ("PLATJA DELS VIVERS", "EXCEL·LENT", "EXCEL·LENT", "EXCEL·LENT"),
+        ("PLATJA DE BABILONIA", "EXCEL·LENT", "EXCEL·LENT", "EXCEL·LENT"),
+        ("PLATJA CENTRE", "EXCEL·LENT", "BONA", "EXCEL·LENT"),
+        ("PLATJA DE LA ROQUETA", "EXCEL·LENT", "EXCEL·LENT", "BONA"),
+        ("PLATJA DEL MONCAIO", "EXCEL·LENT", "EXCEL·LENT", "EXCEL·LENT"),
+        ("PLATJA DE LES ORTIGUES-CAMPO", "EXCEL·LENT", "EXCEL·LENT", "BONA"),
+    ]
+    body_lines = []
+    for name, analysis, water, sand in rows:
+        body_lines.append(
+            f"{name:<42}{analysis:<20}{water:<20}{sand:<20}{0:<18}0"
+        )
+        body_lines.append("Data desc. punt1: 17/06/26")
+    return (
+        "Programa de control de les zones de bany.\n"
+        "Anàlisi de les aigües e inspecció setmanal del 1 de juny "
+        "al 15 de setembre. 2026\n"
+        "Guardamar del Segura\n"
+        "Data: 15.06.2026 - 21.06.2026\n"
+        f"{header}\n"
+        + "\n".join(body_lines)
+        + "\nValoració EXCEL·LENT / BONA / SUFICIENT / INSUFICIENT\n"
+    )
 
 
 def page(*, year=2026, report_year=2026):
