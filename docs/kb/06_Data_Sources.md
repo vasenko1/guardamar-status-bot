@@ -21,7 +21,7 @@ official endpoints and lightweight access methods are validated.
 | ESIOS / Red Eléctrica | Next-day PVPC 2.0TD hourly active-energy term | High; official system operator publication | Indicator API `1001`; personal API key required | Yes, evening feature |
 | Official marine service | Sea state and relevant marine warnings | High for its jurisdiction | API or published feed | Yes |
 | SafeBeach public Guardamar page | Active beach flags and jellyfish operational status | High when municipal lifeguards actively maintain it | Small structured payload embedded in the public page | Yes |
-| Guardamar municipal bathing-water programme | Current-year control window and newest official weekly report link | High for programme/report publication; current adapter does not interpret laboratory results | One bounded municipal HTML read at most once per local day inside guide sync; stores source state only | Yes, source-state only |
+| Guardamar municipal bathing-water programme | Current-year control window plus official weekly water/visual beach ratings | High; first-party municipal programme and linked reports | One bounded municipal HTML read per local day; PDF downloaded only for a new report identity, parsed fail-closed with existing Poppler | Yes, weekly public notice |
 | Civil protection or emergency authority | Safety warnings | Highest priority | Alert feed or official publication | Yes |
 | CCE — 112 Comunitat Valenciana | Active emergency and hydrological authority state relevant to Guardamar/Segura | Highest priority for authority decisions; complements rather than duplicates AEMET | Public `emergencias.jsf` plus current text-readable CCE PDF, checked by one bounded hourly watcher | Yes, narrow operational monitor |
 | Previfoc / Generalitat Valenciana (VAERSA ArcGIS) | Official zone-6 forest-fire preemergency plus dry-thunderstorm risk for Guardamar | High; responsible regional fire-prevention/emergency source | Tiny structured ArcGIS query for the current operational day; same-day level may be readjusted | Yes, narrow operational monitor |
@@ -322,17 +322,25 @@ links weekly PDF reports by covered date range.
 
 The guide sync reads this small HTML page at most once per local day. It accepts
 only the exact municipal HTTPS page and report PDFs below the municipality's
-`/wp-content/uploads/` path. The normalized snapshot stores only the observed
-time, current-year programme start/end, and the newest linked weekly report
-range and URL. Missing or ambiguous current-year headings fail closed and keep
-the previous verified snapshot.
+`/wp-content/uploads/` path. The programme snapshot stores the observed time,
+current-year control window, and newest linked weekly report period and URL.
+Missing or ambiguous current-year headings fail closed and keep the previous
+verified report baseline.
 
-The adapter deliberately does **not** parse or classify the PDF laboratory
-tables yet. Therefore this source currently creates no public quality claim,
-card, or notification. A linked report becoming newer is stored as source
-state only. User-facing quality changes require a separately reviewed stable
-machine-readable contract for the actual sample values; NÁYADE is the preferred
-official candidate for that next step.
+When the newest report period or URL differs from the last accepted parsed
+report, the adapter downloads that PDF once and uses the existing
+`pdftotext -layout` dependency. It accepts only the reviewed Spanish first-page
+table with exactly seven known beach rows and the official qualitative columns
+`Análisis Agua`, `Aspecto Agua`, and `Aspecto Arena`. Every accepted cell must
+be one of `EXCELENTE`, `BUENA`, `SUFICIENTE`, or `INSUFICIENTE`; a changed
+template, renamed/extra beach, period mismatch, or unknown label fails closed.
+
+The bot does not calculate its own quality class from Enterococci or E. coli
+counts. The first parsed report after feature activation is a silent baseline;
+each later weekly report is eligible for one 🧪 public group notice. The main
+block reports the municipality's laboratory water rating by beach, while water
+appearance and sand appearance are shown separately as visual inspection facts.
+A replacement URL for the same period with identical normalized facts is silent.
 
 ## Approved Agenda Guardamar data
 
