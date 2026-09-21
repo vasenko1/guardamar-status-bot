@@ -56,14 +56,15 @@ class GuideTermuxTests(unittest.TestCase):
         self.assertIn("python -m telegrambot.guide bathing-water", script)
         self.assertNotIn("sync-guide.sh", script)
 
-    def test_installer_has_one_evening_bathing_check_during_season_and_grace(self):
+    def test_installer_has_one_evening_bathing_check_during_official_season(self):
         script = (
             ROOT / "termux" / "install-guide-cron.sh"
         ).read_text(encoding="utf-8")
 
         self.assertIn('"35 19 * 6-8 * $SH_BIN $BATHING"', script)
-        self.assertIn('"35 19 1-30 9 * $SH_BIN $BATHING"', script)
-        self.assertNotIn('"35 19 21-30 9 * $SH_BIN $BATHING"', script)
+        self.assertIn('"35 19 1-15 9 * $SH_BIN $BATHING"', script)
+        self.assertNotIn('"35 19 1-20 9 * $SH_BIN $BATHING"', script)
+        self.assertNotIn('"35 19 1-30 9 * $SH_BIN $BATHING"', script)
 
     def test_installer_is_idempotent_and_preserves_unrelated_jobs(self):
         unrelated = "12 3 * * * /other/bot.sh\n"
@@ -75,8 +76,9 @@ class GuideTermuxTests(unittest.TestCase):
         self.assertIn(unrelated.strip(), installed)
         self.assertEqual(installed.count("sync-bathing-water.sh"), 2)
         self.assertEqual(installed.count("35 19 * 6-8 *"), 1)
-        self.assertEqual(installed.count("35 19 1-30 9 *"), 1)
+        self.assertEqual(installed.count("35 19 1-15 9 *"), 1)
         self.assertEqual(installed.count("35 19 1-20 9 *"), 0)
+        self.assertEqual(installed.count("35 19 1-30 9 *"), 0)
         self.assertEqual(installed.count("2 9 * * *"), 1)
 
     def test_installer_rejects_unbalanced_managed_block(self):
