@@ -55,6 +55,27 @@ creates an all-clear message.
 If nothing trustworthy and useful remains after filtering, the run may produce
 no message.
 
+## Runtime lifecycle inventory
+
+| Lifecycle | Trigger | Resident-facing effect |
+| --- | --- | --- |
+| Morning Digest | 07:30 daily | One immutable daily message; Policía Local, pharmacy, events, holidays/markets, AEMET weather/sea/UV, CAMS/Meteosalud baseline and fresh CCE hydrology contribute here without becoming separate morning processes. |
+| SafeBeach + Mayor bathing status | 10:10–10:40 in season, then bounded operational checks | Separate daily beach root, live early edits, later confirmed replies; explicit Mayor bathing restrictions remain an independent safety signal. |
+| AEMET operational warnings | Existing `monitor-updates` windows | Material warning changes reply to the Morning Digest. |
+| CAMS / Meteosalud late environment | 10:40 CAMS early check plus existing operational recovery; Meteosalud on operational checkpoints | Material air-quality, pollen, heat or cold changes reply to the Morning Digest. |
+| CCE / Previfoc emergency risks | Hourly at `:19` | Standalone transitions for forest-fire risk, dry-thunderstorm risk and Segura hydrological/flood state; fresh active hydrology may also appear in the next Morning Digest. |
+| IGN earthquakes | Hourly at `:55` | Standalone/series notice for new events at M1.8+ within 20 km. |
+| Hidraqua network incidents | Every 30 minutes | Standalone notice for a new confirmed water-network event ID. |
+| Transport | 05:00 sync, 08:42 notification | Reconciles pinned transport cards and publishes accepted schedule/service/fare changes. |
+| Linked guide + courses | 09:02 sync; course notices 09:42/11:42; two seasonal 19:45 checks | Reconciles public guide cards, may send pool/Zona Azul seasonal notices, and publishes accepted course/programme changes. |
+| Electricity | 20:30/20:35/20:45/21:00/21:20 attempts | One next-day PVPC table reply after the first complete official dataset. |
+| Weekend digest | Friday 19:15, retry 20:15 | One weekend-events digest when verified events exist. |
+| Pharmacy catalogue | Sunday 05:50 | Source refresh only; consumed by Morning Digest. |
+| Bathing-water programme | At most once per local day inside guide sync | Source-state only today: programme dates and newest official report link; no public water-quality claim yet. |
+| Event/translation/AEMET preparation | Pre-morning one-shots | Source preparation only; no independent public notification. |
+| Wi-Fi source watch | Inside guide sync | Private operator alert only when the municipal Wi-Fi source asset changes. |
+| OCI capacity search | Independent GitHub Actions | Infrastructure only; no Telegram city publication. |
+
 ## Logical areas
 
 ### Morning Digest
