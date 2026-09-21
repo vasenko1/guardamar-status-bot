@@ -2,7 +2,7 @@ import asyncio
 import json
 import tempfile
 import unittest
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
@@ -73,6 +73,7 @@ def bathing_report(
     centro_water="good",
     roqueta_sand="good",
     ortigues_sand="good",
+    sample_dates=None,
 ):
     beaches = []
     for name in (
@@ -89,15 +90,21 @@ def bathing_report(
                 else "excellent"
             ),
         })
+    report_start = date.fromisoformat(start)
+    report_end = date.fromisoformat(end)
+    if sample_dates is None:
+        first_sample = min(report_start + timedelta(days=1), report_end)
+        second_sample = min(first_sample + timedelta(days=1), report_end)
+        sample_dates = sorted({
+            first_sample.isoformat(),
+            second_sample.isoformat(),
+        })
     return {
         "observed_at": moment.isoformat(),
         "report_start": start,
         "report_end": end,
         "report_url": url,
-        "sample_dates": [
-            f"{start[:8]}16" if start.endswith("15") else start,
-            f"{start[:8]}17" if start.endswith("15") else start,
-        ],
+        "sample_dates": list(sample_dates),
         "beaches": beaches,
     }
 
