@@ -619,6 +619,7 @@ def _bathing_water_notice_text(snapshot: dict) -> str:
     if visual_lines:
         lines.append("<b>По визуальному осмотру:</b>")
         lines.extend(visual_lines)
+        lines.append("Остальные показатели визуального осмотра — отлично.")
     else:
         lines.append(
             "Внешний вид воды и песка — <b>отлично на всех пляжах</b>."
