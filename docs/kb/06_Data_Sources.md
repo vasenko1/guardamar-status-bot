@@ -2,14 +2,13 @@
 
 The implemented providers are AEMET, Ministerio de Sanidad Meteosalud,
 Copernicus CAMS through a normalized public data product, Guardamar's public SafeBeach page,
-Agenda Guardamar, the official Policía Local traffic page, and the public
-`@AlcaldeGuardamar` channel, the Biblioteca Pública Municipal de Guardamar,
+Agenda Guardamar, the public `@AlcaldeGuardamar` channel, the Biblioteca Pública Municipal de Guardamar,
 and Agrupación Musical Guardamar. The 07:30 run requests current morning data
 directly and reads events from four pre-morning local catalogs. Operational
 SafeBeach flags are intentionally excluded from the immutable Morning Digest
 and use a separate seasonal daily beach root.
 
-The remaining municipal, police, and seasonal publisher roles are mapped in
+The remaining municipal and seasonal publisher roles are mapped in
 `research/2026-07-27-guardamar-municipal-source-map.md`. Except for the
 approved Agenda Guardamar adapter, they are not implemented until their exact
 official endpoints and lightweight access methods are validated.
@@ -27,7 +26,7 @@ official endpoints and lightweight access methods are validated.
 | CCE — 112 Comunitat Valenciana | Active emergency and hydrological authority state relevant to Guardamar/Segura | Highest priority for authority decisions; complements rather than duplicates AEMET | Public `emergencias.jsf` plus current text-readable CCE PDF, checked by one bounded hourly watcher | Yes, narrow operational monitor |
 | Previfoc / Generalitat Valenciana (VAERSA ArcGIS) | Official zone-6 forest-fire preemergency plus dry-thunderstorm risk for Guardamar | High; responsible regional fire-prevention/emergency source | Tiny structured ArcGIS query for the current operational day; same-day level may be readjusted | Yes, narrow operational monitor |
 | Instituto Geografico Nacional (IGN) GeoRSS | Nearby recorded earthquakes | High; official Spanish seismic authority | One bounded public XML feed request per hour; deterministic 20 km and magnitude 1.8 filter | Yes, narrow standalone notice |
-| Policía Local Guardamar | Explicit mobility restrictions | High for direct official notices; publication is irregular | One bounded official HTML page and reviewed linked document | Yes |
+| Policía Local Guardamar | Historical reviewed festival restriction only | The reviewed page did not provide a dependable current traffic feed in routine operation | Retired from runtime; no scheduled request and no AI fallback | No |
 | Agenda Guardamar | Official ticketed events occurring today | High for listed Ayuntamiento events | 05:30 bounded HTML/Schema.org catalog refresh | Yes |
 | Turismo Guardamar municipal agenda | Broader official monthly cultural text plus supplementary MUPI | High for text; image facts require agreement | 05:10 text-first catalog refresh; MUPI only after URL change | Yes |
 | Turismo Guardamar public WordPress festival article | Full dated programme when the monthly MUPI contains only a small inset | High; primary municipal tourism publication | Bounded public REST posts search, then linked full-size poster; explicit dated article facts survive poster/model failure | Yes, narrow Campo programme |
@@ -631,21 +630,18 @@ workshop. The tennis tournament retains its
 verified 1–8 August period and Polideportivo venue without an invented daily
 time because none is published by the accepted sources.
 
-## Approved Policía Local traffic data
+## Retired Policía Local traffic source
 
-`https://policiaguardamar.com/cortecallefiestas.html` is an official Policía
-Local page linking the reviewed festival traffic PDF. The supported 22–29 July
-measure closes Molivent, routes access to Centro de Salud and the bus terminal
-through La Redonda, and also permits light vehicles through San Francisco
-until 23:30.
+The reviewed Policía Local festival page remains useful historical evidence,
+but repeated production use showed that it is not a dependable current traffic
+feed. The only deterministic resident-facing value came from one reviewed
+festival document; later road closures were not maintained there consistently.
 
-The adapter downloads the small linked PDF and accepts this known rule only
-when its SHA-256 matches the reviewed document. It does not run PDF extraction
-or OCR. A changed document is omitted pending review. Unknown official HTML
-notices may use ADR 0011's fail-closed structured Gemini fallback. Documents
-normalize into independent active measures; at most two compact lines reach
-the digest. The source remains optional and irregular, not a live feed, and no
-traffic cache is kept.
+The bot therefore makes no scheduled Policía Local request, no longer carries
+traffic-specific Morning Digest models/rendering, and no longer sends unknown
+traffic pages through Gemini/OpenRouter. Historical source research and
+superseded ADRs are retained so the source is not accidentally reintroduced
+without new evidence of a stable, current machine-readable publication path.
 
 The Mayor channel uses Telegram's bounded public HTML preview and requires no
 bot membership or user session. Besides scheduled-market exceptions, one
@@ -667,9 +663,8 @@ Marítimo. Its exact reviewed Russian title is `Удивительные оби�
 Средиземного моря`. Posts about completed activities and announcements with
 missing fields remain ineligible. Other Mayor posts are not treated as events.
 Known causes use a fixed
-Russian vocabulary; no AI inference is used. The Mayor and Policía Local
-adapters accept only bounded
-HTML/PDF from their exact official HTTPS hosts. A valid HTML page without
+Russian vocabulary; no AI inference is used. The Mayor adapter accepts only
+bounded HTML from its exact official HTTPS host. A valid HTML page without
 recognizable timestamped channel messages is a source failure, not proof that
 there are no updates. The MVP does not scrape Facebook.
 
