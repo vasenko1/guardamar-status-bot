@@ -20,7 +20,7 @@ class GuideTermuxTests(unittest.TestCase):
             crontab = commands / "crontab"
             crontab.write_text(
                 "#!/bin/sh\n"
-                "if [ \"\${1-}\" = -l ]; then\n"
+                "if [ \"${1-}\" = -l ]; then\n"
                 "  cat \"$FAKE_CRONTAB\"\n"
                 "else\n"
                 "  cat >\"$FAKE_CRONTAB\"\n"
