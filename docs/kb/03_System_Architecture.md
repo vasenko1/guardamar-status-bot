@@ -71,7 +71,7 @@ no message.
 | Electricity | 20:30/20:35/20:45/21:00/21:20 attempts | One next-day PVPC table reply after the first complete official dataset. |
 | Weekend digest | Friday 19:15, retry 20:15 | One weekend-events digest when verified events exist. |
 | Pharmacy catalogue | Sunday 05:50 | Source refresh only; consumed by Morning Digest. |
-| Bathing-water programme | At most once per local day inside guide sync | Source-state only today: programme dates and newest official report link; no public water-quality claim yet. |
+| Bathing-water quality | At most once per local day inside guide sync; PDF only for a new report identity | First parsed report is a silent baseline; later official weekly reports produce one 🧪 group notice with laboratory water quality by beach plus separate visual water/sand exceptions. |
 | Event/translation/AEMET preparation | Pre-morning one-shots | Source preparation only; no independent public notification. |
 | Municipal Wi-Fi source watch | Inside guide sync | A changed official municipal PDF is parsed fail-closed; only a semantic point/SSID/password change updates the existing card and, after reconciliation, produces one public group notice linking to that card. |
 | OCI capacity search | Independent GitHub Actions | Infrastructure only; no Telegram city publication. |
