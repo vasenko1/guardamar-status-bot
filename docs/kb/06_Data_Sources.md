@@ -342,7 +342,7 @@ the report's covered week as the sample date.
 
 The bot does not calculate its own public quality class from Enterococci or
 E. coli counts. Laboratory water quality remains separate from visual water and
-sand inspection. The first parsed report is public only if still fresh
+sand control. The first parsed report is public only if still fresh
 (`report_end + 5 days`); an older first observation becomes a silent baseline.
 Later weekly report identities produce at most one 🧪 public group notice using
 the shared conservative Telegram-delivery contract. No PDF URL is shown to
