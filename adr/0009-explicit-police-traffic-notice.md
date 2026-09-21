@@ -2,7 +2,7 @@
 
 ## Status
 
-Superseded by ADR 0022
+Superseded by ADR 0073 — 2026-09-21
 
 ## Context
 
