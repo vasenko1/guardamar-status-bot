@@ -20,6 +20,7 @@ from telegrambot.telegram import (
     _response_error,
     edit_message,
     edit_photo_media,
+    is_ambiguous_send_failure,
     pin_chat_message,
     send_message,
     send_photo,
@@ -139,6 +140,74 @@ class TelegramDeliveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(missing.diagnostic_code, "MESSAGE-NOT-FOUND")
         self.assertEqual(missing_pin.diagnostic_code, "MESSAGE-NOT-FOUND")
         self.assertEqual(malformed.diagnostic_code, "HTTP-400")
+
+    def test_ambiguous_send_failure_classification(self):
+        cases = (
+            (TelegramError("config", retryable=False, code="CONFIG"), False),
+            (
+                TelegramError(
+                    "length", retryable=False, code="MESSAGE-LENGTH"
+                ),
+                False,
+            ),
+            (
+                TelegramError(
+                    "policy", retryable=True, code="URL-POLICY"
+                ),
+                False,
+            ),
+            (
+                TelegramError(
+                    "bad request", retryable=False, code="HTTP-400", status=400
+                ),
+                False,
+            ),
+            (
+                TelegramError(
+                    "rate limit", retryable=True, code="HTTP-429", status=429
+                ),
+                False,
+            ),
+            (
+                TelegramError(
+                    "server", retryable=True, code="HTTP-503", status=503
+                ),
+                True,
+            ),
+            (TelegramError("timeout", retryable=True, code="TIMEOUT"), True),
+            (TelegramError("network", retryable=True, code="NETWORK"), True),
+            (TelegramError("redirect", retryable=False, code="REDIRECT"), True),
+            (
+                TelegramError(
+                    "content type", retryable=True, code="CONTENT-TYPE"
+                ),
+                True,
+            ),
+            (
+                TelegramError(
+                    "invalid json", retryable=True, code="INVALID-JSON"
+                ),
+                True,
+            ),
+            (
+                TelegramError(
+                    "invalid structure", retryable=True, code="INVALID-STRUCTURE"
+                ),
+                True,
+            ),
+            (
+                TelegramError(
+                    "no message id", retryable=True, code="NO-MESSAGE-ID"
+                ),
+                True,
+            ),
+        )
+
+        for error, expected in cases:
+            with self.subTest(code=error.diagnostic_code):
+                self.assertEqual(
+                    is_ambiguous_send_failure(error), expected
+                )
 
     async def test_get_updates_requests_only_messages(self):
         response = _SuccessfulResponse(
