@@ -1260,9 +1260,9 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
     async def test_appends_diagnostics_only_in_preview_wrapper(self):
         async def produce(*args, diagnostics=None, **kwargs):
             diagnostics.append(SourceDiagnostic(
-                "POLICE-NETWORK",
-                "Policía Local",
-                "официальный источник временно недоступен",
+                "CAMS-NETWORK",
+                "CAMS",
+                "источник прогноза временно недоступен",
             ))
             return "готовый дайджест"
 
@@ -1274,7 +1274,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("готовый дайджест", message)
         self.assertIn("🔧 Диагностика источников", message)
-        self.assertIn("[POLICE-NETWORK] Policía Local", message)
+        self.assertIn("[CAMS-NETWORK] CAMS", message)
 
     async def test_weekend_preview_neither_publishes_nor_writes_state(self):
         prepared = AsyncMock(return_value=0)
