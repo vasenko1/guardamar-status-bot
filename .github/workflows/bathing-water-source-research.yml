@@ -1,0 +1,54 @@
+name: Bathing-water source research
+
+on:
+  push:
+    branches:
+      - feat/bathing-water-quality-notifications
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      - name: Inspect live report metadata and sample dates
+        run: |
+          PYTHONPATH=src python - <<'PY'
+          import asyncio, re, subprocess, tempfile
+          import urllib.request
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+          from telegrambot.bathing_water import fetch_bathing_water_snapshot
+
+          async def main():
+              now = datetime.now(ZoneInfo("Europe/Madrid"))
+              programme = await fetch_bathing_water_snapshot(now)
+              print("PROGRAMME", programme)
+              url = programme["latest_report_url"]
+              req = urllib.request.Request(url, headers={"User-Agent":"guardamar-status-bot/1.0"})
+              with urllib.request.urlopen(req, timeout=20) as response:
+                  print("REPORT_URL", response.geturl())
+                  print("LAST_MODIFIED", response.headers.get("Last-Modified"))
+                  print("ETAG", response.headers.get("ETag"))
+                  payload = response.read(4 * 1024 * 1024)
+              with tempfile.NamedTemporaryFile(suffix=".pdf") as f:
+                  f.write(payload); f.flush()
+                  info = subprocess.run(["pdfinfo", f.name], text=True, capture_output=True, check=True).stdout
+                  for line in info.splitlines():
+                      if line.startswith(("CreationDate:", "ModDate:", "Producer:", "Creator:", "Author:", "Title:")):
+                          print("PDFINFO", line)
+                  text = subprocess.run(["pdftotext","-layout",f.name,"-"], text=True, capture_output=True, check=True).stdout
+              print("SAMPLE_LINES")
+              for line in text.split("\f",1)[0].splitlines():
+                  folded=line.upper()
+                  if "PLAYA" in folded or "FECHA DESC" in folded or re.search(r"\b\d{2}/\d{2}/\d{2}\b", line):
+                      print(repr(line))
+          asyncio.run(main())
+          PY
