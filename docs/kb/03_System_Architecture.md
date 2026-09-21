@@ -284,7 +284,7 @@ update command every five minutes from 10:10 through 10:40 in `Europe/Madrid`.
 The first update invocation that acquires the daily state lock attempts each
 event catalog once, independently of whether SafeBeach succeeds. These facts
 are retained for later publications and do not alone trigger replacement. The
-linked guide/catalog sync runs at 16:30. The electricity command runs at 20:30,
+linked guide/catalog sync runs at 09:02. The electricity command runs at 20:30,
 then after 5, 15 and 30 minutes, with a final 21:20 attempt. It publishes at most
 once for the next local date.
 
