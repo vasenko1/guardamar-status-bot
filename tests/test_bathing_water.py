@@ -127,6 +127,14 @@ class BathingWaterReportTests(unittest.TestCase):
             self._parse(unknown)
         self.assertEqual(caught.exception.diagnostic_code, "REPORT-SCHEMA")
 
+        extra = report_text().replace(
+            "PLAYA DE ORTIGUES",
+            "PLAYA DEL CAMP                              EXCELENTE           EXCELENTE           EXCELENTE           0                 0\nPLAYA DE ORTIGUES",
+        )
+        with self.assertRaises(BathingWaterSourceError) as caught:
+            self._parse(extra)
+        self.assertEqual(caught.exception.diagnostic_code, "REPORT-SCHEMA")
+
     def test_fingerprint_ignores_source_url_and_observation_time(self):
         first = self._parse()
         second = self._parse(
