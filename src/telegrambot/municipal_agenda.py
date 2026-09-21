@@ -201,6 +201,8 @@ def _cinema_title(value: str) -> str:
     if folded.startswith(monday_prefix):
         film = spanish_fallback(value[len(monday_prefix):].strip())
         return f"Кино по понедельникам: «{film}»"
+    if folded.startswith("кино по понедельникам:"):
+        return value
     for prefix in ("cine: ", "кино: "):
         if folded.startswith(prefix):
             return "🎬 " + value[len(prefix):].strip()
@@ -3653,13 +3655,7 @@ async def fetch_today_municipal_events(
         result.append(
             Event(
                 title=(
-                    _cinema_title(
-                        source.title_es
-                        if source.title_es.casefold().startswith(
-                            "cine de los lunes:"
-                        )
-                        else title
-                    )
+                    _cinema_title(title)
                     if "turismo_cinema" in source.sources else title
                 ),
                 starts_at=starts_at,
@@ -3706,10 +3702,6 @@ async def municipal_translation_items(
     items = [
         ("municipal_agenda", event.title_es)
         for event in events
-        if not (
-            "turismo_cinema" in event.sources
-            and event.title_es.casefold().startswith("cine de los lunes:")
-        )
     ]
     items.extend((
         (

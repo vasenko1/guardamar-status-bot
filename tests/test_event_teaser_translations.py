@@ -5,11 +5,30 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
-from telegrambot.event_translations import cached_translation, prepare_translations
+from telegrambot.event_translations import (
+    cached_translation,
+    prepare_translations,
+    reviewed_translation,
+)
 from telegrambot.gemini import GeminiError
 
 
 TZ = ZoneInfo("Europe/Madrid")
+
+
+class ReviewedEventTranslationTests(unittest.TestCase):
+    def test_the_miracle_club_titles_have_reviewed_russian_copy(self):
+        self.assertEqual(
+            reviewed_translation("Cine de los Lunes: El club de los milagros"),
+            "Кино по понедельникам: «Клуб чудес»",
+        )
+        self.assertEqual(
+            reviewed_translation(
+                "Sesión de cine con la película ‘El club de los milagros’ "
+                "en la biblioteca municipal"
+            ),
+            "Показ фильма «Клуб чудес»",
+        )
 
 
 class EventTeaserTranslationTests(unittest.IsolatedAsyncioTestCase):
