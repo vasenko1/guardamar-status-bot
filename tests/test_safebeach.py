@@ -12,7 +12,6 @@ from telegrambot.safebeach import (
     SafeBeachError,
     _read_page,
     fetch_beach_status,
-    in_intensive_window,
     in_query_window,
     is_complete_current_status,
     is_current_status,
@@ -70,7 +69,7 @@ def _marker(
 
 
 class SafeBeachNormalizationTests(unittest.TestCase):
-    def test_query_window_is_broader_than_intensive_monitoring(self):
+    def test_query_window_boundaries_are_inclusive(self):
         self.assertFalse(
             in_query_window(
                 datetime(2026, 5, 31, 23, 59, tzinfo=MADRID)
@@ -79,26 +78,6 @@ class SafeBeachNormalizationTests(unittest.TestCase):
         self.assertTrue(
             in_query_window(
                 datetime(2026, 6, 1, 0, 0, tzinfo=MADRID)
-            )
-        )
-        self.assertFalse(
-            in_intensive_window(
-                datetime(2026, 6, 14, 23, 59, tzinfo=MADRID)
-            )
-        )
-        self.assertTrue(
-            in_intensive_window(
-                datetime(2026, 6, 15, 0, 0, tzinfo=MADRID)
-            )
-        )
-        self.assertTrue(
-            in_intensive_window(
-                datetime(2026, 9, 15, 23, 59, tzinfo=MADRID)
-            )
-        )
-        self.assertFalse(
-            in_intensive_window(
-                datetime(2026, 9, 16, 0, 0, tzinfo=MADRID)
             )
         )
         self.assertTrue(
