@@ -1,0 +1,18 @@
+name: PR 161 regression
+on:
+  push:
+    branches:
+      - feat/bathing-water-quality-notifications
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Poppler
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      - name: Run full regression
+        run: PYTHONPATH=src python -m unittest discover -s tests -v
