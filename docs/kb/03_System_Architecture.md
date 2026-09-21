@@ -25,9 +25,10 @@ schemas, and library choices belong in later design work or ADRs.
 6. **Digest building** orders the remaining facts and formats one short
    message.
 7. **Telegram delivery** sends the early message and stores its message ID.
-8. **External update checks** run at 10:10–10:40 in five-minute steps. Three
-   bounded checkpoints (10:10, 10:25 and 10:40) may accept a newer CAMS
-   forecast until today's UTC cycle is accepted, compare only the remaining
+8. **External update checks** run at 10:10–10:40 in five-minute steps for the
+   beach lifecycle. CAMS uses only the 10:40 invocation for its early late-cycle
+   check; later recovery uses only the first invocation of already scheduled
+   operational windows until today's UTC cycle is accepted, comparing the remaining
    local day semantically, and send one compact reply only for a material
    change. From 1 June through 30 September, every update invocation also
    checks SafeBeach. The first valid current response with at least one flag
@@ -290,7 +291,7 @@ once for the next local date.
 An independent earthquake command runs at minute 55 of every hour. Each
 invocation performs one bounded request to the official IGN GeoRSS endpoint,
 parses at most 128 records with the standard library, filters them to magnitude
-2.7 or greater within 10 km of Guardamar, and exits. Its first successful run
+1.8 or greater within 20 km of Guardamar, and exits. Its first successful run
 seeds existing qualifying events silently while keeping fresh lower-magnitude
 records eligible for an IGN revision. Later qualifying events within a
 six-hour recovery window are sent once. Events observed within the same
