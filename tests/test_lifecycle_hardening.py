@@ -288,7 +288,7 @@ class LateEnvironmentTransactionTests(unittest.IsolatedAsyncioTestCase):
                     new=AsyncMock(),
                 ),
                 patch(
-                    "telegrambot.__main__._safebeach_is_in_season",
+                    "telegrambot.__main__.in_query_window",
                     return_value=False,
                 ),
                 patch("telegrambot.__main__.send_message", new=sent),
@@ -347,7 +347,7 @@ class LateEnvironmentTransactionTests(unittest.IsolatedAsyncioTestCase):
                     new=AsyncMock(),
                 ),
                 patch(
-                    "telegrambot.__main__._safebeach_is_in_season",
+                    "telegrambot.__main__.in_query_window",
                     return_value=False,
                 ),
                 patch("telegrambot.__main__.send_message", new=sent),
@@ -628,21 +628,21 @@ class BeachRootRetryTests(unittest.IsolatedAsyncioTestCase):
         state.write(value)
         return path
 
-    async def test_failed_root_edit_is_retried_before_ready_change_is_cleared(self):
+    async def test_failed_reply_is_retried_before_ready_change_is_cleared(self):
         now = datetime(2026, 9, 14, 12, 5, tzinfo=MADRID)
         with tempfile.TemporaryDirectory() as directory:
             publication_path = self._publication_state(directory, now)
             monitor_path = self._monitor_state(directory, now)
-            edited = AsyncMock(side_effect=[
+            sent = AsyncMock(side_effect=[
                 TelegramError(
                     "temporary failure",
                     retryable=True,
                     code="HTTP-500",
                     status=500,
                 ),
-                None,
+                30,
             ])
-            sent = AsyncMock(return_value=30)
+            edited = AsyncMock()
             env = {
                 "TELEGRAM_BOT_TOKEN": "telegram",
                 "TELEGRAM_CHAT_ID": "group",
@@ -665,8 +665,9 @@ class BeachRootRetryTests(unittest.IsolatedAsyncioTestCase):
 
                 self.assertEqual(await _run_command("monitor-updates"), 0)
 
-            self.assertEqual(edited.await_count, 2)
-            sent.assert_awaited_once()
+            edited.assert_not_awaited()
+            self.assertEqual(sent.await_count, 2)
+            self.assertEqual(sent.await_args.kwargs["reply_to_message_id"], 20)
             self.assertEqual(
                 OperationalUpdateState(monitor_path).read(now)["beach_ready"],
                 [],
@@ -674,7 +675,7 @@ class BeachRootRetryTests(unittest.IsolatedAsyncioTestCase):
             root_status, _ = PublicationState(
                 publication_path
             ).beach_root_facts(now.date())
-            self.assertEqual(root_status.nearby_flags, (("Centre", "yellow"),))
+            self.assertEqual(root_status.nearby_flags, (("Centre", "green"),))
 
     async def test_missing_root_during_reply_recreates_root_before_retry(self):
         now = datetime(2026, 9, 14, 12, 5, tzinfo=MADRID)
@@ -687,7 +688,7 @@ class BeachRootRetryTests(unittest.IsolatedAsyncioTestCase):
                 code="MESSAGE-NOT-FOUND",
                 status=400,
             )
-            edited = AsyncMock(side_effect=[None, missing])
+            edited = AsyncMock(side_effect=[missing])
             sent = AsyncMock(side_effect=[missing, 30, 31])
             with (
                 patch.dict(os.environ, {
@@ -704,7 +705,7 @@ class BeachRootRetryTests(unittest.IsolatedAsyncioTestCase):
                 clock.now.return_value = now
                 self.assertEqual(await _run_command("monitor-updates"), 0)
 
-            self.assertEqual(edited.await_count, 2)
+            edited.assert_awaited_once()
             self.assertEqual(sent.await_count, 3)
             self.assertEqual(
                 sent.await_args_list[0],

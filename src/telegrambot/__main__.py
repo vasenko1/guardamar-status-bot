@@ -804,7 +804,8 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     )
                 except TelegramError as exc:
                     if exc.diagnostic_code != "MESSAGE-NOT-FOUND":
-                        raise
+                        logging.warning("Beach update delivery failed: %s", exc)
+                        return 1
                     logging.warning(
                         "Beach root disappeared before reply; recreating it"
                     )
@@ -827,13 +828,17 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     )
                     if root_result == "failure" or beach_anchor is None:
                         return 1
-                    await _send_operational_update(
-                        bot_token,
-                        chat_id,
-                        beach_message,
-                        beach_anchor,
-                        fallback_if_missing=False,
-                    )
+                    try:
+                        await _send_operational_update(
+                            bot_token,
+                            chat_id,
+                            beach_message,
+                            beach_anchor,
+                            fallback_if_missing=False,
+                        )
+                    except TelegramError as retry_exc:
+                        logging.warning("Beach update retry failed: %s", retry_exc)
+                        return 1
                 clear_beach_ready(value)
                 monitor_state.write(value)
 

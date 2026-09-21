@@ -340,10 +340,6 @@ class MayorChannelTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value=digest),
             ),
             patch(
-                "telegrambot.morning.fetch_beach_status",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
                 "telegrambot.morning.fetch_today_events",
                 new=AsyncMock(return_value=()),
             ),

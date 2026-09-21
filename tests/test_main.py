@@ -443,8 +443,8 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                     new=AsyncMock(return_value="no_update"),
                 ),
                 patch(
-                    "telegrambot.__main__.check_late_environment",
-                    new=AsyncMock(),
+                    "telegrambot.__main__._cams_monitor_checkpoint",
+                    return_value=False,
                 ),
                 patch(
                     "telegrambot.__main__.load_snapshot",
@@ -529,8 +529,8 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                     new=AsyncMock(return_value="no_update"),
                 ),
                 patch(
-                    "telegrambot.__main__.check_late_environment",
-                    new=AsyncMock(),
+                    "telegrambot.__main__._cams_monitor_checkpoint",
+                    return_value=False,
                 ),
                 patch(
                     "telegrambot.__main__.load_snapshot",
@@ -651,8 +651,8 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                     new=AsyncMock(return_value="no_update"),
                 ),
                 patch(
-                    "telegrambot.__main__.check_late_environment",
-                    new=AsyncMock(),
+                    "telegrambot.__main__._cams_monitor_checkpoint",
+                    return_value=False,
                 ),
                 patch(
                     "telegrambot.__main__.load_snapshot",
@@ -683,7 +683,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 sent.await_args.kwargs["reply_to_message_id"],
                 20,
             )
-            self.assertIn("Жёлтый", sent.await_args.args[2])
+            self.assertIn("🟡 Centre / Babilònia", sent.await_args.args[2])
             self.assertEqual(
                 PublicationState(state_path).beach_root_facts(first.date())[
                     0
