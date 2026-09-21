@@ -131,12 +131,19 @@ class BathingWaterGuideTests(unittest.IsolatedAsyncioTestCase):
         text = _bathing_water_notice_text(bathing_report(moment))
 
         self.assertIn("🧪 <b>Качество воды на пляжах</b>", text)
-        self.assertIn("качество воды отличное на всех 7 пляжах", text)
-        self.assertIn("Внешний вид воды: хорошо — Centro", text)
-        self.assertIn("Состояние песка: хорошо — La Roqueta, Ortigues", text)
-        self.assertIn("Остальные показатели визуального осмотра — отлично", text)
-        self.assertIn("15–21 июня 2026", text)
-        self.assertIn("Официальный отчёт", text)
+        self.assertIn("🗓 15–21 июня 2026", text)
+        self.assertIn("<b>Анализ воды</b>", text)
+        self.assertIn("✅ Отлично — все 7 пляжей", text)
+        self.assertIn("👁 <b>Внешний осмотр</b>", text)
+        self.assertIn("• Вода — хорошо:", text)
+        self.assertIn("   Centro", text)
+        self.assertIn("• Песок — хорошо:", text)
+        self.assertIn("   La Roqueta, Ortigues", text)
+        self.assertIn("Остальные визуальные оценки — отлично", text)
+        self.assertIn("🏛 Источник: Ayuntamiento de Guardamar del Segura", text)
+        self.assertIn("<b>обЪявления Гуардамар</b>", text)
+        self.assertNotIn("Официальный отчёт", text)
+        self.assertNotIn("https://www.guardamardelsegura.es/wp-content/uploads/", text)
         self.assertNotIn("🌊", text)
 
     def test_notice_groups_nonexcellent_lab_results_by_beach(self):
@@ -148,10 +155,15 @@ class BathingWaterGuideTests(unittest.IsolatedAsyncioTestCase):
 
         text = _bathing_water_notice_text(report)
 
-        self.assertIn("Отличное — Centro, La Roqueta, Moncayo, Ortigues", text)
-        self.assertIn("Хорошее — Tusales", text)
-        self.assertIn("Удовлетворительное — Vivers", text)
-        self.assertIn("Недостаточное — Babilonia", text)
+        self.assertIn("• Отлично:", text)
+        self.assertIn("   Centro, La Roqueta", text)
+        self.assertIn("   Moncayo, Ortigues", text)
+        self.assertIn("• Хорошо:", text)
+        self.assertIn("   Tusales", text)
+        self.assertIn("• Удовлетворительно:", text)
+        self.assertIn("   Vivers", text)
+        self.assertIn("• Недостаточно:", text)
+        self.assertIn("   Babilonia", text)
 
     async def test_first_parsed_report_is_silent_baseline(self):
         moment = datetime(2026, 6, 22, 9, 2, tzinfo=MADRID)
