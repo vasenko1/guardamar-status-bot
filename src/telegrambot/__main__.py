@@ -84,7 +84,7 @@ from .pesca_cv import PescaCvSourceError, pesca_cv_translation_items
 from .hidraqua import HidraquaError, HidraquaState, monitor_once
 from .gemini import GeminiError
 from .pharmacy import PharmacyError, refresh_pharmacy_catalog
-from .morning import _safebeach_is_in_season, produce_message
+from .morning import produce_message
 from .operational_updates import (
     OperationalUpdateState,
     OperationalUpdateStateError,
@@ -110,6 +110,8 @@ from .pinned import (
 from .safebeach import (
     SafeBeachError,
     fetch_beach_status,
+    in_intensive_window,
+    in_query_window,
     is_complete_current_status,
     is_current_status,
 )
@@ -700,7 +702,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             "MORNING_DIGEST_STATE_PATH", DEFAULT_STATE_PATH
         )))
         if _cams_monitor_checkpoint(schedule):
-            if _safebeach_is_in_season(now):
+            if in_intensive_window(now):
                 mayor_result = await _refresh_mayor_beach_notice(
                     now, publication_state, bot_token, chat_id
                 )
@@ -1415,8 +1417,14 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         now, state, municipal_path, agenda_path, translations_path
     )
 
-    if not _safebeach_is_in_season(now):
-        logging.info("SKIP: SafeBeach update phase is out of season")
+    if not in_query_window(now):
+        logging.info("SKIP: SafeBeach is outside the annual query window")
+        return 0
+    final_attempt = (now.hour, now.minute) >= (10, 40)
+    if not in_intensive_window(now) and not final_attempt:
+        logging.info(
+            "SKIP: SafeBeach fringe window uses only the final 10:40 probe"
+        )
         return 0
     if state.beach_message_id(now.date()) is not None:
         mayor_result = await _refresh_mayor_beach_notice(
@@ -1426,7 +1434,6 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             return 1
         logging.info("SKIP: daily beach root already exists")
         return 0
-    final_attempt = (now.hour, now.minute) >= (10, 40)
     beach = None
     try:
         candidate = await fetch_beach_status(now)

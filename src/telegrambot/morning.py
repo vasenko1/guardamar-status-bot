@@ -37,7 +37,11 @@ from .facv import FacvSourceError, fetch_today_facv_events
 from .pesca_cv import PescaCvSourceError, fetch_today_pesca_cv_events
 from .pharmacy import duty_pharmacies_on
 from .police import PoliceTrafficError, fetch_traffic_notices
-from .safebeach import SafeBeachError, fetch_beach_status
+from .safebeach import (
+    SafeBeachError,
+    fetch_beach_status,
+    in_query_window,
+)
 from .sun import sun_times
 from .environment import (
     EnvironmentError, fetch_cams, fetch_meteosalud, fetch_meteosalud_cold,
@@ -49,8 +53,6 @@ from .models import (
 
 LOGGER = logging.getLogger(__name__)
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
-SAFEBEACH_SEASON_START = (6, 15)
-SAFEBEACH_SEASON_END = (9, 15)
 _ROUTINE_EVENT_TITLES = frozenset({
     "actividades del centro social juvenil",
     "actividades del centro social juvenil csj",
@@ -58,12 +60,6 @@ _ROUTINE_EVENT_TITLES = frozenset({
     "мероприятия центра социальнои молодежи",
     "мероприятия центра социальнои молодежи csj",
 })
-
-
-def _safebeach_is_in_season(now: datetime) -> bool:
-    local = now.astimezone(GUARDAMAR_TIMEZONE)
-    month_day = (local.month, local.day)
-    return SAFEBEACH_SEASON_START <= month_day <= SAFEBEACH_SEASON_END
 
 
 def _normalized_event_title(value: str) -> str:
@@ -588,7 +584,7 @@ async def produce_message(
     translation_path = translation_cache_path or Path("state/event_translations.json")
     beach_task = (
         asyncio.create_task(fetch_beach_status())
-        if collect_beach and _safebeach_is_in_season(now)
+        if collect_beach and in_query_window(now)
         else None
     )
     agenda_task = asyncio.create_task(

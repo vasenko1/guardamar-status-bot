@@ -233,13 +233,19 @@ unavailable during replacement, the same-day prepared AEMET snapshot supplies
 the weather blocks alongside the newly verified beach information.
 
 The SafeBeach adapter performs one bounded HTML request per invocation and
-does not add an internal retry or response cache. The external five-minute invocations
-provide recovery. It accepts only a page carrying today's local calendar date
-and independently valid, timestamped beach records. It returns every valid
-record among the six known Guardamar zones in fixed product order. Conflicting,
-duplicate, or malformed records are omitted. Update checks before 10:40
-continue until all six zones are present. The 10:40 attempt may use any
-non-empty valid set so a
+does not add an internal retry or response cache. Scheduled product requests
+are allowed only from 1 June through 30 September. During the intensive 15 June through
+15 September window, the existing five-minute 10:10–10:40 invocations provide
+recovery and the later operational monitor may confirm flag changes. In the
+fringe windows, 1–14 June and 16–30 September, only the final 10:40 update
+invocation probes SafeBeach; earlier update invocations keep doing their other
+bounded work without contacting SafeBeach. From 1 October through 31 May there
+are no scheduled SafeBeach requests. The adapter accepts only a page carrying
+today's local calendar date and independently valid, timestamped beach records.
+It returns every valid record among the six known Guardamar zones in fixed
+product order. Conflicting, duplicate, or malformed records are omitted.
+Within the intensive window, update checks before 10:40 continue until all six
+zones are present. The 10:40 attempt may use any non-empty valid set so a
 persistently missing record does not suppress all beach information.
 Separate attempts never merge beach records. The daily publication state keeps
 only the whole response with the most verified beaches, breaking ties in favor
