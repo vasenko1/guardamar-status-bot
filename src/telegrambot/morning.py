@@ -36,7 +36,6 @@ from .am_guardamar import AmGuardamarError, fetch_today_am_guardamar_events
 from .facv import FacvSourceError, fetch_today_facv_events
 from .pesca_cv import PescaCvSourceError, fetch_today_pesca_cv_events
 from .pharmacy import duty_pharmacies_on
-from .police import PoliceTrafficError, fetch_traffic_notices
 from .sun import sun_times
 from .environment import (
     EnvironmentError, fetch_cams, fetch_meteosalud, fetch_meteosalud_cold,
@@ -628,9 +627,6 @@ async def produce_message(
             translation_path,
         )
     )
-    traffic_task = asyncio.create_task(
-        fetch_traffic_notices(now, gemini_api_key or None)
-    )
     meteosalud_task = (
         asyncio.create_task(fetch_meteosalud(now))
         if fetch_environment
@@ -823,19 +819,6 @@ async def produce_message(
             ))
         pesca_cv_events = ()
 
-    try:
-        traffic_notices = await traffic_task
-    except PoliceTrafficError as exc:
-        LOGGER.warning(
-            "Policía Local unavailable; omitting traffic notices: %s",
-            exc,
-        )
-        if diagnostics is not None:
-            diagnostics.append(
-                source_error("POLICE", "Policía Local", exc)
-            )
-        traffic_notices = ()
-
     if market_status_task is not None:
         try:
             if await market_status_task:
@@ -905,7 +888,6 @@ async def produce_message(
         replace(
             digest,
             pharmacies=pharmacies,
-            traffic_notices=traffic_notices,
             holidays=official_holidays_on(
                 now.astimezone(GUARDAMAR_TIMEZONE).date()
             ),
