@@ -20,7 +20,6 @@ class MorningMeteosaludTests(unittest.IsolatedAsyncioTestCase):
             patch("telegrambot.morning.fetch_today_municipal_events", new=AsyncMock(return_value=())),
             patch("telegrambot.morning.fetch_today_library_events", new=AsyncMock(return_value=())),
             patch("telegrambot.morning.fetch_today_am_guardamar_events", new=AsyncMock(return_value=())),
-            patch("telegrambot.morning.fetch_traffic_notices", new=AsyncMock(return_value=())),
             patch("telegrambot.morning.fetch_meteosalud", new=heat_mock),
             patch("telegrambot.morning.fetch_meteosalud_cold", new=cold_mock),
             patch("telegrambot.morning.fetch_cams", new=AsyncMock(return_value=cams)) as cams_fetch,
