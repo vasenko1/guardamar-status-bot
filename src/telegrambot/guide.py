@@ -590,7 +590,6 @@ def _bathing_water_notice_text(snapshot: dict) -> str:
     beaches = snapshot["beaches"]
     lines = [
         "🧪 <b>Контроль зон купания</b>",
-        f"📅 Пробы: {_bathing_water_sample_dates_text(snapshot)}",
         "",
         "<b>Лабораторный анализ воды</b>",
     ]
@@ -634,7 +633,7 @@ def _bathing_water_notice_text(snapshot: dict) -> str:
             if names:
                 visual_exceptions.append((label, rating, names))
 
-    lines.extend(["", "👁 <b>Визуальный осмотр</b>"])
+    lines.extend(["", "👁 <b>Визуальный контроль</b>"])
     if not visual_exceptions:
         lines.append("✅ Вода и песок — отлично на всех пляжах")
     else:
@@ -647,7 +646,8 @@ def _bathing_water_notice_text(snapshot: dict) -> str:
 
     lines.extend([
         "",
-        "🏛 Контроль: Servicio de Calidad de Aguas · Generalitat Valenciana",
+        f"📅 Пробы: {_bathing_water_sample_dates_text(snapshot)}",
+        "🏛 Данные: Servicio de Calidad de Aguas · Generalitat Valenciana",
     ])
     return with_footer("\n".join(lines))
 
