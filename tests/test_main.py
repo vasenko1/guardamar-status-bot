@@ -247,7 +247,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 new_base,
             )
 
-    async def test_safebeach_fringe_window_waits_for_single_final_probe(self):
+    async def test_safebeach_query_window_uses_normal_recovery_checkpoint(self):
         with tempfile.TemporaryDirectory() as directory:
             state_path = Path(directory) / "delivery.json"
             now = datetime(2026, 9, 21, 10, 25, tzinfo=MADRID)
@@ -276,44 +276,6 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 ),
             ):
                 clock.now.return_value = now
-                self.assertEqual(await _run_command("update"), 0)
-
-        beach_fetch.assert_not_awaited()
-
-    async def test_safebeach_fringe_window_probes_once_at_final_checkpoint(self):
-        with tempfile.TemporaryDirectory() as directory:
-            state_path = Path(directory) / "delivery.json"
-            now = datetime(2026, 9, 21, 10, 40, tzinfo=MADRID)
-            state = PublicationState(state_path)
-            state.mark_morning(now.date(), 10, now)
-            beach_fetch = AsyncMock(return_value=None)
-            with (
-                patch.dict(os.environ, {
-                    "AEMET_API_KEY": "aemet",
-                    "TELEGRAM_BOT_TOKEN": "telegram",
-                    "TELEGRAM_CHAT_ID": "group",
-                    "MORNING_DIGEST_STATE_PATH": str(state_path),
-                }),
-                patch("telegrambot.__main__.datetime") as clock,
-                patch(
-                    "telegrambot.__main__._cams_update_checkpoint",
-                    return_value=False,
-                ),
-                patch(
-                    "telegrambot.__main__._refresh_event_catalogs_once",
-                    new=AsyncMock(),
-                ),
-                patch(
-                    "telegrambot.__main__.fetch_beach_status",
-                    new=beach_fetch,
-                ),
-                patch(
-                    "telegrambot.__main__.latest_beach_notice",
-                    new=AsyncMock(return_value=None),
-                ),
-            ):
-                clock.now.return_value = now
-                clock.fromisoformat.side_effect = datetime.fromisoformat
                 self.assertEqual(await _run_command("update"), 0)
 
         beach_fetch.assert_awaited_once_with(now)
