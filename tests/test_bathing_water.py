@@ -122,10 +122,7 @@ class BathingWaterReportTests(unittest.TestCase):
             self._parse(missing)
         self.assertEqual(caught.exception.diagnostic_code, "REPORT-SCHEMA")
 
-        unknown = report_text().replace(
-            "PLAYA CENTRO                             EXCELENTE",
-            "PLAYA CENTRO                             REGULAR  ",
-        )
+        unknown = report_text(centre_water="REGULAR")
         with self.assertRaises(BathingWaterSourceError) as caught:
             self._parse(unknown)
         self.assertEqual(caught.exception.diagnostic_code, "REPORT-SCHEMA")
