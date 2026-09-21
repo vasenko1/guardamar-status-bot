@@ -72,7 +72,7 @@ awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" -v sync="$SYNC" -v bathing="$B
     managed { next }
     $0 == "30 16 * * * " shbin " " sync { next }
     $0 == "35 19 * 6-8 * " shbin " " bathing { next }
-    $0 == "35 19 1-15 9 * " shbin " " bathing { next }
+    $0 == "35 19 1-20 9 * " shbin " " bathing { next }
     $0 == "42 9,11 * * * " shbin " " publish { next }
     { print }
 ' "$CURRENT" >"$UPDATED"
@@ -91,4 +91,4 @@ mv "$UPDATED" "$CURRENT"
 } | crontab -
 
 sv up crond
-echo "Справочник: 09:02 ежедневно; зоны купания 19:35 ежедневно 01.06-15.09; Zona Azul 19:45 14.06/15.09; занятия 09:42 и retry 11:42 Europe/Madrid"
+echo "Справочник: 09:02 ежедневно; зоны купания 19:35 ежедневно 01.06-20.09; Zona Azul 19:45 14.06/15.09; занятия 09:42 и retry 11:42 Europe/Madrid"
