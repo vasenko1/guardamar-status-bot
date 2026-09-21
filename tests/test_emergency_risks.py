@@ -196,7 +196,7 @@ class EmergencyRiskTests(unittest.TestCase):
         self.assertIn("Экстремальный риск лесных пожаров", transition)
         self.assertIn("максимальный уровень — 3 из 3", transition)
 
-    def test_high_fire_transitions_use_clear_preventive_copy(self):
+    def test_high_fire_transition_uses_calm_resident_copy(self):
         value = EmergencyRiskState.empty()
         value["published"]["fire_level"] = 1
         value["published"]["dry_level"] = 1
@@ -206,9 +206,11 @@ class EmergencyRiskTests(unittest.TestCase):
             "alert_id": 2,
             "observed_at": NOW.isoformat(),
         }
+
         message = _transition(value)
+
         self.assertIsNotNone(message)
-        self.assertIn("Повышен риск лесных пожаров", message)
+        self.assertIn("🔥 <b>Повышен риск лесных пожаров</b>", message)
         self.assertIn(
             "сегодня действует высокий уровень риска — 2 из 3",
             message,
@@ -219,41 +221,109 @@ class EmergencyRiskTests(unittest.TestCase):
         )
         self.assertIn("не бросайте тлеющие окурки", message)
         self.assertIn(
-            "пожара или непосредственной угрозы городу нет",
+            "Это профилактическая информация о пожарной опасности, "
+            "а не сообщение о произошедшем пожаре.",
             message,
         )
-        self.assertNotIn("500 м от неё", message)
+        self.assertNotIn("500 м", message)
         self.assertNotIn("сельскохозяйственных растительных остатков", message)
+        self.assertNotIn("🚫", message)
 
-        value["published"]["fire_level"] = 2
-        value["previfoc"]["fire_level"] = 1
-        message = _transition(value)
-        self.assertIsNotNone(message)
-        self.assertIn("Риск лесных пожаров снижен", message)
-        self.assertIn("уровень 1 из 3", message)
-        self.assertIn(
-            "Ограничения, связанные с высоким уровнем риска",
-            message,
-        )
-
-    def test_extreme_fire_downgrade_keeps_high_risk_context(self):
+    def test_extreme_fire_transition_is_clear_but_not_alarmist(self):
         value = EmergencyRiskState.empty()
+        value["published"]["fire_level"] = 2
         value["published"]["dry_level"] = 1
         value["previfoc"] = {
             "fire_level": 3,
             "dry_thunderstorm_level": 1,
-            "alert_id": 1,
+            "alert_id": 3,
             "observed_at": NOW.isoformat(),
         }
-        _acknowledge(value)
-        self.assertEqual(value["published"]["fire_level"], 3)
 
-        value["previfoc"]["fire_level"] = 2
         message = _transition(value)
+
         self.assertIsNotNone(message)
-        self.assertIn("Риск лесных пожаров снижен", message)
-        self.assertIn("экстремального до высокого — 2 из 3", message)
-        self.assertIn("по-прежнему запрещено", message)
+        self.assertIn("🔥 <b>Экстремальный риск лесных пожаров</b>", message)
+        self.assertIn("максимальный уровень риска — 3 из 3", message)
+        self.assertIn("будьте предельно осторожны", message)
+        self.assertIn("источниками огня и тлеющими окурками", message)
+        self.assertIn(
+            "а не то, что пожар уже произошёл",
+            message,
+        )
+        self.assertNotIn("🚫", message)
+
+    def test_extreme_to_high_fire_transition_keeps_resident_guidance(self):
+        value = EmergencyRiskState.empty()
+        value["published"]["fire_level"] = 3
+        value["published"]["dry_level"] = 1
+        value["previfoc"] = {
+            "fire_level": 2,
+            "dry_thunderstorm_level": 1,
+            "alert_id": 4,
+            "observed_at": NOW.isoformat(),
+        }
+
+        message = _transition(value)
+
+        self.assertIsNotNone(message)
+        self.assertIn("🔥 <b>Риск лесных пожаров снижен</b>", message)
+        self.assertIn("с экстремального до высокого — 2 из 3", message)
+        self.assertIn("Риск остаётся повышенным", message)
+        self.assertIn("не бросайте тлеющие окурки", message)
+        self.assertNotIn("500 м", message)
+        self.assertNotIn("сельскохозяйственных растительных остатков", message)
+        self.assertNotIn("🚫", message)
+
+    def test_fire_transition_to_level_one_is_short_and_reassuring(self):
+        for previous_fire in (2, 3):
+            with self.subTest(previous_fire=previous_fire):
+                value = EmergencyRiskState.empty()
+                value["published"]["fire_level"] = previous_fire
+                value["published"]["dry_level"] = 1
+                value["previfoc"] = {
+                    "fire_level": 1,
+                    "dry_thunderstorm_level": 1,
+                    "alert_id": 5,
+                    "observed_at": NOW.isoformat(),
+                }
+
+                message = _transition(value)
+
+                self.assertIsNotNone(message)
+                self.assertIn("🔥 <b>Риск лесных пожаров снижен</b>", message)
+                self.assertIn(
+                    "уровень 1 из 3 — низкий/средний риск",
+                    message,
+                )
+                self.assertIn(
+                    "Повышенный уровень риска больше не действует.",
+                    message,
+                )
+                self.assertIn(
+                    "Обычные правила осторожного обращения с огнём "
+                    "в природных зонах сохраняются.",
+                    message,
+                )
+                self.assertNotIn("сезонные правила", message)
+                self.assertNotIn("🚫", message)
+
+    def test_direct_low_to_extreme_fire_transition_uses_extreme_copy(self):
+        value = EmergencyRiskState.empty()
+        value["published"]["fire_level"] = 1
+        value["published"]["dry_level"] = 1
+        value["previfoc"] = {
+            "fire_level": 3,
+            "dry_thunderstorm_level": 1,
+            "alert_id": 6,
+            "observed_at": NOW.isoformat(),
+        }
+
+        message = _transition(value)
+
+        self.assertIsNotNone(message)
+        self.assertIn("Экстремальный риск лесных пожаров", message)
+        self.assertIn("максимальный уровень риска — 3 из 3", message)
 
     def test_dry_thunderstorm_transitions_cover_probable_high_and_clear(self):
         value = EmergencyRiskState.empty()
