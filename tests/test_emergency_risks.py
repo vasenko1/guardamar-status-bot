@@ -243,7 +243,7 @@ class EmergencyRiskTests(unittest.TestCase):
         self.assertIn("высокий риск сухих гроз", message)
         self.assertNotIn("экстремальный", message)
 
-    def test_morning_digest_renders_only_compact_material_risk_lines(self):
+    def test_morning_digest_omits_previfoc_but_keeps_hydrology(self):
         message = build_message(
             MorningDigest(
                 weather=None,
@@ -255,13 +255,12 @@ class EmergencyRiskTests(unittest.TestCase):
             ),
             now=NOW,
         )
-        self.assertIn("🔥 Пожарная опасность: <b>высокая</b>.", message)
-        self.assertIn("⚡ Сухие грозы: <b>высокий риск</b>.", message)
+        self.assertNotIn("Пожарная опасность", message)
+        self.assertNotIn("Сухие грозы", message)
         self.assertIn(
             "🌊 CCE: действует гидрологическое предупреждение.",
             message,
         )
-        self.assertNotIn("низкий/средний", message)
 
     def test_morning_values_require_fresh_previfoc_observation(self):
         with tempfile.TemporaryDirectory() as directory:
