@@ -29,15 +29,17 @@ schemas, and library choices belong in later design work or ADRs.
    bounded checkpoints (10:10, 10:25 and 10:40) may accept a newer CAMS
    forecast until today's UTC cycle is accepted, compare only the remaining
    local day semantically, and send one compact reply only for a material
-   change. Each
-   process checks SafeBeach first, retains at most the best whole normalized
-   partial response for this window, and attempts each event catalog at most
-   once that day so later event facts are saved without seven repeat calls.
-9. **Beach root** checks the Mayor channel during the initial SafeBeach window
-   and again only on the first invocation of already scheduled operational
-   windows. Verified beach or newer explicit Mayor bathing transitions create
-   or refresh one standalone beach root; they never replace or delete the
-   Morning Digest.
+   change. From 1 June through 30 September, every update invocation also
+   checks SafeBeach. The first valid current response with at least one flag
+   creates the separate beach root immediately; later valid responses edit
+   that same root through 10:40. Event catalogs are attempted at most once
+   that day so later event facts are saved without seven repeat calls.
+9. **Beach root** is independent of Morning Digest content. Its SafeBeach
+   snapshot is live only during 10:10–10:40; after that it becomes the
+   operational baseline and confirmed SafeBeach changes are separate replies.
+   A missing initial root may still be created by the first later confirmed
+   status. Newer explicit Mayor bathing restrictions remain an independent
+   safety signal and may refresh the root.
 10. **Minimal state** keeps the local date, both Telegram message IDs,
    morning publication time, and cleanup result.
 11. **Exit** ends every process; no collector or watcher remains active.
@@ -235,21 +237,22 @@ the weather blocks alongside the newly verified beach information.
 The SafeBeach adapter performs one bounded HTML request per invocation and
 does not add an internal retry or response cache. Scheduled SafeBeach requests
 are allowed only from 1 June through 30 September; from 1 October through
-31 May there are none. The existing 10:10–10:40 update invocations provide
-recovery inside that annual window, while the later operational monitor follows
-its own existing cron cadence and the same calendar guard. The adapter accepts
-only a page carrying today's local calendar date and independently valid,
-timestamped beach records. It returns every valid record among the six known
-Guardamar zones in fixed product order. Conflicting, duplicate, or malformed
-records are omitted. Update checks before 10:40 continue until all six zones are
-present. The 10:40 attempt may use any non-empty valid set so a persistently
-missing record does not suppress all beach information.
-Separate attempts never merge beach records. The daily publication state keeps
-only the whole response with the most verified beaches, breaking ties in favor
-of the later observation. A valid current 10:40 response remains authoritative;
-the attempt reuses the stored candidate only after a timeout or invalid final
-response. Candidates older than the bounded window or from another date are
-ignored and successful replacement removes the temporary record.
+31 May there are none. Morning Digest collection never calls SafeBeach.
+The 10:10–10:40 update invocations request it every five minutes inside the
+annual window. Any valid current response with at least one known beach flag
+is publishable immediately: the first creates the daily beach root and later
+responses edit that root in place. Separate responses are never merged; every
+edit represents one whole current source response, so missing records do not
+survive as synthetic current flags.
+
+After 10:40, the existing root supplies the operational baseline. The later
+monitor follows its bounded cron cadence, confirms flag/jellyfish transitions,
+and publishes them as replies instead of rewriting the SafeBeach snapshot in
+the root. If no root existed by 10:40, a first later confirmed status may
+create it as recovery. The adapter accepts only a page carrying today's local
+calendar date and independently valid, timestamped records among the six known
+Guardamar zones; conflicting, duplicate, malformed, inactive or ended records
+are omitted.
 
 Mayor, Policía Local, and municipal-agenda transports accept only their exact
 official HTTPS hosts, expected content types, and bounded responses. Gemini
