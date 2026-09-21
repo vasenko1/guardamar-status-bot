@@ -233,8 +233,8 @@ unavailable during replacement, the same-day prepared AEMET snapshot supplies
 the weather blocks alongside the newly verified beach information.
 
 The SafeBeach adapter performs one bounded HTML request per invocation and
-does not add an internal retry or response cache. Source requests are allowed
-only from 1 June through 30 September. During the intensive 15 June through
+does not add an internal retry or response cache. Scheduled product requests
+are allowed only from 1 June through 30 September. During the intensive 15 June through
 15 September window, the existing five-minute 10:10–10:40 invocations provide
 recovery and the later operational monitor may confirm flag changes. In the
 fringe windows, 1–14 June and 16–30 September, only the final 10:40 update
