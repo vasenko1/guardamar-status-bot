@@ -55,7 +55,6 @@ from .music_school import (
 )
 from .pinned import (
     DEFAULT_PINNED_STATE_PATH,
-    ORA_INFO_URL,
     PinnedGuideState,
     publish_pinned_guide,
     telegram_message_link,
@@ -79,6 +78,7 @@ DEFAULT_GUIDE_STATE_PATH = "state/guide.json"
 AQUALIDER_ORIGIN = "https://aqualidernatacion.simplybook.it"
 AQUALIDER_BASE_URL = f"{AQUALIDER_ORIGIN}/v2"
 WIFI_SOURCE_PAGE_URL = "https://www.guardamardelsegura.es/wifis-municipales/"
+ORA_INFO_URL = "https://oraguardamar.gruposetex.es/tarifas-y-horarios"
 WIFI_VERIFIED_ASSET_URL = (
     "https://www.guardamardelsegura.es/wp-content/uploads/2021/06/"
     "PLANO-WIFIS-GUARDAMAR-PU%CC%81BLICAS.pdf"
@@ -769,25 +769,19 @@ def _parking_notice_key(local_day: date) -> Optional[str]:
     return f"{local_day.year}:{next_day}"
 
 
-def _parking_notice_text(
-    notice_key: str,
-    chat_id: str,
-    messages: Dict[str, int],
-) -> str:
-    parking = telegram_message_link(chat_id, messages["parking"])
+def _parking_notice_text(notice_key: str) -> str:
+    """Render a self-contained ORA mode transition without a guide card."""
+
     if notice_key.endswith(":paid"):
         return with_footer(
             "🅿️ <b>Zona Azul — с завтрашнего дня платно</b>\n\n"
-            "С <b>15 июня</b> в Гуардамаре начинается летний платный режим Zona Azul. "
-            "Оплата действует <b>ежедневно с 10:00 до 20:00</b> и продлится до "
-            "<b>15 сентября включительно</b>.\n\n"
-            f"Условия и официальный источник — <a href=\"{parking}\"><b>в карточке парковки</b></a>."
+            "С <b>15 июня</b> в Гуардамаре действует платный режим Zona Azul.\n"
+            "<b>Ежедневно · 10:00–20:00</b>.\n\n"
+            "Платный режим действует до <b>15 сентября включительно</b>."
         )
     return with_footer(
         "🅿️ <b>Zona Azul — с завтрашнего дня бесплатно</b>\n\n"
-        "Платный летний сезон завершён. С <b>16 сентября</b> сезонная Zona Azul "
-        "в Гуардамаре снова бесплатна.\n\n"
-        f"Условия и официальный источник — <a href=\"{parking}\"><b>в карточке парковки</b></a>."
+        "С <b>16 сентября</b> сезонная Zona Azul в Гуардамаре бесплатна."
     )
 
 
@@ -1084,11 +1078,7 @@ async def sync_guide(now: datetime) -> str:
                         parking_notice_id = await send_message(
                             bot_token,
                             chat_id,
-                            _parking_notice_text(
-                                parking_notice_key,
-                                chat_id,
-                                messages,
-                            ),
+                            _parking_notice_text(parking_notice_key),
                             disable_notification=False,
                             retry_only_rate_limits=True,
                         )
