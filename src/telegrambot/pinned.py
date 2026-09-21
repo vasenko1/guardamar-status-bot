@@ -160,48 +160,6 @@ CAMERAS = with_footer(
 )
 
 
-WIFI = with_footer(
-    """📶 <b>Бесплатный Wi-Fi в Гуардамаре</b>
-
-В городе есть <b>7 муниципальных точек</b> бесплатного Wi-Fi.
-
-🔓 <b>WiFi4EU · пароль не нужен</b>
-При первом подключении откроется страница входа — достаточно подтвердить подключение. Документ и местная регистрация не нужны.
-
-🎵 <a href="https://www.google.com/maps/search/?api=1&amp;query=Escola+de+M%C3%BAsica%2C+C%2F+Mercat+2%2C+Guardamar+del+Segura"><b>Escola de Música</b></a>
-📍 C/ Mercat, 2
-📡 <code>WiFi4EU</code>
-
-🎭 <a href="https://www.google.com/maps/search/?api=1&amp;query=Casa+de+Cultura%2C+C%2F+Col%C3%B3n+60%2C+Guardamar+del+Segura"><b>Casa de Cultura</b></a>
-📍 C/ Colón, 60
-📡 <code>WiFi4EU</code>
-
-🌴 <a href="https://www.google.com/maps/search/?api=1&amp;query=Avenida+Los+Pinos%2C+Guardamar+del+Segura"><b>Avda. Los Pinos</b></a>
-📡 <code>WiFi4EU</code>
-
-🔑 <b>Сети с паролем</b>
-
-🏛 <a href="https://www.google.com/maps/search/?api=1&amp;query=Plaza+de+la+Constituci%C3%B3n%2C+Guardamar+del+Segura"><b>Plaza de la Constitución</b></a>
-📡 <code>vegafibra_gratis</code>
-🔑 <code>vegafibra</code>
-
-🌊 <a href="https://www.google.com/maps/search/?api=1&amp;query=Paseo+Mar%C3%ADtimo%2C+Avenida+de+Europa%2C+Guardamar+del+Segura"><b>Paseo Marítimo · Avda. de Europa</b></a>
-📡 <code>vegafibra_gratis</code>
-🔑 <code>vegafibra</code>
-
-📚 <a href="https://www.google.com/maps/search/?api=1&amp;query=C%2F+Mayor+69%2C+Guardamar+del+Segura"><b>Sala de Estudios 24/365</b></a>
-📍 C/ Mayor, 69
-📡 <code>wifi_1EO9C</code>
-🔑 <code>vegafibra</code>
-
-📖 <a href="https://www.google.com/maps/search/?api=1&amp;query=Biblioteca+P%C3%BAblica%2C+C%2F+San+Jaime+5%2C+Guardamar+del+Segura"><b>Biblioteca Pública</b></a>
-📍 C/ San Jaime, 5
-• <code>wifibiblioteca</code> → 🔑 <code>biblimar</code>
-• <code>biblioteca infantil</code> → 🔑 <code>menjallibres</code>
-• <code>vicenteramos</code> → 🔑 <code>menjallibres</code>"""
-)
-
-
 WIFI_POINT_META = {
     "music_school": (
         "🎵", "Escola de Música", "C/ Mercat, 2",
@@ -232,7 +190,20 @@ WIFI_POINT_META = {
         "Biblioteca Pública, C/ San Jaime 5, Guardamar del Segura",
     ),
 }
-WIFI_POINT_ORDER = tuple(WIFI_POINT_META)
+WIFI_BASELINE_POINTS = (
+    ("music_school", (("WiFi4EU", None),)),
+    ("culture_house", (("WiFi4EU", None),)),
+    ("los_pinos", (("WiFi4EU", None),)),
+    ("constitution_square", (("vegafibra_gratis", "vegafibra"),)),
+    ("seafront", (("vegafibra_gratis", "vegafibra"),)),
+    ("study_room", (("wifi_1EO9C", "vegafibra"),)),
+    ("library", (
+        ("wifibiblioteca", "biblimar"),
+        ("biblioteca infantil", "menjallibres"),
+        ("vicenteramos", "menjallibres"),
+    )),
+)
+WIFI_POINT_ORDER = tuple(key for key, _ in WIFI_BASELINE_POINTS)
 
 
 LEAF_MESSAGES: Dict[str, str] = {
@@ -786,61 +757,79 @@ def build_wifi(
     """Build the municipal Wi-Fi card from the accepted normalized snapshot."""
 
     if wifi_snapshot is None:
-        body = WIFI
+        points = {
+            key: {
+                "key": key,
+                "networks": [
+                    {"ssid": ssid, "password": password}
+                    for ssid, password in networks
+                ],
+            }
+            for key, networks in WIFI_BASELINE_POINTS
+        }
     else:
         points = {
             str(item["key"]): item
             for item in wifi_snapshot.get("points", ())
             if isinstance(item, Mapping) and isinstance(item.get("key"), str)
         }
-        if set(points) != set(WIFI_POINT_ORDER):
-            raise ValueError("Wi-Fi snapshot does not contain the complete point set")
-        lines = [
-            "📶 <b>Бесплатный Wi-Fi в Гуардамаре</b>",
+    lines = [
+        "📶 <b>Бесплатный Wi-Fi в Гуардамаре</b>",
+        "",
+        f"В городе есть <b>{len(points)} муниципальных точек</b> бесплатного Wi-Fi.",
+    ]
+    if any(
+        any(
+            isinstance(network, Mapping)
+            and network.get("ssid") == "WiFi4EU"
+            and network.get("password") is None
+            for network in item.get("networks", ())
+        )
+        for item in points.values()
+    ):
+        lines.extend([
             "",
-            f"В городе есть <b>{len(points)} муниципальных точек</b> бесплатного Wi-Fi.",
-        ]
-        if any(
-            any(
-                isinstance(network, Mapping)
-                and network.get("ssid") == "WiFi4EU"
-                and network.get("password") is None
-                for network in item.get("networks", ())
-            )
-            for item in points.values()
+            "🔓 <b>WiFi4EU · пароль не нужен</b>",
+            "При первом подключении откроется страница входа — достаточно подтвердить подключение. Документ и местная регистрация не нужны.",
+        ])
+    password_section_added = False
+    for key in WIFI_POINT_ORDER:
+        item = points.get(key)
+        if item is None:
+            continue
+        networks = tuple(
+            network for network in item.get("networks", ())
+            if isinstance(network, Mapping)
+        )
+        if (
+            not password_section_added
+            and any(network.get("password") is not None for network in networks)
         ):
-            lines.extend([
-                "",
-                "🔓 <b>WiFi4EU · пароль не нужен</b>",
-                "При первом подключении откроется страница входа — достаточно подтвердить подключение.",
-            ])
-        for key in WIFI_POINT_ORDER:
-            item = points.get(key)
-            if item is None:
-                continue
-            emoji, title, address, query = WIFI_POINT_META[key]
-            map_url = (
-                "https://www.google.com/maps/search/?api=1&query="
-                + urllib.parse.quote_plus(query)
-            )
-            lines.extend([
-                "",
-                f'{emoji} <a href="{html.escape(map_url, quote=True)}"><b>{html.escape(title)}</b></a>',
-            ])
-            if address:
-                lines.append(f"📍 {html.escape(address)}")
-            for network in item.get("networks", ()):
-                if not isinstance(network, Mapping):
-                    continue
-                ssid = html.escape(str(network["ssid"]))
-                password = network.get("password")
-                if password is None:
-                    lines.append(f"📡 <code>{ssid}</code>")
-                else:
-                    lines.append(f"📡 <code>{ssid}</code>")
+            lines.extend(["", "🔑 <b>Сети с паролем</b>"])
+            password_section_added = True
+        emoji, title, address, query = WIFI_POINT_META[key]
+        map_url = (
+            "https://www.google.com/maps/search/?api=1&query="
+            + urllib.parse.quote_plus(query)
+        )
+        lines.extend([
+            "",
+            f'{emoji} <a href="{html.escape(map_url, quote=True)}"><b>{html.escape(title)}</b></a>',
+        ])
+        if address:
+            lines.append(f"📍 {html.escape(address)}")
+        for network in networks:
+            ssid = html.escape(str(network["ssid"]))
+            password = network.get("password")
+            if key == "library" and password is not None:
+                lines.append(
+                    f"• <code>{ssid}</code> → 🔑 <code>{html.escape(str(password))}</code>"
+                )
+            else:
+                lines.append(f"📡 <code>{ssid}</code>")
+                if password is not None:
                     lines.append(f"🔑 <code>{html.escape(str(password))}</code>")
-        body = with_footer("\n".join(lines))
-
+    body = with_footer("\n".join(lines))
     return _with_back_link(
         body,
         "Полезное о Гуардамаре",
