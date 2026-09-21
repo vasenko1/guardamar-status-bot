@@ -262,7 +262,7 @@ The icon adds no text, AI, or new source.
 
 ### Weekly bathing-zone control
 
-During the official bathing season and a five-day final-report grace period, a
+During the official bathing season and a final-publication grace through 30 September, a
 separate short-lived 19:35 one-shot checks the published Guardamar index for a
 new Generalitat Valenciana bathing-zone report. It never reruns the full guide
 sync.
