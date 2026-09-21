@@ -37,22 +37,34 @@ _PDF_TEXT_LIMIT_BYTES = 256 * 1024
 _PDF_PARSE_TIMEOUT_SECONDS = 8.0
 _RATINGS = {
     "EXCELENTE": "excellent",
+    "EXCELLENT": "excellent",
     "BUENA": "good",
+    "BONA": "good",
     "SUFICIENTE": "sufficient",
+    "SUFICIENT": "sufficient",
     "INSUFICIENTE": "insufficient",
+    "INSUFICIENT": "insufficient",
 }
 _BEACH_ROWS = (
-    ("PLAYA DE TUSALES", "Tusales"),
-    ("PLAYA DE VIVERS", "Vivers"),
-    ("PLAYA DE BABILONIA", "Babilonia"),
-    ("PLAYA CENTRO", "Centro"),
-    ("PLAYA DE LA ROQUETA", "La Roqueta"),
-    ("PLAYA DEL MONCAYO", "Moncayo"),
-    ("PLAYA DE ORTIGUES", "Ortigues"),
+    (("PLAYA DE TUSALES", "PLATJA DELS TOSSALS"), "Tusales"),
+    (("PLAYA DE VIVERS", "PLATJA DELS VIVERS"), "Vivers"),
+    (("PLAYA DE BABILONIA", "PLATJA DE BABILONIA"), "Babilonia"),
+    (("PLAYA CENTRO", "PLATJA CENTRE"), "Centro"),
+    (("PLAYA DE LA ROQUETA", "PLATJA DE LA ROQUETA"), "La Roqueta"),
+    (("PLAYA DEL MONCAYO", "PLATJA DEL MONCAIO"), "Moncayo"),
+    (
+        ("PLAYA DE ORTIGUES", "PLATJA DE LES ORTIGUES-CAMPO"),
+        "Ortigues",
+    ),
 )
 _REPORT_PERIOD_RE = re.compile(
-    r"Fecha:\s*(\d{2})\.(\d{2})\.(\d{4})\s*[-–—]\s*"
+    r"(?:Fecha|Data):\s*(\d{2})\.(\d{2})\.(\d{4})\s*[-–—]\s*"
     r"(\d{2})\.(\d{2})\.(\d{4})",
+    re.IGNORECASE,
+)
+_SAMPLE_DATE_RE = re.compile(
+    r"(?:Fecha\s+desc\.\s*punto1|Data\s+desc\.\s*punt1):\s*"
+    r"(\d{2}/\d{2}/\d{2})",
     re.IGNORECASE,
 )
 _MONTHS = {
@@ -351,7 +363,7 @@ def _fold(value: str) -> str:
         character for character in decomposed
         if not unicodedata.combining(character)
     )
-    return " ".join(without_marks.upper().split())
+    return " ".join(without_marks.replace("·", "").upper().split())
 
 
 def _fold_layout(value: str) -> str:
@@ -361,7 +373,7 @@ def _fold_layout(value: str) -> str:
     return "".join(
         character for character in decomposed
         if not unicodedata.combining(character)
-    ).upper()
+    ).replace("·", "").upper()
 
 
 def _extract_report_text(payload: bytes) -> str:
@@ -439,7 +451,7 @@ def _parse_report_text(
     report_end: date,
     observed_at: datetime,
 ) -> dict:
-    """Parse the reviewed Spanish first-page weekly beach table."""
+    """Parse the reviewed Spanish/Valencian first-page weekly beach table."""
 
     if observed_at.tzinfo is None or observed_at.utcoffset() is None:
         raise ValueError("bathing-water report time must be timezone-aware")
@@ -456,10 +468,11 @@ def _parse_report_text(
 
     first_page = text.split("\f", 1)[0]
     folded_page = _fold(first_page)
-    if (
-        "PROGRAMA DE CONTROL DE LAS ZONAS DE BANO" not in folded_page
-        or "GUARDAMAR DEL SEGURA" not in folded_page
-    ):
+    valid_heading = (
+        "PROGRAMA DE CONTROL DE LAS ZONAS DE BANO" in folded_page
+        or "PROGRAMA DE CONTROL DE LES ZONES DE BANY" in folded_page
+    )
+    if not valid_heading or "GUARDAMAR DEL SEGURA" not in folded_page:
         raise BathingWaterSourceError(
             "bathing-water report heading is invalid",
             code="REPORT-SCHEMA",
@@ -493,23 +506,55 @@ def _parse_report_text(
             code="REPORT-PERIOD",
         )
 
+    sample_dates = []
+    for raw in _SAMPLE_DATE_RE.findall(first_page):
+        try:
+            sampled = datetime.strptime(raw, "%d/%m/%y").date()
+        except ValueError as exc:
+            raise BathingWaterSourceError(
+                "bathing-water sample date is invalid",
+                code="REPORT-SAMPLE-DATE",
+            ) from exc
+        if not report_start <= sampled <= report_end:
+            raise BathingWaterSourceError(
+                "bathing-water sample date is outside report period",
+                code="REPORT-SAMPLE-DATE",
+            )
+        sample_dates.append(sampled)
+    sample_dates = sorted(set(sample_dates))
+    if not sample_dates:
+        raise BathingWaterSourceError(
+            "bathing-water sample dates are missing",
+            code="REPORT-SAMPLE-DATE",
+        )
+
     lines = first_page.splitlines()
     header_index = None
     positions = None
+    header_variants = (
+        ("ANALISIS AGUA", "ASPECTO AGUA", "ASPECTO ARENA"),
+        ("ANALISI AIGUA", "ASPECTE AIGUA", "ASPECTE ARENA"),
+    )
     for index, line in enumerate(lines):
         folded = _fold_layout(line)
-        labels = (
-            "ANALISIS AGUA",
-            "ASPECTO AGUA",
-            "ASPECTO ARENA",
-            "ENTEROCOCOS",
-        )
-        if all(label in folded for label in labels):
-            candidate = tuple(folded.index(label) for label in labels)
+        for labels in header_variants:
+            if not all(label in folded for label in labels):
+                continue
+            analytics_marker = "ENTEROC"
+            if analytics_marker not in folded:
+                continue
+            candidate = (
+                folded.index(labels[0]),
+                folded.index(labels[1]),
+                folded.index(labels[2]),
+                folded.index(analytics_marker),
+            )
             if candidate == tuple(sorted(candidate)) and len(set(candidate)) == 4:
                 header_index = index
                 positions = candidate
                 break
+        if header_index is not None:
+            break
     if header_index is None or positions is None:
         raise BathingWaterSourceError(
             "bathing-water report table header is missing",
@@ -520,30 +565,39 @@ def _parse_report_text(
     table_beach_lines = [
         line
         for line in lines[header_index + 1:]
-        if _fold(line).startswith("PLAYA ")
+        if _fold(line).startswith(("PLAYA ", "PLATJA "))
     ]
     if len(table_beach_lines) != len(_BEACH_ROWS):
         raise BathingWaterSourceError(
             "bathing-water report beach topology changed",
             code="REPORT-SCHEMA",
         )
-    for line in table_beach_lines:
+
+    def matching_rows(line: str):
         folded = _fold(line)
-        if sum(source_name in folded for source_name, _ in _BEACH_ROWS) != 1:
+        return [
+            (aliases, public_name)
+            for aliases, public_name in _BEACH_ROWS
+            if any(alias in folded for alias in aliases)
+        ]
+
+    for line in table_beach_lines:
+        if len(matching_rows(line)) != 1:
             raise BathingWaterSourceError(
                 "bathing-water report contains an unknown beach row",
                 code="REPORT-SCHEMA",
             )
 
     rows = []
-    for source_name, public_name in _BEACH_ROWS:
+    for aliases, public_name in _BEACH_ROWS:
         matches = []
         for line in lines[header_index + 1:]:
-            if source_name in _fold(line):
+            folded = _fold(line)
+            if any(alias in folded for alias in aliases):
                 matches.append(line)
         if len(matches) != 1:
             raise BathingWaterSourceError(
-                f"bathing-water row {source_name} is missing or ambiguous",
+                f"bathing-water row {public_name} is missing or ambiguous",
                 code="REPORT-SCHEMA",
             )
         line = matches[0]
@@ -567,6 +621,7 @@ def _parse_report_text(
         "report_start": report_start.isoformat(),
         "report_end": report_end.isoformat(),
         "report_url": report_url,
+        "sample_dates": [item.isoformat() for item in sample_dates],
         "beaches": rows,
     }
     if not valid_bathing_water_report_snapshot(snapshot):
@@ -585,6 +640,7 @@ def valid_bathing_water_report_snapshot(value) -> bool:
         report_start = date.fromisoformat(value["report_start"])
         report_end = date.fromisoformat(value["report_end"])
         report_url = value["report_url"]
+        sample_dates_raw = value["sample_dates"]
         beaches = value["beaches"]
     except (KeyError, TypeError, ValueError):
         return False
@@ -595,8 +651,20 @@ def valid_bathing_water_report_snapshot(value) -> bool:
         or report_start.year != report_end.year
         or not isinstance(report_url, str)
         or not _allowed_report_url(report_url)
+        or not isinstance(sample_dates_raw, list)
+        or not sample_dates_raw
         or not isinstance(beaches, list)
         or len(beaches) != len(_BEACH_ROWS)
+    ):
+        return False
+
+    try:
+        sample_dates = [date.fromisoformat(item) for item in sample_dates_raw]
+    except (TypeError, ValueError):
+        return False
+    if (
+        sample_dates != sorted(set(sample_dates))
+        or any(not report_start <= item <= report_end for item in sample_dates)
     ):
         return False
 
@@ -628,6 +696,7 @@ def bathing_water_report_fingerprint(value: dict) -> tuple:
     return (
         value["report_start"],
         value["report_end"],
+        tuple(value["sample_dates"]),
         tuple(
             (
                 beach["name"],
