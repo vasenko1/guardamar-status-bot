@@ -14,7 +14,8 @@ deterministically.
 
 The existing 09:02 guide sync already has the source lock, small atomic state,
 pinned-message reconciliation and Poppler dependency needed for a bounded
-update lifecycle.
+update lifecycle. Source retrieval/parsing lives in the dedicated `wifi.py`
+adapter; guide orchestration and pinned-card rendering remain separate.
 
 ## Decision
 
@@ -33,9 +34,12 @@ At most once per local day:
    three at Biblioteca Pública. Credential values may change.
 6. On any missing, extra, duplicate or unrecognized point/network, fail closed
    and preserve the previous public card.
-7. Persist the accepted snapshot, reconcile the existing Wi-Fi card first, and
-   only after successful card reconciliation send one public group notice with
-   a direct link to that card.
+7. Compare only normalized point/network facts, excluding the PDF URL and
+   observation time. A replacement PDF with identical facts becomes the new
+   accepted source silently.
+8. When the normalized facts changed, persist the accepted snapshot, reconcile
+   the existing Wi-Fi card first, and only after successful card reconciliation
+   send one public group notice with a direct link to that card.
 
 The first observation of the reviewed baseline is silent. Private operator
 alerts are not part of this lifecycle.
