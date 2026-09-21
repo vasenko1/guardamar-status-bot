@@ -44,16 +44,16 @@ def scheduled_run(now: datetime) -> MonitorRun:
     """Return the bounded work assigned to this exact local minute."""
     local = now.astimezone(GUARDAMAR_TIMEZONE)
     day = local.date()
-    in_season = (
+    intensive_beach_window = (
         (day.month == 6 and day.day >= 15)
         or day.month in {7, 8}
         or (day.month == 9 and day.day <= 15)
     )
-    shoulder = in_season and day.month in {6, 9}
+    shoulder = intensive_beach_window and day.month in {6, 9}
     beach_hours = {12, 14, 16, 18} if shoulder else {11, 13, 15, 17, 19}
     aemet_hours = {12, 16, 20} if shoulder else {11, 15, 19}
     beach_phase = None
-    if in_season and local.hour in beach_hours:
+    if intensive_beach_window and local.hour in beach_hours:
         beach_phase = {0: 1, 5: 2, 10: 3}.get(local.minute)
     return MonitorRun(
         beach_phase=beach_phase,
