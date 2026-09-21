@@ -356,6 +356,100 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
 
         beach_fetch.assert_awaited_once_with(now)
 
+    async def test_operational_beach_change_replies_without_editing_existing_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "delivery.json"
+            monitor_path = Path(directory) / "operational.json"
+            first = datetime(2026, 9, 21, 12, 0, tzinfo=MADRID)
+            second = datetime(2026, 9, 21, 12, 5, tzinfo=MADRID)
+            publication = PublicationState(state_path)
+            publication.mark_morning(
+                first.date(),
+                10,
+                datetime(2026, 9, 21, 7, 30, tzinfo=MADRID),
+            )
+            baseline = BeachStatus(
+                flag_color="green",
+                sea_temperature_c=26,
+                source_date=first.date(),
+                nearby_flags=(("Centre", "green"),),
+                jellyfish_states=(("Centre", False),),
+                updated_times=(("Centre", time(10, 40)),),
+            )
+            publication.mark_beach_message(first.date(), 20, baseline)
+
+            changed_first = BeachStatus(
+                flag_color="yellow",
+                sea_temperature_c=26,
+                source_date=first.date(),
+                nearby_flags=(("Centre", "yellow"),),
+                jellyfish_states=(("Centre", False),),
+                updated_times=(("Centre", time(12, 0)),),
+            )
+            changed_second = BeachStatus(
+                flag_color="yellow",
+                sea_temperature_c=26,
+                source_date=second.date(),
+                nearby_flags=(("Centre", "yellow"),),
+                jellyfish_states=(("Centre", False),),
+                updated_times=(("Centre", time(12, 5)),),
+            )
+            sent = AsyncMock(return_value=30)
+            edited = AsyncMock()
+            with (
+                patch.dict(os.environ, {
+                    "AEMET_API_KEY": "aemet",
+                    "TELEGRAM_BOT_TOKEN": "telegram",
+                    "TELEGRAM_CHAT_ID": "group",
+                    "MORNING_DIGEST_STATE_PATH": str(state_path),
+                    "OPERATIONAL_UPDATE_STATE_PATH": str(monitor_path),
+                }),
+                patch("telegrambot.__main__.datetime") as clock,
+                patch(
+                    "telegrambot.__main__._refresh_mayor_beach_notice",
+                    new=AsyncMock(return_value="no_update"),
+                ),
+                patch(
+                    "telegrambot.__main__.check_late_environment",
+                    new=AsyncMock(),
+                ),
+                patch(
+                    "telegrambot.__main__.load_snapshot",
+                    return_value=None,
+                ),
+                patch(
+                    "telegrambot.__main__.fetch_warnings",
+                    new=AsyncMock(return_value=()),
+                ),
+                patch(
+                    "telegrambot.__main__.fetch_beach_status",
+                    new=AsyncMock(side_effect=[
+                        changed_first,
+                        changed_second,
+                    ]),
+                ),
+                patch("telegrambot.__main__.send_message", new=sent),
+                patch("telegrambot.__main__.edit_message", new=edited),
+            ):
+                clock.now.side_effect = [first, second]
+                clock.fromisoformat.side_effect = datetime.fromisoformat
+                self.assertEqual(await _run_command("monitor-updates"), 0)
+                self.assertEqual(await _run_command("monitor-updates"), 0)
+
+            edited.assert_not_awaited()
+            sent.assert_awaited_once()
+            self.assertEqual(
+                sent.await_args.kwargs["reply_to_message_id"],
+                20,
+            )
+            self.assertIn("Жёлтый", sent.await_args.args[2])
+            self.assertEqual(
+                PublicationState(state_path).beach_root_facts(first.date())[
+                    0
+                ].nearby_flags,
+                baseline.nearby_flags,
+            )
+
     async def test_operational_checkpoint_accepts_late_cams_without_editing_digest(self):
         with tempfile.TemporaryDirectory() as directory:
             state_path = Path(directory) / "delivery.json"
