@@ -111,11 +111,10 @@ from .safebeach import (
     SafeBeachError,
     fetch_beach_status,
     in_query_window,
-    is_complete_current_status,
     is_current_status,
 )
 from .weekend import produce_weekend_message, weekend_dates
-from .models import BeachStatus, ColdHealthRisk, HeatHealthRisk
+from .models import ColdHealthRisk, HeatHealthRisk
 from .state import PublicationState, StateError
 from .telegram import (
     TelegramError,
@@ -150,33 +149,6 @@ DEFAULT_EMERGENCY_RISK_STATE_PATH = "state/emergency_risks.json"
 DEFAULT_HIDRAQUA_STATE_PATH = "state/hidraqua.json"
 DEFAULT_CAMS_CACHE_PATH = "state/cams.json"
 CAMS_UPDATE_CHECKPOINTS = frozenset({(10, 10), (10, 25), (10, 40)})
-
-
-def _beach_ready_for_update(status, now: datetime, final_attempt: bool) -> bool:
-    return is_complete_current_status(status, now) or (
-        final_attempt and is_current_status(status, now)
-    )
-
-
-def _select_beach_for_update(
-    state: PublicationState,
-    candidate: Optional[BeachStatus],
-    now: datetime,
-    final_attempt: bool,
-) -> Optional[BeachStatus]:
-    """Persist valid partial data and select one whole publishable snapshot."""
-    if is_current_status(candidate, now):
-        state.remember_beach_candidate(now.date(), candidate, now)
-    if is_complete_current_status(candidate, now) or (
-        final_attempt and is_current_status(candidate, now)
-    ):
-        return candidate
-    if not final_attempt:
-        return None
-    stored = state.beach_candidate(now.date(), now)
-    if is_current_status(stored, now):
-        return stored
-    return None
 
 
 def _cams_cycle_is_current(
@@ -1375,7 +1347,6 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 am_guardamar_state_path=am_guardamar_path,
                 facv_state_path=facv_path,
                 pesca_cv_state_path=pesca_cv_path,
-                collect_beach=False,
                 translation_cache_path=translations_path,
                 aemet_digest=prepared,
                 fetch_aemet=fetch_live,
@@ -1419,36 +1390,27 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
     if not in_query_window(now):
         logging.info("SKIP: SafeBeach is outside the annual query window")
         return 0
-    final_attempt = (now.hour, now.minute) >= (10, 40)
-    if state.beach_message_id(now.date()) is not None:
-        mayor_result = await _refresh_mayor_beach_notice(
-            now, state, bot_token, chat_id
-        )
-        if mayor_result == "failure":
-            return 1
-        logging.info("SKIP: daily beach root already exists")
-        return 0
+
     beach = None
     try:
         candidate = await fetch_beach_status(now)
-        beach = _select_beach_for_update(state, candidate, now, final_attempt)
+        if is_current_status(candidate, now):
+            beach = candidate
     except SafeBeachError as exc:
         logging.warning("SafeBeach update check failed: SB-%s", exc.diagnostic_code)
-        if final_attempt:
-            beach = _select_beach_for_update(state, None, now, final_attempt=True)
 
-    if beach is None and not final_attempt:
-        logging.info("WAIT: SafeBeach has no eligible current flag yet")
-        return 0
-
-    published_at = datetime.fromisoformat(existing["morning_published_at"])
+    _, previous_notice = state.beach_root_facts(now.date())
+    since = datetime.fromisoformat(existing["morning_published_at"])
+    if previous_notice is not None and previous_notice.published_at > since:
+        since = previous_notice.published_at
     try:
-        notice = await latest_beach_notice(now, published_at)
+        notice = await latest_beach_notice(now, since)
     except Exception as exc:
         logging.warning("Mayor channel update check failed: %s", exc)
         notice = None
+
     if beach is None and notice is None:
-        logging.info("SKIP: no beach root facts became available")
+        logging.info("SKIP: no current beach facts became available")
         return 0
 
     result, _ = await refresh_beach_root(
