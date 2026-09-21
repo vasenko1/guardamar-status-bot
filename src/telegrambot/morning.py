@@ -37,19 +37,12 @@ from .facv import FacvSourceError, fetch_today_facv_events
 from .pesca_cv import PescaCvSourceError, fetch_today_pesca_cv_events
 from .pharmacy import duty_pharmacies_on
 from .police import PoliceTrafficError, fetch_traffic_notices
-from .safebeach import (
-    SafeBeachError,
-    fetch_beach_status,
-    in_query_window,
-)
 from .sun import sun_times
 from .environment import (
     EnvironmentError, fetch_cams, fetch_meteosalud, fetch_meteosalud_cold,
 )
 from .emergency_risks import EmergencyRiskError, EmergencyRiskState
-from .models import (
-    BeachNotice, BeachStatus, ColdHealthRisk, HeatHealthRisk, MorningDigest,
-)
+from .models import ColdHealthRisk, HeatHealthRisk, MorningDigest
 
 LOGGER = logging.getLogger(__name__)
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
@@ -556,9 +549,6 @@ async def produce_message(
     am_guardamar_state_path: Path = Path("state/am_guardamar.json"),
     facv_state_path: Path = Path("state/facv_events.json"),
     pesca_cv_state_path: Path = Path("state/pesca_cv_events.json"),
-    collect_beach: bool = True,
-    beach_status: Optional[BeachStatus] = None,
-    beach_notice: Optional[BeachNotice] = None,
     diagnostics: Optional[List[SourceDiagnostic]] = None,
     translation_cache_path: Optional[Path] = None,
     aemet_digest: Optional[MorningDigest] = None,
@@ -579,14 +569,9 @@ async def produce_message(
     fetch_environment: bool = True,
     emergency_risk_state_path: Path = Path("state/emergency_risks.json"),
 ) -> str:
-    """Build a digest; SafeBeach failure must not block AEMET delivery."""
+    """Build the Morning Digest without beach-status collection."""
 
     translation_path = translation_cache_path or Path("state/event_translations.json")
-    beach_task = (
-        asyncio.create_task(fetch_beach_status())
-        if collect_beach and in_query_window(now)
-        else None
-    )
     agenda_task = asyncio.create_task(
         fetch_today_events(
             now,
@@ -673,7 +658,6 @@ async def produce_message(
         if fetch_environment and (cams_data_url or not fetch_cams_remote)
         else None
     )
-    beach_failed = False
     digest = aemet_digest
     if digest is None and fetch_aemet:
         try:
@@ -700,54 +684,10 @@ async def produce_message(
             warnings=(),
             warnings_available=False,
         )
-    if not collect_beach:
-        digest = replace(digest, beach=None, beach_notice=None)
+    # Beach status has its own later daily lifecycle. Never let a stale or
+    # caller-provided beach payload leak back into the Morning Digest.
+    digest = replace(digest, beach=None, beach_notice=None)
 
-    try:
-        beach = (
-            await beach_task
-            if beach_task is not None
-            else beach_status
-        )
-    except SafeBeachError as exc:
-        beach_failed = True
-        LOGGER.warning(
-            "SafeBeach %s; omitting beach status",
-            exc.diagnostic_code,
-        )
-        if diagnostics is not None:
-            diagnostics.append(
-                source_error("SB", "SafeBeach", exc)
-            )
-        beach = None
-    if (
-        diagnostics is not None
-        and beach_task is not None
-        and beach is None
-        and not beach_failed
-    ):
-        diagnostics.append(
-            SourceDiagnostic(
-                "SB-NO-ACTIVE",
-                "SafeBeach",
-                "ответ получен, но активных данных выбранных пляжей нет",
-            )
-        )
-
-    if (
-        digest.weather is not None
-        and beach is not None
-        and beach.wind_direction is not None
-        and beach.wind_speed_kmh is not None
-    ):
-        digest = replace(
-            digest,
-            weather=replace(
-                digest.weather,
-                wind_direction=beach.wind_direction,
-                wind_speed_kmh=beach.wind_speed_kmh,
-            ),
-        )
     if digest.weather is not None:
         sunrise, sunset = sun_times(now)
         digest = replace(
@@ -964,8 +904,6 @@ async def produce_message(
     return build_message(
         replace(
             digest,
-            beach=beach,
-            beach_notice=beach_notice,
             pharmacies=pharmacies,
             traffic_notices=traffic_notices,
             holidays=official_holidays_on(
