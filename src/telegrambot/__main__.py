@@ -166,6 +166,12 @@ def _cams_update_checkpoint(now: datetime) -> bool:
     return (local.hour, local.minute) in CAMS_UPDATE_CHECKPOINTS
 
 
+def _safebeach_initial_checkpoint(now: datetime) -> bool:
+    """Allow initial-cycle SafeBeach fetches only at 10:10-10:40 checkpoints."""
+    local = now.astimezone(GUARDAMAR_TIMEZONE)
+    return local.hour == 10 and local.minute in range(10, 41, 5)
+
+
 def _cams_monitor_checkpoint(schedule) -> bool:
     """Use only the first invocation of an existing monitor window."""
     return schedule.beach_phase == 1 or (
@@ -700,7 +706,6 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     seed_warnings(value, snapshot.warnings)
 
             phase = schedule.beach_phase
-            latest_beach = None
             if phase == 1 and value.get("beach_pending") is not None:
                 value["beach_pending"] = None
             elif (
@@ -721,7 +726,6 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 try:
                     beach = await fetch_beach_status(now)
                     if is_current_status(beach, now):
-                        latest_beach = beach
                         observe_beaches(value, beach, phase)
                     else:
                         miss_beach_sample(value, phase)
@@ -747,20 +751,28 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 return 0
 
             beach_anchor = publication_state.beach_message_id(now.date())
+            published_beach_status, _ = publication_state.beach_root_facts(
+                now.date()
+            )
             ready_changes = value.get("beach_ready") or []
             initial_ready = bool(ready_changes) and all(
                 change.get("initial") for change in ready_changes
             )
             root_status = confirmed_beach_status(value, now)
-            if beach_anchor is None and (latest_beach is not None or ready_changes):
-                # The 10:10-10:40 update cycle owns live edits of an existing
-                # beach root. Later monitoring creates a missing initial root
-                # only as a recovery path; confirmed changes use reply messages.
-                status_for_root = root_status or latest_beach
+            needs_initial_status = (
+                initial_ready
+                and root_status is not None
+                and published_beach_status is None
+            )
+            if ready_changes and (beach_anchor is None or needs_initial_status):
+                # The 10:10-10:40 update cycle owns live SafeBeach root edits.
+                # Later monitoring waits for confirmation before creating a
+                # missing root or adding the first SafeBeach status to a
+                # Mayor-only root. Subsequent confirmed changes remain replies.
                 root_result, beach_anchor = await refresh_beach_root(
                     now,
                     publication_state,
-                    status_for_root,
+                    root_status,
                     None,
                     build_beach_root_message,
                     lambda message: send_message(
@@ -792,7 +804,8 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     )
                 except TelegramError as exc:
                     if exc.diagnostic_code != "MESSAGE-NOT-FOUND":
-                        raise
+                        logging.warning("Beach update delivery failed: %s", exc)
+                        return 1
                     logging.warning(
                         "Beach root disappeared before reply; recreating it"
                     )
@@ -815,13 +828,17 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     )
                     if root_result == "failure" or beach_anchor is None:
                         return 1
-                    await _send_operational_update(
-                        bot_token,
-                        chat_id,
-                        beach_message,
-                        beach_anchor,
-                        fallback_if_missing=False,
-                    )
+                    try:
+                        await _send_operational_update(
+                            bot_token,
+                            chat_id,
+                            beach_message,
+                            beach_anchor,
+                            fallback_if_missing=False,
+                        )
+                    except TelegramError as retry_exc:
+                        logging.warning("Beach update retry failed: %s", retry_exc)
+                        return 1
                 clear_beach_ready(value)
                 monitor_state.write(value)
 
@@ -1395,12 +1412,19 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         return 0
 
     beach = None
-    try:
-        candidate = await fetch_beach_status(now)
-        if is_current_status(candidate, now):
-            beach = candidate
-    except SafeBeachError as exc:
-        logging.warning("SafeBeach update check failed: SB-%s", exc.diagnostic_code)
+    if _safebeach_initial_checkpoint(now):
+        try:
+            candidate = await fetch_beach_status(now)
+            if is_current_status(candidate, now):
+                beach = candidate
+        except SafeBeachError as exc:
+            logging.warning(
+                "SafeBeach update check failed: SB-%s", exc.diagnostic_code
+            )
+    else:
+        logging.info(
+            "SKIP: SafeBeach root edits are limited to 10:10-10:40 checkpoints"
+        )
 
     _, previous_notice = state.beach_root_facts(now.date())
     since = datetime.fromisoformat(existing["morning_published_at"])

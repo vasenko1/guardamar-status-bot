@@ -13,6 +13,7 @@ from telegrambot.__main__ import (
     _cams_update_checkpoint,
     _current_morning_message_id,
     _refresh_event_catalogs_once,
+    _safebeach_initial_checkpoint,
     _send_operational_update,
     _produce_message,
     _run_command,
@@ -20,7 +21,12 @@ from telegrambot.__main__ import (
 from telegrambot.agenda import AgendaError
 from telegrambot.diagnostics import SourceDiagnostic
 from telegrambot.environment import EnvironmentError
-from telegrambot.models import AirQualitySummary, BeachStatus, PollenSummary
+from telegrambot.models import (
+    AirQualitySummary,
+    BeachNotice,
+    BeachStatus,
+    PollenSummary,
+)
 from telegrambot.operational_updates import MonitorRun
 from telegrambot.state import PublicationState, StateError
 from telegrambot.telegram import TelegramError
@@ -179,6 +185,20 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(_cams_monitor_checkpoint(MonitorRun(None, True)))
         self.assertFalse(_cams_monitor_checkpoint(MonitorRun(2, False)))
 
+    def test_safebeach_initial_cycle_has_exact_1040_boundary(self):
+        self.assertTrue(_safebeach_initial_checkpoint(
+            datetime(2026, 9, 11, 10, 10, tzinfo=MADRID)
+        ))
+        self.assertTrue(_safebeach_initial_checkpoint(
+            datetime(2026, 9, 11, 10, 40, tzinfo=MADRID)
+        ))
+        self.assertFalse(_safebeach_initial_checkpoint(
+            datetime(2026, 9, 11, 10, 45, tzinfo=MADRID)
+        ))
+        self.assertFalse(_safebeach_initial_checkpoint(
+            datetime(2026, 9, 11, 10, 12, tzinfo=MADRID)
+        ))
+
     def test_cams_refresh_stops_after_current_utc_cycle(self):
         now = datetime(2026, 10, 25, 10, 10, tzinfo=MADRID)
         self.assertTrue(_cams_cycle_is_current(
@@ -323,6 +343,227 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 second_status.nearby_flags,
             )
 
+    async def test_update_after_1040_skips_safebeach_but_keeps_mayor_check(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "delivery.json"
+            now = datetime(2026, 9, 21, 10, 45, tzinfo=MADRID)
+            state = PublicationState(state_path)
+            state.mark_morning(
+                now.date(),
+                10,
+                datetime(2026, 9, 21, 7, 30, tzinfo=MADRID),
+            )
+            beach_fetch = AsyncMock()
+            notice = BeachNotice(
+                "Купание запрещено",
+                True,
+                datetime(2026, 9, 21, 10, 44, tzinfo=MADRID),
+            )
+            mayor_fetch = AsyncMock(return_value=notice)
+            sent = AsyncMock(return_value=20)
+            edited = AsyncMock()
+            with (
+                patch.dict(os.environ, {
+                    "AEMET_API_KEY": "aemet",
+                    "TELEGRAM_BOT_TOKEN": "telegram",
+                    "TELEGRAM_CHAT_ID": "group",
+                    "MORNING_DIGEST_STATE_PATH": str(state_path),
+                }),
+                patch("telegrambot.__main__.datetime") as clock,
+                patch(
+                    "telegrambot.__main__._refresh_event_catalogs_once",
+                    new=AsyncMock(),
+                ),
+                patch(
+                    "telegrambot.__main__.fetch_beach_status",
+                    new=beach_fetch,
+                ),
+                patch(
+                    "telegrambot.__main__.latest_beach_notice",
+                    new=mayor_fetch,
+                ),
+                patch("telegrambot.__main__.send_message", new=sent),
+                patch("telegrambot.__main__.edit_message", new=edited),
+            ):
+                clock.now.return_value = now
+                clock.fromisoformat.side_effect = datetime.fromisoformat
+                self.assertEqual(await _run_command("update"), 0)
+
+            beach_fetch.assert_not_awaited()
+            mayor_fetch.assert_awaited_once()
+            sent.assert_awaited_once()
+            edited.assert_not_awaited()
+            saved_status, saved_notice = PublicationState(
+                state_path
+            ).beach_root_facts(now.date())
+            self.assertIsNone(saved_status)
+            self.assertEqual(saved_notice, notice)
+
+    async def test_late_first_safebeach_waits_for_confirmation_before_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "delivery.json"
+            monitor_path = Path(directory) / "operational.json"
+            first = datetime(2026, 9, 21, 12, 0, tzinfo=MADRID)
+            second = datetime(2026, 9, 21, 12, 5, tzinfo=MADRID)
+            state = PublicationState(state_path)
+            state.mark_morning(
+                first.date(),
+                10,
+                datetime(2026, 9, 21, 7, 30, tzinfo=MADRID),
+            )
+            first_status = BeachStatus(
+                flag_color="green",
+                sea_temperature_c=26,
+                source_date=first.date(),
+                nearby_flags=(("Centre", "green"),),
+                jellyfish_states=(("Centre", False),),
+                updated_times=(("Centre", time(12, 0)),),
+            )
+            second_status = BeachStatus(
+                flag_color="green",
+                sea_temperature_c=26,
+                source_date=second.date(),
+                nearby_flags=(("Centre", "green"),),
+                jellyfish_states=(("Centre", False),),
+                updated_times=(("Centre", time(12, 5)),),
+            )
+            sent = AsyncMock(return_value=20)
+            edited = AsyncMock()
+            with (
+                patch.dict(os.environ, {
+                    "AEMET_API_KEY": "aemet",
+                    "TELEGRAM_BOT_TOKEN": "telegram",
+                    "TELEGRAM_CHAT_ID": "group",
+                    "MORNING_DIGEST_STATE_PATH": str(state_path),
+                    "OPERATIONAL_UPDATE_STATE_PATH": str(monitor_path),
+                }),
+                patch("telegrambot.__main__.datetime") as clock,
+                patch(
+                    "telegrambot.__main__._refresh_mayor_beach_notice",
+                    new=AsyncMock(return_value="no_update"),
+                ),
+                patch(
+                    "telegrambot.__main__._cams_monitor_checkpoint",
+                    return_value=False,
+                ),
+                patch(
+                    "telegrambot.__main__.load_snapshot",
+                    return_value=None,
+                ),
+                patch(
+                    "telegrambot.__main__.fetch_warnings",
+                    new=AsyncMock(return_value=()),
+                ),
+                patch(
+                    "telegrambot.__main__.fetch_beach_status",
+                    new=AsyncMock(side_effect=[first_status, second_status]),
+                ),
+                patch("telegrambot.__main__.send_message", new=sent),
+                patch("telegrambot.__main__.edit_message", new=edited),
+            ):
+                clock.now.side_effect = [first, second]
+                clock.fromisoformat.side_effect = datetime.fromisoformat
+                self.assertEqual(await _run_command("monitor-updates"), 0)
+                sent.assert_not_awaited()
+                self.assertIsNone(
+                    PublicationState(state_path).beach_message_id(first.date())
+                )
+                self.assertEqual(await _run_command("monitor-updates"), 0)
+
+            sent.assert_awaited_once()
+            edited.assert_not_awaited()
+            saved = PublicationState(state_path)
+            self.assertEqual(saved.beach_message_id(first.date()), 20)
+            self.assertEqual(
+                saved.beach_root_facts(first.date())[0].nearby_flags,
+                second_status.nearby_flags,
+            )
+
+    async def test_confirmed_safebeach_fills_existing_mayor_only_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "delivery.json"
+            monitor_path = Path(directory) / "operational.json"
+            first = datetime(2026, 9, 21, 12, 0, tzinfo=MADRID)
+            second = datetime(2026, 9, 21, 12, 5, tzinfo=MADRID)
+            state = PublicationState(state_path)
+            state.mark_morning(
+                first.date(),
+                10,
+                datetime(2026, 9, 21, 7, 30, tzinfo=MADRID),
+            )
+            notice = BeachNotice(
+                "Купание запрещено",
+                True,
+                datetime(2026, 9, 21, 11, 0, tzinfo=MADRID),
+            )
+            state.mark_beach_message(first.date(), 20, notice=notice)
+            first_status = BeachStatus(
+                flag_color="green",
+                sea_temperature_c=26,
+                source_date=first.date(),
+                nearby_flags=(("Centre", "green"),),
+                jellyfish_states=(("Centre", False),),
+                updated_times=(("Centre", time(12, 0)),),
+            )
+            second_status = BeachStatus(
+                flag_color="green",
+                sea_temperature_c=26,
+                source_date=second.date(),
+                nearby_flags=(("Centre", "green"),),
+                jellyfish_states=(("Centre", False),),
+                updated_times=(("Centre", time(12, 5)),),
+            )
+            sent = AsyncMock()
+            edited = AsyncMock()
+            with (
+                patch.dict(os.environ, {
+                    "AEMET_API_KEY": "aemet",
+                    "TELEGRAM_BOT_TOKEN": "telegram",
+                    "TELEGRAM_CHAT_ID": "group",
+                    "MORNING_DIGEST_STATE_PATH": str(state_path),
+                    "OPERATIONAL_UPDATE_STATE_PATH": str(monitor_path),
+                }),
+                patch("telegrambot.__main__.datetime") as clock,
+                patch(
+                    "telegrambot.__main__._refresh_mayor_beach_notice",
+                    new=AsyncMock(return_value="no_update"),
+                ),
+                patch(
+                    "telegrambot.__main__._cams_monitor_checkpoint",
+                    return_value=False,
+                ),
+                patch(
+                    "telegrambot.__main__.load_snapshot",
+                    return_value=None,
+                ),
+                patch(
+                    "telegrambot.__main__.fetch_warnings",
+                    new=AsyncMock(return_value=()),
+                ),
+                patch(
+                    "telegrambot.__main__.fetch_beach_status",
+                    new=AsyncMock(side_effect=[first_status, second_status]),
+                ),
+                patch("telegrambot.__main__.send_message", new=sent),
+                patch("telegrambot.__main__.edit_message", new=edited),
+            ):
+                clock.now.side_effect = [first, second]
+                clock.fromisoformat.side_effect = datetime.fromisoformat
+                self.assertEqual(await _run_command("monitor-updates"), 0)
+                edited.assert_not_awaited()
+                self.assertEqual(await _run_command("monitor-updates"), 0)
+
+            sent.assert_not_awaited()
+            edited.assert_awaited_once()
+            saved_status, saved_notice = PublicationState(
+                state_path
+            ).beach_root_facts(first.date())
+            self.assertEqual(
+                saved_status.nearby_flags,
+                second_status.nearby_flags,
+            )
+            self.assertEqual(saved_notice, notice)
+
     async def test_safebeach_query_window_uses_normal_recovery_checkpoint(self):
         with tempfile.TemporaryDirectory() as directory:
             state_path = Path(directory) / "delivery.json"
@@ -410,8 +651,8 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                     new=AsyncMock(return_value="no_update"),
                 ),
                 patch(
-                    "telegrambot.__main__.check_late_environment",
-                    new=AsyncMock(),
+                    "telegrambot.__main__._cams_monitor_checkpoint",
+                    return_value=False,
                 ),
                 patch(
                     "telegrambot.__main__.load_snapshot",
@@ -442,7 +683,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 sent.await_args.kwargs["reply_to_message_id"],
                 20,
             )
-            self.assertIn("Жёлтый", sent.await_args.args[2])
+            self.assertIn("🟡 Centre / Babilònia", sent.await_args.args[2])
             self.assertEqual(
                 PublicationState(state_path).beach_root_facts(first.date())[
                     0
