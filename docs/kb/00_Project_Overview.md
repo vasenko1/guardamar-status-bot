@@ -53,16 +53,16 @@ both pool cards.
 
 Most guide content is static. The existing 05:00 transport sync keeps its
 transport media current and also reconciles the shared message graph. A separate
-short 16:30 `sync-guide` invocation reads only a small normalized public
-SimplyBook catalogue baseline for swimming, reconciles the same graph, and
-publishes the deterministic June/September pool-season notice when due. It does
-not infer registration availability from stale catalogue entries.
+short 09:02 `sync-guide` invocation reads bounded recurring-activity and
+municipal-guide sources, reconciles the same graph, and publishes only the
+approved low-frequency guide notices when due. It does not infer registration
+availability from stale catalogue entries.
 
 ### Local earthquake notices
 
 One short hourly Termux invocation checks the official IGN GeoRSS feed. It
-publishes only a newly observed event of magnitude 2.7 or greater whose
-epicenter is no farther than 10 km from Guardamar. The monitor is a quiet
+publishes only a newly observed event of magnitude 1.8 or greater whose
+epicenter is no farther than 20 km from Guardamar. The monitor is a quiet
 informational feature, not an emergency-warning service.
 
 ## Out of scope
@@ -72,7 +72,7 @@ informational feature, not an emergency-warning service.
 - Replacing official emergency or municipal channels
 - Conversational AI or generated advice
 - General AI summarization, classification, or ranking outside the approved
-  Policía Local, market-exception, and municipal-poster workflows
+  market-exception, municipal-poster, and bounded event-translation workflows
 - User-generated or unverified information
 - Web dashboards, webhooks, microservices, or server infrastructure
 - Continuous OCR, image analysis, or other heavy on-device processing
