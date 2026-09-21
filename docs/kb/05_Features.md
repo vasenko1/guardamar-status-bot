@@ -235,17 +235,24 @@ end must not leave that stale warning uncorrected.
 
 ### Daily beach root
 
-During the local beach season, verified SafeBeach or explicit Mayor bathing
-facts create one separate daily root titled `🏖 Пляжи Гуардамара сегодня`.
+From 1 June through 30 September, SafeBeach has one separate daily root titled
+`🏖 Пляжи Гуардамара сегодня`. The Morning Digest never requests or renders
+SafeBeach. During the 10:10–10:40 update cycle, the first valid current
+SafeBeach response containing at least one known beach flag creates the root
+immediately; every later valid response edits that same root. Each edit uses
+one whole current source response and never merges records across requests.
+
 Flag blocks are phone-first: the flag colour/type is on its own line, verified
 beach names follow on rows of at most three names, and the bathing meaning is a
 separate final line. Mixed states use the fixed safety order red, yellow, green.
 When all six tracked beaches have the same verified colour, the names collapse
 to `На всех пляжах ... флаги`. Missing beaches are omitted and never inferred.
-A Mayor bathing restriction or caution overrides contradictory generic flag
-permission wording. Later confirmed SafeBeach changes edit the root and may
-reply to it; newer explicit Mayor bathing transitions refresh the same root on
-already scheduled operational checks. The Morning Digest is never replaced.
+After 10:40 the SafeBeach snapshot in an existing root is frozen; confirmed
+later flag or jellyfish changes are separate replies to that root. If no root
+was available by 10:40, the first later confirmed status may create one as a
+recovery path. A newer explicit Mayor bathing restriction remains an
+independent safety signal and may refresh the root. The Morning Digest is never
+replaced.
 
 The sky-row icon is dynamic from the existing AEMET daily sky forecast:
 `☀️` clear, `🌤` partly cloudy, `☁️` cloudy, `🌫️` fog, `🌧️` rain,
@@ -503,49 +510,39 @@ presented as absence of warnings.
 
 ### Delivery and schedule
 
-- One configured Telegram chat or channel
-- Publish the full non-operational beach briefing at `07:30`
-- Check SafeBeach at `10:10`, then every five minutes through `10:40`
-- Before `10:40`, require active, non-ended, timestamped flags for all six
-  known Guardamar zones
-- Before that complete six-zone set is available, exit without checking or
-  collecting other sources, but retain the most complete whole valid response
-  in the small daily state; equal-size responses prefer the later observation
-- At `10:40`, accept any non-empty valid set so one missing zone cannot
-  suppress the whole update; prefer that current response and use the recent
-  same-day candidate only if the final request has no valid data, without
-  merging records from separate responses
-- After completeness, or after the final failed check, inspect the Mayor
-  channel once for a new explicit bathing-status transition since 07:30
-- If neither source has an update, retain the 07:30 message and exit
-- If either has an update, recollect all other sources once, send one full
-  replacement with a normal notification, then delete the 07:30 message
-- For every digest collection, use the AEMET adapter's bounded transient-only
-  recovery policy; publication and preview do not add outer retries
-- If all three AEMET attempts fail, build the weather blocks from the
-  same-day prepared AEMET snapshot and add only verified SafeBeach/Mayor
-  blocks
-- At most three bounded Telegram HTTP attempts within that run
-- One small atomic JSON state with the date, morning time, message IDs,
-  deletion result, and one temporary normalized SafeBeach candidate removed
-  after successful replacement
-- Concise process output for success, duplicate, skip, and failure
+- Publish the immutable Morning Digest at `07:30`; it never collects
+  SafeBeach.
+- From 1 June through 30 September, check SafeBeach at `10:10` and every
+  five minutes through `10:40`.
+- Any valid current response with at least one known Guardamar flag is enough
+  to create the separate beach root immediately.
+- Every later valid response through `10:40` edits that same root. Do not
+  merge records from separate responses; each edit represents one whole
+  current source response.
+- From 1 October through 31 May, make no scheduled SafeBeach requests.
+- After `10:40`, do not silently rewrite the SafeBeach snapshot in an
+  existing root. The bounded operational monitor confirms later flag/jellyfish
+  changes and publishes them as replies to the root.
+- If no root was created in the initial window, a first later confirmed beach
+  status may create it as a recovery path.
+- Newer explicit Mayor bathing restrictions remain an independent safety
+  signal and may refresh the beach root.
+- AEMET, CAMS and Meteosalud operational updates remain independent of the
+  beach root and follow their existing deterministic delivery rules.
+- One small atomic daily state stores only the message anchors and compact
+  semantic baselines needed by these one-shot processes.
+- Concise process output covers success, duplicate, skip and failure.
 
-The replacement ID is stored before deleting the earlier message. If deletion
-fails, the next invocation retries cleanup without sending another replacement.
 The CLI `preview` command remains available for local inspection. An optional
-`listen` process accepts only a fresh `/preview` command in a private chat from
-a user ID listed in `TELEGRAM_ALLOWED_USER_IDS`. It replies privately with
-freshly collected data. Group commands, unauthorized users, stale updates, and
-other commands are ignored. Neither preview path changes publication state or
-publishes to the configured group. If preview generation fails, the private
-reply includes a stable source-and-stage code plus a concrete safe cause. A
-successful private preview appends an operator-only diagnostics block for each
-consulted optional source that failed or returned no active SafeBeach data.
-Examples include `AEMET-DAY-HTTP-503`, `AEMET-WARN-INVALID-XML`,
-`SB-NO-ACTIVE`, `POLICE-NETWORK`, and `MUNI-AGENDA-NO-POSTER`. Raw URLs,
-credentials, response bodies, transport internals, and tracebacks are never
-returned. Group publication never includes this diagnostics block.
+`listen` process accepts only a fresh `/preview` command in a private chat
+from a user ID listed in `TELEGRAM_ALLOWED_USER_IDS`. Morning preview uses the
+same SafeBeach-free Morning Digest path as production. Group commands,
+unauthorized users, stale updates, and other commands are ignored. Neither
+preview path changes publication state or publishes to the configured group.
+If preview generation fails, the private reply includes a stable
+source-and-stage code plus a concrete safe cause. Raw URLs, credentials,
+response bodies, transport internals, and tracebacks are never returned.
+Group publication never includes this diagnostics block.
 Cached Cultura enrichment preserves a safe technical failure marker so a
 private preview distinguishes an unavailable or malformed timeline from a
 successful check with no matching event. Direct Meteosalud, CAMS, library,
