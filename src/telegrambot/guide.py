@@ -486,6 +486,11 @@ async def _refresh_wifi_source(
     state["wifi_observed_asset_url"] = current
     state.pop("wifi_last_alerted_asset_url", None)
     if changed:
+        # Notice delivery state belongs to the previous semantic snapshot, not
+        # permanently to an asset URL. A later semantic change may legitimately
+        # reuse an older municipal PDF URL.
+        state.pop("wifi_notice", None)
+        state.pop("wifi_notice_uncertain_asset_url", None)
         state["wifi_pending_asset_url"] = current
     guide_state.write(state)
 
