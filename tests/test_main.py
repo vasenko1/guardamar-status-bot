@@ -323,6 +323,51 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 second_status.nearby_flags,
             )
 
+    async def test_update_after_1040_does_not_touch_safebeach_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "delivery.json"
+            now = datetime(2026, 9, 21, 10, 45, tzinfo=MADRID)
+            state = PublicationState(state_path)
+            state.mark_morning(
+                now.date(),
+                10,
+                datetime(2026, 9, 21, 7, 30, tzinfo=MADRID),
+            )
+            beach_fetch = AsyncMock()
+            mayor_fetch = AsyncMock()
+            sent = AsyncMock()
+            edited = AsyncMock()
+            with (
+                patch.dict(os.environ, {
+                    "AEMET_API_KEY": "aemet",
+                    "TELEGRAM_BOT_TOKEN": "telegram",
+                    "TELEGRAM_CHAT_ID": "group",
+                    "MORNING_DIGEST_STATE_PATH": str(state_path),
+                }),
+                patch("telegrambot.__main__.datetime") as clock,
+                patch(
+                    "telegrambot.__main__._refresh_event_catalogs_once",
+                    new=AsyncMock(),
+                ),
+                patch(
+                    "telegrambot.__main__.fetch_beach_status",
+                    new=beach_fetch,
+                ),
+                patch(
+                    "telegrambot.__main__.latest_beach_notice",
+                    new=mayor_fetch,
+                ),
+                patch("telegrambot.__main__.send_message", new=sent),
+                patch("telegrambot.__main__.edit_message", new=edited),
+            ):
+                clock.now.return_value = now
+                self.assertEqual(await _run_command("update"), 0)
+
+            beach_fetch.assert_not_awaited()
+            mayor_fetch.assert_not_awaited()
+            sent.assert_not_awaited()
+            edited.assert_not_awaited()
+
     async def test_safebeach_query_window_uses_normal_recovery_checkpoint(self):
         with tempfile.TemporaryDirectory() as directory:
             state_path = Path(directory) / "delivery.json"
