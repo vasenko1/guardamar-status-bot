@@ -28,7 +28,7 @@ class MorningLifecycleTests(unittest.IsolatedAsyncioTestCase):
              patch("telegrambot.morning.fetch_meteosalud", new=AsyncMock(return_value=None)), \
              patch("telegrambot.morning.fetch_meteosalud_cold", new=AsyncMock(return_value=None)):
             message = await produce_message(
-                "key", now, "", "/tmp/none.json", collect_beach=False,
+                "key", now, "", "/tmp/none.json",
                 aemet_digest=fallback, fetch_aemet=False,
                 fetch_environment=False,
             )
