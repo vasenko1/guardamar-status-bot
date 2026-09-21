@@ -18,14 +18,15 @@ official endpoints and lightweight access methods are validated.
 | --- | --- | --- | --- | --- |
 | AEMET OpenData | Guardamar forecast, nearby observation, official weather warnings | High; responsible Spanish authority | Structured API; API key required | Yes, first slice |
 | Ministerio de Sanidad Meteosalud | Today's heat- and cold-health risk for `Litoral sur de Alicante`, zone code `770303` | High; official national health source | Separate bounded morning reads of the official summer (`ISO_V`) and winter (`ISO_I`) technical TXT files; stale dates omitted | Yes, optional |
-| CAMS European Air Quality Forecasts | Forecast pollutants, mineral dust, wildfire PM10 contribution and six pollen types | High for model forecast; not an observation or official measured ICA | Separate public GitHub producer workflow runs twice each morning and publishes one validated JSON | Yes, optional |
+| CAMS European Air Quality Forecasts | Forecast pollutants, mineral dust, wildfire PM10 contribution and six pollen types | High for model forecast; not an observation or official measured ICA | Separate public producer makes bounded morning publication attempts; bot checks at 10:40 and then only through existing operational recovery until today's cycle is accepted | Yes, optional |
 | ESIOS / Red Eléctrica | Next-day PVPC 2.0TD hourly active-energy term | High; official system operator publication | Indicator API `1001`; personal API key required | Yes, evening feature |
 | Official marine service | Sea state and relevant marine warnings | High for its jurisdiction | API or published feed | Yes |
 | SafeBeach public Guardamar page | Active beach flags and jellyfish operational status | High when municipal lifeguards actively maintain it | Small structured payload embedded in the public page | Yes |
+| Guardamar municipal bathing-water programme | Current-year control window and newest official weekly report link | High for programme/report publication; current adapter does not interpret laboratory results | One bounded municipal HTML read at most once per local day inside guide sync; stores source state only | Yes, source-state only |
 | Civil protection or emergency authority | Safety warnings | Highest priority | Alert feed or official publication | Yes |
 | CCE — 112 Comunitat Valenciana | Active emergency and hydrological authority state relevant to Guardamar/Segura | Highest priority for authority decisions; complements rather than duplicates AEMET | Public `emergencias.jsf` plus current text-readable CCE PDF, checked by one bounded hourly watcher | Yes, narrow operational monitor |
 | Previfoc / Generalitat Valenciana (VAERSA ArcGIS) | Official zone-6 forest-fire preemergency plus dry-thunderstorm risk for Guardamar | High; responsible regional fire-prevention/emergency source | Tiny structured ArcGIS query for the current operational day; same-day level may be readjusted | Yes, narrow operational monitor |
-| Instituto Geografico Nacional (IGN) GeoRSS | Nearby recorded earthquakes | High; official Spanish seismic authority | One bounded public XML feed request per hour; deterministic 10 km and magnitude 2.7 filter | Yes, narrow standalone notice |
+| Instituto Geografico Nacional (IGN) GeoRSS | Nearby recorded earthquakes | High; official Spanish seismic authority | One bounded public XML feed request per hour; deterministic 20 km and magnitude 2.0 filter | Yes, narrow standalone notice |
 | Policía Local Guardamar | Explicit mobility restrictions | High for direct official notices; publication is irregular | One bounded official HTML page and reviewed linked document | Yes |
 | Agenda Guardamar | Official ticketed events occurring today | High for listed Ayuntamiento events | 05:30 bounded HTML/Schema.org catalog refresh | Yes |
 | Turismo Guardamar municipal agenda | Broader official monthly cultural text plus supplementary MUPI | High for text; image facts require agreement | 05:10 text-first catalog refresh; MUPI only after URL change | Yes |
@@ -65,9 +66,10 @@ written atomically and are promoted only by the lifecycle that accepts that
 forecast cycle. Operator previews use a disposable cache copied from the
 last-good file, so a preview cannot overwrite the production cache or candidate.
 
-Checks at 10:10, 10:25 and 10:40, followed only by the first invocation of
-already scheduled operational windows, continue until today's UTC forecast
-base is accepted. A newer cycle is summarized only for the remaining local day
+One early late-cycle check runs at 10:40. If today's UTC forecast base is still
+unavailable, only the first invocation of already scheduled operational windows
+provides recovery until that daily cycle is accepted. A newer cycle is summarized
+only for the remaining local day
 and compared with the previously accepted remaining-day state. A material
 user-facing worsening, improvement, appearance, or clearance may produce one
 standalone Telegram update, normally as a reply to the Morning Digest. A
@@ -102,8 +104,8 @@ description and GeoRSS fields. Malformed or ambiguous records are omitted; a
 non-empty feed with no valid records is rejected.
 
 The monitor uses Guardamar coordinates `38.0896, -0.6553` as its stable local
-reference. It publishes only a new event with magnitude at least 2.7 and an
-unrounded great-circle distance no greater than 10 km. Event time supplied by
+reference. It publishes only a new event with magnitude at least 2.0 and an
+unrounded great-circle distance no greater than 20 km. Event time supplied by
 IGN in UTC is converted to `Europe/Madrid`. The user-facing map link points to
 the exact decimal coordinates through Google Maps; Google Maps is presentation
 only and supplies no earthquake fact. IGN's interactive maps and later
