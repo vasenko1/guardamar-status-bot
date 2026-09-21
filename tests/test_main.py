@@ -53,7 +53,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
         """Run one late checkpoint with a separately reconstructed cache."""
         with tempfile.TemporaryDirectory() as directory:
             state_path = Path(directory) / "delivery.json"
-            now = datetime(2026, 9, 11, 10, 25, tzinfo=MADRID)
+            now = datetime(2026, 9, 11, 10, 40, tzinfo=MADRID)
             state = PublicationState(state_path)
             state.mark_morning(now.date(), 10, now)
             state.mark_cams_environment(
@@ -169,18 +169,18 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
         )
         sent.assert_not_awaited()
 
-    def test_cams_refresh_uses_only_bounded_existing_checkpoints(self):
-        self.assertTrue(_cams_update_checkpoint(
+    def test_cams_refresh_uses_one_early_checkpoint_then_normal_monitoring(self):
+        self.assertFalse(_cams_update_checkpoint(
             datetime(2026, 9, 11, 10, 10, tzinfo=MADRID)
         ))
-        self.assertTrue(_cams_update_checkpoint(
+        self.assertFalse(_cams_update_checkpoint(
             datetime(2026, 9, 11, 10, 25, tzinfo=MADRID)
         ))
         self.assertTrue(_cams_update_checkpoint(
             datetime(2026, 9, 11, 10, 40, tzinfo=MADRID)
         ))
         self.assertFalse(_cams_update_checkpoint(
-            datetime(2026, 9, 11, 10, 15, tzinfo=MADRID)
+            datetime(2026, 9, 11, 10, 45, tzinfo=MADRID)
         ))
         self.assertTrue(_cams_monitor_checkpoint(MonitorRun(1, False)))
         self.assertTrue(_cams_monitor_checkpoint(MonitorRun(None, True)))
@@ -209,19 +209,17 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
             datetime.fromisoformat("2026-10-24T00:00:00+00:00"), now
         ))
 
-    async def test_cams_refresh_retries_after_transient_miss_and_accepts_silently(self):
+    async def test_cams_1040_miss_recovers_on_normal_monitor_checkpoint(self):
         with tempfile.TemporaryDirectory() as directory:
             state_path = Path(directory) / "delivery.json"
-            first = datetime(2026, 9, 11, 10, 10, tzinfo=MADRID)
-            second = datetime(2026, 9, 11, 10, 25, tzinfo=MADRID)
+            monitor_path = Path(directory) / "operational.json"
+            first = datetime(2026, 9, 11, 10, 40, tzinfo=MADRID)
+            second = datetime(2026, 9, 11, 12, 0, tzinfo=MADRID)
             old_base = datetime.fromisoformat("2026-09-10T00:00:00+00:00")
             new_base = datetime.fromisoformat("2026-09-11T00:00:00+00:00")
             state = PublicationState(state_path)
             state.mark_morning(first.date(), 10, first)
             state.mark_morning_environment(first.date(), None, old_base)
-            legacy = json.loads(state_path.read_text(encoding="utf-8"))
-            legacy["cams_refresh_attempted"] = True
-            state_path.write_text(json.dumps(legacy), encoding="utf-8")
             fetch = AsyncMock(side_effect=[
                 (None, None, old_base),
                 EnvironmentError("not published yet"),
@@ -234,6 +232,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 "TELEGRAM_BOT_TOKEN": "telegram",
                 "TELEGRAM_CHAT_ID": "group",
                 "MORNING_DIGEST_STATE_PATH": str(state_path),
+                "OPERATIONAL_UPDATE_STATE_PATH": str(monitor_path),
             }
             with (
                 patch.dict(os.environ, common),
@@ -253,14 +252,23 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                     new=AsyncMock(return_value=None),
                 ),
                 patch(
+                    "telegrambot.__main__.fetch_warnings",
+                    new=AsyncMock(return_value=()),
+                ),
+                patch(
                     "telegrambot.__main__._refresh_event_catalogs_once",
                     new=AsyncMock(),
+                ),
+                patch(
+                    "telegrambot.__main__.scheduled_run",
+                    return_value=MonitorRun(None, True),
                 ),
                 patch("telegrambot.__main__.send_message", new=sent),
             ):
                 clock.now.side_effect = [first, second]
+                clock.fromisoformat.side_effect = datetime.fromisoformat
                 self.assertEqual(await _run_command("update"), 0)
-                self.assertEqual(await _run_command("update"), 0)
+                self.assertEqual(await _run_command("monitor-updates"), 0)
             self.assertEqual(fetch.await_count, 4)
             sent.assert_not_awaited()
             self.assertEqual(
