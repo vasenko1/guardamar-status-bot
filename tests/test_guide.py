@@ -143,17 +143,19 @@ class BathingWaterGuideTests(unittest.IsolatedAsyncioTestCase):
         text = _bathing_water_notice_text(bathing_report(moment))
 
         self.assertIn("🧪 <b>Контроль зон купания</b>", text)
-        self.assertIn("📅 Пробы: 16–17 июня 2026", text)
         self.assertIn("<b>Лабораторный анализ воды</b>", text)
         self.assertIn("✅ Отлично — все 7 пляжей", text)
-        self.assertIn("👁 <b>Визуальный осмотр</b>", text)
+        self.assertIn("👁 <b>Визуальный контроль</b>", text)
         self.assertIn("• Вода — хорошо:", text)
         self.assertIn("   Centro", text)
         self.assertIn("• Песок — хорошо:", text)
         self.assertIn("   La Roqueta, Ortigues", text)
         self.assertIn("Остальные визуальные оценки — отлично", text)
+        self.assertIn("📅 Пробы: 16–17 июня 2026", text)
+        self.assertLess(text.index("Остальные визуальные оценки"), text.index("📅 Пробы:"))
+        self.assertLess(text.index("📅 Пробы:"), text.index("🏛 Данные:"))
         self.assertIn(
-            "🏛 Контроль: Servicio de Calidad de Aguas · Generalitat Valenciana",
+            "🏛 Данные: Servicio de Calidad de Aguas · Generalitat Valenciana",
             text,
         )
         self.assertIn("<b>обЪявления Гуардамар</b>", text)
