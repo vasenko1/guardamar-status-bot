@@ -13,8 +13,8 @@ prices, weekend events, and selected bounded operational updates.
 The Morning Digest MVP can fetch official AEMET weather and warning data plus
 Guardamar's public SafeBeach status, format one short message, and deliver it
 to one configured Telegram chat or channel. It may also include all verified
-deduplicated Guardamar events occurring today and an explicit active
-festival traffic restriction from Policía Local Guardamar.
+deduplicated Guardamar events occurring today. Sunrise and sunset are computed
+locally from Guardamar coordinates and do not require another network source.
 
 The linked pinned city guide uses one recoverable Telegram graph for cameras,
 transport, durable places, and recurring activities. Its first places/activity
