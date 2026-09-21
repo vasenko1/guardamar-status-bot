@@ -93,7 +93,8 @@ create that root.
 
 - Subscribers see every verified beach status transition without hidden
   green/yellow changes and receive changed official warnings.
-- Multiple source changes in one window produce at most one notification.
+- One monitor window produces at most one beach-change reply and one AEMET
+  warning reply; the two products keep their own anchors.
 - The device uses bounded short processes, small state and no new dependency.
 - A beach change may be reported after the next two-hour window plus five or
   ten minutes. This is the accepted tradeoff for source stability and low
@@ -101,13 +102,17 @@ create that root.
 
 ## Acceptance criteria
 
-- No beach request outside the accepted season or scheduled service window.
-- No confirmation request when there is no pending beach candidate.
+- No SafeBeach request outside 1 June through 30 September or outside the
+  scheduled daytime windows.
+- No phase-two or phase-three confirmation request when there is no pending
+  operational beach transition.
 - At most three SafeBeach requests per primary window.
 - Missing data never clears a known flag or jellyfish value.
 - All explicit confirmed flag colors can generate an update.
 - AEMET failures never manufacture a warning cancellation.
 - Natural warning expiry is silent; early cancellation is visible.
-- Combined changes create one message replying to the full daily digest.
-- A deleted reply anchor falls back to a standalone message.
+- Confirmed beach changes reply to the daily beach root; AEMET changes reply
+  to the immutable Morning Digest.
+- A deleted beach root is recreated from confirmed state before its reply;
+  the existing AEMET reply fallback remains unchanged.
 - No database, daemon, new dependency or raw-source archive is introduced.
