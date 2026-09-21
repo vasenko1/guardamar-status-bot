@@ -154,7 +154,7 @@ DEFAULT_EARTHQUAKE_STATE_PATH = "state/earthquakes.json"
 DEFAULT_EMERGENCY_RISK_STATE_PATH = "state/emergency_risks.json"
 DEFAULT_HIDRAQUA_STATE_PATH = "state/hidraqua.json"
 DEFAULT_CAMS_CACHE_PATH = "state/cams.json"
-CAMS_UPDATE_CHECKPOINTS = frozenset({(10, 10), (10, 25), (10, 40)})
+CAMS_UPDATE_CHECKPOINTS = frozenset({(10, 40)})
 
 
 def _cams_cycle_is_current(
