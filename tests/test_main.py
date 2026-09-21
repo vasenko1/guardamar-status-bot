@@ -889,9 +889,9 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
     async def test_appends_diagnostics_only_in_preview_wrapper(self):
         async def produce(*args, diagnostics=None, **kwargs):
             diagnostics.append(SourceDiagnostic(
-                "SB-NO-ACTIVE",
-                "SafeBeach",
-                "активных данных выбранных пляжей нет",
+                "POLICE-NETWORK",
+                "Policía Local",
+                "официальный источник временно недоступен",
             ))
             return "готовый дайджест"
 
@@ -903,7 +903,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("готовый дайджест", message)
         self.assertIn("🔧 Диагностика источников", message)
-        self.assertIn("[SB-NO-ACTIVE] SafeBeach", message)
+        self.assertIn("[POLICE-NETWORK] Policía Local", message)
 
     async def test_weekend_preview_neither_publishes_nor_writes_state(self):
         prepared = AsyncMock(return_value=0)
