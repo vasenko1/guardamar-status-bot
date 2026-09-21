@@ -59,7 +59,7 @@ no message.
 
 | Lifecycle | Trigger | Resident-facing effect |
 | --- | --- | --- |
-| Morning Digest | 07:30 daily | One immutable daily message; Policía Local, pharmacy, events, holidays/markets, AEMET weather/sea/UV, CAMS/Meteosalud baseline and fresh CCE hydrology contribute here without becoming separate morning processes. |
+| Morning Digest | 07:30 daily | One immutable daily message; pharmacy, events, holidays/markets, AEMET weather/sea/UV, locally computed sunrise/sunset, CAMS/Meteosalud baseline and fresh CCE hydrology contribute here without becoming separate morning processes. |
 | SafeBeach + Mayor bathing status | 10:10–10:40 in season, then bounded operational checks | Separate daily beach root, live early edits, later confirmed replies; explicit Mayor bathing restrictions remain an independent safety signal. |
 | AEMET operational warnings | Existing `monitor-updates` windows | Material warning changes reply to the Morning Digest. |
 | CAMS / Meteosalud late environment | 10:40 CAMS early check plus existing operational recovery; Meteosalud on operational checkpoints | Material air-quality, pollen, heat or cold changes reply to the Morning Digest. |
@@ -73,7 +73,7 @@ no message.
 | Pharmacy catalogue | Sunday 05:50 | Source refresh only; consumed by Morning Digest. |
 | Bathing-water programme | At most once per local day inside guide sync | Source-state only today: programme dates and newest official report link; no public water-quality claim yet. |
 | Event/translation/AEMET preparation | Pre-morning one-shots | Source preparation only; no independent public notification. |
-| Wi-Fi source watch | Inside guide sync | Private operator alert only when the municipal Wi-Fi source asset changes. |
+| Municipal Wi-Fi source watch | Inside guide sync | A changed official municipal PDF is parsed fail-closed; after the existing Wi-Fi card is reconciled with a complete accepted snapshot, one public group notice links to that updated card. |
 | OCI capacity search | Independent GitHub Actions | Infrastructure only; no Telegram city publication. |
 
 ## Logical areas
@@ -100,15 +100,10 @@ Defines deterministic rules for:
 - priority;
 - message length and section order.
 
-Core selection and formatting are deterministic. The optional Policía Local
-fallback may ask Gemini for structured translation of an unknown official
-notice, but application validation—not the model—decides whether it is safe to
-include.
-
-Traffic documents normalize into independent mobility measures rather than one
-document-wide type. A measure has an action, location and validity interval,
-plus only relevant hours, affected users, exceptions, alternative route and
-destinations.
+Core selection and formatting are deterministic. The former Policía Local
+traffic adapter is retired from runtime because the reviewed page did not
+provide a dependable current traffic feed; no daily police request or traffic
+AI fallback remains.
 
 ### Telegram boundary
 
@@ -276,9 +271,9 @@ calendar date and independently valid, timestamped records among the six known
 Guardamar zones; conflicting, duplicate, malformed, inactive or ended records
 are omitted.
 
-Mayor, Policía Local, and municipal-agenda transports accept only their exact
-official HTTPS hosts, expected content types, and bounded responses. Gemini
-uses the same fail-closed protocol checks. One OpenRouter request with a
+Mayor and municipal-agenda transports accept only their exact official HTTPS
+hosts, expected content types, and bounded responses. Gemini uses the same
+fail-closed protocol checks. One OpenRouter request with a
 pinned non-Google model may follow a Gemini failure, using the identical
 bounded public input and JSON schema. Both return structured diagnostics;
 provider response text is never exposed. A corrupt event catalog is ignored.
