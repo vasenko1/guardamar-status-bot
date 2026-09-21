@@ -517,6 +517,24 @@ def _parse_report_text(
         )
 
     water_start, water_appearance_start, sand_start, analytics_start = positions
+    table_beach_lines = [
+        line
+        for line in lines[header_index + 1:]
+        if _fold(line).startswith("PLAYA ")
+    ]
+    if len(table_beach_lines) != len(_BEACH_ROWS):
+        raise BathingWaterSourceError(
+            "bathing-water report beach topology changed",
+            code="REPORT-SCHEMA",
+        )
+    for line in table_beach_lines:
+        folded = _fold(line)
+        if sum(source_name in folded for source_name, _ in _BEACH_ROWS) != 1:
+            raise BathingWaterSourceError(
+                "bathing-water report contains an unknown beach row",
+                code="REPORT-SCHEMA",
+            )
+
     rows = []
     for source_name, public_name in _BEACH_ROWS:
         matches = []
