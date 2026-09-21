@@ -87,6 +87,14 @@ GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 DEFAULT_GUIDE_STATE_PATH = "state/guide.json"
 AQUALIDER_ORIGIN = "https://aqualidernatacion.simplybook.it"
 AQUALIDER_BASE_URL = f"{AQUALIDER_ORIGIN}/v2"
+ORA_INFO_URL = "https://oraguardamar.gruposetex.es/tarifas-y-horarios"
+_GUIDE_STATE_VERSION = 1
+_JSON_TYPES = frozenset({"application/json"})
+_HTML_TYPES = frozenset({"text/html", "application/xhtml+xml"})
+_REQUEST_HEADERS = {
+    "Accept": "application/json",
+    "User-Agent": "guardamar-status-bot/1.0",
+}
 _ORA_REQUEST_HEADERS = {
     "Accept": "text/html,application/xhtml+xml",
     "User-Agent": "guardamar-status-bot/1.0",
