@@ -35,6 +35,7 @@ from .sporttia import (
     select_sport_groups,
 )
 from .state import StateError
+from .wifi import WIFI_BASELINE_POINTS
 from .telegram import TelegramError, is_ambiguous_send_failure
 
 PINNED_CONTENT_VERSION = 2
@@ -190,19 +191,6 @@ WIFI_POINT_META = {
         "Biblioteca Pública, C/ San Jaime 5, Guardamar del Segura",
     ),
 }
-WIFI_BASELINE_POINTS = (
-    ("music_school", (("WiFi4EU", None),)),
-    ("culture_house", (("WiFi4EU", None),)),
-    ("los_pinos", (("WiFi4EU", None),)),
-    ("constitution_square", (("vegafibra_gratis", "vegafibra"),)),
-    ("seafront", (("vegafibra_gratis", "vegafibra"),)),
-    ("study_room", (("wifi_1EO9C", "vegafibra"),)),
-    ("library", (
-        ("wifibiblioteca", "biblimar"),
-        ("biblioteca infantil", "menjallibres"),
-        ("vicenteramos", "menjallibres"),
-    )),
-)
 WIFI_POINT_ORDER = tuple(key for key, _ in WIFI_BASELINE_POINTS)
 
 
