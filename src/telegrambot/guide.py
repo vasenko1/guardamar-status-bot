@@ -9,6 +9,7 @@ has been validated on the production runtime.
 import argparse
 import asyncio
 import fcntl
+import hashlib
 import html
 import json
 import logging
@@ -25,7 +26,10 @@ from zoneinfo import ZoneInfo
 from ._transport import BoundedFetchError, fetch_bounded
 from .bathing_water import (
     BathingWaterSourceError,
+    bathing_water_report_fingerprint,
+    fetch_bathing_water_report,
     fetch_bathing_water_snapshot,
+    valid_bathing_water_report_snapshot,
     valid_bathing_water_snapshot,
 )
 from .branding import with_footer
@@ -135,6 +139,33 @@ class GuideState:
             raise StateError(
                 "guide state has an invalid bathing-water snapshot"
             )
+        bathing_water_report = value.get("bathing_water_report_snapshot")
+        if (
+            bathing_water_report is not None
+            and not valid_bathing_water_report_snapshot(bathing_water_report)
+        ):
+            raise StateError(
+                "guide state has an invalid bathing-water report snapshot"
+            )
+        for field in (
+            "bathing_water_pending_notice",
+            "bathing_water_notice_uncertain",
+        ):
+            marker = value.get(field)
+            if marker is not None and (
+                not isinstance(marker, str) or not marker.strip()
+            ):
+                raise StateError(f"guide state has an invalid {field}")
+        bathing_water_notice = value.get("bathing_water_notice")
+        if bathing_water_notice is not None and (
+            not isinstance(bathing_water_notice, dict)
+            or not isinstance(bathing_water_notice.get("key"), str)
+            or not bathing_water_notice["key"].strip()
+            or not isinstance(bathing_water_notice.get("message_id"), int)
+            or isinstance(bathing_water_notice.get("message_id"), bool)
+            or bathing_water_notice["message_id"] <= 0
+        ):
+            raise StateError("guide state has an invalid bathing-water notice")
         wifi_snapshot = value.get("wifi_snapshot")
         if wifi_snapshot is not None and not valid_wifi_snapshot(wifi_snapshot):
             raise StateError("guide state has an invalid Wi-Fi snapshot")
@@ -495,6 +526,233 @@ async def _refresh_wifi_source(
     guide_state.write(state)
 
 
+_BATHING_RATING_ORDER = ("excellent", "good", "sufficient", "insufficient")
+_BATHING_QUALITY_RU = {
+    "excellent": "отличное",
+    "good": "хорошее",
+    "sufficient": "удовлетворительное",
+    "insufficient": "недостаточное",
+}
+_BATHING_APPEARANCE_RU = {
+    "excellent": "отлично",
+    "good": "хорошо",
+    "sufficient": "удовлетворительно",
+    "insufficient": "неудовлетворительно",
+}
+_RU_MONTHS_GENITIVE = (
+    "", "января", "февраля", "марта", "апреля", "мая", "июня",
+    "июля", "августа", "сентября", "октября", "ноября", "декабря",
+)
+
+
+def _bathing_water_notice_key(snapshot: dict) -> str:
+    fingerprint = repr(bathing_water_report_fingerprint(snapshot)).encode("utf-8")
+    digest = hashlib.sha256(fingerprint).hexdigest()[:16]
+    return f'{snapshot["report_start"]}:{snapshot["report_end"]}:{digest}'
+
+
+def _bathing_water_period_text(snapshot: dict) -> str:
+    start = date.fromisoformat(snapshot["report_start"])
+    end = date.fromisoformat(snapshot["report_end"])
+    if start.year == end.year and start.month == end.month:
+        return (
+            f"{start.day}–{end.day} {_RU_MONTHS_GENITIVE[end.month]} "
+            f"{end.year}"
+        )
+    if start.year == end.year:
+        return (
+            f"{start.day} {_RU_MONTHS_GENITIVE[start.month]} – "
+            f"{end.day} {_RU_MONTHS_GENITIVE[end.month]} {end.year}"
+        )
+    return (
+        f"{start.day} {_RU_MONTHS_GENITIVE[start.month]} {start.year} – "
+        f"{end.day} {_RU_MONTHS_GENITIVE[end.month]} {end.year}"
+    )
+
+
+def _bathing_water_notice_text(snapshot: dict) -> str:
+    beaches = snapshot["beaches"]
+    lines = [
+        "🧪 <b>Качество воды на пляжах</b>",
+        "",
+        "Опубликован новый официальный еженедельный отчёт.",
+        "",
+    ]
+    water_groups = {
+        rating: [
+            beach["name"] for beach in beaches
+            if beach["water_analysis"] == rating
+        ]
+        for rating in _BATHING_RATING_ORDER
+    }
+    if len(water_groups["excellent"]) == len(beaches):
+        lines.append(
+            "✅ По лабораторному анализу вода — "
+            "<b>отличного качества на всех 7 пляжах</b>."
+        )
+    else:
+        lines.append("<b>Лабораторный анализ воды:</b>")
+        for rating in _BATHING_RATING_ORDER:
+            names = water_groups[rating]
+            if names:
+                lines.append(
+                    f'• {_BATHING_QUALITY_RU[rating].capitalize()} — '
+                    + ", ".join(html.escape(name) for name in names)
+                )
+
+    visual_lines = []
+    for field, label in (
+        ("water_appearance", "Вода"),
+        ("sand_appearance", "Песок"),
+    ):
+        for rating in _BATHING_RATING_ORDER[1:]:
+            names = [
+                beach["name"] for beach in beaches
+                if beach[field] == rating
+            ]
+            if names:
+                visual_lines.append(
+                    f'• {label}: {_BATHING_APPEARANCE_RU[rating]} — '
+                    + ", ".join(html.escape(name) for name in names)
+                )
+    lines.append("")
+    if visual_lines:
+        lines.append("<b>По визуальному осмотру:</b>")
+        lines.extend(visual_lines)
+    else:
+        lines.append(
+            "Внешний вид воды и песка — <b>отлично на всех пляжах</b>."
+        )
+
+    report_url = html.escape(snapshot["report_url"], quote=True)
+    lines.extend([
+        "",
+        f'🗓 {_bathing_water_period_text(snapshot)}',
+        f'🔗 <a href="{report_url}"><b>Официальный отчёт</b></a>',
+    ])
+    return with_footer("\n".join(lines))
+
+
+async def _refresh_bathing_water_source(
+    now: datetime,
+    state: dict,
+    guide_state: GuideState,
+) -> None:
+    local_day = now.astimezone(GUARDAMAR_TIMEZONE).date().isoformat()
+    if state.get("bathing_water_last_attempt_day") == local_day:
+        return
+    state["bathing_water_last_attempt_day"] = local_day
+    guide_state.write(state)
+    try:
+        programme = await fetch_bathing_water_snapshot(now)
+    except BathingWaterSourceError as exc:
+        logging.warning(
+            "Bathing-water programme deferred [GUIDE-%s]",
+            exc.diagnostic_code,
+        )
+        return
+
+    state["bathing_water_snapshot"] = programme
+    guide_state.write(state)
+    report_url = programme.get("latest_report_url")
+    if not isinstance(report_url, str):
+        return
+
+    previous = state.get("bathing_water_report_snapshot")
+    expected_identity = (
+        programme.get("latest_report_start"),
+        programme.get("latest_report_end"),
+        report_url,
+    )
+    previous_identity = None
+    if isinstance(previous, dict):
+        previous_identity = (
+            previous.get("report_start"),
+            previous.get("report_end"),
+            previous.get("report_url"),
+        )
+    if previous_identity == expected_identity:
+        return
+
+    try:
+        current = await fetch_bathing_water_report(programme, now)
+    except BathingWaterSourceError as exc:
+        logging.warning(
+            "Bathing-water weekly report deferred [GUIDE-%s]",
+            exc.diagnostic_code,
+        )
+        return
+
+    changed = (
+        previous is not None
+        and bathing_water_report_fingerprint(previous)
+        != bathing_water_report_fingerprint(current)
+    )
+    state["bathing_water_report_snapshot"] = current
+    if changed:
+        state["bathing_water_pending_notice"] = _bathing_water_notice_key(current)
+        state.pop("bathing_water_notice_uncertain", None)
+    guide_state.write(state)
+
+
+async def _publish_bathing_water_pending_notice(
+    bot_token: str,
+    chat_id: str,
+    state: dict,
+    guide_state: GuideState,
+) -> None:
+    pending = state.get("bathing_water_pending_notice")
+    if not isinstance(pending, str):
+        return
+    report = state.get("bathing_water_report_snapshot")
+    if (
+        not isinstance(report, dict)
+        or not valid_bathing_water_report_snapshot(report)
+        or _bathing_water_notice_key(report) != pending
+    ):
+        raise StateError("guide state has mismatched bathing-water notice state")
+    if state.get("bathing_water_notice_uncertain") == pending:
+        logging.warning(
+            "Bathing-water public notice remains uncertain: %s", pending
+        )
+        return
+    sent = state.get("bathing_water_notice")
+    if isinstance(sent, dict) and sent.get("key") == pending:
+        state.pop("bathing_water_pending_notice", None)
+        guide_state.write(state)
+        return
+
+    state["bathing_water_notice_uncertain"] = pending
+    guide_state.write(state)
+    try:
+        message_id = await send_message(
+            bot_token,
+            chat_id,
+            _bathing_water_notice_text(report),
+            disable_notification=False,
+            retry_only_rate_limits=True,
+        )
+    except TelegramError as exc:
+        if is_ambiguous_send_failure(exc):
+            logging.warning(
+                "Bathing-water public notice delivery is uncertain "
+                "[TELEGRAM-%s]",
+                exc.diagnostic_code,
+            )
+            return
+        state.pop("bathing_water_notice_uncertain", None)
+        guide_state.write(state)
+        raise
+    state.pop("bathing_water_notice_uncertain", None)
+    state.pop("bathing_water_pending_notice", None)
+    state["bathing_water_notice"] = {
+        "key": pending,
+        "message_id": message_id,
+    }
+    guide_state.write(state)
+    logging.info("Bathing-water weekly quality notice published")
+
+
 def _wifi_notice_text(chat_id: str, messages: Dict[str, int]) -> str:
     wifi_link = telegram_message_link(chat_id, messages["wifi"])
     return with_footer(
@@ -817,23 +1075,7 @@ async def sync_guide(now: datetime) -> str:
         local_now = now.astimezone(GUARDAMAR_TIMEZONE)
         local_day = local_now.date()
 
-        if (
-            state.get("bathing_water_last_attempt_day")
-            != local_day.isoformat()
-        ):
-            state["bathing_water_last_attempt_day"] = local_day.isoformat()
-            guide_state.write(state)
-            try:
-                state["bathing_water_snapshot"] = (
-                    await fetch_bathing_water_snapshot(now)
-                )
-            except BathingWaterSourceError as exc:
-                logging.warning(
-                    "Bathing-water programme deferred [GUIDE-%s]",
-                    exc.diagnostic_code,
-                )
-            else:
-                guide_state.write(state)
+        await _refresh_bathing_water_source(now, state, guide_state)
 
         previous_sporttia = state.get("sporttia_catalog")
         if state.get("sporttia_last_attempt_day") != local_day.isoformat():
@@ -1021,6 +1263,9 @@ async def sync_guide(now: datetime) -> str:
 
         await _publish_wifi_pending_notice(
             bot_token, chat_id, messages, state, guide_state
+        )
+        await _publish_bathing_water_pending_notice(
+            bot_token, chat_id, state, guide_state
         )
 
         parking_notice_key = _parking_notice_key(local_day)
