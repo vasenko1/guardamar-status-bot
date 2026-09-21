@@ -366,16 +366,15 @@ Spanish/English CAP duplicates and green `Minor` records are omitted. Unknown
 description wording is never machine-translated or guessed: the warning,
 validity period, and validated probability still remain visible.
 
-The beach-status slice adds:
+The beach-status slice is separate from the Morning Digest and adds:
 
 - every valid active flag among the six known Guardamar SafeBeach zones;
-- today's AEMET water temperature and sea-state forecast for
-  `Centro / La Roqueta`;
-- Centre water temperature and sea state as SafeBeach fallbacks;
-- omission of individual unavailable flags and sea state without blocking
-  weather delivery or inventing a normal status.
+- explicit jellyfish state only when tied to a current verified beach record;
+- omission of unavailable beaches without inferring a normal flag or carrying
+  a missing record forward as current.
 
-Neither AEMET nor fallback logic supplies or infers a beach flag.
+The Morning Digest continues to use AEMET for its sea forecast independently.
+Neither AEMET nor any fallback logic supplies or infers a beach flag.
 
 The event slice adds today's official ticketed Agenda Guardamar events from a
 small catalog refreshed before the morning run. The refresh reads the title,
@@ -460,10 +459,10 @@ Google Maps HTTPS search URL. Append `Guardamar del Segura` to the search
 query when the source place does not already name the city. Keep the visible
 label concise and independent from the query; in particular, render the
 reviewed exhibition venue as `Casa de Cultura (Sala de exposiciones)`.
-The explicit operator command `refresh-current` may rebuild today's digest
-and edit the one live morning or beach-replacement message in place. It must
-refuse missing, stale, or internally inconsistent publication state and must
-not create a new group message.
+The explicit operator command `refresh-current` may rebuild today's Morning
+Digest and edit that one live morning message in place. It never collects
+SafeBeach, must refuse missing, stale, or internally inconsistent publication
+state, and must not create a new group message.
 
 Every public digest and electricity message ends with one compact linked
 signature, `📣 обЪявления Гуардамар`. It is part of the message so forwarded
