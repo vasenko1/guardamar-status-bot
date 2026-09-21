@@ -71,7 +71,7 @@ no message.
 | Electricity | 20:30/20:35/20:45/21:00/21:20 attempts | One next-day PVPC table reply after the first complete official dataset. |
 | Weekend digest | Friday 19:15, retry 20:15 | One weekend-events digest when verified events exist. |
 | Pharmacy catalogue | Sunday 05:50 | Source refresh only; consumed by Morning Digest. |
-| Bathing-zone control | 19:35 daily 01 Jun–30 Sep; PDF only for a new report identity | A fresh first or later official weekly report produces one 🧪 group notice with actual sample dates, laboratory water quality by beach and only non-excellent visual water/sand exceptions; stale first report becomes baseline. |
+| Bathing-zone control | 19:35 daily 01 Jun–15 Sep; PDF only for a new report identity | A fresh first or later official weekly report produces one 🧪 group notice with actual sample dates, laboratory water quality by beach and only non-excellent visual water/sand exceptions; stale first report becomes baseline. |
 | Event/translation/AEMET preparation | Pre-morning one-shots | Source preparation only; no independent public notification. |
 | Municipal Wi-Fi source watch | Inside guide sync | A changed official municipal PDF is parsed fail-closed; only a semantic point/SSID/password change updates the existing card and, after reconciliation, produces one public group notice linking to that card. |
 | OCI capacity search | Independent GitHub Actions | Infrastructure only; no Telegram city publication. |
