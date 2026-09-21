@@ -260,6 +260,37 @@ conditions, with one arrow. A transition uses `🌤`; a single state uses its
 matching icon. Unknown or missing conditions use `🌤`.
 The icon adds no text, AI, or new source.
 
+### Weekly bathing-zone control
+
+During the official bathing season and a five-day final-report grace period, a
+separate short-lived 19:35 one-shot checks the published Guardamar index for a
+new Generalitat Valenciana bathing-zone report. It never reruns the full guide
+sync.
+
+The public message is intentionally different from the operational SafeBeach
+root. SafeBeach answers today's flag/jellyfish/bathing-status question;
+bathing-zone control reports the Generalitat's laboratory and inspection
+results from actual samples.
+
+Phone-first copy uses:
+
+- `🧪 Контроль зон купания`;
+- `📅 Пробы:` followed by the actual unique sample dates extracted from the
+  report rows;
+- a primary `Лабораторный анализ воды` block;
+- a `👁 Визуальный осмотр` block containing only non-excellent water/sand
+  exceptions;
+- no more than two beach names per continuation line;
+- `🏛 Контроль: Servicio de Calidad de Aguas · Generalitat Valenciana`;
+- the standard forwarding-safe group footer;
+- no resident-facing report URL.
+
+When every beach has the same laboratory rating, collapse the laboratory block
+to one line such as `✅ Отлично — все 7 пляжей`. Never create a synthetic
+overall beach score from water, water appearance and sand appearance. The first
+parsed report is sent only if still fresh (no later than five days after its
+covered period ends); otherwise it seeds a silent baseline.
+
 Warning and event sections are optional. Omit an entire optional section when
 it has no verified, useful items. Do not render empty headings. Every displayed
 section heading and every event time is bold through Telegram HTML. Sections
