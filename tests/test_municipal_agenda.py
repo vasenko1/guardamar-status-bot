@@ -43,6 +43,7 @@ from telegrambot.municipal_agenda import (
     refresh_municipal_catalog,
 )
 from telegrambot.gemini import GeminiError
+from telegrambot.event_translations import _key
 from telegrambot.facebook import FacebookError, FacebookPost
 from telegrambot.digest import build_event_section
 from telegrambot.todo_cultura import (
@@ -59,6 +60,54 @@ TZ = ZoneInfo("Europe/Madrid")
 
 
 class MunicipalCinemaTranslationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_monday_cinema_uses_one_title_template_for_new_films(self):
+        source_title = "Cine de los Lunes: Película nueva"
+        event = SourceEvent(
+            source_title, date(2026, 10, 5), date(2026, 10, 5),
+            "18:00", None, "Biblioteca Pública Municipal", "event",
+            ("turismo_html", "turismo_cinema"),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            snapshot = Path(directory) / "agenda.json"
+            translations = Path(directory) / "translations.json"
+            now = datetime(2026, 10, 5, 7, 30, tzinfo=TZ)
+            _write_snapshot(snapshot, _snapshot_data("", "", now, (event,)))
+            translations.write_text(json.dumps({"version": 1, "entries": {
+                _key("municipal_agenda", source_title): {
+                    "translation": "Кино по понедельникам: Новый фильм",
+                },
+            }}), encoding="utf-8")
+            events = await fetch_today_municipal_events(
+                now, "", snapshot, translation_cache_path=translations,
+            )
+
+        self.assertEqual(events[0].title, "Кино по понедельникам: «Новый фильм»")
+
+    async def test_monday_cinema_rejects_unquoted_promotional_subtitle(self):
+        source_title = "Cine de los Lunes: Respect"
+        event = SourceEvent(
+            source_title, date(2026, 10, 5), date(2026, 10, 5),
+            "18:00", None, "Biblioteca Pública Municipal", "event",
+            ("turismo_html", "turismo_cinema"),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            snapshot = Path(directory) / "agenda.json"
+            translations = Path(directory) / "translations.json"
+            now = datetime(2026, 10, 5, 7, 30, tzinfo=TZ)
+            _write_snapshot(snapshot, _snapshot_data("", "", now, (event,)))
+            translations.write_text(json.dumps({"version": 1, "entries": {
+                _key("municipal_agenda", source_title): {
+                    "translation": (
+                        "Кино по понедельникам: Respect: её голос изменил всё"
+                    ),
+                },
+            }}), encoding="utf-8")
+            events = await fetch_today_municipal_events(
+                now, "", snapshot, translation_cache_path=translations,
+            )
+
+        self.assertEqual(events[0].title, "Кино по понедельникам: «Respect»")
+
     async def test_monday_cinema_is_prepared_and_rendered_in_russian(self):
         event = SourceEvent(
             "Cine de los Lunes: El club de los milagros",

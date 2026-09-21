@@ -202,7 +202,11 @@ def _cinema_title(value: str) -> str:
         film = spanish_fallback(value[len(monday_prefix):].strip())
         return f"Кино по понедельникам: «{film}»"
     if folded.startswith("кино по понедельникам:"):
-        return value
+        film = value.partition(":")[2].strip()
+        if film.startswith("«") and film.endswith("»"):
+            film = film[1:-1].strip()
+        if film:
+            return f"Кино по понедельникам: «{film}»"
     for prefix in ("cine: ", "кино: "):
         if folded.startswith(prefix):
             return "🎬 " + value[len(prefix):].strip()
@@ -3653,10 +3657,21 @@ async def fetch_today_municipal_events(
             participation_note = None
         ticket_price_cents, ticket_price_is_from = _display_ticket_price(source)
         cinema_title = title
+        translated_film = title.partition(":")[2].strip()
         if (
             "turismo_cinema" in source.sources
             and source.title_es.casefold().startswith("cine de los lunes:")
-            and not title.casefold().startswith("кино по понедельникам:")
+            and not (
+                title.casefold().startswith("кино по понедельникам:")
+                and translated_film.strip("«»").strip()
+                and (
+                    ":" not in translated_film
+                    or (
+                        translated_film.startswith("«")
+                        and translated_film.endswith("»")
+                    )
+                )
+            )
         ):
             # An unrelated cached translation must not replace the verified
             # film title in the official Monday cinema row.

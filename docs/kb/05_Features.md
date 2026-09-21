@@ -290,6 +290,12 @@ access wording wins over the generic limited-capacity fallback. Source facts
 merge additively; a generic title may gain a specific identity after duplicate
 matching, but a canonical title is not replaced by a promotional subtitle.
 Programme grouping is independent of the programme's name.
+When the official Turismo `CINE` row verifies a recurring Monday library
+screening with a concrete film title, use the stable heading
+`Кино по понедельникам: «<название фильма>»`. Keep the film title inside
+Russian quotation marks; do not append a promotional subtitle from another
+event record. If a prepared translation does not identify the Monday series
+and film, fall back to the official film title.
 When the official source has no time, omit only the time prefix and keep the
 event. Preserve an explicit activity type or medium such as painting,
 sculpture, concert, workshop, guided tour, or night route. Include the
