@@ -7,15 +7,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
 from telegrambot.models import BeachStatus, MorningDigest, Weather
-from telegrambot.morning import (
-    _safebeach_is_intensive_window,
-    _safebeach_should_query,
-    produce_message,
-)
+from telegrambot.morning import produce_message
 from telegrambot.safebeach import (
     SafeBeachError,
     _read_page,
     fetch_beach_status,
+    in_intensive_window,
+    in_query_window,
     is_complete_current_status,
     is_current_status,
     normalize_beach_status,
@@ -74,42 +72,42 @@ def _marker(
 class SafeBeachNormalizationTests(unittest.TestCase):
     def test_query_window_is_broader_than_intensive_monitoring(self):
         self.assertFalse(
-            _safebeach_should_query(
+            in_query_window(
                 datetime(2026, 5, 31, 23, 59, tzinfo=MADRID)
             )
         )
         self.assertTrue(
-            _safebeach_should_query(
+            in_query_window(
                 datetime(2026, 6, 1, 0, 0, tzinfo=MADRID)
             )
         )
         self.assertFalse(
-            _safebeach_is_intensive_window(
+            in_intensive_window(
                 datetime(2026, 6, 14, 23, 59, tzinfo=MADRID)
             )
         )
         self.assertTrue(
-            _safebeach_is_intensive_window(
+            in_intensive_window(
                 datetime(2026, 6, 15, 0, 0, tzinfo=MADRID)
             )
         )
         self.assertTrue(
-            _safebeach_is_intensive_window(
+            in_intensive_window(
                 datetime(2026, 9, 15, 23, 59, tzinfo=MADRID)
             )
         )
         self.assertFalse(
-            _safebeach_is_intensive_window(
+            in_intensive_window(
                 datetime(2026, 9, 16, 0, 0, tzinfo=MADRID)
             )
         )
         self.assertTrue(
-            _safebeach_should_query(
+            in_query_window(
                 datetime(2026, 9, 30, 23, 59, tzinfo=MADRID)
             )
         )
         self.assertFalse(
-            _safebeach_should_query(
+            in_query_window(
                 datetime(2026, 10, 1, 0, 0, tzinfo=MADRID)
             )
         )
