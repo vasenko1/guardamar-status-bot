@@ -17,6 +17,7 @@ from telegrambot.__main__ import (
     _produce_message,
     _run_command,
 )
+from telegrambot.agenda import AgendaError
 from telegrambot.diagnostics import SourceDiagnostic
 from telegrambot.environment import EnvironmentError
 from telegrambot.models import AirQualitySummary, PollenSummary
@@ -498,6 +499,84 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
 
         prepared.assert_awaited_once()
         self.assertEqual(prepared.await_args.args[2], translations)
+
+    async def test_translation_preparation_isolates_catalog_failure(self):
+        prepared = AsyncMock(return_value=1)
+        with tempfile.TemporaryDirectory() as directory:
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "GEMINI_API_KEY": "key",
+                        "MUNICIPAL_AGENDA_STATE_PATH": str(
+                            Path(directory) / "municipal.json"
+                        ),
+                        "AGENDA_STATE_PATH": str(
+                            Path(directory) / "agenda.json"
+                        ),
+                        "LIBRARY_AGENDA_STATE_PATH": str(
+                            Path(directory) / "library.json"
+                        ),
+                        "AM_GUARDAMAR_STATE_PATH": str(
+                            Path(directory) / "am.json"
+                        ),
+                        "FACV_EVENTS_STATE_PATH": str(
+                            Path(directory) / "facv.json"
+                        ),
+                        "PESCA_CV_EVENTS_STATE_PATH": str(
+                            Path(directory) / "pesca.json"
+                        ),
+                        "EVENT_TRANSLATIONS_PATH": str(
+                            Path(directory) / "translations.json"
+                        ),
+                    },
+                ),
+                patch(
+                    "telegrambot.__main__.municipal_translation_items",
+                    new=AsyncMock(return_value=(
+                        ("municipal_agenda", "Película municipal"),
+                    )),
+                ),
+                patch(
+                    "telegrambot.__main__.agenda_translation_items",
+                    new=AsyncMock(side_effect=AgendaError("catalog missing")),
+                ),
+                patch(
+                    "telegrambot.__main__.library_translation_items",
+                    new=AsyncMock(return_value=(
+                        ("library_agenda", "Actividad biblioteca"),
+                    )),
+                ),
+                patch(
+                    "telegrambot.__main__.am_guardamar_translation_items",
+                    new=AsyncMock(return_value=()),
+                ),
+                patch(
+                    "telegrambot.__main__.facv_translation_items",
+                    new=AsyncMock(return_value=()),
+                ),
+                patch(
+                    "telegrambot.__main__.pesca_cv_translation_items",
+                    new=AsyncMock(return_value=()),
+                ),
+                patch(
+                    "telegrambot.__main__.prepare_translations",
+                    new=prepared,
+                ),
+            ):
+                self.assertEqual(
+                    await _run_command("prepare-event-translations"),
+                    0,
+                )
+
+        prepared.assert_awaited_once()
+        self.assertEqual(
+            prepared.await_args.args[1],
+            [
+                ("municipal_agenda", "Película municipal"),
+                ("library_agenda", "Actividad biblioteca"),
+            ],
+        )
 
     def test_current_message_prefers_published_update(self):
         self.assertEqual(
