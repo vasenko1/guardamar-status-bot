@@ -13,10 +13,7 @@ import html
 import json
 import logging
 import os
-import re
-import subprocess
 import tempfile
-import unicodedata
 import urllib.parse
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
@@ -58,7 +55,6 @@ from .music_school import (
 from .pinned import (
     DEFAULT_PINNED_STATE_PATH,
     PinnedGuideState,
-    WIFI_BASELINE_POINTS,
     publish_pinned_guide,
     telegram_message_link,
 )
@@ -69,6 +65,16 @@ from .sporttia import (
     valid_sporttia_snapshot,
 )
 from .state import StateError
+from .wifi import (
+    WIFI_VERIFIED_ASSET_URL,
+    WifiSourceError,
+    allowed_wifi_asset_url,
+    fetch_current_wifi_asset,
+    fetch_wifi_snapshot,
+    valid_wifi_snapshot,
+    wifi_baseline_snapshot,
+    wifi_snapshot_fingerprint,
+)
 from .telegram import (
     TelegramError,
     edit_message,
@@ -81,41 +87,6 @@ GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 DEFAULT_GUIDE_STATE_PATH = "state/guide.json"
 AQUALIDER_ORIGIN = "https://aqualidernatacion.simplybook.it"
 AQUALIDER_BASE_URL = f"{AQUALIDER_ORIGIN}/v2"
-WIFI_SOURCE_PAGE_URL = "https://www.guardamardelsegura.es/wifis-municipales/"
-ORA_INFO_URL = "https://oraguardamar.gruposetex.es/tarifas-y-horarios"
-WIFI_VERIFIED_ASSET_URL = (
-    "https://www.guardamardelsegura.es/wp-content/uploads/2021/06/"
-    "PLANO-WIFIS-GUARDAMAR-PU%CC%81BLICAS.pdf"
-)
-_GUIDE_STATE_VERSION = 1
-_JSON_TYPES = frozenset({"application/json"})
-_HTML_TYPES = frozenset({"text/html", "application/xhtml+xml"})
-_REQUEST_HEADERS = {
-    "Accept": "application/json",
-    "User-Agent": "guardamar-status-bot/1.0",
-}
-_WIFI_REQUEST_HEADERS = {
-    "Accept": "text/html,application/xhtml+xml",
-    "User-Agent": "guardamar-status-bot/1.0",
-}
-_WIFI_PDF_HEADERS = {
-    "Accept": "application/pdf",
-    "User-Agent": "guardamar-status-bot/1.0",
-}
-_WIFI_PDF_TYPES = frozenset({"application/pdf"})
-_WIFI_PDF_LIMIT_BYTES = 2 * 1024 * 1024
-_WIFI_TEXT_LIMIT_BYTES = 128 * 1024
-_WIFI_PDF_PARSE_TIMEOUT_SECONDS = 5.0
-_WIFI_POINT_MARKERS = (
-    ("music_school", "ESCOLA DE MUSICA"),
-    ("culture_house", "CASA DE CULTURA"),
-    ("los_pinos", "AVDA. LOS PINOS"),
-    ("constitution_square", "PLAZA DE LA CONSTITUCION"),
-    ("seafront", "PASEO MARITIMO"),
-    ("study_room", "SALA DE ESTUDIOS 24/365"),
-    ("library", "BIBLIOTECA PUBLICA"),
-)
-_WIFI_POINT_KEYS = tuple(key for key, _ in _WIFI_POINT_MARKERS)
 _ORA_REQUEST_HEADERS = {
     "Accept": "text/html,application/xhtml+xml",
     "User-Agent": "guardamar-status-bot/1.0",
@@ -257,13 +228,13 @@ class GuideState:
         ):
             item = value.get(field)
             if item is not None and (
-                not isinstance(item, str) or not _allowed_wifi_asset_url(item)
+                not isinstance(item, str) or not allowed_wifi_asset_url(item)
             ):
                 raise StateError(f"guide state has an invalid {field}")
         wifi_notice = value.get("wifi_notice")
         if wifi_notice is not None and (
             not isinstance(wifi_notice, dict)
-            or not _allowed_wifi_asset_url(wifi_notice.get("asset_url", ""))
+            or not allowed_wifi_asset_url(wifi_notice.get("asset_url", ""))
             or not isinstance(wifi_notice.get("message_id"), int)
             or isinstance(wifi_notice.get("message_id"), bool)
             or wifi_notice["message_id"] <= 0
@@ -399,25 +370,6 @@ def _allowed_ora_url(url: str) -> bool:
     )
 
 
-def _allowed_wifi_source_url(url: str) -> bool:
-    try:
-        parsed = urllib.parse.urlsplit(url)
-        port = parsed.port
-    except ValueError:
-        return False
-    return (
-        parsed.scheme == "https"
-        and parsed.hostname in {
-            "guardamardelsegura.es",
-            "www.guardamardelsegura.es",
-        }
-        and port in {None, 443}
-        and parsed.path in {"/wifis-municipales", "/wifis-municipales/"}
-        and parsed.username is None
-        and parsed.password is None
-    )
-
-
 class _VisibleTextParser(HTMLParser):
     """Collect normalized visible text from a small HTML source."""
 
@@ -479,319 +431,6 @@ async def verify_current_ora_schedule() -> None:
         )
 
 
-class _WifiAssetParser(HTMLParser):
-    """Collect linked image assets that identify the municipal Wi-Fi map."""
-
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self.current_href: Optional[str] = None
-        self.candidates = set()
-
-    def handle_starttag(self, tag: str, attrs) -> None:
-        attributes = dict(attrs)
-        if tag.casefold() == "a":
-            href = attributes.get("href")
-            self.current_href = href if isinstance(href, str) else None
-            return
-        if tag.casefold() != "img" or self.current_href is None:
-            return
-        marker = " ".join(
-            value
-            for key in ("src", "data-src", "alt", "title")
-            if isinstance((value := attributes.get(key)), str)
-        ).casefold()
-        if "wifi" in marker and ("guardamar" in marker or "public" in marker):
-            self.candidates.add(self.current_href)
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag.casefold() == "a":
-            self.current_href = None
-
-
-def _allowed_wifi_asset_url(url: str) -> bool:
-    try:
-        parsed = urllib.parse.urlsplit(url)
-        port = parsed.port
-    except (TypeError, ValueError):
-        return False
-    return (
-        parsed.scheme == "https"
-        and parsed.hostname in {
-            "guardamardelsegura.es",
-            "www.guardamardelsegura.es",
-        }
-        and port in {None, 443}
-        and parsed.path.startswith("/wp-content/uploads/")
-        and parsed.path.casefold().endswith(".pdf")
-        and parsed.username is None
-        and parsed.password is None
-    )
-
-
-def _extract_wifi_asset_url(payload: bytes) -> str:
-    try:
-        text = payload.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise GuideSourceError(
-            "Wi-Fi source HTML is invalid", code="WIFI-HTML"
-        ) from exc
-    parser = _WifiAssetParser()
-    parser.feed(text)
-    urls = set()
-    for href in parser.candidates:
-        candidate = urllib.parse.urljoin(WIFI_SOURCE_PAGE_URL, href)
-        try:
-            parsed = urllib.parse.urlsplit(candidate)
-        except ValueError:
-            continue
-        canonical_path = urllib.parse.quote(
-            urllib.parse.unquote(parsed.path),
-            safe="/:@!$&'()*+,;=-._~",
-        )
-        canonical = urllib.parse.urlunsplit(
-            parsed._replace(path=canonical_path, fragment="")
-        )
-        if _allowed_wifi_asset_url(canonical):
-            urls.add(canonical)
-    if len(urls) != 1:
-        raise GuideSourceError(
-            "Wi-Fi source asset is missing or ambiguous",
-            code="WIFI-LINK" if not urls else "WIFI-AMBIGUOUS",
-        )
-    return urls.pop()
-
-
-async def fetch_current_wifi_asset() -> str:
-    """Return the one municipal PDF currently linked from the Wi-Fi page."""
-
-    try:
-        payload, _, _ = await asyncio.to_thread(
-            fetch_bounded,
-            WIFI_SOURCE_PAGE_URL,
-            is_allowed_url=_allowed_wifi_source_url,
-            limit_bytes=512 * 1024,
-            timeout_seconds=15.0,
-            headers=_WIFI_REQUEST_HEADERS,
-            accepted_types=_HTML_TYPES,
-        )
-    except BoundedFetchError as exc:
-        raise GuideSourceError(
-            "Wi-Fi source request failed", code=f"WIFI-{exc.code}"
-        ) from exc
-    return _extract_wifi_asset_url(payload)
-
-
-def _fold_wifi(value: str) -> str:
-    decomposed = unicodedata.normalize("NFKD", value)
-    without_marks = "".join(
-        character for character in decomposed
-        if not unicodedata.combining(character)
-    )
-    return " ".join(without_marks.upper().split())
-
-
-def _extract_wifi_pdf_text(payload: bytes) -> str:
-    if not payload.startswith(b"%PDF-") or len(payload) > _WIFI_PDF_LIMIT_BYTES:
-        raise GuideSourceError("Wi-Fi document is not a bounded PDF", code="WIFI-PDF")
-    try:
-        completed = subprocess.run(
-            ["pdftotext", "-layout", "-", "-"],
-            input=payload,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=_WIFI_PDF_PARSE_TIMEOUT_SECONDS,
-            check=False,
-        )
-    except FileNotFoundError as exc:
-        raise GuideSourceError("pdftotext is unavailable", code="WIFI-PDF-TO-TEXT") from exc
-    except subprocess.TimeoutExpired as exc:
-        raise GuideSourceError("Wi-Fi PDF parsing timed out", code="WIFI-PDF-TIMEOUT") from exc
-    except OSError as exc:
-        raise GuideSourceError("Wi-Fi PDF parsing failed", code="WIFI-PDF-TO-TEXT") from exc
-    if completed.returncode != 0:
-        raise GuideSourceError("pdftotext rejected Wi-Fi PDF", code="WIFI-PDF-PARSE")
-    if not completed.stdout or len(completed.stdout) > _WIFI_TEXT_LIMIT_BYTES:
-        raise GuideSourceError("Wi-Fi PDF text is empty or too large", code="WIFI-PDF-PARSE")
-    try:
-        return completed.stdout.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise GuideSourceError("Wi-Fi PDF text encoding is invalid", code="WIFI-PDF-PARSE") from exc
-
-
-def _parse_wifi_pdf_text(text: str, asset_url: str, observed_at: datetime) -> dict:
-    if not _allowed_wifi_asset_url(asset_url):
-        raise GuideSourceError("Wi-Fi asset URL is outside policy", code="WIFI-URL")
-    if observed_at.tzinfo is None or observed_at.utcoffset() is None:
-        raise ValueError("Wi-Fi observation time must be timezone-aware")
-    if "WIFIS PUBLICAS" not in _fold_wifi(text) or "GUARDAMAR DEL SEGURA" not in _fold_wifi(text):
-        raise GuideSourceError("Wi-Fi PDF heading is invalid", code="WIFI-SCHEMA")
-
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    folded_lines = [_fold_wifi(line) for line in lines]
-    positions = {}
-    for key, marker in _WIFI_POINT_MARKERS:
-        matches = [index for index, line in enumerate(folded_lines) if marker in line]
-        if len(matches) != 1:
-            raise GuideSourceError(
-                f"Wi-Fi point {key} is missing or ambiguous", code="WIFI-SCHEMA"
-            )
-        positions[key] = matches[0]
-
-    ordered = sorted(positions.items(), key=lambda item: item[1])
-    points = []
-    parsed_networks = 0
-    for offset, (key, start_index) in enumerate(ordered):
-        end_index = ordered[offset + 1][1] if offset + 1 < len(ordered) else len(lines)
-        segment = "\n".join(lines[start_index:end_index])
-        networks = []
-        if re.search(r"wifi\s+gratuita\s+wifi4eu", segment, re.IGNORECASE):
-            networks.append({"ssid": "WiFi4EU", "password": None})
-        for match in re.finditer(
-            r"Red:\s*(.*?)\s*(?:-\s*)?Contrase(?:ña|na):\s*([^\s]+)",
-            segment,
-            re.IGNORECASE | re.DOTALL,
-        ):
-            ssid = " ".join(match.group(1).split())
-            password = match.group(2).strip()
-            if not ssid or len(ssid) > 80 or len(password) > 80:
-                raise GuideSourceError("Wi-Fi credentials are invalid", code="WIFI-SCHEMA")
-            networks.append({"ssid": ssid, "password": password})
-        valid_count = len(networks) == (3 if key == "library" else 1)
-        if not valid_count:
-            raise GuideSourceError(
-                f"Wi-Fi networks for {key} are incomplete", code="WIFI-SCHEMA"
-            )
-        if len({item["ssid"] for item in networks}) != len(networks):
-            raise GuideSourceError("Wi-Fi networks are duplicated", code="WIFI-SCHEMA")
-        parsed_networks += len(networks)
-        points.append({"key": key, "networks": networks})
-
-    folded = _fold_wifi(text)
-    source_networks = len(re.findall(r"\bRED\s*:", folded)) + len(
-        re.findall(r"WIFI\s+GRATUITA\s+WIFI4EU", folded)
-    )
-    if source_networks != parsed_networks:
-        raise GuideSourceError(
-            "Wi-Fi PDF contains an unrecognized network entry", code="WIFI-SCHEMA"
-        )
-    by_key = {item["key"]: item for item in points}
-    snapshot = {
-        "observed_at": observed_at.isoformat(),
-        "asset_url": asset_url,
-        "points": [by_key[key] for key in _WIFI_POINT_KEYS],
-    }
-    if not valid_wifi_snapshot(snapshot):
-        raise GuideSourceError("Wi-Fi snapshot is invalid", code="WIFI-SCHEMA")
-    return snapshot
-
-
-def valid_wifi_snapshot(value) -> bool:
-    if not isinstance(value, dict):
-        return False
-    try:
-        observed_at = datetime.fromisoformat(value["observed_at"])
-        asset_url = value["asset_url"]
-        points = value["points"]
-    except (KeyError, TypeError, ValueError):
-        return False
-    if (
-        observed_at.tzinfo is None
-        or observed_at.utcoffset() is None
-        or not isinstance(asset_url, str)
-        or not _allowed_wifi_asset_url(asset_url)
-        or not isinstance(points, list)
-        or len(points) != len(_WIFI_POINT_KEYS)
-    ):
-        return False
-    keys = []
-    for point in points:
-        if not isinstance(point, dict) or set(point) != {"key", "networks"}:
-            return False
-        key = point["key"]
-        networks = point["networks"]
-        if key not in _WIFI_POINT_KEYS or not isinstance(networks, list) or not networks:
-            return False
-        if len(networks) != (3 if key == "library" else 1):
-            return False
-        seen_ssids = set()
-        for network in networks:
-            if not isinstance(network, dict) or set(network) != {"ssid", "password"}:
-                return False
-            ssid = network["ssid"]
-            password = network["password"]
-            if (
-                not isinstance(ssid, str)
-                or not ssid.strip()
-                or len(ssid) > 80
-                or ssid in seen_ssids
-                or (
-                    password is not None
-                    and (
-                        not isinstance(password, str)
-                        or not password.strip()
-                        or len(password) > 80
-                    )
-                )
-            ):
-                return False
-            seen_ssids.add(ssid)
-        keys.append(key)
-    return tuple(keys) == _WIFI_POINT_KEYS
-
-
-def _wifi_snapshot_fingerprint(value: dict) -> tuple:
-    return tuple(
-        (
-            point["key"],
-            tuple(
-                (network["ssid"], network["password"])
-                for network in point["networks"]
-            ),
-        )
-        for point in value["points"]
-    )
-
-
-def _wifi_baseline_snapshot(now: datetime) -> dict:
-    return {
-        "observed_at": now.isoformat(),
-        "asset_url": WIFI_VERIFIED_ASSET_URL,
-        "points": [
-            {
-                "key": key,
-                "networks": [
-                    {"ssid": ssid, "password": password}
-                    for ssid, password in networks
-                ],
-            }
-            for key, networks in WIFI_BASELINE_POINTS
-        ],
-    }
-
-
-async def fetch_wifi_snapshot(asset_url: str, now: datetime) -> dict:
-    """Fetch and parse one new municipal Wi-Fi PDF deterministically."""
-
-    if not _allowed_wifi_asset_url(asset_url):
-        raise GuideSourceError("Wi-Fi asset URL is outside policy", code="WIFI-URL")
-    try:
-        payload, _, _ = await asyncio.to_thread(
-            fetch_bounded,
-            asset_url,
-            is_allowed_url=_allowed_wifi_asset_url,
-            limit_bytes=_WIFI_PDF_LIMIT_BYTES,
-            timeout_seconds=15.0,
-            headers=_WIFI_PDF_HEADERS,
-            accepted_types=_WIFI_PDF_TYPES,
-        )
-    except BoundedFetchError as exc:
-        raise GuideSourceError(
-            "Wi-Fi PDF request failed", code=f"WIFI-{exc.code}"
-        ) from exc
-    text = await asyncio.to_thread(_extract_wifi_pdf_text, payload)
-    return _parse_wifi_pdf_text(text, asset_url, now)
-
-
 async def _refresh_wifi_source(
     now: datetime,
     state: dict,
@@ -804,7 +443,7 @@ async def _refresh_wifi_source(
     guide_state.write(state)
     try:
         current = await fetch_current_wifi_asset()
-    except GuideSourceError as exc:
+    except WifiSourceError as exc:
         logging.warning("Wi-Fi source check deferred [GUIDE-%s]", exc.diagnostic_code)
         return
 
@@ -818,19 +457,19 @@ async def _refresh_wifi_source(
 
     previous_snapshot = state.get("wifi_snapshot")
     if previous_snapshot is None:
-        previous_snapshot = _wifi_baseline_snapshot(now)
+        previous_snapshot = wifi_baseline_snapshot(now)
     if current == WIFI_VERIFIED_ASSET_URL:
-        current_snapshot = _wifi_baseline_snapshot(now)
+        current_snapshot = wifi_baseline_snapshot(now)
     else:
         try:
             current_snapshot = await fetch_wifi_snapshot(current, now)
-        except GuideSourceError as exc:
+        except WifiSourceError as exc:
             logging.warning("Wi-Fi document deferred [GUIDE-%s]", exc.diagnostic_code)
             return
 
     changed = (
-        _wifi_snapshot_fingerprint(previous_snapshot)
-        != _wifi_snapshot_fingerprint(current_snapshot)
+        wifi_snapshot_fingerprint(previous_snapshot)
+        != wifi_snapshot_fingerprint(current_snapshot)
     )
     if current == WIFI_VERIFIED_ASSET_URL:
         state.pop("wifi_snapshot", None)
