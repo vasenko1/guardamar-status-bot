@@ -110,7 +110,6 @@ from .pinned import (
 from .safebeach import (
     SafeBeachError,
     fetch_beach_status,
-    in_intensive_window,
     in_query_window,
     is_complete_current_status,
     is_current_status,
@@ -702,7 +701,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             "MORNING_DIGEST_STATE_PATH", DEFAULT_STATE_PATH
         )))
         if _cams_monitor_checkpoint(schedule):
-            if in_intensive_window(now):
+            if schedule.beach_phase is not None:
                 mayor_result = await _refresh_mayor_beach_notice(
                     now, publication_state, bot_token, chat_id
                 )
@@ -1421,11 +1420,6 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         logging.info("SKIP: SafeBeach is outside the annual query window")
         return 0
     final_attempt = (now.hour, now.minute) >= (10, 40)
-    if not in_intensive_window(now) and not final_attempt:
-        logging.info(
-            "SKIP: SafeBeach fringe window uses only the final 10:40 probe"
-        )
-        return 0
     if state.beach_message_id(now.date()) is not None:
         mayor_result = await _refresh_mayor_beach_notice(
             now, state, bot_token, chat_id
