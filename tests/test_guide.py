@@ -723,6 +723,82 @@ class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
             send.assert_not_awaited()
             self.assertEqual(state.read()["aqualider_catalog"], changed)
 
+    async def test_wifi_change_updates_card_before_public_notice(self):
+        with tempfile.TemporaryDirectory() as directory:
+            moment = datetime(2026, 9, 21, 9, 2, tzinfo=MADRID)
+            current = snapshot(moment)
+            changed_url = (
+                "https://www.guardamardelsegura.es/wp-content/uploads/"
+                "2026/10/wifi-map.pdf"
+            )
+            wifi_snapshot = {
+                "observed_at": moment.isoformat(),
+                "asset_url": changed_url,
+                "points": [
+                    {"key": "music_school", "networks": [
+                        {"ssid": "WiFi4EU", "password": None}
+                    ]},
+                    {"key": "culture_house", "networks": [
+                        {"ssid": "WiFi4EU", "password": None}
+                    ]},
+                    {"key": "los_pinos", "networks": [
+                        {"ssid": "WiFi4EU", "password": None}
+                    ]},
+                    {"key": "constitution_square", "networks": [
+                        {"ssid": "vegafibra_gratis", "password": "newpass"}
+                    ]},
+                    {"key": "seafront", "networks": [
+                        {"ssid": "vegafibra_gratis", "password": "vegafibra"}
+                    ]},
+                    {"key": "study_room", "networks": [
+                        {"ssid": "wifi_1EO9C", "password": "vegafibra"}
+                    ]},
+                    {"key": "library", "networks": [
+                        {"ssid": "wifibiblioteca", "password": "biblimar"},
+                        {"ssid": "biblioteca infantil", "password": "menjallibres"},
+                        {"ssid": "vicenteramos", "password": "menjallibres"},
+                    ]},
+                ],
+            }
+            sequence = []
+
+            async def publish(*args, **kwargs):
+                sequence.append("card")
+                self.assertEqual(kwargs["wifi_snapshot"], wifi_snapshot)
+                messages = self._pinned_messages()
+                messages["wifi"] = 150
+                return messages
+
+            async def send(*args, **kwargs):
+                sequence.append("notice")
+                self.assertIn("Обновилась информация", args[2])
+                return 601
+
+            with (
+                patch.dict("os.environ", self._environment(directory), clear=False),
+                patch(
+                    "telegrambot.guide.fetch_aqualider_catalog",
+                    new=AsyncMock(return_value=current),
+                ),
+                patch(
+                    "telegrambot.guide.fetch_current_wifi_asset",
+                    new=AsyncMock(return_value=changed_url),
+                ),
+                patch(
+                    "telegrambot.guide.fetch_wifi_snapshot",
+                    new=AsyncMock(return_value=wifi_snapshot),
+                ),
+                patch("telegrambot.guide.publish_pinned_guide", new=publish),
+                patch("telegrambot.guide.send_message", new=send),
+            ):
+                await sync_guide(moment)
+
+            self.assertEqual(sequence, ["card", "notice"])
+            saved = GuideState(Path(directory) / "guide.json").read()
+            self.assertEqual(saved["wifi_snapshot"], wifi_snapshot)
+            self.assertEqual(saved["wifi_notice"]["message_id"], 601)
+            self.assertNotIn("wifi_pending_asset_url", saved)
+
     async def test_due_parking_notice_waits_for_evening(self):
         with tempfile.TemporaryDirectory() as directory:
             morning = datetime(2026, 6, 14, 9, 2, tzinfo=MADRID)
