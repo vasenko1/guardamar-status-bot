@@ -3652,10 +3652,19 @@ async def fetch_today_municipal_events(
             schedule_note = schedule_note or participation_note
             participation_note = None
         ticket_price_cents, ticket_price_is_from = _display_ticket_price(source)
+        cinema_title = title
+        if (
+            "turismo_cinema" in source.sources
+            and source.title_es.casefold().startswith("cine de los lunes:")
+            and not title.casefold().startswith("кино по понедельникам:")
+        ):
+            # An unrelated cached translation must not replace the verified
+            # film title in the official Monday cinema row.
+            cinema_title = source.title_es
         result.append(
             Event(
                 title=(
-                    _cinema_title(title)
+                    _cinema_title(cinema_title)
                     if "turismo_cinema" in source.sources else title
                 ),
                 starts_at=starts_at,
