@@ -179,7 +179,7 @@ class EmergencyRiskTests(unittest.TestCase):
             HYDRO_SITUATION_1,
         )
 
-    def test_fire_level_two_is_morning_only_but_extreme_is_standalone(self):
+    def test_fire_level_two_is_silent_without_prior_state_but_extreme_is_visible(self):
         value = EmergencyRiskState.empty()
         value["previfoc"] = {
             "fire_level": 2,
@@ -192,11 +192,13 @@ class EmergencyRiskTests(unittest.TestCase):
         value["previfoc"]["fire_level"] = 3
         transition = _transition(value)
         self.assertIsNotNone(transition)
-        self.assertIn("экстремальный", transition)
+        self.assertIn("Экстремальный риск лесных пожаров", transition)
+        self.assertIn("максимальный уровень — 3 из 3", transition)
 
-    def test_high_fire_transitions_are_standalone_after_baseline(self):
+    def test_high_fire_transitions_use_clear_preventive_copy(self):
         value = EmergencyRiskState.empty()
         value["published"]["fire_level"] = 1
+        value["published"]["dry_level"] = 1
         value["previfoc"] = {
             "fire_level": 2,
             "dry_thunderstorm_level": 1,
@@ -205,16 +207,25 @@ class EmergencyRiskTests(unittest.TestCase):
         }
         message = _transition(value)
         self.assertIsNotNone(message)
-        self.assertIn("повышена до <b>высокой</b>", message)
+        self.assertIn("Риск лесных пожаров повышен", message)
+        self.assertIn("уровень 2 из 3", message)
+        self.assertIn("500 м от неё", message)
+        self.assertIn("профилактический уровень риска", message)
 
         value["published"]["fire_level"] = 2
         value["previfoc"]["fire_level"] = 1
         message = _transition(value)
         self.assertIsNotNone(message)
-        self.assertIn("Высокая пожарная опасность снята", message)
+        self.assertIn("Риск лесных пожаров снижен", message)
+        self.assertIn("уровень 1 из 3", message)
+        self.assertIn(
+            "Ограничения, связанные с высоким уровнем риска",
+            message,
+        )
 
-    def test_extreme_fire_downgrade_is_published_after_acknowledgement(self):
+    def test_extreme_fire_downgrade_keeps_high_risk_context(self):
         value = EmergencyRiskState.empty()
+        value["published"]["dry_level"] = 1
         value["previfoc"] = {
             "fire_level": 3,
             "dry_thunderstorm_level": 1,
@@ -227,11 +238,50 @@ class EmergencyRiskTests(unittest.TestCase):
         value["previfoc"]["fire_level"] = 2
         message = _transition(value)
         self.assertIsNotNone(message)
-        self.assertIn("Экстремальная пожарная опасность снята", message)
-        self.assertIn("сохраняется <b>высокий</b>", message)
+        self.assertIn("Риск лесных пожаров снижен", message)
+        self.assertIn("экстремального до высокого — 2 из 3", message)
+        self.assertIn("по-прежнему запрещено", message)
 
-    def test_dry_thunderstorm_high_can_publish_without_extreme_fire(self):
+    def test_dry_thunderstorm_transitions_cover_probable_high_and_clear(self):
         value = EmergencyRiskState.empty()
+        value["published"]["fire_level"] = 1
+        value["published"]["dry_level"] = 1
+        value["previfoc"] = {
+            "fire_level": 1,
+            "dry_thunderstorm_level": 2,
+            "alert_id": 1,
+            "observed_at": NOW.isoformat(),
+        }
+
+        message = _transition(value)
+        self.assertIsNotNone(message)
+        self.assertIn("Сухие грозы возможны", message)
+        self.assertIn("вероятность сухих гроз", message)
+        self.assertIn("профилактическая информация", message)
+
+        value["published"]["dry_level"] = 2
+        value["previfoc"]["dry_thunderstorm_level"] = 3
+        message = _transition(value)
+        self.assertIsNotNone(message)
+        self.assertIn("Высокий риск сухих гроз", message)
+
+        value["published"]["dry_level"] = 3
+        value["previfoc"]["dry_thunderstorm_level"] = 2
+        message = _transition(value)
+        self.assertIsNotNone(message)
+        self.assertIn("Риск сухих гроз снижен", message)
+        self.assertIn("остаются возможны", message)
+
+        value["published"]["dry_level"] = 2
+        value["previfoc"]["dry_thunderstorm_level"] = 1
+        message = _transition(value)
+        self.assertIsNotNone(message)
+        self.assertIn("Риск сухих гроз снят", message)
+        self.assertIn("больше не действует", message)
+
+    def test_dry_thunderstorm_high_can_publish_without_fire_transition(self):
+        value = EmergencyRiskState.empty()
+        value["published"]["fire_level"] = 1
         value["previfoc"] = {
             "fire_level": 1,
             "dry_thunderstorm_level": 3,
@@ -240,8 +290,8 @@ class EmergencyRiskTests(unittest.TestCase):
         }
         message = _transition(value)
         self.assertIsNotNone(message)
-        self.assertIn("высокий риск сухих гроз", message)
-        self.assertNotIn("экстремальный", message)
+        self.assertIn("Высокий риск сухих гроз", message)
+        self.assertNotIn("лесных пожаров", message)
 
     def test_morning_digest_omits_previfoc_but_keeps_hydrology(self):
         message = build_message(
@@ -277,6 +327,23 @@ class EmergencyRiskTests(unittest.TestCase):
                 state.morning_values(NOW),
                 (None, None, None),
             )
+
+    def test_v1_state_migrates_dry_high_without_fake_transition(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "risk.json"
+            path.write_text(
+                '{"version":1,"previfoc":{"fire_level":2,'
+                '"dry_thunderstorm_level":2,"alert_id":9,'
+                '"observed_at":"2026-09-20T07:19:00+02:00"},'
+                '"cce_html":null,"cce_pdf":null,'
+                '"published":{"fire_level":2,"dry_high":false,'
+                '"hydrology":null}}',
+                encoding="utf-8",
+            )
+            value = EmergencyRiskState(path).read()
+            self.assertEqual(value["version"], 2)
+            self.assertEqual(value["published"]["dry_level"], 2)
+            self.assertIsNone(_transition(value))
 
     def test_cce_failures_preserve_last_verified_active_state(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -387,7 +454,7 @@ class EmergencyRiskTests(unittest.TestCase):
             self.assertEqual(result, "published")
             self.assertEqual(len(delivered), 1)
             self.assertIn(
-                "Экстремальная пожарная опасность снята",
+                "Риск лесных пожаров снижен",
                 delivered[0],
             )
 
