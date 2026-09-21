@@ -148,12 +148,11 @@ The validated Android deployment uses the scripts in `termux/`:
   reconcile the shared linked guide; `publish-transport-notifications.sh` runs
   at 08:42 and reads only accepted local state;
 - `termux/run-daily.sh` at 07:30 and `termux/update-daily.sh` every five
-  minutes from 10:10 through 10:40; SafeBeach is queried on every recovery
-  checkpoint only from 15 June through 15 September, while 1–14 June and
-  16–30 September use only the final 10:40 probe and the rest of the year uses
-  no scheduled SafeBeach request;
-- `termux/monitor-updates.sh` keeps its intensive 15 June–15 September beach
-  checks plus the three daily AEMET warning windows documented in ADR 0031;
+  minutes from 10:10 through 10:40; SafeBeach may be queried only from
+  1 June through 30 September, and the rest of the year uses no scheduled
+  SafeBeach request;
+- `termux/monitor-updates.sh` follows its existing cron cadence for beach
+  checks and the three daily AEMET warning windows documented in ADR 0031;
 - `termux/sync-municipal-events.sh` at 05:10 and
   `termux/sync-agenda-events.sh` at 05:30 to atomically refresh small event
   catalogs before publication;
