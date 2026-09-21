@@ -36,6 +36,9 @@ class HidraquaError(RuntimeError):
 class HidraquaDeliveryUncertain(HidraquaError):
     """Raised when a new Telegram notice may already be visible."""
 
+    def __init__(self) -> None:
+        super().__init__("Hidraqua notice delivery is uncertain")
+
 
 @dataclass(frozen=True)
 class HidraquaEvent:
