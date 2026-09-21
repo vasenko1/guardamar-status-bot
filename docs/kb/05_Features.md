@@ -185,11 +185,10 @@ The order never changes:
 7. Warning
 8. Standalone health, air-quality, and pollen lines not nested in today's
    matching warning; pollen is always standalone
-9. Traffic or closure
-10. On-call pharmacies for Guardamar's complete official service zone from the
-    weekly-synced rota catalog
-11. Official holiday applicable in Guardamar today
-12. Today's events
+9. On-call pharmacies for Guardamar's complete official service zone from the
+   weekly-synced rota catalog
+10. Official holiday applicable in Guardamar today
+11. Today's events
 
 Each event is one bullet. Its official place, when available, is rendered on
 the following indented `📍` line. Events are separated by one blank line;
@@ -261,12 +260,11 @@ conditions, with one arrow. A transition uses `🌤`; a single state uses its
 matching icon. Unknown or missing conditions use `🌤`.
 The icon adds no text, AI, or new source.
 
-Warning, traffic, and event sections are optional. Omit an entire optional
-section when it has no verified, useful items. Do not render empty headings.
-Every displayed section heading and every event time is bold through Telegram
-HTML. Sections are separated by exactly one empty line. Warning hazards use
-their severity dot and a bold Russian name; traffic items use `•` when more
-than one is displayed.
+Warning and event sections are optional. Omit an entire optional section when
+it has no verified, useful items. Do not render empty headings. Every displayed
+section heading and every event time is bold through Telegram HTML. Sections
+are separated by exactly one empty line. Warning hazards use their severity dot
+and a bold Russian name.
 The event section contains every deduplicated, verified official event relevant
 today. There is no product count limit; bounded source reads and Telegram's
 message limit remain technical safety boundaries.
@@ -478,28 +476,12 @@ does not turn the channel into a general news source. Preserve named
 participating urbanizations and the complete published venue:
 `Ubicación parque C/ Berlín` renders as `парк на улице Berlín`.
 
-The traffic slice reads explicit restrictions from the official Policía Local
-Guardamar page and its reviewed festival PDF. A document becomes independent
-active measures, preserving location, dates, hours, affected users, exceptions,
-alternative route and destinations only when stated. From 22 through 29 July,
-the verified measure is:
-
-`До 29 июля перекрыта улица Molivent. К поликлинике и автовокзалу — через La
-Redonda; легковым авто также через San Francisco до 23:30.`
-
-The PDF is accepted only while its SHA-256 matches the reviewed document.
-Missing, changed, ambiguous, or out-of-window content omits the section.
-
-An active multi-day traffic notice uses `До <end date>` after its first day.
-On the first day it retains the full start–end range.
-
-If the official traffic page changes to a previously unknown HTML notice,
-the optional Gemini fallback may extract up to four independent measures with
-exact Spanish evidence. Publication requires supported actions, current
-explicit dates, unchanged street names, restriction language, and Russian
-lines no longer than 180 characters. The application validates all measures
-against the freshly fetched page and displays at most two. Any failure omits
-the traffic section. Known notices never consume Gemini quota.
+The former Policía Local traffic slice is retired. Its reviewed festival page
+proved useful for one historical event but did not behave as a dependable live
+traffic source across routine operation. The Morning Digest therefore performs
+no Policía Local request and has no generic traffic/closure section or Gemini
+traffic fallback. Historical research and superseded ADRs remain only as
+evidence for that decision.
 
 AEMET lists no observation station inside Guardamar, so the current observation
 comes from nearby Rojales. Its location is documented but omitted from the
