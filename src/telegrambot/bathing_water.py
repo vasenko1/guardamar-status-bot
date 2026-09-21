@@ -354,6 +354,16 @@ def _fold(value: str) -> str:
     return " ".join(without_marks.upper().split())
 
 
+def _fold_layout(value: str) -> str:
+    """Remove accents while preserving column positions from pdftotext -layout."""
+
+    decomposed = unicodedata.normalize("NFKD", value)
+    return "".join(
+        character for character in decomposed
+        if not unicodedata.combining(character)
+    ).upper()
+
+
 def _extract_report_text(payload: bytes) -> str:
     if not payload.startswith(b"%PDF-") or len(payload) > _PDF_LIMIT_BYTES:
         raise BathingWaterSourceError(
@@ -487,7 +497,7 @@ def _parse_report_text(
     header_index = None
     positions = None
     for index, line in enumerate(lines):
-        folded = _fold(line)
+        folded = _fold_layout(line)
         labels = (
             "ANALISIS AGUA",
             "ASPECTO AGUA",
