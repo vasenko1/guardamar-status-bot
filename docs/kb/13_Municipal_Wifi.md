@@ -26,6 +26,9 @@ The accepted baseline contains seven municipal Wi-Fi locations:
   `menjallibres`.
 
 The baseline card is retained when no dynamic snapshot has been accepted.
+The bounded source adapter and normalized baseline live in `telegrambot.wifi`;
+`telegrambot.guide` owns only lifecycle/state orchestration and
+`telegrambot.pinned` owns card rendering.
 
 ## Source lifecycle
 
@@ -45,10 +48,12 @@ At most once per local day, the existing guide sync:
 6. accepts only a complete deterministic snapshot of the same seven reviewed
    point identities and the same network topology: one network per point,
    except exactly three at Biblioteca;
-7. stores changed SSID/password values only after the full snapshot validates;
-8. reconciles the existing public Wi-Fi card through the normal pinned-guide
+7. compares normalized point/network facts, excluding source URL and observation
+   time; a new PDF with identical facts is accepted silently;
+8. stores changed SSID/password values only after the full snapshot validates;
+9. reconciles the existing public Wi-Fi card through the normal pinned-guide
    graph;
-9. only after that reconciliation succeeds, sends one public group notice
+10. only after that reconciliation succeeds, sends one public group notice
    linking directly to the updated Wi-Fi card.
 
 A source, PDF, parser, schema, or card-reconciliation failure preserves the
