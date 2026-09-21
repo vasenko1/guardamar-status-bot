@@ -12,6 +12,7 @@ from telegrambot.dinamizacion import DinamizacionSourceError
 from telegrambot.guide import (
     GuideSourceError,
     GuideState,
+    WIFI_VERIFIED_ASSET_URL,
     _allowed_aqualider_url,
     _allowed_ora_url,
     _fetch_json,
@@ -309,6 +310,14 @@ class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
         )
         self.bathing_water_patch.start()
         self.addCleanup(self.bathing_water_patch.stop)
+
+        self.wifi_asset_fetch = AsyncMock(return_value=WIFI_VERIFIED_ASSET_URL)
+        self.wifi_asset_patch = patch(
+            "telegrambot.guide.fetch_current_wifi_asset",
+            new=self.wifi_asset_fetch,
+        )
+        self.wifi_asset_patch.start()
+        self.addCleanup(self.wifi_asset_patch.stop)
 
         self.sporttia_fetch = AsyncMock(
             side_effect=lambda now: {
