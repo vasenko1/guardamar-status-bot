@@ -587,11 +587,11 @@ def _bathing_water_notice_text(snapshot: dict) -> str:
     }
     if len(water_groups["excellent"]) == len(beaches):
         lines.append(
-            "✅ По лабораторному анализу вода — "
-            "<b>отличного качества на всех 7 пляжах</b>."
+            "✅ По лабораторному анализу "
+            "<b>качество воды отличное на всех 7 пляжах</b>."
         )
     else:
-        lines.append("<b>Лабораторный анализ воды:</b>")
+        lines.append("<b>Качество воды по лабораторному анализу:</b>")
         for rating in _BATHING_RATING_ORDER:
             names = water_groups[rating]
             if names:
@@ -602,8 +602,8 @@ def _bathing_water_notice_text(snapshot: dict) -> str:
 
     visual_lines = []
     for field, label in (
-        ("water_appearance", "Вода"),
-        ("sand_appearance", "Песок"),
+        ("water_appearance", "Внешний вид воды"),
+        ("sand_appearance", "Состояние песка"),
     ):
         for rating in _BATHING_RATING_ORDER[1:]:
             names = [
