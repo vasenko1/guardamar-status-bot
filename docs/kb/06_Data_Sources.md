@@ -21,7 +21,7 @@ official endpoints and lightweight access methods are validated.
 | ESIOS / Red Eléctrica | Next-day PVPC 2.0TD hourly active-energy term | High; official system operator publication | Indicator API `1001`; personal API key required | Yes, evening feature |
 | Official marine service | Sea state and relevant marine warnings | High for its jurisdiction | API or published feed | Yes |
 | SafeBeach public Guardamar page | Active beach flags and jellyfish operational status | High when municipal lifeguards actively maintain it | Small structured payload embedded in the public page | Yes |
-| Generalitat Valenciana bathing-zone control via Guardamar publication index | Current-year control window, actual sample dates, and official weekly laboratory/visual beach ratings | High; control authority is Servicio de Calidad de Aguas, while Guardamar publishes the local report index | One bounded index read at 19:35 during season/grace; PDF downloaded only for a new report identity and parsed fail-closed with existing Poppler | Yes, weekly public notice |
+| Generalitat Valenciana bathing-zone control via Guardamar publication index | Current-year control window, actual sample dates, and official weekly laboratory/visual beach ratings | High; control authority is Servicio de Calidad de Aguas, while Guardamar publishes the local report index | One bounded index read at 19:35 during the official 1 June–15 September season; PDF downloaded only for a new report identity and parsed fail-closed with existing Poppler | Yes, weekly public notice |
 | Civil protection or emergency authority | Safety warnings | Highest priority | Alert feed or official publication | Yes |
 | CCE — 112 Comunitat Valenciana | Active emergency and hydrological authority state relevant to Guardamar/Segura | Highest priority for authority decisions; complements rather than duplicates AEMET | Public `emergencias.jsf` plus current text-readable CCE PDF, checked by one bounded hourly watcher | Yes, narrow operational monitor |
 | Previfoc / Generalitat Valenciana (VAERSA ArcGIS) | Official zone-6 forest-fire preemergency plus dry-thunderstorm risk for Guardamar | High; responsible regional fire-prevention/emergency source | Tiny structured ArcGIS query for the current operational day; same-day level may be readjusted | Yes, narrow operational monitor |
@@ -322,8 +322,7 @@ control programme. The control itself belongs to the Generalitat Valenciana's
 bath­ing-water quality control and surveillance during the season.
 
 A dedicated short-lived one-shot checks the small index once per local day at
-19:35 from 1 June through 30 September. The second half of September is a
-publication-delay grace after the official 15 September season end. The normal
+19:35 from 1 June through 15 September, inclusive. The normal
 09:02 guide sync does not read this source.
 
 The programme state stores the current-year control window and newest weekly
