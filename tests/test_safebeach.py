@@ -519,7 +519,7 @@ class SafeBeachTransportTests(unittest.IsolatedAsyncioTestCase):
 
 
 class SafeBeachFailureTests(unittest.IsolatedAsyncioTestCase):
-    async def test_skips_safebeach_outside_conservative_season(self):
+    async def test_skips_safebeach_outside_query_window(self):
         digest = MorningDigest(
             weather=Weather(
                 current_temperature_c=18,
