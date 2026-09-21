@@ -316,31 +316,39 @@ temperature and wave forecast remain available year-round.
 ## Approved municipal bathing-water programme
 
 `https://www.guardamardelsegura.es/programa-de-control-de-las-zonas-de-bano/`
-is the Ayuntamiento's current index for the annual bathing-water control
-programme. The page publishes the current year's explicit programme dates and
-links weekly PDF reports by covered date range.
+is the Ayuntamiento's publication index for Guardamar's annual bathing-zone
+control programme. The control itself belongs to the Generalitat Valenciana's
+`Servicio de Calidad de Aguas`, which is responsible for continuous
+bath­ing-water quality control and surveillance during the season.
 
-The guide sync reads this small HTML page at most once per local day. It accepts
-only the exact municipal HTTPS page and report PDFs below the municipality's
-`/wp-content/uploads/` path. The programme snapshot stores the observed time,
-current-year control window, and newest linked weekly report period and URL.
-Missing or ambiguous current-year headings fail closed and keep the previous
-verified report baseline.
+A dedicated short-lived one-shot checks the small index once per local day at
+19:35 from 1 June through 20 September. The extra five September days are a
+publication-delay grace after the official 15 September season end. The normal
+09:02 guide sync does not read this source.
 
-When the newest report period or URL differs from the last accepted parsed
-report, the adapter downloads that PDF once and uses the existing
-`pdftotext -layout` dependency. It accepts only the reviewed Spanish first-page
-table with exactly seven known beach rows and the official qualitative columns
-`Análisis Agua`, `Aspecto Agua`, and `Aspecto Arena`. Every accepted cell must
-be one of `EXCELENTE`, `BUENA`, `SUFICIENTE`, or `INSUFICIENTE`; a changed
-template, renamed/extra beach, period mismatch, or unknown label fails closed.
+The programme state stores the current-year control window and newest weekly
+report period/URL. A PDF is downloaded only when that report identity changes.
+The adapter reuses `pdftotext -layout` and accepts only reviewed Spanish or
+Valencian first-page structures with exactly seven known Guardamar beach rows.
+It requires official qualitative fields equivalent to `Análisis Agua`,
+`Aspecto Agua`, and `Aspecto Arena`; recognized ratings normalize only from
+the source's `EXCELENTE/EXCEL·LENT`, `BUENA/BONA`,
+`SUFICIENTE/SUFICIENT`, and `INSUFICIENTE/INSUFICIENT` labels.
 
-The bot does not calculate its own quality class from Enterococci or E. coli
-counts. The first parsed report after feature activation is a silent baseline;
-each later weekly report is eligible for one 🧪 public group notice. The main
-block reports the municipality's laboratory water rating by beach, while water
-appearance and sand appearance are shown separately as visual inspection facts.
-A replacement URL for the same period with identical normalized facts is silent.
+The parser also extracts actual per-row sample dates
+(`Fecha/Data desc. punto1/punt1`) and requires every date to fall inside the
+weekly report period. Public copy shows those actual sample dates, never labels
+the report's covered week as the sample date.
+
+The bot does not calculate its own public quality class from Enterococci or
+E. coli counts. Laboratory water quality remains separate from visual water and
+sand inspection. The first parsed report is public only if still fresh
+(`report_end + 5 days`); an older first observation becomes a silent baseline.
+Later weekly report identities produce at most one 🧪 public group notice using
+the shared conservative Telegram-delivery contract. No PDF URL is shown to
+residents; attribution names `Servicio de Calidad de Aguas · Generalitat
+Valenciana`.
+
 
 ## Approved Agenda Guardamar data
 
