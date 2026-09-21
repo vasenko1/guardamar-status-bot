@@ -73,7 +73,7 @@ no message.
 | Pharmacy catalogue | Sunday 05:50 | Source refresh only; consumed by Morning Digest. |
 | Bathing-water programme | At most once per local day inside guide sync | Source-state only today: programme dates and newest official report link; no public water-quality claim yet. |
 | Event/translation/AEMET preparation | Pre-morning one-shots | Source preparation only; no independent public notification. |
-| Municipal Wi-Fi source watch | Inside guide sync | A changed official municipal PDF is parsed fail-closed; after the existing Wi-Fi card is reconciled with a complete accepted snapshot, one public group notice links to that updated card. |
+| Municipal Wi-Fi source watch | Inside guide sync | A changed official municipal PDF is parsed fail-closed; only a semantic point/SSID/password change updates the existing card and, after reconciliation, produces one public group notice linking to that card. |
 | OCI capacity search | Independent GitHub Actions | Infrastructure only; no Telegram city publication. |
 
 ## Logical areas
