@@ -23,23 +23,32 @@ share the existing publication-state lock. If raw snapshot promotion fails
 after a Telegram update has already succeeded, the semantic state still
 advances so the same public alert is not deliberately repeated.
 
-SafeBeach has a separate seasonal root message that is edited as verified
-coverage grows while retaining any Mayor bathing restriction. The root is
-built from the union of previously confirmed beach facts and newly confirmed
-changes, so a beach missing from a later partial source response cannot erase
-its last confirmed status. The first confirmed beach status populates the root
-itself and does not generate a duplicate reply. Later confirmed changes reply
-to that root. If the root disappears between refresh and reply, the complete
-confirmed root is recreated before the reply is retried; a standalone change
-message is never stored as the root. Public flag blocks are phone-first: the flag colour/type is on its own line,
+SafeBeach is fully separate from the 07:30 Morning Digest: morning
+publication, preview and `refresh-current` never request or render SafeBeach
+data. Scheduled SafeBeach requests are allowed only from 1 June through
+30 September.
+
+The 10:10–10:40 update cycle checks SafeBeach every five minutes. The first
+valid current response containing at least one verified beach flag creates one
+standalone daily beach root immediately. Every later valid response in that
+window edits the same root in place. Each edit represents that response as a
+whole; records from separate SafeBeach responses are never merged, so an
+absent beach is not kept alive as a potentially stale current flag.
+
+After the 10:40 update, the SafeBeach snapshot in an existing root is frozen
+and becomes the baseline for the operational monitor. Later confirmed flag or
+jellyfish changes are separate replies to that root rather than silent edits.
+If no root was created by 10:40, the first later confirmed status may create
+one as a recovery path and does not also emit a duplicate initial reply. If a
+root disappears before a later reply, it may be recreated from confirmed
+state. Newer explicit Mayor bathing restrictions remain an independent
+safety signal and may refresh the same root; this decision does not redesign
+their delivery.
+
+Public flag blocks are phone-first: the flag colour/type is on its own line,
 beach names follow on rows of at most three names, and the bathing meaning is a
-separate final line. Mixed states are ordered red, yellow, then green; when all
-tracked beaches share one colour the names are omitted in favour of an all-beaches
-summary. An explicit bathing prohibition suppresses contradictory permission
-wording. Newer explicit Mayor bathing transitions are checked only on existing
-initial/operational windows and refresh this same root; source failure preserves
-the last verified notice. The ADR intentionally does not hard-code any one
-beach-specific phrase.
+separate final line. Mixed states are ordered red, yellow, then green. An
+explicit bathing prohibition suppresses contradictory permission wording.
 
 A small atomic JSON state stores anchors and compact baselines; there is no
 database, daemon, new cron, runtime AI generation, or project-wide scheduler
