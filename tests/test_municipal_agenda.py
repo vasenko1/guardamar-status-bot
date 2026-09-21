@@ -203,7 +203,7 @@ class MunicipalCinemaTranslationTests(unittest.IsolatedAsyncioTestCase):
                 translation_cache_path=translations,
             )
 
-        self.assertEqual(events[0].title, "🎬 Показ фильма «Клуб чудес»")
+        self.assertEqual(events[0].title, "Кино по понедельникам: «Клуб чудес»")
 
 
 

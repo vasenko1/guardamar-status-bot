@@ -27,7 +27,9 @@ from .gemini import (
     translate_event_titles,
     verify_agenda_poster_events,
 )
-from .event_translations import cached_title, cached_translation, spanish_fallback
+from .event_translations import (
+    cached_title, cached_translation, reviewed_translation, spanish_fallback,
+)
 from .event_urls import normalize_ticket_url
 from .event_places import canonical_event_place, event_place_is_map_safe
 from .event_facts import ROUTE_DIFFICULTY_PREFIX
@@ -3676,6 +3678,32 @@ async def fetch_today_municipal_events(
             # An unrelated cached translation must not replace the verified
             # film title in the official Monday cinema row.
             cinema_title = source.title_es
+        if (
+            "turismo_cinema" in source.sources
+            and source.start_date.weekday() == 0
+            and source.place is not None
+            and "biblioteca" in source.place.casefold()
+        ):
+            # A merged Todo Cultura title can replace the Turismo title while
+            # retaining Turismo's verified Monday-cinema source marker.
+            source_film = re.search(
+                r"\bpel[ií]cula\s+[‘\"«]([^’\"»]{1,90})[’\"»]",
+                source.title_es,
+                re.IGNORECASE,
+            )
+            if source_film is not None:
+                film = reviewed_translation(source_film.group(1))
+                if film is None:
+                    translated_film = re.search(
+                        r"(?:Показ|Кинопоказ) фильма «([^«»]{1,90})»",
+                        title,
+                    )
+                    film = (
+                        translated_film.group(1)
+                        if translated_film is not None
+                        else spanish_fallback(source_film.group(1))
+                    )
+                cinema_title = f"Кино по понедельникам: «{film}»"
         result.append(
             Event(
                 title=(
