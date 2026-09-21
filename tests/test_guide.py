@@ -153,7 +153,7 @@ class BathingWaterGuideTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("   La Roqueta, Ortigues", text)
         self.assertIn("Остальные визуальные оценки — отлично", text)
         self.assertIn(
-            "🏛 Данные: Servicio de Calidad de Aguas · Generalitat Valenciana",
+            "🏛 Контроль: Servicio de Calidad de Aguas · Generalitat Valenciana",
             text,
         )
         self.assertIn("<b>обЪявления Гуардамар</b>", text)
