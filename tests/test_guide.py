@@ -131,9 +131,9 @@ class BathingWaterGuideTests(unittest.IsolatedAsyncioTestCase):
         text = _bathing_water_notice_text(bathing_report(moment))
 
         self.assertIn("🧪 <b>Качество воды на пляжах</b>", text)
-        self.assertIn("отличного качества на всех 7 пляжах", text)
-        self.assertIn("Вода: хорошо — Centro", text)
-        self.assertIn("Песок: хорошо — La Roqueta, Ortigues", text)
+        self.assertIn("качество воды отличное на всех 7 пляжах", text)
+        self.assertIn("Внешний вид воды: хорошо — Centro", text)
+        self.assertIn("Состояние песка: хорошо — La Roqueta, Ortigues", text)
         self.assertIn("15–21 июня 2026", text)
         self.assertIn("Официальный отчёт", text)
         self.assertNotIn("🌊", text)
