@@ -13,6 +13,7 @@ from telegrambot.__main__ import (
     _cams_update_checkpoint,
     _current_morning_message_id,
     _refresh_event_catalogs_once,
+    _safebeach_initial_checkpoint,
     _send_operational_update,
     _produce_message,
     _run_command,
@@ -184,6 +185,20 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(_cams_monitor_checkpoint(MonitorRun(None, True)))
         self.assertFalse(_cams_monitor_checkpoint(MonitorRun(2, False)))
 
+    def test_safebeach_initial_cycle_has_exact_1040_boundary(self):
+        self.assertTrue(_safebeach_initial_checkpoint(
+            datetime(2026, 9, 11, 10, 10, tzinfo=MADRID)
+        ))
+        self.assertTrue(_safebeach_initial_checkpoint(
+            datetime(2026, 9, 11, 10, 40, tzinfo=MADRID)
+        ))
+        self.assertFalse(_safebeach_initial_checkpoint(
+            datetime(2026, 9, 11, 10, 45, tzinfo=MADRID)
+        ))
+        self.assertFalse(_safebeach_initial_checkpoint(
+            datetime(2026, 9, 11, 10, 12, tzinfo=MADRID)
+        ))
+
     def test_cams_refresh_stops_after_current_utc_cycle(self):
         now = datetime(2026, 10, 25, 10, 10, tzinfo=MADRID)
         self.assertTrue(_cams_cycle_is_current(
@@ -339,8 +354,13 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 datetime(2026, 9, 21, 7, 30, tzinfo=MADRID),
             )
             beach_fetch = AsyncMock()
-            mayor_fetch = AsyncMock(return_value=None)
-            sent = AsyncMock()
+            notice = BeachNotice(
+                "Купание запрещено",
+                True,
+                datetime(2026, 9, 21, 10, 44, tzinfo=MADRID),
+            )
+            mayor_fetch = AsyncMock(return_value=notice)
+            sent = AsyncMock(return_value=20)
             edited = AsyncMock()
             with (
                 patch.dict(os.environ, {
@@ -366,12 +386,18 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 patch("telegrambot.__main__.edit_message", new=edited),
             ):
                 clock.now.return_value = now
+                clock.fromisoformat.side_effect = datetime.fromisoformat
                 self.assertEqual(await _run_command("update"), 0)
 
             beach_fetch.assert_not_awaited()
             mayor_fetch.assert_awaited_once()
-            sent.assert_not_awaited()
+            sent.assert_awaited_once()
             edited.assert_not_awaited()
+            saved_status, saved_notice = PublicationState(
+                state_path
+            ).beach_root_facts(now.date())
+            self.assertIsNone(saved_status)
+            self.assertEqual(saved_notice, notice)
 
     async def test_late_first_safebeach_waits_for_confirmation_before_root(self):
         with tempfile.TemporaryDirectory() as directory:
