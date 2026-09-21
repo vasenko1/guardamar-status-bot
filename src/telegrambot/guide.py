@@ -557,22 +557,24 @@ def _bathing_water_notice_key(snapshot: dict) -> str:
     return f'{snapshot["report_start"]}:{snapshot["report_end"]}:{digest}'
 
 
-def _bathing_water_period_text(snapshot: dict) -> str:
-    start = date.fromisoformat(snapshot["report_start"])
-    end = date.fromisoformat(snapshot["report_end"])
-    if start.year == end.year and start.month == end.month:
+def _bathing_water_sample_dates_text(snapshot: dict) -> str:
+    dates = [date.fromisoformat(item) for item in snapshot["sample_dates"]]
+    first, last = dates[0], dates[-1]
+    if all(item.year == first.year and item.month == first.month for item in dates):
+        days = [item.day for item in dates]
+        contiguous = days == list(range(days[0], days[-1] + 1))
+        if len(days) == 1:
+            day_text = str(days[0])
+        elif contiguous:
+            day_text = f"{days[0]}–{days[-1]}"
+        else:
+            day_text = ", ".join(str(item) for item in days)
         return (
-            f"{start.day}–{end.day} {_RU_MONTHS_GENITIVE[end.month]} "
-            f"{end.year}"
+            f"{day_text} {_RU_MONTHS_GENITIVE[first.month]} {first.year}"
         )
-    if start.year == end.year:
-        return (
-            f"{start.day} {_RU_MONTHS_GENITIVE[start.month]} – "
-            f"{end.day} {_RU_MONTHS_GENITIVE[end.month]} {end.year}"
-        )
-    return (
-        f"{start.day} {_RU_MONTHS_GENITIVE[start.month]} {start.year} – "
-        f"{end.day} {_RU_MONTHS_GENITIVE[end.month]} {end.year}"
+    return ", ".join(
+        f"{item.day} {_RU_MONTHS_GENITIVE[item.month]} {item.year}"
+        for item in dates
     )
 
 
@@ -587,10 +589,10 @@ def _append_bathing_names(lines: list, names: list, *, prefix: str) -> None:
 def _bathing_water_notice_text(snapshot: dict) -> str:
     beaches = snapshot["beaches"]
     lines = [
-        "🧪 <b>Качество воды на пляжах</b>",
-        f"🗓 {_bathing_water_period_text(snapshot)}",
+        "🧪 <b>Контроль зон купания</b>",
+        f"📅 Пробы: {_bathing_water_sample_dates_text(snapshot)}",
         "",
-        "<b>Анализ воды</b>",
+        "<b>Лабораторный анализ воды</b>",
     ]
 
     water_groups = {
@@ -632,7 +634,7 @@ def _bathing_water_notice_text(snapshot: dict) -> str:
             if names:
                 visual_exceptions.append((label, rating, names))
 
-    lines.extend(["", "👁 <b>Внешний осмотр</b>"])
+    lines.extend(["", "👁 <b>Визуальный осмотр</b>"])
     if not visual_exceptions:
         lines.append("✅ Вода и песок — отлично на всех пляжах")
     else:
@@ -645,7 +647,7 @@ def _bathing_water_notice_text(snapshot: dict) -> str:
 
     lines.extend([
         "",
-        "🏛 Источник: Ayuntamiento de Guardamar del Segura",
+        "🏛 Данные: Servicio de Calidad de Aguas · Generalitat Valenciana",
     ])
     return with_footer("\n".join(lines))
 
@@ -1050,6 +1052,30 @@ def _season_notice_text(
     )
 
 
+async def sync_bathing_water(now: datetime) -> str:
+    """Check only the official bathing-water programme and publish a new report."""
+
+    bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
+    chat_id = _required_environment("TELEGRAM_CHAT_ID")
+    guide_state = GuideState(Path(
+        os.environ.get("GUIDE_STATE_PATH", "").strip()
+        or DEFAULT_GUIDE_STATE_PATH
+    ))
+    with guide_state.exclusive_run():
+        state = guide_state.read()
+        before = state.get("bathing_water_report_snapshot")
+        await _refresh_bathing_water_source(now, state, guide_state)
+        await _publish_bathing_water_pending_notice(
+            bot_token, chat_id, state, guide_state
+        )
+        after = state.get("bathing_water_report_snapshot")
+        if before is None and after is not None:
+            return "baseline"
+        if before != after:
+            return "updated"
+        return "unchanged"
+
+
 async def sync_guide(now: datetime) -> str:
     """Refresh the source baseline, reconcile cards, and send a due season note."""
 
@@ -1091,8 +1117,6 @@ async def sync_guide(now: datetime) -> str:
 
         local_now = now.astimezone(GUARDAMAR_TIMEZONE)
         local_day = local_now.date()
-
-        await _refresh_bathing_water_source(now, state, guide_state)
 
         previous_sporttia = state.get("sporttia_catalog")
         if state.get("sporttia_last_attempt_day") != local_day.isoformat():
@@ -1365,18 +1389,28 @@ async def sync_guide(now: datetime) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Guardamar linked city guide")
-    parser.add_argument("command", nargs="?", choices=("sync",), default="sync")
-    parser.parse_args()
+    parser.add_argument(
+        "command",
+        nargs="?",
+        choices=("sync", "bathing-water"),
+        default="sync",
+    )
+    args = parser.parse_args()
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
     )
     try:
-        result = asyncio.run(sync_guide(datetime.now(GUARDAMAR_TIMEZONE)))
+        now = datetime.now(GUARDAMAR_TIMEZONE)
+        result = asyncio.run(
+            sync_bathing_water(now)
+            if args.command == "bathing-water"
+            else sync_guide(now)
+        )
     except (GuideSourceError, StateError, TelegramError, ValueError) as exc:
         print(f"Command failed: {exc}", file=os.sys.stderr)
         raise SystemExit(2) from exc
-    logging.info("Guide sync complete: %s", result)
+    logging.info("%s sync complete: %s", args.command, result)
 
 
 if __name__ == "__main__":
