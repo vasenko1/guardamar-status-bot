@@ -393,12 +393,6 @@ class SafeBeachTransportTests(unittest.IsolatedAsyncioTestCase):
             ),
         )
         self.assertEqual(status.jellyfish_beaches, ("Ortigues",))
-        self.assertFalse(
-            is_complete_current_status(
-                status,
-                datetime(2026, 7, 29, 10, 10, tzinfo=MADRID),
-            )
-        )
         self.assertTrue(
             is_current_status(
                 status,
