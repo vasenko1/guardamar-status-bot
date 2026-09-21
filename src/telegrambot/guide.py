@@ -527,12 +527,6 @@ async def _refresh_wifi_source(
 
 
 _BATHING_RATING_ORDER = ("excellent", "good", "sufficient", "insufficient")
-_BATHING_QUALITY_RU = {
-    "excellent": "отличное",
-    "good": "хорошее",
-    "sufficient": "удовлетворительное",
-    "insufficient": "недостаточное",
-}
 _BATHING_LAB_RESULT_RU = {
     "excellent": "отлично",
     "good": "хорошо",
