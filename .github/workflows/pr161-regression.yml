@@ -1,8 +1,6 @@
 name: PR 161 regression
 on:
-  push:
-    branches:
-      - feat/bathing-water-quality-notifications
+  pull_request:
 
 jobs:
   test:
