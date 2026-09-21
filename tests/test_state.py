@@ -1,7 +1,7 @@
 import json
 import tempfile
 import unittest
-from datetime import date, datetime, time
+from datetime import date, datetime
 from pathlib import Path
 
 from telegrambot.models import BeachStatus
@@ -9,16 +9,6 @@ from telegrambot.state import PublicationState, StateError
 
 
 class PublicationStateTests(unittest.TestCase):
-    def _beach_status(self, local_day, names, color="green"):
-        return BeachStatus(
-            flag_color=color if "Centre" in names else None,
-            sea_temperature_c=28 if "Centre" in names else None,
-            source_date=local_day,
-            nearby_flags=tuple((name, color) for name in names),
-            jellyfish_states=tuple((name, False) for name in names),
-            updated_times=tuple((name, time(10, 0)) for name in names),
-        )
-
     def test_keeps_electricity_explanation_across_publication_dates(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "electricity.json"
