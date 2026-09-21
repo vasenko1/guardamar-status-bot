@@ -15,8 +15,15 @@ class GuideTermuxTests(unittest.TestCase):
             root = Path(directory)
             commands = root / "bin"
             commands.mkdir()
+            test_path = f"{commands}:/usr/bin:/bin"
+            sh_bin = shutil.which("sh", path=test_path)
+            self.assertIsNotNone(sh_bin)
+
             crontab_state = root / "crontab"
-            crontab_state.write_text(initial, encoding="utf-8")
+            crontab_state.write_text(
+                initial.replace("{SH_BIN}", sh_bin),
+                encoding="utf-8",
+            )
 
             crontab = commands / "crontab"
             crontab.write_text(
@@ -36,7 +43,7 @@ class GuideTermuxTests(unittest.TestCase):
             environment = dict(os.environ)
             environment.update({
                 "HOME": str(root / "home"),
-                "PATH": f"{commands}:/usr/bin:/bin",
+                "PATH": test_path,
                 "FAKE_CRONTAB": str(crontab_state),
             })
             result = subprocess.run(
@@ -83,12 +90,10 @@ class GuideTermuxTests(unittest.TestCase):
         self.assertEqual(installed.count("2 9 * * *"), 1)
 
     def test_installer_replaces_legacy_extended_bathing_schedules(self):
-        sh_bin = shutil.which("sh")
-        self.assertIsNotNone(sh_bin)
         legacy = (
-            f"35 19 1-20 9 * {sh_bin} "
+            "35 19 1-20 9 * {SH_BIN} "
             f"{ROOT / 'termux' / 'sync-bathing-water.sh'}\n"
-            f"35 19 1-30 9 * {sh_bin} "
+            "35 19 1-30 9 * {SH_BIN} "
             f"{ROOT / 'termux' / 'sync-bathing-water.sh'}\n"
         )
 
