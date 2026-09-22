@@ -1,0 +1,265 @@
+# Additional automation sources for Guardamar
+
+Reviewed 2026-09-22.
+
+## Goal
+
+Identify additional resident-facing information that can be automated cheaply on
+the existing Android/Termux production runtime.
+
+Source-selection priority:
+
+1. JSON / XML / RSS / other structured public data.
+2. Ordinary server-rendered HTML.
+3. Only then anything heavier.
+
+Avoid browser automation, headless Chromium, OCR, image parsing, PDF parsing,
+large national feeds, new resident daemons, or expensive/high-frequency
+polling unless there is no simpler source and the resident value clearly
+justifies it.
+
+## Recommended candidates
+
+### 1. SUMA — municipal taxes and payment deadlines
+
+Candidate product value:
+
+- voluntary payment-window start/end;
+- direct-debit charge date;
+- last day to set up domiciliación where explicitly published;
+- Guardamar-specific payment periods such as IBI, IAE and vados.
+
+Technical shape:
+
+- ordinary public HTML;
+- Guardamar has its own municipal information page;
+- relevant payment periods and dates are visible in HTML;
+- no browser, authentication, AI or PDF is required.
+
+Recommended lifecycle:
+
+- low-frequency bounded GET;
+- deterministic parsing;
+- silent baseline;
+- publish only useful approaching deadlines or newly opened periods;
+- no need for frequent polling.
+
+Status: **strong candidate**.
+
+### 2. Ayuntamiento Noticias — actionable municipal opportunities
+
+Candidate product value:
+
+- ayudas / subvenciones;
+- education-related aid;
+- municipal programmes and registrations;
+- Bono Comercio and similar schemes;
+- bolsas de empleo / public recruitment notices;
+- other resident-actionable announcements.
+
+Technical shape:
+
+- WordPress-style municipal news pages are available as ordinary HTML;
+- investigate the public WordPress RSS/feed or REST list first;
+- article pages should be fetched only for new/changed items;
+- no browser is required.
+
+Product rule:
+
+Do **not** turn the bot into a general municipal-news aggregator. Publish only
+items where a resident can actually do something: apply, register, pay, attend
+a required procedure, or meet a deadline.
+
+Source rule:
+
+Do not introduce PDF parsing merely because a linked edict or full legal basis
+is a PDF. If the HTML contains enough verified facts, publish those facts. If a
+deadline or eligibility condition exists only in an attached PDF, omit that
+unsupported detail or link the official article instead.
+
+Status: **strong candidate**.
+
+### 3. Sede Electrónica — public notice board / trámite supplement
+
+Candidate product value:
+
+- tablón de anuncios;
+- public employment processes;
+- ayudas/subvenciones;
+- education/social-services procedures;
+- important new municipal trámite notices not yet mirrored clearly in the main
+  news feed.
+
+Technical shape:
+
+- public pages expose server-rendered HTML with dates, notice identifiers,
+  titles and categories;
+- no browser should be required if production Termux receives the same public
+  HTML;
+- the Gestiona platform has REST services, but no anonymous public API contract
+  for the exact data we need has been accepted yet.
+
+Recommended approach:
+
+- first run a production probe for redirects, cookies, MIME type, response size
+  and stable visible markers;
+- if plain HTML is stable, use it as a secondary completeness source;
+- keep Ayuntamiento Noticias as the primary municipal opportunity source;
+- do not build around undocumented/private Gestiona integration APIs.
+
+Status: **promising, requires production probe**.
+
+### 4. Generalitat Valenciana — blood-donation calendar
+
+Candidate product value:
+
+- future blood-donation sessions in Guardamar;
+- exact date, location and opening hours.
+
+Technical shape:
+
+- public HTML table;
+- rows expose municipality, venue and hours;
+- exact municipality filtering can be deterministic;
+- no PDF, AI or browser should be necessary.
+
+Recommended architecture:
+
+- treat this as another normal Event provider;
+- feed normalized Guardamar rows into the existing event catalog;
+- reuse Morning Digest / Weekend Digest;
+- no new notification framework or daemon.
+
+A small production probe should find the most stable sessionless URL and verify
+redirect/cookie behaviour.
+
+Status: **strong candidate**.
+
+### 5. CHS SAIH — Río Segura at Guardamar
+
+Candidate product value:
+
+- current river level H;
+- current flow Q;
+- potentially a useful linked/static river-status card.
+
+Technical shape:
+
+- Confederación Hidrográfica del Segura publishes a plain HTML table;
+- a row for A.Guardamar is available directly;
+- H and Q can be extracted without browser, PDF, authentication or AI.
+
+Important product constraint:
+
+Do not invent resident alert thresholds. The source is technically excellent,
+but alerts such as "dangerous level" require an official threshold or official
+authority state. CCE/112 remains authoritative for emergency/hydrological
+warnings.
+
+Recommended first use:
+
+- research exact official threshold semantics;
+- otherwise expose the latest H/Q only as neutral information.
+
+Status: **technically excellent; alert semantics not yet approved**.
+
+## Sources to defer
+
+### i-DE planned power cuts
+
+The official Alicante planned-work publication currently resolves to a PDF.
+
+Although the project can technically parse PDFs, that is not justified while
+the goal is to prefer cheap lightweight sources. No simple stable public
+JSON/CSV endpoint for the same Guardamar-filterable data has yet been accepted.
+
+Decision: **defer**. Revisit only if a small stable structured endpoint is
+found.
+
+### Ecomóvil / Consorcio Vega Baja Sostenible
+
+The official Ecomóvil calendar is currently presented visually and through a
+Google My Maps embed rather than as simple structured timetable data in the
+page HTML.
+
+Possible future paths such as parsing My Maps or reverse-engineering the mobile
+app are not justified for the current runtime/product.
+
+Decision: **defer automation**. Static guide content may still be useful.
+
+### PLACSP / beach lifeguard service
+
+PLACSP provides machine-processable Atom/XML procurement data, but the exact
+resident-facing details we care about — real service dates, hours, beach
+coverage, Semana Santa transition periods, etc. — may still live inside
+contract/pliego documents.
+
+Reading a broad procurement feed and then opening contract PDFs is too heavy
+for this product when a simpler operational source may eventually appear.
+
+Decision: **keep the existing socorrismo research, but do not add a production
+PLACSP monitor now**.
+
+## Municipal works and road closures
+
+Do **not** create a separate "municipal works / road closures" automation
+product from Ayuntamiento Noticias.
+
+Reason:
+
+- official closure notices do sometimes appear;
+- useful examples can contain exact street, date/time and reason;
+- publication is incomplete and not reliable enough to claim broad coverage of
+  Guardamar road closures;
+- previous investigation also found no dependable general live Policía Local
+  traffic feed.
+
+Product rule:
+
+If an explicit operational closure or works notice appears in an already-read
+municipal source such as Ayuntamiento/AlcaldeGuardamar and contains concrete
+location + validity + effect, it may be surfaced opportunistically.
+
+Do not add a separate watcher, separate source family or resident promise that
+the bot covers all road closures.
+
+## Minimal implementation direction
+
+Prefer small source-specific adapters rather than a generic provider framework:
+
+- suma.py
+- municipal-news adapter/module
+- blood-donation adapter
+- Segura/CHS adapter
+
+Reuse existing orchestration and notification/event pipelines wherever
+possible.
+
+Do not add:
+
+- browser automation;
+- OCR;
+- PDF parsing for these new candidates;
+- a database;
+- a message broker;
+- a provider registry;
+- a generic notification framework;
+- a new always-on process.
+
+## Suggested next step
+
+Before accepting implementation, run a production Termux probe for the five
+preferred sources and record:
+
+- HTTP status;
+- redirect chain;
+- MIME type;
+- compressed/uncompressed response size;
+- latency;
+- required cookies;
+- stable marker for the needed Guardamar data;
+- whether one request is sufficient on a no-change day.
+
+The preferred end state is that each source costs roughly one small bounded GET
+per scheduled check, and new/detail requests occur only when a list/feed
+actually changes.
