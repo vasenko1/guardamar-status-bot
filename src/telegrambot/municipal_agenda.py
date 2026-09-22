@@ -627,6 +627,21 @@ def _is_contentless_generic_event(event: SourceEvent) -> bool:
     )
 
 
+_ROUTINE_YOUTH_CENTRE_TITLES = frozenset({
+    "actividades del centro social juvenil",
+    "actividades del centro social juvenil (csj)",
+})
+
+
+def _is_editorially_hidden_daily_event(event: SourceEvent) -> bool:
+    """Keep the explicitly excluded routine opening out of daily events."""
+
+    return (
+        event.place == "Centro Social Juvenil"
+        and normalized_title(event.title_es) in _ROUTINE_YOUTH_CENTRE_TITLES
+    )
+
+
 def _facebook_source(post: FacebookPost) -> str:
     return FACEBOOK_SOURCE_PREFIX + post.source_id
 
@@ -3476,6 +3491,7 @@ async def _cached_current_events(
         event
         for event in events
         if event.start_date <= local_day <= event.end_date
+        and not _is_editorially_hidden_daily_event(event)
     ]
     active = list(_prefer_openings_for_day(tuple(active)))
     active.sort(
