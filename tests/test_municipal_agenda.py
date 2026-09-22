@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 from telegrambot.municipal_agenda import (
     MunicipalAgendaError,
     SourceEvent,
+    _cached_current_events,
     _current_events,
     _expand_explicit_todo_dates,
     _explicit_fiesta_article_events,
@@ -1688,6 +1689,49 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(loaded["_events"][0].title_es, event.title_es)
         self.assertEqual(loaded["_events"][0].place, "Centro Social Juvenil")
         self.assertEqual(loaded["_events"][0].place_query, "calle Molivent")
+
+    async def test_daily_view_hides_only_routine_youth_centre_opening(self):
+        poster_url = (
+            "https://www.guardamardelsegura.es/wp-content/uploads/"
+            "2026/07/MUPI-AGOSTO-2026-scaled.jpg"
+        )
+        historical_workshops = {
+            date(2026, 8, 15): "Taller de guitarras eléctricas",
+            date(2026, 8, 22): "Taller de música electrónica",
+            date(2026, 8, 29): "Taller de canto",
+        }
+
+        for local_day, workshop_title in historical_workshops.items():
+            with self.subTest(local_day=local_day):
+                routine = SourceEvent(
+                    "Actividades del Centro Social Juvenil (CSJ)",
+                    local_day, local_day, "08:30", "14:00",
+                    "calle Molivent", "event", ("todo_cultura",),
+                    participation_note=(
+                        "для молодёжи 12–30 лет; доступны настольные игры, "
+                        "настольный футбол, пинг-понг, аэрохоккей, "
+                        "игровой автомат"
+                    ),
+                    registration_contact=(
+                        "WhatsApp 609 00 67 54 или email "
+                        "juventudguardamar@gmail.com"
+                    ),
+                )
+                now = datetime(
+                    local_day.year, local_day.month, local_day.day,
+                    7, 30, tzinfo=TZ,
+                )
+                with tempfile.TemporaryDirectory() as directory:
+                    path = Path(directory) / "agenda.json"
+                    _write_snapshot(
+                        path,
+                        _snapshot_data(poster_url, "abc", now, (routine,)),
+                    )
+                    current = await _cached_current_events(now, path)
+
+                titles = [event.title_es for event in current]
+                self.assertNotIn(routine.title_es, titles)
+                self.assertIn(workshop_title, titles)
 
     async def test_cached_cultura_failure_is_visible_but_successful_no_match_is_quiet(self):
         event = SourceEvent(
