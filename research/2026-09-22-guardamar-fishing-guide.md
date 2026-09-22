@@ -741,7 +741,7 @@ Example outside the Easter period:
 
 Example during the period:
 
-> Сейчас действует режим Semana Santa до 5 апреля включительно.
+> 🗓 **На 25 марта:** действует режим Semana Santa до 5 апреля включительно.
 
 ### Deterministic transition events
 
@@ -752,8 +752,9 @@ Core annual transitions remain:
 3. 31 May -> summer regime starts 1 June;
 4. 30 September -> summer regime ends 1 October.
 
-The card itself should also change immediately when the regime changes, so the
-alert and the guide always agree.
+The card should be reconciled by the existing daily guide sync when the regime
+changes. On boundary days, copy must remain true across the midnight-to-09:02
+window as defined in the later architecture review.
 
 ## Dynamic card: shore fishing
 
@@ -775,7 +776,7 @@ Show only the restrictions that currently apply:
 
 Example opening on 23 September 2026:
 
-> 🗓 **Сейчас действуют летние ограничения**
+> 🗓 **На 23 сентября:** действуют летние ограничения
 >
 > Купальный сезон в Гуардамаре продолжается **до 30 сентября включительно**.
 
@@ -793,7 +794,7 @@ Do **not** keep the eight-beach summer list on the card.
 
 Replace it with a concise current-state block, for example:
 
-> 🗓 **Сейчас сезонные ограничения купального сезона не действуют**
+> 🗓 **На 10 января:** сезонные ограничения купального сезона не действуют
 >
 > Следующий сезонный период — **Semana Santa 2027: 19 марта – 5 апреля**.
 
@@ -841,38 +842,39 @@ or:
 
 > **Актуальные открытия и закрытия ловли отдельных видов — MAPA**
 
-## Dynamic card: boat and kayak
+## Card: boat and kayak — reviewed automation boundary
 
-Most rules are static, but one useful live block can be added by reusing
-existing beach-flag data.
+Most boat/kayak rules are stable. After reviewing the actual guide and
+SafeBeach lifecycles, **do not put live beach flags into this pinned card in
+V1**.
 
-### No new polling
+### Why the earlier red-flag idea is rejected
 
-The bot already fetches and confirms Guardamar beach flags through the existing
-SafeBeach/operational-update pipeline.
+The guide is reconciled at **09:02**. SafeBeach's approved lifecycle starts
+later, at **10:10**, and the separate beach root is then updated through 10:40
+and by later operational checks.
 
-Do **not** create another SafeBeach request for fishing.
+Therefore a "today's red flags" block inside the 09:02 fishing card cannot be
+both fresh and source-free:
 
-Reuse only the existing **confirmed same-day** status.
+- at 09:02 today's SafeBeach status normally does not exist yet;
+- reading yesterday's state would violate freshness rules;
+- making the SafeBeach monitor edit the pinned fishing card later would couple
+  two intentionally separate lifecycles;
+- adding another guide sync after SafeBeach would add scheduling and Telegram
+  churn only for this convenience feature;
+- making a second SafeBeach request is explicitly unnecessary and violates the
+  one-lifecycle principle.
 
-### Red-flag live block
+Keep the operational boundary clean:
 
-If one or more beaches have a confirmed red flag for the current local day,
-prepend a compact block such as:
+- the fishing card states the durable rule: **a red flag prohibits going to sea
+  on kayaks / analogous floating craft**;
+- the existing daily **Пляжи Гуардамара сегодня** lifecycle owns current flag
+  publication;
+- the pinned fishing guide does not copy, cache or mirror live flags.
 
-> ⛔ **Сегодня красный флаг:** Centre, La Roqueta
->
-> Выход на каяках и аналогичных плавсредствах запрещён.
-
-If:
-
-- no red flag exists -> omit the block;
-- no fresh confirmed same-day status exists -> omit the block;
-- source data is stale/uncertain -> omit the block.
-
-Never show yesterday's flag status as current.
-
-This feature should not trigger any extra network request.
+This removes a race, a stale-data risk and cross-state coupling.
 
 ### 200 m / 50 m wording
 
@@ -887,6 +889,18 @@ Explain direction explicitly:
 > - up to 50 m seaward opposite other coastline.
 
 The distances are seaward, not along the coast.
+
+Do **not** turn these fallback distances into map circles or polygons.
+
+The municipal 2023 buoying plan shows that marked central bathing zones can
+have a physically buoyed outer edge at another distance (for example 150 m in
+that plan). When a zone is marked, the physical buoys define the relevant
+boundary; the ordinance's 200 m / 50 m rule is the fallback for unmarked
+coast. A static map point cannot represent either boundary safely.
+
+Official municipal buoying-plan source reviewed:
+
+https://www.guardamardelsegura.es/wp-content/uploads/2023/10/20231004_13-PLANO-DE-BALIZAMIENTO-DE-LAS-PLAYAS-2023.pdf
 
 ### Kayak vs registered vessel
 
@@ -907,7 +921,7 @@ This card should also render current seasonal state.
 
 Opening example:
 
-> 🗓 **Сейчас действует сезонный запрет в зонах купания**
+> 🗓 **На 23 сентября:** действует сезонный запрет в зонах купания
 >
 > До **30 сентября включительно** подводная рыбалка запрещена во всех
 > зонах купания Гуардамара.
@@ -930,7 +944,7 @@ Do not keep the summer prohibition as a large inactive block.
 
 Render instead:
 
-> 🗓 **Сейчас сезонный запрет в зонах купания не действует**
+> 🗓 **На 10 января:** сезонный запрет в зонах купания не действует
 >
 > Следующий период — **Semana Santa 2027: 19 марта – 5 апреля**.
 
@@ -959,13 +973,13 @@ Seasonal closure:
 
 Example on 23 September 2026:
 
-> 🗓 **Сейчас сезонный запрет не действует**
+> 🗓 **На 23 сентября:** сезонный запрет не действует
 >
 > Следующий запрет: **1 декабря 2026 – 28 февраля 2027**.
 
 On 1 December 2026:
 
-> 🚫 **Сейчас действует сезонный запрет**
+> 🚫 **На 1 декабря:** действует сезонный запрет
 >
 > Рыбалка с rall/esparavel запрещена до **28 февраля 2027 включительно**.
 >
@@ -1034,7 +1048,7 @@ Current recommended automation boundary:
 | --- | --- | --- | --- |
 | Fishing root | none | static guide graph | no |
 | Shore | active seasonal regime, exact dates, next transition | local calendar | no |
-| Boat/kayak | confirmed current red flags, only when present | existing SafeBeach/operational state | **no new request** |
+| Boat/kayak | no live field in the pinned card; current flags remain in the existing beach lifecycle | static reviewed rules | no |
 | Underwater | active seasonal regime, exact dates, next transition | local calendar | no |
 | Rall/esparavel | active closure status, exact dates, next transition | local calendar | no |
 | Internal waters | no generic live status | static reviewed rules + links | no |
@@ -1070,8 +1084,8 @@ For design/regression fixtures, the expected high-level state on
 - shore: summer restrictions active through 30 September;
 - underwater: bathing-zone seasonal prohibition active through 30 September;
 - rall/esparavel: seasonal closure not active; next closure starts 1 December;
-- boat/kayak: no calendar-wide summer fishing prohibition; optionally show only
-  confirmed same-day red flags from existing state;
+- boat/kayak: no calendar-wide summer fishing prohibition; current red flags
+  remain exclusively in the existing daily beach lifecycle;
 - internal waters: lower Segura prohibition remains permanent; no generic
   continental seasonal status.
 
@@ -1081,7 +1095,8 @@ After **1 October 2026**:
   calculated seasonal period;
 - underwater card hides the active summer-ban block and shows the next
   calculated seasonal period;
-- boat/kayak behaviour is unchanged except for same-day flag data;
+- boat/kayak behaviour is unchanged; operational beach flags remain outside
+  the pinned fishing card;
 - rall remains open under this seasonal rule until 30 November.
 
 ## Implementation implications
@@ -1095,11 +1110,10 @@ Preferred approach:
 - no separate fishing scheduler is necessary for card freshness if the existing
   daily guide sync updates the messages;
 - seasonal transition alerts can reuse the existing guide-state notice pattern;
-- SafeBeach flag data should be reused only if a clean, non-coupled way to read
-  the already-confirmed same-day snapshot exists; do not make the fishing guide
-  own or duplicate the operational monitor;
-- if sharing flag state would introduce ugly coupling or a second source fetch,
-  omit the live flag block in V1 rather than overengineer it;
+- do not read or mirror SafeBeach operational state from the fishing guide;
+- do not make the SafeBeach lifecycle edit pinned fishing messages;
+- keep current beach flags in the existing daily beach root and operational
+  replies;
 - no MAPA HTML/PDF monitor;
 - no OCR;
 - no browser;
@@ -1112,8 +1126,8 @@ Before coding:
 
 1. Decide whether the two `rall/esparavel` transitions should also generate
    public alerts, or only update the card.
-2. Decide whether the same-day red-flag block can be reused cleanly from current
-   confirmed state without coupling pinned guide to operational-update internals.
+2. Verify every map target once before implementation, especially the legal
+   boundary landmark at the CV-91 bridge and the Segura mouth.
 3. Re-check exact official wording/values for all high-risk legal constants.
 4. Decide whether to display the next seasonal transition only, or also the
    duration of the next regime.
@@ -1130,10 +1144,598 @@ It should behave as a **date-aware local assistant**:
 - it calculates Easter/Semana Santa itself;
 - it hides irrelevant inactive rules;
 - it tells the user the next known change;
-- where possible, it reuses already-confirmed operational data such as red
-  flags;
+- operational beach flags remain in their existing dedicated lifecycle rather
+  than being mirrored into pinned fishing cards;
 - it does **not** pretend to know changing species/quota law and sends users to
   official PescaREC/MAPA for that layer.
 
 This is the current baseline for the next implementation/design step.
+
+---
+
+# 2026-09-23 review — maps, automation, UX and architecture
+
+This review was performed against the current linked-guide, guide-sync and
+SafeBeach architecture before implementation. It supersedes any earlier
+research suggestion that would make the fishing guide mirror live SafeBeach
+flags.
+
+## Review result
+
+The concept is viable **without a new source, dependency, daemon, scheduler or
+map API** if the following boundaries are kept:
+
+1. calendar-derived fishing status belongs to the existing 09:02 guide sync;
+2. operational beach flags remain in the existing SafeBeach/beach-root
+   lifecycle;
+3. maps are static presentation links only;
+4. legal facts continue to come from official legal/municipal sources;
+5. no point marker is presented as a legal polygon or boundary.
+
+This fits the repository's existing principles: one-shot processes, official
+sources, deterministic rendering, compact atomic state, fail-closed source
+handling and a self-healing Telegram guide graph.
+
+## Automation review
+
+### Approved dynamic cards
+
+The following values can be computed locally with no I/O:
+
+| Card | Locally computed value | Runtime source |
+| --- | --- | --- |
+| Shore | current Guardamar bathing-season regime, exact dates, next transition | local calendar |
+| Underwater | whether the bathing-zone seasonal prohibition is active, exact dates, next transition | local calendar |
+| Rall/esparavel | whether Dec-Feb seasonal closure is active, exact dates, next transition | local calendar |
+| Boat/kayak | none | static rules only |
+| Internal waters | none globally valid | static reviewed local rules + official links |
+
+No separate monitor belongs to a card merely because the card exists.
+
+### Easter / Semana Santa calculation
+
+Implement one deterministic Gregorian Easter calculation with the Python
+standard library only.
+
+Derive:
+
+- start = Easter Sunday - 9 days;
+- end = Easter Sunday + 8 days.
+
+Tests must cover multiple years, including the already reviewed examples:
+
+- 2026: 27 March - 13 April;
+- 2027: 19 March - 5 April;
+
+and a wider multi-year range to catch month-boundary cases.
+
+Do not store annual Easter dates in state.
+
+### Rall closure
+
+The Dec-Feb closure is also pure calendar logic.
+
+Tests must include:
+
+- 30 November -> next day closed;
+- 1 December -> closed;
+- 28 February in a normal year;
+- 29 February in a leap year;
+- 1 March -> open under this seasonal rule.
+
+### Daily guide sync is enough for card rendering
+
+The existing **09:02** guide sync already receives `local_day` and reconciles
+the managed Telegram graph. Use it for fishing-card rendering.
+
+Do not add:
+
+- a fishing cron;
+- an internal scheduler;
+- a midnight job;
+- a second daily guide lifecycle.
+
+### Midnight / stale-card risk
+
+A date-aware card edited only at 09:02 can otherwise become semantically wrong
+between midnight and 09:02 on a transition day.
+
+Use two protections instead of a new cron.
+
+**1. Date the dynamic status visibly.**
+
+Prefer:
+
+> 🗓 **На 23 сентября:** действуют летние ограничения...
+
+rather than an undated:
+
+> Сейчас действуют летние ограничения.
+
+If a scheduled guide sync is missed, the visible date makes stale content
+detectable instead of presenting it as timeless current fact.
+
+**2. Use transition-safe copy on the day before a boundary.**
+
+For example on 30 September:
+
+> До **30 сентября включительно** действуют летние ограничения.  
+> С **1 октября** этот сезонный режим не действует.
+
+This remains factually true after midnight until the next 09:02 reconciliation.
+
+The same pattern applies to Semana Santa start/end and the rall 1 Dec / 1 Mar
+boundaries.
+
+This is preferable to adding a 00:01 cron solely to keep three guide messages
+perfectly synchronized with midnight.
+
+### Seasonal alerts
+
+The existing guide already has a proven transition-notice pattern with:
+
+- deterministic "tomorrow changes state" keys;
+- atomic guide state;
+- ambiguous-send protection;
+- self-contained public notice text.
+
+Fishing should copy that pattern, not create a generic notification framework.
+
+Recommended minimal state if alerts are approved:
+
+- one `fishing_notice` object with `key` + `message_id`;
+- one `fishing_notice_uncertain` key.
+
+A single fishing notice can cover the same Guardamar bathing-season transition
+for both shore and underwater fishing.
+
+Do **not** overload the existing pool `season_notice` field; its semantics are
+already specific and tested.
+
+The two rall notices (30 Nov / end of Feb) remain a separate product decision:
+the card itself can change without requiring a public alert.
+
+## SafeBeach / red-flag review
+
+The earlier idea to place today's red flags inside the boat/kayak pinned card is
+**rejected for V1**.
+
+Reasons:
+
+1. guide sync runs at 09:02;
+2. approved SafeBeach work starts at 10:10;
+3. current flags therefore are normally unavailable when the pinned card is
+   rendered;
+4. reading old operational state would risk stale information;
+5. having operational updates edit the pinned guide creates cross-lifecycle
+   ownership and lock/recovery complexity;
+6. a second SafeBeach request or later fishing-specific sync would duplicate
+   work and violate the one-lifecycle design.
+
+Keep the durable sentence in the kayak card:
+
+> При красном флаге выход в море на каяках и аналогичных плавсредствах
+> запрещён.
+
+Current flags remain in the existing daily **Пляжи Гуардамара сегодня**
+message and its operational replies.
+
+This is not lost product value: the fishing cards add value where the bot can
+safely own the calculation (season/date), while the dedicated beach workflow
+continues to own live operational status.
+
+## Map-link design
+
+### Maps are presentation, never evidence
+
+Follow the precedent already used by the earthquake workflow and pinned guide:
+Google Maps is only a way for the user to locate a verified place.
+
+Never use Google Maps to establish:
+
+- whether fishing is legal;
+- the name or legal extent of a beach;
+- a bathing-zone boundary;
+- the CV-91 legal boundary;
+- a marine-reserve boundary.
+
+Those facts come from the ordinance, DOGV, GVA or MAPA.
+
+### No runtime map/geocoding source
+
+Do not add:
+
+- Google Maps API;
+- geocoding API;
+- Nominatim requests;
+- browser automation;
+- map scraping;
+- map tiles;
+- a map cache.
+
+Map URLs are static constants or deterministic URLs built from reviewed
+coordinates/search terms.
+
+### Preferred link form
+
+For boundary-sensitive landmarks such as:
+
+- Puente de la CV-91;
+- the Segura mouth;
+
+prefer a once-verified decimal coordinate and a transparent Google Maps URL:
+
+`https://www.google.com/maps/search/?api=1&query=<lat>,<lon>`
+
+rather than a vague text search.
+
+For named beaches, either:
+
+- use once-verified representative coordinates; or
+- use an explicit disambiguated search query containing the full beach name and
+  `Guardamar del Segura`.
+
+Coordinates are preferred when the search name is ambiguous.
+
+Avoid introducing a URL-shortening step purely to save characters. Existing
+`maps.app.goo.gl` links may remain where already reviewed, but new fishing
+locations should favour transparent URLs that are easy to audit in source.
+
+### Legal name and map name are separate concerns
+
+Do not derive user-facing legal labels from Google Maps or SafeBeach.
+
+The ordinance uses the legal/local beach names, while other systems may use
+different spelling or grouping. In particular:
+
+- SafeBeach combines Centre / Babilònia operationally;
+- source spellings vary around Moncaio / Montcaio / Moncayo.
+
+The fishing card should use the wording chosen from the authoritative fishing
+source. The map target is allowed to use a different search spelling internally
+if necessary to land on the correct place.
+
+Store display label and map target separately.
+
+### Which places should be clickable
+
+Useful map targets:
+
+**Shore card**
+- Centre;
+- La Roqueta;
+- Babilònia;
+- El Moncaio;
+- Els Tossals;
+- Dels Vivers;
+- El Camp;
+- Les Ortigues.
+
+**Boat/kayak**
+- Tabarca may be a location link when mentioned;
+- the separate MAPA reserve link remains the legal-information action.
+
+**Internal waters**
+- Puente de la CV-91 — particularly important because it is the reviewed
+  transition point between ZPL and VP;
+- Desembocadura del Río Segura — useful orientation for the closed lower
+  section.
+
+Do not add a map link merely because a geographic noun appears. For example,
+linking every occurrence of "Guardamar", "Mediterranean", or "Río Segura" adds
+noise without improving a decision.
+
+### A point is not a zone
+
+Never label a location point as:
+
+- "запрещённая зона";
+- "граница зоны купания";
+- "граница заповедника";
+
+unless the linked resource actually represents that geometry.
+
+Correct semantics:
+
+- **Playa Centre** -> representative point for the beach;
+- **Puente CV-91** -> the bridge used as the legal textual boundary;
+- **Устье Segura** -> representative point for the mouth;
+- **Tabarca** -> island/location.
+
+The legal extent remains in text and the official source.
+
+### 200 m / 50 m must not become a static map overlay
+
+The ordinance fallback for an unmarked coast is measured from shoreline
+seaward: 200 m opposite beaches, 50 m opposite other coast.
+
+However, a marked bathing zone is governed by its buoys. The reviewed municipal
+2023 buoying plan shows central marked zones with an outer buoy line at 150 m.
+
+Therefore:
+
+- do not draw a universal 200 m beach buffer;
+- do not hardcode a 150 m universal buffer either;
+- do not generate polygons;
+- say "use the buoys where the zone is marked";
+- explain 200/50 m only as the ordinance fallback when it is not marked.
+
+### Mobile link density
+
+Do not turn every repeated occurrence of a place into a link.
+
+Rule:
+
+> link the first actionable occurrence of a concrete place in the relevant
+> card.
+
+For a list of beaches, use no more than **two linked beach names per visual
+line**, matching the project's existing phone-width guide style.
+
+Example:
+
+```text
+🚫 Centre · La Roqueta
+   Babilònia · El Moncaio
+```
+
+Each name may be its own map link.
+
+Avoid adding a second separate `📍` line with the same eight beaches if the
+names themselves are already linked.
+
+For CV-91 / Segura mouth, a compact dedicated line is clearer:
+
+> 📍 **Мост CV-91** · **Устье Segura**
+
+### Message-length risk
+
+Eight HTML map links plus official GVA/MAPA URLs can materially increase the
+raw Telegram message string.
+
+Every rendered fishing state must have a regression test asserting:
+
+- raw rendered message length <= 4096;
+- exactly one shared footer on cards that require it;
+- expected back-navigation link exists;
+- no duplicate map link for repeated place mentions.
+
+If full query URLs make the shore card too large, prefer verified coordinate
+URLs or shorten copy before considering opaque short links.
+
+Do not split one user scenario into extra cards only to solve an avoidable URL
+length problem unless the rendered card actually exceeds the limit.
+
+## Navigation / footer architecture review
+
+The existing pinned guide already owns:
+
+- message IDs;
+- parent/child Telegram links;
+- recreation after `MESSAGE-NOT-FOUND`;
+- bounded reconciliation;
+- atomic pinned-guide state.
+
+Fishing should be another subtree of this graph, not a separate publication
+system.
+
+Recommended keys:
+
+- `fishing`;
+- `fishing_shore`;
+- `fishing_boat`;
+- `fishing_underwater`;
+- `fishing_rall`;
+- `fishing_inland`.
+
+Parent relationships:
+
+```text
+fishing -> root
+all fishing leaves -> fishing
+```
+
+User-approved UX for this subtree:
+
+- the fishing navigator itself has a visible **⬅️ Полезное о Гуардамаре** link
+  and shared footer;
+- every leaf has **⬅️ Рыбалка** and shared footer.
+
+This is compatible with the existing guide even though some older compact
+navigators omit the footer; the activities/places-style cards already show that
+a linked category card may be a normal branded guide message.
+
+Do not create inline Telegram keyboard state; the existing product uses linked
+messages in message text.
+
+## Module-boundary review
+
+Avoid adding all legal/calendar copy directly to the already large
+`pinned.py`.
+
+A minimal clean split is preferable:
+
+- one small pure fishing module owns calendar calculations, reviewed constants,
+  map targets and fishing body rendering;
+- `pinned.py` continues to own the Telegram message graph, parent links,
+  footer/back-link wrapping and reconciliation;
+- `guide.py` passes `local_day` as it already does and owns only due-notice
+  delivery/state.
+
+The fishing module must have:
+
+- no HTTP;
+- no filesystem state;
+- no Telegram calls;
+- no background work;
+- no AI;
+- no third-party dependency.
+
+Do not create classes, repositories, generic rule engines or a map service.
+Plain constants + pure functions are sufficient.
+
+An acceptable pattern is for the fishing module to return card bodies, while
+`pinned.py` applies the existing navigation/footer wrapper. This keeps one
+owner for guide navigation semantics and avoids duplicating recovery logic.
+
+## Failure and recovery review
+
+### Calendar rendering
+
+Pure date calculations do not fail due to network.
+
+If the whole 09:02 guide job fails for an unrelated reason, the next invocation
+uses existing guide recovery semantics. The visible "На <date>" status line is
+important because it prevents an old legal-status card from masquerading as an
+undated current fact.
+
+### Map links
+
+A broken external map link must not affect guide publication.
+
+No runtime validation of Google Maps should be added. Verify targets in tests
+and review them manually before release.
+
+### Telegram ambiguity
+
+Fishing cards automatically inherit the existing pinned-guide rule:
+
+- ambiguous send -> mark uncertain / fail closed;
+- exact message-not-found -> recreate and reconcile links;
+- message-not-modified -> idempotent success.
+
+Do not add fishing-specific delivery state for cards.
+
+### Seasonal alert ambiguity
+
+If fishing transition alerts are implemented, use the same explicit uncertain
+marker shape as current guide seasonal notices. Do not retry an ambiguous send
+as if it definitely failed.
+
+## UX review
+
+The final UX should optimize for the question:
+
+> "I want to fish this way today. What applies to me?"
+
+Each dynamic leaf should therefore use this order:
+
+1. dated current regime;
+2. concrete consequence for this fishing method;
+3. permanent local safety/legal constraints that still matter;
+4. next known calendar change;
+5. exact licence name;
+6. one or two official actions/links;
+7. back navigation;
+8. footer.
+
+Maps support "where is that place?" and should not interrupt the legal
+explanation.
+
+Do not:
+
+- show inactive seasonal beach lists off-season;
+- repeat the full PescaREC explanation on every card;
+- repeat the same map link multiple times;
+- show a green/no-red flag as reassurance in the fishing card;
+- make "no seasonal restriction" read as "fishing is allowed";
+- expose internal terms such as `VP`, `ZPL`, `artefacto flotante` without
+  explaining them in normal Russian.
+
+## Overengineering review
+
+Rejected as unnecessary:
+
+- one monitor/source per fishing card;
+- a fishing daemon;
+- another SafeBeach fetch;
+- operational-state mirroring into pinned guide state;
+- midnight cron;
+- map/geocoding API;
+- generated map polygons;
+- generic legal-rule engine;
+- generic notification framework;
+- database;
+- new dependency;
+- AI-generated legal copy;
+- automatic MAPA PDF interpretation.
+
+The remaining implementation is small:
+
+- six managed guide messages;
+- pure calendar calculations;
+- reviewed static map targets;
+- a few additional guide-state fields only if public transition alerts are
+  approved;
+- tests.
+
+## Required tests before implementation is accepted
+
+### Calendar
+
+- Easter/Semana Santa dates across a multi-year table;
+- exact first/last day inclusion;
+- day-before and day-after states;
+- 1 Jun / 30 Sep boundaries;
+- Dec-Feb rall closure;
+- leap-year Feb 29;
+- next-transition calculation.
+
+### Transition-safe UX
+
+Render at least:
+
+- ordinary summer day;
+- 30 September;
+- 1 October;
+- day before Semana Santa;
+- first and last Semana Santa days;
+- off-season winter day;
+- 30 November;
+- 1 December;
+- last day of February;
+- 1 March.
+
+Verify that boundary-day text stays true across the midnight-to-09:02 stale
+window.
+
+### Maps
+
+- every approved location has exactly one reviewed map target;
+- CV-91 bridge and Segura mouth use exact verified targets;
+- legal display names are independent of map-provider labels;
+- no URL claims to represent a legal zone/polygon;
+- map links are static and do not require network in tests.
+
+### Guide graph
+
+- fishing root linked from main root;
+- all five leaves linked from fishing root;
+- every leaf returns to fishing;
+- fishing root returns to main root;
+- deleted fishing leaf is recreated and all dependent links converge;
+- each branded fishing card has exactly one footer;
+- all rendered seasonal variants remain <= 4096 raw characters.
+
+### Alert state, if approved
+
+- one notice per transition key;
+- shore + underwater share the same bathing-season transition alert;
+- ambiguous send does not deliberately duplicate;
+- missed run does not create a misleading retroactive "tomorrow" alert.
+
+## Final reviewed baseline
+
+The recommended V1 is:
+
+- **dynamic by local calendar:** shore, underwater, rall;
+- **static but useful:** boat/kayak and internal waters;
+- **operational flags stay outside the pinned guide;**
+- **maps are reviewed static location links, not data sources or legal
+  boundaries;**
+- **no new scheduler, network source, dependency or service;**
+- **existing pinned-guide recovery/navigation owns all six messages;**
+- **every dynamic status is visibly dated and boundary-safe.**
+
+This is the architecture/UX baseline to implement from.
 
