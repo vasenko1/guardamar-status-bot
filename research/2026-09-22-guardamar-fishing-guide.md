@@ -741,7 +741,7 @@ Example outside the Easter period:
 
 Example during the period:
 
-> Сейчас действует режим Semana Santa до 5 апреля включительно.
+> 🗓 **На 25 марта:** действует режим Semana Santa до 5 апреля включительно.
 
 ### Deterministic transition events
 
@@ -752,8 +752,9 @@ Core annual transitions remain:
 3. 31 May -> summer regime starts 1 June;
 4. 30 September -> summer regime ends 1 October.
 
-The card itself should also change immediately when the regime changes, so the
-alert and the guide always agree.
+The card should be reconciled by the existing daily guide sync when the regime
+changes. On boundary days, copy must remain true across the midnight-to-09:02
+window as defined in the later architecture review.
 
 ## Dynamic card: shore fishing
 
@@ -775,7 +776,7 @@ Show only the restrictions that currently apply:
 
 Example opening on 23 September 2026:
 
-> 🗓 **Сейчас действуют летние ограничения**
+> 🗓 **На 23 сентября:** действуют летние ограничения
 >
 > Купальный сезон в Гуардамаре продолжается **до 30 сентября включительно**.
 
@@ -793,7 +794,7 @@ Do **not** keep the eight-beach summer list on the card.
 
 Replace it with a concise current-state block, for example:
 
-> 🗓 **Сейчас сезонные ограничения купального сезона не действуют**
+> 🗓 **На 10 января:** сезонные ограничения купального сезона не действуют
 >
 > Следующий сезонный период — **Semana Santa 2027: 19 марта – 5 апреля**.
 
@@ -920,7 +921,7 @@ This card should also render current seasonal state.
 
 Opening example:
 
-> 🗓 **Сейчас действует сезонный запрет в зонах купания**
+> 🗓 **На 23 сентября:** действует сезонный запрет в зонах купания
 >
 > До **30 сентября включительно** подводная рыбалка запрещена во всех
 > зонах купания Гуардамара.
@@ -943,7 +944,7 @@ Do not keep the summer prohibition as a large inactive block.
 
 Render instead:
 
-> 🗓 **Сейчас сезонный запрет в зонах купания не действует**
+> 🗓 **На 10 января:** сезонный запрет в зонах купания не действует
 >
 > Следующий период — **Semana Santa 2027: 19 марта – 5 апреля**.
 
@@ -972,13 +973,13 @@ Seasonal closure:
 
 Example on 23 September 2026:
 
-> 🗓 **Сейчас сезонный запрет не действует**
+> 🗓 **На 23 сентября:** сезонный запрет не действует
 >
 > Следующий запрет: **1 декабря 2026 – 28 февраля 2027**.
 
 On 1 December 2026:
 
-> 🚫 **Сейчас действует сезонный запрет**
+> 🚫 **На 1 декабря:** действует сезонный запрет
 >
 > Рыбалка с rall/esparavel запрещена до **28 февраля 2027 включительно**.
 >
