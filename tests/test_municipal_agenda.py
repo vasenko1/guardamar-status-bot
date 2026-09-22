@@ -1691,10 +1691,6 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(loaded["_events"][0].place_query, "calle Molivent")
 
     async def test_daily_view_hides_only_routine_youth_centre_opening(self):
-        poster_url = (
-            "https://www.guardamardelsegura.es/wp-content/uploads/"
-            "2026/07/MUPI-AGOSTO-2026-scaled.jpg"
-        )
         historical_workshops = {
             date(2026, 8, 15): "Taller de guitarras eléctricas",
             date(2026, 8, 22): "Taller de música electrónica",
@@ -1717,6 +1713,11 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                         "juventudguardamar@gmail.com"
                     ),
                 )
+                workshop = SourceEvent(
+                    workshop_title,
+                    local_day, local_day, "19:00", "21:00",
+                    "Centro Social Juvenil", "event", ("todo_cultura",),
+                )
                 now = datetime(
                     local_day.year, local_day.month, local_day.day,
                     7, 30, tzinfo=TZ,
@@ -1725,7 +1726,7 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                     path = Path(directory) / "agenda.json"
                     _write_snapshot(
                         path,
-                        _snapshot_data(poster_url, "abc", now, (routine,)),
+                        _snapshot_data("", "", now, (routine, workshop)),
                     )
                     current = await _cached_current_events(now, path)
 
