@@ -626,3 +626,514 @@ The resulting product concept is intentionally conservative:
 - **no fragile legal monitor is introduced.**
 
 This is the baseline to resume from.
+
+---
+
+# 2026-09-23 update — dynamic, current-state fishing cards
+
+This section supersedes the earlier assumption that the fishing cards should be
+mostly static reference text.
+
+## Updated product principle
+
+The cards should create value by telling the user **what applies now**, not by
+copying every possible rule from source websites.
+
+The rendering rule is now:
+
+> current status -> what applies now -> next change -> required licence/actions
+> -> official links.
+
+Rules that are not currently active should normally be hidden rather than shown
+as historical/future clutter.
+
+Stable permanent constraints remain visible only where they are necessary to
+understand what the user may do now.
+
+The feature remains conservative about live species/quota law:
+
+- do not parse MAPA openings/closures automatically;
+- do not infer current species status;
+- link to PescaREC/MAPA for changeable species-specific rules.
+
+## Final compact navigation concept
+
+The current preferred guide tree is:
+
+```text
+📌 Полезное о Гуардамаре
+└── 🎣 Рыбалка
+    ├── 🏖 С берега
+    ├── 🚤 С лодки и каяка
+    ├── 🤿 Подводная рыбалка
+    ├── 🕸 Забрасываемая сеть
+    └── 🏞 Реки и водоёмы
+```
+
+The navigation card should contain **labels only**. Do not add explanatory
+sentences below each item; the user already knows the topic is fishing.
+
+Use the Russian label:
+
+> 🕸 Забрасываемая сеть
+
+The leaf itself may explain that the Valencian legal names are
+`rall / esparavel`.
+
+## Navigation and footer requirements
+
+Every fishing message must use the existing linked-guide conventions:
+
+- the fishing root returns to **Полезное о Гуардамаре**;
+- every fishing leaf returns to **Рыбалка**;
+- the back link appears immediately before the shared footer;
+- every card includes the existing project footer:
+  `📣 обЪявления Гуардамар`;
+- back links and child links are Telegram message links from the existing
+  recoverable guide graph, not ad-hoc URLs.
+
+Expected hierarchy:
+
+```text
+root
+  -> fishing
+       -> fishing_shore
+       -> fishing_boat
+       -> fishing_underwater
+       -> fishing_rall
+       -> fishing_inland
+```
+
+## Calendar engine
+
+No external source is needed for the main seasonal logic.
+
+The bot can calculate the current regime from the local date in
+`Europe/Madrid`.
+
+### Guardamar bathing-season regime
+
+The municipal ordinance defines:
+
+- summer: **1 June through 30 September**;
+- Semana Santa: Friday before Palm Sunday through Lunes de San Vicente
+  inclusive.
+
+For the agreed calculation:
+
+- Semana Santa start = Easter Sunday - 9 days;
+- Semana Santa end = Easter Sunday + 8 days.
+
+Examples:
+
+- **2026:** 27 March through 13 April;
+- **2027:** 19 March through 5 April.
+
+Do not display a generic phrase such as:
+
+> Semana Santa dates change every year and the bot will notify you.
+
+Instead render the actual dates for the relevant year.
+
+Example outside the Easter period:
+
+> Следующий сезонный период — Semana Santa 2027: 19 марта – 5 апреля.
+
+Example during the period:
+
+> Сейчас действует режим Semana Santa до 5 апреля включительно.
+
+### Deterministic transition events
+
+Core annual transitions remain:
+
+1. day before Semana Santa starts;
+2. final day of Semana Santa;
+3. 31 May -> summer regime starts 1 June;
+4. 30 September -> summer regime ends 1 October.
+
+The card itself should also change immediately when the regime changes, so the
+alert and the guide always agree.
+
+## Dynamic card: shore fishing
+
+This is the strongest dynamic card.
+
+### During summer / Semana Santa
+
+Show only the restrictions that currently apply:
+
+- current regime name and exact end date;
+- Centre, La Roqueta, Babilònia, El Moncaio:
+  24-hour prohibition in bathing zones;
+- Els Tossals, Dels Vivers, El Camp, Les Ortigues:
+  09:00-21:00 prohibition;
+- permanent/common constraints that still matter:
+  user/bather priority, >100 m distance, boat-access corridors;
+- next transition date;
+- licence and official links.
+
+Example opening on 23 September 2026:
+
+> 🗓 **Сейчас действуют летние ограничения**
+>
+> Купальный сезон в Гуардамаре продолжается **до 30 сентября включительно**.
+
+Then show the two active beach groups.
+
+Finish the seasonal part with:
+
+> 📅 **Следующее изменение — 1 октября**
+>
+> С 1 октября летние сезонные ограничения перестанут действовать.
+
+### Outside the bathing-season regime
+
+Do **not** keep the eight-beach summer list on the card.
+
+Replace it with a concise current-state block, for example:
+
+> 🗓 **Сейчас сезонные ограничения купального сезона не действуют**
+>
+> Следующий сезонный период — **Semana Santa 2027: 19 марта – 5 апреля**.
+
+Then show only permanent/common constraints:
+
+- distance and beach-user priority;
+- boat-access corridors;
+- licence;
+- PescaREC/MAPA links.
+
+This is the core value proposition: the user sees the rule that matters today,
+not an encyclopaedia of inactive summer rules.
+
+### Licence wording
+
+Use the exact Spanish licence name alongside the Russian explanation:
+
+> **Licencia de pesca marítima de recreo desde tierra**
+
+Do not merely say "морская лицензия".
+
+### PescaREC wording
+
+When fully introduced in the shore card, describe it clearly:
+
+> **PescaREC** — официальное мобильное приложение MAPA для любительской
+> морской рыбалки: виды рыб, минимальные размеры, уловы, специальные
+> разрешения и актуальные ограничения.
+
+Other cards may use a shorter link label to avoid repeating the full
+description.
+
+### MAPA link wording
+
+Do **not** use the Russian word `промыслы` in user-facing copy.
+
+The page contains mixed fishery-opening/closure decisions and "промысел" sounds
+commercial/industrial to an ordinary Russian-speaking recreational angler.
+
+Preferred user-facing label:
+
+> **Актуальные ограничения по отдельным видам рыб — MAPA**
+
+or:
+
+> **Актуальные открытия и закрытия ловли отдельных видов — MAPA**
+
+## Dynamic card: boat and kayak
+
+Most rules are static, but one useful live block can be added by reusing
+existing beach-flag data.
+
+### No new polling
+
+The bot already fetches and confirms Guardamar beach flags through the existing
+SafeBeach/operational-update pipeline.
+
+Do **not** create another SafeBeach request for fishing.
+
+Reuse only the existing **confirmed same-day** status.
+
+### Red-flag live block
+
+If one or more beaches have a confirmed red flag for the current local day,
+prepend a compact block such as:
+
+> ⛔ **Сегодня красный флаг:** Centre, La Roqueta
+>
+> Выход на каяках и аналогичных плавсредствах запрещён.
+
+If:
+
+- no red flag exists -> omit the block;
+- no fresh confirmed same-day status exists -> omit the block;
+- source data is stale/uncertain -> omit the block.
+
+Never show yesterday's flag status as current.
+
+This feature should not trigger any extra network request.
+
+### 200 m / 50 m wording
+
+Avoid the ambiguous phrase "200 m from the beach".
+
+Explain direction explicitly:
+
+> If there are no buoys, the bathing zone is a strip of water measured **from
+> the shoreline out to sea**:
+>
+> - up to 200 m seaward opposite beaches;
+> - up to 50 m seaward opposite other coastline.
+
+The distances are seaward, not along the coast.
+
+### Kayak vs registered vessel
+
+Keep the legal distinction visible:
+
+- non-motorised kayak/canoe / relevant floating artefact:
+  `Licencia de pesca marítima de recreo desde tierra`;
+- registered recreational vessel:
+  `Licencia de pesca marítima de recreo desde embarcación`.
+
+Do not use "small boat" as the legal category.
+
+## Dynamic card: underwater fishing
+
+This card should also render current seasonal state.
+
+### During bathing season
+
+Opening example:
+
+> 🗓 **Сейчас действует сезонный запрет в зонах купания**
+>
+> До **30 сентября включительно** подводная рыбалка запрещена во всех
+> зонах купания Гуардамара.
+
+Then show permanent rules:
+
+- no fishing sunset-to-sunrise;
+- breath-hold only;
+- buoy and current verified distance requirement;
+- loaded speargun restrictions;
+- licence/medical requirement.
+
+Show next transition:
+
+> 📅 **С 1 октября этот сезонный запрет закончится.**
+
+### Outside bathing season
+
+Do not keep the summer prohibition as a large inactive block.
+
+Render instead:
+
+> 🗓 **Сейчас сезонный запрет в зонах купания не действует**
+>
+> Следующий период — **Semana Santa 2027: 19 марта – 5 апреля**.
+
+Then show only permanent underwater rules.
+
+This preserves useful context without implying that no other restrictions apply.
+
+## Dynamic card: rall / esparavel
+
+The user-facing title should be:
+
+> 🕸 **Рыбалка забрасываемой сетью**
+
+The card should explain once that the Valencian method is called
+`rall / esparavel`.
+
+### Calendar status
+
+This is also deterministic and requires no external source.
+
+Seasonal closure:
+
+- December;
+- January;
+- February.
+
+Example on 23 September 2026:
+
+> 🗓 **Сейчас сезонный запрет не действует**
+>
+> Следующий запрет: **1 декабря 2026 – 28 февраля 2027**.
+
+On 1 December 2026:
+
+> 🚫 **Сейчас действует сезонный запрет**
+>
+> Рыбалка с rall/esparavel запрещена до **28 февраля 2027 включительно**.
+>
+> С **1 марта 2027** сезонный запрет закончится.
+
+Leap years must naturally render 29 February where applicable.
+
+### Technical/legal details
+
+The earlier question "what does association / mesh size mean?" was resolved:
+
+- association = a registered association whose main purpose concerns
+  conservation/development of the traditional `rall` method; it is not merely
+  any fishing club;
+- mesh-size requirement = minimum side of the square mesh opening when wet;
+  the investigated current value was 20 mm;
+- investigated maximum opened net diameter was 6 m.
+
+For UX, either:
+
+1. explain these details in plain language; or
+2. keep the card shorter and link to the full GVA conditions.
+
+Do not write an unexplained phrase such as "association and mesh requirements".
+
+## Card: internal waters
+
+Do **not** manufacture dynamic behaviour where no single valid current state
+exists.
+
+There is no one Comunitat-wide "continental fishing season" that can safely be
+shown as allowed/not allowed.
+
+Keep the card focused on:
+
+- permanent lower-Segura prohibition near Guardamar;
+- distinction between licence and permission for a specific water;
+- boat navigation dependency;
+- `pato / float-tube`;
+- recreational net prohibition;
+- official GVA map/licence links.
+
+### Lower Segura
+
+The high-value local statement is permanent rather than seasonal:
+
+> From CV-91 bridge to the sea, fishing is prohibited year-round; the mouth /
+> coastal-front section is also non-fishable under the reviewed table.
+
+Do not imply that a continental licence overrides this prohibition.
+
+### Human wording for pato
+
+If retained in Russian copy, explain the term on first use:
+
+> **Pato / float-tube** — небольшое надувное рыболовное кресло/плавсредство,
+> в котором рыбак находится в воде и передвигается ногами.
+
+Do not assume Russian readers know the Spanish term `pato`.
+
+## Dynamic-data matrix
+
+Current recommended automation boundary:
+
+| Card | Dynamic value | Source | New network work? |
+| --- | --- | --- | --- |
+| Fishing root | none | static guide graph | no |
+| Shore | active seasonal regime, exact dates, next transition | local calendar | no |
+| Boat/kayak | confirmed current red flags, only when present | existing SafeBeach/operational state | **no new request** |
+| Underwater | active seasonal regime, exact dates, next transition | local calendar | no |
+| Rall/esparavel | active closure status, exact dates, next transition | local calendar | no |
+| Internal waters | no generic live status | static reviewed rules + links | no |
+
+This is preferable to attaching a separate source/monitor to every card.
+
+## Rendering philosophy
+
+For each leaf:
+
+1. **What applies now?**
+2. **What does that mean for me?**
+3. **What permanent conditions still matter?**
+4. **When does this change next?**
+5. **What licence/action do I need?**
+6. **Where do I check changing species-specific rules?**
+7. Back link.
+8. Shared footer.
+
+Avoid:
+
+- listing inactive seasonal restrictions merely because they exist in law;
+- raw legal fragments without explanation;
+- unexplained Spanish terminology;
+- broad "allowed" wording when only one layer of restrictions has expired;
+- duplicating full PescaREC explanations on every card.
+
+## Example status on 23 September 2026
+
+For design/regression fixtures, the expected high-level state on
+**2026-09-23 Europe/Madrid** is:
+
+- shore: summer restrictions active through 30 September;
+- underwater: bathing-zone seasonal prohibition active through 30 September;
+- rall/esparavel: seasonal closure not active; next closure starts 1 December;
+- boat/kayak: no calendar-wide summer fishing prohibition; optionally show only
+  confirmed same-day red flags from existing state;
+- internal waters: lower Segura prohibition remains permanent; no generic
+  continental seasonal status.
+
+After **1 October 2026**:
+
+- shore card hides the summer beach-group restrictions and shows the next
+  calculated seasonal period;
+- underwater card hides the active summer-ban block and shows the next
+  calculated seasonal period;
+- boat/kayak behaviour is unchanged except for same-day flag data;
+- rall remains open under this seasonal rule until 30 November.
+
+## Implementation implications
+
+The implementation should create user value without adding source complexity.
+
+Preferred approach:
+
+- pure functions in a small fishing-rules module determine calendar regimes;
+- the pinned renderer receives `local_day` and renders the active state;
+- no separate fishing scheduler is necessary for card freshness if the existing
+  daily guide sync updates the messages;
+- seasonal transition alerts can reuse the existing guide-state notice pattern;
+- SafeBeach flag data should be reused only if a clean, non-coupled way to read
+  the already-confirmed same-day snapshot exists; do not make the fishing guide
+  own or duplicate the operational monitor;
+- if sharing flag state would introduce ugly coupling or a second source fetch,
+  omit the live flag block in V1 rather than overengineer it;
+- no MAPA HTML/PDF monitor;
+- no OCR;
+- no browser;
+- no AI;
+- no new resident service.
+
+## Remaining implementation-time decisions
+
+Before coding:
+
+1. Decide whether the two `rall/esparavel` transitions should also generate
+   public alerts, or only update the card.
+2. Decide whether the same-day red-flag block can be reused cleanly from current
+   confirmed state without coupling pinned guide to operational-update internals.
+3. Re-check exact official wording/values for all high-risk legal constants.
+4. Decide whether to display the next seasonal transition only, or also the
+   duration of the next regime.
+5. Finalise the concise off-season versions of shore and underwater cards.
+6. Confirm the official current GVA link for internal-water boat registration.
+
+## Updated product summary
+
+The fishing feature should no longer be thought of as a static mini-wiki.
+
+It should behave as a **date-aware local assistant**:
+
+- it knows which Guardamar seasonal regime is active today;
+- it calculates Easter/Semana Santa itself;
+- it hides irrelevant inactive rules;
+- it tells the user the next known change;
+- where possible, it reuses already-confirmed operational data such as red
+  flags;
+- it does **not** pretend to know changing species/quota law and sends users to
+  official PescaREC/MAPA for that layer.
+
+This is the current baseline for the next implementation/design step.
+
