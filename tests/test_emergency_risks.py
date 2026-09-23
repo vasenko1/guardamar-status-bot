@@ -338,9 +338,9 @@ class EmergencyRiskTests(unittest.TestCase):
 
         message = _transition(value)
         self.assertIsNotNone(message)
-        self.assertIn("Сухие грозы возможны", message)
-        self.assertIn("вероятность сухих гроз", message)
-        self.assertIn("профилактическая информация", message)
+        self.assertIn("Сухие грозы возможны сегодня", message)
+        self.assertIn("повышен риск возникновения сухих гроз", message)
+        self.assertIn("профилактическая информация о погодном риске", message)
 
         value["published"]["dry_level"] = 2
         value["previfoc"]["dry_thunderstorm_level"] = 3
@@ -497,6 +497,192 @@ class EmergencyRiskTests(unittest.TestCase):
                     path.write_text(json.dumps(candidate), encoding="utf-8")
                     with self.assertRaises(EmergencyRiskError):
                         state.read()
+
+
+    def test_previfoc_night_change_waits_until_first_morning_run(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = EmergencyRiskState(Path(directory) / "risk.json")
+            value = state.empty()
+            value["published"]["fire_level"] = 1
+            value["published"]["dry_level"] = 1
+            state.write(value)
+
+            async def probable_previfoc():
+                return PrevifocRisk(1, 2, 7)
+
+            async def cce():
+                return HYDRO_NONE
+
+            night_calls = []
+
+            async def night_publish(message):
+                night_calls.append(message)
+                return 100
+
+            night = datetime.fromisoformat("2026-09-24T00:19:00+02:00")
+            result = asyncio.run(
+                monitor_emergency_risks(
+                    night,
+                    state,
+                    night_publish,
+                    fetch_previfoc_fn=probable_previfoc,
+                    fetch_cce_html_fn=cce,
+                    fetch_cce_pdf_fn=cce,
+                )
+            )
+
+            self.assertEqual(result, "no_update")
+            self.assertEqual(night_calls, [])
+            stored = state.read()
+            self.assertEqual(
+                stored["previfoc"]["dry_thunderstorm_level"],
+                2,
+            )
+            self.assertEqual(stored["published"]["dry_level"], 1)
+
+            morning_calls = []
+
+            async def morning_publish(message):
+                morning_calls.append(message)
+                return 101
+
+            morning = datetime.fromisoformat("2026-09-24T07:19:00+02:00")
+            result = asyncio.run(
+                monitor_emergency_risks(
+                    morning,
+                    state,
+                    morning_publish,
+                    fetch_previfoc_fn=probable_previfoc,
+                    fetch_cce_html_fn=cce,
+                    fetch_cce_pdf_fn=cce,
+                )
+            )
+
+            self.assertEqual(result, "published")
+            self.assertEqual(len(morning_calls), 1)
+            self.assertIn(
+                "⚡ <b>Сухие грозы возможны сегодня</b>",
+                morning_calls[0],
+            )
+            self.assertIn(
+                "Для зоны Гуардамара <b>повышен риск возникновения сухих гроз</b>.",
+                morning_calls[0],
+            )
+            self.assertEqual(state.read()["published"]["dry_level"], 2)
+
+    def test_previfoc_night_reversal_never_becomes_a_stale_notice(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = EmergencyRiskState(Path(directory) / "risk.json")
+            value = state.empty()
+            value["published"]["fire_level"] = 1
+            value["published"]["dry_level"] = 1
+            state.write(value)
+
+            async def probable_previfoc():
+                return PrevifocRisk(1, 2, 8)
+
+            async def clear_previfoc():
+                return PrevifocRisk(1, 1, 9)
+
+            async def cce():
+                return HYDRO_NONE
+
+            calls = []
+
+            async def publish(message):
+                calls.append(message)
+                return 100
+
+            for when, source in (
+                ("2026-09-24T00:19:00+02:00", probable_previfoc),
+                ("2026-09-24T03:19:00+02:00", clear_previfoc),
+                ("2026-09-24T07:19:00+02:00", clear_previfoc),
+            ):
+                result = asyncio.run(
+                    monitor_emergency_risks(
+                        datetime.fromisoformat(when),
+                        state,
+                        publish,
+                        fetch_previfoc_fn=source,
+                        fetch_cce_html_fn=cce,
+                        fetch_cce_pdf_fn=cce,
+                    )
+                )
+                self.assertEqual(result, "no_update")
+
+            self.assertEqual(calls, [])
+            stored = state.read()
+            self.assertEqual(
+                stored["previfoc"]["dry_thunderstorm_level"],
+                1,
+            )
+            self.assertEqual(stored["published"]["dry_level"], 1)
+
+    def test_night_hydrology_stays_immediate_without_acknowledging_previfoc(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = EmergencyRiskState(Path(directory) / "risk.json")
+            value = state.empty()
+            value["published"]["fire_level"] = 1
+            value["published"]["dry_level"] = 1
+            state.write(value)
+
+            async def changed_previfoc():
+                return PrevifocRisk(2, 2, 10)
+
+            async def hydrology():
+                return HYDRO_SITUATION_1
+
+            calls = []
+
+            async def publish(message):
+                calls.append(message)
+                return 100
+
+            night = datetime.fromisoformat("2026-09-24T00:19:00+02:00")
+            result = asyncio.run(
+                monitor_emergency_risks(
+                    night,
+                    state,
+                    publish,
+                    fetch_previfoc_fn=changed_previfoc,
+                    fetch_cce_html_fn=hydrology,
+                    fetch_cce_pdf_fn=hydrology,
+                )
+            )
+
+            self.assertEqual(result, "published")
+            self.assertEqual(len(calls), 1)
+            self.assertIn("гидролог", calls[0].casefold())
+            self.assertNotIn("лесных пожаров", calls[0])
+            self.assertNotIn("Сухие грозы", calls[0])
+
+            stored = state.read()
+            self.assertEqual(stored["published"]["fire_level"], 1)
+            self.assertEqual(stored["published"]["dry_level"], 1)
+            self.assertEqual(
+                stored["published"]["hydrology"],
+                HYDRO_SITUATION_1,
+            )
+
+            calls.clear()
+            morning = datetime.fromisoformat("2026-09-24T07:19:00+02:00")
+            result = asyncio.run(
+                monitor_emergency_risks(
+                    morning,
+                    state,
+                    publish,
+                    fetch_previfoc_fn=changed_previfoc,
+                    fetch_cce_html_fn=hydrology,
+                    fetch_cce_pdf_fn=hydrology,
+                )
+            )
+
+            self.assertEqual(result, "published")
+            self.assertEqual(len(calls), 1)
+            self.assertIn("Повышен риск лесных пожаров", calls[0])
+            self.assertIn("Сухие грозы возможны сегодня", calls[0])
+            self.assertNotIn("гидролог", calls[0].casefold())
+
 
     def test_cce_failures_preserve_last_verified_active_state(self):
         with tempfile.TemporaryDirectory() as directory:
