@@ -1891,7 +1891,6 @@ window.
 
 The recommended V1 is:
 
-- **dynamic by local calendar:** shore, underwater, rall;
 - **calendar-dynamic:** shore, underwater, rall;
 - **event-driven live projection:** boat/kayak may show confirmed same-day red flags from the existing SafeBeach lifecycle;
 - **static where no safe global live state exists:** internal waters;
