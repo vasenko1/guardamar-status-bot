@@ -1270,30 +1270,198 @@ boundaries.
 This is preferable to adding a 00:01 cron solely to keep three guide messages
 perfectly synchronized with midnight.
 
-### Seasonal alerts
+### Seasonal alerts — final product model
 
-The existing guide already has a proven transition-notice pattern with:
+Fishing transition alerts are approved as a product concept, but they must be
+specific, grouped and linked back into the pinned fishing guide.
 
-- deterministic "tomorrow changes state" keys;
-- atomic guide state;
-- ambiguous-send protection;
-- self-contained public notice text.
+The alert is not a generic "season changed" message. It must say **which kind of
+fishing is affected and what changes**.
 
-Fishing should copy that pattern, not create a generic notification framework.
+#### Source of dates
 
-Recommended minimal state if alerts are approved:
+All dates come from the same deterministic calendar functions used by the
+cards.
 
-- one `fishing_notice` object with `key` + `message_id`;
-- one `fishing_notice_uncertain` key.
+For Guardamar bathing-season restrictions:
 
-A single fishing notice can cover the same Guardamar bathing-season transition
-for both shore and underwater fishing.
+- summer starts 1 June and ends 30 September;
+- the Semana Santa bathing period is calculated every year from Gregorian
+  Easter;
+- Semana Santa start = Easter Sunday - 9 days;
+- Semana Santa end = Easter Sunday + 8 days;
+- the final unrestricted day before that period is therefore one day before
+  the calculated start;
+- the first unrestricted day after the period is one day after the calculated
+  end.
 
-Do **not** overload the existing pool `season_notice` field; its semantics are
-already specific and tested.
+Do not hardcode user-facing dates such as "18 March" or "5 April" in annual
+tables. Compute them from the year.
 
-The two rall notices (30 Nov / end of Feb) remain a separate product decision:
-the card itself can change without requiring a public alert.
+For `rall / esparavel`:
+
+- seasonal closure starts 1 December;
+- seasonal closure ends on the last day of February;
+- leap years must naturally use 29 February.
+
+#### One transition -> one alert
+
+Do not send one message per card.
+
+If the **same date and same transition** affects several fishing methods, send
+one grouped alert and list every affected method explicitly.
+
+For the Guardamar bathing-season transition, both of these are affected:
+
+- 🏖 **Морская рыбалка с берега**;
+- 🤿 **Подводная рыбалка**.
+
+They should therefore normally share one alert.
+
+Do not merge unrelated transitions just because they happen near each other.
+
+Examples:
+
+- shore + underwater bathing-season change -> one grouped alert;
+- `rall / esparavel` closure -> its own alert;
+- SafeBeach red flag -> not a seasonal alert; it stays in the existing beach
+  lifecycle and may update the kayak card projection.
+
+#### Alert links
+
+Every affected fishing method named in an alert must link directly to its
+managed pinned guide card.
+
+For example:
+
+- 🏖 **Морская рыбалка с берега** -> `fishing_shore`;
+- 🤿 **Подводная рыбалка** -> `fishing_underwater`;
+- 🕸 **Рыбалка забрасываемой сетью** -> `fishing_rall`.
+
+If several methods are grouped in one alert, include all corresponding card
+links in the same message.
+
+Do not link only to the generic fishing navigator when a more specific affected
+card exists.
+
+The alert renderer should build these URLs from the actual managed Telegram
+message IDs through the existing `telegram_message_link(...)` mechanism.
+Never hardcode Telegram message URLs.
+
+#### Footer
+
+Every fishing alert must use the shared project footer through
+`with_footer(...)`:
+
+> 📣 **обЪявления Гуардамар**
+
+No fishing alert is exempt from branding.
+
+#### When to alert
+
+For a new restriction that starts tomorrow, the most useful notification is
+**the day before**.
+
+Example structure:
+
+> 🏖🤿 **Рыбалка на пляжах — с завтра меняются правила**
+>
+> С **19 марта** начинается купальный сезон.
+>
+> 🏖 **Морская рыбалка с берега:** на Centre, La Roqueta, Babilònia и
+> El Moncaio в зонах купания рыбалка будет запрещена круглосуточно; на
+> Els Tossals, Dels Vivers, El Camp и Les Ortigues — разрешена только
+> с 21:00 до 09:00.
+>
+> 🤿 **Подводная рыбалка:** в зонах купания будет запрещена.
+>
+> Ограничения будут действовать до **5 апреля включительно**.
+>
+> 🏖 **Морская рыбалка с берега** · 🤿 **Подводная рыбалка**
+>
+> 📣 **обЪявления Гуардамар**
+
+The dates in that example are computed for the relevant year, not static copy.
+
+For the end of a restriction, the most useful notification is **on the final
+restricted day**, because it can say exactly when fishing becomes less
+restricted.
+
+Example structure:
+
+> 🏖🤿 **Рыбалка на пляжах — сегодня последний день ограничений**
+>
+> Сегодня заканчивается купальный сезон.
+>
+> С **6 апреля** сезонные ограничения перестанут действовать.
+>
+> Общие правила безопасности и другие ограничения сохраняются.
+>
+> 🏖 **Морская рыбалка с берега** · 🤿 **Подводная рыбалка**
+>
+> 📣 **обЪявления Гуардамар**
+
+The same template is used for the 30 September -> 1 October transition.
+
+For `rall / esparavel`:
+
+**30 November:**
+
+> 🕸 **Рыбалка забрасываемой сетью — с завтра начинается сезонный запрет**
+>
+> С **1 декабря** рыбалка с rall / esparavel запрещена.
+>
+> Запрет действует до **последнего дня февраля включительно**.
+>
+> 🕸 **Рыбалка забрасываемой сетью**
+>
+> 📣 **обЪявления Гуардамар**
+
+The actual last-February date should be rendered explicitly for the year
+(28 or 29 February).
+
+**Last day of February:**
+
+> 🕸 **Рыбалка забрасываемой сетью — сегодня последний день запрета**
+>
+> С **1 марта** этот сезонный запрет перестанет действовать.
+>
+> 🕸 **Рыбалка забрасываемой сетью**
+>
+> 📣 **обЪявления Гуардамар**
+
+#### Alert volume
+
+Expected planned fishing alerts in a normal year:
+
+- one before the calculated Semana Santa bathing period starts;
+- one on its calculated final day;
+- one on 31 May;
+- one on 30 September;
+- one on 30 November for `rall`;
+- one on the final day of February for `rall`.
+
+That is normally **six planned alerts per year**.
+
+The alert count must not grow merely because two cards share the same
+transition.
+
+#### State and delivery
+
+Reuse the existing guide seasonal-notice delivery pattern:
+
+- deterministic transition key;
+- one confirmed message per key;
+- explicit ambiguous-delivery state;
+- no deliberate resend after an uncertain Telegram send;
+- links resolved from managed pinned message IDs;
+- footer applied before delivery.
+
+A single bathing-season transition key may represent both shore and underwater
+cards because the date/reason is shared.
+
+Do not overload the existing pool `season_notice` state. Fishing should have
+its own narrow state fields.
 
 ## SafeBeach / red-flag projection — revised decision
 
@@ -1943,3 +2111,168 @@ never rendered as an all-clear claim.
 
 This preserves user value while keeping the source architecture single-owner
 and lightweight.
+
+---
+
+# 2026-09-23 final editorial and calendar consolidation
+
+This section records the final discussion about card wording, date calculation
+and alerts. It supersedes earlier examples where the text was split into
+separate "summer", "Semana Santa" and "winter" card templates.
+
+## One natural card template, small dynamic status block
+
+The shore card should be mostly one stable human-written message.
+
+Only the short status block at the top and the visibility of the
+bathing-season beach restrictions change through the year.
+
+Do not create three independently maintained full copies of the card.
+
+### Status variants
+
+#### Active bathing period
+
+Generic template:
+
+> 🗓 **Сегодня действует купальный сезон — до <end_date> включительно.**
+
+The `end_date` is computed:
+
+- 30 September for the summer period;
+- calculated Semana Santa end for the spring period.
+
+Do not call the spring state "правила Semana Santa". Semana Santa is not a
+separate fishing-rule type in the user experience; it is another period in
+which Guardamar treats the coast as being in the bathing season.
+
+#### Outside bathing period
+
+Generic template:
+
+> 🗓 **Сегодня и до <last_unrestricted_date> сезонные ограничения на рыбалку
+> на пляжах не действуют.**
+
+The date is always computed from the next bathing-period start:
+
+`last_unrestricted_date = next_bathing_start - 1 day`.
+
+Examples such as 18 March must never be hardcoded because the Easter-derived
+period moves every year.
+
+#### Final unrestricted day before restrictions start
+
+Generic template:
+
+> 🗓 **Сегодня последний день без сезонных ограничений. С <start_date>
+> начинается купальный сезон.**
+
+#### Final restricted day
+
+Generic template:
+
+> 🗓 **Сегодня последний день купального сезона. С <first_unrestricted_date>
+> сезонные ограничения на рыбалку на пляжах перестанут действовать.**
+
+This special boundary copy remains true across the midnight-to-09:02 stale-card
+window.
+
+## Seasonal beach details
+
+When the bathing season is active, show the beach-specific restrictions:
+
+> 🚫 На пляжах **Centre, La Roqueta, Babilònia, El Moncaio** в пределах
+> **зон купания** рыбалка с берега запрещена **круглосуточно**.
+>
+> 🌙 На пляжах **Els Tossals, Dels Vivers, El Camp, Les Ortigues** рыбалка с
+> берега разрешена только **с 21:00 до 09:00** при соблюдении общих правил.
+
+Do not add the word "сейчас" inside the 24-hour sentence. The status block above
+already tells the user why the restriction currently applies and until when.
+
+When the bathing season is not active, hide both beach-group paragraphs. The
+user does not need a long list of inactive seasonal rules.
+
+## General shore-safety block
+
+Keep the common beach rules in one visually distinct quoted block:
+
+> 👥 Рыбачить можно только при отсутствии людей поблизости и на расстоянии
+> более **100 м от них**. Если появляются отдыхающие или купающиеся, удочки и
+> снасти нужно убрать.
+>
+> 🚤 Нельзя рыбачить в обозначенных коридорах, через которые лодки и другие
+> плавсредства выходят в море и возвращаются на берег.
+
+This block is useful both in and outside the bathing season.
+
+## Plain-language editorial rules
+
+User-facing Russian should use basic everyday words.
+
+Avoid bureaucratic/canonical wording when a simpler word is accurate.
+
+In particular:
+
+- do not say `ординанса` in public copy;
+- prefer `правила Гуардамара`, `городские правила`, or omit the legal-source
+  label entirely when it does not help the user;
+- avoid repeated roots/phrases in adjacent sentences;
+- prefer direct statements such as `рыбалка запрещена` / `рыбалка разрешена
+  только с 21:00 до 09:00`;
+- future dates are shown only when they directly explain when the current
+  restriction starts or ends;
+- do not mention the next distant Semana Santa merely as trivia.
+
+The legal source remains attached as an official link/evidence; the Telegram
+copy itself should read like normal Russian.
+
+## Stable shore-fishing facts worth keeping
+
+The card may retain stable high-value rules that do not require daily
+monitoring, provided they are re-verified before implementation:
+
+- exact GVA licence name for shore marine fishing;
+- maximum two rods per licence;
+- general recreational catch limit and its qualification for species-specific
+  rules;
+- undersized fish must be returned immediately;
+- recreational catch may not be sold.
+
+Do not copy a static species/minimum-size table into the card. Species-specific
+limits, closures and permissions belong to PescaREC/MAPA because that layer can
+change.
+
+## PescaREC copy
+
+Preferred plain-language form:
+
+> С **20 марта 2026 года использование PescaREC обязательно** для морской
+> любительской рыбалки. PescaREC показывает виды рыб, минимальные размеры для
+> вылова, обязательные декларации уловов, специальные разрешения и сообщения о
+> действующих ограничениях.
+
+Preferred MAPA action label:
+
+> 🚦 **Список актуальных разрешений и запретов на вылов отдельных видов рыбы**
+
+## Alert/product relationship
+
+Cards answer:
+
+> **Что действует сегодня?**
+
+Alerts answer:
+
+> **Что существенно меняется с завтра / после сегодняшнего дня?**
+
+The same deterministic date engine must feed both. Card and alert dates must
+never be calculated independently.
+
+When several fishing methods share the same date and legal transition, one
+alert groups them and links every affected pinned card.
+
+Every alert includes the shared footer.
+
+This is the current editorial/product baseline for implementation.
+
