@@ -1295,34 +1295,180 @@ already specific and tested.
 The two rall notices (30 Nov / end of Feb) remain a separate product decision:
 the card itself can change without requiring a public alert.
 
-## SafeBeach / red-flag review
+## SafeBeach / red-flag projection — revised decision
 
-The earlier idea to place today's red flags inside the boat/kayak pinned card is
-**rejected for V1**.
+The earlier V1 rejection of live red flags inside the boat/kayak card was too
+strict.
 
-Reasons:
+The important distinction is:
 
-1. guide sync runs at 09:02;
-2. approved SafeBeach work starts at 10:10;
-3. current flags therefore are normally unavailable when the pinned card is
-   rendered;
-4. reading old operational state would risk stale information;
-5. having operational updates edit the pinned guide creates cross-lifecycle
-   ownership and lock/recovery complexity;
-6. a second SafeBeach request or later fishing-specific sync would duplicate
-   work and violate the one-lifecycle design.
+- **do not add another SafeBeach source request or scheduler**;
+- **do allow an already accepted normalized SafeBeach fact to update a dependent
+  guide card**.
 
-Keep the durable sentence in the kayak card:
+This is a derived presentation of an existing verified fact, not a second
+source lifecycle.
 
+### Trigger point
+
+The existing SafeBeach workflow remains the sole owner of source collection,
+freshness validation and confirmation.
+
+After a SafeBeach status has already been accepted by the existing lifecycle:
+
+- during the 10:10-10:40 initial beach-root cycle; or
+- after a later confirmed operational flag change,
+
+the same accepted data may trigger a best-effort edit of the managed
+`fishing_boat` card.
+
+There is:
+
+- no new SafeBeach HTTP request;
+- no new cron;
+- no second polling loop;
+- no browser;
+- no new service.
+
+The only additional external operation is a Telegram `editMessageText` on an
+already managed guide message when the red-flag projection needs refreshing.
+
+### Why this is architecturally acceptable
+
+The dependency is one-way:
+
+```text
+SafeBeach -> validated BeachStatus -> public beach lifecycle
+                              \-> derived kayak red-flag projection
+```
+
+The fishing guide must never fetch, parse or validate SafeBeach itself.
+
+It consumes only the already-normalized domain fact after the existing
+SafeBeach policy has accepted it.
+
+This preserves the repository layering: source-specific parsing stays in the
+adapter/lifecycle, while a second renderer may use the normalized model.
+
+### Conservative red-flag projection
+
+The fishing card should be **warning-only**.
+
+If a current accepted status explicitly contains a red flag, show it.
+
+Do not show:
+
+- "all clear";
+- "no red flags";
+- green reassurance;
+- a global permission claim.
+
+A partial SafeBeach response must never clear a previously confirmed same-day
+red flag merely because that beach is absent.
+
+For the small daily derived projection, update only beaches explicitly present
+in the accepted observation:
+
+- observed `red` -> add/keep that beach in the projection;
+- observed `yellow` or `green` -> remove that beach from the projection;
+- beach absent from this observation -> preserve its previous same-day
+  projection state.
+
+This conservative merge is **only for the derived kayak-warning projection**.
+It must not alter the existing ADR 0064 rule that the public beach root itself
+represents each whole SafeBeach response and does not synthetically merge
+missing beaches.
+
+The derived projection resets on the next local day.
+
+### State ownership
+
+Store only the minimal daily derived red set in the existing publication
+lifecycle state, not in `PinnedGuideState`.
+
+Reason:
+
+- `PublicationState` already owns the current day's accepted beach facts;
+- `PinnedGuideState` should remain about guide-message IDs/recovery rather than
+  operational beach semantics.
+
+A minimal field such as a sorted list of internal beach keys is sufficient.
+No raw SafeBeach payload, history or timestamps need be duplicated.
+
+### Card refresh behaviour
+
+At 09:02 the normal guide reconciliation renders `fishing_boat` without any
+previous-day live red block.
+
+When the first accepted SafeBeach observation arrives later:
+
+- merge its explicitly observed flag states into the daily derived red set;
+- edit only `fishing_boat`;
+- if the rendered text is unchanged, Telegram `MESSAGE-NOT-MODIFIED` is
+  idempotent success.
+
+Later accepted observations repeat the same local projection.
+
+Later operational changes should update the projection only after the existing
+confirmation policy accepts them.
+
+### Failure isolation
+
+A dependent fishing-card edit is **best effort** and must not make the primary
+SafeBeach publication fail.
+
+If:
+
+- the pinned-guide lock is busy;
+- the fishing message is temporarily missing;
+- Telegram edit fails;
+
+the beach lifecycle remains successful.
+
+A later accepted SafeBeach observation may retry the same projection. The normal
+09:02 guide reconciliation remains the structural recovery path for a missing
+managed card.
+
+Do not invoke a full pinned-guide reconciliation from the SafeBeach path merely
+to repair this optional live block.
+
+### Locking
+
+Do not hold unrelated state locks while waiting on Telegram if avoidable.
+
+Recommended sequence:
+
+1. accept/persist the SafeBeach/publication result;
+2. compute/persist the tiny derived red projection;
+3. release the beach/publication critical section;
+4. acquire `PinnedGuideState.exclusive_run()`;
+5. read the known `fishing_boat` message ID;
+6. edit that one card;
+7. release the pinned-guide lock.
+
+This avoids a new lock-order dependency.
+
+### User-facing block
+
+Only when the derived red set is non-empty:
+
+> ⛔ **Красный флаг сегодня**
+>
+> **Centre / Babilònia · La Roqueta**
+>
 > При красном флаге выход в море на каяках и аналогичных плавсредствах
 > запрещён.
 
-Current flags remain in the existing daily **Пляжи Гуардамара сегодня**
-message and its operational replies.
+Use the same public beach naming already used by the bot
+(`Centre / Babilònia`, `Roqueta`, `Vivers`, `Montcaio`, `Camp`,
+`Ortigues`), rather than inventing a second SafeBeach label system.
 
-This is not lost product value: the fishing cards add value where the bot can
-safely own the calculation (season/date), while the dedicated beach workflow
-continues to own live operational status.
+If the red set is empty, omit the live block entirely.
+
+The durable rule still remains in the card even when no live block is shown:
+
+> При красном флаге выход в море на каяках и аналогичных плавсредствах
+> запрещён.
 
 ## Map-link design
 
@@ -1649,7 +1795,7 @@ Rejected as unnecessary:
 - one monitor/source per fishing card;
 - a fishing daemon;
 - another SafeBeach fetch;
-- operational-state mirroring into pinned guide state;
+- mirroring raw/whole operational state into pinned guide state;
 - midnight cron;
 - map/geocoding API;
 - generated map polygons;
@@ -1665,6 +1811,8 @@ The remaining implementation is small:
 - six managed guide messages;
 - pure calendar calculations;
 - reviewed static map targets;
+- one tiny daily derived red-flag projection in publication state;
+- a targeted best-effort edit of `fishing_boat` after accepted SafeBeach facts;
 - a few additional guide-state fields only if public transition alerts are
   approved;
 - tests.
@@ -1717,6 +1865,21 @@ window.
 - each branded fishing card has exactly one footer;
 - all rendered seasonal variants remain <= 4096 raw characters.
 
+### Live kayak red-flag projection
+
+- first current partial response with one red beach adds the warning;
+- another partial response omitting that beach does **not** clear it;
+- an explicit newer green/yellow observation for that beach clears it;
+- a second red beach is added without losing the first;
+- next local day starts with no inherited red projection;
+- no green/all-clear block is rendered;
+- the projection uses public `BEACH_NAMES` labels;
+- Telegram `MESSAGE-NOT-MODIFIED` is success;
+- pinned-guide lock contention does not fail the primary beach lifecycle;
+- missing `fishing_boat` message does not trigger a full guide rebuild from the
+  SafeBeach workflow;
+- no additional SafeBeach fetch is made for the projection.
+
 ### Alert state, if approved
 
 - one notice per transition key;
@@ -1729,8 +1892,9 @@ window.
 The recommended V1 is:
 
 - **dynamic by local calendar:** shore, underwater, rall;
-- **static but useful:** boat/kayak and internal waters;
-- **operational flags stay outside the pinned guide;**
+- **calendar-dynamic:** shore, underwater, rall;
+- **event-driven live projection:** boat/kayak may show confirmed same-day red flags from the existing SafeBeach lifecycle;
+- **static where no safe global live state exists:** internal waters;
 - **maps are reviewed static location links, not data sources or legal
   boundaries;**
 - **no new scheduler, network source, dependency or service;**
@@ -1739,3 +1903,44 @@ The recommended V1 is:
 
 This is the architecture/UX baseline to implement from.
 
+
+
+---
+
+# 2026-09-23 follow-up — accepted event-driven synchronization
+
+After reviewing the user's proposed "extra trigger" idea against the actual
+code, the final recommendation is to **synchronize the kayak card from the
+existing accepted SafeBeach lifecycle**, not from the 09:02 schedule alone.
+
+This supersedes the previous statement that live flags must remain completely
+outside the pinned guide.
+
+The key reason is that the extra work is not source collection. The SafeBeach
+request has already happened. The bot can project that verified normalized fact
+into one additional managed Telegram message at negligible runtime cost.
+
+Preferred V1:
+
+```text
+09:02 guide sync
+  -> renders boat/kayak card with no stale live block
+
+10:10-10:40 SafeBeach accepted current observations
+  -> existing beach-root lifecycle
+  -> merge explicit observed flags into tiny same-day red projection
+  -> best-effort edit fishing_boat
+
+later confirmed SafeBeach changes
+  -> existing operational confirmation
+  -> update same projection
+  -> best-effort edit fishing_boat
+```
+
+No new cron or command is required.
+
+The live block is additive safety information only. Absence of the block is
+never rendered as an all-clear claim.
+
+This preserves user value while keeping the source architecture single-owner
+and lightweight.
