@@ -63,7 +63,7 @@ no message.
 | SafeBeach + Mayor bathing status | 10:10–10:40 in season, then bounded operational checks | Separate daily beach root, live early edits, later confirmed replies; explicit Mayor bathing restrictions remain an independent safety signal. |
 | AEMET operational warnings | Existing `monitor-updates` windows | Material warning changes reply to the Morning Digest. |
 | CAMS / Meteosalud late environment | 10:40 CAMS early check plus existing operational recovery; Meteosalud on operational checkpoints | Material air-quality, pollen, heat or cold changes reply to the Morning Digest. |
-| CCE / Previfoc emergency risks | Hourly at `:19` | Standalone transitions for forest-fire risk, dry-thunderstorm risk and Segura hydrological/flood state; fresh active hydrology may also appear in the next Morning Digest. |
+| CCE / Previfoc emergency risks | Hourly at `:19` | CCE/Segura hydrological transitions remain immediate. Previfoc is still observed hourly, but changes seen before 07:00 are kept silent and only the still-current delta may publish on the first run after 07:00; fresh active hydrology may also appear in the next Morning Digest. |
 | IGN earthquakes | Hourly at `:55` | Standalone/series notice for new events at M1.8+ within 20 km. |
 | Hidraqua network incidents | Every 30 minutes | Standalone notice for a new confirmed water-network event ID. |
 | Transport | 05:00 sync, 08:42 notification | Reconciles pinned transport cards and publishes accepted schedule/service/fare changes. |
@@ -188,11 +188,16 @@ warning because lower-Segura hydrological risk may originate upstream. AEMET
 remains an independent source and is not re-requested by this watcher.
 
 Adapters normalize observations first. The orchestrator merges equivalent
-authority states, compares them with one small atomic prior-state file and
-publishes at most one coherent transition. Source failure is unknown, never an
-all-clear; it cannot erase a stronger last verified state. Raw HTML, ArcGIS
-responses and PDFs are not archived. PDF bytes and extracted text remain
-process-local and are discarded on exit.
+authority states and compares them with one small atomic prior-state file.
+CCE/hydrological transitions remain eligible immediately at every hourly run.
+Previfoc is a daily prevention product: observations before 07:00 Europe/Madrid
+are stored but neither rendered nor acknowledged as published. The first run at
+or after 07:00 publishes only a still-current Previfoc delta; an overnight
+intermediate value that reverted before morning produces no stale notice. No
+second scheduler, queue or pending-state field is added. Source failure is
+unknown, never an all-clear; it cannot erase a stronger last verified state.
+Raw HTML, ArcGIS responses and PDFs are not archived. PDF bytes and extracted
+text remain process-local and are discarded on exit.
 
 ## Operating model
 

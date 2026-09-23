@@ -48,6 +48,7 @@ PDF_TEXT_LIMIT_BYTES = 256 * 1024
 REQUEST_TIMEOUT_SECONDS = 15
 PDF_PARSE_TIMEOUT_SECONDS = 10
 MORNING_FRESHNESS = timedelta(hours=2)
+PREVIFOC_PUBLICATION_HOUR = 7
 
 HYDRO_NONE = "none"
 HYDRO_PREEMERGENCIA = "preemergencia"
@@ -754,9 +755,13 @@ def _current_previfoc(value: dict) -> tuple[Optional[int], Optional[int]]:
     return item["fire_level"], item["dry_thunderstorm_level"]
 
 
-def _transition(value: dict) -> Optional[str]:
+def _transition(
+    value: dict, *, include_previfoc: bool = True
+) -> Optional[str]:
     published = value["published"]
     fire, dry = _current_previfoc(value)
+    if not include_previfoc:
+        fire = dry = None
     hydro = EmergencyRiskState.current_hydrology(value)
 
     sections = []
@@ -768,8 +773,8 @@ def _transition(value: dict) -> Optional[str]:
             sections.append([
                 "🔥 <b>Экстремальный риск лесных пожаров</b>",
                 "",
-                "Для зоны Гуардамара установлен максимальный уровень риска — "
-                "3 из 3.",
+                "На сегодня для зоны Гуардамара установлен максимальный "
+                "уровень риска — 3 из 3.",
                 "",
                 "Если собираетесь в природную зону, будьте предельно осторожны "
                 "с любыми источниками огня и тлеющими окурками.",
@@ -782,8 +787,8 @@ def _transition(value: dict) -> Optional[str]:
                 sections.append([
                     "🔥 <b>Риск лесных пожаров снижен</b>",
                     "",
-                    "Для зоны Гуардамара уровень снижен с экстремального "
-                    "до высокого — 2 из 3.",
+                    "На сегодня для зоны Гуардамара уровень снижен "
+                    "с экстремального до высокого — 2 из 3.",
                     "",
                     "Риск остаётся повышенным, поэтому при прогулках, пикниках "
                     "и отдыхе в природных зонах по-прежнему будьте осторожны "
@@ -807,7 +812,7 @@ def _transition(value: dict) -> Optional[str]:
             sections.append([
                 "🔥 <b>Риск лесных пожаров снижен</b>",
                 "",
-                "Для зоны Гуардамара установлен уровень 1 из 3 — "
+                "На сегодня для зоны Гуардамара установлен уровень 1 из 3 — "
                 "низкий/средний риск.",
                 "",
                 "Повышенный уровень риска больше не действует. Обычные правила "
@@ -823,7 +828,8 @@ def _transition(value: dict) -> Optional[str]:
             sections.append([
                 "⚡ <b>Высокий риск сухих гроз</b>",
                 "",
-                "Для зоны Гуардамара установлен <b>высокий риск сухих гроз</b>.",
+                "На сегодня для зоны Гуардамара установлен "
+                "<b>высокий риск сухих гроз</b>.",
                 "",
                 "Это профилактическая информация о погодном риске, "
                 "а не сообщение о произошедшем пожаре или чрезвычайной ситуации.",
@@ -833,23 +839,23 @@ def _transition(value: dict) -> Optional[str]:
                 sections.append([
                     "⚡ <b>Риск сухих гроз снижен</b>",
                     "",
-                    "Высокий риск снят, но для зоны Гуардамара "
+                    "Высокий риск снят, но сегодня для зоны Гуардамара "
                     "<b>сухие грозы остаются возможны</b>.",
                 ])
             else:
                 sections.append([
-                    "⚡ <b>Сухие грозы возможны</b>",
+                    "⚡ <b>Сухие грозы возможны сегодня</b>",
                     "",
-                    "Для зоны Гуардамара отмечена <b>вероятность сухих гроз</b>.",
+                    "Для зоны Гуардамара <b>повышен риск возникновения "
+                    "сухих гроз</b>.",
                     "",
-                    "Это профилактическая информация о погодном риске, "
-                    "а не сообщение о произошедшем пожаре или чрезвычайной ситуации.",
+                    "Это профилактическая информация о погодном риске.",
                 ])
         elif dry == 1 and previous_dry is not None:
             sections.append([
                 "✅ <b>Риск сухих гроз снят</b>",
                 "",
-                "Повышенный риск сухих гроз для зоны Гуардамара "
+                "На сегодня повышенный риск сухих гроз для зоны Гуардамара "
                 "<b>больше не действует</b>.",
             ])
         if len(sections) > dry_section_count:
@@ -889,14 +895,15 @@ def _transition(value: dict) -> Optional[str]:
     return with_footer("\n".join(body))
 
 
-def _acknowledge(value: dict) -> None:
+def _acknowledge(value: dict, *, include_previfoc: bool = True) -> None:
     fire, dry = _current_previfoc(value)
     hydro = EmergencyRiskState.current_hydrology(value)
     published = value["published"]
-    if fire is not None:
-        published["fire_level"] = fire
-    if dry is not None:
-        published["dry_level"] = dry
+    if include_previfoc:
+        if fire is not None:
+            published["fire_level"] = fire
+        if dry is not None:
+            published["dry_level"] = dry
     if hydro is not None:
         published["hydrology"] = None if hydro == HYDRO_NONE else hydro
 
@@ -915,6 +922,7 @@ async def monitor_emergency_risks(
     with state.exclusive_run():
         value = state.read()
         successes = 0
+        previfoc_succeeded = False
 
         try:
             previfoc = await fetch_previfoc_fn()
@@ -924,6 +932,7 @@ async def monitor_emergency_risks(
             )
         else:
             successes += 1
+            previfoc_succeeded = True
             value["previfoc"] = {
                 "fire_level": previfoc.fire_level,
                 "dry_thunderstorm_level": previfoc.dry_thunderstorm_level,
@@ -966,21 +975,29 @@ async def monitor_emergency_risks(
 
         fire, dry = _current_previfoc(value)
         if (
-            value["published"]["fire_level"] is None
+            previfoc_succeeded
+            and value["published"]["fire_level"] is None
             and fire in {1, 2}
         ):
-            # First low/high observation is a silent baseline. Extreme risk is
-            # urgent enough to publish even on the first successful run.
+            # First low/high observation is a silent baseline. Extreme risk
+            # remains eligible on the first successful daytime run.
             value["published"]["fire_level"] = fire
         if (
-            value["published"]["dry_level"] is None
+            previfoc_succeeded
+            and value["published"]["dry_level"] is None
             and dry in {1, 2}
         ):
             # A first no-risk/probable observation establishes a baseline.
-            # High dry-thunderstorm risk remains urgent enough to publish.
+            # High dry-thunderstorm risk remains eligible on the first
+            # successful daytime run.
             value["published"]["dry_level"] = dry
 
-        message = _transition(value)
+        include_previfoc = (
+            previfoc_succeeded
+            and now.astimezone(GUARDAMAR_TIMEZONE).hour
+            >= PREVIFOC_PUBLICATION_HOUR
+        )
+        message = _transition(value, include_previfoc=include_previfoc)
         if message is None:
             state.write(value)
             return "no_update"
@@ -992,10 +1009,10 @@ async def monitor_emergency_risks(
             # automatic duplicate on the next identical run while still
             # allowing a later downgrade/clearance to correct a message that
             # Telegram may in fact have accepted.
-            _acknowledge(value)
+            _acknowledge(value, include_previfoc=include_previfoc)
             state.write(value)
             return "uncertain"
 
-        _acknowledge(value)
+        _acknowledge(value, include_previfoc=include_previfoc)
         state.write(value)
         return "published"
