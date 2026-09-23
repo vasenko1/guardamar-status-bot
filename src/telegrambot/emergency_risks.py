@@ -922,6 +922,7 @@ async def monitor_emergency_risks(
     with state.exclusive_run():
         value = state.read()
         successes = 0
+        previfoc_succeeded = False
 
         try:
             previfoc = await fetch_previfoc_fn()
@@ -931,6 +932,7 @@ async def monitor_emergency_risks(
             )
         else:
             successes += 1
+            previfoc_succeeded = True
             value["previfoc"] = {
                 "fire_level": previfoc.fire_level,
                 "dry_thunderstorm_level": previfoc.dry_thunderstorm_level,
@@ -988,7 +990,8 @@ async def monitor_emergency_risks(
             value["published"]["dry_level"] = dry
 
         include_previfoc = (
-            now.astimezone(GUARDAMAR_TIMEZONE).hour
+            previfoc_succeeded
+            and now.astimezone(GUARDAMAR_TIMEZONE).hour
             >= PREVIFOC_PUBLICATION_HOUR
         )
         message = _transition(value, include_previfoc=include_previfoc)
