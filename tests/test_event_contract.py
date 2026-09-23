@@ -287,7 +287,7 @@ class SnapshotContractTests(unittest.TestCase):
                 self.assertEqual(restored.duration_minutes, 90)
                 self.assertEqual(restored.details, ("На испанском",))
 
-    def test_existing_csj_snapshot_normalizes_venue_and_activity_facts(self):
+    def test_existing_csj_snapshot_normalizes_facts_but_hides_routine_card(self):
         source = SourceEvent(
             "Actividades del Centro Social Juvenil (CSJ)",
             date(2026, 9, 14), date(2026, 9, 14), "08:30", "14:00",
@@ -305,15 +305,15 @@ class SnapshotContractTests(unittest.TestCase):
             normalized, = load_municipal(path)["_events"]
             self.assertEqual(normalized.place, "Centro Social Juvenil")
             self.assertEqual(normalized.place_query, source.place)
+            self.assertIn("для молодёжи 12–30 лет", normalized.participation_note)
+            self.assertIn("настольные игры", normalized.participation_note)
+            self.assertIn("juventudguardamar@gmail.com", normalized.registration_contact)
+
             events = asyncio.run(fetch_today_municipal_events(
                 WHEN, "", path, translation_cache_path=cache,
             ))
-        text = rendered(*events)
-        self.assertIn(">Centro Social Juvenil</a>", text)
-        self.assertIn("calle+Molivent", text)
-        self.assertIn("для молодёжи 12–30 лет", text)
-        self.assertIn("Доступны настольные игры", text)
-        self.assertIn("juventudguardamar@gmail.com", text)
+
+        self.assertEqual(events, ())
 
 
 if __name__ == "__main__":
