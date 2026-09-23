@@ -664,8 +664,9 @@ The current preferred guide tree is:
 📌 Полезное о Гуардамаре
 └── 🎣 Рыбалка
     ├── 🏖 С берега
-    ├── 🚤 С лодки и каяка
-    ├── 🤿 Подводная рыбалка
+    ├── 🚣 С каяка
+    ├── 🚤 С зарегистрированной лодки
+    ├── 🤿 Подводная морская рыбалка
     ├── 🕸 Забрасываемая сеть
     └── 🏞 Реки и водоёмы
 ```
@@ -698,6 +699,7 @@ Expected hierarchy:
 root
   -> fishing
        -> fishing_shore
+       -> fishing_kayak
        -> fishing_boat
        -> fishing_underwater
        -> fishing_rall
@@ -1315,7 +1317,7 @@ one grouped alert and list every affected method explicitly.
 For the Guardamar bathing-season transition, both of these are affected:
 
 - 🏖 **Морская рыбалка с берега**;
-- 🤿 **Подводная рыбалка**.
+- 🤿 **Подводная морская рыбалка**.
 
 They should therefore normally share one alert.
 
@@ -1325,8 +1327,11 @@ Examples:
 
 - shore + underwater bathing-season change -> one grouped alert;
 - `rall / esparavel` closure -> its own alert;
-- SafeBeach red flag -> not a seasonal alert; it stays in the existing beach
-  lifecycle and may update the kayak card projection.
+- SafeBeach red flag -> not a seasonal alert. Existing SafeBeach beach alerts
+  remain beach-only and are not modified with fishing content. The same already
+  accepted fact may update the kayak card projection and may independently
+  trigger a fishing-specific operational alert when the derived red-beach set
+  changes.
 
 #### Alert links
 
@@ -1336,7 +1341,7 @@ managed pinned guide card.
 For example:
 
 - 🏖 **Морская рыбалка с берега** -> `fishing_shore`;
-- 🤿 **Подводная рыбалка** -> `fishing_underwater`;
+- 🤿 **Подводная морская рыбалка** -> `fishing_underwater`;
 - 🕸 **Рыбалка забрасываемой сетью** -> `fishing_rall`.
 
 If several methods are grouped in one alert, include all corresponding card
@@ -1378,7 +1383,7 @@ Example structure:
 >
 > Ограничения будут действовать до **5 апреля включительно**.
 >
-> 🏖 **Морская рыбалка с берега** · 🤿 **Подводная рыбалка**
+> 🏖 **Морская рыбалка с берега** · 🤿 **Подводная морская рыбалка**
 >
 > 📣 **обЪявления Гуардамар**
 
@@ -1398,7 +1403,7 @@ Example structure:
 >
 > Общие правила безопасности и другие ограничения сохраняются.
 >
-> 🏖 **Морская рыбалка с берега** · 🤿 **Подводная рыбалка**
+> 🏖 **Морская рыбалка с берега** · 🤿 **Подводная морская рыбалка**
 >
 > 📣 **обЪявления Гуардамар**
 
@@ -1489,7 +1494,7 @@ After a SafeBeach status has already been accepted by the existing lifecycle:
 - after a later confirmed operational flag change,
 
 the same accepted data may trigger a best-effort edit of the managed
-`fishing_boat` card.
+`fishing_kayak` card.
 
 There is:
 
@@ -1566,13 +1571,13 @@ No raw SafeBeach payload, history or timestamps need be duplicated.
 
 ### Card refresh behaviour
 
-At 09:02 the normal guide reconciliation renders `fishing_boat` without any
+At 09:02 the normal guide reconciliation renders `fishing_kayak` without any
 previous-day live red block.
 
 When the first accepted SafeBeach observation arrives later:
 
 - merge its explicitly observed flag states into the daily derived red set;
-- edit only `fishing_boat`;
+- edit only `fishing_kayak`;
 - if the rendered text is unchanged, Telegram `MESSAGE-NOT-MODIFIED` is
   idempotent success.
 
@@ -1611,7 +1616,7 @@ Recommended sequence:
 2. compute/persist the tiny derived red projection;
 3. release the beach/publication critical section;
 4. acquire `PinnedGuideState.exclusive_run()`;
-5. read the known `fishing_boat` message ID;
+5. read the known `fishing_kayak` message ID;
 6. edit that one card;
 7. release the pinned-guide lock.
 
@@ -1838,6 +1843,7 @@ Recommended keys:
 
 - `fishing`;
 - `fishing_shore`;
+- `fishing_kayak`;
 - `fishing_boat`;
 - `fishing_underwater`;
 - `fishing_rall`;
@@ -1977,11 +1983,11 @@ Rejected as unnecessary:
 
 The remaining implementation is small:
 
-- six managed guide messages;
+- seven managed guide messages;
 - pure calendar calculations;
 - reviewed static map targets;
 - one tiny daily derived red-flag projection in publication state;
-- a targeted best-effort edit of `fishing_boat` after accepted SafeBeach facts;
+- a targeted best-effort edit of `fishing_kayak` after accepted SafeBeach facts;
 - a few additional guide-state fields only if public transition alerts are
   approved;
 - tests.
@@ -2027,7 +2033,7 @@ window.
 ### Guide graph
 
 - fishing root linked from main root;
-- all five leaves linked from fishing root;
+- all six leaves linked from fishing root;
 - every leaf returns to fishing;
 - fishing root returns to main root;
 - deleted fishing leaf is recreated and all dependent links converge;
@@ -2045,7 +2051,7 @@ window.
 - the projection uses public `BEACH_NAMES` labels;
 - Telegram `MESSAGE-NOT-MODIFIED` is success;
 - pinned-guide lock contention does not fail the primary beach lifecycle;
-- missing `fishing_boat` message does not trigger a full guide rebuild from the
+- missing `fishing_kayak` message does not trigger a full guide rebuild from the
   SafeBeach workflow;
 - no additional SafeBeach fetch is made for the projection.
 
@@ -2097,12 +2103,12 @@ Preferred V1:
 10:10-10:40 SafeBeach accepted current observations
   -> existing beach-root lifecycle
   -> merge explicit observed flags into tiny same-day red projection
-  -> best-effort edit fishing_boat
+  -> best-effort edit fishing_kayak
 
 later confirmed SafeBeach changes
   -> existing operational confirmation
   -> update same projection
-  -> best-effort edit fishing_boat
+  -> best-effort edit fishing_kayak
 ```
 
 No new cron or command is required.
@@ -2452,36 +2458,112 @@ Follow with:
 
 > 🚦 **Список актуальных разрешений и запретов на вылов отдельных видов рыбы**
 
-## Kayak alert link copy
+## Kayak operational fishing alerts
 
-When an operational SafeBeach alert already states that the consequence applies
-to kayak fishing, do not repeat the card title as the call to action.
+SafeBeach and fishing are separate user-facing products.
 
-Use a single compact link:
+**Do not modify existing SafeBeach alerts.** A beach-status message must remain
+about the beach and its flag only. It must not mention fishing, kayak fishing,
+licences, or link to a fishing card.
 
-> **Подробнее**
+The fishing system may consume the same already accepted SafeBeach fact after
+the beach lifecycle has accepted it, but any fishing notification is a
+**separate fishing message**.
 
-The word **Подробнее** links directly to the managed `fishing_kayak` pinned
-card via the existing Telegram-message-link mechanism.
+### Territorial scope
 
-Example:
+A red flag is not treated as a city-wide coast status.
 
-> 🏖 **Изменился флаг на пляже**
+The derived kayak warning/alert names only beaches for which the bot has a
+confirmed same-day red status.
+
+Examples:
+
+> 🚣 **Рыбалка с каяка**
 >
-> 🔴 **Centre / Babilònia — красный**
+> ⛔ На пляже **Centre / Babilònia** установлен красный флаг.
 >
-> 🚣 При красном флаге **рыбачить с каяка нельзя** — выход в море запрещён.
+> Рыбалка с каяка на этом пляже сейчас невозможна.
 >
 > **Подробнее**
 >
 > 📣 **обЪявления Гуардамар**
 
-The same compact CTA applies when a red flag is removed and the alert explains
-that the red-flag-specific kayak restriction no longer applies.
+Multiple confirmed red beaches:
 
-For grouped seasonal alerts affecting several different fishing cards, retain
-separate direct links to every affected card; a single **Подробнее** link cannot
-represent multiple destinations without losing navigation clarity.
+> 🚣 **Рыбалка с каяка**
+>
+> ⛔ Красный флаг установлен на:
+>
+> **Centre / Babilònia · La Roqueta**
+>
+> Рыбалка с каяка на этих пляжах сейчас невозможна.
+>
+> **Подробнее**
+>
+> 📣 **обЪявления Гуардамар**
+
+The **Подробнее** link goes directly to the managed `fishing_kayak` pinned
+card.
+
+### Unknown / unstaffed coast
+
+Do not infer a flag status for coast sections where SafeBeach has no confirmed
+status.
+
+Absence of a red flag in the derived data means only that the bot has no
+confirmed red status for that place. It must never be rendered as:
+
+- the whole coast is safe;
+- there is a green flag everywhere else;
+- kayak fishing is permitted everywhere else.
+
+The card and alert system remain warning-only.
+
+### When to send a separate fishing alert
+
+Do not mirror every SafeBeach update.
+
+A kayak fishing alert is relevant only when the derived confirmed red-beach set
+changes in a way that changes the fishing warning, for example:
+
+- no confirmed red beaches -> one or more confirmed red beaches;
+- another confirmed red beach is added;
+- a confirmed red beach is explicitly cleared by a later accepted non-red
+  observation;
+- the final confirmed red beach is explicitly cleared.
+
+Green <-> yellow changes that do not change the derived red-beach set do not
+produce a fishing alert.
+
+When the last red restriction is removed, use cautious wording:
+
+> 🚣 **Рыбалка с каяка**
+>
+> Красный флаг на **Centre / Babilònia** снят.
+>
+> Связанное с ним ограничение на рыбалку с каяка **больше не действует**.
+>
+> **Подробнее**
+>
+> 📣 **обЪявления Гуардамар**
+
+Do not say "теперь рыбачить можно": other fishing restrictions may still
+apply.
+
+### CTA and footer
+
+For a single-card operational fishing alert, use only:
+
+> **Подробнее**
+
+Do not repeat `🚣 Рыбалка с каяка` as a second link line at the bottom.
+
+Every fishing alert keeps the shared footer.
+
+Grouped seasonal alerts that affect multiple fishing cards are different: they
+still need one direct link per affected card because a single **Подробнее**
+cannot represent multiple destinations.
 
 ## Current kayak card skeleton
 
@@ -2527,4 +2609,52 @@ Final single-card alert CTA:
 
 This refinement supersedes earlier alert examples that repeated
 `🚣 Рыбалка с каяка` as the final link line.
+
+---
+
+# 2026-09-23 SafeBeach / fishing alert separation — final accepted decision
+
+This decision supersedes earlier examples that inserted kayak-fishing
+consequences directly into SafeBeach beach alerts.
+
+## Product boundary
+
+Existing SafeBeach alerts remain unchanged and beach-only.
+
+They continue to answer:
+
+> **Что происходит на пляже?**
+
+Fishing alerts answer separately:
+
+> **Что изменилось именно для рыбалки?**
+
+Do not mix these two messages.
+
+## Kayak red-flag semantics
+
+- a confirmed red flag affects only the named beach / confirmed SafeBeach
+  location;
+- do not generalize one red beach to all Guardamar coast;
+- coast without a confirmed SafeBeach flag is **unknown**, not green and not an
+  all-clear;
+- the kayak card shows only confirmed same-day red beaches;
+- a separate kayak-fishing alert may be sent when the derived red-beach set
+  changes;
+- existing SafeBeach alert text is never altered for this purpose.
+
+## Seasonal alert terminology
+
+Use the full user-facing label:
+
+> 🤿 **Подводная морская рыбалка**
+
+rather than the shorter `Подводная рыбалка` in fishing alerts and navigation.
+
+Seasonal grouping remains based on **same date + same substantive transition**.
+Kayak fishing is not added to the bathing-season transition alerts merely
+because SafeBeach exists; its operational red-flag warnings are a separate
+event-driven mechanism.
+
+This is the current accepted baseline.
 
