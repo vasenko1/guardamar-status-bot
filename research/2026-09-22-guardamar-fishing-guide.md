@@ -2360,6 +2360,11 @@ modality.
 Current GVA wording permits a maximum of six hooks or two `poteras` per
 fisher, with artificial baits counted as hooks.
 
+For user-facing Russian, never leave `potera` untranslated. The official
+fishing definition describes it as a vertical rig with a weighted element at
+the lower end fitted with several hooks. Use the plain-language label
+**многокрючковая оснастка (potera)**.
+
 Do not translate `cebo artificial` merely as `блесна`: a spoon is only one
 kind of artificial bait/lure.
 
@@ -2369,14 +2374,17 @@ Preferred plain-language explanation:
 >
 > Одновременно можно использовать не более **2 удочек на одну лицензию**.
 >
-> На одного рыбака разрешается не более **6 крючков или 2 poteras**.
+> На одного рыбака разрешается не более **6 крючков или 2 многокрючковых
+> оснасток (poteras)**.
 >
 > Искусственная приманка — например, блесна, воблер или силиконовая приманка —
 > при подсчёте этого лимита считается крючком.
 >
 > Минимальный размер крючка — **12 мм в длину и 5 мм в ширину**.
 
-Keep `potera` explained in plain Russian if it remains in public copy.
+Do not show bare `potera` / `poteras` in public copy. First occurrence must be
+translated as **многокрючковая оснастка (potera)**; later occurrences in the
+same message may use **многокрючковая оснастка** without the Spanish term.
 
 ## Fishing-specific permanent restrictions
 
@@ -2444,6 +2452,37 @@ Follow with:
 
 > 🚦 **Список актуальных разрешений и запретов на вылов отдельных видов рыбы**
 
+## Kayak alert link copy
+
+When an operational SafeBeach alert already states that the consequence applies
+to kayak fishing, do not repeat the card title as the call to action.
+
+Use a single compact link:
+
+> **Подробнее**
+
+The word **Подробнее** links directly to the managed `fishing_kayak` pinned
+card via the existing Telegram-message-link mechanism.
+
+Example:
+
+> 🏖 **Изменился флаг на пляже**
+>
+> 🔴 **Centre / Babilònia — красный**
+>
+> 🚣 При красном флаге **рыбачить с каяка нельзя** — выход в море запрещён.
+>
+> **Подробнее**
+>
+> 📣 **обЪявления Гуардамар**
+
+The same compact CTA applies when a red flag is removed and the alert explains
+that the red-flag-specific kayak restriction no longer applies.
+
+For grouped seasonal alerts affecting several different fishing cards, retain
+separate direct links to every affected card; a single **Подробнее** link cannot
+represent multiple destinations without losing navigation clarity.
+
 ## Current kayak card skeleton
 
 The accepted order is:
@@ -2463,4 +2502,29 @@ The accepted order is:
 The card deliberately contains no general kayaking/navigation guidance.
 
 This is the current accepted kayak-card baseline to implement from.
+
+---
+
+# 2026-09-23 terminology and alert-link refinement
+
+Final terminology:
+
+- `potera` is never exposed untranslated;
+- public wording: **многокрючковая оснастка (potera)**;
+- preferred tackle sentence:
+  **не более 6 крючков или 2 многокрючковых оснасток (poteras)**;
+- `блесна` is only an example of an artificial lure and must not be used as a
+  translation of `potera`.
+
+Final single-card alert CTA:
+
+- when the alert text already identifies the affected fishing type, use only
+  **Подробнее** as the card link;
+- for kayak/SafeBeach alerts, **Подробнее** -> `fishing_kayak`;
+- keep the shared footer after the CTA;
+- grouped alerts affecting multiple fishing types still need one direct link
+  per affected card.
+
+This refinement supersedes earlier alert examples that repeated
+`🚣 Рыбалка с каяка` as the final link line.
 
