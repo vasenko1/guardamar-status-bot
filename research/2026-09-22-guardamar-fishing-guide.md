@@ -1,6 +1,38 @@
 # Guardamar fishing guide — product and rules research
 
-Status: **RESEARCH COMPLETE ENOUGH FOR PRODUCT DESIGN / NOT IMPLEMENTED**
+> ## CURRENT IMPLEMENTATION BASELINE — MVP
+>
+> This block is the implementation authority for V1. The detailed investigation
+> below is retained as **deferred/reference material** and must not be interpreted
+> as approved scope when it conflicts with this baseline.
+>
+> Implement only:
+>
+> - one managed pinned card, key `fishing`, public title `🎣 Рыбалка`;
+> - one deterministic bathing-season calendar shared by shore and underwater
+>   marine fishing: **1 June–30 September**, plus **Semana Santa from the Friday
+>   before Palm Sunday through Lunes de San Vicente inclusive**;
+> - one transition-notice path with start/end copy, linked back to `fishing`;
+> - the existing daily guide sync and existing Telegram delivery/state patterns.
+>
+> The card is a compact stable reference. It must not depend on a midnight
+> refresh or say `Сегодня...`. It explains the restrictions that apply **when
+> the bathing season is active**, plus durable common rules and official links.
+>
+> V1 explicitly does **not** include separate shore/kayak/boat/underwater/rall/
+> inland-water cards, SafeBeach→fishing projection, species monitoring, new
+> polling, a new cron/service, PDF parsing, browser automation, or a generic
+> fishing-rules framework.
+>
+> Missed transition-eve runs are not replayed later with stale “с завтра” copy.
+> Ambiguous Telegram sends use the same fail-closed notice-state pattern already
+> used by the guide.
+>
+> This baseline supersedes all earlier multi-card implementation proposals in
+> this file. Do not delete the older material; it remains useful research for a
+> future demand-driven expansion.
+
+Status: **MVP IMPLEMENTED / DEEP RESEARCH DEFERRED**
 
 Date: 2026-09-22
 

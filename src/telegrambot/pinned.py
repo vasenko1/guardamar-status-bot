@@ -42,6 +42,14 @@ PINNED_CONTENT_VERSION = 2
 DEFAULT_PINNED_STATE_PATH = "state/pinned_guide.json"
 MAX_RECONCILIATION_PASSES = 3
 AQUALIDER_BOOKING_URL = "https://aqualidernatacion.simplybook.it/v2/"
+FISHING_GVA_LICENSE_URL = "https://sede.gva.es/es/detall-tramit?id_proc=G647"
+FISHING_PESCAREC_URL = (
+    "https://www.mapa.gob.es/es/pesca/temas/pesca-maritima-de-recreo/pesca-rec"
+)
+FISHING_RESTRICTIONS_URL = (
+    "https://www.mapa.gob.es/es/pesca/temas/control-inspeccion-lucha-pesca-ilegal/"
+    "aperturasycierres"
+)
 AIRPORT_STOP_MAP_URL = "https://maps.app.goo.gl/V3REb7P6CmdJtgom7"
 YOUTH_CENTRE_MAP_URL = "https://maps.app.goo.gl/HhfDRr6tpbbKekjM7"
 POLIDEPORTIVO_MAP_URL = "https://maps.app.goo.gl/KSZV3aVX75UxATQ68"
@@ -332,6 +340,7 @@ GUIDE_MESSAGE_KEYS = (
     "music_school",
     "youth_centre",
     "wifi",
+    "fishing",
     "activities",
     "swimming",
     "football",
@@ -357,6 +366,7 @@ PINNED_PARENT_KEYS = {
     "music_school": "places",
     "youth_centre": "places",
     "wifi": "root",
+    "fishing": "root",
     "activities": "root",
     "swimming": "activities",
     "football": "activities",
@@ -1397,12 +1407,45 @@ def build_swimming(
     )
 
 
+def build_fishing(root_link: Optional[str] = None) -> str:
+    """Build the compact stable marine-fishing reference card."""
+
+    return _with_back_link(
+        with_footer(
+            "🎣 <b>Рыбалка</b>\n\n"
+            "🗓 <b>Купальный сезон:</b> 1 июня–30 сентября, а также "
+            "Semana Santa — с пятницы перед Вербным воскресеньем по "
+            "понедельник после Пасхального понедельника включительно.\n\n"
+            "🏖 <b>Морская рыбалка с берега</b>\n"
+            "В зонах купания <b>Centre, La Roqueta, Babilònia, El Moncaio</b> "
+            "в купальный сезон рыбалка запрещена <b>круглосуточно</b>.\n"
+            "На <b>Els Tossals, Dels Vivers, El Camp, Les Ortigues</b> "
+            "в купальный сезон рыбалка запрещена с <b>09:00 до 21:00</b>.\n\n"
+            "🤿 <b>Подводная морская рыбалка</b>\n"
+            "В купальный сезон <b>в зонах купания запрещена</b>.\n\n"
+            "👥 Нельзя рыбачить ближе <b>100 м</b> от мест, где находятся "
+            "купающиеся.\n"
+            "⚓ В портовых водах рыбалка запрещена, если для конкретного "
+            "порта не установлено исключение.\n\n"
+            f'📄 <a href="{FISHING_GVA_LICENSE_URL}"><b>Лицензии — '
+            "Generalitat Valenciana</b></a>\n"
+            f'📱 <a href="{FISHING_PESCAREC_URL}"><b>PescaREC — размеры, '
+            "ограничения и декларация улова</b></a>\n"
+            f'🚦 <a href="{FISHING_RESTRICTIONS_URL}"><b>Актуальные '
+            "разрешения и запреты на вылов</b></a>"
+        ),
+        "Полезное о Гуардамаре",
+        root_link,
+    )
+
+
 def build_root(
     camera_link: Optional[str] = None,
     transport_link: Optional[str] = None,
     places_link: Optional[str] = None,
     activities_link: Optional[str] = None,
     wifi_link: Optional[str] = None,
+    fishing_link: Optional[str] = None,
 ) -> str:
     """Build the compact message intended to remain pinned."""
 
@@ -1412,6 +1455,7 @@ def build_root(
         f"🚌 {_direct_link('Транспорт в Гуардамаре', transport_link)}\n\n"
         f"📍 {_direct_link('Места', places_link)}\n\n"
         f"📶 {_direct_link('Бесплатный Wi-Fi', wifi_link)}\n\n"
+        f"🎣 {_direct_link('Рыбалка', fishing_link)}\n\n"
         f"🎓 {_direct_link('Занятия и секции', activities_link)}"
     )
 
@@ -1433,6 +1477,7 @@ def preview_messages() -> Sequence[str]:
         build_music_school(),
         build_youth_centre(),
         build_wifi(),
+        build_fishing(),
         build_activities(),
         build_swimming(),
         build_football(),
@@ -1673,6 +1718,7 @@ def _render_messages(
     music_school_link = _known_link(chat_id, messages, "music_school")
     youth_centre_link = _known_link(chat_id, messages, "youth_centre")
     wifi_link = _known_link(chat_id, messages, "wifi")
+    fishing_link = _known_link(chat_id, messages, "fishing")
     activities_link = _known_link(chat_id, messages, "activities")
     football_link = _known_link(chat_id, messages, "football")
     sport_links = {}
@@ -1737,6 +1783,7 @@ def _render_messages(
         "music_school": build_music_school(music_links, places_link),
         "youth_centre": build_youth_centre(places_link),
         "wifi": build_wifi(root_link, wifi_snapshot),
+        "fishing": build_fishing(root_link),
         "activities": build_activities(
             swimming_link,
             root_link,
@@ -1755,6 +1802,7 @@ def _render_messages(
             places_link,
             activities_link,
             wifi_link,
+            fishing_link,
         ),
     }
 

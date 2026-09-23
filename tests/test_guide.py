@@ -17,7 +17,11 @@ from telegrambot.guide import (
     _bathing_water_notice_key,
     _bathing_water_notice_text,
     _allowed_ora_url,
+    _easter_sunday,
     _fetch_json,
+    _fishing_bathing_period,
+    _fishing_notice_key,
+    _fishing_notice_text,
     _normalize_providers,
     _normalize_services,
     _ora_schedule_matches,
@@ -378,6 +382,73 @@ class PoolSeasonTests(unittest.TestCase):
                 self.assertEqual(_season_notice_key(local_day), expected)
 
 
+class FishingSeasonTests(unittest.TestCase):
+    def test_easter_and_bathing_period_boundaries(self):
+        self.assertEqual(_easter_sunday(2026), date(2026, 4, 5))
+        self.assertIsNone(_fishing_bathing_period(date(2026, 3, 26)))
+        self.assertEqual(
+            _fishing_bathing_period(date(2026, 3, 27)),
+            (date(2026, 3, 27), date(2026, 4, 13)),
+        )
+        self.assertEqual(
+            _fishing_bathing_period(date(2026, 4, 13)),
+            (date(2026, 3, 27), date(2026, 4, 13)),
+        )
+        self.assertIsNone(_fishing_bathing_period(date(2026, 4, 14)))
+        self.assertEqual(
+            _fishing_bathing_period(date(2026, 6, 1)),
+            (date(2026, 6, 1), date(2026, 9, 30)),
+        )
+        self.assertEqual(
+            _fishing_bathing_period(date(2026, 9, 30)),
+            (date(2026, 6, 1), date(2026, 9, 30)),
+        )
+        self.assertIsNone(_fishing_bathing_period(date(2026, 10, 1)))
+
+    def test_notice_key_exists_only_on_transition_eve(self):
+        cases = {
+            date(2026, 3, 25): None,
+            date(2026, 3, 26): "2026-03-27:start",
+            date(2026, 3, 27): None,
+            date(2026, 4, 13): "2026-04-14:end",
+            date(2026, 4, 14): None,
+            date(2026, 5, 31): "2026-06-01:start",
+            date(2026, 6, 1): None,
+            date(2026, 9, 30): "2026-10-01:end",
+            date(2026, 10, 1): None,
+        }
+        for local_day, expected in cases.items():
+            with self.subTest(local_day=local_day):
+                self.assertEqual(_fishing_notice_key(local_day), expected)
+
+    def test_start_notice_is_grouped_and_links_single_card(self):
+        text = _fishing_notice_text(
+            "2026-03-27:start",
+            "-100123",
+            {"fishing": 104},
+        )
+        self.assertIn("С завтра меняются правила морской рыбалки", text)
+        self.assertIn("С <b>27 марта</b>", text)
+        self.assertIn("до <b>13 апреля включительно</b>", text)
+        self.assertIn("морской рыбалки с берега", text)
+        self.assertIn("подводной морской рыбалки", text)
+        self.assertIn("https://t.me/c/123/104", text)
+        self.assertEqual(text.count("https://t.me/c/123/104"), 1)
+        self.assertNotIn("каяк", text.casefold())
+        self.assertNotIn("SafeBeach", text)
+
+    def test_end_notice_is_cautious(self):
+        text = _fishing_notice_text(
+            "2026-10-01:end",
+            "-100123",
+            {"fishing": 104},
+        )
+        self.assertIn("Сегодня последний день сезонных ограничений", text)
+        self.assertIn("С <b>1 октября</b>", text)
+        self.assertIn("Другие правила рыбалки сохраняются", text)
+        self.assertNotIn("теперь рыбачить можно", text.casefold())
+
+
 class ParkingSeasonTests(unittest.TestCase):
     def test_fixed_parking_season_boundaries(self):
         cases = {
@@ -568,6 +639,25 @@ class GuideStateTests(unittest.TestCase):
             with self.assertRaises(StateError):
                 GuideState(path).read()
 
+    def test_fishing_notice_state_is_validated(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "guide.json"
+            invalid_values = (
+                {"version": 1, "fishing_notice_uncertain": 123},
+                {
+                    "version": 1,
+                    "fishing_notice": {
+                        "key": "2026-06-01:start",
+                        "message_id": True,
+                    },
+                },
+            )
+            for value in invalid_values:
+                with self.subTest(value=value):
+                    path.write_text(json.dumps(value), encoding="utf-8")
+                    with self.assertRaises(StateError):
+                        GuideState(path).read()
+
 
 class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
@@ -686,6 +776,7 @@ class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
             "pool_indoor": 101,
             "pool_outdoor": 102,
             "swimming": 103,
+            "fishing": 104,
         }
 
     async def test_first_success_is_silent_baseline(self):
@@ -1171,6 +1262,89 @@ class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
                 "parking_notice",
                 GuideState(Path(directory) / "guide.json").read(),
             )
+
+    async def test_due_fishing_notice_is_sent_once(self):
+        with tempfile.TemporaryDirectory() as directory:
+            moment = datetime(2026, 5, 31, 9, 2, tzinfo=MADRID)
+            current = snapshot(moment)
+            send = AsyncMock(return_value=701)
+            publish = AsyncMock(return_value=self._pinned_messages())
+            with (
+                patch.dict("os.environ", self._environment(directory), clear=False),
+                patch(
+                    "telegrambot.guide.fetch_aqualider_catalog",
+                    new=AsyncMock(return_value=current),
+                ),
+                patch("telegrambot.guide.publish_pinned_guide", new=publish),
+                patch("telegrambot.guide.send_message", new=send),
+            ):
+                await sync_guide(moment)
+                await sync_guide(moment)
+
+            send.assert_awaited_once()
+            self.assertTrue(send.await_args.kwargs["retry_only_rate_limits"])
+            text = send.await_args.args[2]
+            self.assertIn("С завтра меняются правила морской рыбалки", text)
+            self.assertIn("С <b>1 июня</b>", text)
+            self.assertIn("до <b>30 сентября включительно</b>", text)
+            self.assertIn("https://t.me/c/123/104", text)
+            saved = GuideState(Path(directory) / "guide.json").read()
+            self.assertEqual(
+                saved["fishing_notice"]["key"],
+                "2026-06-01:start",
+            )
+            self.assertEqual(saved["fishing_notice"]["message_id"], 701)
+
+    async def test_missed_fishing_transition_is_not_replayed_late(self):
+        with tempfile.TemporaryDirectory() as directory:
+            moment = datetime(2026, 6, 1, 9, 2, tzinfo=MADRID)
+            current = snapshot(moment)
+            send = AsyncMock()
+            publish = AsyncMock(return_value=self._pinned_messages())
+            with (
+                patch.dict("os.environ", self._environment(directory), clear=False),
+                patch(
+                    "telegrambot.guide.fetch_aqualider_catalog",
+                    new=AsyncMock(return_value=current),
+                ),
+                patch("telegrambot.guide.publish_pinned_guide", new=publish),
+                patch("telegrambot.guide.send_message", new=send),
+            ):
+                await sync_guide(moment)
+
+            send.assert_not_awaited()
+            self.assertNotIn(
+                "fishing_notice",
+                GuideState(Path(directory) / "guide.json").read(),
+            )
+
+    async def test_ambiguous_fishing_notice_is_not_retried_same_day(self):
+        with tempfile.TemporaryDirectory() as directory:
+            moment = datetime(2026, 5, 31, 9, 2, tzinfo=MADRID)
+            current = snapshot(moment)
+            timeout = TelegramError("timeout", retryable=True, code="TIMEOUT")
+            send = AsyncMock(side_effect=timeout)
+            publish = AsyncMock(return_value=self._pinned_messages())
+            with (
+                patch.dict("os.environ", self._environment(directory), clear=False),
+                patch(
+                    "telegrambot.guide.fetch_aqualider_catalog",
+                    new=AsyncMock(return_value=current),
+                ),
+                patch("telegrambot.guide.publish_pinned_guide", new=publish),
+                patch("telegrambot.guide.send_message", new=send),
+            ):
+                with self.assertRaises(TelegramError):
+                    await sync_guide(moment)
+                saved = GuideState(Path(directory) / "guide.json").read()
+                self.assertEqual(
+                    saved["fishing_notice_uncertain"],
+                    "2026-06-01:start",
+                )
+                result = await sync_guide(moment)
+
+            self.assertEqual(result, "unchanged")
+            self.assertEqual(send.await_count, 1)
 
     async def test_due_season_notice_is_sent_once(self):
         with tempfile.TemporaryDirectory() as directory:

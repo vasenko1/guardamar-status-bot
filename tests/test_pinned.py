@@ -14,6 +14,7 @@ from telegrambot.pinned import (
     PinnedGuideState,
     build_activities,
     build_cameras,
+    build_fishing,
     build_leaf_message,
     build_places,
     build_polideportivo,
@@ -41,6 +42,7 @@ class PinnedContentTests(unittest.TestCase):
             build_pool_indoor(),
             build_pool_outdoor(),
             build_wifi(),
+            build_fishing(),
             build_activities(),
             build_swimming(),
         ]
@@ -70,15 +72,35 @@ class PinnedContentTests(unittest.TestCase):
         self.assertFalse(any("Zona Azul" in item for item in messages))
         self.assertTrue(any("Занятия и секции" in item for item in messages))
         self.assertTrue(any("Плавание" in item for item in messages))
+        self.assertTrue(any("🎣 <b>Рыбалка</b>" in item for item in messages))
         self.assertIn("Полезное о Гуардамаре", messages[-1])
 
-    def test_root_is_compact_five_item_navigator(self):
+    def test_fishing_card_is_compact_stable_reference(self):
+        message = build_fishing("https://t.me/c/1/99")
+        self.assertIn("🎣 <b>Рыбалка</b>", message)
+        self.assertIn("1 июня–30 сентября", message)
+        self.assertIn("Centre, La Roqueta, Babilònia, El Moncaio", message)
+        self.assertIn("Els Tossals, Dels Vivers, El Camp, Les Ortigues", message)
+        self.assertIn("рыбалка запрещена с <b>09:00 до 21:00</b>", message)
+        self.assertIn("Подводная морская рыбалка", message)
+        self.assertIn("100 м", message)
+        self.assertIn("портовых водах", message)
+        self.assertIn("PescaREC", message)
+        self.assertIn("Актуальные разрешения и запреты на вылов", message)
+        self.assertIn("https://t.me/c/1/99", message)
+        self.assertNotIn("Сегодня", message)
+        self.assertNotIn("каяк", message.casefold())
+        self.assertEqual(message.count(FOOTER), 1)
+        self.assertLessEqual(len(message), 4096)
+
+    def test_root_is_compact_six_item_navigator(self):
         root = build_root(
             "https://t.me/c/1/20",
             "https://t.me/c/1/21",
             "https://t.me/c/1/22",
             "https://t.me/c/1/23",
             wifi_link="https://t.me/c/1/24",
+            fishing_link="https://t.me/c/1/25",
         )
         self.assertEqual(
             root,
@@ -87,6 +109,7 @@ class PinnedContentTests(unittest.TestCase):
             '🚌 <a href="https://t.me/c/1/21"><b>Транспорт в Гуардамаре</b></a>\n\n'
             '📍 <a href="https://t.me/c/1/22"><b>Места</b></a>\n\n'
             '📶 <a href="https://t.me/c/1/24"><b>Бесплатный Wi-Fi</b></a>\n\n'
+            '🎣 <a href="https://t.me/c/1/25"><b>Рыбалка</b></a>\n\n'
             '🎓 <a href="https://t.me/c/1/23"><b>Занятия и секции</b></a>',
         )
         self.assertNotIn(FOOTER, root)
@@ -250,6 +273,7 @@ class PinnedContentTests(unittest.TestCase):
             "https://t.me/c/1/21",
             "https://t.me/c/1/23",
             "https://t.me/c/1/24",
+            fishing_link="https://t.me/c/1/25",
         )
         for link in links.values():
             self.assertIn(link, index)
@@ -258,6 +282,7 @@ class PinnedContentTests(unittest.TestCase):
             "https://t.me/c/1/21",
             "https://t.me/c/1/23",
             "https://t.me/c/1/24",
+            "https://t.me/c/1/25",
         ):
             self.assertIn(link, root)
         self.assertIn("https://t.me/c/1/22", index)
@@ -366,6 +391,14 @@ class PinnedPublicationTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn(
                 telegram_message_link("-100123", result["activities"]),
                 final[result["root"]],
+            )
+            self.assertIn(
+                telegram_message_link("-100123", result["fishing"]),
+                final[result["root"]],
+            )
+            self.assertIn(
+                telegram_message_link("-100123", result["root"]),
+                final[result["fishing"]],
             )
 
     async def test_second_run_edits_without_duplicate_sends(self):

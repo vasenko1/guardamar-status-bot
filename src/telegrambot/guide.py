@@ -255,6 +255,21 @@ class GuideState:
         parking_uncertain = value.get("parking_notice_uncertain")
         if parking_uncertain is not None and not isinstance(parking_uncertain, str):
             raise StateError("guide state has an invalid uncertain parking notice")
+        fishing_notice = value.get("fishing_notice")
+        if fishing_notice is not None and (
+            not isinstance(fishing_notice, dict)
+            or not isinstance(fishing_notice.get("key"), str)
+            or not fishing_notice["key"].strip()
+            or not isinstance(fishing_notice.get("message_id"), int)
+            or isinstance(fishing_notice.get("message_id"), bool)
+            or fishing_notice["message_id"] <= 0
+        ):
+            raise StateError("guide state has an invalid fishing notice")
+        fishing_uncertain = value.get("fishing_notice_uncertain")
+        if fishing_uncertain is not None and (
+            not isinstance(fishing_uncertain, str) or not fishing_uncertain.strip()
+        ):
+            raise StateError("guide state has an invalid uncertain fishing notice")
         wifi_alerted = value.get("wifi_last_alerted_asset_url")
         if wifi_alerted is not None and (
             not isinstance(wifi_alerted, str) or not wifi_alerted.strip()
@@ -355,6 +370,40 @@ def active_parking(local_day: date) -> str:
     paid_start = date(local_day.year, 6, 15)
     paid_end = date(local_day.year, 9, 15)
     return "paid" if paid_start <= local_day <= paid_end else "free"
+
+
+def _easter_sunday(year: int) -> date:
+    """Return Gregorian Easter Sunday using the Meeus/Jones/Butcher algorithm."""
+
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month = (h + l - 7 * m + 114) // 31
+    day = ((h + l - 7 * m + 114) % 31) + 1
+    return date(year, month, day)
+
+
+def _fishing_bathing_period(local_day: date) -> Optional[Tuple[date, date]]:
+    """Return the Guardamar bathing period containing local_day, if any."""
+
+    easter = _easter_sunday(local_day.year)
+    periods = (
+        (easter - timedelta(days=9), easter + timedelta(days=8)),
+        (date(local_day.year, 6, 1), date(local_day.year, 9, 30)),
+    )
+    for start, end in periods:
+        if start <= local_day <= end:
+            return start, end
+    return None
 
 
 def _attempt_due(
@@ -1011,6 +1060,59 @@ def _parking_notice_key(local_day: date) -> Optional[str]:
     return f"{local_day.year}:{next_day}"
 
 
+def _fishing_notice_key(local_day: date) -> Optional[str]:
+    """Return a key only on the eve of a Guardamar bathing-season transition."""
+
+    transition_day = local_day + timedelta(days=1)
+    active_today = _fishing_bathing_period(local_day) is not None
+    active_tomorrow = _fishing_bathing_period(transition_day) is not None
+    if active_today == active_tomorrow:
+        return None
+    action = "start" if active_tomorrow else "end"
+    return f"{transition_day.isoformat()}:{action}"
+
+
+def _fishing_notice_text(
+    notice_key: str,
+    chat_id: str,
+    messages: Dict[str, int],
+) -> str:
+    """Render one grouped shore/underwater bathing-season transition."""
+
+    transition_text, action = notice_key.rsplit(":", 1)
+    transition_day = date.fromisoformat(transition_text)
+    fishing_link = telegram_message_link(chat_id, messages["fishing"])
+    formatted_transition = (
+        f"{transition_day.day} {_RU_MONTHS_GENITIVE[transition_day.month]}"
+    )
+    if action == "start":
+        period = _fishing_bathing_period(transition_day)
+        if period is None:
+            raise ValueError("fishing start notice is outside a bathing period")
+        period_end = period[1]
+        formatted_end = f"{period_end.day} {_RU_MONTHS_GENITIVE[period_end.month]}"
+        return with_footer(
+            "🎣 <b>С завтра меняются правила морской рыбалки</b>\n\n"
+            f"С <b>{formatted_transition}</b> начинается период купального сезона.\n\n"
+            "Сезонные ограничения начинают действовать для:\n\n"
+            "🏖 <b>морской рыбалки с берега</b>\n"
+            "🤿 <b>подводной морской рыбалки</b>\n\n"
+            f"Они будут действовать до <b>{formatted_end} включительно</b>.\n\n"
+            f'<a href="{fishing_link}"><b>Подробнее</b></a>'
+        )
+    if action != "end":
+        raise ValueError("invalid fishing notice action")
+    return with_footer(
+        "🎣 <b>Сегодня последний день сезонных ограничений</b>\n\n"
+        f"С <b>{formatted_transition}</b> ограничения, связанные с купальным "
+        "сезоном, перестанут действовать для:\n\n"
+        "🏖 <b>морской рыбалки с берега</b>\n"
+        "🤿 <b>подводной морской рыбалки</b>\n\n"
+        "Другие правила рыбалки сохраняются.\n\n"
+        f'<a href="{fishing_link}"><b>Подробнее</b></a>'
+    )
+
+
 def _parking_notice_text(notice_key: str) -> str:
     """Render a self-contained ORA mode transition without a guide card."""
 
@@ -1308,6 +1410,47 @@ async def sync_guide(now: datetime) -> str:
         await _publish_bathing_water_pending_notice(
             bot_token, chat_id, state, guide_state
         )
+
+        fishing_notice_key = _fishing_notice_key(local_day)
+        if fishing_notice_key is not None:
+            sent_fishing = state.get("fishing_notice")
+            uncertain_fishing = state.get("fishing_notice_uncertain")
+            if uncertain_fishing == fishing_notice_key:
+                logging.warning(
+                    "Fishing season notice remains uncertain: %s",
+                    fishing_notice_key,
+                )
+            elif (
+                not isinstance(sent_fishing, dict)
+                or sent_fishing.get("key") != fishing_notice_key
+            ):
+                try:
+                    fishing_notice_id = await send_message(
+                        bot_token,
+                        chat_id,
+                        _fishing_notice_text(
+                            fishing_notice_key,
+                            chat_id,
+                            messages,
+                        ),
+                        disable_notification=False,
+                        retry_only_rate_limits=True,
+                    )
+                except TelegramError as exc:
+                    if is_ambiguous_send_failure(exc):
+                        state["fishing_notice_uncertain"] = fishing_notice_key
+                        guide_state.write(state)
+                    raise
+                state.pop("fishing_notice_uncertain", None)
+                state["fishing_notice"] = {
+                    "key": fishing_notice_key,
+                    "message_id": fishing_notice_id,
+                }
+                guide_state.write(state)
+                logging.info(
+                    "Fishing season notice published: %s",
+                    fishing_notice_key,
+                )
 
         parking_notice_key = _parking_notice_key(local_day)
         if parking_notice_key is not None and local_now.hour >= 18:
