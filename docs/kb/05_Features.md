@@ -222,6 +222,14 @@ state because those values can be readjusted during the day and the morning
 message is not kept synchronized with them. Their user-facing presentation is
 standalone transition notification only.
 
+Previfoc is treated as a daily prevention product rather than a midnight
+breaking-news feed. Hourly collection continues unchanged, but a Previfoc delta
+observed before 07:00 Europe/Madrid is stored silently and is not acknowledged
+as published. The first hourly run at or after 07:00 may publish only the value
+that is still current then. If an overnight change reverses before morning,
+there is no resident-facing notice. This quiet-hours rule applies only to
+Previfoc; CCE/hydrological transitions remain immediately eligible.
+
 A fresh active CCE hydrological state may still add one compact morning line.
 Do not add routine all-clear lines merely to show that a source was checked.
 
