@@ -711,7 +711,8 @@ class EmergencyRiskTests(unittest.TestCase):
 
             self.assertEqual(result, "published")
             self.assertEqual(len(calls), 1)
-            self.assertIn("гидролог", calls[0].casefold())
+            self.assertIn("CCE сообщает", calls[0])
+            self.assertIn("Situación 1 по риску наводнений", calls[0])
             self.assertNotIn("лесных пожаров", calls[0])
             self.assertNotIn("Сухие грозы", calls[0])
 
