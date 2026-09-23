@@ -2658,3 +2658,186 @@ event-driven mechanism.
 
 This is the current accepted baseline.
 
+---
+
+# 2026-09-24 product scope reset — fishing MVP
+
+This decision supersedes the previously planned multi-card fishing guide as the
+implementation target for V1.
+
+The detailed research above is intentionally retained as reference material.
+It is **not** a commitment to implement every researched fishing mode.
+
+## Product rationale
+
+Fishing is a relatively narrow topic for the general Guardamar group.
+
+The bot's main value is timely local information that changes and gives users a
+reason to read the group, not building an encyclopaedic fishing handbook.
+
+Therefore stop expanding the fishing research for now and avoid implementing a
+large subtree unless real user demand appears.
+
+Product rule:
+
+> If information is mostly static and does not need to be known specifically
+> today, it does not justify its own automation or dedicated card in V1.
+
+## V1 scope
+
+Implement only:
+
+1. one compact managed pinned card:
+   - key: `fishing`;
+   - public title: `🎣 Рыбалка`;
+2. high-value calendar alerts when fishing rules materially change;
+3. links from alerts back to the single `🎣 Рыбалка` card;
+4. shared footer on the card and every fishing alert.
+
+Do **not** implement separate pinned cards in V1 for:
+
+- shore fishing;
+- kayak fishing;
+- registered-boat fishing;
+- underwater marine fishing;
+- rall / esparavel;
+- inland waters.
+
+Do not continue researching those branches before the MVP is shipped unless a
+specific unresolved fact is required for the compact card or an approved alert.
+
+## Compact card purpose
+
+The single card is a concise reference, not a full guide.
+
+Target size: roughly 10-15 useful lines plus official links/navigation.
+
+It should prioritize:
+
+- the current seasonal state that matters today;
+- the most important local restrictions;
+- the relevant GVA licence link(s);
+- PescaREC;
+- current MAPA restrictions/closures;
+- short wording that points users to official current data instead of copying
+  large legal tables.
+
+Deep details such as hook construction, navigation rules, boat qualifications,
+full species tables, and mode-specific edge cases stay in research and are not
+shown unless later demand justifies them.
+
+## Alert-first strategy
+
+Alerts are the main product value.
+
+Send a fishing alert only when a user-facing rule materially changes, for
+example:
+
+- bathing-season restrictions start;
+- bathing-season restrictions end;
+- another approved seasonal restriction starts or ends;
+- a genuinely important new fishing prohibition/permission is introduced and
+  can be verified from an authoritative source.
+
+Do not send alerts for static reference facts.
+
+## Seasonal grouping
+
+If the same calendar transition affects multiple fishing methods, emit one
+message, not one message per method.
+
+The alert explicitly names the affected methods in the body.
+
+For the Guardamar bathing-season transition, current research indicates the
+grouped message may cover:
+
+- 🏖 **морскую рыбалку с берега**;
+- 🤿 **подводную морскую рыбалку**.
+
+Before runtime implementation, re-verify that both still have the same
+effective dates and consequences.
+
+The alert links to the single compact `🎣 Рыбалка` card via **Подробнее**.
+
+Example shape:
+
+> 🎣 **С завтра меняются правила морской рыбалки**
+>
+> С **<start_date>** начинается купальный сезон.
+>
+> Сезонные ограничения начинают действовать для:
+>
+> 🏖 **морской рыбалки с берега**;
+> 🤿 **подводной морской рыбалки**.
+>
+> Они будут действовать до **<end_date> включительно**.
+>
+> **Подробнее**
+>
+> 📣 **обЪявления Гуардамар**
+
+End-of-period shape:
+
+> 🎣 **Сегодня последний день сезонных ограничений**
+>
+> С **<first_unrestricted_date>** ограничения, связанные с купальным сезоном,
+> перестанут действовать для:
+>
+> 🏖 **морской рыбалки с берега**;
+> 🤿 **подводной морской рыбалки**.
+>
+> Другие правила рыбалки сохраняются.
+>
+> **Подробнее**
+>
+> 📣 **обЪявления Гуардамар**
+
+All Easter-derived dates remain calculated automatically from the same calendar
+engine used by the card/alerts.
+
+## SafeBeach / kayak decision for MVP
+
+Existing SafeBeach alerts remain completely unchanged and beach-only.
+
+The previously researched kayak red-flag projection and separate kayak-fishing
+alerts are **deferred from V1**.
+
+Reason:
+
+- they add another narrow operational path for a niche use case;
+- the product value is uncertain;
+- SafeBeach already communicates the underlying beach condition;
+- keeping the first fishing release small is more valuable than implementing
+  every technically possible connection.
+
+Retain the research and architecture notes so the feature can be added later if
+users show demand.
+
+## Deferred, not discarded
+
+The following research remains useful but is parked:
+
+- kayak licence/tackle rules;
+- red-flag projection into fishing UX;
+- registered-boat rules;
+- inland-water rules;
+- rall details;
+- separate per-mode cards;
+- deep tackle/reference content.
+
+Do not delete this material from Research.
+
+If user demand later appears, expand from the existing evidence rather than
+restarting the investigation.
+
+## Success criterion
+
+The MVP should answer two questions well:
+
+1. **What fishing restrictions matter today?**
+2. **Did an important fishing rule just change?**
+
+Anything beyond those questions is optional future scope.
+
+This is the current implementation baseline.
+
