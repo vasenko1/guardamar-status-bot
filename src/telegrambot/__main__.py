@@ -1117,41 +1117,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         return 0
 
     if command == "prepare-aemet":
-        if command == "suma":
-        bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
-        chat_id = _required_environment("TELEGRAM_CHAT_ID")
-        suma_state = SumaState(Path(os.environ.get(
-            "SUMA_STATE_PATH", DEFAULT_SUMA_STATE_PATH
-        )))
-
-        async def publish_suma(message: str) -> int:
-            try:
-                return await send_message(
-                    bot_token,
-                    chat_id,
-                    message,
-                    disable_notification=False,
-                )
-            except TelegramError as exc:
-                if is_ambiguous_send_failure(exc):
-                    raise SumaDeliveryUncertain() from exc
-                raise
-
-        try:
-            result = await monitor_suma(
-                suma_state,
-                datetime.now(GUARDAMAR_TIMEZONE),
-                publish_suma,
-            )
-        except SumaDeliveryUncertain:
-            logging.warning(
-                "SUMA delivery uncertain; automatic resend disabled"
-            )
-            return 0
-        logging.info("SUMA notification sync complete: %s", result)
-        return 0
-
-    api_key = _required_environment("AEMET_API_KEY")
+        api_key = _required_environment("AEMET_API_KEY")
         with preparation_lock(aemet_snapshot_path) as acquired:
             if not acquired:
                 return 0
@@ -1335,6 +1301,40 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 lambda message_id: delete_message(bot_token, chat_id, message_id),
             )
         logging.info("Transport schedules synchronized with %d linked messages", len(messages))
+        return 0
+
+    if command == "suma":
+        bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
+        chat_id = _required_environment("TELEGRAM_CHAT_ID")
+        suma_state = SumaState(Path(os.environ.get(
+            "SUMA_STATE_PATH", DEFAULT_SUMA_STATE_PATH
+        )))
+
+        async def publish_suma(message: str) -> int:
+            try:
+                return await send_message(
+                    bot_token,
+                    chat_id,
+                    message,
+                    disable_notification=False,
+                )
+            except TelegramError as exc:
+                if is_ambiguous_send_failure(exc):
+                    raise SumaDeliveryUncertain() from exc
+                raise
+
+        try:
+            result = await monitor_suma(
+                suma_state,
+                datetime.now(GUARDAMAR_TIMEZONE),
+                publish_suma,
+            )
+        except SumaDeliveryUncertain:
+            logging.warning(
+                "SUMA delivery uncertain; automatic resend disabled"
+            )
+            return 0
+        logging.info("SUMA notification sync complete: %s", result)
         return 0
 
     api_key = _required_environment("AEMET_API_KEY")
