@@ -170,9 +170,13 @@ The CCE PDF check is independent of local AEMET rain/thunderstorm warnings.
 Hydrological deterioration in the lower Segura can originate upstream or from
 basin/reservoir operations, so absence of a local Guardamar AEMET warning is
 not a safe gate. One bounded hourly `check-112` invocation at minute `:19`
-may fetch the small HTML, the current PDF and the tiny Previfoc zone query,
-then publish at most one semantic state transition. Parse the PDF in memory
-through `pdftotext`; do not archive raw PDFs.
+may fetch the small HTML, the current PDF and the tiny Previfoc zone query.
+CCE/hydrological transitions remain immediately eligible. Previfoc observations
+before 07:00 Europe/Madrid are stored silently; the first run at or after 07:00
+may publish only a still-current delta, so a midnight day-boundary change that
+reverts overnight never becomes a stale public notice. No extra cron or queue
+is required. Parse the PDF in memory through `pdftotext`; do not archive raw
+PDFs.
 
 Do not derive public flood danger from raw river height or flow. The public CHS
 and GOTA surfaces found in the 2026-09-20 investigation expose measurements,
