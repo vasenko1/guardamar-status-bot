@@ -32,7 +32,7 @@
 > this file. Do not delete the older material; it remains useful research for a
 > future demand-driven expansion.
 
-Status: **RESEARCH COMPLETE ENOUGH FOR PRODUCT DESIGN / NOT IMPLEMENTED**
+Status: **MVP IMPLEMENTED / DEEP RESEARCH DEFERRED**
 
 Date: 2026-09-22
 
