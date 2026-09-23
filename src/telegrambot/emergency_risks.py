@@ -978,15 +978,16 @@ async def monitor_emergency_risks(
             value["published"]["fire_level"] is None
             and fire in {1, 2}
         ):
-            # First low/high observation is a silent baseline. Extreme risk is
-            # urgent enough to publish even on the first successful run.
+            # First low/high observation is a silent baseline. Extreme risk
+            # remains eligible on the first successful daytime run.
             value["published"]["fire_level"] = fire
         if (
             value["published"]["dry_level"] is None
             and dry in {1, 2}
         ):
             # A first no-risk/probable observation establishes a baseline.
-            # High dry-thunderstorm risk remains urgent enough to publish.
+            # High dry-thunderstorm risk remains eligible on the first
+            # successful daytime run.
             value["published"]["dry_level"] = dry
 
         include_previfoc = (
