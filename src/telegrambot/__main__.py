@@ -118,6 +118,12 @@ from .safebeach import (
     in_query_window,
     is_current_status,
 )
+from .suma import (
+    SumaDeliveryUncertain,
+    SumaError,
+    SumaState,
+    monitor_suma,
+)
 from .weekend import produce_weekend_message, weekend_dates
 from .models import ColdHealthRisk, HeatHealthRisk
 from .state import PublicationState, StateError
@@ -153,6 +159,7 @@ DEFAULT_PHARMACY_STATE_PATH = "state/pharmacy.json"
 DEFAULT_EARTHQUAKE_STATE_PATH = "state/earthquakes.json"
 DEFAULT_EMERGENCY_RISK_STATE_PATH = "state/emergency_risks.json"
 DEFAULT_HIDRAQUA_STATE_PATH = "state/hidraqua.json"
+DEFAULT_SUMA_STATE_PATH = "state/suma.json"
 DEFAULT_CAMS_CACHE_PATH = "state/cams.json"
 CAMS_UPDATE_CHECKPOINTS = frozenset({(10, 40)})
 
@@ -1110,7 +1117,41 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         return 0
 
     if command == "prepare-aemet":
-        api_key = _required_environment("AEMET_API_KEY")
+        if command == "suma":
+        bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
+        chat_id = _required_environment("TELEGRAM_CHAT_ID")
+        suma_state = SumaState(Path(os.environ.get(
+            "SUMA_STATE_PATH", DEFAULT_SUMA_STATE_PATH
+        )))
+
+        async def publish_suma(message: str) -> int:
+            try:
+                return await send_message(
+                    bot_token,
+                    chat_id,
+                    message,
+                    disable_notification=False,
+                )
+            except TelegramError as exc:
+                if is_ambiguous_send_failure(exc):
+                    raise SumaDeliveryUncertain() from exc
+                raise
+
+        try:
+            result = await monitor_suma(
+                suma_state,
+                datetime.now(GUARDAMAR_TIMEZONE),
+                publish_suma,
+            )
+        except SumaDeliveryUncertain:
+            logging.warning(
+                "SUMA delivery uncertain; automatic resend disabled"
+            )
+            return 0
+        logging.info("SUMA notification sync complete: %s", result)
+        return 0
+
+    api_key = _required_environment("AEMET_API_KEY")
         with preparation_lock(aemet_snapshot_path) as acquired:
             if not acquired:
                 return 0
@@ -1496,6 +1537,7 @@ def main() -> None:
             "check-112",
             "monitor-earthquakes",
             "monitor-hidraqua",
+            "suma",
             "weekend", "weekend-preview",
             "poll",
         ),
@@ -1541,6 +1583,7 @@ def main() -> None:
         LibraryAgendaError,
         AmGuardamarError,
         HidraquaError,
+        SumaError,
         MunicipalAgendaError,
         PharmacyError,
         TelegramError,
