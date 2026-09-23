@@ -81,7 +81,7 @@ class PinnedContentTests(unittest.TestCase):
         self.assertIn("1 июня–30 сентября", message)
         self.assertIn("Centre, La Roqueta, Babilònia, El Moncaio", message)
         self.assertIn("Els Tossals, Dels Vivers, El Camp, Les Ortigues", message)
-        self.assertIn("09:00 до 21:00", message)
+        self.assertIn("рыбалка запрещена с <b>09:00 до 21:00</b>", message)
         self.assertIn("Подводная морская рыбалка", message)
         self.assertIn("100 м", message)
         self.assertIn("портовых водах", message)
