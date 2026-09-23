@@ -2061,7 +2061,7 @@ window.
 The recommended V1 is:
 
 - **calendar-dynamic:** shore, underwater, rall;
-- **event-driven live projection:** boat/kayak may show confirmed same-day red flags from the existing SafeBeach lifecycle;
+- **event-driven live projection:** the kayak card may show confirmed same-day red flags from the existing SafeBeach lifecycle;
 - **static where no safe global live state exists:** internal waters;
 - **maps are reviewed static location links, not data sources or legal
   boundaries;**
@@ -2092,7 +2092,7 @@ Preferred V1:
 
 ```text
 09:02 guide sync
-  -> renders boat/kayak card with no stale live block
+  -> renders kayak card with no stale live block
 
 10:10-10:40 SafeBeach accepted current observations
   -> existing beach-root lifecycle
@@ -2235,9 +2235,10 @@ monitoring, provided they are re-verified before implementation:
 
 - exact GVA licence name for shore marine fishing;
 - maximum two rods per licence;
-- general recreational catch limit and its qualification for species-specific
-  rules;
-- undersized fish must be returned immediately;
+- positive retention rule: keep only species that may currently be retained,
+  once the fish meets the minimum size and no current closure/prohibition
+  applies; direct the user to PescaREC for current species rules and sizes;
+- undersized or otherwise non-retainable fish must be released;
 - recreational catch may not be sold.
 
 Do not copy a static species/minimum-size table into the card. Species-specific
@@ -2276,4 +2277,190 @@ alert groups them and links every affected pinned card.
 Every alert includes the shared footer.
 
 This is the current editorial/product baseline for implementation.
+
+---
+
+# 2026-09-23 kayak-card scope and copy — current accepted state
+
+This section records the current product/editorial decision for the kayak
+fishing card after removing navigation-only material.
+
+## Scope
+
+The card is specifically about **fishing from a kayak or comparable non-motor
+floating craft**.
+
+It is not a general sea-kayaking guide.
+
+Do not include material whose primary purpose is navigation rather than fishing:
+
+- buoyed bathing-zone transit;
+- 200 m / 50 m navigation bands;
+- launching/landing corridors;
+- how to cross the bathing zone;
+- maximum navigation distance;
+- skipper/operating qualifications;
+- daylight-navigation rules;
+- life-jacket/equipment recommendations.
+
+The red-flag rule remains because it directly determines whether fishing from
+the kayak can take place at all.
+
+Registered recreational boats should not be combined into this card. They have
+a separate licensing/rules regime and should be researched/rendered as a
+separate `fishing_boat` card later.
+
+Recommended kayak key/name:
+
+- key: `fishing_kayak`;
+- public title: `🚣 Рыбалка с каяка`.
+
+The existing earlier `fishing_boat` / combined boat-kayak examples are
+superseded by this split.
+
+## Dynamic red-flag block
+
+Only show the block when the existing SafeBeach lifecycle has already accepted
+a same-day red flag:
+
+> ⛔ **Красный флаг сегодня**
+>
+> **Centre / Babilònia · La Roqueta**
+>
+> На этих пляжах рыбачить с каяка нельзя. При красном флаге выход в море
+> запрещён, а если флаг подняли, когда вы уже в море, нужно вернуться на берег.
+
+Do not interpret the cause of the red flag. The red flag itself is sufficient
+for the restriction.
+
+No green/all-clear message is rendered.
+
+All previously agreed conservative partial-response merge and best-effort edit
+rules remain in force.
+
+## Licence
+
+User-facing text:
+
+> 🎣 **Лицензия**
+>
+> Для рыбалки с **каяка, каноэ без мотора и других аналогичных плавсредств**
+> нужна та же лицензия, что и для морской рыбалки с берега:
+>
+> **Licencia de pesca marítima de recreo desde tierra** Generalitat Valenciana.
+>
+> Отдельная рыболовная лицензия на каяк не нужна.
+
+The legal source relationship remains the 2025 amendment that includes
+appropriate floating/beach craft in the `desde tierra` fishing licence
+modality.
+
+## Tackle
+
+Current GVA wording permits a maximum of six hooks or two `poteras` per
+fisher, with artificial baits counted as hooks.
+
+Do not translate `cebo artificial` merely as `блесна`: a spoon is only one
+kind of artificial bait/lure.
+
+Preferred plain-language explanation:
+
+> 🎣 **Снасти**
+>
+> Одновременно можно использовать не более **2 удочек на одну лицензию**.
+>
+> На одного рыбака разрешается не более **6 крючков или 2 poteras**.
+>
+> Искусственная приманка — например, блесна, воблер или силиконовая приманка —
+> при подсчёте этого лимита считается крючком.
+>
+> Минимальный размер крючка — **12 мм в длину и 5 мм в ширину**.
+
+Keep `potera` explained in plain Russian if it remains in public copy.
+
+## Fishing-specific permanent restrictions
+
+Keep only restrictions tied directly to the act of fishing:
+
+> 👥 Нельзя рыбачить ближе **100 м от мест, где находятся купающиеся**.
+>
+> ⚓ **В портовых водах рыбалка запрещена**, если администрация конкретного
+> порта не установила исключение.
+>
+> 🎣 Нельзя мешать профессиональной рыбалке и рыбачить в местах, специально
+> закрытых или зарезервированных для других целей.
+
+Do not add navigation restrictions to this block.
+
+## Positive retention wording
+
+The heading `🐟 Что можно оставить себе` must actually answer that question.
+
+Do not write only a negative list.
+
+Preferred wording:
+
+> 🐟 **Что можно оставить себе**
+>
+> Можно оставить улов **разрешённых видов**, если рыба достигла минимального
+> размера и для этого вида сейчас нет запрета или закрытия ловли.
+>
+> Актуальные ограничения и минимальные размеры указаны в **PescaREC**.
+>
+> 💶 Улов любительской рыбалки **нельзя продавать или передавать для продажи**.
+
+Do not publish a universal fixed "5 kg per licence" rule in this card unless a
+current authoritative rule establishing that limit for the relevant waters is
+re-verified. The current product direction is species/current-rule lookup via
+PescaREC/MAPA rather than a potentially stale universal number.
+
+MAPA confirms PescaREC contains:
+
+- minimum sizes;
+- prohibited species by area;
+- catch limits/topes where applicable;
+- openings/closures;
+- special authorisations;
+- capture/release declarations.
+
+Therefore the sentence
+
+> Ограничения и минимальные размеры указаны в **PescaREC**.
+
+is both simpler and more useful than maintaining a static species table.
+
+## PescaREC block
+
+Preferred copy:
+
+> 📱 **PescaREC — официальное приложение MAPA**
+>
+> С **20 марта 2026 года использование PescaREC обязательно** для морской
+> любительской рыбалки. PescaREC показывает виды рыб, минимальные размеры для
+> вылова, обязательные декларации уловов, специальные разрешения и сообщения о
+> действующих ограничениях.
+
+Follow with:
+
+> 🚦 **Список актуальных разрешений и запретов на вылов отдельных видов рыбы**
+
+## Current kayak card skeleton
+
+The accepted order is:
+
+1. title;
+2. optional same-day red-flag warning;
+3. licence;
+4. tackle;
+5. permanent fishing-specific restrictions;
+6. positive `Что можно оставить себе` block;
+7. GVA licence action;
+8. PescaREC;
+9. MAPA current restrictions action;
+10. back link;
+11. shared footer.
+
+The card deliberately contains no general kayaking/navigation guidance.
+
+This is the current accepted kayak-card baseline to implement from.
 
