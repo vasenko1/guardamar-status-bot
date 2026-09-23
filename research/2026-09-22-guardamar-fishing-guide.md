@@ -733,15 +733,19 @@ Do not display a generic phrase such as:
 
 > Semana Santa dates change every year and the bot will notify you.
 
-Instead render the actual dates for the relevant year.
+Render dates from the calculated period for the relevant year, but keep the
+public wording centered on the current bathing-season state.
 
-Example outside the Easter period:
+Do not call the spring period "правила Semana Santa" in user-facing copy.
 
-> Следующий сезонный период — Semana Santa 2027: 19 марта – 5 апреля.
+Examples:
 
-Example during the period:
+> 🗓 **Сегодня действует купальный сезон — до <calculated_end_date> включительно.**
 
-> 🗓 **На 25 марта:** действует режим Semana Santa до 5 апреля включительно.
+or, outside the bathing period:
+
+> 🗓 **Сегодня и до <calculated_last_unrestricted_date> сезонные ограничения
+> на рыбалку на пляжах не действуют.**
 
 ### Deterministic transition events
 
@@ -792,11 +796,10 @@ Finish the seasonal part with:
 
 Do **not** keep the eight-beach summer list on the card.
 
-Replace it with a concise current-state block, for example:
+Replace it with the universal current-state block:
 
-> 🗓 **На 10 января:** сезонные ограничения купального сезона не действуют
->
-> Следующий сезонный период — **Semana Santa 2027: 19 марта – 5 апреля**.
+> 🗓 **Сегодня и до <calculated_last_unrestricted_date> сезонные ограничения
+> на рыбалку на пляжах не действуют.**
 
 Then show only permanent/common constraints:
 
@@ -919,12 +922,11 @@ This card should also render current seasonal state.
 
 ### During bathing season
 
-Opening example:
+Opening uses the same calculated bathing-season status as the shore card:
 
-> 🗓 **На 23 сентября:** действует сезонный запрет в зонах купания
+> 🗓 **Сегодня действует купальный сезон — до <calculated_end_date> включительно.**
 >
-> До **30 сентября включительно** подводная рыбалка запрещена во всех
-> зонах купания Гуардамара.
+> В этот период подводная рыбалка запрещена во всех зонах купания Гуардамара.
 
 Then show permanent rules:
 
@@ -934,19 +936,17 @@ Then show permanent rules:
 - loaded speargun restrictions;
 - licence/medical requirement.
 
-Show next transition:
-
-> 📅 **С 1 октября этот сезонный запрет закончится.**
+On the final restricted day, the status line itself may say when the restriction
+ends; do not add a second future-looking paragraph on ordinary days.
 
 ### Outside bathing season
 
-Do not keep the summer prohibition as a large inactive block.
+Do not keep the inactive prohibition as a large block.
 
-Render instead:
+Render the same universal off-season status pattern:
 
-> 🗓 **На 10 января:** сезонный запрет в зонах купания не действует
->
-> Следующий период — **Semana Santa 2027: 19 марта – 5 апреля**.
+> 🗓 **Сегодня и до <calculated_last_unrestricted_date> сезонный запрет в
+> зонах купания не действует.**
 
 Then show only permanent underwater rules.
 
@@ -971,19 +971,20 @@ Seasonal closure:
 - January;
 - February.
 
-Example on 23 September 2026:
+User-facing rall status should also use current-state wording rather than a
+calendar dump.
 
-> 🗓 **На 23 сентября:** сезонный запрет не действует
->
-> Следующий запрет: **1 декабря 2026 – 28 февраля 2027**.
+Before the closure:
 
-On 1 December 2026:
+> 🗓 **Сегодня сезонный запрет не действует — до 30 ноября включительно.**
 
-> 🚫 **На 1 декабря:** действует сезонный запрет
->
-> Рыбалка с rall/esparavel запрещена до **28 февраля 2027 включительно**.
->
-> С **1 марта 2027** сезонный запрет закончится.
+During the closure:
+
+> 🚫 **Сегодня действует сезонный запрет — до <last_february_day> включительно.**
+
+On the final closure day, the same boundary-safe pattern may add:
+
+> С **1 марта** этот сезонный запрет перестанет действовать.
 
 Leap years must naturally render 29 February where applicable.
 
