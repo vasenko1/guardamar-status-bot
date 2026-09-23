@@ -975,14 +975,16 @@ async def monitor_emergency_risks(
 
         fire, dry = _current_previfoc(value)
         if (
-            value["published"]["fire_level"] is None
+            previfoc_succeeded
+            and value["published"]["fire_level"] is None
             and fire in {1, 2}
         ):
             # First low/high observation is a silent baseline. Extreme risk
             # remains eligible on the first successful daytime run.
             value["published"]["fire_level"] = fire
         if (
-            value["published"]["dry_level"] is None
+            previfoc_succeeded
+            and value["published"]["dry_level"] is None
             and dry in {1, 2}
         ):
             # A first no-risk/probable observation establishes a baseline.
