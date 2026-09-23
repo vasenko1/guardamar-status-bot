@@ -1,7 +1,7 @@
 # 112CV emergency and Previfoc source investigation
 
 Date: 2026-09-20  
-Status: research / product direction, not yet implemented
+Status: implemented / retained source research
 
 ## Goal
 
@@ -315,14 +315,28 @@ Runtime model:
    shape. A failed observation preserves the previous normalized state and
    cannot create an all-clear.
 
-Public-message policy is not finalized. Current product direction:
+Public-message policy is finalized:
 
-- level 1: normally no standalone message;
-- level 2: candidate for compact visibility in the morning briefing;
-- level 3: candidate for a standalone official-risk notice.
+- keep the hourly `:19` observation cadence so same-day official readjustments
+  remain observable;
+- before 07:00 Europe/Madrid, store Previfoc observations but do not render or
+  acknowledge a Previfoc transition as published;
+- on the first run at or after 07:00, publish only the delta that is still
+  current relative to the last published Previfoc state;
+- if an overnight transition reverses before morning, publish nothing about
+  that intermediate state;
+- after 07:00, later same-day Previfoc changes are eligible on the next hourly
+  run;
+- this delay never applies to CCE/hydrological emergency transitions;
+- user-facing Previfoc copy must make the daily scope explicit with wording
+  such as `сегодня` / `на сегодня` and must not invent an hourly interval that
+  the source does not provide;
+- `TormentaID=2` uses the compact resident copy `Сухие грозы возможны сегодня`
+  and `Для зоны Гуардамара повышен риск возникновения сухих гроз.`.
 
-No public message wording should be finalized until the current zone-6
-machine-readable source is confirmed.
+This policy requires no second scheduler, resident worker, queue or additional
+pending-state schema. The observed state itself is the pending candidate; the
+published state remains unchanged until an eligible public delivery.
 
 ## Hydrology source closure
 
@@ -356,7 +370,7 @@ Current repository schedule includes:
 - electricity attempts at 20:30, 20:35, 20:45, 21:00, 21:20
 - Friday weekend jobs at 18:00, 18:20, 19:00
 
-Candidate single 112 cron slot:
+Current 112 cron slot:
 
 `:19` every hour.
 
@@ -440,6 +454,3 @@ emergency channels.
 
 1. Whether a real future Segura hydrological preemergencia appears in
    `avisometeorologico.pdf`, `emergencias.jsf`, both, or neither.
-2. Exact normalized state schema and final message copy.
-3. Whether Previfoc level 2 deserves public output or only inclusion in the
-   morning briefing.
