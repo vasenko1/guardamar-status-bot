@@ -570,6 +570,65 @@ class EmergencyRiskTests(unittest.TestCase):
             )
             self.assertEqual(state.read()["published"]["dry_level"], 2)
 
+
+    def test_morning_previfoc_notice_requires_fresh_same_run_observation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = EmergencyRiskState(Path(directory) / "risk.json")
+            value = state.empty()
+            value["published"]["fire_level"] = 1
+            value["published"]["dry_level"] = 1
+            value["previfoc"] = {
+                "fire_level": 1,
+                "dry_thunderstorm_level": 2,
+                "alert_id": 11,
+                "observed_at": "2026-09-24T06:19:00+02:00",
+            }
+            state.write(value)
+
+            async def previfoc_failure():
+                raise EmergencyRiskError("temporary", code="TIMEOUT")
+
+            async def probable_previfoc():
+                return PrevifocRisk(1, 2, 12)
+
+            async def cce():
+                return HYDRO_NONE
+
+            calls = []
+
+            async def publish(message):
+                calls.append(message)
+                return 100
+
+            result = asyncio.run(
+                monitor_emergency_risks(
+                    datetime.fromisoformat("2026-09-24T07:19:00+02:00"),
+                    state,
+                    publish,
+                    fetch_previfoc_fn=previfoc_failure,
+                    fetch_cce_html_fn=cce,
+                    fetch_cce_pdf_fn=cce,
+                )
+            )
+            self.assertEqual(result, "no_update")
+            self.assertEqual(calls, [])
+            self.assertEqual(state.read()["published"]["dry_level"], 1)
+
+            result = asyncio.run(
+                monitor_emergency_risks(
+                    datetime.fromisoformat("2026-09-24T08:19:00+02:00"),
+                    state,
+                    publish,
+                    fetch_previfoc_fn=probable_previfoc,
+                    fetch_cce_html_fn=cce,
+                    fetch_cce_pdf_fn=cce,
+                )
+            )
+            self.assertEqual(result, "published")
+            self.assertEqual(len(calls), 1)
+            self.assertIn("Сухие грозы возможны сегодня", calls[0])
+
+
     def test_previfoc_night_reversal_never_becomes_a_stale_notice(self):
         with tempfile.TemporaryDirectory() as directory:
             state = EmergencyRiskState(Path(directory) / "risk.json")
