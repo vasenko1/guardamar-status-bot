@@ -129,7 +129,7 @@ from .blood_donation import (
     BloodDonationError,
     BloodDonationState,
     monitor_blood_donation_alert,
-    refresh_blood_donation_catalog,
+    refresh_blood_donation_catalog_if_due,
 )
 from .weekend import produce_weekend_message, weekend_dates
 from .models import ColdHealthRisk, HeatHealthRisk
@@ -1475,10 +1475,12 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
 
             async def build_morning_message() -> str:
                 try:
-                    await refresh_blood_donation_catalog(
+                    refreshed = await refresh_blood_donation_catalog_if_due(
                         now,
                         blood_donation_path,
                     )
+                    if refreshed:
+                        logging.info("Blood-donation weekly catalog refreshed")
                 except BloodDonationError as exc:
                     logging.warning(
                         "Blood-donation morning refresh failed: %s",
