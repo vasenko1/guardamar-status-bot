@@ -304,7 +304,7 @@ def _session_from_data(value: object) -> BloodDonationSession:
 
 
 class BloodDonationState:
-    """One current-day snapshot plus one duplicate-prevention date."""
+    """One discovery/confirmation snapshot plus duplicate-prevention date."""
 
     def __init__(self, path: Path = Path(DEFAULT_STATE_PATH)) -> None:
         self.path = path
@@ -417,6 +417,8 @@ class BloodDonationState:
             or age_days < 0
             or age_days > 1
         ):
+            return ()
+        if age_days == 1 and local_observed.time() < _ALERT_START:
             return ()
         return sessions
 
