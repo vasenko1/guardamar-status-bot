@@ -179,6 +179,17 @@ class TrafficFormattingTests(unittest.TestCase):
 
         self.assertEqual(label, "El Raso — Calle Manuel Fernández")
 
+    def test_fallback_preserves_spanish_street_casing(self):
+        body = fallback_body(
+            incident(category="laneClosed"),
+            location(street="Avenida del Mediterráneo"),
+            "ongoing",
+            NOW,
+        )
+
+        self.assertIn("Avenida del Mediterráneo", body)
+        self.assertNotIn("avenida del mediterráneo", body)
+
     def test_unknown_end_is_silent(self):
         body = fallback_body(incident(ends_at=None), location(), "new_present", NOW)
 
