@@ -24,24 +24,29 @@ Use the direct official Alicante HTML endpoint:
 
 `https://oficina20.san.gva.es/gportal-ctcvcol-portlet/listaColectas.jsp?provincia=0007`
 
-The morning publication builder performs at most one bounded HTTPS GET. The
-adapter parses ordinary table text with the Python standard library, filters
-exactly `GUARDAMAR DEL SEGURA`, rejects malformed rows and ignores rows marked
-`SUSPENDIDA`.
+The existing morning publication lifecycle checks only the timestamp of the
+last successful blood-donation snapshot. It performs one bounded HTTPS GET only
+when at least seven local calendar days have elapsed (or no snapshot exists).
+The adapter parses ordinary table text with the Python standard library,
+filters exactly `GUARDAMAR DEL SEGURA`, rejects malformed rows and ignores
+rows marked `SUSPENDIDA`.
 
 Only normalized current/future Guardamar sessions are stored in the small atomic
 `state/blood_donation.json`; raw HTML and province-wide rows are never cached.
 
-The same morning snapshot has two consumers:
+The weekly snapshot is discovery state, not publication authority. At 16:45
+`Europe/Madrid`, the short-lived alert command first checks local state. If
+there is no known Guardamar session tomorrow, it exits without a source
+request. If tomorrow is known, it performs exactly one fresh bounded control
+GET and sends the standalone alert only if that current response still contains
+the session. A cancellation, disappearance or date change suppresses the
+message; changed hours or venue are taken from the fresh response.
 
-1. the Morning Digest includes a session occurring today as the normal event
-   `Сегодня можно сдать кровь 🩸`;
-2. a short-lived 16:45 `Europe/Madrid` cron command checks the same local
-   snapshot for a session tomorrow and, if present, sends one standalone alert.
-
-The 16:45 command performs no network request. A snapshot from another local
-calendar day is not reused, so a failed morning source refresh fails closed
-instead of publishing stale donation information.
+The successful 16:45 control GET replaces the same normalized snapshot. The
+Morning Digest may show today's session only when that snapshot was observed
+today or on the previous local calendar day. This lets the next morning reuse
+the confirmed 16:45 facts while preventing an older weekly discovery snapshot
+from becoming a public same-day event by itself.
 
 The alert window is bounded to 16:45–17:59. Missed alerts are not replayed later
 that evening or on the event day. The snapshot stores only one `alerted_for` date to prevent duplicate delivery.
@@ -56,8 +61,9 @@ No street address or source footer is added to the public message.
 
 ## Consequences
 
-- one small HTML GET on a normal morning publication day;
-- zero source requests at 16:45;
+- about one scheduled discovery GET per seven days rather than one per day;
+- zero 16:45 source requests on days with no known tomorrow session;
+- exactly one fresh 16:45 control GET when a known session is due tomorrow;
 - no browser, PDF, OCR, AI, daemon, queue or generic notification framework;
 - cancellations explicitly marked `SUSPENDIDA` are not published;
 - source failure suppresses donation output for that day rather than using a
