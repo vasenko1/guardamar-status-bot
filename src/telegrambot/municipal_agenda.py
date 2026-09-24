@@ -610,7 +610,7 @@ def _normalized_turismo_image_url(value: Any) -> Optional[str]:
         or not parsed.path.casefold().endswith((".jpg", ".jpeg", ".png", ".webp"))
     ):
         return None
-    return urllib.parse.urlunsplit(parsed._replace(fragment=""))
+    return urllib.parse.urlunsplit(parsed._replace(query="", fragment=""))
 
 
 def _explicit_venue_and_address(event: SourceEvent) -> SourceEvent:
