@@ -883,8 +883,9 @@ async def monitor_traffic(
             if lifecycle_existing is not None:
                 for key in (
                     "last_present_alert_date", "last_future_alert_date",
-                    "last_message_id", "pending_delivery", "end_notified_at",
-                    "ended_at",
+                    "last_message_id", "last_alert_category",
+                    "last_future_start", "pending_delivery",
+                    "end_notified_at", "ended_at",
                 ):
                     if key in existing:
                         base[key] = existing[key]
