@@ -618,6 +618,31 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
             "Fiestas del Campo — Campo de Guardamar",
         )
 
+    def test_same_occurrence_merge_keeps_later_programme_image(self):
+        day = date(2026, 9, 25)
+        official = SourceEvent(
+            "Entrada de bandas",
+            day, day, "18:30", None, None, "event",
+            ("turismo_html",),
+        )
+        poster_url = (
+            "https://guardamarturismo.com/wp-content/uploads/"
+            "2026/09/fiestas-del-campo-2026-cartel.jpg"
+        )
+        programme = SourceEvent(
+            "Entrada de bandas",
+            day, day, "18:30", None, None, "event",
+            ("turismo_programme",),
+            programme_title="Fiestas del Campo — Campo de Guardamar",
+            programme_order=20,
+            image_url=poster_url,
+        )
+
+        merged = merge_text_and_poster_events((official,), (programme,))
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0].image_url, poster_url)
+
     def test_corroborating_source_can_make_same_title_self_contained(self):
         official = SourceEvent(
             "TRIVOX (Tributo a Il Divo)",
