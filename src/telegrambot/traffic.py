@@ -37,6 +37,18 @@ STATE_RETENTION = timedelta(days=14)
 MISSING_CONFIRMATIONS = 2
 DAILY_REPEAT_HOUR = 8
 
+_STATE_REQUIRED_FIELDS = frozenset({
+    "provider_id", "category", "validity", "probability",
+    "starts_at", "ends_at", "from_place", "to_place",
+    "descriptions_es", "coordinates", "location",
+    "last_seen_at", "missing_successes",
+})
+_STATE_OPTIONAL_FIELDS = frozenset({
+    "last_present_alert_date", "last_future_alert_date",
+    "last_message_id", "last_alert_category", "pending_delivery",
+    "end_notified_at", "ended_at",
+})
+
 _SENTINELS = frozenset({
     "null", "none", "undefined", "unknown", "n/a", "na", "-", "—",
 })
@@ -546,10 +558,10 @@ def _record_incident(record: dict) -> TrafficIncident:
 def _record_location(record: dict) -> TrafficLocation:
     location = record.get("location")
     if not isinstance(location, dict):
-        raise TrafficError("traffic state location is invalid")
+        raise TrafficError("traffic state location is invalid", code="STATE")
     municipality = _clean_text(location.get("municipality"))
     if municipality is None:
-        raise TrafficError("traffic state municipality is invalid")
+        raise TrafficError("traffic state municipality is invalid", code="STATE")
     longitude = location.get("longitude")
     latitude = location.get("latitude")
     return TrafficLocation(
@@ -735,6 +747,63 @@ def _last_message_id(record: dict) -> Optional[int]:
     if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
         raise TrafficError("traffic state message ID is invalid")
     return value
+
+
+def _validate_state_record(provider_id: Any, record: Any) -> None:
+    if (
+        not isinstance(provider_id, str)
+        or not provider_id
+        or len(provider_id) > 300
+        or not isinstance(record, dict)
+        or not _STATE_REQUIRED_FIELDS.issubset(record)
+        or set(record) - (_STATE_REQUIRED_FIELDS | _STATE_OPTIONAL_FIELDS)
+    ):
+        raise TrafficError("traffic state event is invalid", code="STATE")
+
+    incident = _record_incident(record)
+    location = _record_location(record)
+    if (
+        incident.provider_id != provider_id
+        or location.municipality != GUARDAMAR_MUNICIPALITY
+    ):
+        raise TrafficError("traffic state event is inconsistent", code="STATE")
+
+    last_seen = _safe_iso(record.get("last_seen_at"))
+    if last_seen is None:
+        raise TrafficError("traffic state last-seen time is invalid", code="STATE")
+
+    missing = record.get("missing_successes")
+    if not isinstance(missing, int) or isinstance(missing, bool) or missing < 0:
+        raise TrafficError("traffic state missing counter is invalid", code="STATE")
+
+    for field in ("last_present_alert_date", "last_future_alert_date"):
+        if field in record:
+            _alert_date(record, field)
+
+    if "last_message_id" in record:
+        _last_message_id(record)
+
+    alert_category = _clean_text(record.get("last_alert_category"), limit=40)
+    if (
+        "last_alert_category" in record
+        and alert_category not in CATEGORIES
+    ):
+        raise TrafficError("traffic state alert category is invalid", code="STATE")
+
+    for field in ("end_notified_at", "ended_at"):
+        if field in record and _safe_iso(record.get(field)) is None:
+            raise TrafficError("traffic state lifecycle time is invalid", code="STATE")
+
+    pending = record.get("pending_delivery")
+    if pending is not None:
+        if (
+            not isinstance(pending, dict)
+            or set(pending) != {"at", "marker", "value"}
+            or _safe_iso(pending.get("at")) is None
+            or _clean_text(pending.get("marker"), limit=40) is None
+            or _clean_text(pending.get("value"), limit=80) is None
+        ):
+            raise TrafficError("traffic pending delivery state is invalid", code="STATE")
 
 
 async def _deliver(
