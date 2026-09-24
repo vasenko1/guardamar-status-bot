@@ -1432,8 +1432,9 @@ def build_fishing(root_link: Optional[str] = None) -> str:
             "заката до восхода — запрещена; заметный сигнальный буй обязателен.\n\n"
             "⚓ В портовых водах рыбалка запрещена, если для конкретного "
             "порта не установлено исключение.\n\n"
-            f'📄 Нужна соответствующая <a href="{FISHING_GVA_LICENSE_URL}"><b>'
-            "лицензия GVA</b></a>.\n"
+            "📄 Нужна соответствующая лицензия. "
+            f'<a href="{FISHING_GVA_LICENSE_URL}"><b>Условия и оформление — '
+            "Generalitat Valenciana</b></a>.\n"
             f'📱 <a href="{FISHING_PESCAREC_URL}"><b>PescaREC — размеры, '
             "ограничения и декларация улова</b></a>\n"
             f'🚦 <a href="{FISHING_RESTRICTIONS_URL}"><b>Актуальные '
