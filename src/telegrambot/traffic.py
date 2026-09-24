@@ -303,19 +303,15 @@ async def resolve_guardamar_location(
         for point in (points[0], points[-1]):
             if point not in candidates:
                 candidates.append(point)
-    first_non_guardamar = None
-    for index, (longitude, latitude) in enumerate(candidates):
+    for longitude, latitude in candidates:
         location = await asyncio.to_thread(
             _reverse_geocode, api_key, longitude, latitude
         )
-        if location is None:
-            continue
-        if location.municipality == GUARDAMAR_MUNICIPALITY:
+        if (
+            location is not None
+            and location.municipality == GUARDAMAR_MUNICIPALITY
+        ):
             return location
-        if index == 0:
-            first_non_guardamar = location
-    if first_non_guardamar is not None:
-        return None
     return None
 
 
@@ -377,7 +373,7 @@ def _time_label(value: datetime, *, include_date: bool) -> str:
     return f"{local:%H:%M}"
 
 
-def _place_phrase(incident: TrafficIncident, location: TrafficLocation) -> str:
+def _place_phrase(location: TrafficLocation) -> str:
     subdivision = _strip_urbanization(location.subdivision)
     street = _clean_text(location.street)
     if subdivision and street:
@@ -400,12 +396,10 @@ def fallback_body(
     location: TrafficLocation,
     mode: str,
     now: datetime,
-    *,
-    previous_category: Optional[str] = None,
 ) -> str:
     """Deterministic publication fallback when editorial AI is unavailable."""
 
-    place = _place_phrase(incident, location)
+    place = _place_phrase(location)
     if mode == "future_tomorrow":
         start = incident.starts_at
         when = (
@@ -960,8 +954,7 @@ async def monitor_traffic(
                     incident,
                     location,
                     mode,
-                    local_now,
-                    previous_category=old_category,
+                    local_now
                 )
             try:
                 message = build_alert_message(incident, location, body)
