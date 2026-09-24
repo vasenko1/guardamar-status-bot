@@ -83,10 +83,11 @@ network access. With a known session tomorrow it performs exactly one fresh
 bounded control read and publishes only if the session is still present and not
 `SUSPENDIDA`; current hours and venue come from that fresh response.
 
-The successful 16:45 control read replaces the snapshot. The next Morning
-Digest may render today's donation only from a snapshot observed today or on
-the previous local date, so a weekly discovery snapshot cannot become a stale
-same-day public event by itself.
+The successful 16:45 control read replaces the snapshot and resets the
+seven-day discovery timer. The next Morning Digest may render today's donation
+from a snapshot observed today, or from the previous local date only when that
+observation was at/after 16:45. Therefore a previous-morning weekly discovery
+snapshot cannot become a same-day public event by itself.
 
 The state contains the current normalized sessions plus one `alerted_for`
 date. A definite Telegram failure clears that date for retry; an ambiguous send
