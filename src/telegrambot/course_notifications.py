@@ -1235,12 +1235,12 @@ def build_message(
             group = f" · {html.escape(str(event['group']))}" if event.get("group") else ""
             if event.get("until_full"):
                 detail = (
-                    "завтра заканчивается основной период записи; после него "
-                    "заявки могут продолжать принимать при наличии мест"
+                    " — заканчивается основной период; после него заявки "
+                    "могут продолжать принимать при наличии мест"
                 )
             else:
-                detail = "завтра последний день подачи заявки"
-            lines.append(f"• {target}{group} — {detail}")
+                detail = ""
+            lines.append(f"• {target}{group}{detail}")
         lines.extend([
             "",
             "Нажмите на название занятия, чтобы открыть его актуальную карточку.",
