@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-09-10
+- Amended by: ADR 0080 (2026-09-24) for URL-only featured-media metadata
 
 ## Context
 
