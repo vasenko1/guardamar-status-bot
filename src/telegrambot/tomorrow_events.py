@@ -65,6 +65,10 @@ class TomorrowEventState:
         raw_date = value.get("target_date")
         status = value.get("status")
         if raw_date is None and status is None:
+            if set(value) != {"version"}:
+                raise TomorrowEventStateError(
+                    "tomorrow-event empty state has unexpected fields"
+                )
             return value
         if not isinstance(raw_date, str) or status not in {"uncertain", "sent"}:
             raise TomorrowEventStateError(
@@ -76,6 +80,15 @@ class TomorrowEventState:
             raise TomorrowEventStateError(
                 "tomorrow-event state has an invalid target date"
             ) from exc
+        expected_fields = (
+            {"version", "target_date", "status", "message_id"}
+            if status == "sent"
+            else {"version", "target_date", "status"}
+        )
+        if set(value) != expected_fields:
+            raise TomorrowEventStateError(
+                "tomorrow-event state has unexpected fields"
+            )
         message_id = value.get("message_id")
         if status == "sent":
             if (
@@ -138,6 +151,11 @@ class TomorrowEventState:
                 os.fsync(handle.fileno())
             os.chmod(temporary, 0o600)
             os.replace(temporary, self.path)
+            directory = os.open(str(self.path.parent), os.O_RDONLY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
         except Exception:
             try:
                 os.unlink(temporary)
@@ -273,7 +291,7 @@ def _approved_image_url(value: Optional[str]) -> Optional[str]:
         or not path.endswith((".jpg", ".jpeg", ".png", ".webp"))
     ):
         return None
-    return urllib.parse.urlunsplit(parsed._replace(fragment=""))
+    return urllib.parse.urlunsplit(parsed._replace(query="", fragment=""))
 
 
 def _unit_image_url(unit: Sequence[Event]) -> Optional[str]:
