@@ -87,7 +87,13 @@ from .hidraqua import (
     HidraquaState,
     monitor_once,
 )
-from .gemini import GeminiError
+from .traffic import (
+    TrafficDeliveryUncertain,
+    TrafficError,
+    TrafficState,
+    monitor_traffic,
+)
+from .gemini import GeminiError, compose_traffic_notice
 from .pharmacy import PharmacyError, refresh_pharmacy_catalog
 from .morning import produce_message
 from .operational_updates import (
@@ -166,6 +172,7 @@ DEFAULT_PHARMACY_STATE_PATH = "state/pharmacy.json"
 DEFAULT_EARTHQUAKE_STATE_PATH = "state/earthquakes.json"
 DEFAULT_EMERGENCY_RISK_STATE_PATH = "state/emergency_risks.json"
 DEFAULT_HIDRAQUA_STATE_PATH = "state/hidraqua.json"
+DEFAULT_TRAFFIC_STATE_PATH = "state/traffic.json"
 DEFAULT_SUMA_STATE_PATH = "state/suma.json"
 DEFAULT_BLOOD_DONATION_STATE_PATH = "state/blood_donation.json"
 DEFAULT_CAMS_CACHE_PATH = "state/cams.json"
@@ -750,6 +757,65 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     effective_base,
                     cold_level=cold_level,
                 )
+
+    if command == "monitor-traffic":
+        state = TrafficState(Path(os.environ.get(
+            "TRAFFIC_STATE_PATH", DEFAULT_TRAFFIC_STATE_PATH
+        )))
+        bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
+        chat_id = _required_environment("TELEGRAM_CHAT_ID")
+        tomtom_key = _required_environment("TOMTOM_API_KEY")
+        gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
+
+        async def compose_traffic(facts: dict) -> Optional[str]:
+            if not gemini_key:
+                return None
+            return await compose_traffic_notice(gemini_key, facts)
+
+        async def publish_traffic(
+            message: str,
+            reply_to_message_id: Optional[int],
+        ) -> int:
+            try:
+                if reply_to_message_id is not None:
+                    try:
+                        return await send_message(
+                            bot_token,
+                            chat_id,
+                            message,
+                            disable_notification=False,
+                            reply_to_message_id=reply_to_message_id,
+                            max_attempts=1,
+                            retry_only_rate_limits=True,
+                        )
+                    except TelegramError as exc:
+                        if exc.diagnostic_code != "MESSAGE-NOT-FOUND":
+                            raise
+                        logging.warning(
+                            "Traffic reply anchor unavailable; sending standalone"
+                        )
+                return await send_message(
+                    bot_token,
+                    chat_id,
+                    message,
+                    disable_notification=False,
+                    max_attempts=1,
+                    retry_only_rate_limits=True,
+                )
+            except TelegramError as exc:
+                if is_ambiguous_send_failure(exc):
+                    raise TrafficDeliveryUncertain() from exc
+                raise
+
+        delivered = await monitor_traffic(
+            state,
+            now,
+            tomtom_key,
+            compose_traffic,
+            publish_traffic,
+        )
+        logging.info("Traffic monitor delivered: %d", delivered)
+        return 0
 
     if command == "monitor-hidraqua":
         state = HidraquaState(Path(os.environ.get(
@@ -1627,6 +1693,7 @@ def main() -> None:
             "check-112",
             "monitor-earthquakes",
             "monitor-hidraqua",
+            "monitor-traffic",
             "suma",
             "blood-donation-alert",
             "weekend", "weekend-preview",
@@ -1674,6 +1741,7 @@ def main() -> None:
         LibraryAgendaError,
         AmGuardamarError,
         HidraquaError,
+        TrafficError,
         SumaError,
         BloodDonationError,
         MunicipalAgendaError,
