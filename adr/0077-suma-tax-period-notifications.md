@@ -71,10 +71,10 @@ Keep `termux/run-daily.sh` as the existing simple one-shot launcher:
 Inside that same short-lived Python lifecycle, SUMA runs in a best-effort
 `finally` step with its own source adapter and state. This preserves one 07:30
 process and guarantees that an attempted Morning Digest publication is followed
-by a SUMA check even when the morning path raises. Expected SUMA source,
-state-I/O or Telegram failures are logged without changing the Morning Digest
-exit result. The explicit `telegrambot suma` command remains available for
-operator verification and same-day retry.
+by a SUMA check even when the morning path raises. In the embedded best-effort
+path, any SUMA failure is logged without changing or masking the Morning Digest
+result; the explicit `telegrambot suma` command remains strict so unexpected
+errors still fail loudly for operator verification and same-day retry.
 
 No daemon, queue, database, provider registry, browser, OCR, PDF parser, AI
 provider or raw-source cache is added.
