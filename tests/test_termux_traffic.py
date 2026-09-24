@@ -18,7 +18,7 @@ class TrafficTermuxTests(unittest.TestCase):
             crontab_state.write_text(initial, encoding="utf-8")
             (commands / "crontab").write_text(
                 "#!/bin/sh\n"
-                "if [ \"\${1-}\" = -l ]; then cat \"$FAKE_CRONTAB\"; "
+                "if [ \"" + "$" + "{1-}\" = -l ]; then cat \"$FAKE_CRONTAB\"; "
                 "else cat >\"$FAKE_CRONTAB\"; fi\n",
                 encoding="utf-8",
             )
