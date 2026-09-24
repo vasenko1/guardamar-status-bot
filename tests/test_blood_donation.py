@@ -11,7 +11,7 @@ from telegrambot.blood_donation import (
     BloodDonationDeliveryUncertain,
     BloodDonationSession,
     BloodDonationState,
-    GOOGLE_MAPS_URL,
+    MAP_URL,
     _is_allowed_url,
     build_alert_message,
     fetch_today_blood_donation_events,
@@ -106,7 +106,7 @@ class BloodDonationSourceTests(unittest.TestCase):
         )
         self.assertIn("🕒 <b>16:45–20:30</b>", message)
         self.assertIn(
-            f'<a href="{GOOGLE_MAPS_URL}">Centro Sanitario Integrado</a> '
+            f'<a href="{MAP_URL}">Centro Sanitario Integrado</a> '
             "(зона педиатрии)",
             message,
         )
@@ -166,7 +166,7 @@ class BloodDonationDigestTests(unittest.TestCase):
             rendered,
         )
         self.assertIn(
-            f'📍 <a href="{GOOGLE_MAPS_URL}">'
+            f'📍 <a href="{MAP_URL}">'
             "Centro Sanitario Integrado (зона педиатрии)</a>",
             rendered,
         )
