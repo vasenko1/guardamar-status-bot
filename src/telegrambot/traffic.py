@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Iterator, Optional, Sequence
+from typing import Any, Awaitable, Callable, Iterator, Optional
 from zoneinfo import ZoneInfo
 
 from ._transport import BoundedFetchError, fetch_bounded
@@ -430,13 +430,6 @@ def fallback_body(
                 f"{_sentence_start(place)} полное перекрытие снято, "
                 "но полоса движения остаётся закрыта."
             )
-    elif mode == "future_rescheduled":
-        start = incident.starts_at
-        when = (
-            _time_label(start, include_date=True)
-            if start is not None else "новое время"
-        )
-        body = f"Срок запланированного ограничения изменился: теперь начало ожидается {when}."
     else:
         if incident.category == "roadClosed":
             body = f"{_sentence_start(place)} перекрыт проезд."
@@ -745,12 +738,6 @@ async def _deliver(
     return 1
 
 
-def _same_local_start(left: Optional[datetime], right: Optional[datetime]) -> bool:
-    if left is None or right is None:
-        return left is right
-    return left.astimezone(GUARDAMAR_TIMEZONE) == right.astimezone(GUARDAMAR_TIMEZONE)
-
-
 async def monitor_traffic(
     state: TrafficState,
     now: datetime,
@@ -876,7 +863,6 @@ async def monitor_traffic(
                 _record_incident(lifecycle_existing)
                 if lifecycle_existing is not None else None
             )
-            old_start = old_incident.starts_at if old_incident else None
             old_category = old_incident.category if old_incident else None
             old_validity = old_incident.validity if old_incident else None
             last_message = (
@@ -895,17 +881,12 @@ async def monitor_traffic(
                 _clean_text(lifecycle_existing.get("last_alert_category"), limit=40)
                 if lifecycle_existing is not None else None
             )
-            last_future_start = (
-                _safe_iso(lifecycle_existing.get("last_future_start"))
-                if lifecycle_existing is not None else None
-            )
-
             base = _serialize_incident(incident, location)
             if lifecycle_existing is not None:
                 for key in (
                     "last_present_alert_date", "last_future_alert_date",
                     "last_message_id", "last_alert_category",
-                    "last_future_start", "pending_delivery",
+                    "pending_delivery",
                     "end_notified_at", "ended_at",
                 ):
                     if key in existing:
@@ -932,15 +913,6 @@ async def monitor_traffic(
                 ):
                     mode = "future_tomorrow"
                     marker = "last_future_alert_date"
-                elif (
-                    lifecycle_existing is not None
-                    and previous_future_date is not None
-                    and old_validity == "future"
-                    and not _same_local_start(last_future_start or old_start, incident.starts_at)
-                ):
-                    mode = "future_rescheduled"
-                    marker = "last_future_alert_date"
-                    reply_to = last_message
                 else:
                     continue
             else:
@@ -1003,9 +975,10 @@ async def monitor_traffic(
                 )
                 message = build_alert_message(incident, location, body)
 
-            remember = {"last_alert_category": incident.category}
-            if incident.validity == "future" and incident.starts_at is not None:
-                remember = {"last_future_start": incident.starts_at.isoformat()}
+            remember = (
+                {"last_alert_category": incident.category}
+                if incident.validity == "present" else None
+            )
             delivered += await _deliver(
                 state,
                 value,
