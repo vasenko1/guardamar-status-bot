@@ -377,6 +377,28 @@ class SumaMonitorTests(unittest.TestCase):
             )
             self.assertEqual(calls, [])
 
+    def test_charge_on_final_day_uses_last_day_wording(self):
+        special = campaign(
+            end=date(2026, 10, 1),
+            debit_charge=date(2026, 10, 1),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state = SumaState(Path(directory) / "suma.json")
+            calls = []
+
+            async def send(message):
+                calls.append(message)
+                return 1
+
+            self.run_monitor(state, at(2026, 9, 24), special, send)
+            self.assertEqual(
+                self.run_monitor(state, at(2026, 10, 1), special, send),
+                "published",
+            )
+            self.assertEqual(len(calls), 1)
+            self.assertIn("сегодня также последний день", calls[0])
+            self.assertNotIn("0 дней", calls[0])
+
     def test_charge_wins_if_charge_and_final_reminder_share_a_date(self):
         special = campaign(
             end=date(2026, 10, 2),
