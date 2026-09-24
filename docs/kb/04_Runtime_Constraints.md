@@ -138,8 +138,8 @@ allowed for the guide.
   replace unrelated jobs owned by another bot.
 - Keep the guide sync sequential and one-shot; its current source cost is two
   small catalogue requests, not one request per activity.
-- Keep SUMA to two bounded sequential public HTML GETs in the existing 07:30
-  daily shell; store only bounded semantic trigger keys and never raw pages.
+- Keep SUMA to two bounded sequential public HTML GETs inside the existing
+  07:30 process; store only bounded semantic trigger keys and never raw pages.
 - Avoid continuous parsing, transformation, or monitoring.
 - Do not optimize speculatively, but reject designs with obvious background
   cost.
