@@ -1084,12 +1084,18 @@ async def monitor_traffic(
                     )
                 else:
                     if (
-                        refreshed_location is not None
-                        and refreshed_location.municipality == GUARDAMAR_MUNICIPALITY
+                        refreshed_location is None
+                        or refreshed_location.municipality != GUARDAMAR_MUNICIPALITY
                     ):
-                        location = refreshed_location
-                        record["location"] = _location_data(location)
-                        state.write(value)
+                        logging.warning(
+                            "Traffic location no longer confirms Guardamar for %s; "
+                            "publication skipped",
+                            incident.provider_id,
+                        )
+                        continue
+                    location = refreshed_location
+                    record["location"] = _location_data(location)
+                    state.write(value)
 
             facts = traffic_facts(
                 incident,
