@@ -197,6 +197,11 @@ class TrafficFormattingTests(unittest.TestCase):
         self.assertNotIn("неизвест", body.casefold())
         self.assertNotIn("оконч", body.casefold())
 
+    def test_new_present_fallback_keeps_known_start_time(self):
+        body = fallback_body(incident(), location(), "new_present", NOW)
+
+        self.assertIn("16:45 23 сентября", body)
+
     def test_known_future_end_is_described_as_expected(self):
         body = fallback_body(
             incident(ends_at=NOW + timedelta(hours=3)),
