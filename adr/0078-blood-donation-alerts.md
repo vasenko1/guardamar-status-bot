@@ -64,6 +64,8 @@ No street address or source footer is added to the public message.
 - about one scheduled discovery GET per seven days rather than one per day;
 - zero 16:45 source requests on days with no known tomorrow session;
 - exactly one fresh 16:45 control GET when a known session is due tomorrow;
+- a successful control GET becomes the latest source read, so it also resets the
+  seven-day discovery timer and avoids another request the next morning;
 - no browser, PDF, OCR, AI, daemon, queue or generic notification framework;
 - cancellations explicitly marked `SUSPENDIDA` are not published;
 - source failure suppresses donation output for that day rather than using a
