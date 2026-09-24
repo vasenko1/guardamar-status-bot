@@ -1652,6 +1652,7 @@ def merge_text_and_poster_events(
                     current.programme_order if current.programme_order is not None
                     else poster_event.programme_order
                 ),
+                "image_url": current.image_url or poster_event.image_url,
             }
         )
     return tuple(merged[:MAX_EVENTS])
