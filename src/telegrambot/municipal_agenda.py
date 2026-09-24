@@ -519,6 +519,7 @@ class SourceEvent:
     access_note: Optional[str] = None
     programme_title: Optional[str] = None
     programme_order: Optional[int] = None
+    image_url: Optional[str] = None
 
 
 def _display_ticket_price(
@@ -564,7 +565,9 @@ _CAMPO_PROGRAMME_ORDER = {
 
 
 def _programme_source_metadata(
-    event: SourceEvent, programme_title: Optional[str] = None,
+    event: SourceEvent,
+    programme_title: Optional[str] = None,
+    image_url: Optional[str] = None,
 ) -> SourceEvent:
     """Keep the narrow Campo article's programme identity at its adapter."""
 
@@ -583,7 +586,31 @@ def _programme_source_metadata(
             event.programme_order if event.programme_order is not None
             else _CAMPO_PROGRAMME_ORDER.get(event.title_es)
         ),
+        image_url=event.image_url or image_url,
     )
+
+
+def _normalized_turismo_image_url(value: Any) -> Optional[str]:
+    """Accept only one official event-specific Turismo upload URL."""
+
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = urllib.parse.urlsplit(value)
+        port = parsed.port
+    except ValueError:
+        return None
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname not in PAGE_HOSTS
+        or port not in {None, 443}
+        or parsed.username is not None
+        or parsed.password is not None
+        or not parsed.path.casefold().startswith("/wp-content/uploads/")
+        or not parsed.path.casefold().endswith((".jpg", ".jpeg", ".png", ".webp"))
+    ):
+        return None
+    return urllib.parse.urlunsplit(parsed._replace(fragment=""))
 
 
 def _explicit_venue_and_address(event: SourceEvent) -> SourceEvent:
@@ -1206,7 +1233,8 @@ async def _turismo_programme_events(
         if not events:
             return previous, previous_state
         return tuple(
-            _programme_source_metadata(event, programme_name) for event in events
+            _programme_source_metadata(event, programme_name, poster_url)
+            for event in events
         ), {
             "article_url": article_url,
             "poster_url": poster_url,
@@ -1223,7 +1251,7 @@ async def _turismo_programme_events(
             return previous, previous_state
         if explicit_events:
             return tuple(
-                _programme_source_metadata(event, programme_name)
+                _programme_source_metadata(event, programme_name, poster_url)
                 for event in explicit_events
             ), {
                 "article_url": article_url,
@@ -2387,6 +2415,7 @@ def _snapshot_data(
                 "access_note": event.access_note,
                 "programme_title": event.programme_title,
                 "programme_order": event.programme_order,
+                "image_url": event.image_url,
             }
             for event in events
         ],
@@ -2472,6 +2501,12 @@ def _load_snapshot(path: Path) -> Optional[Dict[str, Any]]:
             normalized = normalized_events[0]
             if isinstance(raw, dict) and isinstance(raw.get("teaser_es"), str):
                 normalized = replace(normalized, teaser_es=raw["teaser_es"])
+            raw_image = raw.get("image_url") if isinstance(raw, dict) else None
+            if raw_image is not None:
+                image_url = _normalized_turismo_image_url(raw_image)
+                if image_url is None:
+                    raise ValueError
+                normalized = replace(normalized, image_url=image_url)
             raw_sources = raw.get("sources") if isinstance(raw, dict) else None
             if (
                 isinstance(raw_sources, list)
@@ -3733,6 +3768,10 @@ async def fetch_today_municipal_events(
                     source.end_date
                     if source.start_date != source.end_date else None
                 ),
+                active_from=(
+                    source.start_date
+                    if source.start_date != source.end_date else None
+                ),
                 category=source.category,
                 ticket_price_cents=ticket_price_cents,
                 ticket_price_is_from=ticket_price_is_from,
@@ -3755,6 +3794,7 @@ async def fetch_today_municipal_events(
                     source.start_date != source.end_date
                     and local_day == source.end_date
                 ),
+                image_url=source.image_url,
             )
         )
     return tuple(result)
