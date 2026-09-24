@@ -54,10 +54,8 @@ Collection is two sequential bounded HTML GETs once per existing daily run.
 No login, cookie state, browser, PDF, OCR, AI, raw-page cache or source history
 is required. The first successful run seeds only semantic trigger dates at or
 before that local day. Future exact-date triggers remain eligible; a missed
-trigger is never replayed from cached data. For the accepted 2026 campaign the
-general period is 27 July–8 October, the direct-debit setup deadline is
-23 September and the charge date is 1 October. Guardamar currently lists IBI
-urbana, IBI rústica, IAE and vados for that exact period.
+trigger is never replayed from cached data. Campaign-specific dates and observed
+tax rows belong in the dated SUMA research record rather than this stable KB.
 
 ## Approved morning health and atmosphere data
 
