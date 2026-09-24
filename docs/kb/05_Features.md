@@ -58,9 +58,9 @@ one standalone message only on these exact local dates:
 
 The first successful run is a silent baseline: trigger dates at or before that
 day are recorded without publication, while future dates remain eligible. A
-missed date is never replayed later. This means a first production bootstrap on
-24 September 2026 is silent; the next eligible notices are 1 October for the
-direct-debit charge and 7 October for the 8 October voluntary-payment deadline.
+missed date is never replayed later. Concrete campaign dates and bootstrap
+examples belong in the dated research/ADR record, not in this stable feature
+contract.
 
 The message uses only source-backed dates and the tax names found on the
 Guardamar SUMA page. The state is a tiny atomic list of semantic date keys. A
