@@ -124,6 +124,13 @@ from .suma import (
     SumaState,
     monitor_suma,
 )
+from .blood_donation import (
+    BloodDonationDeliveryUncertain,
+    BloodDonationError,
+    BloodDonationState,
+    monitor_blood_donation_alert,
+    refresh_blood_donation_catalog_if_due,
+)
 from .weekend import produce_weekend_message, weekend_dates
 from .models import ColdHealthRisk, HeatHealthRisk
 from .state import PublicationState, StateError
@@ -160,6 +167,7 @@ DEFAULT_EARTHQUAKE_STATE_PATH = "state/earthquakes.json"
 DEFAULT_EMERGENCY_RISK_STATE_PATH = "state/emergency_risks.json"
 DEFAULT_HIDRAQUA_STATE_PATH = "state/hidraqua.json"
 DEFAULT_SUMA_STATE_PATH = "state/suma.json"
+DEFAULT_BLOOD_DONATION_STATE_PATH = "state/blood_donation.json"
 DEFAULT_CAMS_CACHE_PATH = "state/cams.json"
 CAMS_UPDATE_CHECKPOINTS = frozenset({(10, 40)})
 
@@ -332,6 +340,9 @@ async def _produce_message(api_key: str, now: datetime) -> str:
             pesca_cv_state_path=Path(os.environ.get(
                 "PESCA_CV_EVENTS_STATE_PATH", DEFAULT_PESCA_CV_EVENTS_STATE_PATH
             )),
+            blood_donation_state_path=Path(os.environ.get(
+                "BLOOD_DONATION_STATE_PATH", DEFAULT_BLOOD_DONATION_STATE_PATH
+            )),
             diagnostics=diagnostics,
             translation_cache_path=Path(os.environ.get(
                 "EVENT_TRANSLATIONS_PATH", DEFAULT_EVENT_TRANSLATIONS_PATH
@@ -420,6 +431,9 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
     pesca_cv_path = Path(os.environ.get(
         "PESCA_CV_EVENTS_STATE_PATH", DEFAULT_PESCA_CV_EVENTS_STATE_PATH
     ))
+    blood_donation_path = Path(os.environ.get(
+        "BLOOD_DONATION_STATE_PATH", DEFAULT_BLOOD_DONATION_STATE_PATH
+    ))
     translations_path = Path(os.environ.get(
         "EVENT_TRANSLATIONS_PATH", DEFAULT_EVENT_TRANSLATIONS_PATH
     ))
@@ -480,6 +494,38 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         logging.info("SUMA notification sync complete: %s", result)
         return 0
 
+    async def run_blood_donation_alert() -> int:
+        bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
+        chat_id = _required_environment("TELEGRAM_CHAT_ID")
+        blood_state = BloodDonationState(blood_donation_path)
+
+        async def publish_blood_donation(message: str) -> int:
+            try:
+                return await send_message(
+                    bot_token,
+                    chat_id,
+                    message,
+                    disable_notification=False,
+                )
+            except TelegramError as exc:
+                if is_ambiguous_send_failure(exc):
+                    raise BloodDonationDeliveryUncertain() from exc
+                raise
+
+        try:
+            result = await monitor_blood_donation_alert(
+                blood_state,
+                now,
+                publish_blood_donation,
+            )
+        except BloodDonationDeliveryUncertain:
+            logging.warning(
+                "Blood-donation delivery uncertain; automatic resend disabled"
+            )
+            return 0
+        logging.info("Blood-donation alert sync complete: %s", result)
+        return 0
+
     async def edit_current_digest(
         state: PublicationState,
         api_key: str,
@@ -511,6 +557,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             am_guardamar_state_path=am_guardamar_path,
             facv_state_path=facv_path,
             pesca_cv_state_path=pesca_cv_path,
+            blood_donation_state_path=blood_donation_path,
             translation_cache_path=translations_path,
             aemet_digest=fallback,
             fetch_aemet=fallback is None,
@@ -1352,6 +1399,9 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
     if command == "suma":
         return await run_suma(best_effort=False)
 
+    if command == "blood-donation-alert":
+        return await run_blood_donation_alert()
+
     api_key = _required_environment("AEMET_API_KEY")
     if command == "preview":
         print(await _produce_message(api_key, datetime.now(GUARDAMAR_TIMEZONE)))
@@ -1423,10 +1473,25 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     else:
                         prune_cams_candidates(cams_cache_path, base)
 
-            result = await publish_morning(
-                now,
-                state,
-                lambda: produce_message(
+            async def build_morning_message() -> str:
+                try:
+                    refreshed = await refresh_blood_donation_catalog_if_due(
+                        now,
+                        blood_donation_path,
+                    )
+                    if refreshed:
+                        logging.info("Blood-donation weekly catalog refreshed")
+                except BloodDonationError as exc:
+                    logging.warning(
+                        "Blood-donation morning refresh failed: %s",
+                        exc.diagnostic_code,
+                    )
+                except Exception:
+                    logging.exception(
+                        "Unexpected blood-donation refresh failure; "
+                        "Morning Digest preserved"
+                    )
+                return await produce_message(
                     api_key,
                     now,
                     os.environ.get("GEMINI_API_KEY", "").strip(),
@@ -1441,6 +1506,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     am_guardamar_state_path=am_guardamar_path,
                     facv_state_path=facv_path,
                     pesca_cv_state_path=pesca_cv_path,
+                    blood_donation_state_path=blood_donation_path,
                     translation_cache_path=translations_path,
                     aemet_digest=prepared,
                     fetch_aemet=fetch_live,
@@ -1451,7 +1517,12 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     environment_detail_observer=lambda heat, cold, air, pollen, base: (
                         morning_environment_detail.append((heat, cold, air, pollen, base))
                     ),
-                ),
+                )
+
+            result = await publish_morning(
+                now,
+                state,
+                build_morning_message,
                 lambda message: send_message(
                     bot_token, chat_id, message, disable_notification=False
                 ),
@@ -1557,6 +1628,7 @@ def main() -> None:
             "monitor-earthquakes",
             "monitor-hidraqua",
             "suma",
+            "blood-donation-alert",
             "weekend", "weekend-preview",
             "poll",
         ),
@@ -1603,6 +1675,7 @@ def main() -> None:
         AmGuardamarError,
         HidraquaError,
         SumaError,
+        BloodDonationError,
         MunicipalAgendaError,
         PharmacyError,
         TelegramError,

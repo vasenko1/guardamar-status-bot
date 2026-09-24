@@ -64,6 +64,13 @@ class GuideTermuxTests(unittest.TestCase):
         self.assertIn("python -m telegrambot.guide bathing-water", script)
         self.assertNotIn("sync-guide.sh", script)
 
+    def test_blood_donation_alert_uses_one_daily_1645_cron(self):
+        script = (
+            ROOT / "termux" / "install-guide-cron.sh"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('"45 16 * * * $SH_BIN $BLOOD"', script)
+
     def test_installer_has_one_evening_bathing_check_during_official_season(self):
         script = (
             ROOT / "termux" / "install-guide-cron.sh"
@@ -88,6 +95,8 @@ class GuideTermuxTests(unittest.TestCase):
         self.assertEqual(installed.count("35 19 1-20 9 *"), 0)
         self.assertEqual(installed.count("35 19 1-30 9 *"), 0)
         self.assertEqual(installed.count("2 9 * * *"), 1)
+        self.assertEqual(installed.count("45 16 * * *"), 1)
+        self.assertEqual(installed.count("publish-blood-donation.sh"), 1)
 
     def test_installer_replaces_legacy_extended_bathing_schedules(self):
         legacy = (

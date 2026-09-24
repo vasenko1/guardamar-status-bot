@@ -70,6 +70,30 @@ rolls the key back for a same-day manual retry, while an ambiguous send keeps it
 to avoid an automatic duplicate. Source failure or source disagreement is
 silent.
 
+## Blood-donation alert and same-day event
+
+The existing morning lifecycle performs the official Alicante
+blood-donation read only when no local snapshot exists or seven local calendar
+days have elapsed since the last successful read. It retains only normalized
+current or future Guardamar sessions.
+
+A separate short-lived command runs at 16:45 Europe/Madrid. It first consults
+that local discovery snapshot. With no known session tomorrow it exits without
+network access. With a known session tomorrow it performs exactly one fresh
+bounded control read and publishes only if the session is still present and not
+`SUSPENDIDA`; current hours and venue come from that fresh response.
+
+The successful 16:45 control read replaces the snapshot and resets the
+seven-day discovery timer. The next Morning Digest may render today's donation
+from a snapshot observed today, or from the previous local date only when that
+observation was at/after 16:45. Therefore a previous-morning weekly discovery
+snapshot cannot become a same-day public event by itself.
+
+The state contains the current normalized sessions plus one `alerted_for`
+date. A definite Telegram failure clears that date for retry; an ambiguous send
+keeps it to prevent an automatic duplicate. No browser, PDF, AI, database,
+daemon, queue or generic notification framework is involved.
+
 ## Weekend events digest
 
 One optional Friday-evening message, «Афиша выходных», previews Saturday and
