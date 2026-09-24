@@ -80,6 +80,16 @@ class BloodDonationSourceTests(unittest.TestCase):
             (),
         )
 
+    def test_suspended_city_label_is_not_treated_as_guardamar(self):
+        suspended = HTML.replace(
+            b"<td>GUARDAMAR DEL SEGURA</td>",
+            b"<td>GUARDAMAR DEL SEGURA (SUSPENDIDA)</td>",
+        )
+        self.assertEqual(
+            parse_schedule(suspended, date(2026, 9, 24)),
+            (),
+        )
+
     def test_source_url_policy_is_exact(self):
         self.assertTrue(_is_allowed_url(
             "https://oficina20.san.gva.es/gportal-ctcvcol-portlet/"
@@ -91,6 +101,10 @@ class BloodDonationSourceTests(unittest.TestCase):
         ))
         self.assertFalse(_is_allowed_url(
             "http://oficina20.san.gva.es/gportal-ctcvcol-portlet/"
+            "listaColectas.jsp?provincia=0007"
+        ))
+        self.assertFalse(_is_allowed_url(
+            "https://oficina20.san.gva.es:bad/gportal-ctcvcol-portlet/"
             "listaColectas.jsp?provincia=0007"
         ))
 
