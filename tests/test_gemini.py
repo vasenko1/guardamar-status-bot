@@ -5,11 +5,14 @@ from unittest.mock import patch
 
 from telegrambot.gemini import (
     AGENDA_EXTRACTION_SCHEMA,
+    TRAFFIC_NOTICE_SCHEMA,
     GeminiError,
     _extract_agenda_events,
     _extract_agenda_text_events,
     _request_json,
     _verify_agenda_poster_events,
+    _compose_traffic_notice,
+    compose_traffic_notice,
     translate_event_titles,
 )
 
@@ -162,6 +165,33 @@ class GeminiRequestTests(unittest.TestCase):
         self.assertIn("from scratch", prompt)
         self.assertNotIn("CANDIDATES", prompt)
         self.assertNotIn("supplied candidate", prompt)
+
+    def test_traffic_notice_uses_fixed_schema_and_source_facts(self):
+        facts = {
+            "mode": "new_present",
+            "category": "roadClosed",
+            "street": "Avenida del Mediterráneo",
+            "details_es": ["Cerrado"],
+        }
+        with patch(
+            "telegrambot.gemini._request_json",
+            return_value={"body_ru": "В Гуардамаре перекрыт проезд."},
+        ) as request_json:
+            _compose_traffic_notice("secret-key", facts)
+
+        self.assertIs(request_json.call_args.args[2], TRAFFIC_NOTICE_SCHEMA)
+        prompt = request_json.call_args.args[1][0]["text"]
+        self.assertIn("Avenida del Mediterráneo", prompt)
+        self.assertIn('"Cerrado"', prompt)
+        self.assertIn("Never invent a reason", prompt)
+
+    def test_traffic_notice_rejects_missing_fact_commentary(self):
+        with patch(
+            "telegrambot.gemini._compose_traffic_notice",
+            return_value={"body_ru": "Время открытия не указано."},
+        ):
+            with self.assertRaises(GeminiError):
+                asyncio.run(compose_traffic_notice("key", {"mode": "new_present"}))
 
     def test_agenda_pdf_is_an_accepted_document_format(self):
         with patch(
