@@ -19,7 +19,15 @@ TZ = ZoneInfo("Europe/Madrid")
 NOW = datetime(2026, 9, 10, 7, 30, tzinfo=TZ)
 
 
-def _post(*, identifier=42, modified="2026-09-09T12:00:00", title="Concierto de otoño", content=None):
+def _post(
+    *,
+    identifier=42,
+    modified="2026-09-09T12:00:00",
+    title="Concierto de otoño",
+    content=None,
+    image_url=None,
+):
+    media_id = 77 if image_url else 0
     return {
         "id": identifier,
         "date": "2026-09-09T10:00:00",
@@ -32,7 +40,18 @@ def _post(*, identifier=42, modified="2026-09-09T12:00:00", title="Concierto de 
             "de Guardamar.</p>"
         )},
         "excerpt": {"rendered": "<p>Concierto público.</p>"},
-        "categories": [1], "tags": [], "featured_media": 0, "_links": {},
+        "categories": [1],
+        "tags": [],
+        "featured_media": media_id,
+        "_links": {},
+        "_embedded": (
+            {"wp:featuredmedia": [{
+                "id": media_id,
+                "source_url": image_url,
+                "mime_type": "image/jpeg",
+            }]}
+            if image_url else {}
+        ),
     }
 
 
@@ -64,6 +83,20 @@ class AmGuardamarTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("<p>", post["text"])
         self.assertEqual(post["categories"], [1])
         self.assertEqual(post["featured_media"], 0)
+
+    def test_reads_valid_official_featured_image(self):
+        image = "https://amguardamar.es/wp-content/uploads/2026/09/concierto.jpg"
+        post = _post_fields(_post(image_url=image))
+
+        self.assertEqual(post["featured_media"], 77)
+        self.assertEqual(post["image_url"], image)
+
+    def test_rejects_external_featured_image(self):
+        post = _post(image_url="https://example.com/wp-content/uploads/event.jpg")
+        normalized = _post_fields(post)
+
+        self.assertEqual(normalized["featured_media"], 77)
+        self.assertIsNone(normalized["image_url"])
 
     def test_keeps_public_future_concert_but_rejects_enrolment(self):
         self.assertEqual(_is_public_future_candidate(_post_fields(_post()), NOW), "2026-09")
@@ -108,6 +141,29 @@ class AmGuardamarTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('"categories":[1]', stored)
         self.assertEqual(today[0].title, "Concierto de otoño")
         self.assertEqual(today[0].starts_at.hour, 20)
+
+    async def test_refresh_carries_featured_image_to_event(self):
+        image = "https://amguardamar.es/wp-content/uploads/2026/09/concierto.jpg"
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "am.json"
+            with (
+                patch(
+                    "telegrambot.am_guardamar._read_posts",
+                    return_value=[_post(image_url=image)],
+                ),
+                patch(
+                    "telegrambot.am_guardamar.extract_agenda_text_events",
+                    new=AsyncMock(return_value=_extraction()),
+                ),
+            ):
+                await refresh_am_guardamar_catalog("key", NOW, state)
+                event, = await fetch_today_am_guardamar_events(
+                    datetime(2026, 9, 20, 7, 30, tzinfo=TZ),
+                    state,
+                    Path(directory) / "translations.json",
+                )
+
+        self.assertEqual(event.image_url, image)
 
     async def test_invalid_one_post_does_not_block_the_catalog(self):
         with tempfile.TemporaryDirectory() as directory:
