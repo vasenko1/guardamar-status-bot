@@ -551,6 +551,9 @@ def _event_place(value: str) -> str:
 
 _EVENT_PLACE_MAP_URLS = {
     "camino del raso, 15": "https://maps.app.goo.gl/JhZBna2cqRixy69o8",
+    "centro sanitario integrado (зона педиатрии)": (
+        "https://maps.app.goo.gl/DXW3LqEmCNCjf9JX8"
+    ),
 }
 
 
