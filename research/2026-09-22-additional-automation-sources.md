@@ -130,24 +130,32 @@ Candidate product value:
 - future blood-donation sessions in Guardamar;
 - exact date, location and opening hours.
 
-Technical shape:
+Verified 2026-09-24:
 
-- public HTML table;
-- rows expose municipality, venue and hours;
-- exact municipality filtering can be deterministic;
-- no PDF, AI or browser should be necessary.
+- the official Centro de Transfusión page embeds a direct Alicante schedule;
+- stable direct endpoint:
+  `https://oficina20.san.gva.es/gportal-ctcvcol-portlet/listaColectas.jsp?provincia=0007`;
+- the endpoint is ordinary public HTML and does not require the outer Liferay
+  page, `jsessionid`, browser automation, PDF parsing or AI;
+- the current programme includes Guardamar on 14/10/2026 at Centro Sanitario
+  Integrado, Zona de Pediatría, 16:45–20:30.
 
-Recommended architecture:
+Accepted product/lifecycle:
 
-- treat this as another normal Event provider;
-- feed normalized Guardamar rows into the existing event catalog;
-- reuse Morning Digest / Weekend Digest;
-- no new notification framework or daemon.
+- one bounded GET during the existing morning publication build;
+- store only normalized current/future Guardamar sessions in a tiny local
+  snapshot; never cache the province-wide HTML;
+- exact municipality filter and fail closed on malformed rows;
+- rows explicitly marked `SUSPENDIDA` are omitted;
+- if a session is tomorrow, one standalone alert is eligible at 16:45;
+- if a session is today, it appears as a normal Morning Digest event;
+- the 16:45 command reads the morning snapshot and performs no network request;
+- previous-day snapshots are never reused for public output;
+- no daemon, browser, PDF, AI, database or generic notification framework.
 
-A small production probe should find the most stable sessionless URL and verify
-redirect/cookie behaviour.
+Implementation: `src/telegrambot/blood_donation.py`, ADR 0078.
 
-Status: **strong candidate**.
+Status: **accepted for production implementation**.
 
 ### 5. CHS SAIH — Río Segura at Guardamar
 
