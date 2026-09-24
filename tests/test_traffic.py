@@ -451,6 +451,49 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(locator.await_count, 2)
         self.assertIn("Avenida de Cervantes", sent[-1][0])
 
+    async def test_known_incident_skips_publication_if_fresh_location_no_longer_confirms_guardamar(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+            locator = AsyncMock(side_effect=[
+                location(street="Avenida del Mediterráneo"),
+                None,
+            ])
+
+            async def fetcher(_key):
+                return (incident(),)
+
+            async def composer(_facts):
+                return None
+
+            async def publish(message, reply_to):
+                sent.append((message, reply_to))
+                return 600 + len(sent)
+
+            await monitor_traffic(
+                state,
+                NOW,
+                "key",
+                composer,
+                publish,
+                fetcher=fetcher,
+                locator=locator,
+            )
+            next_day = datetime(2026, 9, 25, 8, 30, tzinfo=MADRID)
+            delivered = await monitor_traffic(
+                state,
+                next_day,
+                "key",
+                composer,
+                publish,
+                fetcher=fetcher,
+                locator=locator,
+            )
+
+        self.assertEqual(delivered, 0)
+        self.assertEqual(locator.await_count, 2)
+        self.assertEqual(len(sent), 1)
+
     async def test_new_present_alerts_once_then_repeats_next_morning(self):
         with tempfile.TemporaryDirectory() as directory:
             state = TrafficState(Path(directory) / "traffic.json")
