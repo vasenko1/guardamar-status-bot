@@ -817,7 +817,7 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
             calls = []
 
             async def fetcher(_key):
-                return (incident(category="laneClosed"),)
+                return (incident(),)
 
             async def locator(_item, _key):
                 return location()
@@ -950,7 +950,7 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
             sent = []
 
             async def fetcher(_key):
-                return (incident(),)
+                return (incident(category="laneClosed"),)
 
             async def locator(_item, _key):
                 return location()
