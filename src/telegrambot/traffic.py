@@ -442,6 +442,20 @@ def fallback_body(
             body = f"{_sentence_start(place)} перекрыт проезд."
         else:
             body = f"{_sentence_start(place)} перекрыта полоса движения."
+        start = incident.starts_at
+        if (
+            mode == "new_present"
+            and start is not None
+            and start <= now.astimezone(GUARDAMAR_TIMEZONE)
+        ):
+            include_date = (
+                start.astimezone(GUARDAMAR_TIMEZONE).date()
+                != now.astimezone(GUARDAMAR_TIMEZONE).date()
+            )
+            body += (
+                " Ограничение действует с "
+                f"{_time_label(start, include_date=include_date)}."
+            )
 
     end = incident.ends_at
     if end is not None and end > now.astimezone(GUARDAMAR_TIMEZONE):
