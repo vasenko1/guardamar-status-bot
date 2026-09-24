@@ -10,6 +10,7 @@ from telegrambot.municipal_agenda import (
     _write_snapshot,
 )
 from telegrambot.tomorrow_events import (
+    TomorrowEventState,
     produce_tomorrow_event_publication,
     tomorrow_notice_due,
 )
@@ -57,6 +58,31 @@ class TomorrowEventScheduleTests(unittest.TestCase):
         self.assertFalse(tomorrow_notice_due(
             datetime(2026, 9, 26, 19, 25, tzinfo=TZ)
         ))
+
+
+class TomorrowEventStateTests(unittest.TestCase):
+    def test_uncertain_state_blocks_resend_until_operator_resolution(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "tomorrow.json"
+            state = TomorrowEventState(path)
+            target = date(2026, 9, 25)
+
+            state.mark_uncertain(target)
+
+            self.assertEqual(state.status(target), "uncertain")
+            self.assertIsNone(state.status(date(2026, 9, 26)))
+
+    def test_sent_state_requires_and_keeps_message_id(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "tomorrow.json"
+            state = TomorrowEventState(path)
+            target = date(2026, 9, 25)
+
+            state.mark_uncertain(target)
+            state.mark_sent(target, 321)
+
+            self.assertEqual(state.status(target), "sent")
+            self.assertIn('"message_id": 321', path.read_text(encoding="utf-8"))
 
 
 class TomorrowEventPublicationTests(unittest.IsolatedAsyncioTestCase):
