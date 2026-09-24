@@ -44,9 +44,9 @@ calendar day is not reused, so a failed morning source refresh fails closed
 instead of publishing stale donation information.
 
 The alert window is bounded to 16:45–17:59. Missed alerts are not replayed later
-that evening or on the event day. One semantic `alert:YYYY-MM-DD` key prevents
-duplicates. A definite Telegram send failure rolls that key back; an ambiguous
-send keeps it to avoid an automatic duplicate.
+that evening or on the event day. The snapshot stores only one `alerted_for` date to prevent duplicate delivery.
+A definite Telegram send failure clears that date; an ambiguous send keeps it
+to avoid an automatic duplicate.
 
 For the reviewed Guardamar venue `Centro Sanitario Integrado (зона педиатрии)`,
 both the alert and digest use the exact operator-provided Google Maps link:
