@@ -7,7 +7,8 @@ PROJECT_DIR=$(dirname "$SCRIPT_DIR")
 SYNC="$PROJECT_DIR/termux/sync-guide.sh"
 BATHING="$PROJECT_DIR/termux/sync-bathing-water.sh"
 PUBLISH="$PROJECT_DIR/termux/publish-course-notifications.sh"
-BLOOD="$PROJECT_DIR/termux/publish-blood-donation.sh"\nSH_BIN=$(command -v sh)
+BLOOD="$PROJECT_DIR/termux/publish-blood-donation.sh"
+SH_BIN=$(command -v sh)
 BACKUP_DIR="$HOME/.cache/crontab"
 CURRENT=$(mktemp)
 UPDATED=$(mktemp)
@@ -101,4 +102,4 @@ mv "$UPDATED" "$CURRENT"
 } | crontab -
 
 sv up crond
-echo "Справочник: 09:02 ежедневно; зоны купания 19:35 ежедневно 01.06-15.09; Zona Azul 19:45 14.06/15.09; занятия 09:42 и retry 11:42; донорство 16:45 Europe/Madrid"\n
+echo "Справочник: 09:02 ежедневно; зоны купания 19:35 ежедневно 01.06-15.09; Zona Azul 19:45 14.06/15.09; занятия 09:42 и retry 11:42; донорство 16:45 Europe/Madrid"
