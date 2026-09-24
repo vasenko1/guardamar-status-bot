@@ -283,6 +283,43 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
             locator=locator,
         )
 
+    async def test_known_incident_reuses_cached_reverse_geocode(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+            locator = AsyncMock(return_value=location())
+
+            async def fetcher(_key):
+                return (incident(),)
+
+            async def composer(_facts):
+                return None
+
+            async def publish(message, reply_to):
+                sent.append((message, reply_to))
+                return 123
+
+            await monitor_traffic(
+                state,
+                NOW,
+                "key",
+                composer,
+                publish,
+                fetcher=fetcher,
+                locator=locator,
+            )
+            await monitor_traffic(
+                state,
+                NOW + timedelta(hours=1),
+                "key",
+                composer,
+                publish,
+                fetcher=fetcher,
+                locator=locator,
+            )
+
+        self.assertEqual(locator.await_count, 1)
+
     async def test_new_present_alerts_once_then_repeats_next_morning(self):
         with tempfile.TemporaryDirectory() as directory:
             state = TrafficState(Path(directory) / "traffic.json")
