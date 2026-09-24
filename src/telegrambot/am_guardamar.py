@@ -6,7 +6,7 @@ import os
 import re
 import tempfile
 import urllib.parse
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
