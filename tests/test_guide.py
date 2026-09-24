@@ -1297,9 +1297,10 @@ class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_fishing_notice_waits_until_morning(self):
         with tempfile.TemporaryDirectory() as directory:
-            moment = datetime(2026, 5, 31, 8, 59, tzinfo=MADRID)
-            current = snapshot(moment)
-            send = AsyncMock()
+            early = datetime(2026, 5, 31, 8, 59, tzinfo=MADRID)
+            due = datetime(2026, 5, 31, 9, 2, tzinfo=MADRID)
+            current = snapshot(early)
+            send = AsyncMock(return_value=702)
             publish = AsyncMock(return_value=self._pinned_messages())
             with (
                 patch.dict("os.environ", self._environment(directory), clear=False),
@@ -1310,13 +1311,18 @@ class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
                 patch("telegrambot.guide.publish_pinned_guide", new=publish),
                 patch("telegrambot.guide.send_message", new=send),
             ):
-                await sync_guide(moment)
+                await sync_guide(early)
+                send.assert_not_awaited()
+                self.assertNotIn(
+                    "fishing_notice",
+                    GuideState(Path(directory) / "guide.json").read(),
+                )
+                await sync_guide(due)
 
-            send.assert_not_awaited()
-            self.assertNotIn(
-                "fishing_notice",
-                GuideState(Path(directory) / "guide.json").read(),
-            )
+            send.assert_awaited_once()
+            saved = GuideState(Path(directory) / "guide.json").read()
+            self.assertEqual(saved["fishing_notice"]["key"], "2026-06-01:start")
+            self.assertEqual(saved["fishing_notice"]["message_id"], 702)
 
     async def test_missed_fishing_transition_is_not_replayed_late(self):
         with tempfile.TemporaryDirectory() as directory:
