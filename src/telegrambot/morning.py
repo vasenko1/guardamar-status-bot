@@ -33,7 +33,7 @@ from .municipal_agenda import (
 )
 from .library_agenda import LibraryAgendaError, fetch_today_library_events
 from .am_guardamar import AmGuardamarError, fetch_today_am_guardamar_events
-from .facv import FacvSourceError, fetch_today_facv_events
+from .blood_donation import (\n    BloodDonationError, fetch_today_blood_donation_events,\n)\nfrom .facv import FacvSourceError, fetch_today_facv_events
 from .pesca_cv import PescaCvSourceError, fetch_today_pesca_cv_events
 from .pharmacy import duty_pharmacies_on
 from .sun import sun_times
@@ -548,7 +548,7 @@ async def produce_message(
     am_guardamar_state_path: Path = Path("state/am_guardamar.json"),
     facv_state_path: Path = Path("state/facv_events.json"),
     pesca_cv_state_path: Path = Path("state/pesca_cv_events.json"),
-    diagnostics: Optional[List[SourceDiagnostic]] = None,
+    blood_donation_state_path: Path = Path("state/blood_donation.json"),\n    diagnostics: Optional[List[SourceDiagnostic]] = None,
     translation_cache_path: Optional[Path] = None,
     aemet_digest: Optional[MorningDigest] = None,
     fetch_aemet: bool = True,
@@ -625,6 +625,12 @@ async def produce_message(
             now,
             pesca_cv_state_path,
             translation_path,
+        )
+    )
+    blood_donation_task = asyncio.create_task(
+        fetch_today_blood_donation_events(
+            now,
+            blood_donation_state_path,
         )
     )
     meteosalud_task = (
@@ -818,6 +824,18 @@ async def produce_message(
                 "PESCA-CV", "Federación Pesca CV", exc
             ))
         pesca_cv_events = ()
+    try:
+        blood_donation_events = await blood_donation_task
+    except BloodDonationError as exc:
+        LOGGER.warning(
+            "Blood-donation snapshot unavailable; omitting events: %s",
+            exc,
+        )
+        if diagnostics is not None:
+            diagnostics.append(source_error(
+                "BLOOD-DONATION", "Донорство крови", exc
+            ))
+        blood_donation_events = ()
 
     if market_status_task is not None:
         try:
@@ -900,6 +918,7 @@ async def produce_message(
                 am_guardamar_events,
                 facv_events,
                 pesca_cv_events,
+                blood_donation_events,
             ),
             heat_health_risk=heat_health_risk,
             cold_health_risk=cold_health_risk,
