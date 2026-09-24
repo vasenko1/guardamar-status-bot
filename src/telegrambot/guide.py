@@ -1412,7 +1412,7 @@ async def sync_guide(now: datetime) -> str:
         )
 
         fishing_notice_key = _fishing_notice_key(local_day)
-        if fishing_notice_key is not None:
+        if fishing_notice_key is not None and local_now.hour >= 9:
             sent_fishing = state.get("fishing_notice")
             uncertain_fishing = state.get("fishing_notice_uncertain")
             if uncertain_fishing == fishing_notice_key:

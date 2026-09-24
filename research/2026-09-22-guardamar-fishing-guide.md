@@ -13,6 +13,8 @@
 >   marine fishing: **1 June–30 September**, plus **Semana Santa from the Friday
 >   before Palm Sunday through Lunes de San Vicente inclusive**;
 > - one transition-notice path with start/end copy, linked back to `fishing`;
+> - transition notices are eligible only from **09:00 Europe/Madrid** on the
+>   transition eve, so manual/night deployments cannot publish them overnight;
 > - the existing daily guide sync and existing Telegram delivery/state patterns.
 >
 > The card is a compact stable reference. It must not depend on a midnight
