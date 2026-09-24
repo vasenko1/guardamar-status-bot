@@ -45,9 +45,10 @@ avoid an automatic duplicate because Telegram provides no idempotency key for
 
 ## SUMA tax-period reminders
 
-Once per existing 07:30 daily lifecycle, the bot performs a separate SUMA
-one-shot after Morning Digest. It cross-checks the current Guardamar municipal
-tax rows against SUMA's general voluntary-payment period and publishes at most
+Once per existing 07:30 daily lifecycle, the same short-lived Python process
+performs a best-effort SUMA final step after the Morning Digest attempt. It
+cross-checks the current Guardamar municipal tax rows against SUMA's general
+voluntary-payment period and publishes at most
 one standalone message only on these exact local dates:
 
 - the payment-period opening date;

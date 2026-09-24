@@ -65,10 +65,16 @@ copy also states the remaining voluntary-payment deadline.
 
 Do not add a SUMA cron row.
 
-The existing `termux/run-daily.sh` invokes `telegrambot suma` immediately
-after the 07:30 Morning Digest command. SUMA is a separate process and state, so
-its source or delivery failure does not change Morning Digest state. The shell
-keeps the Morning Digest exit status and only logs a SUMA failure.
+Keep `termux/run-daily.sh` as the existing simple one-shot launcher:
+`exec ./.venv/bin/python -m telegrambot morning`.
+
+Inside that same short-lived Python lifecycle, SUMA runs in a best-effort
+`finally` step with its own source adapter and state. This preserves one 07:30
+process and guarantees that an attempted Morning Digest publication is followed
+by a SUMA check even when the morning path raises. Expected SUMA source,
+state-I/O or Telegram failures are logged without changing the Morning Digest
+exit result. The explicit `telegrambot suma` command remains available for
+operator verification and same-day retry.
 
 No daemon, queue, database, provider registry, browser, OCR, PDF parser, AI
 provider or raw-source cache is added.
