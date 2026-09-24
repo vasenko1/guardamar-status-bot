@@ -1890,6 +1890,7 @@ def main() -> None:
         TelegramError,
         StateError,
         OperationalUpdateStateError,
+        TomorrowEventStateError,
         ValueError,
     ) as exc:
         print(f"Command failed: {exc}", file=sys.stderr)
