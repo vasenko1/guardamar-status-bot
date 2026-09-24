@@ -20,6 +20,7 @@ CACHE_VERSION = 1
 POLICY_VERSION = 1
 MAX_ENTRIES = 500
 RETENTION_DAYS = 90
+MAX_INDIVIDUAL_TITLE_RECOVERY = 12
 
 def _key(source: str, title: str) -> str:
     return f"{POLICY_VERSION}\0{source.strip()}\0{title.strip()}"
@@ -156,10 +157,37 @@ async def prepare_translations(
     ]
     translated_by_item = {}
     if title_missing:
-        translated = await translate_event_titles(
-            api_key, [title for _, title in title_missing]
-        )
-        translated_by_item.update(zip(title_missing, translated))
+        try:
+            translated = await translate_event_titles(
+                api_key, [title for _, title in title_missing]
+            )
+        except GeminiError as exc:
+            LOGGER.warning(
+                "Event title batch translation unavailable; "
+                "recovering individually: %s",
+                exc,
+            )
+            failed = 0
+            for item in title_missing[:MAX_INDIVIDUAL_TITLE_RECOVERY]:
+                try:
+                    translated = await translate_event_titles(
+                        api_key, [item[1]]
+                    )
+                except GeminiError:
+                    failed += 1
+                    continue
+                translated_by_item[item] = translated[0]
+            failed += max(
+                0,
+                len(title_missing) - MAX_INDIVIDUAL_TITLE_RECOVERY,
+            )
+            if failed:
+                LOGGER.warning(
+                    "Event title translations omitted for %d cache misses",
+                    failed,
+                )
+        else:
+            translated_by_item.update(zip(title_missing, translated))
     if teaser_missing:
         try:
             translated = await translate_event_teasers(
