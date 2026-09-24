@@ -384,11 +384,43 @@ def _map_url(location: TrafficLocation) -> str:
 
 
 def _map_line(incident: TrafficIncident, location: TrafficLocation) -> str:
-    label = location_label(incident, location)
     return (
         f'📍 <a href="{html.escape(_map_url(location), quote=True)}">'
-        f"<b>{html.escape(label)}</b></a>"
+        "<b>Посмотреть на карте</b></a>"
     )
+
+
+def _format_body_html(
+    incident: TrafficIncident,
+    location: TrafficLocation,
+    body: str,
+) -> str:
+    """Escape editorial text and bold only verified location names."""
+
+    names = {
+        value
+        for value in (
+            _clean_text(location.street),
+            _clean_text(location.subdivision),
+            _clean_text(incident.from_place),
+            _clean_text(incident.to_place),
+        )
+        if value
+    }
+    if not names:
+        return html.escape(body)
+
+    pattern = re.compile(
+        "|".join(re.escape(value) for value in sorted(names, key=len, reverse=True))
+    )
+    chunks: list[str] = []
+    offset = 0
+    for match in pattern.finditer(body):
+        chunks.append(html.escape(body[offset:match.start()]))
+        chunks.append(f"<b>{html.escape(match.group(0))}</b>")
+        offset = match.end()
+    chunks.append(html.escape(body[offset:]))
+    return "".join(chunks)
 
 
 def _time_label(value: datetime, *, include_date: bool) -> str:
@@ -414,6 +446,53 @@ def _sentence_start(value: str) -> str:
     """Upper-case only the first character without lower-casing proper names."""
 
     return value[:1].upper() + value[1:]
+
+
+def _reviewed_new_present_body(
+    incident: TrafficIncident,
+    location: TrafficLocation,
+    mode: str,
+    now: datetime,
+) -> Optional[str]:
+    """Use the reviewed compact copy for a plain active road closure."""
+
+    if mode != "new_present" or incident.category != "roadClosed":
+        return None
+
+    street = _clean_text(location.street)
+    from_place = _clean_text(incident.from_place)
+    to_place = _clean_text(incident.to_place)
+    if not street or not from_place or not to_place or from_place == to_place:
+        return None
+
+    meaningful_details = [
+        value
+        for value in incident.descriptions_es
+        if _clean_text(value)
+        and _clean_text(value).casefold() not in {"cerrado", "carril cerrado"}
+    ]
+    if meaningful_details:
+        return None
+
+    local_now = now.astimezone(GUARDAMAR_TIMEZONE)
+    if incident.ends_at is not None and incident.ends_at > local_now:
+        return None
+
+    body = (
+        f"В городе перекрыто движение на {street} "
+        f"между {from_place} и {to_place}."
+    )
+    if incident.starts_at is not None:
+        start = incident.starts_at.astimezone(GUARDAMAR_TIMEZONE)
+        if start <= local_now:
+            if start.date() < local_now.date():
+                body += (
+                    "\nОграничение действует с "
+                    f"{start.day} {_RU_MONTHS[start.month]}."
+                )
+            else:
+                body += f"\nОграничение действует с {start:%H:%M}."
+    return body
 
 
 def fallback_body(
@@ -490,7 +569,11 @@ def build_alert_message(
     location: TrafficLocation,
     body_ru: str,
 ) -> str:
-    body = " ".join(body_ru.split()).strip()
+    body = "\n".join(
+        " ".join(line.split())
+        for line in body_ru.splitlines()
+        if line.strip()
+    ).strip()
     if not body or len(body) > 900:
         raise TrafficError("traffic alert body is invalid")
     folded = body.casefold()
@@ -498,7 +581,7 @@ def build_alert_message(
         raise TrafficError("traffic alert body contains a null-like token")
     return with_footer(
         f"{_title(incident.category)}\n\n"
-        f"{html.escape(body)}\n\n"
+        f"{_format_body_html(incident, location, body)}\n\n"
         f"{_map_line(incident, location)}"
     )
 
@@ -1104,11 +1187,18 @@ async def monitor_traffic(
                 local_now,
                 previous_category=old_category,
             )
-            try:
-                body = await compose_body(facts)
-            except Exception as exc:
-                logging.warning("Traffic editorial composition failed: %s", exc)
-                body = None
+            body = _reviewed_new_present_body(
+                incident,
+                location,
+                mode,
+                local_now,
+            )
+            if body is None:
+                try:
+                    body = await compose_body(facts)
+                except Exception as exc:
+                    logging.warning("Traffic editorial composition failed: %s", exc)
+                    body = None
             if not body:
                 body = fallback_body(
                     incident,
