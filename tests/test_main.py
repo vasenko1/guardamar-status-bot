@@ -1055,6 +1055,8 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
             [
                 ("municipal_agenda", "Película municipal"),
                 ("library_agenda", "Actividad biblioteca"),
+                ("municipal_agenda", "Película municipal"),
+                ("library_agenda", "Actividad biblioteca"),
             ],
         )
 
