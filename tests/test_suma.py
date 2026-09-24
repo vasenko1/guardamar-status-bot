@@ -2,6 +2,7 @@ import asyncio
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -114,6 +115,18 @@ class SumaSourceTests(unittest.TestCase):
         self.assertFalse(_is_allowed_url(
             "http://www.suma.es/periodo-pago-voluntario"
         ))
+
+
+class SumaStateTests(unittest.TestCase):
+    def test_state_write_wraps_local_io_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = SumaState(Path(directory) / "suma.json")
+            with patch(
+                "telegrambot.suma.tempfile.mkstemp",
+                side_effect=OSError("storage unavailable"),
+            ):
+                with self.assertRaises(SumaError):
+                    state.write([], date(2026, 9, 24))
 
 
 class SumaMonitorTests(unittest.TestCase):
