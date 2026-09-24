@@ -74,7 +74,6 @@ class SumaDeliveryUncertain(RuntimeError):
 
 @dataclass(frozen=True)
 class SumaCampaign:
-    period_label: str
     starts_on: date
     ends_on: date
     direct_debit_deadline: date
@@ -203,8 +202,8 @@ def _parse_payment_period_text(text: str) -> tuple[date, date, date, date]:
 
 
 _MUNICIPAL_ROW = re.compile(
-    r"(?P<tax>[A-ZÁÉÍÓÚÜÑ0-9 /().\-]{3,100})\s*;\s*"
-    r"Periodo:\s*(?P<period>[^;]{1,40})\s*;\s*"
+    r"(?P<tax>[^;\n]{3,100})\s*;\s*"
+    r"Periodo:\s*[^;\n]{1,40}\s*;\s*"
     r"Plazo de pago:\s*Del\s*"
     r"(?P<start>\d{2}/\d{2}/\d{4})\s*al\s*"
     r"(?P<end>\d{2}/\d{2}/\d{4})\s*\.",
@@ -225,7 +224,7 @@ def _parse_municipal_text(
     *,
     expected_start: date,
     expected_end: date,
-) -> tuple[str, tuple[str, ...]]:
+) -> tuple[str, ...]:
     folded = _fold(text)
     if (
         "GUARDAMAR DEL SEGURA" not in folded
@@ -240,20 +239,16 @@ def _parse_municipal_text(
         if start != expected_start or end != expected_end:
             continue
         tax = " ".join(match.group("tax").split())
-        period = " ".join(match.group("period").split())
-        matches.append((period, tax))
+        matches.append(tax)
 
     if not matches:
         raise SumaError(
             "SUMA Guardamar page has no taxes matching the general payment period"
         )
-    periods = {period for period, _ in matches}
-    if len(periods) != 1:
-        raise SumaError("SUMA Guardamar period label is ambiguous")
-    taxes = tuple(dict.fromkeys(tax for _, tax in matches))
+    taxes = tuple(dict.fromkeys(matches))
     if not taxes or len(taxes) > 12:
         raise SumaError("SUMA Guardamar tax list is outside the expected bounds")
-    return next(iter(periods)), taxes
+    return taxes
 
 
 def parse_campaign(
@@ -264,13 +259,12 @@ def parse_campaign(
 
     period_text = _visible_text(payment_period_payload)
     start, end, deadline, charge = _parse_payment_period_text(period_text)
-    period_label, taxes = _parse_municipal_text(
+    taxes = _parse_municipal_text(
         _visible_text(municipal_payload),
         expected_start=start,
         expected_end=end,
     )
     return SumaCampaign(
-        period_label,
         start,
         end,
         deadline,
@@ -384,7 +378,12 @@ def _format_direct_debit(campaign: SumaCampaign) -> str:
 
 def _format_charge(campaign: SumaCampaign, today: date) -> str:
     remaining = (campaign.ends_on - today).days
-    if remaining == 1:
+    if remaining == 0:
+        deadline = (
+            "Для остальных <b>сегодня также последний день</b> "
+            "добровольной оплаты."
+        )
+    elif remaining == 1:
         deadline = (
             "Для остальных добровольный срок оплаты заканчивается "
             f"<b>завтра, {_ru_date(campaign.ends_on)}</b>."
@@ -586,7 +585,6 @@ async def monitor_suma(
         sent = set(_prune_sent(current, today))
         notice = _today_notice(campaign, today)
         if notice is None:
-            state.write(sorted(sent), today)
             return "no_trigger"
 
         key, message = notice
@@ -603,5 +601,4 @@ async def monitor_suma(
             sent.remove(key)
             state.write(sorted(sent), today)
             raise
-        state.write(sorted(sent), today)
         return "published"

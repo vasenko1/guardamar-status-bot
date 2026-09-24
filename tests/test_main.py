@@ -1264,7 +1264,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_morning_failure_still_attempts_suma_without_masking_failure(self):
         morning_failure = RuntimeError("morning failed")
-        suma = AsyncMock(return_value="no_trigger")
+        suma = AsyncMock(side_effect=RuntimeError("suma failed"))
 
         with tempfile.TemporaryDirectory() as directory:
             with (
@@ -1287,6 +1287,35 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaisesRegex(RuntimeError, "morning failed"):
                     await _run_command("morning")
 
+        suma.assert_awaited_once()
+
+    async def test_unexpected_suma_failure_does_not_break_successful_morning(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with (
+                patch.dict(os.environ, {
+                    "AEMET_API_KEY": "aemet",
+                    "TELEGRAM_BOT_TOKEN": "telegram",
+                    "TELEGRAM_CHAT_ID": "group",
+                    "MORNING_DIGEST_STATE_PATH": str(Path(directory) / "delivery.json"),
+                    "AEMET_SNAPSHOT_PATH": str(Path(directory) / "aemet.json"),
+                    "SUMA_STATE_PATH": str(Path(directory) / "suma.json"),
+                }),
+                patch(
+                    "telegrambot.__main__.load_snapshot",
+                    return_value=object(),
+                ),
+                patch(
+                    "telegrambot.__main__.publish_morning",
+                    new=AsyncMock(return_value="success"),
+                ),
+                patch(
+                    "telegrambot.__main__.monitor_suma",
+                    new=AsyncMock(side_effect=RuntimeError("suma failed")),
+                ) as suma,
+            ):
+                result = await _run_command("morning")
+
+        self.assertEqual(result, 0)
         suma.assert_awaited_once()
 
     async def test_appends_diagnostics_only_in_preview_wrapper(self):

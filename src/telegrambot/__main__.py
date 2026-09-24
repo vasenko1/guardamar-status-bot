@@ -470,6 +470,13 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 raise
             logging.warning("SUMA daily one-shot failed: %s", exc)
             return 1
+        except Exception:
+            if not best_effort:
+                raise
+            logging.exception(
+                "Unexpected SUMA daily one-shot failure; Morning Digest preserved"
+            )
+            return 1
         logging.info("SUMA notification sync complete: %s", result)
         return 0
 
