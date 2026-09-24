@@ -68,8 +68,9 @@ no message.
 | IGN earthquakes | Hourly at `:55` | Standalone/series notice for new events at M1.8+ within 20 km. |
 | Hidraqua network incidents | Every 30 minutes | Standalone notice for a new confirmed water-network event ID. |
 | Transport | 05:00 sync, 08:42 notification | Reconciles pinned transport cards and publishes accepted schedule/service/fare changes. |
-| Linked guide + courses | 09:02 sync; course notices 09:42/11:42; two seasonal 19:45 checks | Reconciles public guide cards, may send pool/Zona Azul seasonal notices, and publishes accepted course/programme changes. |
+| Linked guide + courses | 09:02 sync; course notices 09:42/11:42; two seasonal 19:45 checks | Reconciles public guide cards, may send pool/Zona Azul seasonal notices, and publishes accepted course/programme changes, including grouped fresh-source registration boundaries for tomorrow. |
 | Electricity | 20:30/20:35/20:45/21:00/21:20 attempts | One next-day PVPC table reply after the first complete official dataset. |
+| Next-day events | Sunday–Thursday 19:25 | Reads only fresh same-day local event catalogs; one editorial unit may be rich with one official image URL, while multiple units stay in one text planning post. No evening source fetch or AI. |
 | Weekend digest | Friday 19:15, retry 20:15 | One weekend-events digest when verified events exist. |
 | Pharmacy catalogue | Sunday 05:50 | Source refresh only; consumed by Morning Digest. |
 | Bathing-zone control | 19:35 daily 01 Jun–15 Sep; PDF only for a new report identity | A fresh first or later official weekly report produces one 🧪 group notice with actual sample dates, laboratory water quality by beach and only non-excellent visual water/sand exceptions; stale first report becomes baseline. |
@@ -206,6 +207,7 @@ text remain process-local and are discarded on exit.
 - Four or five seasonal operational beach checks, with five- and ten-minute
   confirmation invocations that access SafeBeach only while a candidate is
   pending; three warning-only AEMET checks per day
+- One local-only 19:25 next-day event one-shot Sunday–Thursday; no source request or AI call
 - Up to five short evening electricity attempts; success-only state makes
   later invocations no-ops after the first publication
 - One daily 05:00 transport sync and one daily 09:02 guide/catalog sync; both
@@ -235,8 +237,11 @@ text remain process-local and are discarded on exit.
 - **Telegram unavailable:** use bounded recovery and avoid duplicate delivery.
 - **Later invocation:** retry when no confirmed success was stored.
 
-Each publication workflow holds its own local file lock. Morning lifecycle
-state and electricity success state are separate small atomic JSON files. The
+Each publication workflow holds its own local file lock. Morning lifecycle,
+next-day event delivery, and electricity success state are separate small atomic
+JSON files. The next-day event marker persists `uncertain` before its new send,
+so an ambiguous Telegram result cannot be automatically resent as a duplicate.
+The
 morning anchor is never deleted on new lifecycle days; a missing beach root is
 recreated only after Telegram confirms its message is gone.
 
@@ -252,7 +257,8 @@ expired-link failures. It repeats the complete metadata-plus-product request,
 uses short exponential delays or the server's `Retry-After`, and never retries
 permanent or invalid-data failures. The 05:30 Agenda Guardamar refresh reads
 event details with at most three concurrent same-host requests and saves a
-small atomic catalog. The morning run translates only today's bounded titles.
+small atomic catalog. Pre-morning event preparation translates bounded cache
+misses for today and tomorrow, so the evening planning one-shot never calls AI.
 If the mandatory forecast is unavailable during Morning Digest publication or
 an explicit `refresh-current`, the same-day prepared AEMET snapshot supplies
 the weather blocks independently of the separate SafeBeach lifecycle.
