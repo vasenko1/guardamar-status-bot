@@ -32,6 +32,7 @@ _TIMEOUT = 15
 _MAX_SESSIONS = 12
 _ALERT_START = time(16, 45)
 _ALERT_END = time(18, 0)
+_WEEKLY_REFRESH_DAYS = 7
 
 _MONTHS_ES = {
     "enero": 1, "febrero": 2, "marzo": 3, "abril": 4,
@@ -379,14 +380,43 @@ class BloodDonationState:
             alerted_for = None
         self.write(observed, sessions, alerted_for)
 
-    def fresh_sessions(self, now: datetime) -> tuple[BloodDonationSession, ...]:
+    def weekly_refresh_due(self, now: datetime) -> bool:
+        current = self.read()
+        if current is None:
+            return True
+        observed = current[0].astimezone(TIMEZONE)
+        local_now = now.astimezone(TIMEZONE)
+        if observed > local_now + timedelta(minutes=5):
+            return True
+        return (local_now.date() - observed.date()).days >= _WEEKLY_REFRESH_DAYS
+
+    def known_sessions(self, now: datetime) -> tuple[BloodDonationSession, ...]:
+        """Return discovered sessions; age is irrelevant before a control GET."""
+
         current = self.read()
         if current is None:
             return ()
         observed, sessions, _ = current
         local_now = now.astimezone(TIMEZONE)
-        observed = observed.astimezone(TIMEZONE)
-        if observed.date() != local_now.date() or observed > local_now + timedelta(minutes=5):
+        if observed.astimezone(TIMEZONE) > local_now + timedelta(minutes=5):
+            return ()
+        return sessions
+
+    def digest_sessions(self, now: datetime) -> tuple[BloodDonationSession, ...]:
+        """Use only a schedule confirmed today or on the previous local day."""
+
+        current = self.read()
+        if current is None:
+            return ()
+        observed, sessions, _ = current
+        local_now = now.astimezone(TIMEZONE)
+        local_observed = observed.astimezone(TIMEZONE)
+        age_days = (local_now.date() - local_observed.date()).days
+        if (
+            local_observed > local_now + timedelta(minutes=5)
+            or age_days < 0
+            or age_days > 1
+        ):
             return ()
         return sessions
 
@@ -405,7 +435,7 @@ async def refresh_blood_donation_catalog(
     now: datetime,
     state_path: Path = Path(DEFAULT_STATE_PATH),
 ) -> tuple[BloodDonationSession, ...]:
-    """The feature's only network request: one bounded morning GET."""
+    """Fetch and atomically replace the normalized Guardamar schedule."""
 
     if now.tzinfo is None or now.utcoffset() is None:
         raise ValueError("blood-donation observation time must be timezone-aware")
@@ -433,13 +463,28 @@ async def refresh_blood_donation_catalog(
     return sessions
 
 
+async def refresh_blood_donation_catalog_if_due(
+    now: datetime,
+    state_path: Path = Path(DEFAULT_STATE_PATH),
+) -> bool:
+    """Refresh discovery state only when seven local calendar days elapsed."""
+
+    if now.tzinfo is None or now.utcoffset() is None:
+        raise ValueError("blood-donation observation time must be timezone-aware")
+    state = BloodDonationState(state_path)
+    if not await asyncio.to_thread(state.weekly_refresh_due, now):
+        return False
+    await refresh_blood_donation_catalog(now, state_path)
+    return True
+
+
 async def fetch_today_blood_donation_events(
     now: datetime,
     state_path: Path = Path(DEFAULT_STATE_PATH),
 ) -> tuple[Event, ...]:
     if now.tzinfo is None or now.utcoffset() is None:
         raise ValueError("blood-donation event time must be timezone-aware")
-    sessions = await asyncio.to_thread(BloodDonationState(state_path).fresh_sessions, now)
+    sessions = await asyncio.to_thread(BloodDonationState(state_path).digest_sessions, now)
     today = now.astimezone(TIMEZONE).date()
     return tuple(
         Event(
@@ -523,7 +568,7 @@ async def monitor_blood_donation_alert(
     now: datetime,
     send: Callable[[str], Awaitable[int]],
 ) -> str:
-    """Send tomorrow's alert once, using only this morning's snapshot."""
+    """Verify one known tomorrow session, then send the alert once."""
 
     if now.tzinfo is None or now.utcoffset() is None:
         raise ValueError("blood-donation alert time must be timezone-aware")
@@ -533,13 +578,21 @@ async def monitor_blood_donation_alert(
         return "outside_window"
 
     tomorrow = local_now.date() + timedelta(days=1)
-    sessions = tuple(
-        item for item in state.fresh_sessions(now) if item.day == tomorrow
-    )
-    if not sessions:
-        return "no_trigger"
     if state.alerted_for() == tomorrow:
         return "duplicate"
+
+    known = tuple(
+        item for item in state.known_sessions(now) if item.day == tomorrow
+    )
+    if not known:
+        return "no_trigger"
+
+    # A weekly discovery row is only a reason to check. Publication always
+    # depends on one fresh control GET immediately before the alert.
+    confirmed = await refresh_blood_donation_catalog(now, state.path)
+    sessions = tuple(item for item in confirmed if item.day == tomorrow)
+    if not sessions:
+        return "not_confirmed"
 
     state.set_alerted_for(tomorrow)
     try:
