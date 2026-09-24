@@ -1472,10 +1472,23 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     else:
                         prune_cams_candidates(cams_cache_path, base)
 
-            result = await publish_morning(
-                now,
-                state,
-                lambda: produce_message(
+            async def build_morning_message() -> str:
+                try:
+                    await refresh_blood_donation_catalog(
+                        now,
+                        blood_donation_path,
+                    )
+                except BloodDonationError as exc:
+                    logging.warning(
+                        "Blood-donation morning refresh failed: %s",
+                        exc.diagnostic_code,
+                    )
+                except Exception:
+                    logging.exception(
+                        "Unexpected blood-donation refresh failure; "
+                        "Morning Digest preserved"
+                    )
+                return await produce_message(
                     api_key,
                     now,
                     os.environ.get("GEMINI_API_KEY", "").strip(),
@@ -1490,6 +1503,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     am_guardamar_state_path=am_guardamar_path,
                     facv_state_path=facv_path,
                     pesca_cv_state_path=pesca_cv_path,
+                    blood_donation_state_path=blood_donation_path,
                     translation_cache_path=translations_path,
                     aemet_digest=prepared,
                     fetch_aemet=fetch_live,
@@ -1500,7 +1514,12 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     environment_detail_observer=lambda heat, cold, air, pollen, base: (
                         morning_environment_detail.append((heat, cold, air, pollen, base))
                     ),
-                ),
+                )
+
+            result = await publish_morning(
+                now,
+                state,
+                build_morning_message,
                 lambda message: send_message(
                     bot_token, chat_id, message, disable_notification=False
                 ),
