@@ -567,10 +567,44 @@ class CourseNotificationMessageTests(unittest.TestCase):
             {"judo": 501, "dinamizacion": 503},
         )
         self.assertIn("Завтра заканчивается запись", message)
-        self.assertIn("завтра последний день подачи заявки", message)
-        self.assertIn("завтра заканчивается основной период записи", message)
+        self.assertEqual(message.count("Завтра заканчивается запись"), 1)
+        self.assertNotIn("завтра последний день подачи заявки", message)
+        self.assertIn("заканчивается основной период", message)
         self.assertIn("при наличии мест", message)
         self.assertEqual(message.count(FOOTER), 1)
+
+    def test_mass_tomorrow_deadline_does_not_repeat_same_phrase(self):
+        events = [
+            {
+                "type": "registration_close_tomorrow",
+                "record_id": f"sporttia:{index}",
+                "course_key": f"sporttia:course-{index}",
+                "card_key": f"course-{index}",
+                "title": f"Занятие {index}",
+                "emoji": "🎓",
+                "group": None,
+                "start": "2026-09-01",
+                "end": "2026-09-30",
+                "until_full": False,
+            }
+            for index in range(1, 16)
+        ]
+        messages = {
+            f"course-{index}": 500 + index
+            for index in range(1, 16)
+        }
+        message = build_message(
+            "registration_closing_tomorrow",
+            events,
+            "-100123",
+            messages,
+        )
+
+        self.assertLess(len(message), 4096)
+        self.assertEqual(message.count("Завтра заканчивается запись"), 1)
+        self.assertNotIn("последний день подачи заявки", message)
+        for index in range(1, 16):
+            self.assertIn(f"Занятие {index}", message)
 
     def test_tomorrow_single_day_template_does_not_claim_longer_window(self):
         event = {
