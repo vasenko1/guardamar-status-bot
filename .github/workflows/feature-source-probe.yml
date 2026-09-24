@@ -1,0 +1,53 @@
+name: Feature source probe
+
+on:
+  push:
+    branches:
+      - feat/tomorrow-event-announcements
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: python -m pip install -e .
+      - name: Probe AM Guardamar bounded media response
+        run: |
+          python - <<'PY'
+          import json
+          import urllib.request
+          from telegrambot.am_guardamar import _request_url, _post_fields, RESPONSE_LIMIT_BYTES
+
+          request = urllib.request.Request(
+              _request_url(),
+              headers={
+                  "Accept": "application/json",
+                  "User-Agent": "GuardamarMorningDigest/0.12",
+              },
+          )
+          with urllib.request.urlopen(request, timeout=15) as response:
+              payload = response.read(RESPONSE_LIMIT_BYTES + 1)
+              content_type = response.headers.get_content_type()
+          print("bytes=", len(payload))
+          print("limit=", RESPONSE_LIMIT_BYTES)
+          print("content_type=", content_type)
+          if len(payload) > RESPONSE_LIMIT_BYTES:
+              raise SystemExit("response exceeds configured bound")
+          value = json.loads(payload.decode("utf-8"))
+          rows = [_post_fields(item) for item in value if isinstance(item, dict)]
+          accepted = [item for item in rows if item is not None]
+          images = [item["image_url"] for item in accepted if item["image_url"]]
+          print("posts=", len(value))
+          print("accepted=", len(accepted))
+          print("validated_images=", len(images))
+          if value and not accepted:
+              raise SystemExit("current response does not match adapter schema")
+          if not images:
+              raise SystemExit("current response exposes no validated featured image")
+          print("sample_image_host=", images[0].split("/", 3)[2])
+          PY
