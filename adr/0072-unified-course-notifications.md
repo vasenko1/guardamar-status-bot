@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-09-20
+- Amended by: ADR 0080 (2026-09-24) for next-day registration boundaries
 
 ## Context
 

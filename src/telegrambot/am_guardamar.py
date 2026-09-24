@@ -6,7 +6,7 @@ import os
 import re
 import tempfile
 import urllib.parse
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -25,6 +25,7 @@ from .todo_cultura import _all_mentioned_dates, _plain_lines
 
 API_URL = "https://amguardamar.es/wp-json/wp/v2/posts"
 API_HOST = "amguardamar.es"
+MEDIA_HOSTS = frozenset({"amguardamar.es", "www.amguardamar.es"})
 REQUEST_TIMEOUT_SECONDS = 15
 RESPONSE_LIMIT_BYTES = 300_000
 POST_LIMIT = 12
@@ -61,12 +62,13 @@ def _allowed_url(url: str) -> bool:
 def _request_url() -> str:
     fields = (
         "id,date,modified,link,title,content,excerpt,categories,tags,"
-        "featured_media,_links"
+        "featured_media,_links,_embedded"
     )
     return API_URL + "?" + urllib.parse.urlencode({
         "per_page": POST_LIMIT,
         "orderby": "modified",
         "order": "desc",
+        "_embed": "wp:featuredmedia",
         "_fields": fields,
     })
 
@@ -90,6 +92,46 @@ def _read_posts() -> List[Dict[str, Any]]:
     if not isinstance(value, list) or len(value) > POST_LIMIT:
         raise AmGuardamarError("AM Guardamar API returned an invalid post list")
     return [item for item in value if isinstance(item, dict)]
+
+
+def _featured_image_url(raw: Dict[str, Any], media_id: int) -> Optional[str]:
+    """Return one validated official WordPress featured-image URL."""
+
+    if media_id <= 0:
+        return None
+    embedded = raw.get("_embedded")
+    media = (
+        embedded.get("wp:featuredmedia")
+        if isinstance(embedded, dict)
+        else None
+    )
+    if not isinstance(media, list) or len(media) != 1:
+        return None
+    item = media[0]
+    if not isinstance(item, dict) or item.get("id") != media_id:
+        return None
+    source_url = item.get("source_url")
+    mime_type = item.get("mime_type")
+    if not isinstance(source_url, str) or not isinstance(mime_type, str):
+        return None
+    if mime_type not in {"image/jpeg", "image/png", "image/webp"}:
+        return None
+    try:
+        parsed = urllib.parse.urlsplit(source_url)
+        port = parsed.port
+    except ValueError:
+        return None
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname not in MEDIA_HOSTS
+        or port not in {None, 443}
+        or parsed.username is not None
+        or parsed.password is not None
+        or not parsed.path.casefold().startswith("/wp-content/uploads/")
+        or not parsed.path.casefold().endswith((".jpg", ".jpeg", ".png", ".webp"))
+    ):
+        return None
+    return urllib.parse.urlunsplit(parsed._replace(query="", fragment=""))
 
 
 def _plain(value: Any) -> str:
@@ -146,6 +188,7 @@ def _post_fields(raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "categories": [value for value in categories if isinstance(value, int)],
         "tags": [value for value in tags if isinstance(value, int)],
         "featured_media": featured_media,
+        "image_url": _featured_image_url(raw, featured_media),
     }
 
 
@@ -266,7 +309,8 @@ async def refresh_am_guardamar_catalog(
                 continue
         local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
         extracted = tuple(
-            event for event in extracted
+            replace(event, image_url=post["image_url"])
+            for event in extracted
             if local_day <= event.end_date <= local_day + timedelta(days=EVENT_HORIZON_DAYS)
         )
         records.append(
@@ -280,6 +324,7 @@ async def refresh_am_guardamar_catalog(
                 "categories": post["categories"],
                 "tags": post["tags"],
                 "featured_media": post["featured_media"],
+                "image_url": post["image_url"],
                 "events": [_event_data(event) for event in extracted],
             }
         )
@@ -338,6 +383,16 @@ async def fetch_today_am_guardamar_events(
             access_note=event.access_note,
             programme_title=event.programme_title,
             programme_order=event.programme_order,
+            active_from=(
+                event.start_date if event.start_date != event.end_date else None
+            ),
+            active_until=(
+                event.end_date if event.start_date != event.end_date else None
+            ),
+            is_final_day=(
+                event.start_date != event.end_date and local_day == event.end_date
+            ),
+            image_url=event.image_url,
         ))
     return tuple(result)
 

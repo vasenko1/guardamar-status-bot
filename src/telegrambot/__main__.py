@@ -138,6 +138,12 @@ from .blood_donation import (
     refresh_blood_donation_catalog_if_due,
 )
 from .weekend import produce_weekend_message, weekend_dates
+from .tomorrow_events import (
+    TomorrowEventState,
+    TomorrowEventStateError,
+    produce_tomorrow_event_publication,
+    tomorrow_notice_due,
+)
 from .models import ColdHealthRisk, HeatHealthRisk
 from .state import PublicationState, StateError
 from .telegram import (
@@ -150,6 +156,7 @@ from .telegram import (
     pin_chat_message,
     send_message,
     send_photo,
+    send_photo_url,
     send_poll,
 )
 from .transport_schedules import sync_transport_schedules
@@ -168,6 +175,7 @@ DEFAULT_EVENT_TRANSLATIONS_PATH = "state/event_translations.json"
 DEFAULT_AEMET_SNAPSHOT_PATH = "state/aemet.json"
 DEFAULT_OPERATIONAL_UPDATE_STATE_PATH = "state/operational_updates.json"
 DEFAULT_WEEKEND_STATE_PATH = "state/weekend.json"
+DEFAULT_TOMORROW_EVENTS_STATE_PATH = "state/tomorrow_events.json"
 DEFAULT_PHARMACY_STATE_PATH = "state/pharmacy.json"
 DEFAULT_EARTHQUAKE_STATE_PATH = "state/earthquakes.json"
 DEFAULT_EMERGENCY_RISK_STATE_PATH = "state/emergency_risks.json"
@@ -1156,6 +1164,124 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         logging.info("SUCCESS: poll %s delivered", message_id)
         return 0
 
+    if command in {"tomorrow-events", "tomorrow-events-preview"}:
+        if command == "tomorrow-events" and not tomorrow_notice_due(now):
+            logging.info(
+                "SKIP: next-day event notice is reserved for Sunday-Thursday"
+            )
+            return 0
+
+        publication = await produce_tomorrow_event_publication(
+            now,
+            municipal_agenda_state_path=municipal_path,
+            agenda_state_path=agenda_path,
+            library_agenda_state_path=library_path,
+            am_guardamar_state_path=am_guardamar_path,
+            facv_state_path=facv_path,
+            pesca_cv_state_path=pesca_cv_path,
+            translation_cache_path=translations_path,
+        )
+        if command == "tomorrow-events-preview":
+            if publication is None:
+                print("No verified next-day events are eligible")
+            else:
+                print(publication.message)
+                if publication.image_url is not None:
+                    print(f"\nIMAGE: {publication.image_url}")
+            return 0
+        if publication is None:
+            logging.info("SKIP: no verified next-day events are eligible")
+            return 0
+
+        bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
+        chat_id = _required_environment("TELEGRAM_CHAT_ID")
+        tomorrow_state = TomorrowEventState(Path(os.environ.get(
+            "TOMORROW_EVENTS_STATE_PATH",
+            DEFAULT_TOMORROW_EVENTS_STATE_PATH,
+        )))
+
+        async def send_tomorrow_text() -> int:
+            return await send_message(
+                bot_token,
+                chat_id,
+                publication.message,
+                disable_notification=False,
+                retry_only_rate_limits=True,
+            )
+
+        with tomorrow_state.exclusive_run():
+            delivery_status = tomorrow_state.status(publication.target_date)
+            if delivery_status == "sent":
+                logging.info(
+                    "SKIP: next-day event notice already published for %s",
+                    publication.target_date,
+                )
+                return 0
+            if delivery_status == "uncertain":
+                logging.warning(
+                    "SKIP: next-day event delivery remains uncertain for %s",
+                    publication.target_date,
+                )
+                return 0
+
+            use_photo = (
+                publication.image_url is not None
+                and len(publication.message) <= 1024
+            )
+            tomorrow_state.mark_uncertain(publication.target_date)
+            try:
+                if use_photo:
+                    message_id, _ = await send_photo_url(
+                        bot_token,
+                        chat_id,
+                        publication.image_url,
+                        publication.message,
+                        disable_notification=False,
+                    )
+                else:
+                    message_id = await send_tomorrow_text()
+            except TelegramError as exc:
+                if is_ambiguous_send_failure(exc):
+                    logging.warning(
+                        "Next-day event delivery is uncertain [TELEGRAM-%s]",
+                        exc.diagnostic_code,
+                    )
+                    return 0
+
+                tomorrow_state.clear(publication.target_date)
+                if not use_photo:
+                    raise
+
+                logging.warning(
+                    "Next-day event photo rejected [TELEGRAM-%s]; "
+                    "falling back to text",
+                    exc.diagnostic_code,
+                )
+                tomorrow_state.mark_uncertain(publication.target_date)
+                try:
+                    message_id = await send_tomorrow_text()
+                except TelegramError as text_exc:
+                    if is_ambiguous_send_failure(text_exc):
+                        logging.warning(
+                            "Next-day event text fallback is uncertain "
+                            "[TELEGRAM-%s]",
+                            text_exc.diagnostic_code,
+                        )
+                        return 0
+                    tomorrow_state.clear(publication.target_date)
+                    raise
+
+            tomorrow_state.mark_sent(
+                publication.target_date,
+                message_id,
+            )
+            logging.info(
+                "SUCCESS: next-day event notice delivered for %s (%d units)",
+                publication.target_date,
+                publication.unit_count,
+            )
+            return 0
+
     if command in {"weekend", "weekend-preview"}:
         saturday, sunday = weekend_dates(now)
         gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
@@ -1234,33 +1360,47 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
     if command == "prepare-event-translations":
         gemini_key = _required_environment("GEMINI_API_KEY")
         items = []
-        translation_sources = (
-            (
-                "municipal agenda",
-                lambda: municipal_translation_items(now, municipal_path),
-                MunicipalAgendaError,
-            ),
-            (
-                "Agenda Guardamar",
-                lambda: agenda_translation_items(now, agenda_path),
-                AgendaError,
-            ),
-            (
-                "library agenda",
-                lambda: library_translation_items(now, library_path),
-                LibraryAgendaError,
-            ),
-            (
-                "AM Guardamar",
-                lambda: am_guardamar_translation_items(now, am_guardamar_path),
-                AmGuardamarError,
-            ),
-        )
-        for name, load_items, error_type in translation_sources:
-            try:
-                items.extend(await load_items())
-            except error_type as exc:
-                logging.warning("%s translations skipped: %s", name, exc)
+        for moment in (now, now + timedelta(days=1)):
+            translation_sources = (
+                (
+                    "municipal agenda",
+                    lambda moment=moment: municipal_translation_items(
+                        moment, municipal_path
+                    ),
+                    MunicipalAgendaError,
+                ),
+                (
+                    "Agenda Guardamar",
+                    lambda moment=moment: agenda_translation_items(
+                        moment, agenda_path
+                    ),
+                    AgendaError,
+                ),
+                (
+                    "library agenda",
+                    lambda moment=moment: library_translation_items(
+                        moment, library_path
+                    ),
+                    LibraryAgendaError,
+                ),
+                (
+                    "AM Guardamar",
+                    lambda moment=moment: am_guardamar_translation_items(
+                        moment, am_guardamar_path
+                    ),
+                    AmGuardamarError,
+                ),
+            )
+            for name, load_items, error_type in translation_sources:
+                try:
+                    items.extend(await load_items())
+                except error_type as exc:
+                    logging.warning(
+                        "%s translations skipped for %s: %s",
+                        name,
+                        moment.date(),
+                        exc,
+                    )
         try:
             items.extend(await facv_translation_items(now, facv_path))
         except FacvSourceError as exc:
@@ -1697,6 +1837,7 @@ def main() -> None:
             "suma",
             "blood-donation-alert",
             "weekend", "weekend-preview",
+            "tomorrow-events", "tomorrow-events-preview",
             "poll",
         ),
         default="run",
@@ -1749,6 +1890,7 @@ def main() -> None:
         TelegramError,
         StateError,
         OperationalUpdateStateError,
+        TomorrowEventStateError,
         ValueError,
     ) as exc:
         print(f"Command failed: {exc}", file=sys.stderr)

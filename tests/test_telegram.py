@@ -16,6 +16,7 @@ from telegrambot.telegram import (
     _edit_message,
     _pin_chat_message,
     _post_photo,
+    _post_photo_url,
     _edit_photo_media,
     _response_error,
     edit_message,
@@ -24,6 +25,7 @@ from telegrambot.telegram import (
     pin_chat_message,
     send_message,
     send_photo,
+    send_photo_url,
     send_poll,
 )
 
@@ -96,6 +98,69 @@ class TelegramDeliveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(content_type.startswith("multipart/form-data; boundary="))
         self.assertIn(b'name="photo"', opener.request.data)
         self.assertIn("Расписание".encode(), opener.request.data)
+
+    async def test_remote_photo_uses_json_and_returns_identifiers(self):
+        response = _SuccessfulResponse(
+            b'{"ok":true,"result":{"message_id":78,"photo":['
+            b'{"file_id":"remote"}]}}',
+            url="https://api.telegram.org/botsecret-token/sendPhoto",
+        )
+        opener = _Opener(response)
+        with patch(
+            "telegrambot.telegram.urllib.request.build_opener",
+            return_value=opener,
+        ):
+            result = _post_photo_url(
+                "secret-token",
+                "@destination",
+                "https://amguardamar.es/wp-content/uploads/2026/09/event.jpg",
+                "Завтра концерт",
+                False,
+            )
+
+        self.assertEqual(result, (78, "remote"))
+        body = json.loads(opener.request.data.decode("utf-8"))
+        self.assertEqual(
+            body["photo"],
+            "https://amguardamar.es/wp-content/uploads/2026/09/event.jpg",
+        )
+        self.assertEqual(body["caption"], "Завтра концерт")
+        self.assertFalse(body["disable_notification"])
+        self.assertEqual(
+            opener.request.headers["Content-type"],
+            "application/json; charset=utf-8",
+        )
+
+    async def test_remote_photo_rejects_non_https_url(self):
+        with self.assertRaises(TelegramError) as caught:
+            _post_photo_url(
+                "secret-token",
+                "@destination",
+                "http://example.com/event.jpg",
+                "Завтра концерт",
+                False,
+            )
+        self.assertEqual(caught.exception.diagnostic_code, "URL-POLICY")
+
+    async def test_send_photo_url_does_not_retry_ambiguous_failure(self):
+        failure = TelegramError(
+            "network",
+            retryable=True,
+            code="NETWORK",
+        )
+        with patch(
+            "telegrambot.telegram._post_photo_url",
+            side_effect=failure,
+        ) as post:
+            with self.assertRaises(TelegramError):
+                await send_photo_url(
+                    "token",
+                    "chat",
+                    "https://amguardamar.es/wp-content/uploads/event.jpg",
+                    "caption",
+                    max_attempts=3,
+                )
+        self.assertEqual(post.call_count, 1)
 
     async def test_photo_media_edit_uploads_caption_atomically(self):
         response = _SuccessfulResponse(

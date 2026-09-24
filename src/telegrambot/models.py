@@ -79,6 +79,7 @@ class Event:
     active_from: Optional[date] = None
     route: Optional[str] = None
     admission_evidence: Optional[str] = None
+    image_url: Optional[str] = None
 
 
 @dataclass(frozen=True)

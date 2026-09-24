@@ -299,6 +299,7 @@ def _merge_municipal_admission_aliases(events):
             preferred,
             ticket_url=preferred.ticket_url or alias.ticket_url,
             place=preferred.place or alias.place,
+            image_url=preferred.image_url or alias.image_url,
         )
 
     return tuple(result)
@@ -514,7 +515,9 @@ def _merge_events(*groups):
                     access_note=current.access_note or event.access_note,
                     route=current.route or event.route,
                     active_until=current.active_until or event.active_until,
+                    active_from=current.active_from or event.active_from,
                     is_final_day=current.is_final_day or event.is_final_day,
+                    image_url=current.image_url or event.image_url,
                     programme_title=(
                         current.programme_title or event.programme_title
                     ),

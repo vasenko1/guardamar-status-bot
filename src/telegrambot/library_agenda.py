@@ -499,8 +499,18 @@ async def fetch_today_library_events(now: datetime, state_path: Path, translatio
             continue
         teaser = (cached_translation(translation_cache_path, "library_agenda_teaser", event.teaser)
                   if event.teaser else None)
-        result.append(replace(event,
-            title=cached_title(translation_cache_path, "library_agenda", event.title), teaser=teaser))
+        result.append(replace(
+            event,
+            title=cached_title(
+                translation_cache_path, "library_agenda", event.title
+            ),
+            teaser=teaser,
+            is_final_day=(
+                event.active_from is not None
+                and event.active_until is not None
+                and local_day == event.active_until
+            ),
+        ))
     return tuple(result)
 
 

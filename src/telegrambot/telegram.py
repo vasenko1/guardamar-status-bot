@@ -298,6 +298,57 @@ def _photo_result(decoded: Dict[str, Any]) -> tuple[int, str]:
     return message_id, file_id
 
 
+def _remote_photo_url(value: str) -> bool:
+    try:
+        parsed = urllib.parse.urlsplit(value)
+        port = parsed.port
+    except (TypeError, ValueError):
+        return False
+    return (
+        parsed.scheme == "https"
+        and bool(parsed.hostname)
+        and port in {None, 443}
+        and parsed.username is None
+        and parsed.password is None
+    )
+
+
+def _post_photo_url(
+    bot_token: str,
+    chat_id: str,
+    photo_url: str,
+    caption: str,
+    disable_notification: bool,
+) -> tuple[int, str]:
+    if not _remote_photo_url(photo_url):
+        raise TelegramError(
+            "Telegram remote photo URL is invalid",
+            retryable=False,
+            code="URL-POLICY",
+            description="адрес фотографии некорректен",
+        )
+    if not 1 <= len(caption) <= 1024:
+        raise TelegramError(
+            "Telegram caption length is invalid",
+            retryable=False,
+            code="MESSAGE-LENGTH",
+            description="подпись фотографии слишком длинная",
+        )
+    decoded = _call_api(
+        bot_token,
+        "sendPhoto",
+        {
+            "chat_id": chat_id,
+            "photo": photo_url,
+            "caption": caption,
+            "parse_mode": "HTML",
+            "disable_notification": disable_notification,
+        },
+        REQUEST_TIMEOUT_SECONDS,
+    )
+    return _photo_result(decoded)
+
+
 def _post_photo(
     bot_token: str,
     chat_id: str,
@@ -744,6 +795,40 @@ async def edit_message(
         max_attempts=max_attempts,
         sleep=sleep,
     )
+
+
+async def send_photo_url(
+    bot_token: str,
+    chat_id: str,
+    photo_url: str,
+    caption: str,
+    *,
+    disable_notification: bool = True,
+    max_attempts: int = MAX_IDEMPOTENT_ATTEMPTS,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+) -> tuple[int, str]:
+    """Send one remote photo; retry only an explicit rate-limit rejection."""
+
+    if max_attempts < 1:
+        raise ValueError("max_attempts must be at least one")
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return await asyncio.to_thread(
+                _post_photo_url,
+                bot_token,
+                chat_id,
+                photo_url,
+                caption,
+                disable_notification,
+            )
+        except TelegramError as exc:
+            if exc.server_status != 429 or attempt == max_attempts:
+                raise
+            requested_delay = exc.retry_after or 0
+            if requested_delay > MAX_IDEMPOTENT_RETRY_DELAY_SECONDS:
+                raise
+            await sleep(max(2 ** (attempt - 1), requested_delay))
+    raise AssertionError("unreachable")
 
 
 async def send_photo(

@@ -209,6 +209,71 @@ class CourseNotificationCollectionTests(unittest.TestCase):
             "registration_single_day",
         )
 
+    def test_tomorrow_closing_groups_multiple_courses(self):
+        judo = record(
+            registrations=[{"start": "2026-09-01", "end": "2026-09-21"}],
+        )
+        multisport = record(
+            record_id="sporttia:2",
+            course_key="sporttia:multisport",
+            card_key="multisport",
+            title="Мультиспорт",
+            emoji="🏃",
+            registrations=[{"start": "2026-09-01", "end": "2026-09-21"}],
+        )
+        result = collect_changes(
+            {judo["record_id"]: judo, multisport["record_id"]: multisport},
+            {"sporttia"},
+            baseline_state(judo, multisport),
+            date(2026, 9, 20),
+            {"judo": 501, "multisport": 502},
+        )
+        messages = result["pending"]["messages"]
+        self.assertEqual(
+            [item["kind"] for item in messages],
+            ["registration_closing_tomorrow"],
+        )
+        self.assertEqual(len(messages[0]["events"]), 2)
+        self.assertEqual(
+            {event["type"] for event in messages[0]["events"]},
+            {"registration_close_tomorrow"},
+        )
+
+    def test_tomorrow_single_day_is_only_tomorrow_opening(self):
+        current = record(registrations=[
+            {"start": "2026-09-21", "end": "2026-09-21"}
+        ])
+        result = collect_changes(
+            {current["record_id"]: current},
+            {"sporttia"},
+            baseline_state(current),
+            date(2026, 9, 20),
+            {"judo": 501},
+        )
+        messages = result["pending"]["messages"]
+        self.assertEqual(
+            [item["kind"] for item in messages],
+            ["registration_opening_tomorrow"],
+        )
+        self.assertEqual(
+            messages[0]["events"][0]["type"],
+            "registration_single_day_tomorrow",
+        )
+
+    def test_stale_snapshot_never_emits_tomorrow_date_event(self):
+        current = record(
+            observed_day="2026-09-19",
+            registrations=[{"start": "2026-09-01", "end": "2026-09-21"}],
+        )
+        result = collect_changes(
+            {current["record_id"]: current},
+            {"sporttia"},
+            baseline_state(current),
+            date(2026, 9, 20),
+            {"judo": 501},
+        )
+        self.assertIsNone(result["pending"])
+
     def test_new_course_with_opening_is_not_duplicated_as_new_course(self):
         existing = record()
         current_new = record(
@@ -466,6 +531,103 @@ class CourseNotificationMessageTests(unittest.TestCase):
         self.assertIn("основной период записи", message)
         self.assertIn("при наличии мест", message)
         self.assertNotIn("последний день подачи заявки", message)
+
+
+    def test_tomorrow_closing_template_groups_and_preserves_until_full(self):
+        events = [
+            {
+                "type": "registration_close_tomorrow",
+                "record_id": "sporttia:1",
+                "course_key": "sporttia:judo",
+                "card_key": "judo",
+                "title": "Дзюдо",
+                "emoji": "🥋",
+                "group": "1-я группа",
+                "start": "2026-09-01",
+                "end": "2026-09-21",
+                "until_full": False,
+            },
+            {
+                "type": "registration_close_tomorrow",
+                "record_id": "dinamizacion:program",
+                "course_key": "dinamizacion:program",
+                "card_key": "dinamizacion",
+                "title": "Муниципальные занятия и мастерские",
+                "emoji": "🤝",
+                "group": None,
+                "start": "2026-09-09",
+                "end": "2026-09-21",
+                "until_full": True,
+            },
+        ]
+        message = build_message(
+            "registration_closing_tomorrow",
+            events,
+            "-100123",
+            {"judo": 501, "dinamizacion": 503},
+        )
+        self.assertIn("Завтра заканчивается запись", message)
+        self.assertEqual(message.count("Завтра заканчивается запись"), 1)
+        self.assertNotIn("завтра последний день подачи заявки", message)
+        self.assertIn("заканчивается основной период", message)
+        self.assertIn("при наличии мест", message)
+        self.assertEqual(message.count(FOOTER), 1)
+
+    def test_mass_tomorrow_deadline_does_not_repeat_same_phrase(self):
+        events = [
+            {
+                "type": "registration_close_tomorrow",
+                "record_id": f"sporttia:{index}",
+                "course_key": f"sporttia:course-{index}",
+                "card_key": f"course-{index}",
+                "title": f"Занятие {index}",
+                "emoji": "🎓",
+                "group": None,
+                "start": "2026-09-01",
+                "end": "2026-09-30",
+                "until_full": False,
+            }
+            for index in range(1, 16)
+        ]
+        messages = {
+            f"course-{index}": 500 + index
+            for index in range(1, 16)
+        }
+        message = build_message(
+            "registration_closing_tomorrow",
+            events,
+            "-100123",
+            messages,
+        )
+
+        self.assertLess(len(message), 4096)
+        self.assertEqual(message.count("Завтра заканчивается запись"), 1)
+        self.assertNotIn("последний день подачи заявки", message)
+        for index in range(1, 16):
+            self.assertIn(f"Занятие {index}", message)
+
+    def test_tomorrow_single_day_template_does_not_claim_longer_window(self):
+        event = {
+            "type": "registration_single_day_tomorrow",
+            "record_id": "sporttia:1",
+            "course_key": "sporttia:judo",
+            "card_key": "judo",
+            "title": "Дзюдо",
+            "emoji": "🥋",
+            "group": None,
+            "start": "2026-09-21",
+            "end": "2026-09-21",
+            "until_full": False,
+        }
+        message = build_message(
+            "registration_opening_tomorrow",
+            [event],
+            "-100123",
+            {"judo": 501},
+        )
+        self.assertIn("Завтра открывается запись", message)
+        self.assertIn("только завтра", message)
+        self.assertNotIn("до 21 сентября", message)
 
     def test_new_course_with_multiple_groups_renders_once(self):
         events = [

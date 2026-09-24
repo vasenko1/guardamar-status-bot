@@ -404,6 +404,7 @@ async def fetch_today_pesca_cv_events(
                 starts_at=None,
                 place=raw["place"],
                 active_until=end if start != end else None,
+                active_from=start if start != end else None,
                 category="event",
                 is_final_day=start != end and local_day == end,
             )
