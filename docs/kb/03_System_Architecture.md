@@ -60,6 +60,7 @@ no message.
 | Lifecycle | Trigger | Resident-facing effect |
 | --- | --- | --- |
 | Morning Digest | 07:30 daily | One immutable daily message; pharmacy, events, holidays/markets, AEMET weather/sea/UV, locally computed sunrise/sunset, CAMS/Meteosalud baseline and fresh CCE hydrology contribute here without becoming separate morning processes. |
+| SUMA tax reminders | Immediately after the existing 07:30 daily command | Independent one-shot cross-checks two official HTML pages and may publish at most one exact-date tax/debit reminder; no new cron or daemon. |
 | SafeBeach + Mayor bathing status | 10:10–10:40 in season, then bounded operational checks | Separate daily beach root, live early edits, later confirmed replies; explicit Mayor bathing restrictions remain an independent safety signal. |
 | AEMET operational warnings | Existing `monitor-updates` windows | Material warning changes reply to the Morning Digest. |
 | CAMS / Meteosalud late environment | 10:40 CAMS early check plus existing operational recovery; Meteosalud on operational checkpoints | Material air-quality, pollen, heat or cold changes reply to the Morning Digest. |
@@ -300,8 +301,11 @@ time and explicit place. It uses no AI, cache or additional request; ordinary
 news and retrospective reports remain ineligible.
 
 Termux runs the transport sync at 05:00, refreshes municipal and Agenda Guardamar
-catalogs at 05:10 and 05:30, invokes the morning command at 07:30, and runs the
-update command every five minutes from 10:10 through 10:40 in `Europe/Madrid`.
+catalogs at 05:10 and 05:30, invokes the morning command at 07:30, then invokes
+the independent SUMA one-shot from the same daily shell without adding a cron
+row. The morning exit status remains authoritative for the daily shell; a SUMA
+failure is logged separately. The update command runs every five minutes from
+10:10 through 10:40 in `Europe/Madrid`.
 The first update invocation that acquires the daily state lock attempts each
 event catalog once, independently of whether SafeBeach succeeds. These facts
 are retained for later publications and do not alone trigger replacement. The
@@ -374,7 +378,13 @@ the message ID is stored remains an unavoidable duplicate edge.
   provider chains, microservices, webhooks, or heavy background infrastructure.
 ### Morning lifecycle
 
-The morning publication is an immutable anchor. Operational beach status has
+The morning publication is an immutable anchor. SUMA shares only the external
+07:30 shell trigger: it has its own source adapter and atomic state, never
+contributes to or edits the Morning Digest, and its failure cannot mutate
+Morning Digest state. Its two HTML reads are sequential and bounded, and no raw
+page is retained.
+
+Operational beach status has
 an independent seasonal root, while material AEMET, CAMS and Meteosalud
 changes reply to the morning anchor. The existing atomic JSON state stores
 only message identifiers and compact baselines; no database, daemon or extra

@@ -29,22 +29,36 @@ Candidate product value:
 - last day to set up domiciliación where explicitly published;
 - Guardamar-specific payment periods such as IBI, IAE and vados.
 
-Technical shape:
+Verified 2026-09-24:
 
-- ordinary public HTML;
-- Guardamar has its own municipal information page;
-- relevant payment periods and dates are visible in HTML;
-- no browser, authentication, AI or PDF is required.
+- Guardamar municipal page: `https://www.suma.es/cuerpo_infmunicipal.xhtml?m=76`;
+- general voluntary-payment page: `https://www.suma.es/periodo-pago-voluntario`;
+- the Guardamar page currently lists IBI urbana, IBI rústica, IAE and vados
+  for 27/07/2026–08/10/2026;
+- the general page publishes the same 27 July–8 October period, a 23 September
+  direct-debit setup deadline and a 1 October charge date;
+- both facts are available in ordinary public HTML; no browser, login, AI,
+  OCR or PDF path is required.
 
-Recommended lifecycle:
+Accepted product/lifecycle:
 
-- low-frequency bounded GET;
-- deterministic parsing;
-- silent baseline;
-- publish only useful approaching deadlines or newly opened periods;
-- no need for frequent polling.
+- two bounded sequential HTML GETs once in the existing 07:30 daily shell;
+- the Guardamar tax rows must match the general period dates exactly;
+- deterministic parsing and fail-closed disagreement;
+- first successful run is a silent baseline;
+- exact-date messages only: opening, seven days before domiciliación closes,
+  charge date, and one day before voluntary payment ends;
+- missed dates are never replayed retrospectively;
+- state stores only bounded semantic trigger-date keys;
+- no new cron, daemon, queue, database or notification framework.
 
-Status: **strong candidate**.
+For a production bootstrap on 24 September 2026, opening and domiciliación are
+already past and are silently baselined. The next eligible messages are
+1 October and 7 October.
+
+Implementation: `src/telegrambot/suma.py`, ADR 0077.
+
+Status: **accepted for production implementation**.
 
 ### 2. Ayuntamiento Noticias — actionable municipal opportunities
 

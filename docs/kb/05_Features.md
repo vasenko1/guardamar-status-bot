@@ -43,6 +43,32 @@ explicit send remains eligible; an ambiguous result is marked uncertain to
 avoid an automatic duplicate because Telegram provides no idempotency key for
 `sendMessage`.
 
+## SUMA tax-period reminders
+
+Once per existing 07:30 daily lifecycle, the bot performs a separate SUMA
+one-shot after Morning Digest. It cross-checks the current Guardamar municipal
+tax rows against SUMA's general voluntary-payment period and publishes at most
+one standalone message only on these exact local dates:
+
+- the payment-period opening date;
+- seven days before the published direct-debit setup deadline;
+- the published direct-debit charge date;
+- one day before the voluntary payment period ends.
+
+The first successful run is a silent baseline: trigger dates at or before that
+day are recorded without publication, while future dates remain eligible. A
+missed date is never replayed later. This means a first production bootstrap on
+24 September 2026 is silent; the next eligible notices are 1 October for the
+direct-debit charge and 7 October for the 8 October voluntary-payment deadline.
+
+The message uses only source-backed dates and the tax names found on the
+Guardamar SUMA page. The state is a tiny atomic list of semantic date keys. A
+future official date revision naturally creates a new future key; no history,
+queue or generic notification framework is retained. Definite Telegram failure
+rolls the key back for a same-day manual retry, while an ambiguous send keeps it
+to avoid an automatic duplicate. Source failure or source disagreement is
+silent.
+
 ## Weekend events digest
 
 One optional Friday-evening message, «Афиша выходных», previews Saturday and

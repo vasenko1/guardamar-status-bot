@@ -3,7 +3,7 @@
 The implemented providers are AEMET, Ministerio de Sanidad Meteosalud,
 Copernicus CAMS through a normalized public data product, Guardamar's public SafeBeach page,
 Agenda Guardamar, the public `@AlcaldeGuardamar` channel, the Biblioteca Pública Municipal de Guardamar,
-and Agrupación Musical Guardamar. The 07:30 run requests current morning data
+Agrupación Musical Guardamar, and SUMA Gestión Tributaria. The 07:30 run requests current morning data
 directly and reads events from four pre-morning local catalogs. Operational
 SafeBeach flags are intentionally excluded from the immutable Morning Digest
 and use a separate seasonal daily beach root.
@@ -25,6 +25,7 @@ official endpoints and lightweight access methods are validated.
 | Civil protection or emergency authority | Safety warnings | Highest priority | Alert feed or official publication | Yes |
 | CCE — 112 Comunitat Valenciana | Active emergency and hydrological authority state relevant to Guardamar/Segura | Highest priority for authority decisions; complements rather than duplicates AEMET | Public `emergencias.jsf` plus current text-readable CCE PDF, checked by one bounded hourly watcher | Yes, narrow operational monitor |
 | Previfoc / Generalitat Valenciana (VAERSA ArcGIS) | Official zone-6 forest-fire preemergency plus dry-thunderstorm risk for Guardamar | High; responsible regional fire-prevention/emergency source | Tiny structured ArcGIS query for the current operational day; same-day level may be readjusted | Yes, narrow operational monitor |
+| SUMA Gestión Tributaria | Guardamar municipal tax periods, voluntary-payment deadline, direct-debit setup deadline and charge date | High; official Alicante provincial tax-management authority | Two bounded public HTML GETs once in the existing 07:30 daily lifecycle; municipal rows must match the general campaign dates exactly | Yes, four exact-date standalone reminders |
 | Instituto Geografico Nacional (IGN) GeoRSS | Nearby recorded earthquakes | High; official Spanish seismic authority | One bounded public XML feed request per hour; deterministic 20 km and magnitude 1.8 filter | Yes, narrow standalone notice |
 | Policía Local Guardamar | Historical reviewed festival restriction only | The reviewed page did not provide a dependable current traffic feed in routine operation | Retired from runtime; no scheduled request and no AI fallback | No |
 | Agenda Guardamar | Official ticketed events occurring today | High for listed Ayuntamiento events | 05:30 bounded HTML/Schema.org catalog refresh | Yes |
@@ -37,6 +38,26 @@ official endpoints and lightweight access methods are validated.
 | Colegio Oficial de Farmacéuticos de Alicante | Legally authoritative on-call pharmacy rota | High; the provincial college responsible for the service | One weekly bounded fetch of the linked annual XLSX with compressed and uncompressed size bounds; normalized 45-day catalog for Guardamar's complete published service zone `61`, including duties assigned in San Fulgencio; no morning request | Yes, ADR 0038 |
 | Campo de Guardamar market website | Sunday market at Camino del Raso, 15 | Operator-published schedule; no authoritative cancellation feed found | Local Sunday rule, `07:00–16:00` | Yes, explicit product exception |
 | Community or commercial sources | Gap filling only | Variable | Varies | No by default |
+
+## Approved SUMA tax-period source
+
+Use only the official Guardamar municipal page with municipality id `76` and
+the official SUMA voluntary-payment page. The municipal page supplies the local
+tax rows and their exact collection period; the general page supplies that
+campaign's direct-debit setup deadline and charge date. A campaign is accepted
+only when at least one Guardamar row has the same start and end dates as the
+general period. Source disagreement, ambiguous labels, malformed dates,
+unexpected HTML, redirects outside the exact SUMA host, or unavailable pages
+fail closed.
+
+Collection is two sequential bounded HTML GETs once per existing daily run.
+No login, cookie state, browser, PDF, OCR, AI, raw-page cache or source history
+is required. The first successful run seeds only semantic trigger dates at or
+before that local day. Future exact-date triggers remain eligible; a missed
+trigger is never replayed from cached data. For the accepted 2026 campaign the
+general period is 27 July–8 October, the direct-debit setup deadline is
+23 September and the charge date is 1 October. Guardamar currently lists IBI
+urbana, IBI rústica, IAE and vados for that exact period.
 
 ## Approved morning health and atmosphere data
 
