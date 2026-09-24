@@ -313,6 +313,32 @@ class BloodDonationAlertTests(unittest.IsolatedAsyncioTestCase):
 
         send.assert_awaited_once()
 
+    async def test_control_get_resets_weekly_timer_for_event_morning(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "blood.json"
+            state = self._state(path)
+            send = AsyncMock(return_value=100)
+            alert_now = datetime(2026, 10, 13, 16, 45, tzinfo=MADRID)
+
+            with patch(
+                "telegrambot.blood_donation.fetch_bounded",
+                return_value=fetch_result(),
+            ) as fetch:
+                self.assertEqual(
+                    await monitor_blood_donation_alert(
+                        state, alert_now, send
+                    ),
+                    "published",
+                )
+                self.assertFalse(
+                    await refresh_blood_donation_catalog_if_due(
+                        datetime(2026, 10, 14, 7, 30, tzinfo=MADRID),
+                        path,
+                    )
+                )
+
+            self.assertEqual(fetch.call_count, 1)
+
     async def test_alert_does_not_publish_or_fetch_early_or_late(self):
         for hour, minute in ((16, 44), (18, 0)):
             with self.subTest(hour=hour, minute=minute):
