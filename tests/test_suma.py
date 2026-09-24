@@ -50,7 +50,6 @@ def campaign(
     debit_charge=date(2026, 10, 1),
 ):
     return SumaCampaign(
-        "2026-ANUAL",
         start,
         end,
         debit_deadline,
@@ -72,7 +71,6 @@ class SumaSourceTests(unittest.TestCase):
     def test_parses_and_cross_checks_current_guardamar_campaign(self):
         value = parse_campaign(MUNICIPAL_HTML, PERIOD_HTML)
 
-        self.assertEqual(value.period_label, "2026-ANUAL")
         self.assertEqual(value.starts_on, date(2026, 7, 27))
         self.assertEqual(value.ends_on, date(2026, 10, 8))
         self.assertEqual(value.direct_debit_deadline, date(2026, 9, 23))
@@ -86,6 +84,16 @@ class SumaSourceTests(unittest.TestCase):
                 "VADOS",
             ),
         )
+
+    def test_multiple_period_labels_with_same_dates_are_valid(self):
+        municipal = MUNICIPAL_HTML.replace(
+            b"VADOS; Periodo: 2026-ANUAL;",
+            b"VADOS; Periodo: 2026-SEMESTRAL-2;",
+        )
+        value = parse_campaign(municipal, PERIOD_HTML)
+
+        self.assertIn("VADOS", value.taxes)
+        self.assertEqual(len(value.taxes), 4)
 
     def test_guardamar_period_must_match_general_suma_period(self):
         municipal = MUNICIPAL_HTML.replace(
