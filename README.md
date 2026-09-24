@@ -130,6 +130,7 @@ CRON_TZ=Europe/Madrid
 0,20 21 * * * /path/to/TelegramBot/termux/run-electricity.sh
 15 19 * * 5 /path/to/TelegramBot/termux/run-weekend.sh --fresh
 15 20 * * 5 /path/to/TelegramBot/termux/run-weekend.sh
+25 19 * * 0-4 /data/data/com.termux/files/usr/bin/sh /path/to/TelegramBot/termux/run-tomorrow-events.sh
 50 5 * * 0 /path/to/TelegramBot/termux/sync-pharmacy.sh
 19 * * * * /path/to/TelegramBot/termux/check-112.sh
 */30 * * * * /path/to/TelegramBot/termux/monitor-hidraqua.sh
@@ -160,7 +161,8 @@ The validated Android deployment uses the scripts in `termux/`:
   `termux/sync-agenda-events.sh` at 05:30 to atomically refresh small event
   catalogs before publication;
 - `termux/prepare-events.sh` at 06:00, 06:30, and 07:00 to fill only missing
-  title translations, and `termux/prepare-aemet.sh` at 07:15 to store one
+  event-title/teaser translations for today and tomorrow, and
+  `termux/prepare-aemet.sh` at 07:15 to store one
   normalized same-day weather snapshot;
 - `termux/sync-guide.sh` at 09:02 to read the bounded places/activities
   sources and reconcile the same pinned graph. A separate
@@ -170,7 +172,12 @@ The validated Android deployment uses the scripts in `termux/`:
   public 🧪 notice. The guide one-shot also runs at 19:45 on 14 June and
   15 September to verify the live ORA schedule before a due next-day Zona Azul
   transition notice; `publish-course-notifications.sh` runs at 09:42 with an
-  11:42 same-day retry opportunity;
+  11:42 same-day retry opportunity and groups verified registration openings or
+  closings that occur tomorrow;
+- `termux/run-tomorrow-events.sh` at 19:25 Sunday–Thursday reads only fresh
+  same-day local event catalogs. It sends at most one next-day planning post,
+  performs no source refresh or AI call, and lets Telegram fetch an optional
+  validated official event image by URL;
 - `termux/monitor-earthquakes.sh` at minute 55 of every hour to check the
   official IGN GeoRSS feed for a new qualifying local event;
 - `termux/start-services` copied to `~/.termux/boot/start-services` for the
@@ -238,6 +245,7 @@ CRON_TZ=Europe/Madrid
 0,20 21 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity.sh
 15 19 * * 5 /data/data/com.termux/files/home/bots/guardamar-status/termux/run-weekend.sh --fresh
 15 20 * * 5 /data/data/com.termux/files/home/bots/guardamar-status/termux/run-weekend.sh
+25 19 * * 0-4 /data/data/com.termux/files/usr/bin/sh /data/data/com.termux/files/home/bots/guardamar-status/termux/run-tomorrow-events.sh
 50 5 * * 0 /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-pharmacy.sh
 19 * * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/check-112.sh
 */30 * * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-hidraqua.sh
@@ -252,15 +260,17 @@ cd ~/bots/guardamar-status
 ./termux/install-monitor-cron.sh
 ```
 
-Install or update just the Friday `Афиша выходных` jobs in the same safe way:
+Install or update the event-planning jobs (Friday `Афиша выходных` plus the
+Sunday–Thursday next-day notice) in the same safe way:
 
 ```sh
 cd ~/bots/guardamar-status
 ./termux/install-weekend-cron.sh
 ```
 
-The installer retains unrelated cron entries and owns only its marked weekend
-block.
+The installer retains unrelated cron entries and owns only its marked event-
+planning block. The next-day row has one 19:25 attempt and deliberately does
+not refresh event sources again in the evening.
 
 The installer saves the original crontab once as
 `~/.cache/crontab/crontab.before-monitor`, preserves unrelated lines, and owns
@@ -327,6 +337,7 @@ PYTHONPATH=src python -m telegrambot preview
 PYTHONPATH=src python -m telegrambot status
 PYTHONPATH=src python -m telegrambot electricity-preview
 PYTHONPATH=src python -m telegrambot weekend-preview
+PYTHONPATH=src python -m telegrambot tomorrow-events-preview
 PYTHONPATH=src python -m telegrambot refresh-current
 PYTHONPATH=src python -m telegrambot pinned-preview
 ```
@@ -342,6 +353,8 @@ PYTHONPATH=src python -m telegrambot poll "Что добавить в дайдж
   collects SafeBeach. Later material weather/environment changes are compact
   replies; seasonal beach status uses its own root message.
 - `status` prints the last successfully published local date.
+- `tomorrow-events-preview` renders the next local day's eligible proactive
+  event post from local snapshots only and never sends or writes delivery state.
 - `electricity-preview` prints tomorrow's table and its explanatory reply
   without publishing or changing publication state. It reuses, or creates
   after one complete ESIOS response, the same private normalized target-day
