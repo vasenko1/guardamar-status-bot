@@ -231,8 +231,8 @@ class TomorrowEventPublicationTests(unittest.IsolatedAsyncioTestCase):
             publication.message.count("Fiestas del Campo — Campo de Guardamar"),
             1,
         )
-        self.assertIn("Entrada de bandas", publication.message)
-        self.assertIn("Desfile Multicolor", publication.message)
+        self.assertIn("Шествие музыкальных оркестров", publication.message)
+        self.assertIn("Красочный парад", publication.message)
 
     async def test_multiple_units_use_one_compact_text_post_without_image(self):
         events = [
