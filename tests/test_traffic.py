@@ -254,6 +254,17 @@ class TrafficFormattingTests(unittest.TestCase):
         self.assertIn(title, lane_message)
         self.assertNotIn("<b>Перекрытие полосы движения</b>", lane_message)
 
+    def test_valencian_urbanization_prefix_is_removed(self):
+        label = location_label(
+            incident(from_place=None, to_place=None),
+            location(
+                subdivision="Urbanització Pòrtic Mediterrani",
+                street="Calle Paris",
+            ),
+        )
+
+        self.assertEqual(label, "Pòrtic Mediterrani — Calle Paris")
+
     def test_fallback_preserves_spanish_street_casing(self):
         body = fallback_body(
             incident(category="laneClosed"),
