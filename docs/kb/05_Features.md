@@ -72,17 +72,21 @@ silent.
 
 ## Blood-donation alert and same-day event
 
-The existing morning publication lifecycle performs one bounded read of the
-official Alicante blood-donation programme and retains only normalized current
-or future Guardamar sessions for that local day. If a session occurs today, it
-appears in the normal Morning Digest event list with its published hours and
-reviewed venue link.
+The existing morning lifecycle performs the official Alicante
+blood-donation read only when no local snapshot exists or seven local calendar
+days have elapsed since the last successful read. It retains only normalized
+current or future Guardamar sessions.
 
-A separate short-lived command runs at 16:45 Europe/Madrid. It performs no
-source request: it reads the same morning snapshot and sends one standalone
-message only when a verified Guardamar session is scheduled for tomorrow. A
-snapshot observed on another local date is never reused for public output.
-Rows explicitly marked `SUSPENDIDA` are omitted.
+A separate short-lived command runs at 16:45 Europe/Madrid. It first consults
+that local discovery snapshot. With no known session tomorrow it exits without
+network access. With a known session tomorrow it performs exactly one fresh
+bounded control read and publishes only if the session is still present and not
+`SUSPENDIDA`; current hours and venue come from that fresh response.
+
+The successful 16:45 control read replaces the snapshot. The next Morning
+Digest may render today's donation only from a snapshot observed today or on
+the previous local date, so a weekly discovery snapshot cannot become a stale
+same-day public event by itself.
 
 The state contains the current normalized sessions plus one `alerted_for`
 date. A definite Telegram failure clears that date for retry; an ambiguous send
