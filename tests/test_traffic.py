@@ -950,7 +950,7 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
             sent = []
 
             async def fetcher(_key):
-                return (incident(),)
+                return (incident(category="laneClosed"),)
 
             async def locator(_item, _key):
                 return location()
@@ -973,7 +973,7 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(delivered, 1)
-        self.assertIn("перекрыт проезд", sent[0][0])
+        self.assertIn("перекрыта полоса движения", sent[0][0])
 
 
 if __name__ == "__main__":
