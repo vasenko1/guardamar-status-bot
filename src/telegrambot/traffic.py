@@ -681,10 +681,17 @@ async def _deliver(
     reply_to: Optional[int],
     marker: str,
     marker_value: str,
+    remember: Optional[dict[str, Any]] = None,
 ) -> int:
-    previous_marker = record.get(marker)
-    previous_pending = record.get("pending_delivery")
+    missing = object()
+    previous_marker = record.get(marker, missing)
+    previous_pending = record.get("pending_delivery", missing)
+    previous_remember = {
+        key: record.get(key, missing) for key in (remember or {})
+    }
     record[marker] = marker_value
+    for key, remembered_value in (remember or {}).items():
+        record[key] = remembered_value
     record["pending_delivery"] = {
         "at": datetime.now(GUARDAMAR_TIMEZONE).isoformat(),
         "marker": marker,
@@ -697,14 +704,19 @@ async def _deliver(
         logging.warning("Traffic delivery uncertain; automatic resend suppressed")
         return 0
     except Exception:
-        if previous_marker is None:
+        if previous_marker is missing:
             record.pop(marker, None)
         else:
             record[marker] = previous_marker
-        if previous_pending is None:
+        if previous_pending is missing:
             record.pop("pending_delivery", None)
         else:
             record["pending_delivery"] = previous_pending
+        for key, previous_value in previous_remember.items():
+            if previous_value is missing:
+                record.pop(key, None)
+            else:
+                record[key] = previous_value
         state.write(value)
         raise
     record["last_message_id"] = message_id
@@ -834,22 +846,41 @@ async def monitor_traffic(
             if location is None or location.municipality != GUARDAMAR_MUNICIPALITY:
                 continue
 
-            old_incident = _record_incident(existing) if existing is not None else None
+            reactivated = (
+                existing is not None
+                and _clean_text(existing.get("ended_at"), limit=80) is not None
+            )
+            lifecycle_existing = None if reactivated else existing
+            old_incident = (
+                _record_incident(lifecycle_existing)
+                if lifecycle_existing is not None else None
+            )
             old_start = old_incident.starts_at if old_incident else None
             old_category = old_incident.category if old_incident else None
             old_validity = old_incident.validity if old_incident else None
-            last_message = _last_message_id(existing) if existing is not None else None
+            last_message = (
+                _last_message_id(lifecycle_existing)
+                if lifecycle_existing is not None else None
+            )
             previous_present_date = (
-                _alert_date(existing, "last_present_alert_date")
-                if existing is not None else None
+                _alert_date(lifecycle_existing, "last_present_alert_date")
+                if lifecycle_existing is not None else None
             )
             previous_future_date = (
-                _alert_date(existing, "last_future_alert_date")
-                if existing is not None else None
+                _alert_date(lifecycle_existing, "last_future_alert_date")
+                if lifecycle_existing is not None else None
+            )
+            last_alert_category = (
+                _clean_text(lifecycle_existing.get("last_alert_category"), limit=40)
+                if lifecycle_existing is not None else None
+            )
+            last_future_start = (
+                _safe_iso(lifecycle_existing.get("last_future_start"))
+                if lifecycle_existing is not None else None
             )
 
             base = _serialize_incident(incident, location)
-            if existing is not None:
+            if lifecycle_existing is not None:
                 for key in (
                     "last_present_alert_date", "last_future_alert_date",
                     "last_message_id", "pending_delivery", "end_notified_at",
@@ -880,10 +911,10 @@ async def monitor_traffic(
                     mode = "future_tomorrow"
                     marker = "last_future_alert_date"
                 elif (
-                    existing is not None
+                    lifecycle_existing is not None
                     and previous_future_date is not None
                     and old_validity == "future"
-                    and not _same_local_start(old_start, incident.starts_at)
+                    and not _same_local_start(last_future_start or old_start, incident.starts_at)
                 ):
                     mode = "future_rescheduled"
                     marker = "last_future_alert_date"
@@ -891,11 +922,16 @@ async def monitor_traffic(
                 else:
                     continue
             else:
-                newly_present = existing is None or old_validity != "present"
+                newly_present = (
+                    lifecycle_existing is None
+                    or old_validity != "present"
+                    or previous_present_date is None
+                )
                 category_changed = (
-                    existing is not None
+                    lifecycle_existing is not None
                     and old_validity == "present"
-                    and old_category != incident.category
+                    and previous_present_date is not None
+                    and (last_alert_category or old_category) != incident.category
                 )
                 if newly_present:
                     mode = "new_present"
@@ -945,6 +981,9 @@ async def monitor_traffic(
                 )
                 message = build_alert_message(incident, location, body)
 
+            remember = {"last_alert_category": incident.category}
+            if incident.validity == "future" and incident.starts_at is not None:
+                remember = {"last_future_start": incident.starts_at.isoformat()}
             delivered += await _deliver(
                 state,
                 value,
@@ -954,6 +993,7 @@ async def monitor_traffic(
                 reply_to=reply_to,
                 marker=marker,
                 marker_value=marker_value,
+                remember=remember,
             )
 
         state.write(value)
