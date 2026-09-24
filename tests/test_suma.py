@@ -249,6 +249,28 @@ class SumaMonitorTests(unittest.TestCase):
             self.assertIn("8 октября", calls[-1])
             self.assertEqual(len(calls), 2)
 
+    def test_no_trigger_does_not_rewrite_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = SumaState(Path(directory) / "suma.json")
+
+            async def send(message):
+                return 1
+
+            self.run_monitor(state, at(2026, 9, 1), campaign(), send)
+            original = state.path.read_bytes()
+
+            with patch.object(state, "write", wraps=state.write) as write:
+                result = self.run_monitor(
+                    state,
+                    at(2026, 9, 2),
+                    campaign(),
+                    send,
+                )
+
+            self.assertEqual(result, "no_trigger")
+            write.assert_not_called()
+            self.assertEqual(state.path.read_bytes(), original)
+
     def test_missed_trigger_is_never_sent_retroactively(self):
         with tempfile.TemporaryDirectory() as directory:
             state = SumaState(Path(directory) / "suma.json")
