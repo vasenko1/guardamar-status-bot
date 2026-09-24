@@ -6,7 +6,7 @@ import json
 import logging
 import os
 import tempfile
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Sequence
 from zoneinfo import ZoneInfo
@@ -35,6 +35,8 @@ MAX_SENT_DATE_EVENTS = 512
 MESSAGE_ORDER = (
     "registration_closing",
     "registration_opening",
+    "registration_closing_tomorrow",
+    "registration_opening_tomorrow",
     "registration_changes",
     "new_courses",
     "course_changes",
@@ -43,6 +45,9 @@ EVENT_KINDS = {
     "registration_open": "registration_opening",
     "registration_single_day": "registration_opening",
     "registration_close": "registration_closing",
+    "registration_open_tomorrow": "registration_opening_tomorrow",
+    "registration_single_day_tomorrow": "registration_opening_tomorrow",
+    "registration_close_tomorrow": "registration_closing_tomorrow",
     "registration_changed": "registration_changes",
     "new_course": "new_courses",
     "new_group": "new_courses",
@@ -221,6 +226,9 @@ def _valid_event(event: Any) -> bool:
         "registration_open",
         "registration_close",
         "registration_single_day",
+        "registration_open_tomorrow",
+        "registration_close_tomorrow",
+        "registration_single_day_tomorrow",
     }:
         start_raw = event.get("start")
         end_raw = event.get("end")
@@ -337,6 +345,9 @@ def _valid_pending(value: Any) -> bool:
                 "registration_open",
                 "registration_close",
                 "registration_single_day",
+                "registration_open_tomorrow",
+                "registration_close_tomorrow",
+                "registration_single_day_tomorrow",
             }
         ]
         if identifiers != expected_identifiers:
@@ -749,6 +760,7 @@ def _date_events(
 ) -> list[dict]:
     sent = set(sent_ids)
     events: list[dict] = []
+    next_day = local_day + timedelta(days=1)
     for record in current.values():
         if not _fresh_on(record, local_day):
             continue
@@ -761,6 +773,12 @@ def _date_events(
                 event_type = "registration_open"
             elif end == local_day:
                 event_type = "registration_close"
+            elif start == next_day and end == next_day:
+                event_type = "registration_single_day_tomorrow"
+            elif start == next_day:
+                event_type = "registration_open_tomorrow"
+            elif end == next_day:
+                event_type = "registration_close_tomorrow"
             else:
                 continue
             identifier = (
@@ -792,19 +810,32 @@ def _bucket_events(
             "registration_open",
             "registration_close",
             "registration_single_day",
+            "registration_open_tomorrow",
+            "registration_close_tomorrow",
+            "registration_single_day_tomorrow",
         }
     }
     opening_courses = {
         event["course_key"]
         for event in dated
-        if event["type"] in {"registration_open", "registration_single_day"}
+        if event["type"] in {
+            "registration_open",
+            "registration_single_day",
+            "registration_open_tomorrow",
+            "registration_single_day_tomorrow",
+        }
     }
 
     for event in dated:
-        if event["type"] == "registration_close":
+        event_type = event["type"]
+        if event_type == "registration_close":
             buckets["registration_closing"].append(dict(event))
-        else:
+        elif event_type in {"registration_open", "registration_single_day"}:
             buckets["registration_opening"].append(dict(event))
+        elif event_type == "registration_close_tomorrow":
+            buckets["registration_closing_tomorrow"].append(dict(event))
+        else:
+            buckets["registration_opening_tomorrow"].append(dict(event))
 
     for event in semantic:
         event_type = event["type"]
@@ -1175,6 +1206,40 @@ def build_message(
                 )
             else:
                 detail = "сегодня последний день подачи заявки"
+            lines.append(f"• {target}{group} — {detail}")
+        lines.extend([
+            "",
+            "Нажмите на название занятия, чтобы открыть его актуальную карточку.",
+        ])
+    elif kind == "registration_opening_tomorrow":
+        lines.append("📝 <b>Завтра открывается запись на занятия</b>")
+        lines.append("")
+        rendered = _collapse_date_events(events)
+        for event in rendered:
+            target = _linked_title(event, chat_id, messages)
+            group = f" · {html.escape(str(event['group']))}" if event.get("group") else ""
+            if event["type"] == "registration_single_day_tomorrow":
+                detail = "запись будет открыта только завтра"
+            else:
+                detail = f"запись будет открыта до {_date_label(str(event['end']))}"
+            lines.append(f"• {target}{group} — {detail}")
+        lines.extend([
+            "",
+            "Нажмите на название занятия — откроется карточка с актуальной информацией и записью.",
+        ])
+    elif kind == "registration_closing_tomorrow":
+        lines.append("⏳ <b>Завтра заканчивается запись</b>")
+        lines.append("")
+        for event in _collapse_date_events(events):
+            target = _linked_title(event, chat_id, messages)
+            group = f" · {html.escape(str(event['group']))}" if event.get("group") else ""
+            if event.get("until_full"):
+                detail = (
+                    "завтра заканчивается основной период записи; после него "
+                    "заявки могут продолжать принимать при наличии мест"
+                )
+            else:
+                detail = "завтра последний день подачи заявки"
             lines.append(f"• {target}{group} — {detail}")
         lines.extend([
             "",
