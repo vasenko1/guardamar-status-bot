@@ -142,15 +142,20 @@ Verified 2026-09-24:
 
 Accepted product/lifecycle:
 
-- one bounded GET during the existing morning publication build;
+- discovery polling is limited to one bounded GET when seven local calendar
+  days have elapsed since the last successful snapshot;
 - store only normalized current/future Guardamar sessions in a tiny local
   snapshot; never cache the province-wide HTML;
 - exact municipality filter and fail closed on malformed rows;
 - rows explicitly marked `SUSPENDIDA` are omitted;
-- if a session is tomorrow, one standalone alert is eligible at 16:45;
-- if a session is today, it appears as a normal Morning Digest event;
-- the 16:45 command reads the morning snapshot and performs no network request;
-- previous-day snapshots are never reused for public output;
+- at 16:45, no source request is made unless the weekly snapshot already knows
+  that a Guardamar session is scheduled for tomorrow;
+- for a known tomorrow session, perform one fresh control GET immediately before
+  publication; cancellation/date disappearance suppresses the alert and changed
+  hours/venue replace the old facts;
+- the successful control response becomes the snapshot used by the next Morning
+  Digest; a digest event is allowed only from a snapshot observed today or
+  yesterday;
 - no daemon, browser, PDF, AI, database or generic notification framework.
 
 Implementation: `src/telegrambot/blood_donation.py`, ADR 0078.
