@@ -488,6 +488,55 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(found)
         self.assertTrue(found[1].endswith("-1-scaled.jpeg"))
 
+    async def test_unchanged_programme_upgrades_prior_rows_with_poster_url(self):
+        day = date(2026, 9, 25)
+        poster_url = (
+            "https://guardamarturismo.com/wp-content/uploads/"
+            "2026/09/fiestas-del-campo-2026-cartel.jpg"
+        )
+        article_url = "https://guardamarturismo.com/programa-campo/"
+        article_text = (
+            "Fiestas del Campo 2026. "
+            "El sábado 25 de septiembre habrá actos. "
+            "El domingo 26 habrá actividades."
+        )
+        image = b"verified-poster"
+        prior = SourceEvent(
+            "Entrada de bandas",
+            day, day, "18:30", None, None, "event",
+            ("turismo_programme",),
+            programme_title="Fiestas del Campo — Campo de Guardamar",
+            programme_order=20,
+        )
+        state = {
+            "article_url": article_url,
+            "poster_url": poster_url,
+            "sha256": hashlib.sha256(article_text.encode("utf-8")).hexdigest(),
+            "poster_sha256": hashlib.sha256(image).hexdigest(),
+            "extractor_version": 2,
+        }
+        with (
+            patch(
+                "telegrambot.municipal_agenda._read_turismo_programme",
+                return_value=(
+                    article_url,
+                    poster_url,
+                    article_text,
+                    "Fiestas del Campo 2026",
+                ),
+            ),
+            patch(
+                "telegrambot.municipal_agenda.fetch_bounded",
+                return_value=(image, poster_url, "image/jpeg"),
+            ),
+        ):
+            events, returned_state = await _turismo_programme_events(
+                "key", date(2026, 9, 24), (prior,), state
+            )
+
+        self.assertEqual(events[0].image_url, poster_url)
+        self.assertEqual(returned_state, state)
+
     def test_extracts_declared_month_and_only_programme_section(self):
         payload = b"""
         <nav>irrelevant</nav>
@@ -539,6 +588,35 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(merged), 1)
         self.assertEqual(merged[0].title_es, text_event.title_es)
         self.assertEqual(merged[0].sources, ("turismo_html", "mupi"))
+
+    def test_same_occurrence_merge_preserves_programme_image_url(self):
+        day = date(2026, 9, 25)
+        official = SourceEvent(
+            "Entrada de bandas",
+            day, day, "18:30", None, None, "event",
+            ("turismo_html",),
+        )
+        poster_url = (
+            "https://guardamarturismo.com/wp-content/uploads/"
+            "2026/09/fiestas-del-campo-2026-cartel.jpg"
+        )
+        programme = SourceEvent(
+            "Entrada de bandas",
+            day, day, "18:30", None, None, "event",
+            ("turismo_programme",),
+            programme_title="Fiestas del Campo — Campo de Guardamar",
+            programme_order=20,
+            image_url=poster_url,
+        )
+
+        merged = merge_text_and_poster_events((official,), (programme,))
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0].image_url, poster_url)
+        self.assertEqual(
+            merged[0].programme_title,
+            "Fiestas del Campo — Campo de Guardamar",
+        )
 
     def test_corroborating_source_can_make_same_title_self_contained(self):
         official = SourceEvent(
