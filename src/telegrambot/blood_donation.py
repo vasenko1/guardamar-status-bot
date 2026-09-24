@@ -128,6 +128,7 @@ def _fold(value: str) -> str:
 def _allowed_url(url: str) -> bool:
     try:
         value = urllib.parse.urlsplit(url)
+        port = value.port
         query = urllib.parse.parse_qs(
             value.query, keep_blank_values=True, strict_parsing=True
         )
@@ -136,7 +137,7 @@ def _allowed_url(url: str) -> bool:
     return (
         value.scheme == "https"
         and value.hostname == "oficina20.san.gva.es"
-        and value.port in {None, 443}
+        and port in {None, 443}
         and value.username is None
         and value.password is None
         and value.path == "/gportal-ctcvcol-portlet/listaColectas.jsp"
@@ -224,7 +225,7 @@ def parse_schedule(payload: bytes, today: date) -> tuple[BloodDonationSession, .
         for n, value in parser.tokens
         if (parsed := _source_date(value, today)) is not None
     ]
-    if len({item for _, item in markers}) < 3:
+    if not markers:
         raise BloodDonationError("schedule dates are missing", code="SCHEMA")
 
     result = []
