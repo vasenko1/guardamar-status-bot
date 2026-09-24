@@ -154,8 +154,8 @@ Accepted product/lifecycle:
   publication; cancellation/date disappearance suppresses the alert and changed
   hours/venue replace the old facts;
 - the successful control response becomes the snapshot used by the next Morning
-  Digest; a digest event is allowed only from a snapshot observed today or
-  yesterday;
+  Digest and resets the seven-day discovery timer; a previous-day snapshot is
+  accepted by the digest only when it was observed at/after 16:45;
 - no daemon, browser, PDF, AI, database or generic notification framework.
 
 Implementation: `src/telegrambot/blood_donation.py`, ADR 0078.
