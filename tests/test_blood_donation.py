@@ -232,6 +232,21 @@ class BloodDonationDigestTests(unittest.TestCase):
 
         self.assertEqual(events, (donation_session_to_event(donation_session()),))
 
+    def test_previous_morning_weekly_snapshot_is_not_used_in_digest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "blood.json"
+            self._state(
+                path,
+                datetime(2026, 10, 13, 7, 30, tzinfo=MADRID),
+            )
+
+            events = asyncio.run(fetch_today_blood_donation_events(
+                datetime(2026, 10, 14, 7, 30, tzinfo=MADRID),
+                path,
+            ))
+
+        self.assertEqual(events, ())
+
     def test_two_day_old_weekly_snapshot_is_not_used_in_digest(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "blood.json"
