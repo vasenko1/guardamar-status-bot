@@ -167,7 +167,7 @@ class BloodDonationDigestTests(unittest.TestCase):
         )
         self.assertIn(
             f'📍 <a href="{GOOGLE_MAPS_URL}">'
-            "Centro Sanitario Integrado</a> (зона педиатрии)",
+            "Centro Sanitario Integrado (зона педиатрии)</a>",
             rendered,
         )
 
