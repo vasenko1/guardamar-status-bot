@@ -1234,33 +1234,47 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
     if command == "prepare-event-translations":
         gemini_key = _required_environment("GEMINI_API_KEY")
         items = []
-        translation_sources = (
-            (
-                "municipal agenda",
-                lambda: municipal_translation_items(now, municipal_path),
-                MunicipalAgendaError,
-            ),
-            (
-                "Agenda Guardamar",
-                lambda: agenda_translation_items(now, agenda_path),
-                AgendaError,
-            ),
-            (
-                "library agenda",
-                lambda: library_translation_items(now, library_path),
-                LibraryAgendaError,
-            ),
-            (
-                "AM Guardamar",
-                lambda: am_guardamar_translation_items(now, am_guardamar_path),
-                AmGuardamarError,
-            ),
-        )
-        for name, load_items, error_type in translation_sources:
-            try:
-                items.extend(await load_items())
-            except error_type as exc:
-                logging.warning("%s translations skipped: %s", name, exc)
+        for moment in (now, now + timedelta(days=1)):
+            translation_sources = (
+                (
+                    "municipal agenda",
+                    lambda moment=moment: municipal_translation_items(
+                        moment, municipal_path
+                    ),
+                    MunicipalAgendaError,
+                ),
+                (
+                    "Agenda Guardamar",
+                    lambda moment=moment: agenda_translation_items(
+                        moment, agenda_path
+                    ),
+                    AgendaError,
+                ),
+                (
+                    "library agenda",
+                    lambda moment=moment: library_translation_items(
+                        moment, library_path
+                    ),
+                    LibraryAgendaError,
+                ),
+                (
+                    "AM Guardamar",
+                    lambda moment=moment: am_guardamar_translation_items(
+                        moment, am_guardamar_path
+                    ),
+                    AmGuardamarError,
+                ),
+            )
+            for name, load_items, error_type in translation_sources:
+                try:
+                    items.extend(await load_items())
+                except error_type as exc:
+                    logging.warning(
+                        "%s translations skipped for %s: %s",
+                        name,
+                        moment.date(),
+                        exc,
+                    )
         try:
             items.extend(await facv_translation_items(now, facv_path))
         except FacvSourceError as exc:
