@@ -12,14 +12,4 @@ if [ -f "$LOG" ] && [ "$(wc -c < "$LOG")" -gt 1048576 ]; then
 fi
 
 exec >>"$LOG" 2>&1
-
-./.venv/bin/python -m telegrambot morning
-MORNING_STATUS=$?
-
-./.venv/bin/python -m telegrambot suma
-SUMA_STATUS=$?
-if [ "$SUMA_STATUS" -ne 0 ]; then
-    echo "SUMA one-shot failed with status $SUMA_STATUS"
-fi
-
-exit "$MORNING_STATUS"
+exec ./.venv/bin/python -m telegrambot morning
