@@ -517,12 +517,13 @@ class SumaState:
 
     def write(self, sent: Sequence[str], today: date) -> None:
         values = _prune_sent(sent, today)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        descriptor, temporary = tempfile.mkstemp(
-            prefix=f".{self.path.name}.",
-            dir=self.path.parent,
-        )
+        temporary = None
         try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            descriptor, temporary = tempfile.mkstemp(
+                prefix=f".{self.path.name}.",
+                dir=self.path.parent,
+            )
             with os.fdopen(descriptor, "w", encoding="utf-8") as output:
                 json.dump(
                     {"version": STATE_VERSION, "sent": values},
@@ -535,22 +536,27 @@ class SumaState:
                 os.fsync(output.fileno())
             os.chmod(temporary, 0o600)
             os.replace(temporary, self.path)
+        except OSError as exc:
+            raise SumaError("SUMA state could not be saved", code="STATE") from exc
         finally:
-            try:
-                os.unlink(temporary)
-            except FileNotFoundError:
-                pass
+            if temporary is not None:
+                try:
+                    os.unlink(temporary)
+                except FileNotFoundError:
+                    pass
 
     @contextmanager
     def exclusive_run(self) -> Iterator[None]:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
         lock_path = self.path.with_name(f".{self.path.name}.lock")
         try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
             with lock_path.open("a", encoding="utf-8") as handle:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                 yield
         except BlockingIOError as exc:
             raise SumaError("another SUMA run is active", code="BUSY") from exc
+        except OSError as exc:
+            raise SumaError("SUMA state could not be locked", code="STATE") from exc
 
 
 async def monitor_suma(
