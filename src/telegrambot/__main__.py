@@ -167,7 +167,8 @@ DEFAULT_EARTHQUAKE_STATE_PATH = "state/earthquakes.json"
 DEFAULT_EMERGENCY_RISK_STATE_PATH = "state/emergency_risks.json"
 DEFAULT_HIDRAQUA_STATE_PATH = "state/hidraqua.json"
 DEFAULT_SUMA_STATE_PATH = "state/suma.json"
-DEFAULT_BLOOD_DONATION_STATE_PATH = "state/blood_donation.json"\nDEFAULT_CAMS_CACHE_PATH = "state/cams.json"
+DEFAULT_BLOOD_DONATION_STATE_PATH = "state/blood_donation.json"
+DEFAULT_CAMS_CACHE_PATH = "state/cams.json"
 CAMS_UPDATE_CHECKPOINTS = frozenset({(10, 40)})
 
 
