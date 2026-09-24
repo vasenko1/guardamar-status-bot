@@ -167,5 +167,83 @@ class EventTeaserTranslationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(translator.await_count, 1)
 
 
+    async def test_title_batch_failure_recovers_individual_cache_misses(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "translations.json"
+            translator = AsyncMock(side_effect=[
+                GeminiError("invalid batch"),
+                ["Перевод Alpha"],
+                GeminiError("invalid single"),
+                ["Перевод Gamma"],
+            ])
+            with patch(
+                "telegrambot.event_translations.translate_event_titles",
+                new=translator,
+            ):
+                count = await prepare_translations(
+                    "key",
+                    (
+                        ("municipal_agenda", "Evento Alpha"),
+                        ("agenda_guardamar", "Evento Beta"),
+                        ("library_agenda", "Evento Gamma"),
+                    ),
+                    path,
+                    datetime(2026, 9, 24, 23, 55, tzinfo=TZ),
+                )
+
+            self.assertEqual(count, 2)
+            self.assertEqual(translator.await_count, 4)
+            self.assertEqual(
+                translator.await_args_list[0].args,
+                ("key", ["Evento Alpha", "Evento Beta", "Evento Gamma"]),
+            )
+            self.assertEqual(
+                cached_translation(path, "municipal_agenda", "Evento Alpha"),
+                "Перевод Alpha",
+            )
+            self.assertIsNone(
+                cached_translation(path, "agenda_guardamar", "Evento Beta")
+            )
+            self.assertEqual(
+                cached_translation(path, "library_agenda", "Evento Gamma"),
+                "Перевод Gamma",
+            )
+
+    async def test_title_recovery_is_bounded_to_twelve_individual_calls(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "translations.json"
+            items = tuple(
+                ("agenda_guardamar", f"Evento {index}")
+                for index in range(14)
+            )
+            translator = AsyncMock(side_effect=[
+                GeminiError("invalid batch"),
+                *[[f"Перевод {index}"] for index in range(12)],
+            ])
+            with patch(
+                "telegrambot.event_translations.translate_event_titles",
+                new=translator,
+            ):
+                count = await prepare_translations(
+                    "key",
+                    items,
+                    path,
+                    datetime(2026, 9, 24, 23, 55, tzinfo=TZ),
+                )
+
+            self.assertEqual(count, 12)
+            self.assertEqual(translator.await_count, 13)
+            self.assertEqual(
+                cached_translation(path, "agenda_guardamar", "Evento 11"),
+                "Перевод 11",
+            )
+            self.assertIsNone(
+                cached_translation(path, "agenda_guardamar", "Evento 12")
+            )
+            self.assertIsNone(
+                cached_translation(path, "agenda_guardamar", "Evento 13")
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
