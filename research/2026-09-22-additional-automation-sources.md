@@ -42,7 +42,7 @@ Verified 2026-09-24:
 
 Accepted product/lifecycle:
 
-- two bounded sequential HTML GETs once in the existing 07:30 daily shell;
+- two bounded sequential HTML GETs once inside the existing 07:30 process;
 - the Guardamar tax rows must match the general period dates exactly;
 - deterministic parsing and fail-closed disagreement;
 - first successful run is a silent baseline;
