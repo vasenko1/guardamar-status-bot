@@ -29,7 +29,8 @@ VALIDITIES = frozenset({"present", "future"})
 PUBLISHABLE_PROBABILITIES = frozenset({"certain", "probable"})
 REQUEST_TIMEOUT_SECONDS = 15
 RESPONSE_LIMIT_BYTES = 512 * 1024
-MAX_INCIDENTS = 128
+MAX_INCIDENTS = 512
+MAX_STATE_EVENTS = 512
 MAX_TEXT_LENGTH = 240
 STATE_VERSION = 1
 STATE_RETENTION = timedelta(days=14)
@@ -161,26 +162,39 @@ def parse_incidents(payload: bytes) -> tuple[TrafficIncident, ...]:
         properties = feature.get("properties")
         if not isinstance(properties, dict):
             raise TrafficError("TomTom traffic feature has no properties")
-        category = _clean_text(properties.get("iconCategory"), limit=40)
-        if category not in CATEGORIES:
+        main_category = _clean_text(properties.get("iconCategory"), limit=40)
+        descriptions = []
+        event_categories = set()
+        raw_events = properties.get("events")
+        if raw_events is None:
+            raw_events = []
+        if not isinstance(raw_events, list):
+            raise TrafficError("TomTom incident events are invalid")
+        for event in raw_events:
+            if not isinstance(event, dict):
+                raise TrafficError("TomTom incident event is invalid")
+            description = _clean_text(event.get("description"))
+            if description and description not in descriptions:
+                descriptions.append(description)
+            event_category = _clean_text(event.get("iconCategory"), limit=40)
+            if event_category:
+                event_categories.add(event_category)
+
+        closure_categories = set(event_categories)
+        if main_category in CATEGORIES:
+            closure_categories.add(main_category)
+        if "roadClosed" in closure_categories:
+            category = "roadClosed"
+        elif "laneClosed" in closure_categories:
+            category = "laneClosed"
+        else:
             continue
+
         provider_id = _clean_text(properties.get("id"), limit=300)
         validity = _clean_text(properties.get("timeValidity"), limit=40)
         probability = _clean_text(properties.get("probabilityOfOccurrence"), limit=40)
         if provider_id is None or validity not in VALIDITIES or probability is None:
             raise TrafficError("TomTom closure has invalid required fields")
-
-        descriptions = []
-        raw_events = properties.get("events")
-        if raw_events is not None:
-            if not isinstance(raw_events, list):
-                raise TrafficError("TomTom closure events are invalid")
-            for event in raw_events:
-                if not isinstance(event, dict):
-                    raise TrafficError("TomTom closure event is invalid")
-                description = _clean_text(event.get("description"))
-                if description and description not in descriptions:
-                    descriptions.append(description)
 
         incident = TrafficIncident(
             provider_id=provider_id,
@@ -238,7 +252,6 @@ def _read_incidents(api_key: str) -> tuple[TrafficIncident, ...]:
         "apiVersion": "2",
         "bbox": BBOX,
         "timeValidity": "present,future",
-        "iconCategories": "roadClosed,laneClosed",
     })
     attributes = (
         "incidents(type,geometry(type,coordinates),properties("
@@ -455,9 +468,9 @@ def fallback_body(
 
 
 def _title(category: str) -> str:
-    if category == "roadClosed":
-        return "🚧 <b>Перекрытие участка дороги</b>"
-    return "🚧 <b>Перекрытие полосы движения</b>"
+    if category not in CATEGORIES:
+        raise TrafficError("traffic alert category is invalid")
+    return "🚧 <b>Перекрытие участка дороги</b>"
 
 
 def build_alert_message(
@@ -479,30 +492,53 @@ def build_alert_message(
 
 
 def _record_incident(record: dict) -> TrafficIncident:
+    if not isinstance(record, dict):
+        raise TrafficError("traffic state event is invalid", code="STATE")
+    provider_id = _clean_text(record.get("provider_id"), limit=300)
+    category = _clean_text(record.get("category"), limit=40)
+    validity = _clean_text(record.get("validity"), limit=40)
+    probability = _clean_text(record.get("probability"), limit=40)
+    if (
+        provider_id is None
+        or category not in CATEGORIES
+        or validity not in VALIDITIES
+        or probability is None
+    ):
+        raise TrafficError("traffic state event is invalid", code="STATE")
+
     coordinates = record.get("coordinates")
     if not isinstance(coordinates, list) or not coordinates:
-        raise TrafficError("traffic state geometry is invalid")
+        raise TrafficError("traffic state geometry is invalid", code="STATE")
     normalized_coordinates = []
     for point in coordinates:
         if not isinstance(point, list) or len(point) != 2:
-            raise TrafficError("traffic state geometry is invalid")
-        normalized_coordinates.append((float(point[0]), float(point[1])))
+            raise TrafficError("traffic state geometry is invalid", code="STATE")
+        normalized_coordinates.append((
+            _coordinate(point[0], latitude=False),
+            _coordinate(point[1], latitude=True),
+        ))
+
+    raw_descriptions = record.get("descriptions_es")
+    if not isinstance(raw_descriptions, list):
+        raise TrafficError("traffic state descriptions are invalid", code="STATE")
+    descriptions = []
+    for item in raw_descriptions:
+        if item is not None and not isinstance(item, str):
+            raise TrafficError("traffic state descriptions are invalid", code="STATE")
+        value = _clean_text(item)
+        if value and value not in descriptions:
+            descriptions.append(value)
+
     return TrafficIncident(
-        provider_id=record["provider_id"],
-        category=record["category"],
-        validity=record["validity"],
-        probability=record["probability"],
+        provider_id=provider_id,
+        category=category,
+        validity=validity,
+        probability=probability,
         starts_at=_parse_time(record.get("starts_at")),
         ends_at=_parse_time(record.get("ends_at")),
         from_place=_clean_text(record.get("from_place")),
         to_place=_clean_text(record.get("to_place")),
-        descriptions_es=tuple(
-            value
-            for value in (
-                _clean_text(item) for item in record.get("descriptions_es", [])
-            )
-            if value
-        ),
+        descriptions_es=tuple(descriptions),
         coordinates=tuple(normalized_coordinates),
     )
 
@@ -525,6 +561,16 @@ def _record_location(record: dict) -> TrafficLocation:
     )
 
 
+def _location_data(location: TrafficLocation) -> dict:
+    return {
+        "municipality": location.municipality,
+        "subdivision": location.subdivision,
+        "street": location.street,
+        "longitude": location.longitude,
+        "latitude": location.latitude,
+    }
+
+
 def _serialize_incident(incident: TrafficIncident, location: TrafficLocation) -> dict:
     return {
         "provider_id": incident.provider_id,
@@ -537,13 +583,7 @@ def _serialize_incident(incident: TrafficIncident, location: TrafficLocation) ->
         "to_place": incident.to_place,
         "descriptions_es": list(incident.descriptions_es),
         "coordinates": [[lon, lat] for lon, lat in incident.coordinates],
-        "location": {
-            "municipality": location.municipality,
-            "subdivision": location.subdivision,
-            "street": location.street,
-            "longitude": location.longitude,
-            "latitude": location.latitude,
-        },
+        "location": _location_data(location),
     }
 
 
@@ -608,30 +648,49 @@ class TrafficState:
             raise TrafficError("traffic state is unreadable", code="STATE") from exc
         if (
             not isinstance(value, dict)
+            or set(value) != {"version", "events"}
             or value.get("version") != STATE_VERSION
             or not isinstance(value.get("events"), dict)
+            or len(value["events"]) > MAX_STATE_EVENTS
         ):
             raise TrafficError("traffic state is invalid", code="STATE")
+        for provider_id, record in value["events"].items():
+            _validate_state_record(provider_id, record)
         return value
 
     def write(self, value: dict) -> None:
         temporary = self.path.with_name(f".{self.path.name}.tmp")
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary.write_text(
-            json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-            + "\n",
-            encoding="utf-8",
-        )
-        os.chmod(temporary, 0o600)
-        os.replace(temporary, self.path)
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            temporary.write_text(
+                json.dumps(
+                    value,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ) + "\n",
+                encoding="utf-8",
+            )
+            os.chmod(temporary, 0o600)
+            os.replace(temporary, self.path)
+        except OSError as exc:
+            raise TrafficError("traffic state could not be saved", code="STATE") from exc
 
     @contextmanager
     def exclusive_run(self) -> Iterator[None]:
         lock = self.path.with_name(f".{self.path.name}.lock")
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with lock.open("a", encoding="utf-8") as handle:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-            yield
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with lock.open("a", encoding="utf-8") as handle:
+                os.chmod(lock, 0o600)
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                yield
+        except BlockingIOError as exc:
+            raise TrafficError(
+                "another traffic monitor is active", code="STATE"
+            ) from exc
+        except OSError as exc:
+            raise TrafficError("traffic state could not be locked", code="STATE") from exc
 
 
 def _safe_iso(value: Any) -> Optional[datetime]:
@@ -709,7 +768,7 @@ async def _deliver(
         message_id = await publish(message, reply_to)
     except TrafficDeliveryUncertain:
         logging.warning("Traffic delivery uncertain; automatic resend suppressed")
-        return 0
+        raise
     except Exception:
         if previous_marker is missing:
             record.pop(marker, None)
@@ -773,7 +832,11 @@ async def monitor_traffic(
             had_future_alert = _alert_date(record, "last_future_alert_date") is not None
             reply_to = _last_message_id(record)
 
-            if previous_validity == "present" and had_present_alert:
+            if (
+                previous_validity == "present"
+                and had_present_alert
+                and reply_to is not None
+            ):
                 incident = _record_incident(record)
                 location = _record_location(record)
                 if incident.category == "roadClosed":
@@ -803,7 +866,11 @@ async def monitor_traffic(
                     marker="end_notified_at",
                     marker_value=local_now.isoformat(),
                 )
-            elif previous_validity == "future" and had_future_alert:
+            elif (
+                previous_validity == "future"
+                and had_future_alert
+                and reply_to is not None
+            ):
                 incident = _record_incident(record)
                 location = _record_location(record)
                 message = with_footer(
@@ -936,6 +1003,24 @@ async def monitor_traffic(
                     marker = "last_present_alert_date"
                 else:
                     continue
+
+            if lifecycle_existing is not None:
+                try:
+                    refreshed_location = await locator(incident, tomtom_api_key)
+                except TrafficError as exc:
+                    logging.warning(
+                        "Traffic location refresh failed for incident %s: %s",
+                        incident.provider_id,
+                        exc,
+                    )
+                else:
+                    if (
+                        refreshed_location is not None
+                        and refreshed_location.municipality == GUARDAMAR_MUNICIPALITY
+                    ):
+                        location = refreshed_location
+                        record["location"] = _location_data(location)
+                        state.write(value)
 
             facts = traffic_facts(
                 incident,
