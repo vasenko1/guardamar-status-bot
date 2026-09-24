@@ -1116,7 +1116,10 @@ async def _turismo_programme_events(
             and previous_state.get("poster_sha256") == poster_fingerprint
             and previous_state.get("extractor_version") == 2
         ):
-            return previous, previous_state
+            return tuple(
+                _programme_source_metadata(event, programme_name, poster_url)
+                for event in previous
+            ), previous_state
         month = local_day.strftime("%Y-%m")
         first = await extract_agenda_events(api_key, image, mime_type)
         second = await verify_agenda_poster_events(api_key, image, mime_type)
@@ -1248,7 +1251,10 @@ async def _turismo_programme_events(
             previous and previous_state.get("sha256") == fingerprint
             and previous_state.get("article_url") == article_url
         ):
-            return previous, previous_state
+            return tuple(
+                _programme_source_metadata(event, programme_name, poster_url)
+                for event in previous
+            ), previous_state
         if explicit_events:
             return tuple(
                 _programme_source_metadata(event, programme_name, poster_url)
