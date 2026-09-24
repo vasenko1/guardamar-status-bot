@@ -580,7 +580,6 @@ async def monitor_suma(
         sent = set(_prune_sent(current, today))
         notice = _today_notice(campaign, today)
         if notice is None:
-            state.write(sorted(sent), today)
             return "no_trigger"
 
         key, message = notice
@@ -597,5 +596,4 @@ async def monitor_suma(
             sent.remove(key)
             state.write(sorted(sent), today)
             raise
-        state.write(sorted(sent), today)
         return "published"
