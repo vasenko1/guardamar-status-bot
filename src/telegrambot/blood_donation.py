@@ -406,6 +406,9 @@ async def refresh_blood_donation_catalog(
 ) -> tuple[BloodDonationSession, ...]:
     """The feature's only network request: one bounded morning GET."""
 
+    if now.tzinfo is None or now.utcoffset() is None:
+        raise ValueError("blood-donation observation time must be timezone-aware")
+
     try:
         payload, _, _ = await asyncio.to_thread(
             fetch_bounded,
@@ -433,6 +436,8 @@ async def fetch_today_blood_donation_events(
     now: datetime,
     state_path: Path = Path(DEFAULT_STATE_PATH),
 ) -> tuple[Event, ...]:
+    if now.tzinfo is None or now.utcoffset() is None:
+        raise ValueError("blood-donation event time must be timezone-aware")
     sessions = await asyncio.to_thread(BloodDonationState(state_path).fresh_sessions, now)
     today = now.astimezone(TIMEZONE).date()
     return tuple(
@@ -518,6 +523,9 @@ async def monitor_blood_donation_alert(
     send: Callable[[str], Awaitable[int]],
 ) -> str:
     """Send tomorrow's alert once, using only this morning's snapshot."""
+
+    if now.tzinfo is None or now.utcoffset() is None:
+        raise ValueError("blood-donation alert time must be timezone-aware")
 
     local_now = now.astimezone(TIMEZONE)
     if not (_ALERT_START <= local_now.time() < _ALERT_END):
