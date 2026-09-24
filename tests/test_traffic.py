@@ -443,6 +443,119 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(sent, [])
 
+    async def test_explicit_send_failure_retries_as_new_alert(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            calls = []
+
+            async def fetcher(_key):
+                return (incident(),)
+
+            async def locator(_item, _key):
+                return location()
+
+            async def composer(_facts):
+                return None
+
+            async def failing_publish(_message, _reply_to):
+                raise RuntimeError("telegram rejected")
+
+            with self.assertRaises(RuntimeError):
+                await monitor_traffic(
+                    state,
+                    NOW,
+                    "key",
+                    composer,
+                    failing_publish,
+                    fetcher=fetcher,
+                    locator=locator,
+                )
+
+            async def successful_publish(message, reply_to):
+                calls.append((message, reply_to))
+                return 444
+
+            delivered = await monitor_traffic(
+                state,
+                NOW + timedelta(hours=1),
+                "key",
+                composer,
+                successful_publish,
+                fetcher=fetcher,
+                locator=locator,
+            )
+
+        self.assertEqual(delivered, 1)
+        self.assertEqual(len(calls), 1)
+        self.assertNotIn("остаётся перекрыт", calls[0][0])
+
+    async def test_failed_category_change_is_retried(self):
+        lane = incident(category="laneClosed")
+        road = incident(category="roadClosed")
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+            await self._run(state, NOW, (lane,), sent)
+
+            async def fetcher(_key):
+                return (road,)
+
+            async def locator(_item, _key):
+                return location()
+
+            async def composer(_facts):
+                return None
+
+            async def failing_publish(_message, _reply_to):
+                raise RuntimeError("telegram rejected")
+
+            with self.assertRaises(RuntimeError):
+                await monitor_traffic(
+                    state,
+                    NOW + timedelta(hours=1),
+                    "key",
+                    composer,
+                    failing_publish,
+                    fetcher=fetcher,
+                    locator=locator,
+                )
+
+            async def successful_publish(message, reply_to):
+                sent.append((message, reply_to, 999))
+                return 999
+
+            delivered = await monitor_traffic(
+                state,
+                NOW + timedelta(hours=2),
+                "key",
+                composer,
+                successful_publish,
+                fetcher=fetcher,
+                locator=locator,
+            )
+
+        self.assertEqual(delivered, 1)
+        self.assertIn("теперь полностью перекрыт", sent[-1][0])
+        self.assertIsNotNone(sent[-1][1])
+
+    async def test_reappearing_ended_id_is_treated_as_new(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+            await self._run(state, NOW, (incident(),), sent)
+            await self._run(state, NOW + timedelta(hours=1), (), sent)
+            await self._run(state, NOW + timedelta(hours=2), (), sent)
+            delivered = await self._run(
+                state,
+                NOW + timedelta(hours=3),
+                (incident(),),
+                sent,
+            )
+
+        self.assertEqual(delivered, 1)
+        self.assertEqual(len(sent), 3)
+        self.assertNotIn("остаётся перекрыт", sent[-1][0])
+
     async def test_gemini_failure_uses_deterministic_copy(self):
         with tempfile.TemporaryDirectory() as directory:
             state = TrafficState(Path(directory) / "traffic.json")
