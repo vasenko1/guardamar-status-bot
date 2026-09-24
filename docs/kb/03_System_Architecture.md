@@ -303,8 +303,8 @@ news and retrospective reports remain ineligible.
 Termux runs the transport sync at 05:00, refreshes municipal and Agenda Guardamar
 catalogs at 05:10 and 05:30, and invokes the single morning process at 07:30.
 That process attempts SUMA as a best-effort final step without adding another
-shell command, process or cron row; expected SUMA failures are logged without
-changing the Morning Digest result. The update command runs every five minutes
+shell command, process or cron row; SUMA failures are logged without changing
+or masking the Morning Digest result. The update command runs every five minutes
 from 10:10 through 10:40 in `Europe/Madrid`.
 The first update invocation that acquires the daily state lock attempts each
 event catalog once, independently of whether SafeBeach succeeds. These facts
@@ -380,8 +380,8 @@ the message ID is stored remains an unavoidable duplicate edge.
 
 The morning publication is an immutable anchor. SUMA runs only as a best-effort
 final step inside the same 07:30 Python process. It has its own source adapter
-and atomic state, never contributes to or edits the Morning Digest, and expected
-SUMA source/state/delivery failures cannot change the Morning Digest result.
+and atomic state, never contributes to or edits the Morning Digest, and SUMA
+failures cannot change or mask the Morning Digest result.
 Its two HTML reads are sequential and bounded, and no raw page is retained.
 
 Operational beach status has
