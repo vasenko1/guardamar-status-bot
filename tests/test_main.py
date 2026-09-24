@@ -31,6 +31,10 @@ from telegrambot.models import (
 from telegrambot.operational_updates import MonitorRun
 from telegrambot.state import PublicationState, StateError
 from telegrambot.telegram import TelegramError
+from telegrambot.tomorrow_events import (
+    TomorrowEventPublication,
+    TomorrowEventState,
+)
 
 
 MADRID = ZoneInfo("Europe/Madrid")
@@ -1338,6 +1342,124 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("готовый дайджест", message)
         self.assertIn("🔧 Диагностика источников", message)
         self.assertIn("[CAMS-NETWORK] CAMS", message)
+
+    async def test_tomorrow_preview_is_read_only(self):
+        publication = TomorrowEventPublication(
+            target_date=datetime(2026, 9, 25, tzinfo=MADRID).date(),
+            message="📅 Завтра в Гуардамаре",
+            events=(),
+            unit_count=1,
+            image_url="https://amguardamar.es/wp-content/uploads/event.jpg",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "tomorrow.json"
+            with (
+                patch(
+                    "telegrambot.__main__.produce_tomorrow_event_publication",
+                    new=AsyncMock(return_value=publication),
+                ),
+                patch("telegrambot.__main__.send_message", new=AsyncMock()) as sent,
+                patch("telegrambot.__main__.send_photo_url", new=AsyncMock()) as photo,
+                patch.dict(os.environ, {
+                    "TOMORROW_EVENTS_STATE_PATH": str(state_path),
+                }),
+            ):
+                self.assertEqual(
+                    await _run_command("tomorrow-events-preview"),
+                    0,
+                )
+
+            sent.assert_not_awaited()
+            photo.assert_not_awaited()
+            self.assertFalse(state_path.exists())
+
+    async def test_tomorrow_photo_rejection_falls_back_to_text_once(self):
+        now = datetime(2026, 9, 24, 19, 25, tzinfo=MADRID)
+        publication = TomorrowEventPublication(
+            target_date=now.date().replace(day=25),
+            message="📅 Завтра в Гуардамаре",
+            events=(),
+            unit_count=1,
+            image_url="https://amguardamar.es/wp-content/uploads/event.jpg",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "tomorrow.json"
+            sent = AsyncMock(return_value=88)
+            rejected = TelegramError(
+                "photo rejected",
+                retryable=False,
+                code="HTTP-400",
+                status=400,
+            )
+            with (
+                patch.dict(os.environ, {
+                    "TELEGRAM_BOT_TOKEN": "token",
+                    "TELEGRAM_CHAT_ID": "@chat",
+                    "TOMORROW_EVENTS_STATE_PATH": str(state_path),
+                }),
+                patch("telegrambot.__main__.datetime") as clock,
+                patch(
+                    "telegrambot.__main__.produce_tomorrow_event_publication",
+                    new=AsyncMock(return_value=publication),
+                ),
+                patch(
+                    "telegrambot.__main__.send_photo_url",
+                    new=AsyncMock(side_effect=rejected),
+                ) as photo,
+                patch("telegrambot.__main__.send_message", new=sent),
+            ):
+                clock.now.return_value = now
+                self.assertEqual(await _run_command("tomorrow-events"), 0)
+
+            photo.assert_awaited_once()
+            sent.assert_awaited_once()
+            self.assertEqual(
+                TomorrowEventState(state_path).status(publication.target_date),
+                "sent",
+            )
+
+    async def test_tomorrow_ambiguous_photo_failure_is_not_retried_as_text(self):
+        now = datetime(2026, 9, 24, 19, 25, tzinfo=MADRID)
+        publication = TomorrowEventPublication(
+            target_date=now.date().replace(day=25),
+            message="📅 Завтра в Гуардамаре",
+            events=(),
+            unit_count=1,
+            image_url="https://amguardamar.es/wp-content/uploads/event.jpg",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "tomorrow.json"
+            sent = AsyncMock()
+            ambiguous = TelegramError(
+                "timeout",
+                retryable=True,
+                code="TIMEOUT",
+            )
+            with (
+                patch.dict(os.environ, {
+                    "TELEGRAM_BOT_TOKEN": "token",
+                    "TELEGRAM_CHAT_ID": "@chat",
+                    "TOMORROW_EVENTS_STATE_PATH": str(state_path),
+                }),
+                patch("telegrambot.__main__.datetime") as clock,
+                patch(
+                    "telegrambot.__main__.produce_tomorrow_event_publication",
+                    new=AsyncMock(return_value=publication),
+                ),
+                patch(
+                    "telegrambot.__main__.send_photo_url",
+                    new=AsyncMock(side_effect=ambiguous),
+                ),
+                patch("telegrambot.__main__.send_message", new=sent),
+            ):
+                clock.now.return_value = now
+                self.assertEqual(await _run_command("tomorrow-events"), 0)
+
+            sent.assert_not_awaited()
+            self.assertEqual(
+                TomorrowEventState(state_path).status(publication.target_date),
+                "uncertain",
+            )
 
     async def test_weekend_preview_neither_publishes_nor_writes_state(self):
         prepared = AsyncMock(return_value=0)
