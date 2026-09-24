@@ -102,6 +102,10 @@ This ADR amends ADR 0072's exact-day-only registration policy.
   the advance copy says only that the main registration period ends tomorrow.
 - Chess, the literary group, football, Aqualider and any other source without a
   verified registration interval remain ineligible.
+- Municipal cultural workshops/events also remain ineligible for deadline
+  alerts until their source adapter exposes an event-specific registration
+  start/end interval. A registration contact or nearby prose alone is not
+  enough evidence to create a date-sensitive notification.
 
 ### Delivery and state
 
