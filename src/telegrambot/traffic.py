@@ -964,7 +964,6 @@ async def monitor_traffic(
                     location,
                     mode,
                     local_now,
-                    previous_category=old_category,
                 )
                 message = build_alert_message(incident, location, body)
 
