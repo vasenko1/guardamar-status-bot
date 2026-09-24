@@ -378,7 +378,12 @@ def _format_direct_debit(campaign: SumaCampaign) -> str:
 
 def _format_charge(campaign: SumaCampaign, today: date) -> str:
     remaining = (campaign.ends_on - today).days
-    if remaining == 1:
+    if remaining == 0:
+        deadline = (
+            "Для остальных <b>сегодня также последний день</b> "
+            "добровольной оплаты."
+        )
+    elif remaining == 1:
         deadline = (
             "Для остальных добровольный срок оплаты заканчивается "
             f"<b>завтра, {_ru_date(campaign.ends_on)}</b>."
