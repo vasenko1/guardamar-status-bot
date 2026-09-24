@@ -832,6 +832,10 @@ async def monitor_traffic(
 
         for incident in incidents:
             existing = events.get(incident.provider_id)
+            reactivated = (
+                existing is not None
+                and _clean_text(existing.get("ended_at"), limit=80) is not None
+            )
             if incident.probability not in PUBLISHABLE_PROBABILITIES:
                 if existing is not None:
                     existing["last_seen_at"] = local_now.isoformat()
@@ -839,23 +843,20 @@ async def monitor_traffic(
                     state.write(value)
                 continue
 
-            try:
-                location = await locator(incident, tomtom_api_key)
-            except TrafficError:
-                if existing is None:
+            if existing is not None and not reactivated:
+                location = _record_location(existing)
+            else:
+                try:
+                    location = await locator(incident, tomtom_api_key)
+                except TrafficError:
                     logging.warning(
                         "Traffic location lookup failed for new incident %s",
                         incident.provider_id,
                     )
                     continue
-                location = _record_location(existing)
             if location is None or location.municipality != GUARDAMAR_MUNICIPALITY:
                 continue
 
-            reactivated = (
-                existing is not None
-                and _clean_text(existing.get("ended_at"), limit=80) is not None
-            )
             lifecycle_existing = None if reactivated else existing
             old_incident = (
                 _record_incident(lifecycle_existing)
