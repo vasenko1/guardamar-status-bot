@@ -229,26 +229,57 @@ PLACSP monitor now**.
 
 ## Municipal works and road closures
 
-Do **not** create a separate "municipal works / road closures" automation
-product from Ayuntamiento Noticias.
+Re-evaluated 2026-09-24 after a live Guardamar closure.
 
-Reason:
+The earlier conclusion that no dependable operational source existed is now
+superseded. TomTom Orbis Traffic Incident Details returned the real active
+Guardamar restriction observed around Avenida del Mediterráneo:
 
-- official closure notices do sometimes appear;
-- useful examples can contain exact street, date/time and reason;
-- publication is incomplete and not reliable enough to claim broad coverage of
-  Guardamar road closures;
-- previous investigation also found no dependable general live Policía Local
-  traffic feed.
+- `roadClosed`, `present`, started 23 September 2026;
+- source boundaries Calle Miguel Hernández / Avenida del País Valenciano;
+- approximately 56 m of LineString geometry;
+- a neighboring `roadWorks` segment was returned separately and is not treated
+  as proof of the closure's cause.
 
-Product rule:
+A deliberately broad Guardamar-area probe returned only this `roadClosed` and
+the neighboring `roadWorks`; reverse geocoding placed both in
+`Guardamar del Segura`. Additional probes confirmed subdivision labels for
+El Raso, Pòrtic Mediterrani, Pinomar and Bonavista, while El Edén returned no
+subdivision. Location logic must therefore use subdivision opportunistically,
+not require it.
 
-If an explicit operational closure or works notice appears in an already-read
-municipal source such as Ayuntamiento/AlcaldeGuardamar and contains concrete
-location + validity + effect, it may be surfaced opportunistically.
+Municipal follow-up found no matching current public notice in the Mayor
+channel, public Sede/Gestiona/Urbanismo or Hidraqua active layer. The municipal
+road-closure permit process exists internally, but no suitable anonymous live
+permit feed was found. Those surfaces are not production dependencies for this
+feature.
 
-Do not add a separate watcher, separate source family or resident promise that
-the bot covers all road closures.
+Accepted product scope:
+
+- monitor only full road closures and lane closures
+  (`roadClosed`, `laneClosed`);
+- one TomTom Traffic Incident Details request per hour;
+- `present` closures alert immediately and at most once on each later local
+  day while still active;
+- `future` closures alert once on the day before their scheduled start and
+  again only when they actually become `present`;
+- two consecutive successful absences confirm the end and allow a reopening
+  reply;
+- traffic does not enter Morning Digest;
+- Spanish TomTom detail text may be editorially joined into natural Russian by
+  the existing Gemini/OpenRouter path only at publication time, with a
+  deterministic fallback and strict no-invention prompt;
+- every alert uses exact incident coordinates for the map link and the shared
+  Telegram footer;
+- null-like optional source values are dropped, never rendered.
+
+Account analytics observed during the experiment show a 2,500/month Traffic
+Incident Details allowance and 20,000/month Reverse Geocoding allowance. Hourly
+Traffic polling is at most 744 requests in a 31-day month.
+
+Implementation: `src/telegrambot/traffic.py`, ADR 0079.
+
+Status: **accepted for production implementation**.
 
 ## Minimal implementation direction
 
