@@ -434,6 +434,45 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         "CAMS_CACHE_PATH", DEFAULT_CAMS_CACHE_PATH
     ))
 
+    async def run_suma(*, best_effort: bool) -> int:
+        bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
+        chat_id = _required_environment("TELEGRAM_CHAT_ID")
+        suma_state = SumaState(Path(os.environ.get(
+            "SUMA_STATE_PATH", DEFAULT_SUMA_STATE_PATH
+        )))
+
+        async def publish_suma(message: str) -> int:
+            try:
+                return await send_message(
+                    bot_token,
+                    chat_id,
+                    message,
+                    disable_notification=False,
+                )
+            except TelegramError as exc:
+                if is_ambiguous_send_failure(exc):
+                    raise SumaDeliveryUncertain() from exc
+                raise
+
+        try:
+            result = await monitor_suma(
+                suma_state,
+                now,
+                publish_suma,
+            )
+        except SumaDeliveryUncertain:
+            logging.warning(
+                "SUMA delivery uncertain; automatic resend disabled"
+            )
+            return 0
+        except (SumaError, TelegramError, ValueError) as exc:
+            if not best_effort:
+                raise
+            logging.warning("SUMA daily one-shot failed: %s", exc)
+            return 1
+        logging.info("SUMA notification sync complete: %s", result)
+        return 0
+
     async def edit_current_digest(
         state: PublicationState,
         api_key: str,
@@ -1304,38 +1343,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         return 0
 
     if command == "suma":
-        bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
-        chat_id = _required_environment("TELEGRAM_CHAT_ID")
-        suma_state = SumaState(Path(os.environ.get(
-            "SUMA_STATE_PATH", DEFAULT_SUMA_STATE_PATH
-        )))
-
-        async def publish_suma(message: str) -> int:
-            try:
-                return await send_message(
-                    bot_token,
-                    chat_id,
-                    message,
-                    disable_notification=False,
-                )
-            except TelegramError as exc:
-                if is_ambiguous_send_failure(exc):
-                    raise SumaDeliveryUncertain() from exc
-                raise
-
-        try:
-            result = await monitor_suma(
-                suma_state,
-                datetime.now(GUARDAMAR_TIMEZONE),
-                publish_suma,
-            )
-        except SumaDeliveryUncertain:
-            logging.warning(
-                "SUMA delivery uncertain; automatic resend disabled"
-            )
-            return 0
-        logging.info("SUMA notification sync complete: %s", result)
-        return 0
+        return await run_suma(best_effort=False)
 
     api_key = _required_environment("AEMET_API_KEY")
     if command == "preview":
@@ -1370,78 +1378,82 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         return 0
 
     if command in {"run", "morning"}:
-        morning_aemet = []
-        morning_environment_detail = []
-        prepared = load_snapshot(
-            aemet_snapshot_path, now, max_age=timedelta(minutes=60)
-        )
-        fetch_live = prepared is None and not preparation_busy(aemet_snapshot_path)
-        async def finalize_morning_publication() -> None:
-            if morning_aemet:
-                try:
-                    write_snapshot(aemet_snapshot_path, morning_aemet[-1], now)
-                except (OSError, ValueError) as exc:
-                    logging.warning(
-                        "Morning AEMET snapshot could not be saved: %s", exc
-                    )
-            if not morning_environment_detail:
-                return
-            heat, cold, air, pollen, base = morning_environment_detail[-1]
-            state.mark_morning_environment(
-                now.date(),
-                heat.level if heat is not None else None,
-                base,
-                cold_level=cold.level if cold is not None else None,
-                air_quality=air if base is not None else None,
-                pollen=pollen if base is not None else None,
+        try:
+            morning_aemet = []
+            morning_environment_detail = []
+            prepared = load_snapshot(
+                aemet_snapshot_path, now, max_age=timedelta(minutes=60)
             )
-            if base is not None:
-                try:
-                    _promote_cams_snapshot(cams_cache_path, now, base)
-                except EnvironmentError as exc:
-                    logging.warning(
-                        "Morning CAMS raw snapshot could not be promoted; "
-                        "semantic baseline remains recoverable from its exact candidate: %s",
-                        exc,
-                    )
-                else:
-                    prune_cams_candidates(cams_cache_path, base)
+            fetch_live = prepared is None and not preparation_busy(aemet_snapshot_path)
+            async def finalize_morning_publication() -> None:
+                if morning_aemet:
+                    try:
+                        write_snapshot(aemet_snapshot_path, morning_aemet[-1], now)
+                    except (OSError, ValueError) as exc:
+                        logging.warning(
+                            "Morning AEMET snapshot could not be saved: %s", exc
+                        )
+                if not morning_environment_detail:
+                    return
+                heat, cold, air, pollen, base = morning_environment_detail[-1]
+                state.mark_morning_environment(
+                    now.date(),
+                    heat.level if heat is not None else None,
+                    base,
+                    cold_level=cold.level if cold is not None else None,
+                    air_quality=air if base is not None else None,
+                    pollen=pollen if base is not None else None,
+                )
+                if base is not None:
+                    try:
+                        _promote_cams_snapshot(cams_cache_path, now, base)
+                    except EnvironmentError as exc:
+                        logging.warning(
+                            "Morning CAMS raw snapshot could not be promoted; "
+                            "semantic baseline remains recoverable from its exact candidate: %s",
+                            exc,
+                        )
+                    else:
+                        prune_cams_candidates(cams_cache_path, base)
 
-        result = await publish_morning(
-            now,
-            state,
-            lambda: produce_message(
-                api_key,
+            result = await publish_morning(
                 now,
-                os.environ.get("GEMINI_API_KEY", "").strip(),
-                Path(os.environ.get(
-                    "MUNICIPAL_AGENDA_STATE_PATH",
-                    DEFAULT_MUNICIPAL_AGENDA_STATE_PATH,
-                )),
-                agenda_state_path=Path(os.environ.get(
-                    "AGENDA_STATE_PATH", DEFAULT_AGENDA_STATE_PATH
-                )),
-                library_agenda_state_path=library_path,
-                am_guardamar_state_path=am_guardamar_path,
-                facv_state_path=facv_path,
-                pesca_cv_state_path=pesca_cv_path,
-                translation_cache_path=translations_path,
-                aemet_digest=prepared,
-                fetch_aemet=fetch_live,
-                aemet_observer=morning_aemet.append,
-                pharmacy_state_path=pharmacy_path,
-                cams_data_url=cams_data_url,
-                cams_cache_path=cams_cache_path,
-                environment_detail_observer=lambda heat, cold, air, pollen, base: (
-                    morning_environment_detail.append((heat, cold, air, pollen, base))
+                state,
+                lambda: produce_message(
+                    api_key,
+                    now,
+                    os.environ.get("GEMINI_API_KEY", "").strip(),
+                    Path(os.environ.get(
+                        "MUNICIPAL_AGENDA_STATE_PATH",
+                        DEFAULT_MUNICIPAL_AGENDA_STATE_PATH,
+                    )),
+                    agenda_state_path=Path(os.environ.get(
+                        "AGENDA_STATE_PATH", DEFAULT_AGENDA_STATE_PATH
+                    )),
+                    library_agenda_state_path=library_path,
+                    am_guardamar_state_path=am_guardamar_path,
+                    facv_state_path=facv_path,
+                    pesca_cv_state_path=pesca_cv_path,
+                    translation_cache_path=translations_path,
+                    aemet_digest=prepared,
+                    fetch_aemet=fetch_live,
+                    aemet_observer=morning_aemet.append,
+                    pharmacy_state_path=pharmacy_path,
+                    cams_data_url=cams_data_url,
+                    cams_cache_path=cams_cache_path,
+                    environment_detail_observer=lambda heat, cold, air, pollen, base: (
+                        morning_environment_detail.append((heat, cold, air, pollen, base))
+                    ),
                 ),
-            ),
-            lambda message: send_message(
-                bot_token, chat_id, message, disable_notification=False
-            ),
-            finalize_morning_publication,
-        )
-        return 0 if result in {"success", "duplicate"} else 1
+                lambda message: send_message(
+                    bot_token, chat_id, message, disable_notification=False
+                ),
+                finalize_morning_publication,
+            )
+            return 0 if result in {"success", "duplicate"} else 1
+
+        finally:
+            await run_suma(best_effort=True)
 
     existing = state.morning_record(now.date())
     if existing is None:
