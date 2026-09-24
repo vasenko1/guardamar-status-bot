@@ -389,6 +389,12 @@ def _place_phrase(incident: TrafficIncident, location: TrafficLocation) -> str:
     return "в Гуардамаре"
 
 
+def _sentence_start(value: str) -> str:
+    """Upper-case only the first character without lower-casing proper names."""
+
+    return value[:1].upper() + value[1:]
+
+
 def fallback_body(
     incident: TrafficIncident,
     location: TrafficLocation,
@@ -414,14 +420,14 @@ def fallback_body(
         body = (
             f"Проезд {place} остаётся перекрыт."
             if incident.category == "roadClosed"
-            else f"{place.capitalize()} остаётся перекрыта полоса движения."
+            else f"{_sentence_start(place)} остаётся перекрыта полоса движения."
         )
     elif mode == "category_change":
         if incident.category == "roadClosed":
-            body = f"{place.capitalize()} теперь полностью перекрыт проезд."
+            body = f"{_sentence_start(place)} теперь полностью перекрыт проезд."
         else:
             body = (
-                f"{place.capitalize()} полное перекрытие снято, "
+                f"{_sentence_start(place)} полное перекрытие снято, "
                 "но полоса движения остаётся закрыта."
             )
     elif mode == "future_rescheduled":
@@ -433,9 +439,9 @@ def fallback_body(
         body = f"Срок запланированного ограничения изменился: теперь начало ожидается {when}."
     else:
         if incident.category == "roadClosed":
-            body = f"{place.capitalize()} перекрыт проезд."
+            body = f"{_sentence_start(place)} перекрыт проезд."
         else:
-            body = f"{place.capitalize()} перекрыта полоса движения."
+            body = f"{_sentence_start(place)} перекрыта полоса движения."
 
     end = incident.ends_at
     if end is not None and end > now.astimezone(GUARDAMAR_TIMEZONE):
