@@ -59,6 +59,14 @@ MARKET_STATUS_SCHEMA = {
     },
     "required": ["cancelled", "evidence_es", "event_date"],
 }
+TRAFFIC_NOTICE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "body_ru": {"type": "string", "maxLength": 900},
+    },
+    "required": ["body_ru"],
+}
 AGENDA_EXTRACTION_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -622,6 +630,80 @@ async def translate_event_teasers(
     ):
         raise GeminiError("Gemini returned invalid event teaser translations")
     return [teaser.strip() for teaser in translated]
+
+
+def _compose_traffic_notice(
+    api_key: str,
+    facts: Dict[str, Any],
+) -> Dict[str, Any]:
+    source = json.dumps(facts, ensure_ascii=False, separators=(",", ":"))
+    if not 1 <= len(source) <= 6_000:
+        raise GeminiError(
+            "Traffic facts have an invalid size",
+            code="SOURCE-SIZE",
+            description="данные дорожного события имеют неверный размер",
+        )
+    prompt = (
+        "Write one or two concise, natural Russian sentences for a local "
+        "Guardamar del Segura Telegram traffic alert. The JSON FACTS below is "
+        "the complete factual source and came from TomTom in Spanish. "
+        "Use only facts explicitly present in FACTS. Never invent a reason, "
+        "detour, duration, opening time, number of closed lanes, severity, "
+        "event name, or consequence. Missing facts are intentionally omitted: "
+        "do not mention that information is unknown, unavailable, or not "
+        "specified. Keep Spanish/Valencian street and urbanization names "
+        "exactly as supplied. If details_es merely repeats Cerrado/Carril "
+        "cerrado, use it only as status, not as a cause. If another detail such "
+        "as Obras appears, do not turn it into a causal 'because of' statement "
+        "unless the Spanish wording explicitly states causality; a neutral "
+        "'the source also reports road works' formulation is allowed. "
+        "mode=new_present means the restriction is active now; mode=ongoing "
+        "means it remains active on a later local day; mode=future_tomorrow "
+        "means announce that it starts tomorrow; mode=category_change means "
+        "describe only the practical change from previous_category; "
+        "mode=future_rescheduled means state the revised planned start. "
+        "If end_local exists, describe it as an expected/planned end, never a "
+        "guarantee. Do not add a heading, bullet, map link, source attribution, "
+        "footer, emoji, Markdown, or HTML. Return only the JSON schema.\n\n"
+        f"FACTS: {source}"
+    )
+    return _request_json(
+        api_key,
+        [{"text": prompt}],
+        TRAFFIC_NOTICE_SCHEMA,
+        500,
+    )
+
+
+async def compose_traffic_notice(
+    api_key: str,
+    facts: Dict[str, Any],
+) -> str:
+    """Turn verified Spanish TomTom facts into one bounded Russian paragraph."""
+
+    result = await asyncio.to_thread(_compose_traffic_notice, api_key, facts)
+    body = result.get("body_ru")
+    if not isinstance(body, str):
+        raise GeminiError("Gemini returned an invalid traffic notice")
+    body = " ".join(body.split()).strip()
+    if not 1 <= len(body) <= 900:
+        raise GeminiError("Gemini returned an invalid traffic notice")
+    folded = body.casefold()
+    if any(token in folded for token in ("null", "undefined")):
+        raise GeminiError("Gemini returned a null-like traffic notice")
+    if any(
+        phrase in folded
+        for phrase in (
+            "не указано",
+            "не указана",
+            "не указан",
+            "нет информации",
+            "информация отсутствует",
+            "неизвестно",
+        )
+    ):
+        raise GeminiError("Gemini described intentionally omitted traffic facts")
+    return body
 
 
 def _request_market_status(
