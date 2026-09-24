@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - fix/event-translation-recovery
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
