@@ -330,12 +330,24 @@ class TrafficFormattingTests(unittest.TestCase):
         message = build_alert_message(
             incident(),
             location(),
-            "В Гуардамаре перекрыт проезд по Avenida del Mediterráneo.",
+            (
+                "В городе перекрыто движение на Avenida del Mediterráneo "
+                "между Calle Miguel Hernández и Avenida del País Valenciano.\n"
+                "Ограничение действует с 23 сентября."
+            ),
         )
 
         self.assertIn("🚧 <b>Перекрытие участка дороги</b>", message)
         self.assertIn("https://www.google.com/maps/search/?", message)
-        self.assertIn("Avenida del Mediterráneo", message)
+        self.assertIn("<b>Посмотреть на карте</b>", message)
+        self.assertIn("<b>Avenida del Mediterráneo</b>", message)
+        self.assertIn("<b>Calle Miguel Hernández</b>", message)
+        self.assertIn("<b>Avenida del País Valenciano</b>", message)
+        self.assertIn("\nОграничение действует с 23 сентября.", message)
+        self.assertNotIn(
+            "Avenida del Mediterráneo — между Calle Miguel Hernández",
+            message,
+        )
         self.assertTrue(message.endswith("\n\n" + FOOTER))
 
 
@@ -504,6 +516,33 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(delivered, 0)
         self.assertEqual(locator.await_count, 2)
         self.assertEqual(len(sent), 1)
+
+    async def test_new_present_road_closure_uses_reviewed_copy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+
+            self.assertEqual(
+                await self._run(
+                    state,
+                    NOW,
+                    (incident(),),
+                    sent,
+                    composer_text="В Гуардамаре перекрыт проезд.",
+                ),
+                1,
+            )
+
+        message = sent[0][0]
+        self.assertIn(
+            "В городе перекрыто движение на "
+            "<b>Avenida del Mediterráneo</b> между "
+            "<b>Calle Miguel Hernández</b> и "
+            "<b>Avenida del País Valenciano</b>.",
+            message,
+        )
+        self.assertIn("\nОграничение действует с 23 сентября.", message)
+        self.assertNotIn("В Гуардамаре перекрыт проезд.", message)
 
     async def test_new_present_alerts_once_then_repeats_next_morning(self):
         with tempfile.TemporaryDirectory() as directory:
