@@ -1,12 +1,14 @@
 import json
 import tempfile
+import urllib.parse
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
 from telegrambot.branding import FOOTER
+import telegrambot.traffic as traffic_module
 from telegrambot.traffic import (
     TrafficDeliveryUncertain,
     TrafficError,
@@ -131,6 +133,19 @@ class TrafficParsingTests(unittest.TestCase):
             [(row.provider_id, row.category) for row in rows],
             [("lane", "laneClosed"), ("road", "roadClosed")],
         )
+
+    def test_request_does_not_filter_only_by_main_icon_category(self):
+        with patch(
+            "telegrambot.traffic._request_json",
+            return_value=payload(raw_incident()),
+        ) as request_json:
+            rows = traffic_module._read_incidents("key")
+
+        self.assertEqual(len(rows), 1)
+        url = request_json.call_args.args[0]
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+        self.assertNotIn("iconCategories", query)
+        self.assertEqual(query["timeValidity"], ["present,future"])
 
     def test_secondary_road_closed_event_is_not_missed(self):
         rows = parse_incidents(payload(raw_incident(
