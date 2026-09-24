@@ -93,6 +93,18 @@ class BloodDonationSourceTests(unittest.TestCase):
 
         self.assertEqual(sessions, (donation_session(),))
 
+    def test_date_like_text_inside_venue_is_not_a_schedule_date(self):
+        payload = HTML.replace(
+            b"TORREVIEJA-CENTRO DE SALUD ACEQUION, CONSULTAS PEDIATRIA, "
+            b"C/ URBANO ARREGUI, 6",
+            b"PILAR DE LA HORADADA-CENTRO DE OCIO PARA MAYORES, "
+            b"C/ SAN JUAN, S/N. PARQUE 30 DE JULIO",
+        )
+
+        sessions = parse_schedule(payload, date(2026, 9, 24))
+
+        self.assertEqual(sessions, (donation_session(),))
+
     def test_suspended_guardamar_row_is_not_published(self):
         self.assertEqual(
             parse_schedule(CANCELLED_HTML, date(2026, 9, 24)),

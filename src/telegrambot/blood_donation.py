@@ -88,6 +88,7 @@ class _Parser(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.n = 0
         self.tokens: list[tuple[int, str]] = []
+        self.date_tokens: list[tuple[int, str]] = []
         self.rows: list[tuple[int, tuple[str, ...]]] = []
         self.row: Optional[list[str]] = None
         self.cell: Optional[list[str]] = None
@@ -105,6 +106,8 @@ class _Parser(HTMLParser):
             return
         self.n += 1
         self.tokens.append((self.n, value))
+        if self.row is None:
+            self.date_tokens.append((self.n, value))
         if self.cell is not None:
             self.cell.append(value)
 
@@ -223,7 +226,7 @@ def parse_schedule(payload: bytes, today: date) -> tuple[BloodDonationSession, .
 
     markers = [
         (n, parsed)
-        for n, value in parser.tokens
+        for n, value in parser.date_tokens
         if (parsed := _source_date(value, today)) is not None
     ]
     if not markers:
