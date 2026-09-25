@@ -702,9 +702,9 @@ def build_alicante_message(
         '<a href="https://www.google.com/maps/search/?api=1&amp;query=Estaci%C3%B3n+de+Autobuses+de+Alicante">автовокзал в Alicante</a>'
         + "\n\n"
         + f'🕒 <a href="{PLANNER_URL}">Найти расписание на другую дату</a>'
-        + "\n\n⬅️ <a href=""
+        + '\n\n⬅️ <a href="'
         + html.escape(transport_link, quote=True)
-        + ""><b>К списку транспорта</b></a>"
+        + '"><b>К списку транспорта</b></a>'
     )
     if len(message) > 4096 or message.count(FOOTER) != 1 or "—" in message:
         raise AlicanteScheduleError("Alicante message is not Telegram-safe")
