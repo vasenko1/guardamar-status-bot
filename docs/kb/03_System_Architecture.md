@@ -128,6 +128,35 @@ Provides only genuine cross-cutting needs:
 - small persistent state;
 - startup and graceful shutdown.
 
+### Supermarket product award stream
+
+One independent pair of short-lived Termux one-shots owns supermarket
+product-award discovery and publication. The 13:50 discovery command iterates
+the small `SOURCE_ADAPTERS` registry. Each adapter performs only its bounded
+source reads and returns verified common candidates. The shared engine never
+passes arbitrary award pages to AI and never performs retailer catalogue lookup
+as part of eligibility.
+
+State is one small atomic JSON file. It stores initialized source names,
+bounded seen item IDs, one FIFO queue, permanent published/uncertain event IDs,
+and the last used delivery day. Source initialization is independent: the first
+successful run after adding a new adapter silently baselines only that source.
+
+Every adapter owns its source-native stable `event_key`. The common event ID
+is derived from source kind plus that key; the engine does not normalize
+product wording across unrelated award bodies. This keeps source interpretation
+at the boundary where the relevant semantics are known.
+
+The 14:20 publication command reads only the queue, renders deterministic
+source-semantic text and sends at most one group message. Before Telegram send
+it reserves the daily slot and marks the event uncertain. Confirmed success
+becomes published; ambiguous delivery is never auto-retried; a deterministic
+failure may requeue for a future day.
+
+OCU is the first active adapter. Future cheese/wine/oil/jamón sources add only
+an adapter and tests after a read-only live source probe. They do not add their
+own scheduler, state machine, queue or publisher. See ADR 0083.
+
 ### Next-day electricity prices
 
 One independent evening command requests official ESIOS indicator `1001` for
