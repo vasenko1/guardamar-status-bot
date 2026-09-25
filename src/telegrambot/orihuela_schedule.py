@@ -284,6 +284,7 @@ def parse_fare_pdf(
 def _refresh_fare(
     fare_url: Optional[str],
     cached: Optional[IntercityFare],
+    service_date: date,
 ) -> Optional[IntercityFare]:
     if fare_url is None:
         return None
@@ -344,12 +345,27 @@ def _refresh_fare(
             raise IntercityScheduleError(
                 "changed Orihuela fare PDF is not stable"
             )
-        return parse_fare_pdf(
+        candidate = parse_fare_pdf(
             downloaded.payload,
             downloaded.url,
             etag=downloaded.etag,
             last_modified=downloaded.last_modified,
         )
+        if (
+            candidate.effective_date is not None
+            and candidate.effective_date > service_date
+            and cached is not None
+            and (
+                cached.effective_date is None
+                or cached.effective_date <= service_date
+            )
+        ):
+            logging.info(
+                "Orihuela future fare starts %s; keeping current verified fare",
+                candidate.effective_date,
+            )
+            return cached
+        return candidate
     except (bus.AirportScheduleError, IntercityScheduleError) as exc:
         logging.warning(
             "Changed Orihuela fare rejected; omitting price: %s",
@@ -397,7 +413,7 @@ def fetch_bundle(
         if cached is not None
         else None
     )
-    fare = _refresh_fare(fare_url, cached_fare)
+    fare = _refresh_fare(fare_url, cached_fare, today)
 
     def attach(schedule: Optional[IntercitySchedule]):
         if schedule is None:
