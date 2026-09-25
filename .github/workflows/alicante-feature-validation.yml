@@ -25,16 +25,49 @@ jobs:
       - name: Probe current Alicante sources
         run: |
           python - <<'PY'
+          import csv
+          import io
+          import urllib.request
+          import zipfile
           from datetime import datetime, timedelta
           from zoneinfo import ZoneInfo
-          from telegrambot.alicante_schedule import fetch_fares, fetch_schedules
+          from telegrambot.alicante_schedule import (
+              GTFS_URL, fetch_fares, fetch_schedules,
+          )
 
           today = datetime.now(ZoneInfo("Europe/Madrid")).date()
           dates = (today, today + timedelta(days=1))
-          schedules = fetch_schedules(dates)
-          for day in dates:
-              item = schedules[day]
-              print(day, "GTFS", item.to_alicante, item.from_alicante)
+          try:
+              schedules = fetch_schedules(dates)
+          except Exception as exc:
+              print("GTFS_PROBE_FAILED", type(exc).__name__, str(exc))
+              with urllib.request.urlopen(GTFS_URL, timeout=30) as response:
+                  payload = response.read()
+              with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+                  print("GTFS_MEMBERS_CURRENT", archive.namelist())
+                  rows = csv.DictReader(
+                      io.TextIOWrapper(
+                          archive.open("stops.txt"),
+                          encoding="utf-8-sig",
+                          newline="",
+                      )
+                  )
+                  for row in rows:
+                      name = row.get("stop_name", "")
+                      folded = name.casefold()
+                      if "guardamar" in folded or "alicante" in folded or "alacant" in folded:
+                          print(
+                              "STOP_CANDIDATE",
+                              row.get("stop_id"),
+                              repr(name),
+                              row.get("stop_lat"),
+                              row.get("stop_lon"),
+                          )
+              raise
+          else:
+              for day in dates:
+                  item = schedules[day]
+                  print(day, "GTFS", item.to_alicante, item.from_alicante)
           try:
               fares = fetch_fares(dates)
           except Exception as exc:
