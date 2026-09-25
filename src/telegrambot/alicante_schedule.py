@@ -25,7 +25,12 @@ from pathlib import Path
 from typing import Awaitable, Callable, Dict, Mapping, Optional, Sequence
 
 from .branding import FOOTER, with_footer
-from .pinned import PinnedGuideState, build_leaf_message, telegram_message_link
+from .pinned import (
+    GUARDAMAR_BUS_STATION_MAP_URL,
+    PinnedGuideState,
+    build_leaf_message,
+    telegram_message_link,
+)
 from .state import StateError
 from .telegram import TelegramError
 
@@ -673,8 +678,9 @@ def build_alicante_message(
         + _format_times(schedule.from_alicante)
         + fare_line
         + "\n\n📍 <b>Откуда и куда</b>\n"
-        '<a href="https://www.google.com/maps/search/?api=1&amp;query='
-        'Carrer+Molivent%2C+Guardamar+del+Segura">'
+        '<a href="'
+        + html.escape(GUARDAMAR_BUS_STATION_MAP_URL, quote=True)
+        + '">'
         "автовокзал Гуардамара</a>"
         " ↔ "
         '<a href="https://www.google.com/maps/search/?api=1&amp;query='
