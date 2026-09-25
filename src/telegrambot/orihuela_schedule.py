@@ -426,7 +426,10 @@ def build_message(
         )
     ):
         amount = fare_amount(schedule.fare)
-        if schedule.fare.source_url is not None:
+        if (
+            schedule.fare.source_url is not None
+            and bus._allowed_fare_url(schedule.fare.source_url)
+        ):
             fare_line = (
                 '\n\n🎟 <b>Билет в одну сторону:</b> <a href="'
                 + html.escape(schedule.fare.source_url, quote=True)
