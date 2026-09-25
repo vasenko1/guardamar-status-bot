@@ -1450,6 +1450,7 @@ class TransportBusStationLinkTests(unittest.TestCase):
             "alicante",
             "elche",
             "south",
+            "zenia",
             "inland",
             "university",
         )
@@ -1467,6 +1468,25 @@ class TransportBusStationLinkTests(unittest.TestCase):
             combined,
         )
         self.assertNotIn("38.087834%2C-0.655759", combined)
+
+
+    def test_zenia_has_its_own_transport_card(self):
+        from telegrambot.pinned import LEAF_MESSAGES, build_transport_index
+
+        self.assertIn("Гуардамар ↔ Zenia Boulevard", LEAF_MESSAGES["zenia"])
+        self.assertNotIn("Zenia Boulevard", LEAF_MESSAGES["south"])
+
+        message = build_transport_index({
+            key: f"https://t.me/c/1/{index}"
+            for index, key in enumerate(LEAF_MESSAGES, start=100)
+        })
+        self.assertIn("ТЦ Zenia Boulevard", message)
+        self.assertIn(
+            'href="https://t.me/c/1/'
+            + str(100 + list(LEAF_MESSAGES).index("zenia"))
+            + '"',
+            message,
+        )
 
 
 if __name__ == "__main__":
