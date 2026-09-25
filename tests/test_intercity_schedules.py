@@ -161,6 +161,15 @@ class ZeniaScheduleTests(unittest.TestCase):
         self.assertIn("Сегодня, 25 сентября, пятница", message)
         self.assertIn("08:10 · 10:10 · 12:10 · 14:10 · 16:10\n18:10", message)
         self.assertIn("Билет в одну сторону:</b> 2,75 €", message)
+        self.assertIn("🚌 <b>Маршрут:</b> Alicante ↔ Pilar de la Horadada", message)
+        self.assertIn(
+            "Из Гуардамара садитесь в сторону <b>Pilar de la Horadada</b>.",
+            message,
+        )
+        self.assertIn(
+            "Обратно от Zenia Boulevard садитесь в сторону <b>Alicante</b>.",
+            message,
+        )
         self.assertIn("Сегодня", message)
         self.assertIn("Найти расписание на другую дату", message)
         self.assertIn(
