@@ -296,7 +296,12 @@ async def sync_intercity_schedule(
     cached = None
     try:
         cached = await asyncio.to_thread(schedule_state.read)
-    except StateError:
+    except StateError as exc:
+        logging.warning(
+            "%s schedule state rejected: %s",
+            route_key,
+            exc,
+        )
         cached = None
 
     bundle = cached
