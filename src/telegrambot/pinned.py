@@ -307,6 +307,9 @@ LEAF_MESSAGES: Dict[str, str] = {
         f"""🛍 <b>Гуардамар ↔ Zenia Boulevard</b>
 До торгового центра можно доехать без пересадок на автобусе Avanza.
 
+🚌 <b>Маршрут:</b> Alicante ↔ Pilar de la Horadada
+Из Гуардамара садитесь в сторону <b>Pilar de la Horadada</b>. Обратно от Zenia Boulevard садитесь в сторону <b>Alicante</b>.
+
 🗓 Рейсы на текущую дату обновляются здесь каждое утро.
 
 📍 <b>Откуда и куда</b>
