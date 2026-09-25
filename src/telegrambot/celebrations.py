@@ -2,15 +2,9 @@
 
 from __future__ import annotations
 
-import fcntl
-import json
-import os
-import tempfile
-from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from pathlib import Path
-from typing import Dict, Iterator, Optional, Tuple
+from typing import Dict, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from .branding import with_footer
@@ -231,112 +225,3 @@ def build_celebration_alert(now: datetime) -> Optional[CelebrationAlertPublicati
         message=with_footer("\n".join(lines)),
     )
 
-
-class CelebrationAlertStateError(RuntimeError):
-    """Raised when festive-alert publication state cannot be trusted."""
-
-
-class CelebrationAlertState:
-    """Minimal crash-safe at-most-once state for one target date."""
-
-    VERSION = 1
-
-    def __init__(self, path: Path = Path(DEFAULT_ALERT_STATE_PATH)) -> None:
-        self.path = path
-
-    def _read(self) -> dict:
-        if not self.path.exists():
-            return {"version": self.VERSION}
-        try:
-            value = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise CelebrationAlertStateError(
-                "celebration-alert state is unreadable"
-            ) from exc
-        if not isinstance(value, dict) or value.get("version") != self.VERSION:
-            raise CelebrationAlertStateError(
-                "celebration-alert state has an invalid structure"
-            )
-        raw_date = value.get("target_date")
-        status = value.get("status")
-        if raw_date is None and status is None:
-            if set(value) != {"version"}:
-                raise CelebrationAlertStateError(
-                    "celebration-alert empty state has unexpected fields"
-                )
-            return value
-        if not isinstance(raw_date, str) or status not in {"uncertain", "sent"}:
-            raise CelebrationAlertStateError(
-                "celebration-alert state has an invalid publication marker"
-            )
-        try:
-            date.fromisoformat(raw_date)
-        except ValueError as exc:
-            raise CelebrationAlertStateError(
-                "celebration-alert state has an invalid target date"
-            ) from exc
-        if set(value) != {"version", "target_date", "status"}:
-            raise CelebrationAlertStateError(
-                "celebration-alert state has unexpected fields"
-            )
-        return value
-
-    def status(self, target_day: date) -> Optional[str]:
-        value = self._read()
-        if value.get("target_date") != target_day.isoformat():
-            return None
-        return value.get("status")
-
-    def mark_uncertain(self, target_day: date) -> None:
-        self._write({
-            "version": self.VERSION,
-            "target_date": target_day.isoformat(),
-            "status": "uncertain",
-        })
-
-    def mark_sent(self, target_day: date) -> None:
-        self._write({
-            "version": self.VERSION,
-            "target_date": target_day.isoformat(),
-            "status": "sent",
-        })
-
-    def clear(self, target_day: date) -> None:
-        value = self._read()
-        if value.get("target_date") == target_day.isoformat():
-            self._write({"version": self.VERSION})
-
-    def _write(self, value: dict) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        descriptor, temporary = tempfile.mkstemp(
-            dir=str(self.path.parent),
-            prefix=f".{self.path.name}.",
-        )
-        try:
-            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-                json.dump(value, handle, ensure_ascii=False, sort_keys=True)
-                handle.write("\n")
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.chmod(temporary, 0o600)
-            os.replace(temporary, self.path)
-        except Exception:
-            try:
-                os.unlink(temporary)
-            except OSError:
-                pass
-            raise
-
-    @contextmanager
-    def exclusive_run(self) -> Iterator[None]:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        lock_path = self.path.with_suffix(self.path.suffix + ".lock")
-        with lock_path.open("a+", encoding="utf-8") as lock:
-            os.chmod(lock_path, 0o600)
-            try:
-                fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError as exc:
-                raise CelebrationAlertStateError(
-                    "another celebration-alert run is active"
-                ) from exc
-            yield
