@@ -35,6 +35,9 @@ from .am_guardamar import (
 )
 from .airport_schedule import AirportScheduleState, sync_airport_schedule
 from .alicante_schedule import AlicanteScheduleState, sync_alicante_schedule
+from .elche_schedule import build_message as build_elche_message, fetch_bundle as fetch_elche_bundle
+from .intercity_schedule import IntercityScheduleState, sync_intercity_schedule
+from .orihuela_schedule import build_message as build_orihuela_message, fetch_bundle as fetch_orihuela_bundle
 from .commands import listen_for_preview, parse_allowed_user_ids
 from .delivery import publish_morning, refresh_beach_root
 from .diagnostics import render_diagnostics
@@ -1565,7 +1568,8 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     disable_notification=True,
                 ),
                 skip_keys=tuple(
-                    key for key in ("airport", "alicante")
+                    key
+                    for key in ("airport", "alicante", "elche", "inland")
                     if key in existing["messages"]
                 ),
             )
@@ -1592,6 +1596,48 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 AlicanteScheduleState(
                     state.path.with_name("alicante_schedule.json")
                 ),
+                lambda message: send_message(
+                    bot_token,
+                    chat_id,
+                    message,
+                    disable_notification=True,
+                    retry_only_rate_limits=True,
+                ),
+                lambda message_id, message: edit_message(
+                    bot_token, chat_id, message_id, message
+                ),
+            )
+            await sync_intercity_schedule(
+                datetime.now(GUARDAMAR_TIMEZONE),
+                chat_id,
+                "elche",
+                state,
+                IntercityScheduleState(
+                    state.path.with_name("elche_schedule.json")
+                ),
+                fetch_elche_bundle,
+                build_elche_message,
+                lambda message: send_message(
+                    bot_token,
+                    chat_id,
+                    message,
+                    disable_notification=True,
+                    retry_only_rate_limits=True,
+                ),
+                lambda message_id, message: edit_message(
+                    bot_token, chat_id, message_id, message
+                ),
+            )
+            await sync_intercity_schedule(
+                datetime.now(GUARDAMAR_TIMEZONE),
+                chat_id,
+                "inland",
+                state,
+                IntercityScheduleState(
+                    state.path.with_name("orihuela_schedule.json")
+                ),
+                fetch_orihuela_bundle,
+                build_orihuela_message,
                 lambda message: send_message(
                     bot_token,
                     chat_id,

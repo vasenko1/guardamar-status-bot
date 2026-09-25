@@ -22,12 +22,16 @@ from .alicante_schedule import (
     AlicanteSchedule,
     AlicanteScheduleState,
 )
+from .intercity_schedule import (
+    IntercitySchedule,
+    IntercityScheduleState,
+)
 from .branding import FOOTER, with_footer
 from .pinned import DEFAULT_PINNED_STATE_PATH, PinnedGuideState, telegram_message_link
 from .state import PublicationState, StateError
 from .telegram import TelegramError, is_ambiguous_send_failure, send_message
 
-STATE_VERSION = 3
+STATE_VERSION = 4
 TIMEZONE = ZoneInfo("Europe/Madrid")
 LINE_NUMBERS = {"line_1": "1", "line_2": "2"}
 ROUTE_META = {
@@ -35,6 +39,8 @@ ROUTE_META = {
     "line_2": ("🚌", "Городской автобус · Линия 2"),
     "airport": ("✈️", "Аэропорт Alicante-Elche"),
     "alicante": ("🚌", "Гуардамар ↔ Alicante"),
+    "elche": ("🚌", "Гуардамар ↔ Elche"),
+    "inland": ("🚌", "Гуардамар ↔ Orihuela"),
 }
 MESSAGE_ORDER = ("schedule_changes", "route_changes", "fare_changes")
 EVENT_KINDS = {
@@ -76,6 +82,8 @@ def _empty_state() -> Dict[str, Any]:
         "fare": None,
         "airport_next": None,
         "alicante_next": None,
+        "elche_next": None,
+        "inland_next": None,
         "pending": None,
     }
 
@@ -133,6 +141,16 @@ def _valid_alicante_state(value: Any) -> bool:
         return True
     try:
         _decode_alicante_snapshot(value)
+    except TransportNotificationError:
+        return False
+    return True
+
+
+def _valid_intercity_state(value: Any) -> bool:
+    if value is None:
+        return True
+    try:
+        _decode_intercity_snapshot(value)
     except TransportNotificationError:
         return False
     return True
@@ -345,6 +363,16 @@ def _migrate_v2(state: Mapping[str, Any]) -> Dict[str, Any]:
     migrated = dict(state)
     migrated["version"] = STATE_VERSION
     migrated["alicante_next"] = None
+    migrated["elche_next"] = None
+    migrated["inland_next"] = None
+    return migrated
+
+
+def _migrate_v3(state: Mapping[str, Any]) -> Dict[str, Any]:
+    migrated = dict(state)
+    migrated["version"] = STATE_VERSION
+    migrated["elche_next"] = None
+    migrated["inland_next"] = None
     return migrated
 
 
@@ -363,12 +391,16 @@ def load_state(path: Path) -> Dict[str, Any]:
         state = _migrate_v1(state)
     elif state.get("version") == 2:
         state = _migrate_v2(state)
+    elif state.get("version") == 3:
+        state = _migrate_v3(state)
     if (
         state.get("version") != STATE_VERSION
         or not _valid_urban_state(state.get("urban"))
         or not _valid_fare_state(state.get("fare"))
         or not _valid_airport_state(state.get("airport_next"))
         or not _valid_alicante_state(state.get("alicante_next"))
+        or not _valid_intercity_state(state.get("elche_next"))
+        or not _valid_intercity_state(state.get("inland_next"))
         or not _valid_pending(state.get("pending"))
     ):
         raise TransportNotificationError(
@@ -384,6 +416,8 @@ def save_state(path: Path, state: Dict[str, Any]) -> None:
         or not _valid_fare_state(state.get("fare"))
         or not _valid_airport_state(state.get("airport_next"))
         or not _valid_alicante_state(state.get("alicante_next"))
+        or not _valid_intercity_state(state.get("elche_next"))
+        or not _valid_intercity_state(state.get("inland_next"))
         or not _valid_pending(state.get("pending"))
     ):
         raise TransportNotificationError(
@@ -569,6 +603,177 @@ def _alicante_diff(
     }
 
 
+def _intercity_snapshot(
+    schedule: IntercitySchedule,
+) -> Dict[str, Any]:
+    return {
+        "service_date": schedule.service_date.isoformat(),
+        "outbound": list(schedule.outbound),
+        "inbound": list(schedule.inbound),
+        "fare": (
+            None
+            if schedule.fare is None
+            else {
+                "cents": schedule.fare.cents,
+                "from_price": schedule.fare.from_price,
+                "effective_date": (
+                    None
+                    if schedule.fare.effective_date is None
+                    else schedule.fare.effective_date.isoformat()
+                ),
+            }
+        ),
+    }
+
+
+def _decode_intercity_snapshot(
+    raw: Any,
+) -> Tuple[
+    date,
+    Tuple[str, ...],
+    Tuple[str, ...],
+    Optional[Tuple[int, bool, Optional[date]]],
+]:
+    if not isinstance(raw, dict):
+        raise TransportNotificationError(
+            "intercity notification baseline is invalid"
+        )
+    try:
+        service_date = date.fromisoformat(raw["service_date"])
+        outbound = tuple(raw["outbound"])
+        inbound = tuple(raw["inbound"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise TransportNotificationError(
+            "intercity notification baseline is invalid"
+        ) from exc
+
+    for values in (outbound, inbound):
+        if (
+            not 1 <= len(values) <= 64
+            or len(set(values)) != len(values)
+            or tuple(sorted(values)) != values
+            or not all(
+                isinstance(value, str)
+                and len(value) == 5
+                and value[2] == ":"
+                and value[:2].isdigit()
+                and value[3:].isdigit()
+                and 0 <= int(value[:2]) <= 23
+                and 0 <= int(value[3:]) <= 59
+                for value in values
+            )
+        ):
+            raise TransportNotificationError(
+                "intercity notification baseline is invalid"
+            )
+
+    fare = raw.get("fare")
+    decoded_fare = None
+    if fare is not None:
+        if (
+            not isinstance(fare, dict)
+            or not isinstance(fare.get("cents"), int)
+            or isinstance(fare.get("cents"), bool)
+            or not 100 <= fare["cents"] <= 2_000
+            or not isinstance(fare.get("from_price"), bool)
+        ):
+            raise TransportNotificationError(
+                "intercity notification baseline is invalid"
+            )
+        effective_raw = fare.get("effective_date")
+        try:
+            effective = (
+                None
+                if effective_raw is None
+                else date.fromisoformat(effective_raw)
+            )
+        except (TypeError, ValueError) as exc:
+            raise TransportNotificationError(
+                "intercity notification baseline is invalid"
+            ) from exc
+        decoded_fare = (
+            fare["cents"],
+            fare["from_price"],
+            effective,
+        )
+    return service_date, outbound, inbound, decoded_fare
+
+
+def _intercity_diff(
+    baseline: Any,
+    current: Optional[IntercitySchedule],
+    today: date,
+) -> Optional[Dict[str, Any]]:
+    if baseline is None or current is None or current.service_date != today:
+        return None
+    baseline_date, old_to, old_from, _ = _decode_intercity_snapshot(
+        baseline
+    )
+    if baseline_date != today:
+        return None
+    added_to = [value for value in current.outbound if value not in old_to]
+    removed_to = [value for value in old_to if value not in current.outbound]
+    added_from = [value for value in current.inbound if value not in old_from]
+    removed_from = [value for value in old_from if value not in current.inbound]
+    if not any((added_to, removed_to, added_from, removed_from)):
+        return None
+    return {
+        "added_to": added_to,
+        "removed_to": removed_to,
+        "added_from": added_from,
+        "removed_from": removed_from,
+    }
+
+
+def _append_intercity_events(
+    events: List[dict],
+    route: str,
+    baseline: Any,
+    current: Optional[IntercitySchedule],
+    today: date,
+) -> None:
+    change = _intercity_diff(baseline, current, today)
+    if change is not None:
+        events.append({
+            "type": "departures_changed",
+            "route": route,
+            **change,
+        })
+
+    if (
+        baseline is None
+        or current is None
+        or current.service_date != today
+        or current.fare is None
+    ):
+        return
+    baseline_date, _, _, baseline_fare = _decode_intercity_snapshot(
+        baseline
+    )
+    if baseline_date != today or baseline_fare is None:
+        return
+    current_value = (
+        current.fare.cents,
+        current.fare.from_price,
+    )
+    previous_value = (
+        baseline_fare[0],
+        baseline_fare[1],
+    )
+    if current_value == previous_value:
+        return
+    effective = current.fare.effective_date or today
+    events.append({
+        "type": "fare_changed",
+        "route": route,
+        "old_cents": baseline_fare[0],
+        "new_cents": current.fare.cents,
+        "old_from": baseline_fare[1],
+        "new_from": current.fare.from_price,
+        "effective_date": effective.isoformat(),
+    })
+
+
 def _fare_snapshot(
     schedule: Optional[AirportSchedule],
 ) -> Optional[Dict[str, Any]]:
@@ -602,6 +807,10 @@ def collect_changes(
     tomorrow_schedule: Optional[AirportSchedule],
     alicante_schedule: Optional[AlicanteSchedule] = None,
     tomorrow_alicante: Optional[AlicanteSchedule] = None,
+    elche_schedule: Optional[IntercitySchedule] = None,
+    tomorrow_elche: Optional[IntercitySchedule] = None,
+    inland_schedule: Optional[IntercitySchedule] = None,
+    tomorrow_inland: Optional[IntercitySchedule] = None,
 ) -> Dict[str, Any]:
     """Collect only changes supported by accepted source data."""
 
@@ -733,6 +942,21 @@ def collect_changes(
                 "effective_date": today.isoformat(),
             })
 
+    _append_intercity_events(
+        events,
+        "elche",
+        state.get("elche_next"),
+        elche_schedule,
+        today,
+    )
+    _append_intercity_events(
+        events,
+        "inland",
+        state.get("inland_next"),
+        inland_schedule,
+        today,
+    )
+
     airport_next = None
     if (
         tomorrow_schedule is not None
@@ -750,6 +974,22 @@ def collect_changes(
         if (
             tomorrow_alicante is not None
             and tomorrow_alicante.service_date == today + timedelta(days=1)
+        )
+        else None
+    )
+    updated["elche_next"] = (
+        _intercity_snapshot(tomorrow_elche)
+        if (
+            tomorrow_elche is not None
+            and tomorrow_elche.service_date == today + timedelta(days=1)
+        )
+        else None
+    )
+    updated["inland_next"] = (
+        _intercity_snapshot(tomorrow_inland)
+        if (
+            tomorrow_inland is not None
+            and tomorrow_inland.service_date == today + timedelta(days=1)
         )
         else None
     )
@@ -788,6 +1028,12 @@ def _departure_lines(route: str, event: Mapping[str, Any]) -> List[str]:
     elif route == "alicante":
         outbound = "из Гуардамара в Alicante"
         inbound = "из Alicante в Гуардамар"
+    elif route == "elche":
+        outbound = "из Гуардамара в Elche"
+        inbound = "из Elche в Гуардамар"
+    elif route == "inland":
+        outbound = "из Гуардамара в Orihuela"
+        inbound = "из Orihuela в Гуардамар"
     else:
         raise TransportNotificationError(
             f"departure details are unsupported for route: {route}"
@@ -893,7 +1139,7 @@ def build_message(
                         )
                 elif event["type"] == "departures_changed":
                     details.extend(_departure_lines(route, event))
-            if route in {"airport", "alicante"}:
+            if route in {"airport", "alicante", "elche", "inland"}:
                 lines.append(f"• {target}")
                 lines.extend(f"  {detail}" for detail in details)
             else:
@@ -922,7 +1168,7 @@ def build_message(
             old = _amount(int(event["old_cents"]))
             new = _amount(int(event["new_cents"]))
 
-            if route == "alicante":
+            if "old_from" in event or "new_from" in event:
                 old_from = event.get("old_from") is True
                 new_from = event.get("new_from") is True
                 if old == new and old_from != new_from:
@@ -1007,6 +1253,20 @@ async def collect() -> None:
             "accepted Alicante schedule state is invalid"
         ) from exc
 
+    elche_state = IntercityScheduleState(
+        pinned_path.with_name("elche_schedule.json")
+    )
+    inland_state = IntercityScheduleState(
+        pinned_path.with_name("orihuela_schedule.json")
+    )
+    try:
+        elche_bundle = elche_state.read()
+        inland_bundle = inland_state.read()
+    except StateError as exc:
+        raise TransportNotificationError(
+            "accepted intercity schedule state is invalid"
+        ) from exc
+
     now = datetime.now(TIMEZONE)
     tomorrow_schedule = None
     try:
@@ -1036,6 +1296,26 @@ async def collect() -> None:
         (
             alicante_bundle.next
             if alicante_bundle is not None
+            else None
+        ),
+        (
+            elche_bundle.current
+            if elche_bundle is not None
+            else None
+        ),
+        (
+            elche_bundle.next
+            if elche_bundle is not None
+            else None
+        ),
+        (
+            inland_bundle.current
+            if inland_bundle is not None
+            else None
+        ),
+        (
+            inland_bundle.next
+            if inland_bundle is not None
             else None
         ),
     )

@@ -82,14 +82,40 @@ source data is never treated as a cancellation or fare change.
 Alicante does not currently emit a synthetic seasonal-period event: different
 daily arrays are not enough evidence to label a summer/winter transition.
 
+### Elche
+
+The Guardamar ↔ Elche card uses the same bounded Avanza/Costa Azul HTML
+planner as Alicante. Today and tomorrow are queried in both directions during
+the existing 05:00 transport sync. Tomorrow is retained only as the same-date
+comparison baseline for the following morning. The first baseline is silent.
+
+Price is shown only when both directions expose a validated fare. Missing or
+invalid source data never proves cancellation or a fare change.
+
+### Orihuela
+
+The Guardamar ↔ Orihuela card uses Bus Sigüenza's exact-date search. Today and
+tomorrow are queried during the existing 05:00 transport sync; each accepted
+date must contain both Guardamar→Orihuela and Orihuela→Guardamar departure
+panels.
+
+The ordinary one-way fare comes from the official CE-714 tariff PDF and only
+from the validated `TARIFA BASE GENERAL` Guardamar↔Orihuela row. Tariff
+changes are accepted only after stable PDF content and successful parsing.
+Tomorrow is retained only as the same-date comparison baseline, and the first
+baseline is silent.
+
+Neither Elche nor Orihuela synthesizes a seasonal-period event from ordinary
+daily timetable differences.
+
 ### Other transport cards
 
-Elche, Hospital de Torrevieja, the south/Torrevieja-Zenia-Pilar route,
-Orihuela and Universidad de Alicante remain useful linked cards but do not
-currently have accepted comparable state in the bot. They therefore emit no
-change notifications. A future reliable bounded adapter can project route
-events into the same `transport_notifications.py` flow without creating a
-new notification subsystem.
+Hospital de Torrevieja, the south/Torrevieja-Zenia-Pilar route and Universidad
+de Alicante remain useful linked cards but do not currently have accepted
+comparable state in the bot. They therefore emit no change notifications. A
+future reliable bounded adapter can project route events into the same
+`transport_notifications.py` flow without creating a new notification
+subsystem.
 
 ## Link and evidence rules
 
@@ -102,5 +128,6 @@ fallback.
 A missing source row or card never proves cancellation. Temporary diversions
 and event closures belong to the existing mobility/emergency path.
 
-See `adr/0065-transport-change-notifications.md` and
-`adr/0081-alicante-date-specific-timetable.md`.
+See `adr/0065-transport-change-notifications.md`,
+`adr/0081-alicante-date-specific-timetable.md` and
+`adr/0082-elche-orihuela-date-specific-timetables.md`.
