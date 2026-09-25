@@ -27,8 +27,9 @@ class CelebrationCalendarTests(unittest.TestCase):
         self.assertIsNotNone(celebrations)
         names = {item.name for item in celebrations}
         self.assertIn("Страстная неделя (Semana Santa)", names)
+        self.assertIn("Праздники Мавров и Христиан", names)
         self.assertIn(
-            "Праздники Мавров и Христиан в честь Sant Jaume",
+            "День Sant Jaume — покровителя Гуардамара",
             names,
         )
         self.assertIn(
@@ -109,6 +110,40 @@ class CelebrationCalendarTests(unittest.TestCase):
         self.assertIn(
             "• Праздник B · сегодня первый день · до 26 сентября",
             message,
+        )
+
+    def test_sant_jaume_is_visible_inside_moros_y_cristianos_period(self):
+        day = date(2026, 7, 25)
+        now = datetime(2026, 7, 25, 7, 0, tzinfo=GUARDAMAR_TIMEZONE)
+        message = build_message(
+            self._digest(celebrations=celebrations_on(day)),
+            now=now,
+        )
+
+        self.assertIn("🎉 <b>В городе праздники:</b>", message)
+        self.assertIn(
+            "• Праздники Мавров и Христиан · до 26 июля",
+            message,
+        )
+        self.assertIn(
+            "• День Sant Jaume — покровителя Гуардамара · сегодня",
+            message,
+        )
+
+    def test_sant_jaume_gets_next_day_alert(self):
+        now = datetime(2026, 7, 24, 18, 0, tzinfo=GUARDAMAR_TIMEZONE)
+
+        publication = build_celebration_alert(now)
+
+        self.assertIsNotNone(publication)
+        self.assertEqual(publication.target_date, date(2026, 7, 25))
+        self.assertIn(
+            "День Sant Jaume — покровителя Гуардамара · завтра",
+            publication.message,
+        )
+        self.assertNotIn(
+            "Праздники Мавров и Христиан · до 26 июля",
+            publication.message,
         )
 
     def test_unrelated_official_holiday_is_not_hidden_by_celebration(self):
