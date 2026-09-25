@@ -1,0 +1,51 @@
+name: Zenia schedule validation
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - name: Install package
+        run: python -m pip install -e .
+      - name: Compile
+        run: python -m compileall -q src tests
+      - name: Targeted tests
+        run: |
+          python -m unittest tests.test_intercity_schedules -v
+          python -m unittest tests.test_transport_notifications -v
+          python -m unittest tests.test_guide.TransportBusStationLinkTests -v
+      - name: Live Zenia probe
+        run: |
+          python - <<'PY'
+          from datetime import date
+          from telegrambot.zenia_schedule import fetch_bundle
+
+          today = date(2026, 9, 25)
+          bundle = fetch_bundle(today, None)
+
+          for label, item in (("CURRENT", bundle.current), ("NEXT", bundle.next)):
+              if item is None:
+                  print(label, "NONE")
+                  continue
+              print(label)
+              print("date:", item.service_date)
+              print("outbound:", len(item.outbound), item.outbound)
+              print("inbound:", len(item.inbound), item.inbound)
+              print(
+                  "fare:",
+                  None if item.fare is None else item.fare.cents,
+                  None if item.fare is None else item.fare.from_price,
+              )
+      - name: Full regression suite
+        run: python -m unittest discover -s tests -v
