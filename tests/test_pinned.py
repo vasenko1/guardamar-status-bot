@@ -213,6 +213,9 @@ class PinnedContentTests(unittest.TestCase):
         self.assertNotIn("Zenia Boulevard", south)
         self.assertIn("Гуардамар ↔ Zenia Boulevard", zenia)
         self.assertIn("Рейсы на текущую дату обновляются здесь каждое утро", zenia)
+        self.assertIn("Маршрут:</b> Alicante ↔ Pilar de la Horadada", zenia)
+        self.assertIn("садитесь в сторону <b>Pilar de la Horadada</b>", zenia)
+        self.assertIn("садитесь в сторону <b>Alicante</b>", zenia)
         self.assertIn("37.9292298333%2C-0.7346398333", zenia)
 
     def test_hospital_message_has_year_round_timetable_and_live_source(self):
