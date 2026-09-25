@@ -1,5 +1,6 @@
 """Exact-date Guardamar ↔ Elche timetable from the Avanza public planner."""
 
+import html
 import http.cookiejar
 import logging
 import urllib.request
@@ -17,7 +18,7 @@ from .intercity_schedule import (
     fare_amount,
     format_times,
 )
-from .pinned import LEAF_MESSAGES
+from .pinned import GUARDAMAR_BUS_STATION_MAP_URL
 
 ELCHE_ROUTE_KEY = "elche"
 
@@ -151,8 +152,9 @@ def build_message(
         + format_times(schedule.inbound)
         + fare_line
         + "\n\n📍 <b>Откуда и куда</b>\n"
-        '<a href="https://www.google.com/maps/search/?api=1&amp;query='
-        'Carrer+Molivent%2C+Guardamar+del+Segura">'
+        '<a href="'
+        + html.escape(GUARDAMAR_BUS_STATION_MAP_URL, quote=True)
+        + '">'
         "автовокзал Гуардамара</a>"
         " ↔ "
         '<a href="https://www.google.com/maps/search/?api=1&amp;query='

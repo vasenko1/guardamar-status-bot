@@ -51,6 +51,10 @@ FISHING_RESTRICTIONS_URL = (
     "aperturasycierres"
 )
 AIRPORT_STOP_MAP_URL = "https://maps.app.goo.gl/V3REb7P6CmdJtgom7"
+GUARDAMAR_BUS_STATION_MAP_URL = (
+    "https://www.google.com/maps/search/?api=1&"
+    "query=38.0877707496%2C-0.6560185196"
+)
 YOUTH_CENTRE_MAP_URL = "https://maps.app.goo.gl/HhfDRr6tpbbKekjM7"
 POLIDEPORTIVO_MAP_URL = "https://maps.app.goo.gl/KSZV3aVX75UxATQ68"
 POOL_INDOOR_MAP_URL = "https://maps.app.goo.gl/p9GqBDQEbnyQQNaAA"
@@ -230,12 +234,12 @@ LEAF_MESSAGES: Dict[str, str] = {
 🗓 Автобус ходит каждый день. Рейсы на текущую дату обновляются здесь каждое утро.
 
 📍 <b>Откуда и куда</b>
-<a href="https://www.google.com/maps/search/?api=1&amp;query=38.087834%2C-0.655759">автовокзал Гуардамара</a> ↔ <a href="{AIRPORT_STOP_MAP_URL}">остановка у терминала аэропорта</a>
+<a href="{html.escape(GUARDAMAR_BUS_STATION_MAP_URL, quote=True)}">автовокзал Гуардамара</a> ↔ <a href="{AIRPORT_STOP_MAP_URL}">остановка у терминала аэропорта</a>
 
 🕒 <a href="https://www.bus-siguenza.com/index.php?page=urbano">Найти расписание на нужную дату</a>"""
     ),
     "hospital": with_footer(
-        """🏥 <b>Гуардамар ↔ Hospital de Torrevieja</b>
+        f"""🏥 <b>Гуардамар ↔ Hospital de Torrevieja</b>
 До больницы можно доехать без пересадок на линии 6 Avanza.
 
 🗓 <b>По рабочим дням, с понедельника по пятницу</b>
@@ -259,60 +263,60 @@ LEAF_MESSAGES: Dict[str, str] = {
 📍 <b>Остановки по пути</b>
 
 <b>В больницу</b>
-<a href="https://www.google.com/maps/search/?api=1&amp;query=38.0877707496%2C-0.6560185196">Guardamar</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0583071959%2C-0.6569832033">La Rosa</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.034828419%2C-0.6600459049">Pinomar</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0241372606%2C-0.6570898059">La Mata</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=37.9643925369%2C-0.7172232255">Hospital de Torrevieja</a>
+<a href="{html.escape(GUARDAMAR_BUS_STATION_MAP_URL, quote=True)}">Guardamar</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0583071959%2C-0.6569832033">La Rosa</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.034828419%2C-0.6600459049">Pinomar</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0241372606%2C-0.6570898059">La Mata</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=37.9643925369%2C-0.7172232255">Hospital de Torrevieja</a>
 
 <b>Обратно</b>
-<a href="https://www.google.com/maps/search/?api=1&amp;query=37.9643925369%2C-0.7172232255">Hospital de Torrevieja</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0262439991%2C-0.655954">La Mata</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.034828419%2C-0.6600459049">Pinomar</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0560738544%2C-0.6568971718">La Rosa</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0877707496%2C-0.6560185196">Guardamar</a>
+<a href="https://www.google.com/maps/search/?api=1&amp;query=37.9643925369%2C-0.7172232255">Hospital de Torrevieja</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0262439991%2C-0.655954">La Mata</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.034828419%2C-0.6600459049">Pinomar</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=38.0560738544%2C-0.6568971718">La Rosa</a> · <a href="{html.escape(GUARDAMAR_BUS_STATION_MAP_URL, quote=True)}">Guardamar</a>
 
 ℹ️ <a href="https://www.gva.es/es/web/arees/infraestructures-i-transports/-/asset_publisher/21dbI2RUgqwC/content/nuevas-concesiones-de-atuob%25C3%259As-en-la-comarca-de-la-vega-baja/20081096?_com_liferay_asset_publisher_web_portlet_AssetPublisherPortlet_INSTANCE_21dbI2RUgqwC_assetEntryId=412097993">Подробнее о линии</a>"""
     ),
     "alicante": with_footer(
-        """🚌 <b>Гуардамар ↔ Alicante</b>
+        f"""🚌 <b>Гуардамар ↔ Alicante</b>
 Доехать можно без пересадок на автобусе Avanza.
 
 По дороге автобус заезжает в La Marina, Santa Pola и El Altet.
 
 📍 <b>Откуда и куда</b>
-<a href="https://www.google.com/maps/search/?api=1&amp;query=Carrer+Molivent%2C+Guardamar+del+Segura">автовокзал Гуардамара</a> ↔ <a href="https://www.google.com/maps/search/?api=1&amp;query=Estaci%C3%B3n+de+Autobuses+de+Alicante">автовокзал в Alicante</a>
+<a href="{html.escape(GUARDAMAR_BUS_STATION_MAP_URL, quote=True)}">автовокзал Гуардамара</a> ↔ <a href="https://www.google.com/maps/search/?api=1&amp;query=Estaci%C3%B3n+de+Autobuses+de+Alicante">автовокзал в Alicante</a>
 
 🕒 <a href="https://regular.autobusing.com/info?empresa=costa-azul&amp;locale=es">Найти расписание на нужную дату</a>"""
     ),
     "elche": with_footer(
-        """🚌 <b>Гуардамар ↔ Elche</b>
+        f"""🚌 <b>Гуардамар ↔ Elche</b>
 Доехать можно без пересадок на автобусе Avanza.
 
 По дороге автобус заезжает в San Fulgencio, Dolores, Catral и Crevillente.
 
 📍 <b>Откуда и куда</b>
-<a href="https://www.google.com/maps/search/?api=1&amp;query=Carrer+Molivent%2C+Guardamar+del+Segura">автовокзал Гуардамара</a> ↔ <a href="https://www.google.com/maps/search/?api=1&amp;query=Av.+Vicente+Quiles%2C+Elche">остановка на проспекте Vicente Quiles в Elche</a>
+<a href="{html.escape(GUARDAMAR_BUS_STATION_MAP_URL, quote=True)}">автовокзал Гуардамара</a> ↔ <a href="https://www.google.com/maps/search/?api=1&amp;query=Av.+Vicente+Quiles%2C+Elche">остановка на проспекте Vicente Quiles в Elche</a>
 
 🕒 <a href="https://regular.autobusing.com/info?empresa=costa-azul&amp;locale=es">Найти расписание на нужную дату</a>"""
     ),
     "south": with_footer(
-        """🚌 <b>Гуардамар ↔ Torrevieja ↔ Pilar de la Horadada</b>
+        f"""🚌 <b>Гуардамар ↔ Torrevieja ↔ Pilar de la Horadada</b>
 До Torrevieja и Pilar de la Horadada можно доехать без пересадок на автобусе Avanza.
 
 По дороге автобус проходит через La Rosa, Pinomar, La Mata, Playa Flamenca, Zenia Boulevard, Campoamor и Mil Palmeras.
 
 📍 <b>Основные остановки</b>
-<a href="https://www.google.com/maps/search/?api=1&amp;query=Carrer+Molivent%2C+Guardamar+del+Segura">Гуардамар</a> → <a href="https://www.google.com/maps/search/?api=1&amp;query=Calle+del+Mar+40%2C+Torrevieja">Torrevieja</a> → <a href="https://www.google.com/maps/search/?api=1&amp;query=Calle+Emilio+Tarraga+18%2C+Pilar+de+la+Horadada">Pilar de la Horadada</a>
+<a href="{html.escape(GUARDAMAR_BUS_STATION_MAP_URL, quote=True)}">Гуардамар</a> → <a href="https://www.google.com/maps/search/?api=1&amp;query=Calle+del+Mar+40%2C+Torrevieja">Torrevieja</a> → <a href="https://www.google.com/maps/search/?api=1&amp;query=Calle+Emilio+Tarraga+18%2C+Pilar+de+la+Horadada">Pilar de la Horadada</a>
 
 🕒 <a href="https://regular.autobusing.com/info?empresa=costa-azul&amp;locale=es">Найти расписание на нужную дату</a>
 🛍 <a href="https://regular.autobusing.com/info/horarios?empresa=costa-azul&amp;venta%5Borigen_nombre%5D=GUARDAMAR&amp;venta%5Bdestino_nombre%5D=C.C.%20BOULEVAR%20ZENIA">Посмотреть рейсы до Zenia Boulevard</a>"""
     ),
     "inland": with_footer(
-        """🚌 <b>Гуардамар ↔ Orihuela</b>
+        f"""🚌 <b>Гуардамар ↔ Orihuela</b>
 Доехать можно без пересадок на автобусе Bus Sigüenza.
 
 По дороге автобус заезжает в Daya Vieja, Rojales, Formentera del Segura, Las Heredades, Daya Nueva, Almoradí, Hospital Vega Baja, Benejúzar, Jacarilla и Bigastro.
 
 📍 <b>Откуда и куда</b>
-<a href="https://www.google.com/maps/search/?api=1&amp;query=Estaci%C3%B3n+de+Autobuses%2C+Guardamar+del+Segura">автовокзал Гуардамара</a> ↔ <a href="https://www.google.com/maps/search/?api=1&amp;query=Estaci%C3%B3n+de+Autobuses%2C+Orihuela">автовокзал в Orihuela</a>
+<a href="{html.escape(GUARDAMAR_BUS_STATION_MAP_URL, quote=True)}">автовокзал Гуардамара</a> ↔ <a href="https://www.google.com/maps/search/?api=1&amp;query=Estaci%C3%B3n+de+Autobuses%2C+Orihuela">автовокзал в Orihuela</a>
 
 🕒 <a href="https://www.bus-siguenza.com/index.php?page=urbano">Найти расписание на нужную дату</a>"""
     ),
     "university": with_footer(
-        """🎓 <b>Гуардамар ↔ Universidad de Alicante</b>
+        f"""🎓 <b>Гуардамар ↔ Universidad de Alicante</b>
 В учебный период до университета ходит прямой автобус Avanza.
 
 Для поездки нужно быть членом ADEUGT.
@@ -320,10 +324,10 @@ LEAF_MESSAGES: Dict[str, str] = {
 📍 <b>Где садиться</b>
 
 <b>В университет</b>
-<a href="https://www.google.com/maps/search/?api=1&amp;query=Calle+Pintor+Sorolla+2%2C+Guardamar+del+Segura">улица Pintor Sorolla, 2</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=Estaci%C3%B3n+de+Autobuses%2C+Guardamar+del+Segura">автовокзал Гуардамара</a>
+<a href="https://www.google.com/maps/search/?api=1&amp;query=Calle+Pintor+Sorolla+2%2C+Guardamar+del+Segura">улица Pintor Sorolla, 2</a> · <a href="{html.escape(GUARDAMAR_BUS_STATION_MAP_URL, quote=True)}">автовокзал Гуардамара</a>
 
 <b>Обратно</b>
-<a href="https://www.google.com/maps/search/?api=1&amp;query=Estaci%C3%B3n+de+Autobuses%2C+Guardamar+del+Segura">автовокзал Гуардамара</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=Calle+Pintor+Sorolla+1%2C+Guardamar+del+Segura">улица Pintor Sorolla, 1</a>
+<a href="{html.escape(GUARDAMAR_BUS_STATION_MAP_URL, quote=True)}">автовокзал Гуардамара</a> · <a href="https://www.google.com/maps/search/?api=1&amp;query=Calle+Pintor+Sorolla+1%2C+Guardamar+del+Segura">улица Pintor Sorolla, 1</a>
 
 🕒 <a href="https://web.ua.es/es/oia/transporte-universitario/vega-baja.html">Расписание и условия поездки</a>"""
     ),

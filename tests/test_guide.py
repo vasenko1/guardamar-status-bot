@@ -1431,5 +1431,43 @@ class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(send.await_count, 1)
 
 
+class TransportBusStationLinkTests(unittest.TestCase):
+    def test_all_static_transport_station_links_use_canonical_coordinates(self):
+        import html
+
+        from telegrambot.pinned import (
+            GUARDAMAR_BUS_STATION_MAP_URL,
+            LEAF_MESSAGES,
+        )
+
+        expected = html.escape(
+            GUARDAMAR_BUS_STATION_MAP_URL,
+            quote=True,
+        )
+        route_keys = (
+            "airport",
+            "hospital",
+            "alicante",
+            "elche",
+            "south",
+            "inland",
+            "university",
+        )
+        for key in route_keys:
+            with self.subTest(route=key):
+                self.assertIn(expected, LEAF_MESSAGES[key])
+
+        combined = "\n".join(LEAF_MESSAGES[key] for key in route_keys)
+        self.assertNotIn(
+            "Carrer+Molivent%2C+Guardamar+del+Segura",
+            combined,
+        )
+        self.assertNotIn(
+            "Estaci%C3%B3n+de+Autobuses%2C+Guardamar+del+Segura",
+            combined,
+        )
+        self.assertNotIn("38.087834%2C-0.655759", combined)
+
+
 if __name__ == "__main__":
     unittest.main()

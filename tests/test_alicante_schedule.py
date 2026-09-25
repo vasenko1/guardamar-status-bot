@@ -189,6 +189,14 @@ class AlicanteCardTests(unittest.TestCase):
             "Найти расписание на другую дату",
             message,
         )
+        self.assertIn(
+            "query=38.0877707496%2C-0.6560185196",
+            message,
+        )
+        self.assertNotIn(
+            "Carrer+Molivent%2C+Guardamar+del+Segura",
+            message,
+        )
         self.assertIn("https://t.me/c/1/50", message)
         self.assertEqual(message.count(FOOTER), 1)
         self.assertLessEqual(len(message), 4096)

@@ -102,6 +102,10 @@ class ElcheScheduleTests(unittest.TestCase):
         self.assertIn("06:50 · 08:50 · 10:50 · 11:50 · 15:55\n17:50", message)
         self.assertIn("Билет в одну сторону:</b> 3,60 €", message)
         self.assertIn("Найти расписание на другую дату", message)
+        self.assertIn(
+            "query=38.0877707496%2C-0.6560185196",
+            message,
+        )
         self.assertIn("https://t.me/c/1/50", message)
         self.assertEqual(message.count(FOOTER), 1)
         self.assertLessEqual(len(message), 4096)
@@ -320,6 +324,10 @@ FIRMADO ELECTRÓNICAMENTE POR EL JEFE DEL SERVICIO DE TRANSPORTE PÚBLICO
         self.assertIn("3,45 €", message)
         self.assertIn("wbus/tarifas/fare.pdf", message)
         self.assertIn("Найти расписание на другую дату", message)
+        self.assertIn(
+            "query=38.0877707496%2C-0.6560185196",
+            message,
+        )
         self.assertIn("https://t.me/c/1/50", message)
         self.assertEqual(message.count(FOOTER), 1)
         self.assertLessEqual(len(message), 4096)
