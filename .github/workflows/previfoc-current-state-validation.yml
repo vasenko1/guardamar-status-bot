@@ -1,0 +1,68 @@
+name: Previfoc current-state validation
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - name: Install package and PDF tools
+        run: |
+          python -m pip install -e .
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq poppler-utils
+      - name: Compile
+        run: python -m compileall -q src tests
+      - name: Targeted emergency-risk tests
+        run: python -m unittest tests.test_emergency_risks -v
+      - name: Full regression suite
+        run: python -m unittest discover -s tests -v
+      - name: Verify today's mixed transition semantics
+        run: |
+          python - <<'PY'
+          from datetime import datetime
+          from telegrambot.emergency_risks import EmergencyRiskState, _transition
+
+          now = datetime.fromisoformat("2026-09-25T07:19:00+02:00")
+          value = EmergencyRiskState.empty()
+          value["published"]["fire_level"] = 1
+          value["published"]["dry_level"] = 2
+          value["previfoc"] = {
+              "fire_level": 2,
+              "dry_thunderstorm_level": 1,
+              "alert_id": 1,
+              "observed_at": now.isoformat(),
+          }
+          message = _transition(value)
+          if message is None:
+              raise SystemExit("mixed transition unexpectedly produced no message")
+          required = (
+              "🌲 <b>Пожарная опасность сегодня</b>",
+              "высокий уровень — <b>2 из 3</b>",
+              "Источник: Generalitat Valenciana",
+          )
+          forbidden = (
+              "Риск сухих гроз снят",
+              "✅",
+              "Previfoc",
+              "барбекю",
+          )
+          for item in required:
+              if item not in message:
+                  raise SystemExit(f"required current-state copy missing: {item}")
+          for item in forbidden:
+              if item in message:
+                  raise SystemExit(f"obsolete transition copy remains: {item}")
+          print(message)
+          print("OK: mixed transition renders only the current active risk")
+          PY
