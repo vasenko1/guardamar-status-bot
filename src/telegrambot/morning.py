@@ -19,6 +19,7 @@ from .agenda import (
 )
 from .aemet import AemetError, fetch_morning_digest
 from .digest import build_message
+from .celebrations import celebrations_on
 from .diagnostics import SourceDiagnostic, source_error
 from .event_urls import normalize_ticket_url
 from .holidays import official_holidays_on
@@ -914,6 +915,9 @@ async def produce_message(
             digest,
             pharmacies=pharmacies,
             holidays=official_holidays_on(
+                now.astimezone(GUARDAMAR_TIMEZONE).date()
+            ),
+            celebrations=celebrations_on(
                 now.astimezone(GUARDAMAR_TIMEZONE).date()
             ),
             events=_merge_events(

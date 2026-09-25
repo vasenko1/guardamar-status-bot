@@ -71,6 +71,13 @@ class GuideTermuxTests(unittest.TestCase):
 
         self.assertIn('"45 16 * * * $SH_BIN $BLOOD"', script)
 
+    def test_celebration_alert_uses_one_daily_1800_cron(self):
+        script = (
+            ROOT / "termux" / "install-guide-cron.sh"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('"0 18 * * * $SH_BIN $CELEBRATION"', script)
+
     def test_installer_has_one_evening_bathing_check_during_official_season(self):
         script = (
             ROOT / "termux" / "install-guide-cron.sh"
@@ -97,6 +104,8 @@ class GuideTermuxTests(unittest.TestCase):
         self.assertEqual(installed.count("2 9 * * *"), 1)
         self.assertEqual(installed.count("45 16 * * *"), 1)
         self.assertEqual(installed.count("publish-blood-donation.sh"), 1)
+        self.assertEqual(installed.count("0 18 * * *"), 1)
+        self.assertEqual(installed.count("publish-celebration-alert.sh"), 1)
 
     def test_installer_replaces_legacy_extended_bathing_schedules(self):
         legacy = (

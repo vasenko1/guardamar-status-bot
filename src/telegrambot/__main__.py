@@ -142,6 +142,10 @@ from .blood_donation import (
     monitor_blood_donation_alert,
     refresh_blood_donation_catalog_if_due,
 )
+from .celebrations import (
+    DEFAULT_ALERT_STATE_PATH as DEFAULT_CELEBRATION_ALERT_STATE_PATH,
+    build_celebration_alert,
+)
 from .weekend import produce_weekend_message, weekend_dates
 from .tomorrow_events import (
     TomorrowEventState,
@@ -1169,6 +1173,69 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         logging.info("SUCCESS: poll %s delivered", message_id)
         return 0
 
+    if command in {"celebration-alert", "celebration-alert-preview"}:
+        publication = build_celebration_alert(now)
+        if command == "celebration-alert-preview":
+            if publication is None:
+                print("No reviewed next-day celebration or official holiday")
+            else:
+                print(publication.message)
+            return 0
+        if publication is None:
+            logging.info(
+                "SKIP: no reviewed next-day celebration or official holiday"
+            )
+            return 0
+
+        bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
+        chat_id = _required_environment("TELEGRAM_CHAT_ID")
+        celebration_state = TomorrowEventState(Path(os.environ.get(
+            "CELEBRATION_ALERT_STATE_PATH",
+            DEFAULT_CELEBRATION_ALERT_STATE_PATH,
+        )))
+
+        with celebration_state.exclusive_run():
+            delivery_status = celebration_state.status(publication.target_date)
+            if delivery_status == "sent":
+                logging.info(
+                    "SKIP: celebration alert already published for %s",
+                    publication.target_date,
+                )
+                return 0
+            if delivery_status == "uncertain":
+                logging.warning(
+                    "SKIP: celebration-alert delivery remains uncertain for %s",
+                    publication.target_date,
+                )
+                return 0
+
+            celebration_state.mark_uncertain(publication.target_date)
+            try:
+                message_id = await send_message(
+                    bot_token,
+                    chat_id,
+                    publication.message,
+                    disable_notification=False,
+                    retry_only_rate_limits=True,
+                )
+            except TelegramError as exc:
+                if is_ambiguous_send_failure(exc):
+                    logging.warning(
+                        "Celebration-alert delivery uncertain for %s; "
+                        "automatic resend disabled",
+                        publication.target_date,
+                    )
+                    return 0
+                celebration_state.clear(publication.target_date)
+                raise
+            celebration_state.mark_sent(publication.target_date, message_id)
+
+        logging.info(
+            "SUCCESS: celebration alert delivered for %s",
+            publication.target_date,
+        )
+        return 0
+
     if command in {"tomorrow-events", "tomorrow-events-preview"}:
         if command == "tomorrow-events" and not tomorrow_notice_due(now):
             logging.info(
@@ -1926,6 +1993,7 @@ def main() -> None:
             "monitor-traffic",
             "suma",
             "blood-donation-alert",
+            "celebration-alert", "celebration-alert-preview",
             "weekend", "weekend-preview",
             "tomorrow-events", "tomorrow-events-preview",
             "poll",
