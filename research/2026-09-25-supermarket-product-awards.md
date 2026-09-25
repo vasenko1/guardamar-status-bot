@@ -918,3 +918,71 @@ Do not silently promote a discovery-only article into a production authority.
 A future implementation must still prove the responsible award body's own
 stable public result contract.
 
+### Photo-rights follow-up
+
+The technical ability to fetch an exact product image is not sufficient to
+republish it in Telegram.
+
+Current legal/terms checks on 25 September 2026 found explicit restrictions on
+copying, reproduction, distribution or public communication of site content
+without prior permission for several target retailers:
+
+- Lidl España;
+- Consum;
+- Carrefour España;
+- Alcampo;
+- DIA España;
+- Masymas / Juan Fornés Fornés.
+
+Juan Fornés' own legal notice states that the information, graphic design and
+code are protected and expressly excludes reproduction, distribution,
+transformation and public communication of all or part of the site content.
+Its app terms likewise reserve exploitation rights in photographs and other
+content.
+
+The safe product decision is therefore stronger than the earlier generic
+"review terms before use" rule:
+
+- retailer product photos are **disabled by default**;
+- technical image URLs may still be inspected for identity verification;
+- a Telegram product photo is enabled only for a source where an explicit
+  licence, permission, press/media asset policy or other sufficiently clear
+  reuse right has been documented;
+- uncertainty means text-only publication;
+- never copy a retailer product image merely because the HTTP URL is public.
+
+This does not affect use of factual catalogue data such as exact product
+identity, package and current price when obtained through a permitted public
+surface.
+
+### Masymas domain/company negative test
+
+Do not treat an arbitrary site containing the masymas name as evidence for the
+target Valencian/Murcian retailer.
+
+A live investigation found that supermasymasonline.com belongs to HIJOS DE
+LUIS RODRÍGUEZ S.A. in Asturias, not JUAN FORNÉS FORNÉS S.A. A current Alteza
+product found there therefore cannot establish current availability in the
+Guardamar-area Masymas chain.
+
+The target company identity must be Juan Fornés Fornés, S.A.; its official
+online-store and masymas.com surfaces are the accepted starting point.
+
+### Final no-change cost rule
+
+The horizontal expansion must not become eight daily catalogue scans.
+
+Normal discovery remains award-first or retailer-award-list-first. Retailer
+catalogues are queried only when a relevant candidate exists:
+
+1. discover a bounded award/result item or a bounded retailer award lead;
+2. verify the independent award semantics;
+3. resolve one or a few exact retailer SKU candidates;
+4. enqueue only after the retail relationship can be stated correctly;
+5. immediately before publication, refresh only the already-resolved exact SKU
+   for current price/availability.
+
+Thus a quiet day should add almost no retailer catalogue traffic. No per-retailer
+cron, full catalogue crawl, browser session or continuous stock monitor is
+introduced.
+
