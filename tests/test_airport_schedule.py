@@ -33,6 +33,7 @@ from telegrambot.airport_schedule import (
 from telegrambot.branding import FOOTER
 from telegrambot.pinned import (
     AIRPORT_STOP_MAP_URL,
+    GUARDAMAR_BUS_STATION_MAP_URL,
     LEAF_MESSAGES,
     PinnedGuideState,
 )
@@ -548,7 +549,8 @@ class AirportMessageTests(unittest.TestCase):
         self.assertIn("Сегодня, 14 августа", message)
         self.assertIn("07:50 · 12:05 · 15:05", message)
         self.assertIn("Обычный билет: 2,95 €", message)
-        self.assertIn("38.087834%2C-0.655759", message)
+        self.assertIn("38.0877707496%2C-0.6560185196", message)
+        self.assertNotIn("38.087834%2C-0.655759", message)
         self.assertIn(AIRPORT_STOP_MAP_URL, message)
         self.assertNotIn("38.282222222222%2C-0.55805555555556", message)
         self.assertIn("Найти расписание на другую дату", message)
