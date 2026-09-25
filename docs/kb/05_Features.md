@@ -628,6 +628,46 @@ successful empty optional results remain quiet where emptiness is normal.
 - No unsupported predictions or invented summaries
 - Missing low-value or optional-source sections may be omitted
 
+## Supermarket product award feed
+
+The bot may publish occasional editorial notes about supermarket own-brand
+products that receive a verified independent test result or award. This is one
+shared stream across product categories rather than separate features for OCU,
+cheese, wine, olive oil, jamón, and future award families.
+
+The runtime contract is deliberately small:
+
+- source-specific adapters discover and deterministically parse only their own
+  official/authoritative result surfaces;
+- adapters return the common `ProductAwardCandidate` contract and define a
+  source-native stable `event_key`;
+- the shared engine owns only per-source silent baseline, deduplication, one
+  queue, deterministic rendering, and Telegram delivery;
+- discovery runs at 13:50 Europe/Madrid;
+- publication runs at 14:20 and sends at most one queued award per local day;
+- the first successful observation of a newly registered source silently marks
+  its existing items as seen, so adding a new award family never backfills its
+  historical archive.
+
+OCU is the first active adapter. `Mejor del Análisis` is rendered as the best
+result in that specific OCU comparison. `Compra Maestra` is rendered as a
+value/balance distinction and never as proof of the highest absolute quality.
+
+Award publication is text-first and must work with Gemini/OpenRouter keys
+absent. Live retailer catalogue price/photo lookup is not a publication
+dependency. A price explicitly published by the award source may be shown as a
+source-stated price; it is not relabelled as the current shelf price.
+
+The shared queue preserves at-most-once delivery semantics. An ambiguous
+Telegram send remains `uncertain` and is not automatically resent; a
+deterministic rejection can safely return the event to the queue for a later
+day.
+
+New award bodies must follow ADR 0083 and the implementation checklist in
+`research/2026-09-25-supermarket-product-awards.md`. Do not add a new cron,
+queue, database, worker, notification framework, universal LLM parser, or
+source-independent fuzzy product matcher for each new source.
+
 ## Feature boundary
 
 The approved electricity table fills the former future-feature slot. Do not
