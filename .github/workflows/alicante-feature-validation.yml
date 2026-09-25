@@ -29,6 +29,7 @@ jobs:
           import io
           import urllib.request
           import zipfile
+          from collections import defaultdict
           from datetime import datetime, timedelta
           from zoneinfo import ZoneInfo
           from telegrambot.alicante_schedule import (
@@ -44,24 +45,66 @@ jobs:
               with urllib.request.urlopen(GTFS_URL, timeout=30) as response:
                   payload = response.read()
               with zipfile.ZipFile(io.BytesIO(payload)) as archive:
-                  print("GTFS_MEMBERS_CURRENT", archive.namelist())
-                  rows = csv.DictReader(
-                      io.TextIOWrapper(
-                          archive.open("stops.txt"),
-                          encoding="utf-8-sig",
-                          newline="",
-                      )
-                  )
-                  for row in rows:
-                      name = row.get("stop_name", "")
-                      folded = name.casefold()
-                      if "guardamar" in folded or "alicante" in folded or "alacant" in folded:
+                  def rows(name):
+                      return list(csv.DictReader(io.TextIOWrapper(
+                          archive.open(name), encoding="utf-8-sig", newline=""
+                      )))
+                  stops = rows("stops.txt")
+                  stop_names = {r["stop_id"]: r["stop_name"] for r in stops}
+                  service_ids = {
+                      r["service_id"]
+                      for r in rows("calendar_dates.txt")
+                      if r.get("date") == today.strftime("%Y%m%d")
+                      and r.get("exception_type") == "1"
+                  }
+                  trips = {
+                      r["trip_id"]: r
+                      for r in rows("trips.txt")
+                      if r.get("service_id") in service_ids
+                  }
+                  by_trip = defaultdict(list)
+                  for r in rows("stop_times.txt"):
+                      if r.get("trip_id") in trips:
+                          by_trip[r["trip_id"]].append(r)
+                  guardamar_ids = {
+                      r["stop_id"] for r in stops
+                      if "guardamar" in r["stop_name"].casefold()
+                      and 38.07 <= float(r["stop_lat"]) <= 38.10
+                      and -0.67 <= float(r["stop_lon"]) <= -0.64
+                  }
+                  alicante_ids = {
+                      r["stop_id"] for r in stops
+                      if ("alicante" in r["stop_name"].casefold()
+                          or "alacant" in r["stop_name"].casefold())
+                      and 38.32 <= float(r["stop_lat"]) <= 38.36
+                      and -0.51 <= float(r["stop_lon"]) <= -0.47
+                  }
+                  print("GUARDAMAR_IDS", [
+                      (sid, stop_names[sid]) for sid in sorted(guardamar_ids)
+                  ])
+                  print("ALICANTE_IDS", [
+                      (sid, stop_names[sid]) for sid in sorted(alicante_ids)
+                  ])
+                  for trip_id, stop_rows in by_trip.items():
+                      ids = {r["stop_id"] for r in stop_rows}
+                      if not (ids & guardamar_ids):
+                          continue
+                      relevant = [
+                          (
+                              r["stop_sequence"],
+                              r["departure_time"],
+                              r["stop_id"],
+                              stop_names.get(r["stop_id"], ""),
+                          )
+                          for r in stop_rows
+                          if r["stop_id"] in guardamar_ids | alicante_ids
+                      ]
+                      if relevant:
                           print(
-                              "STOP_CANDIDATE",
-                              row.get("stop_id"),
-                              repr(name),
-                              row.get("stop_lat"),
-                              row.get("stop_lon"),
+                              "GUARDAMAR_TRIP",
+                              trip_id,
+                              trips[trip_id].get("route_id"),
+                              relevant,
                           )
               raise
           else:
