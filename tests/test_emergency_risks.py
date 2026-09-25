@@ -370,6 +370,19 @@ class EmergencyRiskTests(unittest.TestCase):
         self.assertIn("Высокий риск сухих гроз", message)
         self.assertNotIn("лесных пожаров", message)
 
+    def test_cce_hydrology_clearance_remains_public(self):
+        value = EmergencyRiskState.empty()
+        value["published"]["hydrology"] = HYDRO_SITUATION_1
+        value["published"]["fire_level"] = 1
+        value["published"]["dry_level"] = 1
+        value["cce_html"] = _observed(HYDRO_NONE)
+        value["cce_pdf"] = _observed(HYDRO_NONE)
+
+        message = _transition(value)
+
+        self.assertIsNotNone(message)
+        self.assertIn("Гидрологическое предупреждение CCE снято", message)
+
     def test_morning_digest_omits_previfoc_but_keeps_hydrology(self):
         message = build_message(
             MorningDigest(
