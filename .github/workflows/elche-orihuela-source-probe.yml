@@ -1,4 +1,4 @@
-name: Elche Orihuela source probe
+name: Elche Orihuela validation
 
 on:
   pull_request:
@@ -8,79 +8,70 @@ permissions:
   contents: read
 
 jobs:
-  probe:
+  validation:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
-      - name: Install package
-        run: python -m pip install -e .
-      - name: Inspect Orihuela official fare
+      - name: Install package and PDF tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends poppler-utils
+          python -m pip install -e .
+      - name: Compile sources
+        run: python -m compileall -q src tests
+      - name: Run regression suite
+        run: python -m unittest discover -s tests -v
+      - name: Live source validation
         run: |
           python - <<'PY'
-          import re
-          import urllib.parse
-          import urllib.request
-          from datetime import datetime
-          from pathlib import Path
-          from tempfile import TemporaryDirectory
+          from datetime import datetime, timedelta
           from zoneinfo import ZoneInfo
 
-          from telegrambot import airport_schedule as bs
+          from telegrambot.elche_schedule import fetch_bundle as fetch_elche
+          from telegrambot.orihuela_schedule import fetch_bundle as fetch_orihuela
 
           today = datetime.now(ZoneInfo("Europe/Madrid")).date()
-          body = urllib.parse.urlencode({
-              "accion":3,
-              "idioma":"es",
-              "FECHASALIDA":today.strftime("%d/%m/%Y"),
-              "ORIGEN":"GUARDAMAR DEL SEGURA",
-              "DESTINO":"ORIHUELA",
-          }).encode("ascii")
-          req=urllib.request.Request(
-              bs.SEARCH_URL,data=body,method="POST",
-              headers={
-                  "Accept":"text/html",
-                  "Content-Type":"application/x-www-form-urlencoded",
-                  "User-Agent":bs.USER_AGENT,
-              })
-          payload,final_url,headers,status=bs._open_bounded(req,bs.HTML_LIMIT_BYTES)
-          page=payload.decode("utf-8")
-          active=re.sub(r"<!--.*?-->","",page,flags=re.S)
-          links=re.findall(r'href=["\']([^"\']+\.pdf(?:\?[^"\']*)?)["\']',active,re.I)
-          links=tuple(dict.fromkeys(
-              bs._normalized_url(urllib.parse.urljoin(bs.PLANNER_URL,x))
-              for x in links
-          ))
-          print("FARE_URLS",links)
-          if len(links)!=1:
-              raise SystemExit("fare link ambiguous")
-          pdf=bs.download_fare_pdf(links[0],None,None,force=True)
-          if pdf is None:
-              raise SystemExit("unexpected 304")
-          with TemporaryDirectory() as d:
-              path=Path(d)/"fare.pdf"
-              path.write_bytes(pdf.payload)
-              text=bs._run(["pdftotext","-layout",str(path),"-"]).decode("utf-8","replace")
-          markers=[
-              "LÍNEA 1:",
-              "TARIFA BASE GENERAL",
-              "ORIHUELA",
-              "GUARDAMAR",
-          ]
-          for marker in markers:
-              print("COUNT",marker,text.count(marker))
-          line1=text.find("LÍNEA 1:")
-          line2=text.find("LÍNEA 2:",line1+1)
-          segment=text[line1:line2 if line2>line1 else len(text)]
-          for line in segment.splitlines():
-              if (
-                  "ORIHUELA" in line
-                  or "GUARDAMAR" in line
-                  or "TARIFA BASE GENERAL" in line
-                  or re.search(r"\d+,\d{2}\s*€",line)
-              ):
-                  print("FARE_LINE",repr(line))
+          tomorrow = today + timedelta(days=1)
+
+          for name, fetcher, expected_today_fare in (
+              ("ELCHE", fetch_elche, 360),
+              ("ORIHUELA", fetch_orihuela, 345),
+          ):
+              bundle = fetcher(today, None)
+              if bundle.current.service_date != today:
+                  raise SystemExit(f"{name}: current date mismatch")
+              if bundle.current.fare is None:
+                  raise SystemExit(f"{name}: current fare missing")
+              if bundle.current.fare.cents != expected_today_fare:
+                  raise SystemExit(
+                      f"{name}: unexpected current fare "
+                      f"{bundle.current.fare.cents}"
+                  )
+              print(
+                  name,
+                  today,
+                  len(bundle.current.outbound),
+                  bundle.current.outbound,
+                  len(bundle.current.inbound),
+                  bundle.current.inbound,
+                  bundle.current.fare,
+              )
+              if bundle.next is None:
+                  print(name, tomorrow, "NEXT_UNAVAILABLE")
+              else:
+                  if bundle.next.service_date != tomorrow:
+                      raise SystemExit(f"{name}: next date mismatch")
+                  print(
+                      name,
+                      tomorrow,
+                      len(bundle.next.outbound),
+                      bundle.next.outbound,
+                      len(bundle.next.inbound),
+                      bundle.next.inbound,
+                      bundle.next.fare,
+                  )
           PY
