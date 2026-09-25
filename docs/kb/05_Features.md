@@ -678,9 +678,11 @@ rendering. A fresh current price/availability statement is included only when
 that refresh is unambiguous. A source-published award-study price remains
 labelled as such.
 
-Photos are optional enrichment only. They require an exact matched SKU,
-allowlisted bounded HTTPS media and a source-specific terms/reuse review.
-Missing or unsafe media produces text-only output.
+Retailer product photos are disabled by default. Current legal checks found
+reuse restrictions on several target retailer sites. A Telegram image is
+enabled only for a source with an exact matched SKU, bounded allowlisted media
+and a documented licence/permission/media policy that permits the intended
+reuse. Missing or unclear rights always produce text-only output.
 
 Award publication must work with Gemini/OpenRouter absent. No LLM may discover
 awards, match products to retailers, invent editorial facts or repair an
