@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 import unittest
 
 from telegrambot.airport_schedule import AirportSchedule, Fare
+from telegrambot.alicante_schedule import AlicanteFare, AlicanteSchedule
 from telegrambot.transport_notifications import (
     TransportNotificationError,
     _empty_state,
@@ -50,6 +51,21 @@ def _schedule(
         from_airport=tuple(from_),
         guardamar_coordinates="38.087834,-0.655759",
         airport_coordinates="38.2822,-0.5582",
+        fare=fare,
+    )
+
+
+def _alicante(
+    service_date: date,
+    *,
+    to=("08:00", "10:00"),
+    from_=("09:00", "11:00"),
+    fare=None,
+):
+    return AlicanteSchedule(
+        service_date=service_date,
+        to_alicante=tuple(to),
+        from_alicante=tuple(from_),
         fare=fare,
     )
 
@@ -388,7 +404,7 @@ class TransportNotificationTests(unittest.TestCase):
                 encoding="utf-8",
             )
             state = load_state(path)
-        assert state["version"] == 2
+        assert state["version"] == 3
         assert _kinds(state) == ["schedule_changes"]
 
 
@@ -409,6 +425,157 @@ class TransportNotificationTests(unittest.TestCase):
             )
             with self.assertRaises(TransportNotificationError):
                 load_state(path)
+
+
+
+    def test_alicante_exact_departure_change_is_schedule_message(self):
+        today = date(2026, 9, 20)
+        state = _baseline(today)
+        state["alicante_next"] = {
+            "service_date": today.isoformat(),
+            "to_alicante": ["08:00", "10:00"],
+            "from_alicante": ["09:00", "11:00"],
+            "fare": {"cents": 420, "from_price": False},
+        }
+        result = collect_changes(
+            datetime(2026, 9, 20, 5, tzinfo=TZ),
+            _pinned(),
+            _schedule(today, fare=_fare()),
+            state,
+            _schedule(date(2026, 9, 21)),
+            _alicante(
+                today,
+                to=("08:00", "10:30"),
+                fare=AlicanteFare(420, False),
+            ),
+            _alicante(
+                date(2026, 9, 21),
+                fare=AlicanteFare(420, False),
+            ),
+        )
+        assert _kinds(result) == ["schedule_changes"]
+        event = result["pending"]["messages"][0]["events"][0]
+        assert event["route"] == "alicante"
+        assert event["added_to"] == ["10:30"]
+        assert event["removed_to"] == ["10:00"]
+
+    def test_alicante_different_day_without_same_date_baseline_is_silent(self):
+        today = date(2026, 9, 20)
+        state = _baseline(today)
+        state["alicante_next"] = {
+            "service_date": "2026-09-19",
+            "to_alicante": ["07:00"],
+            "from_alicante": ["08:00"],
+            "fare": {"cents": 420, "from_price": False},
+        }
+        result = collect_changes(
+            datetime(2026, 9, 20, 5, tzinfo=TZ),
+            _pinned(),
+            _schedule(today, fare=_fare()),
+            state,
+            _schedule(date(2026, 9, 21)),
+            _alicante(
+                today,
+                to=("08:00", "10:30"),
+                fare=AlicanteFare(430, False),
+            ),
+            _alicante(date(2026, 9, 21)),
+        )
+        assert result["pending"] is None
+
+    def test_alicante_fare_change_is_separate_fare_message(self):
+        today = date(2026, 9, 20)
+        state = _baseline(today)
+        state["alicante_next"] = {
+            "service_date": today.isoformat(),
+            "to_alicante": ["08:00", "10:00"],
+            "from_alicante": ["09:00", "11:00"],
+            "fare": {"cents": 420, "from_price": False},
+        }
+        result = collect_changes(
+            datetime(2026, 9, 20, 5, tzinfo=TZ),
+            _pinned(),
+            _schedule(today, fare=_fare()),
+            state,
+            _schedule(date(2026, 9, 21)),
+            _alicante(today, fare=AlicanteFare(450, True)),
+            _alicante(date(2026, 9, 21)),
+        )
+        assert _kinds(result) == ["fare_changes"]
+        event = result["pending"]["messages"][0]["events"][0]
+        assert event == {
+            "type": "fare_changed",
+            "route": "alicante",
+            "old_cents": 420,
+            "new_cents": 450,
+            "old_from": False,
+            "new_from": True,
+            "effective_date": today.isoformat(),
+        }
+        message = build_message(
+            "fare_changes",
+            [event],
+            "-100123",
+            {"alicante": 503},
+            today,
+        )
+        assert "https://t.me/c/123/503" in message
+        assert "от 4,50 €" in message
+        assert "4,20 €" in message
+
+    def test_alicante_same_minimum_fare_mode_change_has_clear_copy(self):
+        today = date(2026, 9, 20)
+        event = {
+            "type": "fare_changed",
+            "route": "alicante",
+            "old_cents": 495,
+            "new_cents": 495,
+            "old_from": False,
+            "new_from": True,
+            "effective_date": today.isoformat(),
+        }
+        message = build_message(
+            "fare_changes",
+            [event],
+            "-100123",
+            {"alicante": 503},
+            today,
+        )
+        assert "цена теперь зависит от рейса" in message
+        assert "от 4,95 €" in message
+        assert "вместо 4,95 €" not in message
+
+    def test_alicante_first_comparable_baseline_is_silent(self):
+        today = date(2026, 9, 20)
+        state = _baseline(today)
+        result = collect_changes(
+            datetime(2026, 9, 20, 5, tzinfo=TZ),
+            _pinned(),
+            _schedule(today, fare=_fare()),
+            state,
+            _schedule(date(2026, 9, 21)),
+            _alicante(today, fare=AlicanteFare(420, False)),
+            _alicante(
+                date(2026, 9, 21),
+                to=("08:30",),
+                from_=("10:30",),
+                fare=AlicanteFare(430, False),
+            ),
+        )
+        assert result["pending"] is None
+        assert result["alicante_next"]["service_date"] == "2026-09-21"
+        assert result["alicante_next"]["fare"]["cents"] == 430
+
+    def test_v2_state_migrates_with_empty_alicante_baseline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "transport.json"
+            legacy = _baseline()
+            legacy["version"] = 2
+            legacy.pop("alicante_next", None)
+            path.write_text(json.dumps(legacy), encoding="utf-8")
+            state = load_state(path)
+        assert state["version"] == 3
+        assert state["alicante_next"] is None
 
 
 class TransportDeliveryTests(unittest.IsolatedAsyncioTestCase):
