@@ -165,6 +165,19 @@ Keep one shared queue for every award source.
 Use one small atomic JSON state and the existing Termux cron model. Do not add a
 database, daemon, message broker, resident worker or internal scheduler.
 
+## Follow-up: ADR 0084
+
+Later same-day horizontal retailer research broadened the product scope beyond
+private labels. ADR 0084 keeps this engine decision intact but separates award
+evidence from exact retail evidence so a proven retailer-exclusive or ordinary
+currently listed product may also qualify. It also permits one bounded
+publication-time exact-SKU price refresh and optional exact-product media after
+reuse checks.
+
+This does not reinstate catalogue lookup as award identity, fuzzy product
+matching, LLM extraction or mandatory enrichment. Award event identity remains
+source-native and independent of changing retailer price, stock or photo.
+
 ## Consequences
 
 The feature remains extensible across many product categories without requiring
