@@ -1,4 +1,4 @@
-name: Orihuela exact-date probe
+name: Intercity hardening validation
 
 on:
   pull_request:
@@ -8,17 +8,24 @@ permissions:
   contents: read
 
 jobs:
-  probe:
+  validation:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
-      - name: Install package
-        run: python -m pip install -e .
-      - name: Probe Bus Siguenza returned date markers
+      - name: Install package and PDF tools
+        run: |
+          python -m pip install -e .
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq poppler-utils openssl
+      - name: Compile sources
+        run: python -m compileall -q src tests
+      - name: Run regression suite
+        run: python -m unittest discover -s tests -v
+      - name: Live intercity validation
         run: |
           python - <<'PY'
           import re
@@ -28,9 +35,42 @@ jobs:
           from zoneinfo import ZoneInfo
 
           from telegrambot import airport_schedule as bus
+          from telegrambot.elche_schedule import fetch_bundle as fetch_elche
+          from telegrambot.orihuela_schedule import fetch_bundle as fetch_orihuela
 
           today = datetime.now(ZoneInfo("Europe/Madrid")).date()
-          for day in (today, today + timedelta(days=1)):
+          tomorrow = today + timedelta(days=1)
+
+          for name, fetcher in (
+              ("ELCHE", fetch_elche),
+              ("ORIHUELA", fetch_orihuela),
+          ):
+              bundle = fetcher(today, None)
+              if bundle.current.service_date != today:
+                  raise SystemExit(f"{name}: wrong current date")
+              print(
+                  name,
+                  "CURRENT",
+                  bundle.current.service_date,
+                  len(bundle.current.outbound),
+                  len(bundle.current.inbound),
+                  bundle.current.fare,
+              )
+              if bundle.next is not None:
+                  if bundle.next.service_date != tomorrow:
+                      raise SystemExit(f"{name}: wrong next date")
+                  print(
+                      name,
+                      "NEXT",
+                      bundle.next.service_date,
+                      len(bundle.next.outbound),
+                      len(bundle.next.inbound),
+                      bundle.next.fare,
+                  )
+
+          # The Bus Sigüenza result is intentionally audited here: it accepts
+          # FECHASALIDA but does not echo that value in the returned HTML.
+          for day in (today, tomorrow):
               body = urllib.parse.urlencode({
                   "accion": 3,
                   "idioma": "es",
@@ -51,27 +91,15 @@ jobs:
               payload, final_url, headers, status = bus._open_bounded(
                   request, bus.HTML_LIMIT_BYTES
               )
-              text = payload.decode("utf-8", "replace")
-              print("=== DATE", day, "STATUS", status, "URL", final_url, "===")
+              page = payload.decode("utf-8", "replace")
               requested = day.strftime("%d/%m/%Y")
-              print("REQUESTED_LITERAL_COUNT", text.count(requested))
-
-              patterns = [
-                  r'FECHASALIDA[^\n]{0,200}',
-                  r'fecha[^\n]{0,200}',
-                  r'\d{2}/\d{2}/\d{4}',
-                  r'\d{4}-\d{2}-\d{2}',
-              ]
-              seen = set()
-              for pattern in patterns:
-                  for match in re.finditer(pattern, text, re.I):
-                      snippet = " ".join(match.group(0).split())
-                      if snippet not in seen:
-                          seen.add(snippet)
-                          print("MARKER", repr(snippet))
-              print("INPUTS_WITH_DATE")
-              for match in re.finditer(
-                  r'<input[^>]+(?:FECHASALIDA|fecha)[^>]*>', text, re.I
-              ):
-                  print(repr(" ".join(match.group(0).split())))
+              print(
+                  "ORIHUELA_DATE_ECHO",
+                  day,
+                  page.count(requested),
+                  status,
+                  final_url,
+              )
+              if status != 200 or headers.get_content_type() != "text/html":
+                  raise SystemExit("Orihuela live response invalid")
           PY
