@@ -986,3 +986,71 @@ Thus a quiet day should add almost no retailer catalogue traffic. No per-retaile
 cron, full catalogue crawl, browser session or continuous stock monitor is
 introduced.
 
+### Same-day price volatility proof
+
+DIA provided a useful live proof that award discovery price must not be treated
+as publication price.
+
+The official 2026 awarded-products page and exact product cards expose stable
+numeric product IDs:
+
+- Burrata fresca Dia Selección Mundial 150 g:
+  `/quesos/fresco/p/263576`;
+- Tarta de queso Dia Caprichoso 250 g:
+  `/yogures-y-postres/postres-tradicionales/p/307308`.
+
+Within the same research day, fresh indexed/opened representations already
+showed changed prices for these exact products. The specific values are not a
+durable project constant; the important result is that exact retail price can
+change between discovery and later rendering even when product identity is
+stable.
+
+This directly validates ADR 0084's publication-time exact-SKU refresh.
+
+### OCU is already horizontal across retailers
+
+OCU must not be modelled as a Mercadona-specific source.
+
+Current 2026 OCU material includes, among other examples:
+
+- Hacendado / Mercadona Salmorejo as Mejor del Análisis;
+- Auchan / Alcampo Salmorejo as Compra Maestra;
+- Carrefour Extra Black nata y chocolate negro as Mejor del Análisis;
+- current whole-milk comparison material where Hacendado, Auchan and Carrefour
+  are Compra Maestra options.
+
+OCU exact comparator cards can expose strong retail identity facts such as EAN,
+format and manufacturer. These surfaces are useful for deterministic product
+identity, but award labels shown inside generic "alternatives" widgets must not
+be attributed to the page's primary product. The current report parser's local
+evidence rule remains correct.
+
+Future OCU expansion should evaluate comparator/category surfaces separately
+instead of weakening report-local parsing.
+
+### Current retailer-photo legal evidence
+
+The photo default-off policy is now supported by direct legal pages, not only a
+general copyright assumption.
+
+- Lidl España's legal notice prohibits reproduction, distribution and public
+  communication of site content for commercial purposes without authorization.
+- Consum's shop legal notice prohibits reproduction, distribution, public
+  communication, retransmission, copying and redistribution except personal
+  and private use.
+- Carrefour states that no licence is granted and specifically reserves
+  alteration, exploitation, reproduction, distribution and public
+  communication unless expressly authorized.
+- Alcampo permits transferring content only for exclusive personal,
+  non-commercial use and prohibits distribution/transmission/publication and
+  similar reuse.
+- DIA's current legal notice gives only strictly private use and prohibits
+  copying, reproduction, public communication, transformation or distribution
+  for public or commercial purposes without prior written authorization.
+- Masymas / Juan Fornés' legal notice expressly excludes reproduction,
+  distribution, transformation and public communication of protected site
+  content.
+
+Therefore the project must not interpret "we can fetch the image" as "we may
+send the image to Telegram".
+
