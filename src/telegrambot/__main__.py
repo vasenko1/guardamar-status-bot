@@ -1564,7 +1564,11 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     message_id,
                     disable_notification=True,
                 ),
-                skip_keys=tuple(\n                    key for key in ("airport", "alicante")\n                    if key in existing["messages"]\n                ),\n            )
+                skip_keys=tuple(
+                    key for key in ("airport", "alicante")
+                    if key in existing["messages"]
+                ),
+            )
             await sync_airport_schedule(
                 datetime.now(GUARDAMAR_TIMEZONE),
                 chat_id,
