@@ -16,7 +16,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
-      - name: Trace current Guardamar GTFS services
+      - name: Trace current Guardamar GTFS nearby stops
         run: |
           python - <<'PY'
           import csv
@@ -24,8 +24,6 @@ jobs:
           import urllib.request
           import zipfile
           from collections import defaultdict
-          from datetime import datetime, timedelta
-          from zoneinfo import ZoneInfo
 
           url = "https://dadesobertes.gva.es/dataset/2f380ffd-b389-4ff4-9f7c-be92b30fbf28/resource/3c8a2e6b-5b5e-49f5-872f-5f33fcd52547/download/gtfs.zip"
           with urllib.request.urlopen(url, timeout=30) as response:
@@ -37,19 +35,16 @@ jobs:
                   )))
               stops = rows("stops.txt")
               stop_names = {r["stop_id"]: r["stop_name"] for r in stops}
-              guardamar_ids = {
-                  r["stop_id"] for r in stops
-                  if "guardamar" in r["stop_name"].casefold()
-                  and 38.07 <= float(r["stop_lat"]) <= 38.10
-                  and -0.67 <= float(r["stop_lon"]) <= -0.64
-              }
-              alicante_ids = {
-                  r["stop_id"] for r in stops
-                  if ("alicante" in r["stop_name"].casefold()
-                      or "alacant" in r["stop_name"].casefold())
-                  and 38.32 <= float(r["stop_lat"]) <= 38.36
-                  and -0.51 <= float(r["stop_lon"]) <= -0.47
-              }
+              guardamar_ids = set()
+              alicante_ids = set()
+              for r in stops:
+                  lat = float(r["stop_lat"]); lon = float(r["stop_lon"])
+                  if abs(lat - 38.08778) <= 0.006 and abs(lon + 0.65594) <= 0.008:
+                      guardamar_ids.add(r["stop_id"])
+                      print("NEAR_GUARDAMAR", r["stop_id"], repr(r["stop_name"]), lat, lon)
+                  if abs(lat - 38.33734) <= 0.008 and abs(lon + 0.49145) <= 0.010:
+                      alicante_ids.add(r["stop_id"])
+                      print("NEAR_ALICANTE", r["stop_id"], repr(r["stop_name"]), lat, lon)
               touches = defaultdict(list)
               for r in rows("stop_times.txt"):
                   if r["stop_id"] in guardamar_ids | alicante_ids:
@@ -57,21 +52,18 @@ jobs:
               trips = {r["trip_id"]: r for r in rows("trips.txt")}
               services = defaultdict(list)
               for r in rows("calendar_dates.txt"):
-                  services[r["service_id"]].append(
-                      (r["date"], r["exception_type"])
-                  )
-              today = datetime.now(ZoneInfo("Europe/Madrid")).date()
+                  services[r["service_id"]].append((r["date"], r["exception_type"]))
               for trip_id, stop_rows in touches.items():
                   ids = {r["stop_id"] for r in stop_rows}
                   if not (ids & guardamar_ids):
                       continue
                   trip = trips.get(trip_id, {})
                   print(
-                      "TRIP",
+                      "TRIP_NEAR_GUARDAMAR",
                       trip_id,
                       "route", trip.get("route_id"),
                       "service", trip.get("service_id"),
-                      "stops", [
+                      "relevant", [
                           (
                               r["stop_sequence"],
                               r["departure_time"],
@@ -80,6 +72,6 @@ jobs:
                           )
                           for r in stop_rows
                       ],
-                      "calendar", services.get(trip.get("service_id"), [])[:30],
+                      "calendar", services.get(trip.get("service_id"), [])[:20],
                   )
           PY
