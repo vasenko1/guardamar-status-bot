@@ -31,11 +31,45 @@ jobs:
           from datetime import datetime, timedelta
           from zoneinfo import ZoneInfo
 
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+
+          from telegrambot import airport_schedule as bus
           from telegrambot.elche_schedule import fetch_bundle as fetch_elche
-          from telegrambot.orihuela_schedule import fetch_bundle as fetch_orihuela
+          from telegrambot.orihuela_schedule import (
+              _fetch_schedule as fetch_orihuela_schedule,
+              fetch_bundle as fetch_orihuela,
+          )
 
           today = datetime.now(ZoneInfo("Europe/Madrid")).date()
           tomorrow = today + timedelta(days=1)
+
+          schedule_probe, fare_url = fetch_orihuela_schedule(today)
+          if fare_url is not None:
+              downloaded = bus.download_fare_pdf(
+                  fare_url, None, None, force=True
+              )
+              if downloaded is not None:
+                  with TemporaryDirectory() as directory:
+                      path = Path(directory) / "fare.pdf"
+                      path.write_bytes(downloaded.payload)
+                      fare_text = bus._run([
+                          "pdftotext", "-layout", str(path), "-"
+                      ]).decode("utf-8", "replace")
+                  start = fare_text.find(
+                      "TARIFA BASE GENERAL",
+                      fare_text.find("LÍNEA 1:"),
+                  )
+                  end = fare_text.find(
+                      "TARIFA MAYORES DE 65 AÑOS", start
+                  )
+                  print("ORIHUELA_BASE_SECTION_BEGIN")
+                  for index, line in enumerate(
+                      fare_text[start:end].splitlines()
+                  ):
+                      if line.strip():
+                          print(index, repr(line))
+                  print("ORIHUELA_BASE_SECTION_END")
 
           for name, fetcher, expected_today_fare in (
               ("ELCHE", fetch_elche, 360),
