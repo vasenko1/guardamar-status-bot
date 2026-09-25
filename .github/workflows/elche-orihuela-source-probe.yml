@@ -1,0 +1,126 @@
+name: Elche Orihuela source probe
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - name: Install package
+        run: python -m pip install -e .
+      - name: Probe Elche and Orihuela
+        run: |
+          python - <<'PY'
+          import html
+          import re
+          import urllib.parse
+          import urllib.request
+          from datetime import datetime, timedelta
+          from zoneinfo import ZoneInfo
+
+          from telegrambot import alicante_schedule as av
+          from telegrambot import airport_schedule as bs
+
+          today = datetime.now(ZoneInfo("Europe/Madrid")).date()
+          dates = (today, today + timedelta(days=1))
+
+          print("=== ELCHE / AVANZA ===")
+          cj = av.http.cookiejar.CookieJar()
+          opener = urllib.request.build_opener(
+              av._PlannerRedirectHandler(),
+              urllib.request.HTTPCookieProcessor(cj),
+          )
+          req = urllib.request.Request(
+              av.PLANNER_URL,
+              headers={"Accept":"text/html","User-Agent":av.USER_AGENT},
+          )
+          payload, referer = av._planner_open(opener, req)
+          action, base = av._search_form(payload, referer)
+          print("ACTION", action)
+          for day in dates:
+              for origin, destination in (
+                  ("GUARDAMAR","ELCHE"),
+                  ("ELCHE","GUARDAMAR"),
+              ):
+                  try:
+                      result = av._fetch_direction(
+                          opener, action, referer, base,
+                          day, origin, destination,
+                      )
+                  except Exception as exc:
+                      print("ELCHE_FAIL", day, origin, destination, type(exc).__name__, str(exc))
+                  else:
+                      print(
+                          "ELCHE_OK", day, origin, destination,
+                          len(result.departures),
+                          result.departures,
+                          result.fare,
+                      )
+
+          print("=== ORIHUELA / BUS SIGUENZA ===")
+          for day in dates:
+              body = urllib.parse.urlencode({
+                  "accion": 3,
+                  "idioma": "es",
+                  "FECHASALIDA": day.strftime("%d/%m/%Y"),
+                  "ORIGEN": "GUARDAMAR DEL SEGURA",
+                  "DESTINO": "ORIHUELA",
+              }).encode("ascii")
+              req = urllib.request.Request(
+                  bs.SEARCH_URL,
+                  data=body,
+                  headers={
+                      "Accept":"text/html",
+                      "Content-Type":"application/x-www-form-urlencoded",
+                      "User-Agent":bs.USER_AGENT,
+                  },
+                  method="POST",
+              )
+              try:
+                  payload, final_url, headers, status = bs._open_bounded(
+                      req, bs.HTML_LIMIT_BYTES
+                  )
+              except Exception as exc:
+                  print("ORIHUELA_FETCH_FAIL", day, type(exc).__name__, str(exc))
+                  continue
+              page = payload.decode("utf-8","replace")
+              active = re.sub(r"<!--.*?-->", "", page, flags=re.S)
+              panels = re.findall(
+                  r'<h3[^>]*class=["\']panel-title["\'][^>]*>(.*?)</h3>'
+                  r".*?<table[^>]*>(.*?)</table>",
+                  active,
+                  flags=re.I|re.S,
+              )
+              print("ORIHUELA_HTTP", day, status, final_url, headers.get_content_type(), len(payload))
+              for title_raw, table in panels:
+                  title = bs._plain_fragment(title_raw)
+                  if "guardamar" not in title.casefold() and "orihuela" not in title.casefold():
+                      continue
+                  times = tuple(re.findall(
+                      r">\s*((?:[01][0-9]|2[0-3]):[0-5][0-9])\s*</button>",
+                      table,
+                      flags=re.I,
+                  ))
+                  coords=[]
+                  for raw_url in re.findall(r'href=["\']([^"\']+)["\']',table,re.I):
+                      parsed=urllib.parse.urlparse(html.unescape(raw_url))
+                      q=urllib.parse.parse_qs(parsed.query).get("query",[])
+                      if q: coords.extend(q)
+                  print("ORIHUELA_PANEL", repr(title), times, coords)
+              pdfs = re.findall(
+                  r'href=["\']([^"\']+\.pdf(?:\?[^"\']*)?)["\']',
+                  active,
+                  flags=re.I,
+              )
+              print("ORIHUELA_PDFS", day, pdfs)
+          PY
