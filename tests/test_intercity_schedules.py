@@ -18,6 +18,10 @@ from telegrambot.intercity_schedule import (
     IntercityScheduleBundle,
     IntercityScheduleState,
 )
+from telegrambot.zenia_schedule import (
+    build_message as build_zenia_message,
+    fetch_schedules as fetch_zenia_schedules,
+)
 from telegrambot.orihuela_schedule import (
     _fetch_schedule,
     _parse_schedule_response,
@@ -104,6 +108,67 @@ class ElcheScheduleTests(unittest.TestCase):
         self.assertIn("Найти расписание на другую дату", message)
         self.assertIn(
             "query=38.0877707496%2C-0.6560185196",
+            message,
+        )
+        self.assertIn("https://t.me/c/1/50", message)
+        self.assertEqual(message.count(FOOTER), 1)
+        self.assertLessEqual(len(message), 4096)
+
+
+class ZeniaScheduleTests(unittest.TestCase):
+    @patch("telegrambot.zenia_schedule.avanza._fetch_direction")
+    @patch("telegrambot.zenia_schedule.avanza._search_form")
+    @patch("telegrambot.zenia_schedule.avanza._planner_open")
+    def test_fetches_both_directions_and_fare(
+        self,
+        planner_open,
+        search_form,
+        fetch_direction,
+    ):
+        planner_open.return_value = (b"<html></html>", avanza.PLANNER_URL)
+        search_form.return_value = (
+            "https://regular.autobusing.com/info/horarios",
+            {"empresa": "costa-azul"},
+        )
+        fetch_direction.side_effect = [
+            avanza._Direction(("08:10", "10:10"), avanza.AlicanteFare(275, False)),
+            avanza._Direction(("12:15", "16:15"), avanza.AlicanteFare(275, False)),
+        ]
+
+        result = fetch_zenia_schedules((TODAY,))
+
+        self.assertEqual(result[TODAY].outbound, ("08:10", "10:10"))
+        self.assertEqual(result[TODAY].inbound, ("12:15", "16:15"))
+        self.assertEqual(result[TODAY].fare, IntercityFare(275, False))
+
+        calls = fetch_direction.call_args_list
+        self.assertEqual(calls[0].args[-2:], ("GUARDAMAR", "C.C. BOULEVAR ZENIA"))
+        self.assertEqual(calls[1].args[-2:], ("C.C. BOULEVAR ZENIA", "GUARDAMAR"))
+
+    def test_card_preserves_full_schedule_price_and_navigation(self):
+        schedule = IntercitySchedule(
+            TODAY,
+            ("08:10", "10:10", "12:10", "14:10", "16:10", "18:10"),
+            ("11:15", "13:15", "15:15"),
+            IntercityFare(275),
+        )
+        message = build_zenia_message(
+            schedule,
+            TODAY,
+            "https://t.me/c/1/50",
+        )
+
+        self.assertIn("Сегодня, 25 сентября, пятница", message)
+        self.assertIn("08:10 · 10:10 · 12:10 · 14:10 · 16:10\n18:10", message)
+        self.assertIn("Билет в одну сторону:</b> 2,75 €", message)
+        self.assertIn("Сегодня", message)
+        self.assertIn("Найти расписание на другую дату", message)
+        self.assertIn(
+            "query=38.0877707496%2C-0.6560185196",
+            message,
+        )
+        self.assertIn(
+            "query=37.9292298333%2C-0.7346398333",
             message,
         )
         self.assertIn("https://t.me/c/1/50", message)

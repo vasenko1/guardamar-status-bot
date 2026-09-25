@@ -420,7 +420,7 @@ class TransportNotificationTests(unittest.TestCase):
                 encoding="utf-8",
             )
             state = load_state(path)
-        assert state["version"] == 4
+        assert state["version"] == 5
         assert _kinds(state) == ["schedule_changes"]
 
 
@@ -590,7 +590,7 @@ class TransportNotificationTests(unittest.TestCase):
             legacy.pop("alicante_next", None)
             path.write_text(json.dumps(legacy), encoding="utf-8")
             state = load_state(path)
-        assert state["version"] == 4
+        assert state["version"] == 5
         assert state["alicante_next"] is None
 
 
@@ -749,6 +749,77 @@ class TransportNotificationTests(unittest.TestCase):
         assert result["elche_next"]["fare"]["cents"] == 360
         assert result["inland_next"]["fare"]["cents"] == 345
 
+    def test_zenia_exact_departure_and_fare_changes_are_collected(self):
+        today = date(2026, 9, 20)
+        state = _baseline(today)
+        state["zenia_next"] = {
+            "service_date": today.isoformat(),
+            "outbound": ["08:00", "10:00"],
+            "inbound": ["12:00", "14:00"],
+            "fare": {
+                "cents": 275,
+                "from_price": False,
+                "effective_date": None,
+            },
+        }
+
+        result = collect_changes(
+            datetime(2026, 9, 20, 5, tzinfo=TZ),
+            _pinned(),
+            _schedule(today, fare=_fare()),
+            state,
+            _schedule(date(2026, 9, 21)),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            _intercity(
+                today,
+                to=("08:00", "10:30"),
+                from_=("12:00", "14:00"),
+                fare=IntercityFare(295),
+            ),
+            _intercity(
+                date(2026, 9, 21),
+                fare=IntercityFare(295),
+            ),
+        )
+
+        assert _kinds(result) == ["schedule_changes", "fare_changes"]
+        schedule_event = result["pending"]["messages"][0]["events"][0]
+        assert schedule_event["route"] == "zenia"
+        assert schedule_event["added_to"] == ["10:30"]
+        assert schedule_event["removed_to"] == ["10:00"]
+        fare_event = result["pending"]["messages"][1]["events"][0]
+        assert fare_event["route"] == "zenia"
+        assert fare_event["old_cents"] == 275
+        assert fare_event["new_cents"] == 295
+        assert result["zenia_next"]["service_date"] == "2026-09-21"
+
+        message = build_message(
+            "schedule_changes",
+            [schedule_event],
+            "-100123",
+            {"zenia": 505},
+            today,
+        )
+        assert "Zenia Boulevard" in message
+        assert "https://t.me/c/123/505" in message
+
+    def test_v4_state_migrates_with_empty_zenia_baseline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "transport.json"
+            legacy = _baseline()
+            legacy["version"] = 4
+            legacy.pop("zenia_next", None)
+            path.write_text(json.dumps(legacy), encoding="utf-8")
+            state = load_state(path)
+        assert state["version"] == 5
+        assert state["zenia_next"] is None
+
+
     def test_v3_state_migrates_with_empty_new_route_baselines(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "transport.json"
@@ -759,7 +830,7 @@ class TransportNotificationTests(unittest.TestCase):
             legacy.pop("inland_next", None)
             path.write_text(json.dumps(legacy), encoding="utf-8")
             state = load_state(path)
-        assert state["version"] == 4
+        assert state["version"] == 5
         assert state["elche_next"] is None
         assert state["inland_next"] is None
 

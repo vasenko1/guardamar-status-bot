@@ -203,18 +203,17 @@ class PinnedContentTests(unittest.TestCase):
         ):
             with self.subTest(destination=destination):
                 self.assertIn(destination, index)
-        self.assertEqual(index.count(links["south"]), 3)
+        self.assertEqual(index.count(links["south"]), 2)
+        self.assertEqual(index.count(links["zenia"]), 1)
         self.assertEqual(index.count(links["inland"]), 2)
 
-    def test_south_route_has_stable_prefilled_zenia_search(self):
+    def test_zenia_has_a_dedicated_card_and_south_no_longer_claims_it(self):
         south = build_leaf_message("south")
-        self.assertIn("Посмотреть рейсы до Zenia Boulevard", south)
-        self.assertIn("venta%5Borigen_nombre%5D=GUARDAMAR", south)
-        self.assertIn(
-            "venta%5Bdestino_nombre%5D=C.C.%20BOULEVAR%20ZENIA",
-            south,
-        )
-        self.assertNotIn("venta%5Bfecha_ida%5D", south)
+        zenia = build_leaf_message("zenia")
+        self.assertNotIn("Zenia Boulevard", south)
+        self.assertIn("Гуардамар ↔ Zenia Boulevard", zenia)
+        self.assertIn("Рейсы на текущую дату обновляются здесь каждое утро", zenia)
+        self.assertIn("37.9292298333%2C-0.7346398333", zenia)
 
     def test_hospital_message_has_year_round_timetable_and_live_source(self):
         hospital = build_leaf_message("hospital")

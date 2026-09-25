@@ -557,12 +557,12 @@ async def sync_transport_schedules(
         for key in messages
         if key in {
             "line_1", "line_2", "airport", "hospital", "alicante",
-            "elche", "south", "inland", "university",
+            "elche", "south", "zenia", "inland", "university",
         }
     }
     if set(links) != {
         "line_1", "line_2", "airport", "hospital", "alicante",
-        "elche", "south", "inland", "university",
+        "elche", "south", "zenia", "inland", "university",
     }:
         raise TransportScheduleError("transport guide is incomplete")
     index = build_transport_index(

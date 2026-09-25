@@ -38,6 +38,7 @@ from .alicante_schedule import AlicanteScheduleState, sync_alicante_schedule
 from .elche_schedule import build_message as build_elche_message, fetch_bundle as fetch_elche_bundle
 from .intercity_schedule import IntercityScheduleState, sync_intercity_schedule
 from .orihuela_schedule import build_message as build_orihuela_message, fetch_bundle as fetch_orihuela_bundle
+from .zenia_schedule import build_message as build_zenia_message, fetch_bundle as fetch_zenia_bundle
 from .commands import listen_for_preview, parse_allowed_user_ids
 from .delivery import publish_morning, refresh_beach_root
 from .diagnostics import render_diagnostics
@@ -1569,7 +1570,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 ),
                 skip_keys=tuple(
                     key
-                    for key in ("airport", "alicante", "elche", "inland")
+                    for key in ("airport", "alicante", "elche", "inland", "zenia")
                     if key in existing["messages"]
                 ),
             )
@@ -1638,6 +1639,27 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 ),
                 fetch_orihuela_bundle,
                 build_orihuela_message,
+                lambda message: send_message(
+                    bot_token,
+                    chat_id,
+                    message,
+                    disable_notification=True,
+                    retry_only_rate_limits=True,
+                ),
+                lambda message_id, message: edit_message(
+                    bot_token, chat_id, message_id, message
+                ),
+            )
+            await sync_intercity_schedule(
+                datetime.now(GUARDAMAR_TIMEZONE),
+                chat_id,
+                "zenia",
+                state,
+                IntercityScheduleState(
+                    state.path.with_name("zenia_schedule.json")
+                ),
+                fetch_zenia_bundle,
+                build_zenia_message,
                 lambda message: send_message(
                     bot_token,
                     chat_id,

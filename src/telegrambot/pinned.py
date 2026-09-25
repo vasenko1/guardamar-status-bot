@@ -296,13 +296,23 @@ LEAF_MESSAGES: Dict[str, str] = {
         f"""🚌 <b>Гуардамар ↔ Torrevieja ↔ Pilar de la Horadada</b>
 До Torrevieja и Pilar de la Horadada можно доехать без пересадок на автобусе Avanza.
 
-По дороге автобус проходит через La Rosa, Pinomar, La Mata, Playa Flamenca, Zenia Boulevard, Campoamor и Mil Palmeras.
+По дороге автобус проходит через La Rosa, Pinomar, La Mata, Playa Flamenca, Campoamor и Mil Palmeras.
 
 📍 <b>Основные остановки</b>
 <a href="{html.escape(GUARDAMAR_BUS_STATION_MAP_URL, quote=True)}">Гуардамар</a> → <a href="https://www.google.com/maps/search/?api=1&amp;query=Calle+del+Mar+40%2C+Torrevieja">Torrevieja</a> → <a href="https://www.google.com/maps/search/?api=1&amp;query=Calle+Emilio+Tarraga+18%2C+Pilar+de+la+Horadada">Pilar de la Horadada</a>
 
-🕒 <a href="https://regular.autobusing.com/info?empresa=costa-azul&amp;locale=es">Найти расписание на нужную дату</a>
-🛍 <a href="https://regular.autobusing.com/info/horarios?empresa=costa-azul&amp;venta%5Borigen_nombre%5D=GUARDAMAR&amp;venta%5Bdestino_nombre%5D=C.C.%20BOULEVAR%20ZENIA">Посмотреть рейсы до Zenia Boulevard</a>"""
+🕒 <a href="https://regular.autobusing.com/info?empresa=costa-azul&amp;locale=es">Найти расписание на нужную дату</a>"""
+    ),
+    "zenia": with_footer(
+        f"""🛍 <b>Гуардамар ↔ Zenia Boulevard</b>
+До торгового центра можно доехать без пересадок на автобусе Avanza.
+
+🗓 Рейсы на текущую дату обновляются здесь каждое утро.
+
+📍 <b>Откуда и куда</b>
+<a href="{html.escape(GUARDAMAR_BUS_STATION_MAP_URL, quote=True)}">автовокзал Гуардамара</a> ↔ <a href="https://www.google.com/maps/search/?api=1&amp;query=37.9292298333%2C-0.7346398333">ТЦ Zenia Boulevard</a>
+
+🕒 <a href="https://regular.autobusing.com/info?empresa=costa-azul&amp;locale=es">Найти расписание на нужную дату</a>"""
     ),
     "inland": with_footer(
         f"""🚌 <b>Гуардамар ↔ Orihuela</b>
@@ -464,7 +474,7 @@ def build_transport_index(
 • {_linked('Эльче', 'elche', links)}
 • {_linked('Ла-Мата', 'south', links)}
 • {_linked('Торревьеха', 'south', links)}
-• {_linked('ТЦ Zenia Boulevard', 'south', links)}
+• {_linked('ТЦ Zenia Boulevard', 'zenia', links)}
 • {_linked('Рохалес', 'inland', links)}
 • {_linked('Ориуэла', 'inland', links)}
 
