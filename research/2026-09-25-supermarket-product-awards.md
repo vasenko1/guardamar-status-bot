@@ -859,3 +859,62 @@ Award identity remains stable when price, stock or photo changes.
 
 A price/photo failure degrades the article instead of fabricating a replacement. Failure to prove that the awarded product is the same retail product must fail closed for any claim that it is currently sold by that chain.
 
+### Verified URLs from the horizontal pass
+
+Award-authority/result surfaces:
+
+- OCU 2026 Salmorejo report:
+  https://www.ocu.org/alimentacion/platos-preparados/informe/salmorejos
+- OCU Salmorejo methodology:
+  https://www.ocu.org/alimentacion/platos-preparados/asi-analizamos-salmorejos
+- World Cheese Awards 2026 information and dates:
+  https://gff.co.uk/for-producers/world-cheese-awards/
+- World Cheese Awards 2026 result publication terms:
+  https://gff.co.uk/world-cheese-awards-policies/terms-conditions/
+- World Championship Cheese Contest 2026 Top 20:
+  https://worldchampioncheese.org/2026-wccc-top-20-finalists/
+- GourmetQuesos 2026 official results/context:
+  https://www.gourmets.net/salon-gourmets/2026/catalogo-expositores/grupo-gourmets/16-gourmetquesos-campeonato-de-los-mejores-quesos-de-espana-2026
+- MUNDUS VINI results:
+  https://www.meininger.de/en/tastings/mundus-vini/results
+- MUNDUS VINI current Lidl-submitted Spanish example:
+  https://www.meininger.de/en/wine/awarded-wines/2025-hacienda-uvanis-tinto-joven-0
+- NYIOOC current Casa Juncal result/news:
+  https://news.nyiooc.org/release/aceites-oro-bailen-galgon-99-wins-four-golds-and-a-silver-at-2026-nyiooc
+- MAPA 2026 jamón award:
+  https://www.mapa.gob.es/en/alimentacion/temas/promo-alimentos/premios-alimentos/ultima_edicion_jamones
+- MAPA 2025–2026 AOVE competition:
+  https://www.mapa.gob.es/es/alimentacion/temas/promo-alimentos/premios-alimentos/ultima-campana-aceites
+
+Retailer evidence/discovery surfaces:
+
+- Lidl España awarded products:
+  https://www.lidl.es/c/premiados/a10092875
+- Lidl exact wine example:
+  https://www.lidl.es/p/la-bien-pinta-vino-blanco-d-o-rueda-verdejo/p11037304
+- ALDI exact Super Gold cheese example:
+  https://www.aldi.es/producto/queso-curado-181600.html
+- ALDI exact bronze cheese example:
+  https://www.aldi.es/producto/queso-de-oveja-ahumado-v-de-navarra-601233500.html
+- Consum exact product/EAN example:
+  https://tienda.consum.es/es/p/aceite-de-oliva-virgen-extra-ecologico/7304397
+- Carrefour supermarket AOVE category:
+  https://www.carrefour.es/supermercado/la-despensa/aceites-y-vinagres-carrefour-aceite-de-oliva-virgen-extra/F-1y9wiZ10siZp646/c
+- Masymas / Juan Fornés FAQ:
+  https://masymas.com/es/index.php?catid=11&id=135&option=com_content&view=article
+- Masymas / Juan Fornés online shop:
+  https://tienda.masymas.com
+- DIA 2026 awarded products:
+  https://www.dia.es/l/productos-premiados-dia
+- Alcampo exact Auchan Salmorejo example:
+  https://www.compraonline.alcampo.es/products/auchan-salmorejo-pasteurizado-elaborado-con-aceite-de-oliva-virgen-extra-1-l-producto-alcampo/87442
+
+Discovery-only evidence that is not yet approved as a scheduled award authority:
+
+- 2026 Sabor del Año result reporting:
+  https://www.foodretail.es/food/sabor-del-ano-2026distingue-a-89-productos-de-alimentacion.html
+
+Do not silently promote a discovery-only article into a production authority.
+A future implementation must still prove the responsible award body's own
+stable public result contract.
+
