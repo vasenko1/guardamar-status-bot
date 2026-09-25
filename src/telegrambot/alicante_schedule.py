@@ -52,7 +52,6 @@ TIME_PATTERN = re.compile(r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")
 PRICE_PATTERN = re.compile(r"(?<!\d)(\d{1,2})[,.](\d{2})\s*€")
 GTFS_MEMBERS = frozenset({
     "calendar_dates.txt",
-    "routes.txt",
     "stops.txt",
     "stop_times.txt",
     "trips.txt",
@@ -149,16 +148,16 @@ def _classify_stop(row: Mapping[str, str]) -> Optional[str]:
         return None
     if (
         "guardamar" in name
-        and 38.05 <= lat <= 38.12
-        and -0.70 <= lon <= -0.62
+        and 38.0845 <= lat <= 38.0915
+        and -0.6595 <= lon <= -0.6525
     ):
         return "guardamar"
     if (
         ("alicante" in name or "alacant" in name)
         and "aeropuerto" not in name
         and "aeroport" not in name
-        and 38.31 <= lat <= 38.36
-        and -0.53 <= lon <= -0.46
+        and 38.332 <= lat <= 38.343
+        and -0.500 <= lon <= -0.484
     ):
         return "alicante"
     return None
@@ -180,8 +179,15 @@ def _parse_gtfs(
     except (zipfile.BadZipFile, OSError) as exc:
         raise AlicanteScheduleError("Alicante GTFS ZIP is invalid") from exc
     with archive:
-        infos = {info.filename: info for info in archive.infolist()}
-        if not GTFS_MEMBERS.issubset(infos):
+        entries = archive.infolist()
+        infos = {info.filename: info for info in entries}
+        if (
+            not GTFS_MEMBERS.issubset(infos)
+            or any(
+                sum(item.filename == name for item in entries) != 1
+                for name in GTFS_MEMBERS
+            )
+        ):
             raise AlicanteScheduleError("Alicante GTFS is missing required files")
         aggregate = sum(
             infos[name].file_size for name in GTFS_MEMBERS
