@@ -28,30 +28,34 @@ Previfoc-specific quiet period.
    Europe/Madrid, but do not render it into a public transition and do not
    acknowledge it as published.
 3. On the first run at or after 07:00, compare the current Previfoc observation
-   with the last published Previfoc state. Publish only a delta that is still
-   current.
-4. If a Previfoc value changes after midnight and returns to the last published
-   value before morning, publish nothing about that intermediate state.
-5. After 07:00, later same-day Previfoc readjustments remain eligible on the
-   next hourly run.
+   with the resident-facing baseline. Publish only a changed value that is
+   currently active: level 2 or 3. A transition to level 1 advances the baseline
+   silently and is not a public clearance event.
+4. If a Previfoc value changes after midnight and returns to the baseline before
+   morning, publish nothing about that intermediate state.
+5. After 07:00, later same-day changes to an active level 2/3 remain eligible on
+   the next hourly run. The message describes the current active state, not the
+   history of how it changed. A 3→2 change therefore shows level 2 directly;
+   2/3→1 stays silent.
 6. CCE and hydrological transitions remain eligible immediately at every
-   hourly run. If such a transition is published during Previfoc quiet hours,
-   acknowledge only the CCE/hydrological state; do not accidentally consume the
-   pending Previfoc delta.
-7. Previfoc copy must make its daily scope explicit with `сегодня` or
-   `на сегодня`. For `TormentaID=2`, use:
-   - `⚡ Сухие грозы возможны сегодня`;
-   - `Для зоны Гуардамара повышен риск возникновения сухих гроз.`;
-   - `Это профилактическая информация о погодном риске.`
+   hourly run. Their downgrade/clearance semantics are unchanged and must not
+   inherit the quieter Previfoc policy.
+7. Previfoc copy must make its daily scope explicit and stay calm:
+   - fire level 2: `🌲 Пожарная опасность сегодня`;
+   - dry-thunderstorm level 2: `⚡ Сегодня возможны сухие грозы`;
+   - user-facing attribution: `Generalitat Valenciana`, without the internal
+     product name `Previfoc`.
 8. Do not infer an hourly interval from AEMET or another source merely to make
    Previfoc look more precise than the official data.
 
 ## Consequences
 
 The state model stays unchanged: the current observed Previfoc record is the
-only pending candidate, while the existing published fields remain the
-resident-facing baseline. This naturally discards overnight intermediate
-values that no longer apply by morning.
+only pending candidate, while the existing `published` fields act as the
+resident-facing comparison baseline. Those fields may advance silently to level
+1 even though no Telegram clearance was published. This prevents repeated
+clearance attempts and ensures a later return to level 2/3 is detected as a
+new active condition.
 
 The phone keeps the same network and scheduling cost. CCE emergency behavior is
 unchanged, while routine Previfoc day-boundary transitions no longer wake the
