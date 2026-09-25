@@ -92,6 +92,16 @@ class Holiday:
 
 
 @dataclass(frozen=True)
+class Celebration:
+    """One reviewed local festive period, separate from legal holidays."""
+
+    name: str
+    start_date: date
+    end_date: date
+    official_holiday_dates: Tuple[date, ...] = ()
+
+
+@dataclass(frozen=True)
 class PharmacyDuty:
     """One on-call pharmacy row from the official provincial rota."""
 
@@ -153,6 +163,7 @@ class MorningDigest:
     forecast_sea_state: Optional[str] = None
     forecast_later_sea_state: Optional[str] = None
     holidays: Tuple[Holiday, ...] = ()
+    celebrations: Tuple[Celebration, ...] = ()
     events: Tuple[Event, ...] = ()
     beach_notice: Optional[BeachNotice] = None
     pharmacies: Tuple[PharmacyDuty, ...] = ()
