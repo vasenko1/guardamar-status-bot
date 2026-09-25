@@ -768,98 +768,54 @@ def _transition(
     sources = []
 
     previous_fire = published["fire_level"]
+    fire_section_count = len(sections)
     if fire is not None and fire != previous_fire:
         if fire == 3:
             sections.append([
-                "🔥 <b>Экстремальный риск лесных пожаров</b>",
+                "🔥 <b>Экстремальная пожарная опасность сегодня</b>",
                 "",
-                "На сегодня для зоны Гуардамара установлен максимальный "
-                "уровень риска — 3 из 3.",
+                "Для зоны Гуардамара установлен максимальный уровень — "
+                "<b>3 из 3</b>.",
                 "",
-                "Если собираетесь в природную зону, будьте предельно осторожны "
-                "с любыми источниками огня и тлеющими окурками.",
-                "",
-                "Сам по себе этот уровень означает повышенную вероятность "
-                "возникновения пожаров, а не то, что пожар уже произошёл.",
+                "В природных зонах особенно важно избегать любых источников "
+                "огня и соблюдать действующие ограничения.",
             ])
         elif fire == 2 and previous_fire is not None:
-            if previous_fire == 3:
-                sections.append([
-                    "🔥 <b>Риск лесных пожаров снижен</b>",
-                    "",
-                    "На сегодня для зоны Гуардамара уровень снижен "
-                    "с экстремального до высокого — 2 из 3.",
-                    "",
-                    "Риск остаётся повышенным, поэтому при прогулках, пикниках "
-                    "и отдыхе в природных зонах по-прежнему будьте осторожны "
-                    "с огнём и не бросайте тлеющие окурки.",
-                ])
-            else:
-                sections.append([
-                    "🔥 <b>Повышен риск лесных пожаров</b>",
-                    "",
-                    "Для зоны Гуардамара сегодня действует высокий уровень "
-                    "риска — 2 из 3.",
-                    "",
-                    "Если планируете прогулку, пикник или барбекю в природной "
-                    "зоне, будьте особенно осторожны с огнём и не бросайте "
-                    "тлеющие окурки.",
-                    "",
-                    "Это профилактическая информация о пожарной опасности, "
-                    "а не сообщение о произошедшем пожаре.",
-                ])
-        elif fire == 1 and previous_fire is not None:
             sections.append([
-                "🔥 <b>Риск лесных пожаров снижен</b>",
+                "🌲 <b>Пожарная опасность сегодня</b>",
                 "",
-                "На сегодня для зоны Гуардамара установлен уровень 1 из 3 — "
-                "низкий/средний риск.",
+                "Для зоны Гуардамара установлен высокий уровень — "
+                "<b>2 из 3</b>.",
                 "",
-                "Повышенный уровень риска больше не действует. Обычные правила "
-                "осторожного обращения с огнём в природных зонах сохраняются.",
+                "В природных зонах сегодня стоит особенно внимательно "
+                "обращаться с огнём.",
             ])
-        if sections:
-            sources.append("Generalitat Valenciana / Previfoc")
+        # Level 1 is the ordinary baseline. It is stored silently instead of
+        # publishing a clearance/history message.
+        if len(sections) > fire_section_count:
+            sources.append("Generalitat Valenciana")
 
     previous_dry = published["dry_level"]
     dry_section_count = len(sections)
     if dry is not None and dry != previous_dry:
         if dry == 3:
             sections.append([
-                "⚡ <b>Высокий риск сухих гроз</b>",
+                "⚡ <b>Высокий риск сухих гроз сегодня</b>",
                 "",
-                "На сегодня для зоны Гуардамара установлен "
+                "Для зоны Гуардамара установлен "
                 "<b>высокий риск сухих гроз</b>.",
-                "",
-                "Это профилактическая информация о погодном риске, "
-                "а не сообщение о произошедшем пожаре или чрезвычайной ситуации.",
             ])
         elif dry == 2 and previous_dry is not None:
-            if previous_dry == 3:
-                sections.append([
-                    "⚡ <b>Риск сухих гроз снижен</b>",
-                    "",
-                    "Высокий риск снят, но сегодня для зоны Гуардамара "
-                    "<b>сухие грозы остаются возможны</b>.",
-                ])
-            else:
-                sections.append([
-                    "⚡ <b>Сухие грозы возможны сегодня</b>",
-                    "",
-                    "Для зоны Гуардамара <b>повышен риск возникновения "
-                    "сухих гроз</b>.",
-                    "",
-                    "Это профилактическая информация о погодном риске.",
-                ])
-        elif dry == 1 and previous_dry is not None:
             sections.append([
-                "✅ <b>Риск сухих гроз снят</b>",
+                "⚡ <b>Сегодня возможны сухие грозы</b>",
                 "",
-                "На сегодня повышенный риск сухих гроз для зоны Гуардамара "
-                "<b>больше не действует</b>.",
+                "Для зоны Гуардамара на сегодня отмечена возможность "
+                "сухих гроз.",
             ])
+        # Level 1 is the ordinary baseline. It is stored silently instead of
+        # publishing a clearance/history message.
         if len(sections) > dry_section_count:
-            sources.append("Generalitat Valenciana / Previfoc")
+            sources.append("Generalitat Valenciana")
 
     published_hydro = published["hydrology"]
     if hydro not in (None, HYDRO_NONE) and hydro != published_hydro:
@@ -999,6 +955,10 @@ async def monitor_emergency_risks(
         )
         message = _transition(value, include_previfoc=include_previfoc)
         if message is None:
+            # A valid Previfoc clearance still advances the internal baseline.
+            # Otherwise a later return to level 2/3 could be mistaken for an
+            # already published state and never reach residents.
+            _acknowledge(value, include_previfoc=include_previfoc)
             state.write(value)
             return "no_update"
 
@@ -1007,7 +967,7 @@ async def monitor_emergency_risks(
         except EmergencyRiskDeliveryUncertain:
             # Treat the target state as possibly visible. This avoids an
             # automatic duplicate on the next identical run while still
-            # allowing a later downgrade/clearance to correct a message that
+            # allowing a later active-state change to supersede a message that
             # Telegram may in fact have accepted.
             _acknowledge(value, include_previfoc=include_previfoc)
             state.write(value)
