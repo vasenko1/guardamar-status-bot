@@ -24,6 +24,7 @@ from typing import Awaitable, Callable, Optional
 from .branding import FOOTER, with_footer
 from .pinned import (
     AIRPORT_STOP_MAP_URL,
+    GUARDAMAR_BUS_STATION_MAP_URL,
     PinnedGuideState,
     build_leaf_message,
     telegram_message_link,
@@ -928,9 +929,9 @@ def build_airport_message(
             f"Расписание на {schedule.service_date.day} "
             f"{MONTHS_RU[schedule.service_date.month - 1]}"
         )
-    guardamar_map = (
-        "https://www.google.com/maps/search/?api=1&amp;query="
-        + urllib.parse.quote(schedule.guardamar_coordinates, safe="")
+    guardamar_map = html.escape(
+        GUARDAMAR_BUS_STATION_MAP_URL,
+        quote=True,
     )
     airport_map = html.escape(AIRPORT_STOP_MAP_URL, quote=True)
     fare_line = ""
