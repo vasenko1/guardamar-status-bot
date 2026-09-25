@@ -134,21 +134,32 @@ one bounded exact-SKU refresh immediately before rendering.
 
 Use a configured Guardamar retail context rather than user/device geolocation.
 
-### Photos are optional exact-SKU enrichment
+### Photos are disabled by default and require explicit reuse clearance
 
-A product photo may be used only when:
+An exact image URL is not a licence to republish the image.
+
+The horizontal research found explicit intellectual-property restrictions on
+copying, reproduction, distribution or public communication of site content
+without permission for multiple target retailers, including Lidl, Consum,
+Carrefour, Alcampo, DIA and Masymas / Juan Fornés.
+
+Therefore retailer product photos are disabled by default.
+
+A Telegram product photo may be enabled for one source only when all of these
+are true:
 
 - the exact retail product has already passed the identity gate;
-- the media host is allowlisted HTTPS;
-- content type and size are bounded;
 - the image is tied to that exact SKU/product;
-- the source-specific terms/licence permit the intended reuse.
+- the media host is allowlisted HTTPS and retrieval is bounded;
+- an explicit licence, permission, press/media policy or equivalent documented
+  reuse right permits the intended publication.
 
-Do not use search-engine images, generic brand photos or a photo selected by
-fuzzy similarity.
+Do not use search-engine images, generic brand photos, or a photo selected by
+fuzzy similarity. Public accessibility of the media URL is not sufficient.
 
-If media identity, availability or reuse rights are unclear, publish text-only.
-Photo failure must never invalidate a verified award event.
+If media identity or reuse rights are unclear, publish text-only. Photo failure
+must never invalidate a verified award event. Exact images may still be read
+internally when useful for identity verification without being republished.
 
 ### Rich deterministic fact contract
 
