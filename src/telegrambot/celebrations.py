@@ -55,10 +55,15 @@ _CELEBRATIONS: Dict[int, Tuple[Celebration, ...]] = {
             official_holiday_dates=(date(2026, 6, 24),),
         ),
         Celebration(
-            "Праздники Мавров и Христиан в честь Sant Jaume",
+            "Праздники Мавров и Христиан",
             date(2026, 7, 16),
             date(2026, 7, 26),
             official_holiday_dates=(date(2026, 7, 24),),
+        ),
+        Celebration(
+            "День Sant Jaume — покровителя Гуардамара",
+            date(2026, 7, 25),
+            date(2026, 7, 25),
         ),
         Celebration(
             "Праздники Campo de Guardamar в честь Девы Марии Фатимской",
