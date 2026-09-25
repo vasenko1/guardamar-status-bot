@@ -28,7 +28,7 @@ ORIGIN = "GUARDAMAR DEL SEGURA"
 DESTINATION = "ORIHUELA"
 MAX_TRIPS_PER_DIRECTION = 24
 FARE_ROW_DISTANCES = (
-    37, 31, 28, 25, 22, 15, 12, 8, 6, 12, 16, 14, 10, 10,
+    37, 31, 28, 25, 22, 15, 19, 11, 9, 7, 11,
 )
 
 
@@ -244,31 +244,34 @@ def parse_fare_pdf(
         )
     base = text[base_start:senior_start]
 
-    candidates: list[int] = []
-    for line in base.splitlines():
-        pairs = [
-            (int(distance), int(euros) * 100 + int(cents))
-            for distance, euros, cents in re.findall(
-                r"(\d+)\s+(\d+),(\d{2})\s*€",
-                line,
-            )
-        ]
-        if len(pairs) < len(FARE_ROW_DISTANCES):
-            continue
-        distances = tuple(
-            distance
-            for distance, _ in pairs[:len(FARE_ROW_DISTANCES)]
-        )
-        if distances == FARE_ROW_DISTANCES:
-            candidates.append(pairs[0][1])
-
-    if len(candidates) != 1 or not 100 <= candidates[0] <= 2_000:
+    guardamar_rows = [
+        line
+        for line in base.splitlines()
+        if "GUARDAMAR DE SEGURA" in line
+    ]
+    if len(guardamar_rows) != 1:
         raise IntercityScheduleError(
             "Orihuela base fare row is ambiguous"
         )
 
+    pairs = [
+        (int(distance), int(euros) * 100 + int(cents))
+        for distance, euros, cents in re.findall(
+            r"(\d+)\s+(\d+),(\d{2})\s*€",
+            guardamar_rows[0],
+        )
+    ]
+    distances = tuple(distance for distance, _ in pairs)
+    if (
+        distances != FARE_ROW_DISTANCES
+        or not 100 <= pairs[0][1] <= 2_000
+    ):
+        raise IntercityScheduleError(
+            "Orihuela base fare row is invalid"
+        )
+
     return IntercityFare(
-        cents=candidates[0],
+        cents=pairs[0][1],
         from_price=False,
         effective_date=effective_date,
         source_url=source_url,
