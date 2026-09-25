@@ -1,4 +1,4 @@
-"""Exact-date Guardamar ↔ Zenia Boulevard timetable from the Avanza public planner."""
+"""Exact-date Guardamar - Zenia Boulevard timetable from the Avanza public planner."""
 
 import html
 import http.cookiejar
@@ -32,7 +32,7 @@ ZENIA_MAP_URL = (
 def fetch_schedules(
     service_dates: tuple[date, ...],
 ) -> Dict[date, IntercitySchedule]:
-    """Fetch Guardamar ↔ Zenia Boulevard for exact dates via Avanza."""
+    """Fetch Guardamar - Zenia Boulevard for exact dates via Avanza."""
 
     wanted_dates = tuple(dict.fromkeys(service_dates))
     if not wanted_dates or len(wanted_dates) > 3:
@@ -147,12 +147,14 @@ def build_message(
             + fare_amount(schedule.fare)
         )
     message = with_footer(
-        "🛍 <b>Гуардамар ↔ Zenia Boulevard</b>\n"
+        "🛍 <b>Гуардамар - Zenia Boulevard</b>\n"
         "До торгового центра можно доехать без пересадок "
         "на автобусе Avanza.\n\n"
-        "🚌 <b>Маршрут:</b> Alicante ↔ Pilar de la Horadada\n"
-        "Из Гуардамара садитесь в сторону <b>Pilar de la Horadada</b>. "
-        "Обратно от Zenia Boulevard садитесь в сторону <b>Alicante</b>.\n\n"
+        "🚌 <b>Автобусы:</b> Guardamar - Pilar de la Horadada "
+        "и Alicante - Pilar de la Horadada\n"
+        "Туда садитесь в сторону <b>Pilar de la Horadada</b>. "
+        "Обратно - в сторону <b>Guardamar</b> или <b>Alicante</b>.\n\n"
+        "⏱ <b>В пути:</b> около 1 часа\n\n"
         f"🗓 <b>{date_label(schedule.service_date, today)}</b>\n\n"
         "➡️ <b>Гуардамар → Zenia Boulevard</b>\n"
         + format_times(schedule.outbound)
@@ -163,7 +165,7 @@ def build_message(
         '<a href="'
         + html.escape(GUARDAMAR_BUS_STATION_MAP_URL, quote=True)
         + '">автовокзал Гуардамара</a>'
-        " ↔ "
+        " → "
         '<a href="'
         + html.escape(ZENIA_MAP_URL, quote=True)
         + '">ТЦ Zenia Boulevard</a>'

@@ -41,7 +41,7 @@ ROUTE_META = {
     "alicante": ("🚌", "Гуардамар ↔ Alicante"),
     "elche": ("🚌", "Гуардамар ↔ Elche"),
     "inland": ("🚌", "Гуардамар ↔ Orihuela"),
-    "zenia": ("🛍", "Гуардамар ↔ Zenia Boulevard"),
+    "zenia": ("🛍", "Гуардамар - Zenia Boulevard"),
 }
 MESSAGE_ORDER = ("schedule_changes", "route_changes", "fare_changes")
 EVENT_KINDS = {

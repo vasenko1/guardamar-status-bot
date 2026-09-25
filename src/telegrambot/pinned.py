@@ -304,16 +304,18 @@ LEAF_MESSAGES: Dict[str, str] = {
 🕒 <a href="https://regular.autobusing.com/info?empresa=costa-azul&amp;locale=es">Найти расписание на нужную дату</a>"""
     ),
     "zenia": with_footer(
-        f"""🛍 <b>Гуардамар ↔ Zenia Boulevard</b>
+        f"""🛍 <b>Гуардамар - Zenia Boulevard</b>
 До торгового центра можно доехать без пересадок на автобусе Avanza.
 
-🚌 <b>Маршрут:</b> Alicante ↔ Pilar de la Horadada
-Из Гуардамара садитесь в сторону <b>Pilar de la Horadada</b>. Обратно от Zenia Boulevard садитесь в сторону <b>Alicante</b>.
+🚌 <b>Автобусы:</b> Guardamar - Pilar de la Horadada и Alicante - Pilar de la Horadada
+Туда садитесь в сторону <b>Pilar de la Horadada</b>. Обратно - в сторону <b>Guardamar</b> или <b>Alicante</b>.
+
+⏱ <b>В пути:</b> около 1 часа
 
 🗓 Рейсы на текущую дату обновляются здесь каждое утро.
 
 📍 <b>Откуда и куда</b>
-<a href="{html.escape(GUARDAMAR_BUS_STATION_MAP_URL, quote=True)}">автовокзал Гуардамара</a> ↔ <a href="https://www.google.com/maps/search/?api=1&amp;query=37.9292298333%2C-0.7346398333">ТЦ Zenia Boulevard</a>
+<a href="{html.escape(GUARDAMAR_BUS_STATION_MAP_URL, quote=True)}">автовокзал Гуардамара</a> → <a href="https://www.google.com/maps/search/?api=1&amp;query=37.9292298333%2C-0.7346398333">ТЦ Zenia Boulevard</a>
 
 🕒 <a href="https://regular.autobusing.com/info?empresa=costa-azul&amp;locale=es">Найти расписание на нужную дату</a>"""
     ),

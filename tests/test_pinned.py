@@ -211,11 +211,21 @@ class PinnedContentTests(unittest.TestCase):
         south = build_leaf_message("south")
         zenia = build_leaf_message("zenia")
         self.assertNotIn("Zenia Boulevard", south)
-        self.assertIn("Гуардамар ↔ Zenia Boulevard", zenia)
+        self.assertIn("Гуардамар - Zenia Boulevard", zenia)
         self.assertIn("Рейсы на текущую дату обновляются здесь каждое утро", zenia)
-        self.assertIn("Маршрут:</b> Alicante ↔ Pilar de la Horadada", zenia)
-        self.assertIn("садитесь в сторону <b>Pilar de la Horadada</b>", zenia)
-        self.assertIn("садитесь в сторону <b>Alicante</b>", zenia)
+        self.assertIn(
+            "Автобусы:</b> Guardamar - Pilar de la Horadada "
+            "и Alicante - Pilar de la Horadada",
+            zenia,
+        )
+        self.assertIn("Туда садитесь в сторону <b>Pilar de la Horadada</b>", zenia)
+        self.assertIn(
+            "Обратно - в сторону <b>Guardamar</b> или <b>Alicante</b>",
+            zenia,
+        )
+        self.assertIn("В пути:</b> около 1 часа", zenia)
+        self.assertNotIn("↔", zenia)
+        self.assertIn("автовокзал Гуардамара</a> → ", zenia)
         self.assertIn("37.9292298333%2C-0.7346398333", zenia)
 
     def test_hospital_message_has_year_round_timetable_and_live_source(self):

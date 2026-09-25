@@ -1473,7 +1473,7 @@ class TransportBusStationLinkTests(unittest.TestCase):
     def test_zenia_has_its_own_transport_card(self):
         from telegrambot.pinned import LEAF_MESSAGES, build_transport_index
 
-        self.assertIn("Гуардамар ↔ Zenia Boulevard", LEAF_MESSAGES["zenia"])
+        self.assertIn("Гуардамар - Zenia Boulevard", LEAF_MESSAGES["zenia"])
         self.assertNotIn("Zenia Boulevard", LEAF_MESSAGES["south"])
 
         message = build_transport_index({
