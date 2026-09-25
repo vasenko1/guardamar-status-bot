@@ -320,23 +320,26 @@ Public-message policy is finalized:
 - keep the hourly `:19` observation cadence so same-day official readjustments
   remain observable;
 - before 07:00 Europe/Madrid, store Previfoc observations but do not render or
-  acknowledge a Previfoc transition as published;
-- on the first run at or after 07:00, publish only the delta that is still
-  current relative to the last published Previfoc state;
+  acknowledge a Previfoc transition as public;
+- on the first run at or after 07:00, compare the current observation with the
+  resident-facing baseline and publish only changed active levels 2/3;
+- level 1 is the ordinary baseline: transitions to it are stored silently and
+  never create a standalone clearance message;
 - if an overnight transition reverses before morning, publish nothing about
   that intermediate state;
-- after 07:00, later same-day Previfoc changes are eligible on the next hourly
-  run;
-- this delay never applies to CCE/hydrological emergency transitions;
-- user-facing Previfoc copy must make the daily scope explicit with wording
-  such as `сегодня` / `на сегодня` and must not invent an hourly interval that
-  the source does not provide;
-- `TormentaID=2` uses the compact resident copy `Сухие грозы возможны сегодня`
-  and `Для зоны Гуардамара повышен риск возникновения сухих гроз.`.
+- after 07:00, later same-day changes between active levels remain eligible, but
+  the message describes the current state rather than the transition history;
+- this quieter policy applies only to Previfoc; CCE/hydrological
+  downgrade/clearance behavior remains unchanged;
+- fire level 2 uses `🌲 Пожарная опасность сегодня`;
+- `TormentaID=2` uses `⚡ Сегодня возможны сухие грозы`;
+- user-facing source attribution is `Generalitat Valenciana`; the internal
+  product name `Previfoc` is not needed in resident copy.
 
 This policy requires no second scheduler, resident worker, queue or additional
 pending-state schema. The observed state itself is the pending candidate; the
-published state remains unchanged until an eligible public delivery.
+existing `published` fields remain the resident-facing comparison baseline and
+may advance silently on level 1 so a later return to level 2/3 is detectable.
 
 ## Hydrology source closure
 
