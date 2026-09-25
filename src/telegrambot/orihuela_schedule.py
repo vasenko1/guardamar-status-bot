@@ -474,8 +474,9 @@ def build_message(
         + format_times(schedule.inbound)
         + fare_line
         + "\n\n📍 <b>Откуда и куда</b>\n"
-        '<a href="https://www.google.com/maps/search/?api=1&amp;query='
-        'Estaci%C3%B3n+de+Autobuses%2C+Guardamar+del+Segura">'
+        '<a href="'
+        + html.escape(GUARDAMAR_BUS_STATION_MAP_URL, quote=True)
+        + '">'
         "автовокзал Гуардамара</a>"
         " ↔ "
         '<a href="https://www.google.com/maps/search/?api=1&amp;query='
