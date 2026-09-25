@@ -92,6 +92,18 @@ comparison baseline for the following morning. The first baseline is silent.
 Price is shown only when both directions expose a validated fare. Missing or
 invalid source data never proves cancellation or a fare change.
 
+### Zenia Boulevard
+
+The Guardamar ↔ Zenia Boulevard card uses the same bounded Avanza/Costa Azul
+planner as Elche. The operator destination is `C.C. BOULEVAR ZENIA`.
+Today and tomorrow are queried in both directions during the existing 05:00
+transport sync; the first same-date comparison baseline is silent.
+
+The card and notification collector both reuse the shared intercity
+state/lifecycle. No separate scheduler, browser, raw-HTML cache or notification
+subsystem exists for Zenia. Price is shown only when both directions expose a
+validated fare.
+
 ### Orihuela
 
 The Guardamar ↔ Orihuela card uses Bus Sigüenza's exact-date search. Today and
@@ -109,7 +121,7 @@ verified currently-effective fare from the card before that date. Tomorrow is
 retained only as the same-date comparison baseline, and the first baseline is
 silent.
 
-Neither Elche nor Orihuela synthesizes a seasonal-period event from ordinary
+Neither Elche, Zenia nor Orihuela synthesizes a seasonal-period event from ordinary
 daily timetable differences. The currently reviewed official evidence is not
 strong enough for a reusable recurring boundary: CE-714 line 1 is described
 as having winter/summer weekday frequencies without an exact period boundary,
@@ -117,7 +129,7 @@ and the available Avanza summer dates are specific to 2026.
 
 ### Other transport cards
 
-Hospital de Torrevieja, the south/Torrevieja-Zenia-Pilar route and Universidad
+Hospital de Torrevieja, the south/Torrevieja-Pilar route and Universidad
 de Alicante remain useful linked cards but do not currently have accepted
 comparable state in the bot. They therefore emit no change notifications. A
 future reliable bounded adapter can project route events into the same
