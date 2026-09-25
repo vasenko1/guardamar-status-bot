@@ -33,7 +33,6 @@ from telegrambot.airport_schedule import (
 from telegrambot.branding import FOOTER
 from telegrambot.pinned import (
     AIRPORT_STOP_MAP_URL,
-    GUARDAMAR_BUS_STATION_MAP_URL,
     LEAF_MESSAGES,
     PinnedGuideState,
 )
