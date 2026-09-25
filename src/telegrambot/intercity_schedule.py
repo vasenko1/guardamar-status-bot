@@ -3,6 +3,7 @@
 import asyncio
 import html
 import json
+import logging
 import os
 import re
 import tempfile
@@ -311,7 +312,12 @@ async def sync_intercity_schedule(
             )
         await asyncio.to_thread(schedule_state.write, fresh)
         bundle = fresh
-    except IntercityScheduleError:
+    except IntercityScheduleError as exc:
+        logging.warning(
+            "%s timetable unavailable; keeping accepted message: %s",
+            route_key,
+            exc,
+        )
         bundle = cached
 
     transport_link = telegram_message_link(
