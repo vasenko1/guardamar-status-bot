@@ -1,0 +1,81 @@
+name: Zenia bus-label research
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: python -m pip install -e .
+      - name: Dump live Avanza rows
+        run: |
+          python - <<'PY'
+          import http.cookiejar
+          import urllib.parse
+          import urllib.request
+          from datetime import date
+
+          from telegrambot import alicante_schedule as a
+
+          service_date = date(2026, 9, 25)
+          cookie_jar = http.cookiejar.CookieJar()
+          opener = urllib.request.build_opener(
+              a._PlannerRedirectHandler(),
+              urllib.request.HTTPCookieProcessor(cookie_jar),
+          )
+          initial = urllib.request.Request(
+              a.PLANNER_URL,
+              headers={"Accept": "text/html", "User-Agent": a.USER_AGENT},
+          )
+          payload, final_url = a._planner_open(opener, initial)
+          action, base_fields = a._search_form(payload, final_url)
+
+          for origin, destination in (
+              ("GUARDAMAR", "C.C. BOULEVAR ZENIA"),
+              ("C.C. BOULEVAR ZENIA", "GUARDAMAR"),
+          ):
+              fields = dict(base_fields)
+              fields.update({
+                  "venta[origen_nombre]": origin,
+                  "venta[destino_nombre]": destination,
+                  "venta[fecha_ida]": service_date.strftime("%d/%m/%Y"),
+                  "venta[fecha_vta]": "",
+                  "venta[tipo_iyv]": "ida",
+              })
+              req = urllib.request.Request(
+                  action,
+                  data=urllib.parse.urlencode(fields).encode("utf-8"),
+                  headers={
+                      "Accept": "text/html",
+                      "Content-Type": "application/x-www-form-urlencoded",
+                      "Referer": final_url,
+                      "User-Agent": a.USER_AGENT,
+                  },
+                  method="POST",
+              )
+              result, result_url = a._planner_open(opener, req)
+              page = result.decode("utf-8")
+              parser = a._PlannerPageParser()
+              parser.feed(page)
+
+              print("=" * 80)
+              print(origin, "->", destination)
+              print("URL:", result_url)
+              print("ROWS:")
+              for idx, row in enumerate(parser.rows):
+                  print(idx, repr(row))
+
+              text = " ".join(parser.text)
+              print("TEXT:")
+              print(text[:20000])
+          PY
