@@ -363,6 +363,8 @@ def _migrate_v2(state: Mapping[str, Any]) -> Dict[str, Any]:
     migrated = dict(state)
     migrated["version"] = STATE_VERSION
     migrated["alicante_next"] = None
+    migrated["elche_next"] = None
+    migrated["inland_next"] = None
     return migrated
 
 
