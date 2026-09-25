@@ -31,6 +31,24 @@ Compression and prioritization are allowed. Invention is not.
 If reliable input is absent, omit the claim or state that the information is
 unavailable. A shorter truthful digest is better than a complete-looking one.
 
+## Product-award AI boundary
+
+The supermarket product-award stream is explicitly deterministic under ADR
+0083. Gemini/OpenRouter must not be used for award discovery, product/brand
+identity, award-tier interpretation, event identity, queue eligibility, or
+publication rendering.
+
+The first POC demonstrated why this boundary is necessary: the same OCU source
+produced changing retailer/private-label roles and incomplete product names,
+and a later live run failed on a Gemini timeout followed by an OpenRouter HTTP
+403. These are optional-model failures, not award-source failures.
+
+Future award adapters must parse their own verified source contract and return
+source-backed `ProductAwardCandidate` records. Do not solve a difficult new
+award source by routing arbitrary result pages through a generic LLM extractor.
+If a source cannot be parsed reliably and cheaply, leave it in research until a
+deterministic contract is proven.
+
 ## Approved runtime use
 
 ADR 0011 permits the Policía Local traffic fallback to call Gemini at runtime.
