@@ -34,6 +34,7 @@ from .am_guardamar import (
     refresh_am_guardamar_catalog,
 )
 from .airport_schedule import AirportScheduleState, sync_airport_schedule
+from .alicante_schedule import AlicanteScheduleState, sync_alicante_schedule
 from .commands import listen_for_preview, parse_allowed_user_ids
 from .delivery import publish_morning, refresh_beach_root
 from .diagnostics import render_diagnostics
@@ -1563,13 +1564,30 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     message_id,
                     disable_notification=True,
                 ),
-                skip_keys=("airport",) if "airport" in existing["messages"] else (),
-            )
+                skip_keys=tuple(\n                    key for key in ("airport", "alicante")\n                    if key in existing["messages"]\n                ),\n            )
             await sync_airport_schedule(
                 datetime.now(GUARDAMAR_TIMEZONE),
                 chat_id,
                 state,
                 AirportScheduleState(state.path.with_name("airport_schedule.json")),
+                lambda message: send_message(
+                    bot_token,
+                    chat_id,
+                    message,
+                    disable_notification=True,
+                    retry_only_rate_limits=True,
+                ),
+                lambda message_id, message: edit_message(
+                    bot_token, chat_id, message_id, message
+                ),
+            )
+            await sync_alicante_schedule(
+                datetime.now(GUARDAMAR_TIMEZONE),
+                chat_id,
+                state,
+                AlicanteScheduleState(
+                    state.path.with_name("alicante_schedule.json")
+                ),
                 lambda message: send_message(
                     bot_token,
                     chat_id,
