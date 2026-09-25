@@ -630,43 +630,72 @@ successful empty optional results remain quiet where emptiness is normal.
 
 ## Supermarket product award feed
 
-The bot may publish occasional editorial notes about supermarket own-brand
-products that receive a verified independent test result or award. This is one
-shared stream across product categories rather than separate features for OCU,
-cheese, wine, olive oil, jamón, and future award families.
+The bot may publish occasional rich editorial notes about verified
+award-winning products that are sold by supported Spanish supermarkets. The
+product may be a private label, a proven retailer-exclusive item or an ordinary
+brand with an exact current retail listing. Public wording must distinguish
+those relationships.
+
+This remains one shared stream across OCU, cheese, wine, olive oil, jamón,
+consumer sensory awards and future award families.
 
 The runtime contract is deliberately small:
 
-- source-specific adapters discover and deterministically parse only their own
-  official/authoritative result surfaces;
-- adapters return the common `ProductAwardCandidate` contract and define a
-  source-native stable `event_key`;
-- the shared engine owns only per-source silent baseline, deduplication, one
-  queue, deterministic rendering, and Telegram delivery;
+- source-specific award adapters discover and deterministically parse only their
+  own official/authoritative result surfaces;
+- each award adapter defines a source-native stable `event_key`;
+- award evidence and retailer evidence are separate under ADR 0084;
+- an exact retailer join requires EAN/GTIN, exact retailer SKU, or a
+  source-specific unambiguous commercial identity; manufacturer/brand-only,
+  fuzzy, cross-country and marketplace matches fail closed;
+- the shared engine owns per-source silent baseline, deduplication, one queue,
+  deterministic rendering, and Telegram delivery;
 - discovery runs at 13:50 Europe/Madrid;
 - publication runs at 14:20 and sends at most one queued award per local day;
-- the first successful observation of a newly registered source silently marks
-  its existing items as seen, so adding a new award family never backfills its
+- the first successful observation of a newly registered award source silently
+  marks its existing items as seen, so new award families never backfill their
   historical archive.
 
-OCU is the first active adapter. `Mejor del Análisis` is rendered as the best
-result in that specific OCU comparison. `Compra Maestra` is rendered as a
-value/balance distinction and never as proof of the highest absolute quality.
+The researched retailer set is Mercadona, Lidl España, ALDI España, Consum,
+Carrefour España supermarket, Masymas / Juan Fornés Fornés, DIA España and
+Alcampo / Auchan. Retailer evidence adapters do not get their own schedules or
+continuous catalogue polling.
 
-Award publication is text-first and must work with Gemini/OpenRouter keys
-absent. Live retailer catalogue price/photo lookup is not a publication
-dependency. A price explicitly published by the award source may be shown as a
-source-stated price; it is not relabelled as the current shelf price.
+OCU is the first active award adapter. `Mejor del Análisis` means the best
+result in that specific OCU comparison. `Compra Maestra` is a value/balance
+distinction and is never described as the highest absolute quality.
+
+Articles are deterministic but may be substantially richer than the initial
+POC. A source adapter may retain verified context such as comparison/entry
+count, test or judging method, category/class, score, tasting result,
+nutrition/quality classification, vintage, DO, grape, maturation or other
+source-native identity facts. Small reviewed source-specific renderers turn
+those facts into article copy without runtime LLM writing.
+
+A queued item may wait several days. When exact retailer identity is known, the
+publication step may make one bounded exact-SKU refresh immediately before
+rendering. A fresh current price/availability statement is included only when
+that refresh is unambiguous. A source-published award-study price remains
+labelled as such.
+
+Photos are optional enrichment only. They require an exact matched SKU,
+allowlisted bounded HTTPS media and a source-specific terms/reuse review.
+Missing or unsafe media produces text-only output.
+
+Award publication must work with Gemini/OpenRouter absent. No LLM may discover
+awards, match products to retailers, invent editorial facts or repair an
+ambiguous SKU join.
 
 The shared queue preserves at-most-once delivery semantics. An ambiguous
 Telegram send remains `uncertain` and is not automatically resent; a
 deterministic rejection can safely return the event to the queue for a later
 day.
 
-New award bodies must follow ADR 0083 and the implementation checklist in
+New award bodies and retailer evidence sources must follow ADRs 0083 and 0084
+plus the dated implementation checklist in
 `research/2026-09-25-supermarket-product-awards.md`. Do not add a new cron,
-queue, database, worker, notification framework, universal LLM parser, or
-source-independent fuzzy product matcher for each new source.
+queue, database, worker, browser, notification framework, universal LLM parser
+or source-independent fuzzy matcher.
 
 ## Feature boundary
 
