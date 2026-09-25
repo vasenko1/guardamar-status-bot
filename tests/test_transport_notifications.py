@@ -590,7 +590,7 @@ class TransportNotificationTests(unittest.TestCase):
             legacy.pop("alicante_next", None)
             path.write_text(json.dumps(legacy), encoding="utf-8")
             state = load_state(path)
-        assert state["version"] == 3
+        assert state["version"] == 4
         assert state["alicante_next"] is None
 
 
