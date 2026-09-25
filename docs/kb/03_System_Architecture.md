@@ -132,30 +132,50 @@ Provides only genuine cross-cutting needs:
 
 One independent pair of short-lived Termux one-shots owns supermarket
 product-award discovery and publication. The 13:50 discovery command iterates
-the small `SOURCE_ADAPTERS` registry. Each adapter performs only its bounded
-source reads and returns verified common candidates. The shared engine never
-passes arbitrary award pages to AI and never performs retailer catalogue lookup
-as part of eligibility.
+the small `SOURCE_ADAPTERS` registry. Each award adapter performs only bounded
+source reads and defines its own stable award identity. Award parsing never
+passes arbitrary pages to AI.
 
-State is one small atomic JSON file. It stores initialized source names,
-bounded seen item IDs, one FIFO queue, permanent published/uncertain event IDs,
-and the last used delivery day. Source initialization is independent: the first
-successful run after adding a new adapter silently baselines only that source.
+ADR 0084 separates **award evidence** from **retail evidence**. A product can be
+a supermarket private label, a proven retailer-exclusive item, or an ordinary
+brand currently listed by a supported Spanish chain. Retail wording must
+preserve that relationship. Exact retailer identity is established only by a
+strong source-specific join such as EAN/GTIN, exact retailer SKU, or an
+unambiguous category-specific commercial identity. Manufacturer equality,
+brand-only matching, fuzzy text, cross-country private labels and marketplace
+seller listings are insufficient.
 
-Every adapter owns its source-native stable `event_key`. The common event ID
-is derived from source kind plus that key; the engine does not normalize
-product wording across unrelated award bodies. This keeps source interpretation
-at the boundary where the relevant semantics are known.
+State remains one small atomic JSON file with initialized source names, bounded
+seen item IDs, one FIFO queue, permanent published/uncertain event IDs and the
+last used delivery day. Source initialization is independent: the first
+successful run after adding a new award adapter silently baselines only that
+source.
 
-The 14:20 publication command reads only the queue, renders deterministic
-source-semantic text and sends at most one group message. Before Telegram send
-it reserves the daily slot and marks the event uncertain. Confirmed success
-becomes published; ambiguous delivery is never auto-retried; a deterministic
-failure may requeue for a future day.
+Every award adapter owns its source-native stable `event_key`. The common event
+ID is derived from source kind plus that key. Price, stock status, retailer
+photo and other retail enrichment never change the award event identity.
 
-OCU is the first active adapter. Future cheese/wine/oil/jamón sources add only
-an adapter and tests after a read-only live source probe. They do not add their
-own scheduler, state machine, queue or publisher. See ADR 0083.
+The 14:20 publication command sends at most one queued article. When a candidate
+has a proven stable retailer product identity, publication may perform one
+bounded exact-SKU refresh immediately before rendering so a current price or
+availability statement is not stale after several days in the queue. Price and
+photo failures degrade to correct text-only output; they do not cause guessed
+replacement data. Photo delivery additionally requires exact SKU media,
+allowlisted bounded HTTPS retrieval and a source-specific reuse/terms review.
+
+Rich copy is deterministic. Source adapters may retain reviewed facts such as
+comparison size, judging method, class/category, score, sensory result, vintage,
+DO or maturation, and source-specific renderers turn those facts into an
+article without runtime generative writing.
+
+Before Telegram send the engine retains the existing at-most-once reservation
+semantics. Confirmed success becomes published; ambiguous delivery is never
+auto-retried; a deterministic failure may requeue for a future day.
+
+OCU is the first active award adapter. Future cheese/wine/oil/jamón sources add
+only an adapter and tests after a read-only live source probe. Retail evidence
+adapters do not receive their own cron, queue or state machine, and catalogues
+are not continuously polled. See ADRs 0083 and 0084.
 
 ### Next-day electricity prices
 
