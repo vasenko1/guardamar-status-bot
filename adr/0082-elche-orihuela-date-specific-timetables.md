@@ -28,11 +28,17 @@ through one source adapter:
   usable fare.
 - Orihuela queries Bus Sigüenza once per requested date; each response must
   contain exactly the Guardamar→Orihuela and Orihuela→Guardamar panels with
-  bounded, unique, sorted departures.
+  bounded, unique, sorted departures. A live audit on 25 September 2026
+  confirmed that the result page does not echo `FECHASALIDA` or the requested
+  date, so the adapter cannot honestly add an independent response-side date
+  assertion. The exact-date contract is therefore the submitted POST date plus
+  validated route panels; a fabricated HTML date check is explicitly avoided.
 - Orihuela price is read only from the official CE-714 tariff PDF and only from
   the validated `TARIFA BASE GENERAL` Guardamar↔Orihuela row. The current
   reviewed distance pattern identifies the 37 km row. A changed PDF is accepted
-  only after a second identical download and successful parsing.
+  only after a second identical download and successful parsing. If a verified
+  replacement tariff has a future effective date, an already verified
+  currently-effective fare remains on the card until that date.
 - Today is required for a card refresh; tomorrow is optional. Source failure
   never proves a cancellation.
 - Store only normalized current/next snapshots and tariff metadata; do not
@@ -41,7 +47,11 @@ through one source adapter:
   that same service date, preventing normal weekday/weekend schedules from
   generating false alerts.
 - Departure and fare changes reuse `transport_notifications.py`; named
-  seasonal periods are not inferred from daily timetable differences.
+  seasonal periods are not inferred from daily timetable differences. Current
+  official material confirms winter/summer frequency differences but does not
+  provide a reusable exact boundary for CE-714 line 1, while the Avanza summer
+  dates found for 2026 are year-specific. No recurring seasonal alert is
+  hard-coded from that incomplete evidence.
 
 ## Consequences
 

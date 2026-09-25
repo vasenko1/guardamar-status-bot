@@ -1,9 +1,11 @@
 import json
 import tempfile
 import unittest
+import urllib.parse
 from datetime import date
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 from telegrambot import alicante_schedule as avanza
 from telegrambot.elche_schedule import (
@@ -17,7 +19,9 @@ from telegrambot.intercity_schedule import (
     IntercityScheduleState,
 )
 from telegrambot.orihuela_schedule import (
+    _fetch_schedule,
     _parse_schedule_response,
+    _refresh_fare,
     build_message as build_orihuela_message,
     parse_fare_pdf,
 )
@@ -134,6 +138,39 @@ class OrihuelaScheduleTests(unittest.TestCase):
             "https://www.bus-siguenza.com/wbus/tarifas/2026_CE-714%20test.pdf",
         )
 
+    @patch("telegrambot.orihuela_schedule._parse_schedule_response")
+    @patch("telegrambot.orihuela_schedule.bus._open_bounded")
+    def test_fetch_schedule_posts_requested_service_date(
+        self,
+        open_bounded,
+        parse_response,
+    ):
+        headers = Mock()
+        headers.get_content_type.return_value = "text/html"
+        open_bounded.return_value = (
+            b"<html></html>",
+            "https://www.bus-siguenza.com/wbus/procesa.php",
+            headers,
+            200,
+        )
+        expected = (
+            IntercitySchedule(
+                TODAY,
+                ("06:20",),
+                ("06:45",),
+            ),
+            None,
+        )
+        parse_response.return_value = expected
+
+        self.assertEqual(_fetch_schedule(TODAY), expected)
+
+        request = open_bounded.call_args.args[0]
+        fields = urllib.parse.parse_qs(request.data.decode("ascii"))
+        self.assertEqual(fields["FECHASALIDA"], ["25/09/2026"])
+        self.assertEqual(fields["ORIGEN"], ["GUARDAMAR DEL SEGURA"])
+        self.assertEqual(fields["DESTINO"], ["ORIHUELA"])
+
     @patch("telegrambot.orihuela_schedule.bus._run")
     def test_parses_verified_base_general_fare(self, run):
         text = """
@@ -184,6 +221,83 @@ FIRMADO ELECTRÓNICAMENTE POR EL JEFE DEL SERVICIO DE TRANSPORTE PÚBLICO
                 etag=None,
                 last_modified=None,
             )
+
+    @patch("telegrambot.orihuela_schedule.parse_fare_pdf")
+    @patch("telegrambot.orihuela_schedule.bus.download_fare_pdf")
+    def test_future_replacement_keeps_current_verified_fare_until_effective(
+        self,
+        download_fare_pdf,
+        parse_fare_pdf_mock,
+    ):
+        url = "https://www.bus-siguenza.com/wbus/tarifas/fare.pdf"
+        cached = IntercityFare(
+            345,
+            effective_date=date(2026, 2, 1),
+            source_url=url,
+            etag='"old"',
+            last_modified="old",
+            pdf_sha256="a" * 64,
+        )
+        downloaded = SimpleNamespace(
+            payload=b"%PDF-new",
+            url=url,
+            etag='"new"',
+            last_modified="new",
+        )
+        download_fare_pdf.side_effect = [downloaded, downloaded]
+        parse_fare_pdf_mock.return_value = IntercityFare(
+            365,
+            effective_date=date(2026, 10, 1),
+            source_url=url,
+            etag='"new"',
+            last_modified="new",
+            pdf_sha256="b" * 64,
+        )
+
+        result = _refresh_fare(url, cached, TODAY)
+
+        self.assertEqual(result, cached)
+
+    @patch("telegrambot.orihuela_schedule.parse_fare_pdf")
+    @patch("telegrambot.orihuela_schedule.bus.download_fare_pdf")
+    def test_future_replacement_is_accepted_on_effective_date(
+        self,
+        download_fare_pdf,
+        parse_fare_pdf_mock,
+    ):
+        url = "https://www.bus-siguenza.com/wbus/tarifas/fare.pdf"
+        cached = IntercityFare(
+            345,
+            effective_date=date(2026, 2, 1),
+            source_url=url,
+            etag='"old"',
+            last_modified="old",
+            pdf_sha256="a" * 64,
+        )
+        downloaded = SimpleNamespace(
+            payload=b"%PDF-new",
+            url=url,
+            etag='"new"',
+            last_modified="new",
+        )
+        candidate = IntercityFare(
+            365,
+            effective_date=date(2026, 10, 1),
+            source_url=url,
+            etag='"new"',
+            last_modified="new",
+            pdf_sha256="b" * 64,
+        )
+        download_fare_pdf.side_effect = [downloaded, downloaded]
+        parse_fare_pdf_mock.return_value = candidate
+
+        result = _refresh_fare(
+            url,
+            cached,
+            date(2026, 10, 1),
+        )
+
+        self.assertEqual(result, candidate)
 
     def test_card_shows_price_source_and_full_schedule(self):
         schedule = IntercitySchedule(
