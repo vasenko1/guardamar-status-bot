@@ -1054,3 +1054,53 @@ general copyright assumption.
 Therefore the project must not interpret "we can fetch the image" as "we may
 send the image to Telegram".
 
+### Pre-implementation code re-review
+
+The wider research was compared back against the current Python implementation
+before any production deployment.
+
+The shared operational model is still good, but the current code is not yet
+compatible with ADR 0084 and must remain draft.
+
+Required pre-production changes:
+
+1. `ProductAwardCandidate.private_label` is mandatory. It must no longer be
+   universal because a valid award product may be a third-party listed brand or
+   a retailer-exclusive product.
+2. The generic non-OCU renderer currently says every future product is
+   `собственной марки`. That wording becomes factually wrong for ordinary
+   listed brands and must be relationship-aware.
+3. Stable retail identity needs its own record: retailer, relationship type,
+   exact product ID and/or EAN, product URL, package/variant qualifiers and the
+   configured retail context needed for a later exact refresh. Live price and
+   photo URL must not become award event identity.
+4. Rich verified source facts need a small typed/source-specific context so
+   OCU, cheese, wine, jamón and consumer awards can render article-depth copy
+   without generic free-form extraction.
+5. Publication needs one optional exact-SKU retailer refresh before rendering.
+   It must not search the catalogue by fuzzy product name at send time.
+6. The common `_result_priority()` currently imposes one global ranking
+   (`trophy > super gold > gold > silver > bronze > OCU`). This does not scale
+   safely to unrelated award semantics such as Great Taste stars, category
+   places, OCU value labels and wine competition distinctions. Canonicalisation
+   of multiple results for the same source event belongs at the source adapter
+   boundary; the shared core should not invent a universal award hierarchy.
+7. Source discovery remains capped and bounded. Large global directories such
+   as Great Taste or WCA should therefore be filtered using a source-native
+   query/retailer-first lead rather than converted into a broad catalogue crawl.
+
+Things that should **not** be added:
+
+- a generic retailer search framework;
+- daily scans of all eight supermarket catalogues;
+- a database;
+- an image cache;
+- a browser;
+- fuzzy matching;
+- LLM product matching or prose generation;
+- one queue or cron per retailer/award body.
+
+Because no production product-award state has been established yet, evolving
+the serialized candidate/state schema now is cheaper and safer than maintaining
+a compatibility layer for an unused schema.
+
