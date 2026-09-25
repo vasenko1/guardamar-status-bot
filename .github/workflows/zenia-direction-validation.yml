@@ -1,0 +1,52 @@
+name: Zenia direction validation
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: python -m pip install -e .
+      - name: Compile
+        run: python -m compileall -q src tests
+      - name: Targeted tests
+        run: |
+          python -m unittest tests.test_intercity_schedules.ZeniaScheduleTests -v
+          python -m unittest tests.test_pinned.PinnedContentTests.test_zenia_has_a_dedicated_card_and_south_no_longer_claims_it -v
+      - name: Render final Zenia card
+        run: |
+          python - <<'PY'
+          from datetime import date
+          from telegrambot.intercity_schedule import IntercityFare, IntercitySchedule
+          from telegrambot.zenia_schedule import build_message
+
+          schedule = IntercitySchedule(
+              date(2026, 9, 25),
+              ("07:30", "08:50"),
+              ("07:30", "08:30"),
+              IntercityFare(300),
+          )
+          message = build_message(schedule, date(2026, 9, 25), "https://t.me/c/1/50")
+          required = (
+              "Маршрут:</b> Alicante ↔ Pilar de la Horadada",
+              "Из Гуардамара садитесь в сторону <b>Pilar de la Horadada</b>.",
+              "Обратно от Zenia Boulevard садитесь в сторону <b>Alicante</b>.",
+          )
+          for item in required:
+              if item not in message:
+                  raise SystemExit(f"missing: {item}")
+          print(message)
+          PY
+      - name: Full regression suite
+        run: python -m unittest discover -s tests -v
