@@ -707,6 +707,70 @@ bounded HTML from its exact official HTTPS host. A valid HTML page without
 recognizable timestamped channel messages is a source failure, not proof that
 there are no updates. The MVP does not scrape Facebook.
 
+## Supermarket product award sources
+
+### OCU comparative food reports
+
+OCU is the first accepted source for the shared product-award stream.
+
+Discovery uses a bounded OCU index read and keeps food report URLs under
+`/alimentacion/.../informe/`. News articles are not a parallel discovery
+surface for the same comparison. The adapter accepts only a report whose
+current year can be established and whose report text explicitly associates an
+allowed supermarket own-brand product with an accepted OCU result.
+
+Initially accepted result semantics:
+
+- `Mejor del Análisis`: best result in that OCU comparative analysis;
+- `Compra Maestra`: OCU value/balance designation, not a generic medal and
+  not proof of the highest absolute quality.
+
+The September 2026 live validation case is the OCU salmorejo report:
+Hacendado / Mercadona, `salmorejo fresco de Hacendado`,
+`Mejor del Análisis`, score 70/100, comparison size 30. These facts were
+explicit in the source and therefore do not require AI extraction.
+
+A report-published price is optional metadata. When retained, public copy must
+say that the price was stated in the study. It is not a current-catalogue claim.
+
+### Future award sources
+
+World Cheese Awards / Guild of Fine Food remains a candidate source, but the
+2026 result year was not yet available in the official directory during the
+25 September 2026 POC. Do not ship a speculative WCA parser before current real
+results can be probed and its stable result identity is confirmed.
+
+Wine, olive-oil, jamón/cured-meat, Great Taste and other award sources follow
+the same acceptance gate. Before registration in `SOURCE_ADAPTERS`, record:
+
+- official/authoritative owner and URL;
+- current-year discovery behavior;
+- bounded Termux request cost and content type;
+- stable item/event identifier;
+- exact product/brand evidence;
+- award-tier semantics;
+- failure/stale behavior;
+- one read-only live production probe.
+
+A source-specific adapter is preferred over a universal parser. The adapter
+must fail closed on ambiguous product identity or result wording.
+
+### Retailer catalogues are enrichment-only research
+
+Mercadona, ALDI and Lidl public catalogue/search paths were explored during the
+POC. They are not award authorities and are not part of the award critical
+path.
+
+The Mercadona Salmorejo experiment demonstrated the identity risk: two current
+SKUs, 39901 and 39966, shared the visible name `Salmorejo fresco Hacendado`.
+The OCU report did not provide enough package identity to choose one without
+guessing. Consequently live price/image enrichment is disabled in the core
+feature. Missing or ambiguous enrichment must never suppress a verified award
+post.
+
+See `research/2026-09-25-supermarket-product-awards.md` for the full source
+audit and ADR 0083 for the architecture boundary.
+
 ## Selection criteria
 
 - Prefer the responsible public authority.
