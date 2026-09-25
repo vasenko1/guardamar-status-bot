@@ -44,10 +44,15 @@ and a later live run failed on a Gemini timeout followed by an OpenRouter HTTP
 403. These are optional-model failures, not award-source failures.
 
 Future award adapters must parse their own verified source contract and return
-source-backed `ProductAwardCandidate` records. Do not solve a difficult new
-award source by routing arbitrary result pages through a generic LLM extractor.
-If a source cannot be parsed reliably and cheaply, leave it in research until a
-deterministic contract is proven.
+source-backed award records. ADR 0084 applies the same deterministic boundary
+to retailer matching: an LLM must not decide that an award product and a
+supermarket SKU are the same product, recover an ambiguous SKU, select a photo,
+or infer current availability from supplier/brand similarity.
+
+Do not solve a difficult new award or retail source by routing arbitrary pages
+through a generic LLM extractor. If an award source, retail product identity,
+current price, or exact media asset cannot be proven reliably and cheaply,
+leave that contribution out until a deterministic contract is proven.
 
 ## Approved runtime use
 
