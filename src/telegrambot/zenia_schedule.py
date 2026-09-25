@@ -150,6 +150,9 @@ def build_message(
         "🛍 <b>Гуардамар ↔ Zenia Boulevard</b>\n"
         "До торгового центра можно доехать без пересадок "
         "на автобусе Avanza.\n\n"
+        "🚌 <b>Маршрут:</b> Alicante ↔ Pilar de la Horadada\n"
+        "Из Гуардамара садитесь в сторону <b>Pilar de la Horadada</b>. "
+        "Обратно от Zenia Boulevard садитесь в сторону <b>Alicante</b>.\n\n"
         f"🗓 <b>{date_label(schedule.service_date, today)}</b>\n\n"
         "➡️ <b>Гуардамар → Zenia Boulevard</b>\n"
         + format_times(schedule.outbound)
