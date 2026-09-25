@@ -22,6 +22,7 @@ from .intercity_schedule import (
     fare_amount,
     format_times,
 )
+from .pinned import GUARDAMAR_BUS_STATION_MAP_URL
 
 ORIHUELA_ROUTE_KEY = "inland"
 ORIGIN = "GUARDAMAR DEL SEGURA"
