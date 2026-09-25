@@ -194,7 +194,7 @@ class EmergencyRiskTests(unittest.TestCase):
         transition = _transition(value)
         self.assertIsNotNone(transition)
         self.assertIn("Экстремальная пожарная опасность сегодня", transition)
-        self.assertIn("максимальный уровень риска — 3 из 3", transition)
+        self.assertIn("максимальный уровень — <b>3 из 3</b>", transition)
 
     def test_high_fire_transition_uses_calm_current_state_copy(self):
         value = EmergencyRiskState.empty()
@@ -301,7 +301,7 @@ class EmergencyRiskTests(unittest.TestCase):
 
         self.assertIsNotNone(message)
         self.assertIn("Экстремальная пожарная опасность сегодня", message)
-        self.assertIn("максимальный уровень риска — 3 из 3", message)
+        self.assertIn("максимальный уровень — <b>3 из 3</b>", message)
 
     def test_dry_thunderstorm_transitions_show_only_current_active_state(self):
         value = EmergencyRiskState.empty()
