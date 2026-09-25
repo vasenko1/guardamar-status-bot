@@ -31,7 +31,7 @@ from .pinned import DEFAULT_PINNED_STATE_PATH, PinnedGuideState, telegram_messag
 from .state import PublicationState, StateError
 from .telegram import TelegramError, is_ambiguous_send_failure, send_message
 
-STATE_VERSION = 4
+STATE_VERSION = 5
 TIMEZONE = ZoneInfo("Europe/Madrid")
 LINE_NUMBERS = {"line_1": "1", "line_2": "2"}
 ROUTE_META = {
@@ -41,6 +41,7 @@ ROUTE_META = {
     "alicante": ("🚌", "Гуардамар ↔ Alicante"),
     "elche": ("🚌", "Гуардамар ↔ Elche"),
     "inland": ("🚌", "Гуардамар ↔ Orihuela"),
+    "zenia": ("🛍", "Гуардамар ↔ Zenia Boulevard"),
 }
 MESSAGE_ORDER = ("schedule_changes", "route_changes", "fare_changes")
 EVENT_KINDS = {
@@ -84,6 +85,7 @@ def _empty_state() -> Dict[str, Any]:
         "alicante_next": None,
         "elche_next": None,
         "inland_next": None,
+        "zenia_next": None,
         "pending": None,
     }
 
@@ -376,6 +378,13 @@ def _migrate_v3(state: Mapping[str, Any]) -> Dict[str, Any]:
     return migrated
 
 
+def _migrate_v4(state: Mapping[str, Any]) -> Dict[str, Any]:
+    migrated = dict(state)
+    migrated["version"] = STATE_VERSION
+    migrated["zenia_next"] = None
+    return migrated
+
+
 def load_state(path: Path) -> Dict[str, Any]:
     if not path.exists():
         return _empty_state()
@@ -393,6 +402,8 @@ def load_state(path: Path) -> Dict[str, Any]:
         state = _migrate_v2(state)
     elif state.get("version") == 3:
         state = _migrate_v3(state)
+    elif state.get("version") == 4:
+        state = _migrate_v4(state)
     if (
         state.get("version") != STATE_VERSION
         or not _valid_urban_state(state.get("urban"))
@@ -401,6 +412,7 @@ def load_state(path: Path) -> Dict[str, Any]:
         or not _valid_alicante_state(state.get("alicante_next"))
         or not _valid_intercity_state(state.get("elche_next"))
         or not _valid_intercity_state(state.get("inland_next"))
+        or not _valid_intercity_state(state.get("zenia_next"))
         or not _valid_pending(state.get("pending"))
     ):
         raise TransportNotificationError(
@@ -418,6 +430,7 @@ def save_state(path: Path, state: Dict[str, Any]) -> None:
         or not _valid_alicante_state(state.get("alicante_next"))
         or not _valid_intercity_state(state.get("elche_next"))
         or not _valid_intercity_state(state.get("inland_next"))
+        or not _valid_intercity_state(state.get("zenia_next"))
         or not _valid_pending(state.get("pending"))
     ):
         raise TransportNotificationError(
@@ -811,6 +824,8 @@ def collect_changes(
     tomorrow_elche: Optional[IntercitySchedule] = None,
     inland_schedule: Optional[IntercitySchedule] = None,
     tomorrow_inland: Optional[IntercitySchedule] = None,
+    zenia_schedule: Optional[IntercitySchedule] = None,
+    tomorrow_zenia: Optional[IntercitySchedule] = None,
 ) -> Dict[str, Any]:
     """Collect only changes supported by accepted source data."""
 
@@ -956,6 +971,13 @@ def collect_changes(
         inland_schedule,
         today,
     )
+    _append_intercity_events(
+        events,
+        "zenia",
+        state.get("zenia_next"),
+        zenia_schedule,
+        today,
+    )
 
     airport_next = None
     if (
@@ -990,6 +1012,14 @@ def collect_changes(
         if (
             tomorrow_inland is not None
             and tomorrow_inland.service_date == today + timedelta(days=1)
+        )
+        else None
+    )
+    updated["zenia_next"] = (
+        _intercity_snapshot(tomorrow_zenia)
+        if (
+            tomorrow_zenia is not None
+            and tomorrow_zenia.service_date == today + timedelta(days=1)
         )
         else None
     )
@@ -1034,6 +1064,9 @@ def _departure_lines(route: str, event: Mapping[str, Any]) -> List[str]:
     elif route == "inland":
         outbound = "из Гуардамара в Orihuela"
         inbound = "из Orihuela в Гуардамар"
+    elif route == "zenia":
+        outbound = "из Гуардамара в Zenia Boulevard"
+        inbound = "из Zenia Boulevard в Гуардамар"
     else:
         raise TransportNotificationError(
             f"departure details are unsupported for route: {route}"
@@ -1139,7 +1172,7 @@ def build_message(
                         )
                 elif event["type"] == "departures_changed":
                     details.extend(_departure_lines(route, event))
-            if route in {"airport", "alicante", "elche", "inland"}:
+            if route in {"airport", "alicante", "elche", "inland", "zenia"}:
                 lines.append(f"• {target}")
                 lines.extend(f"  {detail}" for detail in details)
             else:
@@ -1259,9 +1292,13 @@ async def collect() -> None:
     inland_state = IntercityScheduleState(
         pinned_path.with_name("orihuela_schedule.json")
     )
+    zenia_state = IntercityScheduleState(
+        pinned_path.with_name("zenia_schedule.json")
+    )
     try:
         elche_bundle = elche_state.read()
         inland_bundle = inland_state.read()
+        zenia_bundle = zenia_state.read()
     except StateError as exc:
         raise TransportNotificationError(
             "accepted intercity schedule state is invalid"
@@ -1316,6 +1353,16 @@ async def collect() -> None:
         (
             inland_bundle.next
             if inland_bundle is not None
+            else None
+        ),
+        (
+            zenia_bundle.current
+            if zenia_bundle is not None
+            else None
+        ),
+        (
+            zenia_bundle.next
+            if zenia_bundle is not None
             else None
         ),
     )
