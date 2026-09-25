@@ -9,6 +9,7 @@ import unittest
 
 from telegrambot.airport_schedule import AirportSchedule, Fare
 from telegrambot.alicante_schedule import AlicanteFare, AlicanteSchedule
+from telegrambot.intercity_schedule import IntercityFare, IntercitySchedule
 from telegrambot.transport_notifications import (
     TransportNotificationError,
     _empty_state,
@@ -66,6 +67,21 @@ def _alicante(
         service_date=service_date,
         to_alicante=tuple(to),
         from_alicante=tuple(from_),
+        fare=fare,
+    )
+
+
+def _intercity(
+    service_date: date,
+    *,
+    to=("08:00", "10:00"),
+    from_=("09:00", "11:00"),
+    fare=None,
+):
+    return IntercitySchedule(
+        service_date=service_date,
+        outbound=tuple(to),
+        inbound=tuple(from_),
         fare=fare,
     )
 
@@ -404,7 +420,7 @@ class TransportNotificationTests(unittest.TestCase):
                 encoding="utf-8",
             )
             state = load_state(path)
-        assert state["version"] == 3
+        assert state["version"] == 4
         assert _kinds(state) == ["schedule_changes"]
 
 
@@ -576,6 +592,176 @@ class TransportNotificationTests(unittest.TestCase):
             state = load_state(path)
         assert state["version"] == 3
         assert state["alicante_next"] is None
+
+
+
+    def test_elche_exact_departure_and_fare_changes_are_collected(self):
+        today = date(2026, 9, 20)
+        state = _baseline(today)
+        state["elche_next"] = {
+            "service_date": today.isoformat(),
+            "outbound": ["08:00", "10:00"],
+            "inbound": ["09:00", "11:00"],
+            "fare": {
+                "cents": 360,
+                "from_price": False,
+                "effective_date": None,
+            },
+        }
+        result = collect_changes(
+            datetime(2026, 9, 20, 5, tzinfo=TZ),
+            _pinned(),
+            _schedule(today, fare=_fare()),
+            state,
+            _schedule(date(2026, 9, 21)),
+            None,
+            None,
+            _intercity(
+                today,
+                to=("08:00", "10:30"),
+                fare=IntercityFare(380),
+            ),
+            _intercity(
+                date(2026, 9, 21),
+                fare=IntercityFare(380),
+            ),
+        )
+        assert _kinds(result) == ["schedule_changes", "fare_changes"]
+        schedule_event = result["pending"]["messages"][0]["events"][0]
+        assert schedule_event["route"] == "elche"
+        assert schedule_event["added_to"] == ["10:30"]
+        assert schedule_event["removed_to"] == ["10:00"]
+        fare_event = result["pending"]["messages"][1]["events"][0]
+        assert fare_event["route"] == "elche"
+        assert fare_event["old_cents"] == 360
+        assert fare_event["new_cents"] == 380
+        assert result["elche_next"]["service_date"] == "2026-09-21"
+
+    def test_orihuela_same_date_baseline_avoids_weekend_false_positive(self):
+        today = date(2026, 9, 20)
+        state = _baseline(today)
+        state["inland_next"] = {
+            "service_date": "2026-09-19",
+            "outbound": ["06:20"],
+            "inbound": ["06:45"],
+            "fare": {
+                "cents": 345,
+                "from_price": False,
+                "effective_date": "2026-02-01",
+            },
+        }
+        result = collect_changes(
+            datetime(2026, 9, 20, 5, tzinfo=TZ),
+            _pinned(),
+            _schedule(today, fare=_fare()),
+            state,
+            _schedule(date(2026, 9, 21)),
+            None,
+            None,
+            None,
+            None,
+            _intercity(
+                today,
+                to=("09:30",),
+                from_=("08:00",),
+                fare=IntercityFare(
+                    345,
+                    effective_date=date(2026, 2, 1),
+                ),
+            ),
+            _intercity(date(2026, 9, 21)),
+        )
+        assert result["pending"] is None
+
+    def test_orihuela_fare_change_uses_authoritative_effective_date(self):
+        today = date(2026, 9, 20)
+        state = _baseline(today)
+        state["inland_next"] = {
+            "service_date": today.isoformat(),
+            "outbound": ["08:00", "10:00"],
+            "inbound": ["09:00", "11:00"],
+            "fare": {
+                "cents": 345,
+                "from_price": False,
+                "effective_date": "2026-02-01",
+            },
+        }
+        result = collect_changes(
+            datetime(2026, 9, 20, 5, tzinfo=TZ),
+            _pinned(),
+            _schedule(today, fare=_fare()),
+            state,
+            _schedule(date(2026, 9, 21)),
+            None,
+            None,
+            None,
+            None,
+            _intercity(
+                today,
+                fare=IntercityFare(
+                    365,
+                    effective_date=date(2026, 10, 1),
+                ),
+            ),
+            _intercity(date(2026, 9, 21)),
+        )
+        assert _kinds(result) == ["fare_changes"]
+        event = result["pending"]["messages"][0]["events"][0]
+        assert event["route"] == "inland"
+        assert event["effective_date"] == "2026-10-01"
+        message = build_message(
+            "fare_changes",
+            [event],
+            "-100123",
+            {"inland": 504},
+            today,
+        )
+        assert "с 1 октября" in message
+        assert "3,65 €" in message
+        assert "https://t.me/c/123/504" in message
+
+    def test_new_intercity_baselines_are_silent(self):
+        today = date(2026, 9, 20)
+        state = _baseline(today)
+        result = collect_changes(
+            datetime(2026, 9, 20, 5, tzinfo=TZ),
+            _pinned(),
+            _schedule(today, fare=_fare()),
+            state,
+            _schedule(date(2026, 9, 21)),
+            None,
+            None,
+            _intercity(today, fare=IntercityFare(360)),
+            _intercity(
+                date(2026, 9, 21),
+                fare=IntercityFare(360),
+            ),
+            _intercity(today, fare=IntercityFare(345)),
+            _intercity(
+                date(2026, 9, 21),
+                fare=IntercityFare(
+                    345,
+                    effective_date=date(2026, 2, 1),
+                ),
+            ),
+        )
+        assert result["pending"] is None
+        assert result["elche_next"]["fare"]["cents"] == 360
+        assert result["inland_next"]["fare"]["cents"] == 345
+
+    def test_v3_state_migrates_with_empty_new_route_baselines(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "transport.json"
+            legacy = _baseline()
+            legacy["version"] = 3
+            legacy["alicante_next"] = None
+            legacy.pop("elche_next", None)
+            legacy.pop("inland_next", None)
+            path.write_text(json.dumps(legacy), encoding="utf-8")
+            state = load_state(path)
+        assert state["version"] == 4
+        assert state["elche_next"] is None
+        assert state["inland_next"] is None
 
 
 class TransportDeliveryTests(unittest.IsolatedAsyncioTestCase):
