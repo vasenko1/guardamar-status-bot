@@ -16,63 +16,69 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
-      - name: Inspect current Avanza schedule response
+      - name: Probe both Avanza directions and dates
         run: |
           python - <<'PY'
+          import html as htmlmod
           import http.cookiejar
           import re
           import urllib.parse
           import urllib.request
+          from datetime import datetime, timedelta
+          from zoneinfo import ZoneInfo
 
-          BASE = "https://regular.autobusing.com"
-          URL = BASE + "/info?empresa=costa-azul&locale=es"
-          cj = http.cookiejar.CookieJar()
-          opener = urllib.request.build_opener(
-              urllib.request.HTTPCookieProcessor(cj)
-          )
+          BASE="https://regular.autobusing.com"
+          START=BASE+"/info?empresa=costa-azul&locale=es"
+          cj=http.cookiejar.CookieJar()
+          opener=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
           headers={"User-Agent":"Mozilla/5.0","Accept":"text/html"}
-          with opener.open(urllib.request.Request(URL,headers=headers),timeout=30) as r:
+          with opener.open(urllib.request.Request(START,headers=headers),timeout=30) as r:
               initial=r.read().decode("utf-8","replace")
-          print("INITIAL_LINKS")
-          for m in re.findall(r'(?is)(?:src|href)=["\']([^"\']+)["\']',initial):
-              if "js" in m or "info" in m or "venta" in m:
-                  print(m)
-          print("INITIAL_JS_CLUES")
-          for m in re.findall(r'(?is).{0,180}(?:autocomplete|ajax|origen|destino|horarios).{0,280}',initial):
-              print(re.sub(r'\s+',' ',m)[:600])
-
-          fields={
-              "empresa":"costa-azul",
-              "venta[origen_nombre]":"GUARDAMAR",
-              "venta[destino_nombre]":"ALICANTE",
-              "venta[fecha_ida]":"25/09/2026",
-              "venta[fecha_vta]":"",
-              "venta[tipo_iyv]":"ida",
-          }
-          action=BASE+"/info/horarios"
-          req=urllib.request.Request(
-              action,
-              data=urllib.parse.urlencode(fields).encode(),
-              method="POST",
-              headers={
-                  **headers,
-                  "Content-Type":"application/x-www-form-urlencoded",
-                  "Referer":URL,
-              },
-          )
-          with opener.open(req,timeout=30) as r:
-              result=r.read().decode("utf-8","replace")
-              print("RESULT_URL",r.geturl(),"STATUS",r.status,"LEN",len(result))
-          print("RESULT_TITLE", re.findall(r'(?is)<title[^>]*>(.*?)</title>',result)[:3])
-          for label, pat in [
-              ("TABLE",r'(?is)<table[^>]*>.*?</table>'),
-              ("ROW",r'(?is)<tr[^>]*>.*?</tr>'),
-              ("ERROR",r'(?is).{0,120}(?:error|aviso|no hay|sin servicio|incorrect).{0,240}'),
-              ("INPUT",r'(?is)<input\b[^>]*>'),
-              ("JS",r'(?is).{0,140}(?:precio|salida|llegada|hora|trayecto).{0,260}'),
-          ]:
-              vals=re.findall(pat,result)
-              print(label+"_COUNT",len(vals))
-              for v in vals[:30]:
-                  print(label,re.sub(r'\s+',' ',v)[:900])
+          hidden={}
+          for tag in re.findall(r'(?is)<input\b[^>]*>', initial):
+              n=re.search(r'name=["\']([^"\']+)["\']',tag,re.I)
+              t=re.search(r'type=["\']([^"\']+)["\']',tag,re.I)
+              v=re.search(r'value=["\']([^"\']*)["\']',tag,re.I)
+              if n and t and t.group(1).lower()=="hidden":
+                  hidden[n.group(1)]=htmlmod.unescape(v.group(1) if v else "")
+          today=datetime.now(ZoneInfo("Europe/Madrid")).date()
+          for day in (today,today+timedelta(days=1)):
+              for origin,destination in (("GUARDAMAR","ALICANTE"),("ALICANTE","GUARDAMAR")):
+                  fields=dict(hidden)
+                  fields.update({
+                      "venta[origen_nombre]":origin,
+                      "venta[destino_nombre]":destination,
+                      "venta[fecha_ida]":day.strftime("%d/%m/%Y"),
+                      "venta[fecha_vta]":"",
+                      "venta[tipo_iyv]":"ida",
+                  })
+                  req=urllib.request.Request(
+                      BASE+"/info/horarios",
+                      data=urllib.parse.urlencode(fields).encode(),
+                      method="POST",
+                      headers={
+                          **headers,
+                          "Content-Type":"application/x-www-form-urlencoded",
+                          "Referer":START,
+                      },
+                  )
+                  with opener.open(req,timeout=30) as r:
+                      page=r.read().decode("utf-8","replace")
+                  rows=re.findall(
+                      r'(?is)<tr[^>]*>\s*<td[^>]*>\s*<strong>(\d{2}:\d{2})</strong>\s*</td>\s*'
+                      r'<td[^>]*>\s*<strong>(\d{2}:\d{2})</strong>\s*</td>\s*'
+                      r'<td[^>]*class=["\'][^"\']*numeric[^"\']*["\'][^>]*>\s*([0-9]+,[0-9]{2})\s*€?\s*</td>',
+                      page,
+                  )
+                  route_text=" ".join(re.sub(r'<[^>]+>',' ',page).split())
+                  print(
+                      day, origin, "->", destination,
+                      "rows",len(rows),
+                      "first",rows[:2],
+                      "last",rows[-2:],
+                      "prices",sorted(set(p for _,_,p in rows)),
+                      "route_names",origin in route_text.upper() and destination in route_text.upper(),
+                  )
+                  if not rows:
+                      raise SystemExit("missing rows")
           PY
