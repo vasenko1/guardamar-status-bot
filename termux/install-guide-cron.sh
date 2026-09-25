@@ -8,6 +8,7 @@ SYNC="$PROJECT_DIR/termux/sync-guide.sh"
 BATHING="$PROJECT_DIR/termux/sync-bathing-water.sh"
 PUBLISH="$PROJECT_DIR/termux/publish-course-notifications.sh"
 BLOOD="$PROJECT_DIR/termux/publish-blood-donation.sh"
+CELEBRATION="$PROJECT_DIR/termux/publish-celebration-alert.sh"
 SH_BIN=$(command -v sh)
 BACKUP_DIR="$HOME/.cache/crontab"
 CURRENT=$(mktemp)
@@ -35,6 +36,10 @@ if [ ! -f "$PUBLISH" ]; then
 fi
 if [ ! -f "$BLOOD" ]; then
     echo "ОШИБКА: publish-blood-donation.sh не найден" >&2
+    exit 1
+fi
+if [ ! -f "$CELEBRATION" ]; then
+    echo "ОШИБКА: publish-celebration-alert.sh не найден" >&2
     exit 1
 fi
 
@@ -71,7 +76,7 @@ if [ ! -f "$BACKUP_DIR/crontab.before-guide" ]; then
     cp "$CURRENT" "$BACKUP_DIR/crontab.before-guide"
 fi
 
-awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" -v sync="$SYNC" -v bathing="$BATHING" -v publish="$PUBLISH" -v blood="$BLOOD" -v shbin="$SH_BIN" '
+awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" -v sync="$SYNC" -v bathing="$BATHING" -v publish="$PUBLISH" -v blood="$BLOOD" -v celebration="$CELEBRATION" -v shbin="$SH_BIN" '
     $0 == begin { managed = 1; next }
     $0 == end { managed = 0; next }
     managed { next }
@@ -82,6 +87,7 @@ awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" -v sync="$SYNC" -v bathing="$B
     $0 == "35 19 1-15 9 * " shbin " " bathing { next }
     $0 == "42 9,11 * * * " shbin " " publish { next }
     $0 == "45 16 * * * " shbin " " blood { next }
+    $0 == "0 18 * * * " shbin " " celebration { next }
     { print }
 ' "$CURRENT" >"$UPDATED"
 mv "$UPDATED" "$CURRENT"
@@ -98,8 +104,9 @@ mv "$UPDATED" "$CURRENT"
         "45 19 15 9 * $SH_BIN $SYNC" \
         "42 9,11 * * * $SH_BIN $PUBLISH" \
         "45 16 * * * $SH_BIN $BLOOD" \
+        "0 18 * * * $SH_BIN $CELEBRATION" \
         "$END_MARKER"
 } | crontab -
 
 sv up crond
-echo "Справочник: 09:02 ежедневно; зоны купания 19:35 ежедневно 01.06-15.09; Zona Azul 19:45 14.06/15.09; занятия 09:42 и retry 11:42; донорство 16:45 Europe/Madrid"
+echo "Справочник: 09:02 ежедневно; зоны купания 19:35 ежедневно 01.06-15.09; Zona Azul 19:45 14.06/15.09; занятия 09:42 и retry 11:42; донорство 16:45; праздники 18:00 Europe/Madrid"
