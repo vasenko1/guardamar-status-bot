@@ -1,0 +1,76 @@
+name: Orihuela exact-date probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - name: Install package
+        run: python -m pip install -e .
+      - name: Probe Bus Siguenza returned date markers
+        run: |
+          python - <<'PY'
+          import re
+          import urllib.parse
+          import urllib.request
+          from datetime import datetime, timedelta
+          from zoneinfo import ZoneInfo
+
+          from telegrambot import airport_schedule as bus
+
+          today = datetime.now(ZoneInfo("Europe/Madrid")).date()
+          for day in (today, today + timedelta(days=1)):
+              body = urllib.parse.urlencode({
+                  "accion": 3,
+                  "idioma": "es",
+                  "FECHASALIDA": day.strftime("%d/%m/%Y"),
+                  "ORIGEN": "GUARDAMAR DEL SEGURA",
+                  "DESTINO": "ORIHUELA",
+              }).encode("ascii")
+              request = urllib.request.Request(
+                  bus.SEARCH_URL,
+                  data=body,
+                  headers={
+                      "Accept": "text/html",
+                      "Content-Type": "application/x-www-form-urlencoded",
+                      "User-Agent": bus.USER_AGENT,
+                  },
+                  method="POST",
+              )
+              payload, final_url, headers, status = bus._open_bounded(
+                  request, bus.HTML_LIMIT_BYTES
+              )
+              text = payload.decode("utf-8", "replace")
+              print("=== DATE", day, "STATUS", status, "URL", final_url, "===")
+              requested = day.strftime("%d/%m/%Y")
+              print("REQUESTED_LITERAL_COUNT", text.count(requested))
+
+              patterns = [
+                  r'FECHASALIDA[^\n]{0,200}',
+                  r'fecha[^\n]{0,200}',
+                  r'\d{2}/\d{2}/\d{4}',
+                  r'\d{4}-\d{2}-\d{2}',
+              ]
+              seen = set()
+              for pattern in patterns:
+                  for match in re.finditer(pattern, text, re.I):
+                      snippet = " ".join(match.group(0).split())
+                      if snippet not in seen:
+                          seen.add(snippet)
+                          print("MARKER", repr(snippet))
+              print("INPUTS_WITH_DATE")
+              for match in re.finditer(
+                  r'<input[^>]+(?:FECHASALIDA|fecha)[^>]*>', text, re.I
+              ):
+                  print(repr(" ".join(match.group(0).split())))
+          PY
