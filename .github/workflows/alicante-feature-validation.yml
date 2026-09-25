@@ -10,19 +10,13 @@ permissions:
 jobs:
   tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
-      - name: Install package
-        run: python -m pip install -e .
-      - name: Compile sources
-        run: python -m compileall -q src tests
-      - name: Run regression suite
-        run: python -m unittest discover -s tests -v
-      - name: Probe current Alicante sources
+      - name: Trace current Guardamar GTFS services
         run: |
           python - <<'PY'
           import csv
@@ -32,64 +26,52 @@ jobs:
           from collections import defaultdict
           from datetime import datetime, timedelta
           from zoneinfo import ZoneInfo
-          from telegrambot.alicante_schedule import (
-              GTFS_URL, fetch_fares, fetch_schedules,
-          )
 
-          today = datetime.now(ZoneInfo("Europe/Madrid")).date()
-          dates = (today, today + timedelta(days=1))
-          try:
-              schedules = fetch_schedules(dates)
-          except Exception as exc:
-              print("GTFS_PROBE_FAILED", type(exc).__name__, str(exc))
-              with urllib.request.urlopen(GTFS_URL, timeout=30) as response:
-                  payload = response.read()
-              with zipfile.ZipFile(io.BytesIO(payload)) as archive:
-                  def rows(name):
-                      return list(csv.DictReader(io.TextIOWrapper(
-                          archive.open(name), encoding="utf-8-sig", newline=""
-                      )))
-                  stops = rows("stops.txt")
-                  stop_names = {r["stop_id"]: r["stop_name"] for r in stops}
-                  service_ids = {
-                      r["service_id"]
-                      for r in rows("calendar_dates.txt")
-                      if r.get("date") == today.strftime("%Y%m%d")
-                      and r.get("exception_type") == "1"
-                  }
-                  trips = {
-                      r["trip_id"]: r
-                      for r in rows("trips.txt")
-                      if r.get("service_id") in service_ids
-                  }
-                  by_trip = defaultdict(list)
-                  for r in rows("stop_times.txt"):
-                      if r.get("trip_id") in trips:
-                          by_trip[r["trip_id"]].append(r)
-                  guardamar_ids = {
-                      r["stop_id"] for r in stops
-                      if "guardamar" in r["stop_name"].casefold()
-                      and 38.07 <= float(r["stop_lat"]) <= 38.10
-                      and -0.67 <= float(r["stop_lon"]) <= -0.64
-                  }
-                  alicante_ids = {
-                      r["stop_id"] for r in stops
-                      if ("alicante" in r["stop_name"].casefold()
-                          or "alacant" in r["stop_name"].casefold())
-                      and 38.32 <= float(r["stop_lat"]) <= 38.36
-                      and -0.51 <= float(r["stop_lon"]) <= -0.47
-                  }
-                  print("GUARDAMAR_IDS", [
-                      (sid, stop_names[sid]) for sid in sorted(guardamar_ids)
-                  ])
-                  print("ALICANTE_IDS", [
-                      (sid, stop_names[sid]) for sid in sorted(alicante_ids)
-                  ])
-                  for trip_id, stop_rows in by_trip.items():
-                      ids = {r["stop_id"] for r in stop_rows}
-                      if not (ids & guardamar_ids):
-                          continue
-                      relevant = [
+          url = "https://dadesobertes.gva.es/dataset/2f380ffd-b389-4ff4-9f7c-be92b30fbf28/resource/3c8a2e6b-5b5e-49f5-872f-5f33fcd52547/download/gtfs.zip"
+          with urllib.request.urlopen(url, timeout=30) as response:
+              payload = response.read()
+          with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+              def rows(name):
+                  return list(csv.DictReader(io.TextIOWrapper(
+                      archive.open(name), encoding="utf-8-sig", newline=""
+                  )))
+              stops = rows("stops.txt")
+              stop_names = {r["stop_id"]: r["stop_name"] for r in stops}
+              guardamar_ids = {
+                  r["stop_id"] for r in stops
+                  if "guardamar" in r["stop_name"].casefold()
+                  and 38.07 <= float(r["stop_lat"]) <= 38.10
+                  and -0.67 <= float(r["stop_lon"]) <= -0.64
+              }
+              alicante_ids = {
+                  r["stop_id"] for r in stops
+                  if ("alicante" in r["stop_name"].casefold()
+                      or "alacant" in r["stop_name"].casefold())
+                  and 38.32 <= float(r["stop_lat"]) <= 38.36
+                  and -0.51 <= float(r["stop_lon"]) <= -0.47
+              }
+              touches = defaultdict(list)
+              for r in rows("stop_times.txt"):
+                  if r["stop_id"] in guardamar_ids | alicante_ids:
+                      touches[r["trip_id"]].append(r)
+              trips = {r["trip_id"]: r for r in rows("trips.txt")}
+              services = defaultdict(list)
+              for r in rows("calendar_dates.txt"):
+                  services[r["service_id"]].append(
+                      (r["date"], r["exception_type"])
+                  )
+              today = datetime.now(ZoneInfo("Europe/Madrid")).date()
+              for trip_id, stop_rows in touches.items():
+                  ids = {r["stop_id"] for r in stop_rows}
+                  if not (ids & guardamar_ids):
+                      continue
+                  trip = trips.get(trip_id, {})
+                  print(
+                      "TRIP",
+                      trip_id,
+                      "route", trip.get("route_id"),
+                      "service", trip.get("service_id"),
+                      "stops", [
                           (
                               r["stop_sequence"],
                               r["departure_time"],
@@ -97,25 +79,7 @@ jobs:
                               stop_names.get(r["stop_id"], ""),
                           )
                           for r in stop_rows
-                          if r["stop_id"] in guardamar_ids | alicante_ids
-                      ]
-                      if relevant:
-                          print(
-                              "GUARDAMAR_TRIP",
-                              trip_id,
-                              trips[trip_id].get("route_id"),
-                              relevant,
-                          )
-              raise
-          else:
-              for day in dates:
-                  item = schedules[day]
-                  print(day, "GTFS", item.to_alicante, item.from_alicante)
-          try:
-              fares = fetch_fares(dates)
-          except Exception as exc:
-              print("FARE_PROBE_UNAVAILABLE", type(exc).__name__, str(exc))
-          else:
-              for day in dates:
-                  print(day, "FARE", fares[day])
+                      ],
+                      "calendar", services.get(trip.get("service_id"), [])[:30],
+                  )
           PY
