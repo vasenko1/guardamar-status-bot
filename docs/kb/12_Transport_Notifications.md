@@ -98,8 +98,8 @@ The Guardamar ↔ Orihuela card uses Bus Sigüenza's exact-date search. Today an
 tomorrow are queried during the existing 05:00 transport sync; each accepted
 date must contain both Guardamar→Orihuela and Orihuela→Guardamar departure
 panels. The operator result does not echo the submitted service date, so the
-adapter verifies the exact date on the request side and does not pretend that
-the response contains a date marker that is not there.
+adapter explicitly sends and tests the exact `FECHASALIDA` request field and
+does not pretend that the response contains a date marker that is not there.
 
 The ordinary one-way fare comes from the official CE-714 tariff PDF and only
 from the validated `TARIFA BASE GENERAL` Guardamar↔Orihuela row. Tariff
