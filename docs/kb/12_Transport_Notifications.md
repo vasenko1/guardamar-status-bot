@@ -65,16 +65,19 @@ classes are not inferred.
 ### Alicante
 
 The Guardamar ↔ Alicante card is refreshed during the same 05:00 transport
-sync. The official Generalitat interurban-bus GTFS provides the exact service
-date and departures for today and tomorrow. Tomorrow is stored as the
+sync. The bounded Avanza/Costa Azul public planner is the single source for the
+exact service date, departures and basic one-way fare. The adapter uses normal
+HTML GET/POST requests; it does not require a browser.
+
+Today and tomorrow are queried in both directions. Tomorrow is stored as the
 comparison baseline and is compared only with the same service date on the
 next morning, so normal weekday/weekend differences do not create false
-alerts.
+alerts. A first baseline is silent.
 
-The optional basic one-way fare is read from the bounded Avanza/Costa Azul
-planner for the exact service date. A first baseline is silent. Fare or
-departure disappearance caused by an unavailable/invalid source is not treated
-as a cancellation or price change.
+The timetable is accepted only when the requested route/date and a bounded
+departure table validate. Price is optional: if its markup cannot be validated,
+the current timetable remains publishable without a price. Missing/invalid
+source data is never treated as a cancellation or fare change.
 
 Alicante does not currently emit a synthetic seasonal-period event: different
 daily arrays are not enough evidence to label a summer/winter transition.
