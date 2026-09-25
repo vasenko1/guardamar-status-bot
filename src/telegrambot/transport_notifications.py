@@ -18,18 +18,23 @@ from .airport_schedule import (
     AirportScheduleState,
     fetch_schedule,
 )
+from .alicante_schedule import (
+    AlicanteSchedule,
+    AlicanteScheduleState,
+)
 from .branding import FOOTER, with_footer
 from .pinned import DEFAULT_PINNED_STATE_PATH, PinnedGuideState, telegram_message_link
 from .state import PublicationState, StateError
 from .telegram import TelegramError, is_ambiguous_send_failure, send_message
 
-STATE_VERSION = 2
+STATE_VERSION = 3
 TIMEZONE = ZoneInfo("Europe/Madrid")
 LINE_NUMBERS = {"line_1": "1", "line_2": "2"}
 ROUTE_META = {
     "line_1": ("🚌", "Городской автобус · Линия 1"),
     "line_2": ("🚌", "Городской автобус · Линия 2"),
     "airport": ("✈️", "Аэропорт Alicante-Elche"),
+    "alicante": ("🚌", "Гуардамар ↔ Alicante"),
 }
 MESSAGE_ORDER = ("schedule_changes", "route_changes", "fare_changes")
 EVENT_KINDS = {
@@ -70,6 +75,7 @@ def _empty_state() -> Dict[str, Any]:
         "urban": {},
         "fare": None,
         "airport_next": None,
+        "alicante_next": None,
         "pending": None,
     }
 
@@ -122,6 +128,16 @@ def _valid_airport_state(value: Any) -> bool:
     return True
 
 
+def _valid_alicante_state(value: Any) -> bool:
+    if value is None:
+        return True
+    try:
+        _decode_alicante_snapshot(value)
+    except TransportNotificationError:
+        return False
+    return True
+
+
 def _valid_event(event: Any) -> bool:
     if (
         not isinstance(event, dict)
@@ -141,6 +157,9 @@ def _valid_event(event: Any) -> bool:
             date.fromisoformat(effective_date)
         except ValueError:
             return False
+        for field in ("old_from", "new_from"):
+            if field in event and not isinstance(event[field], bool):
+                return False
     elif event_type == "departures_changed":
         for field in ("added_to", "removed_to", "added_from", "removed_from"):
             values = event.get(field)
@@ -322,6 +341,13 @@ def _migrate_v1(state: Mapping[str, Any]) -> Dict[str, Any]:
     return migrated
 
 
+def _migrate_v2(state: Mapping[str, Any]) -> Dict[str, Any]:
+    migrated = dict(state)
+    migrated["version"] = STATE_VERSION
+    migrated["alicante_next"] = None
+    return migrated
+
+
 def load_state(path: Path) -> Dict[str, Any]:
     if not path.exists():
         return _empty_state()
@@ -335,11 +361,14 @@ def load_state(path: Path) -> Dict[str, Any]:
         raise TransportNotificationError("transport notification state is invalid")
     if state.get("version") == 1:
         state = _migrate_v1(state)
+    elif state.get("version") == 2:
+        state = _migrate_v2(state)
     if (
         state.get("version") != STATE_VERSION
         or not _valid_urban_state(state.get("urban"))
         or not _valid_fare_state(state.get("fare"))
         or not _valid_airport_state(state.get("airport_next"))
+        or not _valid_alicante_state(state.get("alicante_next"))
         or not _valid_pending(state.get("pending"))
     ):
         raise TransportNotificationError(
@@ -354,6 +383,7 @@ def save_state(path: Path, state: Dict[str, Any]) -> None:
         or not _valid_urban_state(state.get("urban"))
         or not _valid_fare_state(state.get("fare"))
         or not _valid_airport_state(state.get("airport_next"))
+        or not _valid_alicante_state(state.get("alicante_next"))
         or not _valid_pending(state.get("pending"))
     ):
         raise TransportNotificationError(
@@ -444,6 +474,101 @@ def _airport_diff(
     }
 
 
+def _alicante_snapshot(schedule: AlicanteSchedule) -> Dict[str, Any]:
+    return {
+        "service_date": schedule.service_date.isoformat(),
+        "to_alicante": list(schedule.to_alicante),
+        "from_alicante": list(schedule.from_alicante),
+        "fare": (
+            None
+            if schedule.fare is None
+            else {
+                "cents": schedule.fare.cents,
+                "from_price": schedule.fare.from_price,
+            }
+        ),
+    }
+
+
+def _decode_alicante_snapshot(
+    raw: Any,
+) -> Tuple[date, Tuple[str, ...], Tuple[str, ...], Optional[Tuple[int, bool]]]:
+    if not isinstance(raw, dict):
+        raise TransportNotificationError(
+            "Alicante notification baseline is invalid"
+        )
+    try:
+        service_date = date.fromisoformat(raw["service_date"])
+        to_alicante = tuple(raw["to_alicante"])
+        from_alicante = tuple(raw["from_alicante"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise TransportNotificationError(
+            "Alicante notification baseline is invalid"
+        ) from exc
+    for values in (to_alicante, from_alicante):
+        if (
+            not 1 <= len(values) <= 64
+            or len(set(values)) != len(values)
+            or tuple(sorted(values)) != values
+            or not all(
+                isinstance(value, str)
+                and len(value) == 5
+                and value[2] == ":"
+                and value[:2].isdigit()
+                and value[3:].isdigit()
+                and 0 <= int(value[:2]) <= 23
+                and 0 <= int(value[3:]) <= 59
+                for value in values
+            )
+        ):
+            raise TransportNotificationError(
+                "Alicante notification baseline is invalid"
+            )
+    fare = raw.get("fare")
+    decoded_fare = None
+    if fare is not None:
+        if (
+            not isinstance(fare, dict)
+            or not isinstance(fare.get("cents"), int)
+            or isinstance(fare.get("cents"), bool)
+            or not 100 <= fare["cents"] <= 2_000
+            or not isinstance(fare.get("from_price"), bool)
+        ):
+            raise TransportNotificationError(
+                "Alicante notification baseline is invalid"
+            )
+        decoded_fare = (fare["cents"], fare["from_price"])
+    return service_date, to_alicante, from_alicante, decoded_fare
+
+
+def _alicante_diff(
+    baseline: Any,
+    current: Optional[AlicanteSchedule],
+    today: date,
+) -> Optional[Dict[str, Any]]:
+    if baseline is None or current is None or current.service_date != today:
+        return None
+    baseline_date, old_to, old_from, _ = _decode_alicante_snapshot(baseline)
+    if baseline_date != today:
+        return None
+    added_to = [value for value in current.to_alicante if value not in old_to]
+    removed_to = [value for value in old_to if value not in current.to_alicante]
+    added_from = [
+        value for value in current.from_alicante if value not in old_from
+    ]
+    removed_from = [
+        value for value in old_from if value not in current.from_alicante
+    ]
+    if not any((added_to, removed_to, added_from, removed_from)):
+        return None
+    return {
+        "added_to": added_to,
+        "removed_to": removed_to,
+        "added_from": added_from,
+        "removed_from": removed_from,
+    }
+
+
 def _fare_snapshot(
     schedule: Optional[AirportSchedule],
 ) -> Optional[Dict[str, Any]]:
@@ -475,6 +600,8 @@ def collect_changes(
     airport_schedule: Optional[AirportSchedule],
     state: Dict[str, Any],
     tomorrow_schedule: Optional[AirportSchedule],
+    alicante_schedule: Optional[AlicanteSchedule] = None,
+    tomorrow_alicante: Optional[AlicanteSchedule] = None,
 ) -> Dict[str, Any]:
     """Collect only changes supported by accepted source data."""
 
@@ -568,6 +695,44 @@ def collect_changes(
             "effective_date": current_fare["effective_date"],
         })
 
+    alicante_event = _alicante_diff(
+        state.get("alicante_next"), alicante_schedule, today
+    )
+    if alicante_event is not None:
+        events.append({
+            "type": "departures_changed",
+            "route": "alicante",
+            **alicante_event,
+        })
+
+    if (
+        alicante_schedule is not None
+        and alicante_schedule.service_date == today
+        and alicante_schedule.fare is not None
+        and state.get("alicante_next") is not None
+    ):
+        baseline_date, _, _, baseline_fare = _decode_alicante_snapshot(
+            state["alicante_next"]
+        )
+        current_fare_value = (
+            alicante_schedule.fare.cents,
+            alicante_schedule.fare.from_price,
+        )
+        if (
+            baseline_date == today
+            and baseline_fare is not None
+            and baseline_fare != current_fare_value
+        ):
+            events.append({
+                "type": "fare_changed",
+                "route": "alicante",
+                "old_cents": baseline_fare[0],
+                "new_cents": current_fare_value[0],
+                "old_from": baseline_fare[1],
+                "new_from": current_fare_value[1],
+                "effective_date": today.isoformat(),
+            })
+
     airport_next = None
     if (
         tomorrow_schedule is not None
@@ -580,6 +745,14 @@ def collect_changes(
     if current_fare is not None:
         updated["fare"] = current_fare
     updated["airport_next"] = airport_next
+    updated["alicante_next"] = (
+        _alicante_snapshot(tomorrow_alicante)
+        if (
+            tomorrow_alicante is not None
+            and tomorrow_alicante.service_date == today + timedelta(days=1)
+        )
+        else None
+    )
     updated["pending"] = (
         {
             "created_date": today.isoformat(),
@@ -608,7 +781,17 @@ def _times(values: List[str]) -> str:
     return ", ".join(rendered[:-1]) + f" и {rendered[-1]}"
 
 
-def _airport_lines(event: Mapping[str, Any]) -> List[str]:
+def _departure_lines(route: str, event: Mapping[str, Any]) -> List[str]:
+    if route == "airport":
+        outbound = "из Гуардамара в аэропорт"
+        inbound = "из аэропорта в Гуардамар"
+    elif route == "alicante":
+        outbound = "из Гуардамара в Alicante"
+        inbound = "из Alicante в Гуардамар"
+    else:
+        raise TransportNotificationError(
+            f"departure details are unsupported for route: {route}"
+        )
     result = []
     added_to = list(event.get("added_to", []))
     removed_to = list(event.get("removed_to", []))
@@ -618,22 +801,22 @@ def _airport_lines(event: Mapping[str, Any]) -> List[str]:
     if added_to:
         prefix = "Добавлен рейс" if len(added_to) == 1 else "Добавлены рейсы"
         result.append(
-            f"{prefix} из Гуардамара в аэропорт в {_times(added_to)}."
+            f"{prefix} {outbound} в {_times(added_to)}."
         )
     if removed_to:
         prefix = "Рейса" if len(removed_to) == 1 else "Рейсов"
         result.append(
-            f"{prefix} из Гуардамара в аэропорт в {_times(removed_to)} больше нет."
+            f"{prefix} {outbound} в {_times(removed_to)} больше нет."
         )
     if added_from:
         prefix = "Добавлен рейс" if len(added_from) == 1 else "Добавлены рейсы"
         result.append(
-            f"{prefix} из аэропорта в Гуардамар в {_times(added_from)}."
+            f"{prefix} {inbound} в {_times(added_from)}."
         )
     if removed_from:
         prefix = "Рейса" if len(removed_from) == 1 else "Рейсов"
         result.append(
-            f"{prefix} из аэропорта в Гуардамар в {_times(removed_from)} больше нет."
+            f"{prefix} {inbound} в {_times(removed_from)} больше нет."
         )
     return result
 
@@ -709,8 +892,8 @@ def build_message(
                             "с понедельника по субботу, по воскресеньям отдельное расписание"
                         )
                 elif event["type"] == "departures_changed":
-                    details.extend(_airport_lines(event))
-            if route == "airport":
+                    details.extend(_departure_lines(route, event))
+            if route in {"airport", "alicante"}:
                 lines.append(f"• {target}")
                 lines.extend(f"  {detail}" for detail in details)
             else:
@@ -737,13 +920,18 @@ def build_message(
             effective = date.fromisoformat(str(event["effective_date"]))
             old = _amount(int(event["old_cents"]))
             new = _amount(int(event["new_cents"]))
+            old_prefix = "от " if event.get("old_from") is True else ""
+            new_prefix = "от " if event.get("new_from") is True else ""
             if effective > today:
                 detail = (
-                    f"с {_date_label(effective)} обычный билет будет стоить "
-                    f"<b>{new}</b> вместо {old}"
+                    f"с {_date_label(effective)} билет будет стоить "
+                    f"<b>{new_prefix}{new}</b> вместо {old_prefix}{old}"
                 )
             else:
-                detail = f"обычный билет теперь стоит <b>{new}</b> вместо {old}"
+                detail = (
+                    f"билет теперь стоит <b>{new_prefix}{new}</b> "
+                    f"вместо {old_prefix}{old}"
+                )
             lines.append(f"• {target}: {detail}.")
         lines.extend([
             "",
@@ -782,6 +970,16 @@ async def collect() -> None:
             "accepted airport schedule state is invalid"
         ) from exc
 
+    alicante_state = AlicanteScheduleState(
+        pinned_path.with_name("alicante_schedule.json")
+    )
+    try:
+        alicante_bundle = alicante_state.read()
+    except StateError as exc:
+        raise TransportNotificationError(
+            "accepted Alicante schedule state is invalid"
+        ) from exc
+
     now = datetime.now(TIMEZONE)
     tomorrow_schedule = None
     try:
@@ -803,6 +1001,16 @@ async def collect() -> None:
         airport_schedule,
         state,
         tomorrow_schedule,
+        (
+            alicante_bundle.current
+            if alicante_bundle is not None
+            else None
+        ),
+        (
+            alicante_bundle.next
+            if alicante_bundle is not None
+            else None
+        ),
     )
     save_state(state_path, updated)
     logging.info(
