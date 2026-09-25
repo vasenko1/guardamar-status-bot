@@ -62,12 +62,29 @@ The fare parser tracks only the verified standard `TARIFA BASE GENERAL`
 Guardamar-airport amount. Discounts, cards, senior fares and other tariff
 classes are not inferred.
 
+### Alicante
+
+The Guardamar ↔ Alicante card is refreshed during the same 05:00 transport
+sync. The official Generalitat interurban-bus GTFS provides the exact service
+date and departures for today and tomorrow. Tomorrow is stored as the
+comparison baseline and is compared only with the same service date on the
+next morning, so normal weekday/weekend differences do not create false
+alerts.
+
+The optional basic one-way fare is read from the bounded Avanza/Costa Azul
+planner for the exact service date. A first baseline is silent. Fare or
+departure disappearance caused by an unavailable/invalid source is not treated
+as a cancellation or price change.
+
+Alicante does not currently emit a synthetic seasonal-period event: different
+daily arrays are not enough evidence to label a summer/winter transition.
+
 ### Other transport cards
 
-Alicante, Elche, Hospital de Torrevieja, the south/Torrevieja-Zenia-Pilar
-route, Orihuela and Universidad de Alicante remain useful linked cards but do
-not currently have accepted comparable state in the bot. They therefore emit
-no change notifications. A future reliable bounded adapter can project route
+Elche, Hospital de Torrevieja, the south/Torrevieja-Zenia-Pilar route,
+Orihuela and Universidad de Alicante remain useful linked cards but do not
+currently have accepted comparable state in the bot. They therefore emit no
+change notifications. A future reliable bounded adapter can project route
 events into the same `transport_notifications.py` flow without creating a
 new notification subsystem.
 
@@ -82,4 +99,5 @@ fallback.
 A missing source row or card never proves cancellation. Temporary diversions
 and event closures belong to the existing mobility/emergency path.
 
-See `adr/0065-transport-change-notifications.md`.
+See `adr/0065-transport-change-notifications.md` and
+`adr/0081-alicante-date-specific-timetable.md`.
