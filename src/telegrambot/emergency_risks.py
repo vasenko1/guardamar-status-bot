@@ -809,7 +809,7 @@ def _transition(
             sections.append([
                 "⚡ <b>Сегодня возможны сухие грозы</b>",
                 "",
-                "Для зоны Гуардамара на сегодня отмечена возможность "
+                "Для зоны Гуардамара сегодня отмечена вероятность "
                 "сухих гроз.",
             ])
         # Level 1 is the ordinary baseline. It is stored silently instead of
