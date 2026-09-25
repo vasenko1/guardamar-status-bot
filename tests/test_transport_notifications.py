@@ -523,6 +523,28 @@ class TransportNotificationTests(unittest.TestCase):
         assert "от 4,50 €" in message
         assert "4,20 €" in message
 
+    def test_alicante_same_minimum_fare_mode_change_has_clear_copy(self):
+        today = date(2026, 9, 20)
+        event = {
+            "type": "fare_changed",
+            "route": "alicante",
+            "old_cents": 495,
+            "new_cents": 495,
+            "old_from": False,
+            "new_from": True,
+            "effective_date": today.isoformat(),
+        }
+        message = build_message(
+            "fare_changes",
+            [event],
+            "-100123",
+            {"alicante": 503},
+            today,
+        )
+        assert "цена теперь зависит от рейса" in message
+        assert "от 4,95 €" in message
+        assert "вместо 4,95 €" not in message
+
     def test_alicante_first_comparable_baseline_is_silent(self):
         today = date(2026, 9, 20)
         state = _baseline(today)
