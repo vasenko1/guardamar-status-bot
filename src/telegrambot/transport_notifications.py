@@ -157,9 +157,6 @@ def _valid_event(event: Any) -> bool:
             date.fromisoformat(effective_date)
         except ValueError:
             return False
-        for field in ("old_from", "new_from"):
-            if field in event and not isinstance(event[field], bool):
-                return False
     elif event_type == "departures_changed":
         for field in ("added_to", "removed_to", "added_from", "removed_from"):
             values = event.get(field)
@@ -198,6 +195,9 @@ def _valid_event(event: Any) -> bool:
             date.fromisoformat(effective_date)
         except ValueError:
             return False
+        for field in ("old_from", "new_from"):
+            if field in event and not isinstance(event[field], bool):
+                return False
     elif event_type == "route_changed":
         detail = event.get("detail")
         if detail is not None and (
