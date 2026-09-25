@@ -404,7 +404,7 @@ class TransportNotificationTests(unittest.TestCase):
                 encoding="utf-8",
             )
             state = load_state(path)
-        assert state["version"] == 2
+        assert state["version"] == 3
         assert _kinds(state) == ["schedule_changes"]
 
 
