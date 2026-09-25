@@ -22,3 +22,24 @@ jobs:
         run: python -m compileall -q src tests
       - name: Run regression suite
         run: python -m unittest discover -s tests -v
+      - name: Probe current Alicante sources
+        run: |
+          python - <<'PY'
+          from datetime import datetime, timedelta
+          from zoneinfo import ZoneInfo
+          from telegrambot.alicante_schedule import fetch_fares, fetch_schedules
+
+          today = datetime.now(ZoneInfo("Europe/Madrid")).date()
+          dates = (today, today + timedelta(days=1))
+          schedules = fetch_schedules(dates)
+          for day in dates:
+              item = schedules[day]
+              print(day, "GTFS", item.to_alicante, item.from_alicante)
+          try:
+              fares = fetch_fares(dates)
+          except Exception as exc:
+              print("FARE_PROBE_UNAVAILABLE", type(exc).__name__, str(exc))
+          else:
+              for day in dates:
+                  print(day, "FARE", fares[day])
+          PY
