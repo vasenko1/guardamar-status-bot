@@ -143,7 +143,6 @@ from .blood_donation import (
     refresh_blood_donation_catalog_if_due,
 )
 from .celebrations import (
-    CelebrationAlertState,
     DEFAULT_ALERT_STATE_PATH as DEFAULT_CELEBRATION_ALERT_STATE_PATH,
     build_celebration_alert,
 )
@@ -1190,7 +1189,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
 
         bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
         chat_id = _required_environment("TELEGRAM_CHAT_ID")
-        celebration_state = CelebrationAlertState(Path(os.environ.get(
+        celebration_state = TomorrowEventState(Path(os.environ.get(
             "CELEBRATION_ALERT_STATE_PATH",
             DEFAULT_CELEBRATION_ALERT_STATE_PATH,
         )))
@@ -1212,7 +1211,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
 
             celebration_state.mark_uncertain(publication.target_date)
             try:
-                await send_message(
+                message_id = await send_message(
                     bot_token,
                     chat_id,
                     publication.message,
@@ -1229,7 +1228,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     return 0
                 celebration_state.clear(publication.target_date)
                 raise
-            celebration_state.mark_sent(publication.target_date)
+            celebration_state.mark_sent(publication.target_date, message_id)
 
         logging.info(
             "SUCCESS: celebration alert delivered for %s",
