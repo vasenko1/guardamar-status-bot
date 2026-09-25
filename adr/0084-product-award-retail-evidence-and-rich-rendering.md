@@ -191,6 +191,18 @@ Examples:
 Do not reintroduce runtime LLM editorial generation merely to make articles
 longer.
 
+### Award result precedence is source-specific
+
+The shared engine must not maintain one universal ranking across unrelated
+award systems. Great Taste stars, OCU value labels, cheese medals, category
+places and wine distinctions do not form one meaningful common ladder.
+
+If one source can expose several results for the same source-native event, that
+adapter must canonicalize or explicitly prioritize them before returning the
+candidate. The core may merge complementary metadata for an identical event
+but must not decide that one unrelated award vocabulary is globally "higher"
+than another.
+
 ### Discovery can be award-first or retailer-first
 
 Award-first sources discover awards and then attempt an exact retail join.
