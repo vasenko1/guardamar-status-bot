@@ -229,4 +229,3 @@ def build_celebration_alert(now: datetime) -> Optional[CelebrationAlertPublicati
         target_date=target_day,
         message=with_footer("\n".join(lines)),
     )
-
