@@ -743,6 +743,39 @@ def _beach_operational_lines(
     return lines
 
 
+def _celebration_date_label(value: date) -> str:
+    return f"{value.day} {MONTHS_GENITIVE[value.month]}"
+
+
+def _celebration_line(celebration, local_day: date) -> str:
+    if celebration.start_date == celebration.end_date:
+        suffix = "сегодня"
+    elif local_day == celebration.start_date:
+        suffix = (
+            "сегодня первый день · до "
+            + _celebration_date_label(celebration.end_date)
+        )
+    elif local_day == celebration.end_date:
+        suffix = "сегодня последний день"
+    else:
+        suffix = "до " + _celebration_date_label(celebration.end_date)
+    return f"• {html.escape(celebration.name)} · {suffix}"
+
+
+def _linked_holiday_status_line(holiday, local_day: date) -> str:
+    if local_day.weekday() < 5:
+        return {
+            "local": "  🏛️ Официальный городской выходной.",
+            "regional": "  🏛️ Региональный праздник · официальный выходной.",
+            "national": "  🏛️ Национальный праздник · официальный выходной.",
+        }.get(holiday.scope, "  🏛️ Официальный выходной день.")
+    return {
+        "local": "  🏛️ Официальный городской праздник.",
+        "regional": "  🏛️ Официальный региональный праздник.",
+        "national": "  🏛️ Официальный национальный праздник.",
+    }.get(holiday.scope, "  🏛️ Официальный праздник.")
+
+
 def build_message(
     digest: MorningDigest,
     now: Optional[datetime] = None,
@@ -945,7 +978,50 @@ def build_message(
     else:
         ordered_holidays = []
 
-    if ordered_holidays:
+    local_day = warning_now.astimezone(GUARDAMAR_TIMEZONE).date()
+    ordered_celebrations = tuple(sorted(
+        digest.celebrations,
+        key=lambda celebration: (
+            celebration.start_date,
+            celebration.end_date,
+            celebration.name,
+        ),
+    ))
+    linked_holiday = None
+    if len(ordered_holidays) == 1 and any(
+        ordered_holidays[0].date in celebration.official_holiday_dates
+        for celebration in ordered_celebrations
+    ):
+        linked_holiday = ordered_holidays[0]
+    visible_holidays = (
+        [] if linked_holiday is not None else ordered_holidays
+    )
+
+    if ordered_celebrations:
+        heading = (
+            "🎉 <b>Сегодня в Гуардамаре:</b>"
+            if ordered_holidays
+            else (
+                "🎉 <b>В городе праздник:</b>"
+                if len(ordered_celebrations) == 1
+                else "🎉 <b>В городе праздники:</b>"
+            )
+        )
+        lines.extend(["", heading])
+        lines.extend(
+            _celebration_line(celebration, local_day)
+            for celebration in ordered_celebrations
+        )
+        for holiday in visible_holidays:
+            lines.append(
+                f"• {html.escape(holiday.name)} — "
+                f"{scope_labels[holiday.scope]}"
+            )
+        if linked_holiday is not None:
+            lines.append(_linked_holiday_status_line(linked_holiday, local_day))
+        elif ordered_holidays and ordered_holidays[0].date.weekday() < 5:
+            lines.append("  🏛️ Официальный выходной день.")
+    elif ordered_holidays:
         heading = (
             "🎉 <b>Праздник сегодня:</b>"
             if len(ordered_holidays) == 1
@@ -953,11 +1029,9 @@ def build_message(
         )
         lines.extend(["", heading])
         for holiday in ordered_holidays:
-            label = scope_labels.get(holiday.scope)
-            if label is None:
-                continue
             lines.append(
-                f"• {html.escape(holiday.name)} — {label}"
+                f"• {html.escape(holiday.name)} — "
+                f"{scope_labels[holiday.scope]}"
             )
         if ordered_holidays[0].date.weekday() < 5:
             lines.append("  🏛️ Официальный выходной день.")
