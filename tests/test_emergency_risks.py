@@ -193,10 +193,10 @@ class EmergencyRiskTests(unittest.TestCase):
         value["previfoc"]["fire_level"] = 3
         transition = _transition(value)
         self.assertIsNotNone(transition)
-        self.assertIn("Экстремальный риск лесных пожаров", transition)
+        self.assertIn("Экстремальная пожарная опасность сегодня", transition)
         self.assertIn("максимальный уровень риска — 3 из 3", transition)
 
-    def test_high_fire_transition_uses_calm_resident_copy(self):
+    def test_high_fire_transition_uses_calm_current_state_copy(self):
         value = EmergencyRiskState.empty()
         value["published"]["fire_level"] = 1
         value["published"]["dry_level"] = 1
@@ -210,26 +210,22 @@ class EmergencyRiskTests(unittest.TestCase):
         message = _transition(value)
 
         self.assertIsNotNone(message)
-        self.assertIn("🔥 <b>Повышен риск лесных пожаров</b>", message)
+        self.assertIn("🌲 <b>Пожарная опасность сегодня</b>", message)
         self.assertIn(
-            "сегодня действует высокий уровень риска — 2 из 3",
+            "установлен высокий уровень — <b>2 из 3</b>",
             message,
         )
         self.assertIn(
-            "прогулку, пикник или барбекю в природной зоне",
+            "В природных зонах сегодня стоит особенно внимательно "
+            "обращаться с огнём.",
             message,
         )
-        self.assertIn("не бросайте тлеющие окурки", message)
-        self.assertIn(
-            "Это профилактическая информация о пожарной опасности, "
-            "а не сообщение о произошедшем пожаре.",
-            message,
-        )
-        self.assertNotIn("500 м", message)
-        self.assertNotIn("сельскохозяйственных растительных остатков", message)
-        self.assertNotIn("🚫", message)
+        self.assertNotIn("барбекю", message)
+        self.assertNotIn("окурки", message)
+        self.assertNotIn("произошедшем пожаре", message)
+        self.assertNotIn("Previfoc", message)
 
-    def test_extreme_fire_transition_is_clear_but_not_alarmist(self):
+    def test_extreme_fire_transition_is_current_and_not_alarmist(self):
         value = EmergencyRiskState.empty()
         value["published"]["fire_level"] = 2
         value["published"]["dry_level"] = 1
@@ -243,17 +239,20 @@ class EmergencyRiskTests(unittest.TestCase):
         message = _transition(value)
 
         self.assertIsNotNone(message)
-        self.assertIn("🔥 <b>Экстремальный риск лесных пожаров</b>", message)
-        self.assertIn("максимальный уровень риска — 3 из 3", message)
-        self.assertIn("будьте предельно осторожны", message)
-        self.assertIn("источниками огня и тлеющими окурками", message)
         self.assertIn(
-            "а не то, что пожар уже произошёл",
+            "🔥 <b>Экстремальная пожарная опасность сегодня</b>",
             message,
         )
-        self.assertNotIn("🚫", message)
+        self.assertIn(
+            "установлен максимальный уровень — <b>3 из 3</b>",
+            message,
+        )
+        self.assertIn("избегать любых источников огня", message)
+        self.assertIn("соблюдать действующие ограничения", message)
+        self.assertNotIn("произошёл", message)
+        self.assertNotIn("Previfoc", message)
 
-    def test_extreme_to_high_fire_transition_keeps_resident_guidance(self):
+    def test_extreme_to_high_fire_shows_current_high_state_only(self):
         value = EmergencyRiskState.empty()
         value["published"]["fire_level"] = 3
         value["published"]["dry_level"] = 1
@@ -267,15 +266,12 @@ class EmergencyRiskTests(unittest.TestCase):
         message = _transition(value)
 
         self.assertIsNotNone(message)
-        self.assertIn("🔥 <b>Риск лесных пожаров снижен</b>", message)
-        self.assertIn("с экстремального до высокого — 2 из 3", message)
-        self.assertIn("Риск остаётся повышенным", message)
-        self.assertIn("не бросайте тлеющие окурки", message)
-        self.assertNotIn("500 м", message)
-        self.assertNotIn("сельскохозяйственных растительных остатков", message)
-        self.assertNotIn("🚫", message)
+        self.assertIn("🌲 <b>Пожарная опасность сегодня</b>", message)
+        self.assertIn("высокий уровень — <b>2 из 3</b>", message)
+        self.assertNotIn("снижен", message)
+        self.assertNotIn("экстремального", message)
 
-    def test_fire_transition_to_level_one_is_short_and_reassuring(self):
+    def test_fire_transition_to_level_one_is_not_public(self):
         for previous_fire in (2, 3):
             with self.subTest(previous_fire=previous_fire):
                 value = EmergencyRiskState.empty()
@@ -288,25 +284,7 @@ class EmergencyRiskTests(unittest.TestCase):
                     "observed_at": NOW.isoformat(),
                 }
 
-                message = _transition(value)
-
-                self.assertIsNotNone(message)
-                self.assertIn("🔥 <b>Риск лесных пожаров снижен</b>", message)
-                self.assertIn(
-                    "уровень 1 из 3 — низкий/средний риск",
-                    message,
-                )
-                self.assertIn(
-                    "Повышенный уровень риска больше не действует.",
-                    message,
-                )
-                self.assertIn(
-                    "Обычные правила осторожного обращения с огнём "
-                    "в природных зонах сохраняются.",
-                    message,
-                )
-                self.assertNotIn("сезонные правила", message)
-                self.assertNotIn("🚫", message)
+                self.assertIsNone(_transition(value))
 
     def test_direct_low_to_extreme_fire_transition_uses_extreme_copy(self):
         value = EmergencyRiskState.empty()
@@ -322,10 +300,10 @@ class EmergencyRiskTests(unittest.TestCase):
         message = _transition(value)
 
         self.assertIsNotNone(message)
-        self.assertIn("Экстремальный риск лесных пожаров", message)
+        self.assertIn("Экстремальная пожарная опасность сегодня", message)
         self.assertIn("максимальный уровень риска — 3 из 3", message)
 
-    def test_dry_thunderstorm_transitions_cover_probable_high_and_clear(self):
+    def test_dry_thunderstorm_transitions_show_only_current_active_state(self):
         value = EmergencyRiskState.empty()
         value["published"]["fire_level"] = 1
         value["published"]["dry_level"] = 1
@@ -338,29 +316,45 @@ class EmergencyRiskTests(unittest.TestCase):
 
         message = _transition(value)
         self.assertIsNotNone(message)
-        self.assertIn("Сухие грозы возможны сегодня", message)
-        self.assertIn("повышен риск возникновения сухих гроз", message)
-        self.assertIn("профилактическая информация о погодном риске", message)
+        self.assertIn("⚡ <b>Сегодня возможны сухие грозы</b>", message)
+        self.assertIn("сегодня отмечена вероятность сухих гроз", message)
+        self.assertNotIn("профилактическая информация", message)
 
         value["published"]["dry_level"] = 2
         value["previfoc"]["dry_thunderstorm_level"] = 3
         message = _transition(value)
         self.assertIsNotNone(message)
-        self.assertIn("Высокий риск сухих гроз", message)
+        self.assertIn("Высокий риск сухих гроз сегодня", message)
 
         value["published"]["dry_level"] = 3
         value["previfoc"]["dry_thunderstorm_level"] = 2
         message = _transition(value)
         self.assertIsNotNone(message)
-        self.assertIn("Риск сухих гроз снижен", message)
-        self.assertIn("остаются возможны", message)
+        self.assertIn("Сегодня возможны сухие грозы", message)
+        self.assertNotIn("снижен", message)
 
         value["published"]["dry_level"] = 2
         value["previfoc"]["dry_thunderstorm_level"] = 1
+        self.assertIsNone(_transition(value))
+
+    def test_mixed_fire_raise_and_dry_clearance_shows_only_current_fire_risk(self):
+        value = EmergencyRiskState.empty()
+        value["published"]["fire_level"] = 1
+        value["published"]["dry_level"] = 2
+        value["previfoc"] = {
+            "fire_level": 2,
+            "dry_thunderstorm_level": 1,
+            "alert_id": 7,
+            "observed_at": NOW.isoformat(),
+        }
+
         message = _transition(value)
+
         self.assertIsNotNone(message)
-        self.assertIn("Риск сухих гроз снят", message)
-        self.assertIn("больше не действует", message)
+        self.assertIn("🌲 <b>Пожарная опасность сегодня</b>", message)
+        self.assertNotIn("сухих гроз снят", message.casefold())
+        self.assertNotIn("✅", message)
+        self.assertNotIn("Previfoc", message)
 
     def test_dry_thunderstorm_high_can_publish_without_fire_transition(self):
         value = EmergencyRiskState.empty()
@@ -462,9 +456,13 @@ class EmergencyRiskTests(unittest.TestCase):
                     })
                     self.assertIsNone(_transition(migrated))
                     if old_dry == 3:
-                        for new_dry in (2, 1):
-                            migrated["previfoc"]["dry_thunderstorm_level"] = new_dry
-                            self.assertIn("Риск сухих гроз", _transition(migrated))
+                        migrated["previfoc"]["dry_thunderstorm_level"] = 2
+                        self.assertIn(
+                            "Сегодня возможны сухие грозы",
+                            _transition(migrated),
+                        )
+                        migrated["previfoc"]["dry_thunderstorm_level"] = 1
+                        self.assertIsNone(_transition(migrated))
                     elif old_dry == 2:
                         migrated["previfoc"]["dry_thunderstorm_level"] = 3
                         self.assertIn("Высокий риск сухих гроз", _transition(migrated))
@@ -561,11 +559,11 @@ class EmergencyRiskTests(unittest.TestCase):
             self.assertEqual(result, "published")
             self.assertEqual(len(morning_calls), 1)
             self.assertIn(
-                "⚡ <b>Сухие грозы возможны сегодня</b>",
+                "⚡ <b>Сегодня возможны сухие грозы</b>",
                 morning_calls[0],
             )
             self.assertIn(
-                "Для зоны Гуардамара <b>повышен риск возникновения сухих гроз</b>.",
+                "Для зоны Гуардамара сегодня отмечена вероятность сухих гроз.",
                 morning_calls[0],
             )
             self.assertEqual(state.read()["published"]["dry_level"], 2)
@@ -626,7 +624,7 @@ class EmergencyRiskTests(unittest.TestCase):
             )
             self.assertEqual(result, "published")
             self.assertEqual(len(calls), 1)
-            self.assertIn("Сухие грозы возможны сегодня", calls[0])
+            self.assertIn("Сегодня возможны сухие грозы", calls[0])
 
 
     def test_previfoc_night_reversal_never_becomes_a_stale_notice(self):
@@ -739,10 +737,64 @@ class EmergencyRiskTests(unittest.TestCase):
 
             self.assertEqual(result, "published")
             self.assertEqual(len(calls), 1)
-            self.assertIn("Повышен риск лесных пожаров", calls[0])
-            self.assertIn("Сухие грозы возможны сегодня", calls[0])
+            self.assertIn("🌲 <b>Пожарная опасность сегодня</b>", calls[0])
+            self.assertIn("⚡ <b>Сегодня возможны сухие грозы</b>", calls[0])
             self.assertNotIn("гидролог", calls[0].casefold())
 
+
+    def test_silent_previfoc_clearance_advances_baseline_and_allows_reappearance(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = EmergencyRiskState(Path(directory) / "risk.json")
+            value = state.empty()
+            value["published"]["fire_level"] = 2
+            value["published"]["dry_level"] = 2
+            state.write(value)
+
+            async def cce():
+                return HYDRO_NONE
+
+            calls = []
+
+            async def publish(message):
+                calls.append(message)
+                return 100
+
+            async def clear_previfoc():
+                return PrevifocRisk(1, 1, 20)
+
+            result = asyncio.run(
+                monitor_emergency_risks(
+                    datetime.fromisoformat("2026-09-25T13:19:00+02:00"),
+                    state,
+                    publish,
+                    fetch_previfoc_fn=clear_previfoc,
+                    fetch_cce_html_fn=cce,
+                    fetch_cce_pdf_fn=cce,
+                )
+            )
+            self.assertEqual(result, "no_update")
+            self.assertEqual(calls, [])
+            stored = state.read()
+            self.assertEqual(stored["published"]["fire_level"], 1)
+            self.assertEqual(stored["published"]["dry_level"], 1)
+
+            async def active_again():
+                return PrevifocRisk(2, 2, 21)
+
+            result = asyncio.run(
+                monitor_emergency_risks(
+                    datetime.fromisoformat("2026-09-25T14:19:00+02:00"),
+                    state,
+                    publish,
+                    fetch_previfoc_fn=active_again,
+                    fetch_cce_html_fn=cce,
+                    fetch_cce_pdf_fn=cce,
+                )
+            )
+            self.assertEqual(result, "published")
+            self.assertEqual(len(calls), 1)
+            self.assertIn("Пожарная опасность сегодня", calls[0])
+            self.assertIn("Сегодня возможны сухие грозы", calls[0])
 
     def test_cce_failures_preserve_last_verified_active_state(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -853,9 +905,10 @@ class EmergencyRiskTests(unittest.TestCase):
             self.assertEqual(result, "published")
             self.assertEqual(len(delivered), 1)
             self.assertIn(
-                "Риск лесных пожаров снижен",
+                "🌲 <b>Пожарная опасность сегодня</b>",
                 delivered[0],
             )
+            self.assertNotIn("снижен", delivered[0])
 
 
 if __name__ == "__main__":
