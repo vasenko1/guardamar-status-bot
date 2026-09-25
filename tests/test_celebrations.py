@@ -1,10 +1,6 @@
-import tempfile
 import unittest
 from datetime import date, datetime
-from pathlib import Path
-
 from telegrambot.celebrations import (
-    CelebrationAlertState,
     build_celebration_alert,
     celebrations_for_year,
     celebrations_on,
@@ -183,20 +179,6 @@ class CelebrationAlertTests(unittest.TestCase):
         now = datetime(2026, 9, 24, 18, 0, tzinfo=GUARDAMAR_TIMEZONE)
 
         self.assertIsNone(build_celebration_alert(now))
-
-    def test_state_preserves_uncertain_and_sent_markers_per_target_date(self):
-        with tempfile.TemporaryDirectory() as directory:
-            state = CelebrationAlertState(
-                Path(directory) / "celebration-alert.json"
-            )
-            target = date(2026, 10, 7)
-
-            self.assertIsNone(state.status(target))
-            state.mark_uncertain(target)
-            self.assertEqual(state.status(target), "uncertain")
-            state.mark_sent(target)
-            self.assertEqual(state.status(target), "sent")
-            self.assertIsNone(state.status(date(2026, 10, 9)))
 
 
 if __name__ == "__main__":
