@@ -822,9 +822,12 @@ because the global queue can delay an item for several days. A failed price
 refresh omits the current-price sentence; it never causes an aggregator price
 or guessed match.
 
-Exact product photos are optional. They require exact SKU identity, bounded
-allowlisted media retrieval and a source-specific terms/reuse review. If media
-cannot be used safely, publish text-only.
+Retailer product photos are disabled by default. The 25 September legal
+review found explicit content-reuse restrictions for multiple target retailers,
+including Lidl, Consum, Carrefour, Alcampo, DIA and Masymas / Juan Fornés.
+Technical image availability may still help identity verification, but Telegram
+media requires a documented source-specific licence, permission or media policy
+that permits reuse. Otherwise publish text-only.
 
 See `research/2026-09-25-supermarket-product-awards.md` for the dated source
 matrix and ADRs 0083/0084 for architecture boundaries.
