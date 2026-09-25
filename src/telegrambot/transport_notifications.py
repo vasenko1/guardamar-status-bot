@@ -916,21 +916,48 @@ def build_message(
     else:
         lines.extend(["💶 <b>Изменилась стоимость проезда</b>", ""])
         for event in events:
-            target = _linked_route(str(event["route"]), chat_id, messages)
+            route = str(event["route"])
+            target = _linked_route(route, chat_id, messages)
             effective = date.fromisoformat(str(event["effective_date"]))
             old = _amount(int(event["old_cents"]))
             new = _amount(int(event["new_cents"]))
-            old_prefix = "от " if event.get("old_from") is True else ""
-            new_prefix = "от " if event.get("new_from") is True else ""
-            if effective > today:
+
+            if route == "alicante":
+                old_from = event.get("old_from") is True
+                new_from = event.get("new_from") is True
+                if old == new and old_from != new_from:
+                    if new_from:
+                        detail = (
+                            f"цена теперь зависит от рейса: "
+                            f"<b>от {new}</b>"
+                        )
+                    else:
+                        detail = (
+                            f"для найденных рейсов теперь единая цена: "
+                            f"<b>{new}</b>"
+                        )
+                else:
+                    old_prefix = "от " if old_from else ""
+                    new_prefix = "от " if new_from else ""
+                    if effective > today:
+                        detail = (
+                            f"с {_date_label(effective)} билет будет стоить "
+                            f"<b>{new_prefix}{new}</b> "
+                            f"вместо {old_prefix}{old}"
+                        )
+                    else:
+                        detail = (
+                            f"билет теперь стоит <b>{new_prefix}{new}</b> "
+                            f"вместо {old_prefix}{old}"
+                        )
+            elif effective > today:
                 detail = (
-                    f"с {_date_label(effective)} билет будет стоить "
-                    f"<b>{new_prefix}{new}</b> вместо {old_prefix}{old}"
+                    f"с {_date_label(effective)} обычный билет будет стоить "
+                    f"<b>{new}</b> вместо {old}"
                 )
             else:
                 detail = (
-                    f"билет теперь стоит <b>{new_prefix}{new}</b> "
-                    f"вместо {old_prefix}{old}"
+                    f"обычный билет теперь стоит <b>{new}</b> вместо {old}"
                 )
             lines.append(f"• {target}: {detail}.")
         lines.extend([
