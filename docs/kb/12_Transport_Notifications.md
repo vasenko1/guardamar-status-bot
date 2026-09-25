@@ -97,16 +97,23 @@ invalid source data never proves cancellation or a fare change.
 The Guardamar ↔ Orihuela card uses Bus Sigüenza's exact-date search. Today and
 tomorrow are queried during the existing 05:00 transport sync; each accepted
 date must contain both Guardamar→Orihuela and Orihuela→Guardamar departure
-panels.
+panels. The operator result does not echo the submitted service date, so the
+adapter verifies the exact date on the request side and does not pretend that
+the response contains a date marker that is not there.
 
 The ordinary one-way fare comes from the official CE-714 tariff PDF and only
 from the validated `TARIFA BASE GENERAL` Guardamar↔Orihuela row. Tariff
-changes are accepted only after stable PDF content and successful parsing.
-Tomorrow is retained only as the same-date comparison baseline, and the first
-baseline is silent.
+changes are accepted only after stable PDF content and successful parsing. A
+replacement tariff with a future effective date does not remove an already
+verified currently-effective fare from the card before that date. Tomorrow is
+retained only as the same-date comparison baseline, and the first baseline is
+silent.
 
 Neither Elche nor Orihuela synthesizes a seasonal-period event from ordinary
-daily timetable differences.
+daily timetable differences. The currently reviewed official evidence is not
+strong enough for a reusable recurring boundary: CE-714 line 1 is described
+as having winter/summer weekday frequencies without an exact period boundary,
+and the available Avanza summer dates are specific to 2026.
 
 ### Other transport cards
 
