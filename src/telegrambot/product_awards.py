@@ -40,7 +40,6 @@ VALLE_WCCC_2026_URL = (
     "https://valledesanjuan.com/"
     "ocho-premios-que-saben-a-esfuerzo-origen-y-oficio/"
 )
-VALLE_MERCADONA_URL = "https://valledesanjuan.com/productos/mercadona/"
 MERCADONA_API_ROOT = "https://tienda.mercadona.es/api/products"
 MERCADONA_GUARDAMAR_WAREHOUSE = "alc1"  # reviewed for postal code 03140
 REQUEST_TIMEOUT_SECONDS = 20
@@ -1073,41 +1072,16 @@ def load_wccc_item(url: str, year: int) -> AwardSourceItem:
 # Reviewed one-time launch seed
 # ---------------------------------------------------------------------------
 
-def _require_seed_phrase(document: PageDocument, phrase: str) -> None:
-    if not _phrase_present(document.text, phrase):
-        raise ProductAwardError(
-            f"reviewed starter evidence changed: {phrase}",
-            code="PARSER",
-        )
-
-
-def _valle_wccc_seed_candidates(
-    award_document: PageDocument,
-    retail_portfolio: PageDocument,
-) -> tuple[ProductAwardCandidate, ...]:
-    # The organizer does not expose a complete public machine-readable 2026
-    # result table. For this reviewed one-time seed only, Valle de San Juan's
-    # own entrant announcement is accepted because it gives exact scores and
-    # explicitly says these products are sold by Mercadona. Retail identity is
-    # independently revalidated against exact Mercadona SKU/EAN/supplier/recipe.
-    for phrase in (
-        "Con Trufa 99,30",
-        "Añejo 99,25",
-        "Afrutado 97,40",
-        "Ibérico Añejo 97,20",
-    ):
-        _require_seed_phrase(award_document, phrase)
-    for phrase in (
-        "Hacendado Curado Afrutado",
-        "Hacendado Añejo Fuerte",
-        "Hacendado Con Trufa",
-        "Hacendado Añejo Ibérico",
-    ):
-        _require_seed_phrase(retail_portfolio, phrase)
-
+def _valle_wccc_seed_candidates() -> tuple[ProductAwardCandidate, ...]:
+    # Reviewed launch data, verified 26 September 2026 from Valle de San Juan's
+    # own WCCC 2026 result announcement and Mercadona portfolio. Those pages are
+    # historical evidence and are not runtime dependencies because the producer
+    # host is not reliably reachable from the bounded bot transport. Dynamic
+    # retail identity, recipe, availability and price are still revalidated
+    # against Mercadona before every publication.
     common = dict(
         source_kind="wccc_valle_seed",
-        source_url=award_document.url,
+        source_url=VALLE_WCCC_2026_URL,
         award_body="World Championship Cheese Contest 2026",
         result_year=2026,
     )
@@ -1165,9 +1139,7 @@ def _valle_wccc_seed_candidates(
             editorial=AwardEditorialFacts(
                 **common_editorial,
                 headline_claim="получил выдающуюся оценку на мировом конкурсе",
-                product_summary=(
-                    "Долго выдержанный сыр из сырого овечьего молока."
-                ),
+                product_summary="Долго выдержанный сыр из сырого овечьего молока.",
                 tasting_notes=(
                     "интенсивный и стойкий вкус",
                     "ноты овечьего сливочного масла, кожи, ферментированных трав и злаков",
@@ -1244,16 +1216,7 @@ def reviewed_starter_product_awards(year: int) -> tuple[ProductAwardCandidate, .
     if year != 2026:
         return ()
 
-    award_document = _fetch_page(
-        VALLE_WCCC_2026_URL,
-        frozenset({"valledesanjuan.com", "www.valledesanjuan.com"}),
-    )
-    portfolio_document = _fetch_page(
-        VALLE_MERCADONA_URL,
-        frozenset({"valledesanjuan.com", "www.valledesanjuan.com"}),
-    )
-    valle = _valle_wccc_seed_candidates(award_document, portfolio_document)
-
+    valle = _valle_wccc_seed_candidates()
     top20 = load_wccc_item(WCCC_2026_TOP20_URL, 2026).candidates
     if len(top20) != 1:
         raise ProductAwardError(
