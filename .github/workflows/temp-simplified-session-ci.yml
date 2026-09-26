@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - refactor/simplify-session-grouping
+  pull_request:
+    branches:
+      - main
 
 jobs:
   test:
