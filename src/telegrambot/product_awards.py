@@ -106,14 +106,31 @@ class RetailEvidence:
     variant: Optional[str] = None
 
     def __post_init__(self) -> None:
-        if not self.retailer.strip():
+        if not isinstance(self.retailer, str) or not self.retailer.strip():
             raise ProductAwardError("retailer evidence needs a retailer", code="INVALID")
-        if self.relationship not in RETAIL_RELATIONSHIPS:
+        if (
+            not isinstance(self.relationship, str)
+            or self.relationship not in RETAIL_RELATIONSHIPS
+        ):
             raise ProductAwardError(
                 "unsupported retailer relationship",
                 code="INVALID",
             )
-        if self.relationship == "private_label" and not (self.label or "").strip():
+        for name, value in (
+            ("label", self.label),
+            ("product_id", self.product_id),
+            ("ean", self.ean),
+            ("product_url", self.product_url),
+            ("variant", self.variant),
+        ):
+            if value is not None and (
+                not isinstance(value, str) or not value.strip()
+            ):
+                raise ProductAwardError(
+                    f"invalid retail {name}",
+                    code="INVALID",
+                )
+        if self.relationship == "private_label" and self.label is None:
             raise ProductAwardError(
                 "private-label evidence needs the label",
                 code="INVALID",
