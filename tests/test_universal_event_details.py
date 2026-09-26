@@ -380,6 +380,8 @@ class UnchangedTextRefreshTests(unittest.IsolatedAsyncioTestCase):
                       new=AsyncMock(return_value=())),
                 patch("telegrambot.municipal_agenda._turismo_programme_events",
                       new=AsyncMock(return_value=((), {}))),
+                patch("telegrambot.municipal_agenda._turismo_text_programme_events",
+                      new=AsyncMock(return_value=((), {}))),
             ):
                 result = await refresh_municipal_catalog("key", now, path)
             model.assert_not_awaited()
