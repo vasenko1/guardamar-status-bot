@@ -1573,23 +1573,25 @@ async def _turismo_text_programme_events(
 
         try:
             extracted = await extract_agenda_text_events(api_key, article_text)
-            article_events = _normalize_turismo_programme_text(
+            all_article_events = _normalize_turismo_programme_text(
                 extracted, article_text
             )
-            article_events = tuple(
-                event
-                for event in article_events
-                if event.end_date >= local_day and event.start_date <= horizon
-            )
-            if len(article_events) < 2:
+            if len(all_article_events) < 2:
                 raise MunicipalAgendaError(
                     "Official Turismo programme article was not programme-shaped",
                     code="PROGRAMME-SHAPE",
                     description=(
-                        "официальная статья не дала нескольких будущих "
-                        "мероприятий"
+                        "официальная статья не дала нескольких "
+                        "подтверждённых мероприятий"
                     ),
                 )
+            article_events = tuple(
+                event
+                for event in all_article_events
+                if event.end_date >= local_day and event.start_date <= horizon
+            )
+            if not article_events:
+                continue
             article_events = _programme_article_metadata(
                 article_events, programme_title
             )
