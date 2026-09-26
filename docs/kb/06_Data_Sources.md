@@ -495,6 +495,21 @@ validated programme events overall. The adapter is text-first: it does not OCR
 arbitrary article images. Temporary source/model failures retain only
 compatible last-good version-3 facts.
 
+When a patronal programme is image-first on the municipal site, a separate
+Ayuntamiento backstop reads `https://www.guardamardelsegura.es/noticias/`.
+It considers at most two recent same-year fiesta-shaped posts and excludes
+Fiestas del Campo because that programme already has a dedicated adapter. A
+detail page is eligible only when it exposes one event-specific official
+`/wp-content/uploads/` programme image. New or changed posters receive two
+blind structured vision readings; only agreeing occurrences survive. The
+prompt treats tall two-column layouts and adjacent September/October dates as
+one programme and keeps separately timed same-day acts separate. Unchanged
+verified article state requires neither poster download nor model call. The
+adapter stores only normalized facts, article/poster hashes and URLs; raw HTML,
+poster bytes and model responses are not retained. Todo Cultura may reproduce
+the same programme in machine-readable text, but remains supplemental rather
+than the authority for a municipal poster.
+
 Dated Monday library film rows in the same official Turismo `CINE` text are
 also read deterministically on every existing page refresh, including when the
 text hash is unchanged. A row may contribute its concrete film title, duration,
