@@ -185,3 +185,41 @@ Before production promotion:
   downloads;
 - a full repository test run and production-equivalent catalogue preview must
   pass before merge/deploy.
+
+
+## Production verification of the first Turismo adapter
+
+The first production run after the generic Turismo article adapter was merged
+confirmed both the source path and a new completeness defect.
+
+At production commit `cdaa1ea9a12c79c9503e39b9813e3f108fc052ca` the 16:55
+municipal refresh created `sources.turismo_programme_text` for the Rosario
+article with WordPress ID `123664`, modified
+`2026-09-15T14:45:58`. The normalized catalog, however, contained only one
+current/future article event: the 15 October conference at 19:00 in the
+municipal library. The 26 September, 3 October, 4 October, 7 October and
+18 October programme dates were absent.
+
+This proves that article discovery was fixed but extraction completeness was
+not. The version-1 article cache would then have treated that partial result as
+authoritative on later unchanged runs.
+
+A live deterministic read of the same WordPress body found these block-leading
+dates:
+
+- 19 September;
+- 20 September;
+- 26 September;
+- 3 October;
+- 4 October;
+- 7 October;
+- 15 October;
+- 18 October.
+
+For a 26 September run, the completeness contract therefore requires
+26 September and 3/4/7/15/18 October. The introductory fiesta range is not used
+as a completeness row. The repaired adapter checks those dates against exact
+event start dates, performs at most one targeted recovery for missing dates,
+and rejects the article if coverage is still incomplete. Extractor version 2
+forces the production version-1 Rosario cache to be revalidated rather than
+retained.
