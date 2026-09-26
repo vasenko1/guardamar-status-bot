@@ -1117,7 +1117,7 @@ Implemented:
   exact product URL and variant evidence;
 - award event identity remains source-native and independent of retail price,
   stock and media;
-- state schema is version 5; no compatibility layer was added because the
+- state schema is version 6; no compatibility layer was added because the
   feature has not yet established production state;
 - the shared core no longer ranks unrelated award vocabularies;
 - OCU owns its own `Mejor del Análisis` vs `Compra Maestra` precedence;
@@ -1130,11 +1130,27 @@ Implemented:
   product-local distinctions so one product's tasting/quality statement cannot
   leak to another result;
 - the deterministic renderer distinguishes private label, exclusive and listed
-  products and accepts an optional freshly verified `current_price`;
-- current price, when provided, takes precedence over an award-study price in
-  public wording;
+  products;
+- publication-time retail enrichment now accepts a list of exact package
+  variants rather than one chosen price, so every verified package/price/unit
+  price can be shown without transferring an award to another SKU;
+- producer facts require an explicit production country; city/region remains
+  optional additional context;
+- headlines now lead with product + supermarket + award/result and keep numeric
+  score in the article body;
+- repeated award methodology renders in Telegram HTML
+  `<blockquote expandable>` rather than occupying the visible daily post;
+- OCU publication now requires overall/global score >=85/100 and sorts its own
+  eligible candidates by that native score; high partial subscores cannot pass
+  the gate;
 - delivery queue, per-source baseline, at-most-once Telegram semantics and
   one-item-per-day policy remain unchanged.
+
+The feed is intentionally **at most one** publication per day, not a quota.
+If no source-specific exceptional candidate passes its gate, publication stays
+silent. Future award adapters without a comparable overall 0-100 score must
+define a reviewed equivalent top-tier result such as category winner, Best of
+Class or Super Gold rather than treating any medal as sufficient.
 
 Deliberately **not** implemented yet:
 
