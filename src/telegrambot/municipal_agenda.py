@@ -597,7 +597,7 @@ def _session_common_facts(event: SourceEvent) -> tuple:
 def _session_source_plan(
     events: Tuple[SourceEvent, ...],
     blocked_dates: frozenset[date] = frozenset(),
-) -> Tuple[Tuple[str, Optional[str], Optional[int]], ...]:
+) -> Tuple[Tuple[str, Optional[str], Optional[int], Optional[int]], ...]:
     """Plan display titles and session metadata before any translation.
 
     Snapshot occurrences remain atomic. Only an explicit source marker such
@@ -605,8 +605,10 @@ def _session_source_plan(
     Incomplete ordinal sequences fail open and remain separate.
     """
 
-    plan: List[Tuple[str, Optional[str], Optional[int]]] = [
-        (event.title_es, None, None) for event in events
+    plan: List[
+        Tuple[str, Optional[str], Optional[int], Optional[int]]
+    ] = [
+        (event.title_es, None, None, None) for event in events
     ]
     candidates: Dict[tuple, List[Tuple[int, int, str]]] = {}
     for index, event in enumerate(events):
@@ -659,15 +661,18 @@ def _session_source_plan(
         }
         if len(base_titles) != 1:
             continue
-        display_title = members[0][2]
+        display_title = ordered_members[0][2]
         group_key = "session:" + "|".join((
             key[0].isoformat(),
             key[1],
             key[2] or "",
             key[3],
         ))
+        session_count = len(members)
         for index, order, _ in members:
-            plan[index] = (display_title, group_key, order)
+            plan[index] = (
+                display_title, group_key, order, session_count
+            )
     return tuple(plan)
 
 
@@ -3865,11 +3870,13 @@ async def fetch_today_municipal_events(
                 ),
                 session_group_key,
                 session_order,
+                session_count,
             )
             for source, (
                 display_source_title,
                 session_group_key,
                 session_order,
+                session_count,
             ) in planned
         ]
     else:
@@ -3919,17 +3926,25 @@ async def fetch_today_municipal_events(
                 translated_by_title[display_source_title],
                 session_group_key,
                 session_order,
+                session_count,
             )
             for source, (
                 display_source_title,
                 session_group_key,
                 session_order,
+                session_count,
             ) in planned
             if display_source_title in translated_by_title
         ]
     result = []
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
-    for source, title, session_group_key, session_order in translated_events:
+    for (
+        source,
+        title,
+        session_group_key,
+        session_order,
+        session_count,
+    ) in translated_events:
         starts_at = None
         ends_at = None
         if source.start_time:
@@ -4101,6 +4116,9 @@ async def fetch_today_municipal_events(
                 session_order=(
                     None if source.programme_title else session_order
                 ),
+                session_count=(
+                    None if source.programme_title else session_count
+                ),
                 is_final_day=(
                     source.start_date != source.end_date
                     and local_day == source.end_date
@@ -4122,7 +4140,7 @@ async def municipal_translation_items(
     session_plan = _session_source_plan(events, blocked_dates)
     items = list(dict.fromkeys(
         ("municipal_agenda", display_source_title)
-        for display_source_title, _, _ in session_plan
+        for display_source_title, _, _, _ in session_plan
     ))
     items.extend((
         (
