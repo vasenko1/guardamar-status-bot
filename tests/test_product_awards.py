@@ -600,7 +600,7 @@ class MercadonaRetailRefreshTests(unittest.TestCase):
                     "https://tienda.mercadona.es/product/50975/"
                     "queso-anejo-fuerte-oveja-hacendado-pieza"
                 ),
-                variant="pieza de peso variable",
+                variant="кусок переменного веса",
             ),
             score="99,25/100",
             editorial=AwardEditorialFacts(
@@ -685,7 +685,7 @@ class MercadonaRetailRefreshTests(unittest.TestCase):
     def test_current_publication_has_store_price_and_expandable_method(self):
         item = self.wccc_candidate()
         offer = RetailOfferVariant(
-            package="около 370 г",
+            package="около 370 г · кусок переменного веса",
             price="6,19 €",
             unit_price="16,74 €/кг",
             product_id="50952",
