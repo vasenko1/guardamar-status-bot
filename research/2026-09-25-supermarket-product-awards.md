@@ -1183,14 +1183,15 @@ Implemented:
 - bounded publication scan checks up to four queued items, so one temporarily
   unavailable/delisted product cannot block later verified candidates; skipped
   items remain queued and are not marked published;
-- delivery queue, per-source baseline, at-most-once Telegram semantics and
-  one-item-per-day policy remain unchanged.
+- delivery queue, per-source baseline and at-most-once Telegram semantics remain;
+- the former one-item-per-day product policy is superseded by category-first
+  selection and a three-local-day public delivery cooldown.
 
-The feed is intentionally **at most one** publication per day, not a quota.
-If no source-specific exceptional candidate passes its gate, publication stays
-silent. Future award adapters without a comparable overall 0-100 score must
-define a reviewed equivalent top-tier result such as category winner, Best of
-Class or Super Gold rather than treating any medal as sufficient.
+The feed is intentionally **at most one selected category winner every three
+local calendar days**, not a quota. If no category has an eligible ranked
+retail match, publication stays silent. Future adapters must preserve the
+source's real ordering and must not invent podium positions from unordered
+finalists or equal medal tiers.
 
 Deliberately **not** implemented yet:
 
