@@ -108,6 +108,9 @@ class OcuAdapterTests(unittest.TestCase):
         self.assertEqual(item.score, "70/100")
         self.assertEqual(item.source_price, "3 €/л")
         self.assertEqual(item.sample_size, 30)
+        self.assertEqual(item.retail.relationship, "private_label")
+        self.assertIn("professional_tasting", item.editorial.method_flags)
+        self.assertEqual(item.editorial.standout, "best_professional_tasting")
 
     def test_old_report_is_ignored_in_current_year(self):
         document = PageDocument(
@@ -272,6 +275,37 @@ class RendererTests(unittest.TestCase):
         self.assertIn("Исследование OCU", publication.message)
         self.assertIn("обЪявления Гуардамар", publication.message)
         self.assertNotIn("текущая цена", publication.message.casefold())
+
+    def test_ocu_rich_verified_facts_are_rendered_without_llm(self):
+        base = candidate()
+        item = ProductAwardCandidate(
+            source_kind=base.source_kind,
+            event_key=base.event_key,
+            source_url=base.source_url,
+            product_name=base.product_name,
+            result=base.result,
+            award_body=base.award_body,
+            result_year=base.result_year,
+            retail=base.retail,
+            score=base.score,
+            source_price=base.source_price,
+            editorial=AwardEditorialFacts(
+                comparison_size=30,
+                method_flags=(
+                    "labeling",
+                    "composition",
+                    "nutrition",
+                    "professional_tasting",
+                ),
+                standout="best_professional_tasting",
+                quality_label="Buena Elección",
+            ),
+        )
+        message = build_publication(item).message
+        self.assertIn("проверяли маркировку и состав", message)
+        self.assertIn("профессиональную дегустацию", message)
+        self.assertIn("лучшим по этому этапу", message)
+        self.assertIn("Buena Elección", message)
 
     def test_ocu_compra_maestra_is_not_described_as_best_quality(self):
         item = candidate(
