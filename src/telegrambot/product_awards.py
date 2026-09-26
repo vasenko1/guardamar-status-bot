@@ -267,7 +267,13 @@ def build_message(candidate: ReviewedCandidate, offer: RetailOffer) -> str:
         + html.escape(candidate.source_link_label)
         + "</a>"
     )
-    return with_footer(message)
+    rendered = with_footer(message)
+    if len(rendered) > 4096:
+        raise ProductAwardError(
+            "product-award message exceeds Telegram limit",
+            code="MESSAGE-LENGTH",
+        )
+    return rendered
 
 
 # Empty higher-priority source groups mean that their authoritative podium was
@@ -599,16 +605,30 @@ class ProductAwardState:
     def exclusive_run(self) -> Iterator[None]:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         lock_path = self.path.with_name(f".{self.path.name}.lock")
+        lock = None
         try:
-            with lock_path.open("a", encoding="utf-8") as lock:
-                os.chmod(lock_path, 0o600)
-                try:
-                    fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                except BlockingIOError as exc:
-                    raise ProductAwardError("another product-award run is active", code="LOCK") from exc
-                yield
+            lock = lock_path.open("a", encoding="utf-8")
+            os.chmod(lock_path, 0o600)
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            if lock is not None:
+                lock.close()
+            raise ProductAwardError(
+                "another product-award run is active",
+                code="LOCK",
+            ) from exc
         except OSError as exc:
-            raise ProductAwardError("product-award state could not be locked", code="STATE") from exc
+            if lock is not None:
+                lock.close()
+            raise ProductAwardError(
+                "product-award state could not be locked",
+                code="STATE",
+            ) from exc
+        try:
+            yield
+        finally:
+            assert lock is not None
+            lock.close()
 
 
 def _category_order(cursor: int) -> tuple[int, ...]:
