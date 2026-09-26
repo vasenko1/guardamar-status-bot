@@ -427,6 +427,113 @@ async def verify_agenda_poster_events(
     )
 
 
+def _extract_programme_poster_events(
+    api_key: str,
+    image: bytes,
+    mime_type: str,
+) -> Dict[str, Any]:
+    if mime_type not in IMAGE_MIME_TYPES:
+        raise GeminiError(
+            "Programme poster extraction requires an image",
+            code="CONTENT-TYPE",
+            description="официальная программа должна быть изображением",
+        )
+    prompt = (
+        "Read this official Guardamar del Segura event-specific programme "
+        "poster from scratch. The programme may span multiple dates and "
+        "multiple months. Return every explicitly dated public act visible on "
+        "the poster. Preserve distinct rows on the same date as distinct event "
+        "records when they have different explicit times; never merge a "
+        "transfer, mass, presentation, procession, concert, workshop or other "
+        "separately timed act into one generic event. Transcribe every visible "
+        "date and time digit exactly. Use null for an absent or illegible time "
+        "or place and never infer one. Make title_es concise but preserve the "
+        "explicit act type and named subject. Use ISO YYYY-MM-DD dates and "
+        "HH:MM times. The schema month field is compatibility metadata only; "
+        "it must not limit events from another month on the same poster. Set "
+        "evidence_es to null because the source is an image. Exclude decorative "
+        "headings and routine facility opening hours."
+    )
+    return _request_json(
+        api_key,
+        [
+            {"text": prompt},
+            {"inlineData": {
+                "mimeType": mime_type,
+                "data": base64.b64encode(image).decode("ascii"),
+            }},
+        ],
+        AGENDA_EXTRACTION_SCHEMA,
+        8_000,
+    )
+
+
+async def extract_programme_poster_events(
+    api_key: str,
+    image: bytes,
+    mime_type: str,
+) -> Dict[str, Any]:
+    """Read one event-specific official programme poster."""
+
+    return await asyncio.to_thread(
+        _extract_programme_poster_events,
+        api_key,
+        image,
+        mime_type,
+    )
+
+
+def _verify_programme_poster_events(
+    api_key: str,
+    image: bytes,
+    mime_type: str,
+) -> Dict[str, Any]:
+    if mime_type not in IMAGE_MIME_TYPES:
+        raise GeminiError(
+            "Programme poster verification requires an image",
+            code="CONTENT-TYPE",
+            description="проверка официальной программы требует изображение",
+        )
+    prompt = (
+        "Independently read this official Guardamar del Segura event-specific "
+        "programme poster. You have not seen another extraction. Return every "
+        "explicitly dated public act. Keep separately timed acts on the same "
+        "date as separate records and transcribe visible date/time digits "
+        "exactly. The poster may span multiple months; do not let the schema "
+        "month field exclude another visible month. Use null for any absent or "
+        "illegible time or place and never infer one. Preserve the explicit act "
+        "type in title_es. Use ISO dates and HH:MM times. Set evidence_es to "
+        "null because the source is an image."
+    )
+    return _request_json(
+        api_key,
+        [
+            {"text": prompt},
+            {"inlineData": {
+                "mimeType": mime_type,
+                "data": base64.b64encode(image).decode("ascii"),
+            }},
+        ],
+        AGENDA_EXTRACTION_SCHEMA,
+        8_000,
+    )
+
+
+async def verify_programme_poster_events(
+    api_key: str,
+    image: bytes,
+    mime_type: str,
+) -> Dict[str, Any]:
+    """Blind second read of an event-specific official programme poster."""
+
+    return await asyncio.to_thread(
+        _verify_programme_poster_events,
+        api_key,
+        image,
+        mime_type,
+    )
+
+
 def _extract_agenda_text_events(
     api_key: str,
     source_text: str,

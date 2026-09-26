@@ -210,7 +210,13 @@ allowed for the guide.
   blocks prove missing current/future occurrence dates, at most one targeted
   recovery extraction over a smaller official-text slice containing only those
   missing date sections. Unchanged verified version-3 articles require neither
-  detail reads nor model calls. The 05:10 refresh may read one Todo Cultura metadata page, bounded
+  detail reads nor model calls. The same refresh may read one bounded
+  Ayuntamiento news HTML index and at most two recent programme-shaped detail
+  pages. A detail page uses text first; only a changed/new, clearly
+  event-specific official programme image may trigger two independent image
+  readings, whose agreeing occurrences are retained. Unchanged Ayuntamiento
+  article fingerprints require no image/model read. No arbitrary article image
+  is processed. The 05:10 refresh may read one Todo Cultura metadata page, bounded
   to 100 records and 300 KiB, and up to
   six bounded detail records in at most two REST reads of four records and
   300 KiB each, while sending at most three selected programme

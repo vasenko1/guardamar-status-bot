@@ -337,3 +337,45 @@ The current catalog already had the 26 September 17:00 Bingo through Todo
 Cultura; the missing 19:50 traslado and 20:00 mass remained a separate
 same-day completeness problem to verify after the repaired recovery and, if
 needed, the planned Ayuntamiento poster backstop.
+
+
+## Production result after the section-context recovery repair
+
+Production at commit
+`6675a8d254fabdf9bb323a808ee6339eb1b4de94` still ended the generic
+Turismo source fail-closed with
+`Official Turismo programme article extraction was incomplete`. The municipal
+sync itself returned success and wrote 45 facts, so this was no longer a
+catalog/runtime failure.
+
+The stored `turismo_programme_text` state remained empty. The 26 September
+catalog contained six events total, but only one Rosario occurrence:
+17:00 Gran bingo de regalos, sourced from Todo Cultura. The Todo completeness
+warning still named the missing Rosario rows at 19:50 and 20:00. This confirms
+that the remaining problem is same-day occurrence completeness, not discovery
+of the fiesta date.
+
+The Ayuntamiento source was then validated as the appropriate bounded backstop:
+
+- the lightweight official news index exposes
+  `FIESTAS EN HONOR A LA VIRGEN DEL ROSARIO 2026`, published 16 September;
+- its detail page contains no usable deterministic programme text blocks;
+- it links the event-specific official image
+  `PROG.-todo-Virgen-Rosario-2026-2122x3000.jpg`;
+- the poster visibly contains separate 26 September rows at 17:00, 19:50 and
+  20:00.
+
+The implemented backstop discovers that article from the HTML index, rejects
+non-fiesta administrative posts and older candidates outside a 30-day discovery
+window, and selects only an official programme-like image with a semantic
+article-title match. The image path is reached only after text-first extraction
+cannot supply the programme. Two blind structured image readings are intersected so the backstop does not
+trust a single vision pass. The accepted intersection must also have the same
+event count as each independent reading; a disagreement is treated as
+incomplete rather than cached.
+
+A live source probe on the implementation branch found exactly one candidate
+for 26 September 2026, the Rosario article, with zero text date blocks and the
+expected official programme image URL. Model extraction itself remains covered
+by deterministic unit fixtures; the production deployment will be the first
+live end-to-end image-model verification.

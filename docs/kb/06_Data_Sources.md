@@ -495,6 +495,23 @@ validated programme events overall. The adapter is text-first: it does not OCR
 arbitrary article images. Temporary source/model failures retain only
 compatible last-good version-3 facts.
 
+A separate first-party Ayuntamiento backstop reads
+`https://www.guardamardelsegura.es/noticias/` as lightweight HTML and
+considers at most two recent current-year fiesta/feria-shaped articles. Detail
+pages are text-first: deterministic date-leading blocks use the same strict
+official-programme text validation. If the article text is absent or incomplete,
+the adapter may read only a clearly event-specific official programme image:
+same Ayuntamiento host, `/wp-content/uploads/`, programme-like filename, and
+a non-numeric semantic filename/title match. Arbitrary article photos and
+year-only generic images are rejected. A changed/new qualifying poster is read
+twice independently; the verified intersection must contain the same number of
+validated events as both readings or the article is rejected as incomplete.
+Matching date/time/title occurrences survive, and separately timed acts on one
+date remain distinct. Unchanged semantic article
+state reuses last-good facts without another image/model read. This source uses
+the normal municipal merge path, so an already known occurrence gains the
+Ayuntamiento source instead of being duplicated.
+
 Dated Monday library film rows in the same official Turismo `CINE` text are
 also read deterministically on every existing page refresh, including when the
 text hash is unchanged. A row may contribute its concrete film title, duration,

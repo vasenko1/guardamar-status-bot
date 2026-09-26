@@ -10,6 +10,10 @@ from zoneinfo import ZoneInfo
 from telegrambot.municipal_agenda import (
     MunicipalAgendaError,
     SourceEvent,
+    AYUNTAMIENTO_PROGRAMME_EXTRACTOR_VERSION,
+    AYUNTAMIENTO_PROGRAMME_SOURCE,
+    _ayuntamiento_programme_events,
+    _ayuntamiento_programme_poster_url,
     _cached_current_events,
     _current_events,
     _expand_explicit_todo_dates,
@@ -24,6 +28,8 @@ from telegrambot.municipal_agenda import (
     _turismo_programme_recovery_text,
     _turismo_text_programme_events,
     _unmatched_todo_rows,
+    _read_ayuntamiento_programme_article,
+    _read_ayuntamiento_programme_candidates,
     _read_turismo_programme,
     _read_turismo_programme_article,
     _read_turismo_programme_candidates,
@@ -316,6 +322,341 @@ class ExplicitTodoDatesTest(unittest.TestCase):
             ),
             (event,),
         )
+
+
+class AyuntamientoProgrammeBackstopTest(unittest.IsolatedAsyncioTestCase):
+    def test_discovers_recent_rosario_news_and_ignores_non_fiesta_posts(self):
+        html = b"""
+        <h2><a href="/2026/09/16/fiestas-en-honor-a-la-virgen-del-rosario-2026/">
+        FIESTAS EN HONOR A LA VIRGEN DEL ROSARIO 2026</a></h2>
+        <h2><a href="/2026/09/15/bonos-comercio-2026/">
+        BONOS COMERCIO 2026</a></h2>
+        <h2><a href="/2026/08/10/feria-de-comercio-2026/">
+        FERIA DE COMERCIO 2026</a></h2>
+        """
+        with patch(
+            "telegrambot.municipal_agenda._read_url",
+            return_value=(html, "text/html"),
+        ):
+            candidates = _read_ayuntamiento_programme_candidates(
+                date(2026, 9, 26)
+            )
+
+        self.assertIsNotNone(candidates)
+        self.assertEqual(len(candidates), 1)
+        self.assertIn("virgen-del-rosario", candidates[0]["link"])
+
+    def test_selects_only_event_specific_official_programme_image(self):
+        article_url = (
+            "https://www.guardamardelsegura.es/2026/09/16/"
+            "fiestas-en-honor-a-la-virgen-del-rosario-2026/"
+        )
+        payload = b"""
+        <img src="/wp-content/uploads/2026/09/logo-ayuntamiento.png">
+        <img src="/wp-content/uploads/2026/09/foto-virgen-rosario-2026.jpg">
+        <img src="/wp-content/uploads/2026/09/PROG.-todo-Virgen-Rosario-2026-2122x3000.jpg">
+        <img src="/wp-content/uploads/2026/09/PROG.-todo-2026.jpg">
+        """
+        poster = _ayuntamiento_programme_poster_url(
+            payload,
+            article_url,
+            "FIESTAS EN HONOR A LA VIRGEN DEL ROSARIO 2026",
+        )
+
+        self.assertEqual(
+            poster,
+            (
+                "https://www.guardamardelsegura.es/wp-content/uploads/2026/09/"
+                "PROG.-todo-Virgen-Rosario-2026-2122x3000.jpg"
+            ),
+        )
+
+    async def test_image_backstop_preserves_three_separate_rosario_rows(self):
+        link = (
+            "https://www.guardamardelsegura.es/2026/09/16/"
+            "fiestas-en-honor-a-la-virgen-del-rosario-2026/"
+        )
+        poster_url = (
+            "https://www.guardamardelsegura.es/wp-content/uploads/2026/09/"
+            "PROG.-todo-Virgen-Rosario-2026-2122x3000.jpg"
+        )
+        title = "FIESTAS EN HONOR A LA VIRGEN DEL ROSARIO 2026"
+        candidate = {
+            "link": link,
+            "title": title,
+            "published": "2026-09-16",
+        }
+        detail = (
+            link,
+            title,
+            "article-fingerprint",
+            "",
+            {},
+            poster_url,
+        )
+        first = {
+            "month": "2026-09",
+            "events": [{
+                "title_es": "Gran Bingo Benéfico",
+                "start_date": "2026-09-26",
+                "end_date": "2026-09-26",
+                "start_time": "17:00",
+                "end_time": None,
+                "place": "bajos del Ayuntamiento",
+                "evidence_es": None,
+                "category": "event",
+            }, {
+                "title_es": "Traslado de la Virgen al Altar Mayor",
+                "start_date": "2026-09-26",
+                "end_date": "2026-09-26",
+                "start_time": "19:50",
+                "end_time": None,
+                "place": None,
+                "evidence_es": None,
+                "category": "event",
+            }, {
+                "title_es": "Santa Misa y presentación del cartel de fiestas",
+                "start_date": "2026-09-26",
+                "end_date": "2026-09-26",
+                "start_time": "20:00",
+                "end_time": None,
+                "place": None,
+                "evidence_es": None,
+                "category": "event",
+            }],
+        }
+        verified = {
+            "month": "2026-09",
+            "events": [{
+                "title_es": "Gran Bingo Benéfico",
+                "start_date": "2026-09-26",
+                "end_date": "2026-09-26",
+                "start_time": "17:00",
+                "end_time": None,
+                "place": "bajos del Ayuntamiento",
+                "evidence_es": None,
+                "category": "event",
+            }, {
+                "title_es": "Traslado de la Virgen",
+                "start_date": "2026-09-26",
+                "end_date": "2026-09-26",
+                "start_time": "19:50",
+                "end_time": None,
+                "place": None,
+                "evidence_es": None,
+                "category": "event",
+            }, {
+                "title_es": "Santa Misa y presentación del cartel",
+                "start_date": "2026-09-26",
+                "end_date": "2026-09-26",
+                "start_time": "20:00",
+                "end_time": None,
+                "place": None,
+                "evidence_es": None,
+                "category": "event",
+            }],
+        }
+
+        with (
+            patch(
+                "telegrambot.municipal_agenda._read_ayuntamiento_programme_candidates",
+                return_value=(candidate,),
+            ),
+            patch(
+                "telegrambot.municipal_agenda._read_ayuntamiento_programme_article",
+                return_value=detail,
+            ),
+            patch(
+                "telegrambot.municipal_agenda._read_url",
+                return_value=(b"poster", "image/jpeg"),
+            ),
+            patch(
+                "telegrambot.municipal_agenda.extract_programme_poster_events",
+                new=AsyncMock(return_value=first),
+            ) as first_read,
+            patch(
+                "telegrambot.municipal_agenda.verify_programme_poster_events",
+                new=AsyncMock(return_value=verified),
+            ) as second_read,
+        ):
+            events, state = await _ayuntamiento_programme_events(
+                "key",
+                date(2026, 9, 26),
+                (),
+                {},
+            )
+
+        self.assertEqual(
+            [event.start_time for event in events],
+            ["17:00", "19:50", "20:00"],
+        )
+        self.assertTrue(all(
+            AYUNTAMIENTO_PROGRAMME_SOURCE in event.sources
+            for event in events
+        ))
+        self.assertTrue(all(
+            event.programme_title == title
+            for event in events
+        ))
+        first_read.assert_awaited_once()
+        second_read.assert_awaited_once()
+        stored = state["articles"][link]
+        self.assertEqual(
+            stored["extractor_version"],
+            AYUNTAMIENTO_PROGRAMME_EXTRACTOR_VERSION,
+        )
+        self.assertEqual(stored["poster_url"], poster_url)
+
+    async def test_disagreeing_programme_poster_reads_fail_closed(self):
+        link = (
+            "https://www.guardamardelsegura.es/2026/09/16/"
+            "fiestas-en-honor-a-la-virgen-del-rosario-2026/"
+        )
+        poster_url = (
+            "https://www.guardamardelsegura.es/wp-content/uploads/2026/09/"
+            "PROG.-todo-Virgen-Rosario-2026-2122x3000.jpg"
+        )
+        candidate = {
+            "link": link,
+            "title": "FIESTAS EN HONOR A LA VIRGEN DEL ROSARIO 2026",
+            "published": "2026-09-16",
+        }
+        first = {
+            "month": "2026-09",
+            "events": [{
+                "title_es": "Traslado de la Virgen",
+                "start_date": "2026-09-26",
+                "end_date": "2026-09-26",
+                "start_time": "19:50",
+                "end_time": None,
+                "place": None,
+                "evidence_es": None,
+                "category": "event",
+            }, {
+                "title_es": "Santa Misa",
+                "start_date": "2026-09-26",
+                "end_date": "2026-09-26",
+                "start_time": "20:00",
+                "end_time": None,
+                "place": None,
+                "evidence_es": None,
+                "category": "event",
+            }],
+        }
+        verified = {
+            "month": "2026-09",
+            "events": [first["events"][0]],
+        }
+
+        with (
+            patch(
+                "telegrambot.municipal_agenda._read_ayuntamiento_programme_candidates",
+                return_value=(candidate,),
+            ),
+            patch(
+                "telegrambot.municipal_agenda._read_ayuntamiento_programme_article",
+                return_value=(
+                    link,
+                    candidate["title"],
+                    "fingerprint",
+                    "",
+                    {},
+                    poster_url,
+                ),
+            ),
+            patch(
+                "telegrambot.municipal_agenda._read_url",
+                return_value=(b"poster", "image/jpeg"),
+            ),
+            patch(
+                "telegrambot.municipal_agenda.extract_programme_poster_events",
+                new=AsyncMock(return_value=first),
+            ),
+            patch(
+                "telegrambot.municipal_agenda.verify_programme_poster_events",
+                new=AsyncMock(return_value=verified),
+            ),
+        ):
+            events, state = await _ayuntamiento_programme_events(
+                "key",
+                date(2026, 9, 26),
+                (),
+                {},
+            )
+
+        self.assertEqual(events, ())
+        self.assertEqual(state["articles"], {})
+
+    async def test_unchanged_verified_article_reuses_events_without_image_model(self):
+        link = (
+            "https://www.guardamardelsegura.es/2026/09/16/"
+            "fiestas-en-honor-a-la-virgen-del-rosario-2026/"
+        )
+        title = "FIESTAS EN HONOR A LA VIRGEN DEL ROSARIO 2026"
+        candidate = {
+            "link": link,
+            "title": title,
+            "published": "2026-09-16",
+        }
+        prior = (
+            SourceEvent(
+                "Traslado de la Virgen",
+                date(2026, 9, 26),
+                date(2026, 9, 26),
+                "19:50",
+                None,
+                None,
+                "event",
+                (AYUNTAMIENTO_PROGRAMME_SOURCE,),
+                programme_title=title,
+                programme_order=10,
+            ),
+        )
+        state = {
+            "version": 1,
+            "articles": {
+                link: {
+                    "sha256": "same",
+                    "poster_url": "https://example.invalid/poster.jpg",
+                    "poster_sha256": "poster",
+                    "programme_title": title,
+                    "extractor_version": AYUNTAMIENTO_PROGRAMME_EXTRACTOR_VERSION,
+                    "expected_dates": [],
+                },
+            },
+        }
+
+        with (
+            patch(
+                "telegrambot.municipal_agenda._read_ayuntamiento_programme_candidates",
+                return_value=(candidate,),
+            ),
+            patch(
+                "telegrambot.municipal_agenda._read_ayuntamiento_programme_article",
+                return_value=(
+                    link,
+                    title,
+                    "same",
+                    "",
+                    {},
+                    "https://example.invalid/poster.jpg",
+                ),
+            ),
+            patch(
+                "telegrambot.municipal_agenda.extract_programme_poster_events",
+                new=AsyncMock(),
+            ) as extraction,
+        ):
+            events, next_state = await _ayuntamiento_programme_events(
+                "key",
+                date(2026, 9, 26),
+                prior,
+                state,
+            )
+
+        self.assertEqual(events, prior)
+        extraction.assert_not_awaited()
+        self.assertEqual(next_state["articles"][link]["sha256"], "same")
 
 
 class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
@@ -1250,6 +1591,14 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         )
         programme_text_patcher.start()
         self.addCleanup(programme_text_patcher.stop)
+        ayuntamiento_patcher = patch(
+            "telegrambot.municipal_agenda._ayuntamiento_programme_events",
+            new=AsyncMock(side_effect=lambda _key, _day, prior, state: (
+                prior, state
+            )),
+        )
+        ayuntamiento_patcher.start()
+        self.addCleanup(ayuntamiento_patcher.stop)
         patcher = patch(
             "telegrambot.municipal_agenda.fetch_program_window",
             new=AsyncMock(side_effect=TodoCulturaError(

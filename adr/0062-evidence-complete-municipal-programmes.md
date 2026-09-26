@@ -205,3 +205,46 @@ that source structure:
 
 The recovery budget remains one model call. No new source, browser, OCR,
 scheduler, retry loop or persisted event type is added.
+
+
+## 26 September 2026 amendment: bounded Ayuntamiento poster backstop
+
+Production after the section-context repair still rejected the Rosario Turismo
+article as incomplete. The municipal catalog remained healthy, but on
+26 September it still contained only the 17:00 Bingo from Todo Cultura; the
+official 19:50 traslado and 20:00 Santa Misa/presentation rows were absent.
+
+Further retries against the same generic Turismo text would add complexity
+without improving the source contract. The first-party Ayuntamiento news page
+already exposes the Rosario programme article, and that article links one
+event-specific official programme image containing the exact rows and times.
+A separate backstop therefore reads the lightweight Ayuntamiento HTML index and
+considers at most two recent current-year fiesta/feria-shaped articles.
+
+The backstop remains text-first. If deterministic date-leading semantic blocks
+exist in the article HTML, they use the same evidence-bound programme text
+normalization and exact-date completeness checks. Only when that text is absent
+or incomplete may the adapter use an image, and the image must satisfy all of
+the following:
+
+- same official Ayuntamiento host;
+- under `/wp-content/uploads/`;
+- supported image MIME/extension;
+- programme-like filename (`prog` / `programa`);
+- at least one non-numeric semantic filename token shared with the article
+  title, preventing a generic year-only programme image from qualifying.
+
+A changed/new event-specific poster is read twice independently. The two
+validated readings must agree completely: the verified intersection must have
+the same event count as each reading, otherwise the article remains fail-closed.
+Within that complete agreement, occurrences match on date, start time and
+sufficient title identity. Separately timed acts on the same date remain
+separate occurrences. The poster may span multiple months; the
+schema month field is compatibility metadata only.
+
+The adapter stores only bounded per-article metadata and normalized future
+facts. An unchanged semantic article fingerprint reuses last-good facts without
+another image read or model call. Transient source/model failure retains a
+compatible last-good article; a verified changed article with no current facts
+supersedes old facts. No browser, generic arbitrary-image OCR, dependency,
+daemon, scheduler, retry loop or new event model is introduced.
