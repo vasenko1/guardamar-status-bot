@@ -3520,14 +3520,14 @@ async def refresh_municipal_catalog(
         # future dates when an unrelated programme row fails model parsing.
         # Keep the cursor unchanged, but do not discard those deterministic
         # recurring dates from the newly fetched official-attributed text.
-        if todo_explicit_rows:
-            todo_events = _expand_explicit_todo_dates(
-                todo_events, todo_explicit_rows
-            )
         if todo_window is not None and todo_explicit_rows:
             todo_events = _annotate_todo_source_sessions(
                 todo_events,
                 todo_explicit_rows,
+            )
+        if todo_explicit_rows:
+            todo_events = _expand_explicit_todo_dates(
+                todo_events, todo_explicit_rows
             )
 
         facebook_source = old_sources.get("facebook", {})
