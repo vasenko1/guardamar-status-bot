@@ -352,9 +352,37 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
         ))
 
         self.assertIn("🕐 Сеансы:", message)
-        self.assertNotIn("8–12 лет", message)
-        self.assertNotIn("13–16 лет", message)
-        self.assertIn("Общее описание.", message)
+        self.assertIn("8–12 лет", message)
+        self.assertIn("13–16 лет", message)
+        self.assertEqual(message.count("Общее описание."), 1)
+
+    def test_cross_midnight_session_keeps_verified_end_time(self):
+        day = datetime(2026, 9, 26, tzinfo=TZ)
+        events = (
+            Event(
+                "Ночная программа",
+                day.replace(hour=21),
+                ends_at=day.replace(hour=22),
+                session_group_key="session:night",
+            ),
+            Event(
+                "Ночная программа",
+                day.replace(hour=23),
+                ends_at=day.replace(day=27, hour=1),
+                session_group_key="session:night",
+            ),
+        )
+
+        message = build_message(MorningDigest(
+            weather=None,
+            warnings=(),
+            warnings_available=True,
+            events=events,
+        ))
+
+        self.assertIn("<b>21:00–22:00</b>", message)
+        self.assertIn("<b>23:00–01:00</b>", message)
+        self.assertNotIn("2 сеанса", message)
 
     def test_known_subset_of_sessions_still_renders_as_one_activity(self):
         day = datetime(2026, 9, 26, tzinfo=TZ)
