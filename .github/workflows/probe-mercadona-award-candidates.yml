@@ -1,4 +1,4 @@
-name: Probe WCCC results API
+name: Probe WCCC 2026 official results
 
 on:
   push:
@@ -16,39 +16,37 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Inspect official WCCC API
+      - name: Fetch official WCCC 2026 class winners
         run: |
           python - <<'PY'
-          import json, re, urllib.request
+          import json, urllib.request
 
           headers={"Accept":"application/json","User-Agent":"GuardamarMorningDigest/0.13"}
-          js_url="https://worldchampioncheese.org/wp-content/plugins/wccc-usccc-plugin/dist/app.js"
-          req=urllib.request.Request(js_url,headers=headers)
-          with urllib.request.urlopen(req,timeout=20) as r:
-              js=r.read().decode("utf-8","replace")
-
-          print("=== APIDOMAIN CONTEXT ===")
-          for m in re.finditer(r"apiDomain",js):
-              a=max(0,m.start()-500); b=min(len(js),m.start()+900)
-              print(re.sub(r"\s+"," ",js[a:b])[:1400])
-              print("---")
-
-          candidates=set(re.findall(r'https://[^"\'\s]+',js))
-          print("=== URL CANDIDATES ===")
-          for u in sorted(candidates):
-              if "myentries" in u.lower() or "api" in u.lower():
-                  print(u[:1000])
-
-          bases=["https://myentries.org","https://www.myentries.org","https://worldchampioncheese.org"]
-          for base in bases:
-              url=base+"/api/results/contests"
-              print("=== TRY",url,"===")
-              try:
-                  req=urllib.request.Request(url,headers=headers)
-                  with urllib.request.urlopen(req,timeout=20) as r:
-                      body=r.read()
-                      print("status",r.status,"type",r.headers.get_content_type(),"bytes",len(body))
-                      print(body.decode("utf-8","replace")[:12000])
-              except Exception as e:
-                  print("ERROR",type(e).__name__,str(e)[:500])
+          urls=[
+              "https://myentries.org/api/results/contest-classes/71",
+              "https://myentries.org/api/results/contest-top-three-per-class/71",
+          ]
+          for url in urls:
+              print("=== URL",url,"===")
+              req=urllib.request.Request(url,headers=headers)
+              with urllib.request.urlopen(req,timeout=20) as r:
+                  obj=json.load(r)
+              if "top-three" in url:
+                  print("type",type(obj).__name__)
+                  text=json.dumps(obj,ensure_ascii=False)
+                  print("bytes",len(text))
+                  needles=("valle","palencia","trufa","afrut","semicur","ibérico","iberico")
+                  def walk(value,path="root"):
+                      if isinstance(value,dict):
+                          blob=" ".join(str(v) for v in value.values() if not isinstance(v,(dict,list))).lower()
+                          if any(n in blob for n in needles):
+                              print("MATCH",path,json.dumps(value,ensure_ascii=False)[:5000])
+                          for k,v in value.items():
+                              walk(v,f"{path}.{k}")
+                      elif isinstance(value,list):
+                          for i,v in enumerate(value):
+                              walk(v,f"{path}[{i}]")
+                  walk(obj)
+              else:
+                  print(json.dumps(obj,ensure_ascii=False)[:20000])
           PY
