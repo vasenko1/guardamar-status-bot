@@ -1049,6 +1049,196 @@ class _PosterParser(HTMLParser):
             self.urls.append(candidate)
 
 
+class _AyuntamientoProgrammeIndexParser(HTMLParser):
+    """Collect dated official news links and their visible anchor text."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.links: List[Tuple[str, str]] = []
+        self._href: Optional[str] = None
+        self._parts: List[str] = []
+
+    def handle_starttag(
+        self,
+        tag: str,
+        attrs: List[Tuple[str, Optional[str]]],
+    ) -> None:
+        if tag.casefold() != "a" or self._href is not None:
+            return
+        href = dict(attrs).get("href")
+        if href:
+            self._href = href
+            self._parts = []
+
+    def handle_data(self, data: str) -> None:
+        if self._href is not None:
+            self._parts.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.casefold() != "a" or self._href is None:
+            return
+        title = " ".join(html.unescape(" ".join(self._parts)).split())
+        self.links.append((self._href, title))
+        self._href = None
+        self._parts = []
+
+
+class _AyuntamientoProgrammeImageParser(HTMLParser):
+    """Collect event-specific upload images from one Ayuntamiento article."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.og_images: List[str] = []
+        self.images: List[str] = []
+
+    def handle_starttag(
+        self,
+        tag: str,
+        attrs: List[Tuple[str, Optional[str]]],
+    ) -> None:
+        values = dict(attrs)
+        lowered = tag.casefold()
+        if lowered == "meta":
+            prop = (values.get("property") or values.get("name") or "").casefold()
+            content = values.get("content")
+            if prop in {"og:image", "twitter:image"} and content:
+                self.og_images.append(content)
+            return
+        if lowered != "img":
+            return
+        for key in ("src", "data-src", "data-lazy-src"):
+            candidate = values.get(key)
+            if candidate:
+                self.images.append(candidate)
+        srcset = values.get("srcset")
+        if srcset:
+            for item in srcset.split(","):
+                candidate = item.strip().split(" ", 1)[0]
+                if candidate:
+                    self.images.append(candidate)
+
+
+def _normalized_ayuntamiento_url(value: str, base_url: str) -> Optional[str]:
+    try:
+        url = urllib.parse.urljoin(base_url, value)
+        parsed = urllib.parse.urlsplit(url)
+        port = parsed.port
+    except (TypeError, ValueError):
+        return None
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname not in POSTER_HOSTS
+        or port not in {None, 443}
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        return None
+    return urllib.parse.urlunsplit(parsed._replace(query="", fragment=""))
+
+
+_AYUNTAMIENTO_DATED_POST = re.compile(
+    r"^/(?P<year>\d{4})/(?P<month>\d{2})/(?P<day>\d{2})/[^/]+/?$"
+)
+
+
+def _ayuntamiento_programme_candidates_from_html(
+    payload: bytes,
+    local_day: date,
+) -> Tuple[Dict[str, str], ...]:
+    parser = _AyuntamientoProgrammeIndexParser()
+    parser.feed(payload.decode("utf-8", "replace"))
+    parser.close()
+    result: List[Dict[str, str]] = []
+    seen = set()
+    for href, title in parser.links:
+        url = _normalized_ayuntamiento_url(href, AYUNTAMIENTO_NEWS_URL)
+        if url is None or url in seen:
+            continue
+        match = _AYUNTAMIENTO_DATED_POST.match(urllib.parse.urlparse(url).path)
+        if match is None:
+            continue
+        try:
+            published = date(
+                int(match.group("year")),
+                int(match.group("month")),
+                int(match.group("day")),
+            )
+        except ValueError:
+            continue
+        normalized = " ".join(title.split())
+        title_folded = normalized.casefold()
+        if (
+            published.year != local_day.year
+            or published < local_day - timedelta(days=90)
+            or published > local_day + timedelta(days=7)
+            or "fiest" not in title_folded
+            or "campo" in title_folded
+        ):
+            continue
+        seen.add(url)
+        result.append({
+            "link": url,
+            "title": normalized,
+            "published": published.isoformat(),
+        })
+        if len(result) >= MAX_AYUNTAMIENTO_PROGRAMME_ARTICLES:
+            break
+    return tuple(result)
+
+
+def _ayuntamiento_programme_image_url(
+    payload: bytes,
+    article_url: str,
+    title: str,
+) -> Optional[str]:
+    parser = _AyuntamientoProgrammeImageParser()
+    parser.feed(payload.decode("utf-8", "replace"))
+    parser.close()
+    title_words = {
+        word
+        for word in re.sub(
+            r"[^\w]+", " ", title.casefold(), flags=re.UNICODE
+        ).split()
+        if len(word) >= 5 and word not in {"fiestas", "honor"}
+    }
+    ranked = []
+    seen = set()
+    for is_meta, candidate in (
+        *((True, value) for value in parser.og_images),
+        *((False, value) for value in parser.images),
+    ):
+        url = _normalized_ayuntamiento_url(candidate, article_url)
+        if url is None or url in seen:
+            continue
+        parsed = urllib.parse.urlparse(url)
+        path = urllib.parse.unquote(parsed.path)
+        path_folded = path.casefold()
+        if (
+            "/wp-content/uploads/" not in path_folded
+            or not path_folded.endswith((".jpg", ".jpeg", ".png", ".webp"))
+        ):
+            continue
+        filename = path.rsplit("/", 1)[-1].casefold()
+        programme_hint = any(
+            term in filename
+            for term in ("prog", "program", "triptico", "fiest")
+        )
+        overlap = sum(word in filename for word in title_words)
+        if not programme_hint and overlap < 2:
+            continue
+        score = (
+            (20 if programme_hint else 0)
+            + min(overlap, 5)
+            + (2 if is_meta else 0)
+        )
+        seen.add(url)
+        ranked.append((score, url))
+    if not ranked:
+        return None
+    ranked.sort(key=lambda item: (-item[0], item[1]))
+    return ranked[0][1]
+
+
 def _is_allowed_url(url: str, allowed_hosts: set[str]) -> bool:
     parsed = urllib.parse.urlparse(url)
     return parsed.scheme == "https" and parsed.hostname in allowed_hosts
@@ -1105,6 +1295,60 @@ def _read_url(
             ),
         ) from exc
     return payload, mime_type
+
+
+def _read_official_html(url: str, limit: int = PAGE_LIMIT_BYTES) -> bytes:
+    try:
+        payload, _, _ = fetch_bounded(
+            url,
+            is_allowed_url=lambda value: _is_allowed_url(value, POSTER_HOSTS),
+            accepted_types=frozenset({"text/html"}),
+            limit_bytes=limit,
+            timeout_seconds=REQUEST_TIMEOUT_SECONDS,
+            headers={
+                "Accept": "text/html",
+                "User-Agent": "GuardamarMorningDigest/0.12",
+            },
+        )
+    except BoundedFetchError as exc:
+        raise MunicipalAgendaError(
+            f"Ayuntamiento programme request failed: {exc.code}",
+            code=exc.code,
+            status=exc.status,
+            description=(
+                f"сервер вернул HTTP {exc.status}"
+                if exc.status is not None
+                else _TRANSPORT_DESCRIPTIONS.get(exc.code)
+            ),
+        ) from exc
+    return payload
+
+
+def _read_ayuntamiento_programme_candidates(
+    local_day: date,
+) -> Tuple[Dict[str, str], ...]:
+    payload = _read_official_html(AYUNTAMIENTO_NEWS_URL)
+    return _ayuntamiento_programme_candidates_from_html(payload, local_day)
+
+
+def _read_ayuntamiento_programme_article(
+    candidate: Dict[str, str],
+) -> Tuple[str, str, str, str]:
+    link = candidate["link"]
+    payload = _read_official_html(link)
+    article_hash = hashlib.sha256(payload).hexdigest()
+    poster_url = _ayuntamiento_programme_image_url(
+        payload,
+        link,
+        candidate["title"],
+    )
+    if poster_url is None:
+        raise MunicipalAgendaError(
+            "Official Ayuntamiento programme image was not found",
+            code="NO-PROGRAMME-IMAGE",
+            description="в официальной публикации не найдена программа-картинка",
+        )
+    return link, candidate["title"], article_hash, poster_url
 
 
 def _expand_explicit_todo_dates(
