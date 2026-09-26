@@ -66,6 +66,8 @@ PRIVATE_LABELS: dict[str, tuple[str, ...]] = {
         "Carrefour Sensation",
         "Carrefour El Mercado",
     ),
+    "Alcampo": ("Auchan",),
+    "DIA": ("DIA",),
     "Masymas": ("Alteza", "Deleitum"),
 }
 
@@ -623,9 +625,31 @@ def parse_ocu_awards(
         ))
 
     unique: dict[str, ProductAwardCandidate] = {}
+    order: list[str] = []
+    priority = {"Mejor del Análisis": 2, "Compra Maestra": 1}
     for candidate in candidates:
-        unique[candidate.event_id] = candidate
-    return tuple(unique.values())
+        event_id = candidate.event_id
+        existing = unique.get(event_id)
+        if existing is None:
+            unique[event_id] = candidate
+            order.append(event_id)
+            continue
+        if priority.get(candidate.result, 0) <= priority.get(existing.result, 0):
+            continue
+        unique[event_id] = ProductAwardCandidate(
+            source_kind=candidate.source_kind,
+            event_key=candidate.event_key,
+            source_url=candidate.source_url,
+            product_name=candidate.product_name,
+            result=candidate.result,
+            award_body=candidate.award_body,
+            result_year=candidate.result_year,
+            retail=candidate.retail,
+            score=candidate.score or existing.score,
+            source_price=candidate.source_price or existing.source_price,
+            editorial=candidate.editorial,
+        )
+    return tuple(unique[event_id] for event_id in order)
 
 
 def load_ocu_item(url: str, year: int) -> AwardSourceItem:
