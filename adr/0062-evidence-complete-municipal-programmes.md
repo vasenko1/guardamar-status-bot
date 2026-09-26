@@ -278,3 +278,25 @@ render in chronological order under one translated parent, and a corroborating
 Todo Bingo row cannot create a duplicate or replace the official programme
 identity.
 
+## 27 September 2026 amendment: evidence-bound supplemental programme aliases
+
+Production verification of the Rosario poster backstop found one duplicate
+identity shape that title-to-title deduplication should not solve by lowering its
+threshold: one authoritative programme child and one longer Todo Cultura title
+can describe the same date/time occurrence with too little normalized title
+overlap.
+
+The existing Todo `event_rows` are used as the bounded evidence bridge instead.
+Before Todo is merged into already verified official programme events, one
+supplemental Todo occurrence may adopt the canonical official programme child
+title and programme metadata only when the raw row uniquely identifies the Todo
+occurrence and independently supports exactly one programme child at the exact
+same date and non-null start time. The official child must contribute at least
+two claim-bearing words to the raw row and satisfy the existing 0.5 title/row
+overlap threshold.
+
+Failure or ambiguity is fail-open: the events remain separate. Generic
+`_same_occurrence` thresholds, programme grouping, snapshot schema, source
+limits, model budgets, and runtime scheduling are unchanged. This prevents the
+28 September 20:00 Rosario Mass alias from rendering twice without introducing
+programme-specific vocabulary or broad fuzzy merging.
