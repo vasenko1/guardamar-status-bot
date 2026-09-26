@@ -157,6 +157,11 @@ event identity.
 
 Use a configured Guardamar retail context rather than user/device geolocation.
 
+A public award article requires at least one freshly verified exact retail
+offer. If the retailer refresh fails, the product disappears, or identity
+becomes ambiguous, do not publish a price-less article and do not consume the
+daily delivery slot. Keep the queued event for a later retry.
+
 ### Photos are disabled by default and require explicit reuse clearance
 
 An exact image URL is not a licence to republish the image.
