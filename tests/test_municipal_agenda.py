@@ -355,6 +355,7 @@ class AyuntamientoProgrammeBackstopTest(unittest.IsolatedAsyncioTestCase):
         <img src="/wp-content/uploads/2026/09/logo-ayuntamiento.png">
         <img src="/wp-content/uploads/2026/09/foto-virgen-rosario-2026.jpg">
         <img src="/wp-content/uploads/2026/09/PROG.-todo-Virgen-Rosario-2026-2122x3000.jpg">
+        <img src="/wp-content/uploads/2026/09/PROG.-todo-2026.jpg">
         """
         poster = _ayuntamiento_programme_poster_url(
             payload,
