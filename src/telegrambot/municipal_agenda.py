@@ -24,8 +24,10 @@ from .gemini import (
     extract_agenda_events,
     extract_agenda_text_events,
     extract_guardamar_standalone_events,
+    extract_programme_poster_events,
     translate_event_titles,
     verify_agenda_poster_events,
+    verify_programme_poster_events,
 )
 from .event_translations import (
     cached_title, cached_translation, reviewed_translation, spanish_fallback,
@@ -88,6 +90,11 @@ TURISMO_PROGRAMME_TEXT_EXTRACTOR_VERSION = 3
 MAX_TURISMO_PROGRAMME_ARTICLES = 3
 TURISMO_PROGRAMME_HORIZON_DAYS = 44
 TURISMO_PROGRAMME_PAST_GRACE_DAYS = 14
+AYUNTAMIENTO_NEWS_URL = "https://www.guardamardelsegura.es/noticias/"
+AYUNTAMIENTO_PROGRAMME_SOURCE = "ayuntamiento_programme"
+AYUNTAMIENTO_PROGRAMME_EXTRACTOR_VERSION = 1
+MAX_AYUNTAMIENTO_PROGRAMME_ARTICLES = 2
+AYUNTAMIENTO_PROGRAMME_PAST_GRACE_DAYS = 30
 CULTURA_GUARDAMAR_PAGE_URL = "https://www.facebook.com/culturaguardamar"
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 _TIME_PATTERN = re.compile(r"^\d{2}:\d{2}$")
