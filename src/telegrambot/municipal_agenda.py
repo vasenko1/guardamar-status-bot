@@ -1107,6 +1107,41 @@ def _read_url(
     return payload, mime_type
 
 
+def _read_html_url(
+    url: str,
+    allowed_hosts: set[str],
+    limit: int,
+) -> bytes:
+    """Read bounded HTML from an explicitly allowed official host."""
+
+    try:
+        payload, _, _ = fetch_bounded(
+            url,
+            is_allowed_url=lambda value: _is_allowed_url(
+                value, allowed_hosts
+            ),
+            accepted_types=frozenset({"text/html"}),
+            limit_bytes=limit,
+            timeout_seconds=REQUEST_TIMEOUT_SECONDS,
+            headers={
+                "Accept": "text/html",
+                "User-Agent": "GuardamarMorningDigest/0.12",
+            },
+        )
+    except BoundedFetchError as exc:
+        raise MunicipalAgendaError(
+            f"Municipal HTML request failed: {exc.code}",
+            code=exc.code,
+            status=exc.status,
+            description=(
+                f"сервер вернул HTTP {exc.status}"
+                if exc.status is not None
+                else _TRANSPORT_DESCRIPTIONS.get(exc.code)
+            ),
+        ) from exc
+    return payload
+
+
 def _expand_explicit_todo_dates(
     events: Tuple[SourceEvent, ...],
     rows: Tuple[Tuple[date, str, str], ...],
