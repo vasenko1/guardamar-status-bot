@@ -420,7 +420,7 @@ class MunicipalProgrammeDisplayTranslationTests(
             "20:00",
             (
                 "2026-09-28\n"
-                "– 20:00 h.: Celebración de la Santa Misa con Homilía "
+                "– 20:00 h.: Celebración de la misa con Homilía "
                 "y presentación de niños a la Virgen del Rosario en la "
                 "Iglesia parroquial San Jaime Apóstol."
             ),
