@@ -507,6 +507,86 @@ class AyuntamientoProgrammeBackstopTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(stored["poster_url"], poster_url)
 
+    async def test_disagreeing_programme_poster_reads_fail_closed(self):
+        link = (
+            "https://www.guardamardelsegura.es/2026/09/16/"
+            "fiestas-en-honor-a-la-virgen-del-rosario-2026/"
+        )
+        poster_url = (
+            "https://www.guardamardelsegura.es/wp-content/uploads/2026/09/"
+            "PROG.-todo-Virgen-Rosario-2026-2122x3000.jpg"
+        )
+        candidate = {
+            "link": link,
+            "title": "FIESTAS EN HONOR A LA VIRGEN DEL ROSARIO 2026",
+            "published": "2026-09-16",
+        }
+        first = {
+            "month": "2026-09",
+            "events": [{
+                "title_es": "Traslado de la Virgen",
+                "start_date": "2026-09-26",
+                "end_date": "2026-09-26",
+                "start_time": "19:50",
+                "end_time": None,
+                "place": None,
+                "evidence_es": None,
+                "category": "event",
+            }, {
+                "title_es": "Santa Misa",
+                "start_date": "2026-09-26",
+                "end_date": "2026-09-26",
+                "start_time": "20:00",
+                "end_time": None,
+                "place": None,
+                "evidence_es": None,
+                "category": "event",
+            }],
+        }
+        verified = {
+            "month": "2026-09",
+            "events": [first["events"][0]],
+        }
+
+        with (
+            patch(
+                "telegrambot.municipal_agenda._read_ayuntamiento_programme_candidates",
+                return_value=(candidate,),
+            ),
+            patch(
+                "telegrambot.municipal_agenda._read_ayuntamiento_programme_article",
+                return_value=(
+                    link,
+                    candidate["title"],
+                    "fingerprint",
+                    "",
+                    {},
+                    poster_url,
+                ),
+            ),
+            patch(
+                "telegrambot.municipal_agenda._read_url",
+                return_value=(b"poster", "image/jpeg"),
+            ),
+            patch(
+                "telegrambot.municipal_agenda.extract_programme_poster_events",
+                new=AsyncMock(return_value=first),
+            ),
+            patch(
+                "telegrambot.municipal_agenda.verify_programme_poster_events",
+                new=AsyncMock(return_value=verified),
+            ),
+        ):
+            events, state = await _ayuntamiento_programme_events(
+                "key",
+                date(2026, 9, 26),
+                (),
+                {},
+            )
+
+        self.assertEqual(events, ())
+        self.assertEqual(state["articles"], {})
+
     async def test_unchanged_verified_article_reuses_events_without_image_model(self):
         link = (
             "https://www.guardamardelsegura.es/2026/09/16/"
