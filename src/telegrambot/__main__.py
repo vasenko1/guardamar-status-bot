@@ -153,6 +153,15 @@ from .tomorrow_events import (
     produce_tomorrow_event_publication,
     tomorrow_notice_due,
 )
+from .product_awards import (
+    ProductAwardError,
+    ProductAwardState,
+    build_current_publication as build_current_product_award_publication,
+    discover_product_awards,
+    preview_starter_product_awards,
+    scan_next_product_award,
+    seed_starter_product_awards,
+)
 from .models import ColdHealthRisk, HeatHealthRisk
 from .state import PublicationState, StateError
 from .telegram import (
@@ -185,6 +194,7 @@ DEFAULT_AEMET_SNAPSHOT_PATH = "state/aemet.json"
 DEFAULT_OPERATIONAL_UPDATE_STATE_PATH = "state/operational_updates.json"
 DEFAULT_WEEKEND_STATE_PATH = "state/weekend.json"
 DEFAULT_TOMORROW_EVENTS_STATE_PATH = "state/tomorrow_events.json"
+DEFAULT_PRODUCT_AWARDS_STATE_PATH = "state/product_awards.json"
 DEFAULT_PHARMACY_STATE_PATH = "state/pharmacy.json"
 DEFAULT_EARTHQUAKE_STATE_PATH = "state/earthquakes.json"
 DEFAULT_EMERGENCY_RISK_STATE_PATH = "state/emergency_risks.json"
@@ -1173,6 +1183,136 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         logging.info("SUCCESS: poll %s delivered", message_id)
         return 0
 
+    if command in {
+        "product-awards-discover",
+        "product-awards",
+        "product-awards-preview",
+        "product-awards-seed",
+        "product-awards-seed-preview",
+    }:
+        award_state = ProductAwardState(Path(os.environ.get(
+            "PRODUCT_AWARDS_STATE_PATH",
+            DEFAULT_PRODUCT_AWARDS_STATE_PATH,
+        )))
+
+        if command == "product-awards-preview":
+            publication = scan_next_product_award(
+                now,
+                award_state,
+                preview=True,
+            )
+            if publication is None:
+                print("No verified supermarket product award is eligible")
+            else:
+                print(publication.message)
+            return 0
+
+        if command == "product-awards-seed-preview":
+            publications = preview_starter_product_awards(now.year)
+            if not publications:
+                print("No reviewed product-award starter pool exists")
+                return 0
+            for index, publication in enumerate(publications, 1):
+                if index > 1:
+                    print("\n\n====================\n\n")
+                print(f"ДЕНЬ {index}\n")
+                print(publication.message)
+            return 0
+
+        if command == "product-awards-seed":
+            with award_state.exclusive_run():
+                before = award_state.queue_size()
+                candidates = seed_starter_product_awards(now, award_state)
+                after = award_state.queue_size()
+            logging.info(
+                "Product-award starter seed verified=%d queue=%d->%d",
+                len(candidates),
+                before,
+                after,
+            )
+            return 0
+
+        if command == "product-awards-discover":
+            with award_state.exclusive_run():
+                before = award_state.queue_size()
+                candidates = discover_product_awards(
+                    now,
+                    award_state,
+                    preview=False,
+                )
+                after = award_state.queue_size()
+            logging.info(
+                "Product-award discovery complete: extracted=%d queue=%d->%d",
+                len(candidates),
+                before,
+                after,
+            )
+            return 0
+
+        bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
+        chat_id = _required_environment("TELEGRAM_CHAT_ID")
+        with award_state.exclusive_run():
+            items = award_state.queue_items(now.date())
+            if not items:
+                if award_state.last_delivery_day() == now.date().isoformat():
+                    logging.info("SKIP: product-award daily slot already used")
+                else:
+                    logging.info("SKIP: product-award queue is empty")
+                return 0
+
+            item = None
+            publication = None
+            for queued in items:
+                candidate_publication = build_current_product_award_publication(
+                    queued.candidate
+                )
+                if candidate_publication is None:
+                    continue
+                item = queued
+                publication = candidate_publication
+                break
+
+            if item is None or publication is None:
+                logging.info(
+                    "SKIP: no queued product award has a verified current retail offer"
+                )
+                return 0
+            if not award_state.begin_delivery(item, now.date()):
+                logging.info("SKIP: product-award delivery slot no longer available")
+                return 0
+
+            try:
+                message_id = await send_message(
+                    bot_token,
+                    chat_id,
+                    publication.message,
+                    disable_notification=False,
+                    retry_only_rate_limits=True,
+                )
+            except TelegramError as exc:
+                if is_ambiguous_send_failure(exc):
+                    logging.warning(
+                        "Product-award delivery is uncertain [TELEGRAM-%s]; "
+                        "event %s will not be resent automatically",
+                        exc.diagnostic_code,
+                        item.event_id,
+                    )
+                    return 0
+                award_state.restore_failed_delivery(item)
+                raise
+
+            award_state.confirm_delivery(item.event_id, now.date())
+            logging.info(
+                "SUCCESS: product award delivered: %s / %s / %s "
+                "(event %s, message %s)",
+                publication.candidate.retailer,
+                publication.candidate.retail.relationship,
+                publication.candidate.result,
+                item.event_id,
+                message_id,
+            )
+            return 0
+
     if command in {"celebration-alert", "celebration-alert-preview"}:
         publication = build_celebration_alert(now)
         if command == "celebration-alert-preview":
@@ -1996,6 +2136,8 @@ def main() -> None:
             "celebration-alert", "celebration-alert-preview",
             "weekend", "weekend-preview",
             "tomorrow-events", "tomorrow-events-preview",
+            "product-awards-discover", "product-awards", "product-awards-preview",
+            "product-awards-seed", "product-awards-seed-preview",
             "poll",
         ),
         default="run",
@@ -2049,6 +2191,7 @@ def main() -> None:
         StateError,
         OperationalUpdateStateError,
         TomorrowEventStateError,
+        ProductAwardError,
         ValueError,
     ) as exc:
         print(f"Command failed: {exc}", file=sys.stderr)

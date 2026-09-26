@@ -738,6 +738,246 @@ bounded HTML from its exact official HTTPS host. A valid HTML page without
 recognizable timestamped channel messages is a source failure, not proof that
 there are no updates. The MVP does not scrape Facebook.
 
+## Supermarket product award sources
+
+### OCU comparative food reports
+
+OCU is the first accepted source for the shared product-award stream.
+
+Discovery uses a bounded OCU index read and keeps food report URLs under
+`/alimentacion/.../informe/`. News articles are not a parallel discovery
+surface for the same comparison. The adapter accepts only a report whose
+current year can be established and whose report text explicitly associates an
+allowed supermarket own-brand product with an accepted OCU result.
+
+Initially accepted result semantics:
+
+- `Mejor del Análisis`: best result in that OCU comparative analysis;
+- `Compra Maestra`: OCU value/balance designation, not a generic medal and
+  not proof of the highest absolute quality.
+
+The September 2026 live validation case is the OCU salmorejo report:
+Hacendado / Mercadona, `salmorejo fresco de Hacendado`,
+`Mejor del Análisis`, score 70/100, comparison size 30. It is now deliberately
+below the publication gate because OCU requires an overall score of at least
+85/100.
+
+A report-published price is source metadata only. Public award posts require a
+fresh exact-product retailer offer before delivery; a study price is never used
+as a substitute for the current supermarket price.
+
+### World Championship Cheese Contest 2026
+
+The first registered non-OCU award source is the official WCMA Top-20 page:
+
+`https://worldchampioncheese.org/2026-wccc-top-20-finalists/`
+
+Only one reviewed retail join is currently enabled:
+
+- class 114, `Seleccion Tostado Mixed Milk Cheese Extra Aged`;
+- maker `Queserías Entrepinares S.A.U.`;
+- location Valladolid, Spain;
+- exact Mercadona SKU `50952`, EAN `8480000509529`,
+  `Queso añejo tostado mezcla Hacendado`.
+
+The official WCCC page proves that the cheese reached the 2026 Top 20. The
+Mercadona exact-product JSON independently confirms the exact SKU, Hacendado
+brand, supplier `Queserías Entrepinares S.A.U.`, current publication state,
+package size and price. A producer-only or name-only join is never accepted.
+
+The reviewed 2026 competition context is 3,375 entries and 56 professional
+judges. WCCC technical judging assesses flavor, body/texture, salt, color,
+finish, packaging and other appropriate attributes, beginning from 100 points
+and deducting for defects. This repeated methodology is rendered only inside
+the expandable public blockquote.
+
+#### Reviewed 2026 Valle de San Juan launch seed
+
+For the one-time launch queue only, five additional WCCC 2026 results were
+manually reviewed from Valle de San Juan's official entrant announcement:
+
+- Con Trufa — 99.30/100 and stated best in its category -> Mercadona SKU 4883,
+  EAN 8480000048837;
+- Añejo — 99.25/100 -> current Hacendado Añejo Fuerte exact retail variants
+  SKU 50975 / EAN 2105600509750 and precut SKU 11680 /
+  EAN 8402001028878;
+- Afrutado — 97.40/100 -> Mercadona SKU 11682, EAN 8402001028953;
+- Semicurado — 97.40/100 -> current Mercadona sheep semicurado SKU 11672,
+  EAN 8402001028861; the exact retail card identifies Valle de San Juan as a
+  supplier and the recipe as pasteurized sheep's milk;
+- Ibérico Añejo — 97.20/100 -> Mercadona SKU 5548, EAN 8402001048289.
+
+The mapping is additionally consistent with Valle de San Juan's official
+Mercadona portfolio and its Guild of Fine Food producer directory. The producer
+host is not reliably reachable from the bot's bounded urllib runtime, so these
+historical award facts are frozen as reviewed seed data dated 26 September
+2026; they are not fetched on every run and are not registered as an automatic
+award adapter.
+
+Dynamic claims are not frozen: every seed preview, seed operation and eventual
+publication still checks the exact Mercadona JSON for current SKU, EAN, brand,
+expected supplier, reviewed recipe markers, availability, share URL, package
+format and current price. NALTROS is validated through its own exact ALDI
+contract described below. If any of the seven launch candidates fails its live
+retail check, `product-awards-seed` changes no state.
+
+### Reviewed NALTROS / ALDI launch seed
+
+The seventh launch candidate is deliberately from a different product category:
+
+- award source: OCU's 19 December 2025 cava analysis;
+- exact product: `NALTROS (ALDI) Brut`;
+- comparison size: 25 cava;
+- overall score: 94/100;
+- OCU identifies it among the three standout products and separately describes
+  it as the best brut in the tasting;
+- current retailer product:
+  `https://www.aldi.es/producto/cava-brut-190300.html`.
+
+The ALDI page is browser-free and exposes its current product contract inside
+Next.js `__NEXT_DATA__`, specifically the JSON-encoded
+`props.pageProps.apiData` field. The refresher accepts only the reviewed
+product with brand `NALTROS ®`, sales unit `0,75 l unidad`, internal
+`KVArticleNumber=1903`, current availability and a non-recalled/non-coming-soon
+state. Current price and litre price come from that same embedded first-party
+payload.
+
+On 26 September 2026 the reviewed live values were 3.15 EUR per 0.75 l bottle
+and 4.20 EUR/l. The award fact is frozen as reviewed seed data; the retailer
+price/availability is not.
+
+The exact OCU Hacendado AOVE 1000 ml / Mercadona SKU 4740 path was also
+investigated for seed diversity. Retail identity was strong, but the anonymous
+OCU exact-product page did not expose its overall score in the local
+product-ID block. The apparent 89/100 association from comparator context was
+therefore rejected as too indirect for the starter pool.
+
+### Mercadona exact-product retail refresh
+
+For Guardamar's reviewed postcode context `03140`, the Mercadona postal
+service resolved warehouse `alc1` during the 26 September 2026 browser-free
+probe. Publication therefore performs one bounded exact-product JSON GET:
+
+`https://tienda.mercadona.es/api/products/<product_id>/?lang=es&wh=alc1`
+
+The response is accepted only when exact product ID, expected EAN, private-label
+brand, supplier (when known), published status and official share URL remain
+consistent. Current package/retail-format price and unit price are then rendered. A small
+reviewed related-SKU list is allowed only when the variants are independently
+proved to be the same awarded commercial product; this is used for the two
+current Añejo Fuerte formats. Search, fuzzy name matching and catalogue crawling
+are not used.
+
+A missing, changed or ambiguous current retail offer blocks the public
+publication and leaves the queue item unconsumed for a later retry.
+
+### Future award sources
+
+World Cheese Awards / Guild of Fine Food remains a high-priority future source.
+For 2026, judging is scheduled for 12 November in Córdoba and the official
+public directory is expected to publish medal results within 24–48 hours.
+Do not ship a speculative 2026 WCA parser before that real result surface
+exists and its identifiers have been live-probed.
+
+Current researched candidates include:
+
+- World Championship Cheese Contest 2026: one automated official Top-20
+  Entrepinares / Mercadona exact-SKU join is implemented, plus five manually
+  reviewed Valle de San Juan launch-seed candidates; broader automatic result
+  coverage remains future work;
+- GourmetQuesos 2026: official Spanish result surface with more than 800
+  entries, 65 judges and 20 categories;
+- MUNDUS VINI: strong product identity on official cards, including vintage,
+  denomination, grape and bottle size;
+- NYIOOC: promising exact-commercial AOVE awards, subject to exact retail join;
+- MAPA Alimentos de España Mejores Jamones: authoritative category and sensory
+  process, subject to exact retail join;
+- Great Taste: broad future source with a strong directory, but Spain retail
+  identity must not be inferred from UK/Ireland private-label entries;
+- Sabor del Año and Producto del Año / Marca Distribuidor: useful retailer
+  coverage, but each still needs a stable authoritative scheduled result
+  contract before adapter registration.
+
+MAPA's AOVE competition is a permanent caution case: it admits bulk oils from
+homogeneous lots of at least 10,000 kg. A winning mill/producer must not be
+mapped automatically to a supermarket bottle made by the same producer.
+
+Every new award source follows the same gate before `SOURCE_ADAPTERS`
+registration:
+
+- official/authoritative owner and URL;
+- current-year discovery behavior;
+- bounded Termux request cost and content type;
+- stable item/event identifier;
+- exact product evidence and category-specific identity;
+- award-tier/result semantics;
+- failure/stale behavior;
+- one read-only live production probe.
+
+A source-specific deterministic adapter is preferred over a universal parser.
+
+### Retailer evidence and current enrichment
+
+ADR 0084 separates retailer evidence from award evidence.
+
+The active product-award retailer set is:
+
+- Mercadona;
+- Carrefour España supermarket;
+- ALDI España;
+- Lidl España;
+- DIA España;
+- Consum.
+
+Masymas / Juan Fornés remains in historical source research but is not an
+active matching target.
+
+Retailer evidence may prove private-label, retailer-exclusive or ordinary
+currently listed products. It must use exact EAN/GTIN, retailer SKU, or an
+unambiguous source-specific commercial identity. Manufacturer equality,
+brand-only/fuzzy matching, cross-country private labels and third-party
+Carrefour marketplace listings are insufficient.
+
+Current technical findings:
+
+- Mercadona exposes stable numeric product IDs and catalogue price/media, but
+  same-name duplicate SKUs require strict identity;
+- Lidl España has an official `Productos premiados` collection plus exact
+  product pages, prices, availability and images;
+- ALDI España exact product pages expose stable numeric IDs, package, price,
+  images and sometimes award wording;
+- Consum exposes a stable product code, often EAN, package, current price and
+  images and is one of the cleanest enrichment sources;
+- Carrefour supermarket exposes current prices/images but requires
+  postcode/store context and a marketplace guard;
+- Masymas / Juan Fornés was historically researched, but no active adapter
+  should be added while it remains outside the six-retailer scope;
+- DIA has an official 2026 awarded-products page with exact current products
+  and prices.
+
+Alcampo / Auchan was technically researched and has usable exact product
+identity, price and media surfaces, but it is deliberately excluded from the
+active retailer set because it has insufficient local utility for the Guardamar
+audience. Runtime matching and enrichment must ignore it unless the product
+scope is explicitly revised.
+
+A current price should be refreshed by exact SKU immediately before publication
+because the global queue and three-day cadence can delay an item. A failed or
+ambiguous current-retail refresh blocks that public article for the run and
+preserves the queued candidate; it never falls back to an aggregator price,
+stale study price or guessed match.
+
+Retailer product photos are disabled by default. The 25 September legal
+review found explicit content-reuse restrictions for multiple researched
+retailers, including Lidl, Consum, Carrefour, DIA and Masymas / Juan Fornés.
+The Masymas finding is historical and does not imply active retailer scope.
+Technical image availability may still help identity verification, but Telegram
+media requires a documented source-specific licence, permission or media policy
+that permits reuse. Otherwise publish text-only.
+
+See `research/2026-09-25-supermarket-product-awards.md` for the dated source
+matrix and ADRs 0083/0084 for architecture boundaries.
+
 ## Selection criteria
 
 - Prefer the responsible public authority.

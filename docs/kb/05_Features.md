@@ -628,6 +628,110 @@ successful empty optional results remain quiet where emptiness is normal.
 - No unsupported predictions or invented summaries
 - Missing low-value or optional-source sections may be omitted
 
+## Supermarket product award feed
+
+The bot may publish occasional rich editorial notes about verified
+award-winning products that are sold by supported Spanish supermarkets. The
+product may be a private label, a proven retailer-exclusive item or an ordinary
+brand with an exact current retail listing. Public wording must distinguish
+those relationships.
+
+This remains one shared stream across OCU, cheese, wine, olive oil, jamón,
+consumer sensory awards and future award families.
+
+The runtime contract is deliberately small:
+
+- source-specific award adapters discover and deterministically parse only their
+  own official/authoritative result surfaces;
+- each award adapter defines a source-native stable `event_key`;
+- award evidence and retailer evidence are separate under ADR 0084;
+- an exact retailer join requires EAN/GTIN, exact retailer SKU, or a
+  source-specific unambiguous commercial identity; manufacturer/brand-only,
+  fuzzy, cross-country and marketplace matches fail closed;
+- the shared engine owns per-source silent baseline, deduplication, one queue,
+  deterministic rendering, and Telegram delivery;
+- discovery runs at 13:50 Europe/Madrid;
+- publication runs at 14:20, but confirmed public delivery is limited to at most
+  one selected category winner every three local calendar days;
+- the first successful observation of a newly registered award source silently
+  marks its existing items as seen, so new award families never backfill their
+  historical archive.
+
+The active retailer set for product awards is exactly Mercadona, Carrefour
+España supermarket, ALDI España, Lidl España, DIA España and Consum. Masymas /
+Juan Fornés and Alcampo / Auchan remain useful historical research, but are
+outside this feature's active retail-matching scope. Retailer evidence adapters
+do not get their own schedules or continuous catalogue polling.
+
+OCU is the first active award adapter. `Mejor del Análisis` means the best
+result in that specific OCU comparison. `Compra Maestra` is a value/balance
+distinction and is never described as the highest absolute quality. OCU
+publication requires an overall/global score of at least **85/100**; a high
+health, tasting or other partial subscore cannot satisfy that gate.
+
+Articles are deterministic but may be substantially richer than the initial
+POC. A source adapter may retain verified context such as comparison/entry
+count, test or judging method, category/class, score, tasting result,
+nutrition/quality classification, product description, composition, producer,
+production country, vintage, DO, grape, maturation or other source-native
+identity facts. If a producer is named publicly, country is mandatory; city or
+region is optional additional context.
+
+The headline contains the product, supermarket and award/result, not the numeric
+score. Repeated methodology is rendered inside Telegram's expandable HTML
+blockquote so the changing product facts remain visible without printing the
+same judging explanation in full every day.
+
+A queued item may wait several days. When exact retailer identity is known, the
+publication step may make one bounded exact-product refresh immediately before
+rendering. It returns all verified current package variants of that same awarded
+commercial product. Each shown row keeps package size, retail format, price and
+unit price when available. The bot never chooses one package on behalf of the
+reader, and never transfers the award to a different flavour/recipe/SKU.
+
+The feed selects one product per reviewed product category and award edition.
+A category adapter checks only the source's explicitly ordered #1, then #2,
+then #3 candidate and accepts the first one whose exact current product is
+verified in one of the six active retailers. If a source publishes only a
+winner, only that winner is checked. Unordered finalists or same-tier medals
+must never be converted into invented podium positions.
+
+Where a meaningful overall 0-100 score exists, the >=85 overall-score floor
+remains. A podium position cannot be rescued by a high partial subscore.
+
+Public delivery is at most once every three local calendar days. Discovery may
+remain daily and cheap; the cooldown is enforced from the last confirmed
+delivery day. Empty categories stay silent.
+
+The previously reviewed seven-item starter seed is **superseded and must not
+be deployed**. It contains several cheeses from the same category and therefore
+does not satisfy the category-first product rule.
+
+A future launch seed, if retained at all, must contain no more than one selected
+winner per reviewed category/edition after the same source-ranking and exact
+retail checks used by normal automation.
+
+Retailer product photos are disabled by default. Current legal checks found
+reuse restrictions on several target retailer sites. A Telegram image is
+enabled only for a source with an exact matched SKU, bounded allowlisted media
+and a documented licence/permission/media policy that permits the intended
+reuse. Missing or unclear rights always produce text-only output.
+
+Award publication must work with Gemini/OpenRouter absent. No LLM may discover
+awards, match products to retailers, invent editorial facts or repair an
+ambiguous SKU join.
+
+The shared queue preserves at-most-once delivery semantics. An ambiguous
+Telegram send remains `uncertain` and is not automatically resent; a
+deterministic rejection can safely return the event to the queue for a later
+day.
+
+New award bodies and retailer evidence sources must follow ADRs 0083 and 0084
+plus the dated implementation checklist in
+`research/2026-09-25-supermarket-product-awards.md`. Do not add a new cron,
+queue, database, worker, browser, notification framework, universal LLM parser
+or source-independent fuzzy matcher.
+
 ## Feature boundary
 
 The approved electricity table fills the former future-feature slot. Do not
