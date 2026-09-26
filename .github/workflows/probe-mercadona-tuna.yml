@@ -1,0 +1,31 @@
+name: Probe Mercadona tuna candidate
+
+on:
+  push:
+    branches:
+      - feat/private-label-product-awards-poc
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: |
+          python - <<'PY'
+          import json, urllib.request
+          url="https://tienda.mercadona.es/api/products/18002/?lang=es&wh=alc1"
+          req=urllib.request.Request(url,headers={"Accept":"application/json","User-Agent":"GuardamarMorningDigest/0.13"})
+          with urllib.request.urlopen(req,timeout=20) as r:
+              obj=json.load(r)
+          for key in ("id","display_name","ean","brand","published","packaging","is_pack","is_variable_weight","unavailable_from","unavailable_weekdays","share_url"):
+              print(key, repr(obj.get(key)))
+          print("price", json.dumps(obj.get("price_instructions"), ensure_ascii=False, sort_keys=True))
+          print("details", json.dumps(obj.get("details"), ensure_ascii=False, sort_keys=True))
+          print("nutrition", json.dumps(obj.get("nutrition_information"), ensure_ascii=False, sort_keys=True))
+          PY
