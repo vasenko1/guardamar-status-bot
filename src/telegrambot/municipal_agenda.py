@@ -1296,13 +1296,20 @@ def _merge_todo_incremental_state(
     return result
 
 
-def _plain_wordpress_text(value: Any, maximum: int = 12_000) -> Optional[str]:
+def _plain_wordpress_text(
+    value: Any,
+    maximum: int = 12_000,
+    *,
+    truncate: bool = True,
+) -> Optional[str]:
     if not isinstance(value, str):
         return None
     text = " ".join(html.unescape(re.sub(r"<[^>]+>", " ", value)).split())
     if not text:
         return None
-    return text[:maximum]
+    if len(text) > maximum:
+        return text[:maximum] if truncate else None
+    return text
 
 
 def _is_spanish_turismo_article(link: str) -> bool:
@@ -1418,7 +1425,10 @@ def _read_turismo_programme_article(
     link = post.get("link")
     modified = post.get("modified")
     title = _plain_wordpress_text(post.get("title", {}).get("rendered"), 120)
-    text = _plain_wordpress_text(post.get("content", {}).get("rendered"))
+    text = _plain_wordpress_text(
+        post.get("content", {}).get("rendered"),
+        truncate=False,
+    )
     if (
         title is None
         or text is None
