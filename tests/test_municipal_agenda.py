@@ -335,8 +335,8 @@ class AyuntamientoProgrammeBackstopTest(unittest.IsolatedAsyncioTestCase):
         FERIA DE COMERCIO 2026</a></h2>
         """
         with patch(
-            "telegrambot.municipal_agenda._read_html_url",
-            return_value=html,
+            "telegrambot.municipal_agenda._read_url",
+            return_value=(html, "text/html"),
         ):
             candidates = _read_ayuntamiento_programme_candidates(
                 date(2026, 9, 26)
