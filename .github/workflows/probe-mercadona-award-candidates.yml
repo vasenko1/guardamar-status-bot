@@ -1,0 +1,43 @@
+name: Probe Mercadona award candidates
+
+on:
+  push:
+    branches:
+      - feat/private-label-product-awards-poc
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Probe exact candidate discovery
+        run: |
+          python - <<'PY'
+          import json, urllib.parse, urllib.request
+
+          headers={"Accept":"application/json","User-Agent":"GuardamarMorningDigest/0.13"}
+          queries=["trufa","afrutado","ibérico añejo","semicurado","añejo fuerte","curado afrutado"]
+          endpoints=[
+              "https://tienda.mercadona.es/api/search/?query={q}&lang=es&wh=alc1",
+              "https://tienda.mercadona.es/api/products/search/?query={q}&lang=es&wh=alc1",
+          ]
+          for template in endpoints:
+              print("=== ENDPOINT", template, "===")
+              for query in queries:
+                  url=template.format(q=urllib.parse.quote(query))
+                  req=urllib.request.Request(url,headers=headers)
+                  try:
+                      with urllib.request.urlopen(req,timeout=20) as r:
+                          body=r.read()
+                          print("QUERY",query,"STATUS",r.status,"TYPE",r.headers.get_content_type(),"BYTES",len(body))
+                          text=body.decode("utf-8","replace")
+                          print(text[:4000])
+                  except Exception as e:
+                      print("QUERY",query,"ERROR",type(e).__name__,str(e)[:300])
+          PY
