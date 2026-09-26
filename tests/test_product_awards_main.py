@@ -9,6 +9,7 @@ from telegrambot.product_awards import (
     ProductAwardCandidate,
     ProductAwardPublication,
     ProductAwardState,
+    RetailEvidence,
 )
 from telegrambot.telegram import TelegramError
 
@@ -38,15 +39,17 @@ class ProductAwardCommandTests(unittest.IsolatedAsyncioTestCase):
             source_kind="ocu",
             event_key="ocu:salmorejo:hacendado",
             source_url="https://www.ocu.org/alimentacion/test/informe/salmorejo",
-            retailer="Mercadona",
-            private_label="Hacendado",
             product_name="salmorejo fresco de Hacendado",
             result="Mejor del Análisis",
             award_body="OCU",
             result_year=2026,
+            retail=RetailEvidence(
+                retailer="Mercadona",
+                relationship="private_label",
+                label="Hacendado",
+            ),
             score="70/100",
             source_price="3 €/л",
-            sample_size=30,
         )
 
     def publication(self, candidate=None):
