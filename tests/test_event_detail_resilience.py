@@ -1175,6 +1175,10 @@ class TodoPartialRefreshTests(unittest.IsolatedAsyncioTestCase):
                     "telegrambot.municipal_agenda._turismo_programme_events",
                     new=AsyncMock(return_value=((), {})),
                 ),
+                patch(
+                    "telegrambot.municipal_agenda._turismo_text_programme_events",
+                    new=AsyncMock(return_value=((), {})),
+                ),
             ):
                 current = await refresh_municipal_catalog(
                     "key", now, state_path
@@ -1324,6 +1328,10 @@ class TodoPartialRefreshTests(unittest.IsolatedAsyncioTestCase):
                 ),
                 patch(
                     "telegrambot.municipal_agenda._turismo_programme_events",
+                    new=AsyncMock(return_value=((), {})),
+                ),
+                patch(
+                    "telegrambot.municipal_agenda._turismo_text_programme_events",
                     new=AsyncMock(return_value=((), {})),
                 ),
             ):
