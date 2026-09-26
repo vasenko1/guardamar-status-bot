@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - feat/session-event-grouping-sep26
+  pull_request:
+    branches:
+      - main
 
 jobs:
   test:
