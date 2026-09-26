@@ -1300,3 +1300,148 @@ can be inferred from surrounding comparator data and matching reference price,
 but it was not directly tied to exact product ID `109008` in the reviewed
 public product block. Under the fail-closed identity rule this is insufficient,
 so AOVE is deliberately **not** included in the starter seed.
+
+
+## Category-first redesign — 26 September 2026
+
+The earlier launch-pool idea is superseded before production. The user-facing
+feed now answers a narrower question: **what is the best currently purchasable
+product in each reviewed category among six major supermarket chains?**
+
+Active retail scope:
+
+1. Mercadona;
+2. Carrefour España supermarket;
+3. ALDI España;
+4. Lidl España;
+5. DIA España;
+6. Consum.
+
+Masymas / Juan Fornés and Alcampo / Auchan are no longer active matching targets
+for this feature. Keep their earlier research only to avoid repeating source
+investigation.
+
+### Selection algorithm
+
+For each broad reviewed category and award edition:
+
+1. take the source's explicit #1 result;
+2. require the source-specific exceptional-quality gate (>=85 overall where a
+   comparable 0-100 score exists);
+3. attempt exact current retail identity in the six active chains;
+4. if #1 has no exact current retail match, repeat for explicit #2;
+5. if #2 fails, repeat for explicit #3;
+6. if none of the explicitly ranked top three is currently sold in scope,
+   produce no event for that category/edition.
+
+Never manufacture a rank from unordered finalists, alphabetical result lists,
+equal medal tiers or a retailer's own marketing order. If the authority
+publishes only a category winner, there is no fallback #2/#3 unless another
+authoritative ordered source contract proves them.
+
+Only one selected product is retained per broad category/edition. Multiple
+97-99 point cheeses from one contest no longer become consecutive public posts.
+
+### Publication cadence
+
+Discovery may continue daily when bounded and cheap. Public delivery changes
+from daily to **at most once every three local calendar days**, measured from
+the last confirmed Telegram delivery. This must be a state cooldown rather than
+a `*/3` calendar schedule.
+
+### Source/category suitability review
+
+#### Cheese — strong overall podium source
+
+World Championship Cheese Contest 2026 publishes a genuine overall podium:
+
+1. Beemster Royaal Grand Cru — 98.68/100;
+2. Appenzeller Purple Label — 98.45/100;
+3. Alter Fritz — 98.41/100.
+
+The contest had 3,375 entries. This is a clean implementation model for the
+broad `cheese` category: test those exact three in order against the six
+retailers. A lower-ranked Spanish cheese must not replace them merely because it
+is easier to buy locally.
+
+World Cheese Awards and GourmetQuesos remain useful evidence sources, but do
+not automatically replace the WCCC broad-category podium. GourmetQuesos
+publishes first/second/third within 20 cheese classes plus one absolute winner;
+those class podiums should not be treated as 20 separate consumer categories
+without an explicit future product decision.
+
+MAPA's 2026 cheese awards publish one overall special winner plus winners in
+five milk/style modalities. This is authoritative Spanish evidence but does not
+provide a public overall #2/#3 fallback.
+
+#### Extra-virgin olive oil — strong ranked source
+
+EVOOLEUM 2026 exposes an ordered global Top 10 with numeric scores. The first
+three are:
+
+1. Di Molfetta Frantoiani di Coratina — 97;
+2. Monini Monocultivar Coratina Bio — 96;
+3. Oleum Hispania Nature Premium Pajarera — 96.
+
+This is suitable for the broad `extra_virgin_olive_oil` category once exact
+retail availability for ranks 1-3 is checked in the six chains.
+
+MAPA's AOVE award is authoritative for Spain but its public result shows one
+winner and two finalists per modality without ordering the two finalists.
+Therefore those finalists must not be re-labelled as #2/#3. The existing
+bulk-lot warning also remains: producer/lot success is not retail bottle
+identity.
+
+#### Wine — use consumer-meaningful styles, not one synthetic global wine rank
+
+Bacchus 2026 had 1,540 labels and explicitly names Best White, Best Rosé, Best
+Red and Best Sparkling wines. It also defines medal score bands (Grand Gold
+>=93, Gold 89-<93, Silver 85-<89), but its public medal list does not establish
+an ordered #2/#3 inside each style.
+
+Therefore the safe initial wine taxonomy is style-based:
+
+- `wine_red`;
+- `wine_white`;
+- `wine_rose`;
+- `wine_sparkling`.
+
+For each style, check the explicitly named best wine. Do not infer runner-up
+positions from other Grand Gold wines unless the source later exposes a
+reviewed ordered score contract.
+
+MAPA 2026 independently names best red, white, rosé, sparkling and fortified
+wine, but publishes only the winner of each modality. It can be a strong
+winner-only source, not a fabricated three-place podium.
+
+#### Jamón — two distinct consumer categories, winner-only source
+
+MAPA 2026 publishes:
+
+- best Jamón de Bellota Ibérico;
+- best Jamón Serrano / other recognized quality figure.
+
+Treat these as two separate consumer categories. The public result names the
+winner, not ordered second/third places. Each category therefore checks one
+winner only until an authoritative ranked fallback source is proven.
+
+#### Table olives — source still unresolved
+
+OLIVE JAPAN 2026 includes table olives, but its public structure is Premier,
+Gold and Silver rather than a clean overall ordered top three for table olives.
+It is not sufficient for the new strict podium algorithm.
+
+Keep `table_olives` pending. Do not publish an olives category until a
+credible source with an explicit winner or ordered podium and exact product
+identity is validated.
+
+### Consequence for the old starter seed
+
+The seven-item reviewed starter sequence (five Valle cheeses, one Entrepinares
+cheese and one ALDI cava) is **not production-valid under the new product
+concept** because six of seven entries represent the same broad cheese
+category.
+
+Do not deploy or seed that queue. Its exact SKU and retailer research remains
+useful evidence for future joins, but category selection must be recomputed from
+the authoritative podium before any launch.
