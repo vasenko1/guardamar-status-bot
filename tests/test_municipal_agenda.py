@@ -15,8 +15,11 @@ from telegrambot.municipal_agenda import (
     _expand_explicit_todo_dates,
     _explicit_fiesta_article_events,
     _strict_quoted_todo_activity,
+    _turismo_programme_blocks_by_date,
     _turismo_programme_events,
     _turismo_programme_expected_dates,
+    _turismo_programme_missing_dates,
+    _turismo_programme_recovery_text,
     _turismo_text_programme_events,
     _unmatched_todo_rows,
     _read_turismo_programme,
@@ -431,8 +434,6 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
             date(2026, 10, 3),
         )
 
-        from telegrambot.municipal_agenda import _turismo_programme_missing_dates
-
         self.assertEqual(
             _turismo_programme_missing_dates(broad, expected),
             expected,
@@ -459,6 +460,10 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
             date(2026, 10, 15),
             date(2026, 10, 18),
         )
+        date_blocks = {
+            day: (f"{day.isoformat()} acto oficial",)
+            for day in expected_dates
+        }
         initial_result = {"pass": "initial"}
         recovery_result = {"pass": "recovery"}
         initial_events = (
@@ -471,6 +476,10 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
         recovery_dates = tuple(
             day for day in expected_dates if day != date(2026, 10, 15)
         )
+        recovery_text = _turismo_programme_recovery_text(
+            date_blocks,
+            recovery_dates,
+        )
         recovered_events = tuple(
             SourceEvent(
                 f"Acto {day.isoformat()}", day, day,
@@ -479,13 +488,14 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
             )
             for day in recovery_dates
         )
-        model = AsyncMock(return_value=initial_result)
-        recovery = AsyncMock(return_value=recovery_result)
+        model = AsyncMock(side_effect=(initial_result, recovery_result))
 
-        def normalized(result, _source_text):
+        def normalized(result, source_text):
             if result is initial_result:
+                self.assertEqual(source_text, "Programa completo Rosario")
                 return initial_events
             if result is recovery_result:
+                self.assertEqual(source_text, recovery_text)
                 return recovered_events
             raise AssertionError("unexpected extraction result")
 
@@ -502,15 +512,12 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
                     title,
                     "Programa completo Rosario",
                     expected_dates,
+                    date_blocks,
                 ),
             ),
             patch(
                 "telegrambot.municipal_agenda.extract_agenda_text_events",
                 new=model,
-            ),
-            patch(
-                "telegrambot.municipal_agenda.extract_guardamar_standalone_events",
-                new=recovery,
             ),
             patch(
                 "telegrambot.municipal_agenda._normalize_turismo_programme_text",
@@ -521,12 +528,9 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
                 "key", date(2026, 9, 26), (), {}
             )
 
-        model.assert_awaited_once_with("key", "Programa completo Rosario")
-        recovery.assert_awaited_once_with(
-            "key",
-            "Programa completo Rosario",
-            recovery_dates,
-        )
+        self.assertEqual(model.await_count, 2)
+        model.assert_any_await("key", "Programa completo Rosario")
+        model.assert_any_await("key", recovery_text)
         self.assertEqual(
             {event.start_date for event in events},
             set(expected_dates),
@@ -579,6 +583,10 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
         }
         first = {"pass": "initial"}
         second = {"pass": "recovery"}
+        date_blocks = {
+            day: (f"{day.isoformat()} acto oficial",)
+            for day in expected_dates
+        }
         initial_events = (
             SourceEvent(
                 "Acto 26", expected_dates[0], expected_dates[0],
@@ -598,7 +606,7 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
                 (TURISMO_PROGRAMME_TEXT_SOURCE,),
             ),
         )
-        recovery = AsyncMock(return_value=second)
+        model = AsyncMock(side_effect=(first, second))
 
         def normalized(result, _source_text):
             return initial_events if result is first else recovered_events
@@ -616,15 +624,12 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
                     title,
                     "Programa incompleto",
                     expected_dates,
+                    date_blocks,
                 ),
             ),
             patch(
                 "telegrambot.municipal_agenda.extract_agenda_text_events",
-                new=AsyncMock(return_value=first),
-            ),
-            patch(
-                "telegrambot.municipal_agenda.extract_guardamar_standalone_events",
-                new=recovery,
+                new=model,
             ),
             patch(
                 "telegrambot.municipal_agenda._normalize_turismo_programme_text",
@@ -635,10 +640,13 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
                 "key", date(2026, 9, 26), stale, previous_state
             )
 
-        recovery.assert_awaited_once_with(
+        self.assertEqual(model.await_count, 2)
+        model.assert_any_await(
             "key",
-            "Programa incompleto",
-            (expected_dates[1], expected_dates[2]),
+            _turismo_programme_recovery_text(
+                date_blocks,
+                (expected_dates[1], expected_dates[2]),
+            ),
         )
         self.assertEqual(events, ())
         self.assertEqual(state["articles"], {})
@@ -690,6 +698,7 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
                     candidate["title"],
                     article_text,
                     (),
+                    {},
                 ),
             ),
             patch(
@@ -774,6 +783,7 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
                     title,
                     "Programa actualizado sin actos futuros.",
                     (),
+                    {},
                 ),
             ),
             patch(
