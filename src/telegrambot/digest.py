@@ -1083,6 +1083,8 @@ def build_event_section(
                 block.append(_event_heading(member, "  ", bullet=False))
                 block.extend(_render_event_details(member, "    "))
         elif session_group:
+            if session_group in rendered_sessions:
+                continue
             members = tuple(
                 candidate for candidate in events
                 if (
@@ -1091,10 +1093,7 @@ def build_event_section(
                     == session_group
                 )
             )
-            if (
-                session_group not in rendered_sessions
-                and _session_group_is_renderable(members)
-            ):
+            if _session_group_is_renderable(members):
                 rendered_sessions.add(session_group)
                 block = _render_session_group(members)
             else:
@@ -1228,8 +1227,11 @@ def _session_group_is_renderable(members: Sequence) -> bool:
         for member in members
     ):
         return False
-    orders = sorted(getattr(member, "session_order", None) for member in members)
-    if orders != list(range(1, len(members) + 1)):
+    orders = [getattr(member, "session_order", None) for member in members]
+    if (
+        any(order is None for order in orders)
+        or sorted(orders) != list(range(1, len(members) + 1))
+    ):
         return False
     starts = [member.starts_at for member in members]
     if any(value is None for value in starts) or len(set(starts)) != len(starts):
