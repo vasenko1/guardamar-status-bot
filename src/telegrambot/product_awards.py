@@ -924,10 +924,7 @@ _MERCADONA_CONTRACTS: dict[str, _MercadonaProductContract] = {
             "queso-anejo-fuerte-oveja-hacendado-cortado-cunitas-pieza",
             variant="нарезка клиньями",
         ),
-        supplier_names=(
-            "Valle de San Juan Palencia S.L",
-            "Distribuciones Juan Luna S.L.U",
-        ),
+        supplier_names=("Valle de San Juan Palencia S.L",),
         recipe_markers=("leche cruda de oveja",),
     ),
     "11682": _MercadonaProductContract(
@@ -938,10 +935,7 @@ _MERCADONA_CONTRACTS: dict[str, _MercadonaProductContract] = {
             "queso-curado-mezcla-afrutado-hacendado-cortado-cunitas-pieza",
             variant="нарезка клиньями",
         ),
-        supplier_names=(
-            "Valle de San Juan Palencia S.L.",
-            "Distribuciones Juan Luna S.L.U",
-        ),
+        supplier_names=("Valle de San Juan Palencia S.L.",),
         recipe_markers=("vaca min 80", "oveja min 5", "cabra min 5"),
     ),
     "11672": _MercadonaProductContract(
@@ -952,10 +946,7 @@ _MERCADONA_CONTRACTS: dict[str, _MercadonaProductContract] = {
             "queso-semicurado-oveja-hacendado-cortado-cunitas-pieza",
             variant="нарезка клиньями",
         ),
-        supplier_names=(
-            "Valle de San Juan S.L.",
-            "Distribuciones Juan Luna S.L.U",
-        ),
+        supplier_names=("Valle de San Juan S.L.",),
         recipe_markers=("leche pasteurizada de oveja",),
     ),
     "5548": _MercadonaProductContract(
@@ -966,10 +957,7 @@ _MERCADONA_CONTRACTS: dict[str, _MercadonaProductContract] = {
             "queso-anejo-iberico-mezcla-hacendado-cortado-cunitas-pieza",
             variant="нарезка клиньями",
         ),
-        supplier_names=(
-            "Valle de San Juan Palencia S.L.",
-            "Distribuciones Juan Luna S.L.U.",
-        ),
+        supplier_names=("Valle de San Juan Palencia S.L.",),
         recipe_markers=("vaca min 35", "oveja min 25", "cabra min 25"),
     ),
 }
