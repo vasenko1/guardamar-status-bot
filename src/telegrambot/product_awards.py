@@ -35,6 +35,10 @@ from .branding import with_footer
 LOGGER = logging.getLogger(__name__)
 
 OCU_INDEX_URL = "https://www.ocu.org/ocu-salud"
+OCU_CAVA_2025_URL = (
+    "https://www.ocu.org/organizacion/prensa/notas-de-prensa/2025/cavas191225"
+)
+ALDI_NALTROS_URL = "https://www.aldi.es/producto/cava-brut-190300.html"
 WCCC_2026_TOP20_URL = "https://worldchampioncheese.org/2026-wccc-top-20-finalists/"
 VALLE_WCCC_2026_URL = (
     "https://valledesanjuan.com/"
@@ -455,6 +459,37 @@ def _fetch_page(url: str, hosts: frozenset[str]) -> PageDocument:
     parser.feed(source)
     parser.close()
     return parser.document()
+
+
+def _fetch_raw_html(
+    url: str,
+    hosts: frozenset[str],
+) -> tuple[str, str]:
+    try:
+        payload, final_url, _ = fetch_bounded(
+            url,
+            is_allowed_url=_host_policy(hosts),
+            accepted_types=frozenset({"text/html"}),
+            limit_bytes=HTML_LIMIT_BYTES,
+            timeout_seconds=REQUEST_TIMEOUT_SECONDS,
+            headers={
+                "Accept": "text/html,application/xhtml+xml",
+                "User-Agent": USER_AGENT,
+            },
+        )
+    except BoundedFetchError as exc:
+        raise ProductAwardError(
+            f"product-award retail source failed: {exc.code}",
+            code=exc.code,
+            description="карточка товара временно недоступна",
+        ) from exc
+    try:
+        return payload.decode("utf-8"), final_url
+    except UnicodeDecodeError as exc:
+        raise ProductAwardError(
+            "product-award retail source is not UTF-8",
+            code="ENCODING",
+        ) from exc
 
 
 def _fetch_json(url: str, hosts: frozenset[str]) -> Any:
@@ -1229,6 +1264,53 @@ def _valle_wccc_seed_candidates() -> tuple[ProductAwardCandidate, ...]:
     )
 
 
+def _naltros_ocu_seed_candidate() -> ProductAwardCandidate:
+    # Reviewed 26 September 2026. OCU compared 25 D.O. Cava products and
+    # explicitly scored Naltros Brut (ALDI) 94/100. Retail identity and price
+    # are revalidated against ALDI immediately before publication.
+    return ProductAwardCandidate(
+        source_kind="ocu_cava_seed",
+        event_key="2025|ocu-cava|naltros-aldi-brut|94",
+        source_url=OCU_CAVA_2025_URL,
+        product_name="Cava brut NALTROS",
+        result="94 points",
+        award_body="OCU",
+        result_year=2025,
+        retail=RetailEvidence(
+            retailer="ALDI",
+            relationship="listed",
+            product_id="190300",
+            product_url=ALDI_NALTROS_URL,
+            variant="0,75 л",
+        ),
+        score="94/100",
+        editorial=AwardEditorialFacts(
+            comparison_size=25,
+            category="D.O. Cava Brut",
+            producer="Jaume Serra",
+            production_country="Испания",
+            headline_claim="вошёл в число лучших игристых вин по версии OCU",
+            product_summary=(
+                "Испанское игристое вино Brut с защищённым наименованием "
+                "D.O. Cava, традиционный купаж, 11,5% об."
+            ),
+            tasting_notes=(
+                "соломенно-жёлтый цвет с зеленовато-стальными оттенками",
+                "тонкие пузырьки",
+                "ароматы орехов, выпечки и белых фруктов с растительным фоном",
+                "правильная кислотность и стойкий вкус",
+                "слегка горьковатое завершение",
+            ),
+            method_summary=(
+                "OCU сравнила 25 белых и розовых cava Brut и Semiseco. "
+                "В лаборатории проверяли содержание алкоголя и сахара, "
+                "летучую и общую кислотность, сульфиты и другие добавки. "
+                "Главным критерием была дегустация экспертной панелью."
+            ),
+        ),
+    )
+
+
 def reviewed_starter_product_awards(year: int) -> tuple[ProductAwardCandidate, ...]:
     if year != 2026:
         return ()
@@ -1241,10 +1323,20 @@ def reviewed_starter_product_awards(year: int) -> tuple[ProductAwardCandidate, .
             code="PARSER",
         )
 
-    # Hand-reviewed launch order: strongest numeric results first, with the
-    # organizer-confirmed Top-20 item inserted before the remaining 97-point
-    # products. The shared runtime queue itself remains source-agnostic FIFO.
-    return (valle[0], valle[1], top20[0], valle[2], valle[3], valle[4])
+    naltros = _naltros_ocu_seed_candidate()
+
+    # Hand-reviewed launch order deliberately introduces a different product
+    # category on day 3 so the starter stream is not six cheeses in a row.
+    # Scores from unrelated award systems are not compared globally.
+    return (
+        valle[0],
+        valle[1],
+        naltros,
+        top20[0],
+        valle[2],
+        valle[3],
+        valle[4],
+    )
 
 
 # Add future validated adapters here. A new adapter only needs a stable list of
@@ -1273,6 +1365,8 @@ def _source_link_label(candidate: ProductAwardCandidate) -> str:
         return "World Championship Cheese Contest 2026"
     if candidate.source_kind == "wccc_valle_seed":
         return "Результаты Valle de San Juan на WCCC 2026"
+    if candidate.source_kind == "ocu_cava_seed":
+        return "Исследование OCU о cava"
     return candidate.award_body
 
 
@@ -1343,6 +1437,15 @@ def _render_method_block(candidate: ProductAwardCandidate) -> Optional[str]:
     )
 
 
+def _product_section_icon(candidate: ProductAwardCandidate) -> str:
+    category = _fold(candidate.editorial.category or "")
+    if "cava" in category or "espumoso" in category:
+        return "🍾"
+    if candidate.source_kind in {"wccc", "wccc_valle_seed"} or "cheese" in category:
+        return "🧀"
+    return "🛒"
+
+
 def build_publication(
     candidate: ProductAwardCandidate,
     *,
@@ -1399,6 +1502,15 @@ def build_publication(
                 prefix
                 + f"{candidate.score} на World Championship Cheese Contest 2026."
             )
+    elif candidate.source_kind == "ocu_cava_seed":
+        claim = facts.headline_claim or "получил высокую оценку OCU"
+        headline = f"{product} в {candidate.retailer} — {claim}"
+        intro = (
+            f"OCU сравнила {facts.comparison_size} cava. "
+            f"{product}, {_retail_phrase(candidate)}, получил "
+            f"{candidate.score} и вошёл в число самых высоко оценённых "
+            "продуктов исследования."
+        )
     else:
         claim = facts.headline_claim or (
             f"{candidate.result} на {candidate.award_body}"
@@ -1409,7 +1521,10 @@ def build_publication(
             f"{candidate.result} на {candidate.award_body}."
         )
 
-    if candidate.score is not None and candidate.source_kind != "wccc_valle_seed":
+    if (
+        candidate.score is not None
+        and candidate.source_kind not in {"wccc_valle_seed", "ocu_cava_seed"}
+    ):
         intro += f" Итоговая оценка — {candidate.score}."
     sections.append(html.escape(intro))
 
@@ -1440,7 +1555,8 @@ def build_publication(
         )
     if product_lines:
         sections.append(
-            "🧀 <b>Что это за продукт</b>\n\n"
+            _product_section_icon(candidate)
+            + " <b>Что это за продукт</b>\n\n"
             + "\n\n".join(product_lines)
         )
 
@@ -1698,11 +1814,125 @@ def refresh_mercadona_offers(
     return tuple(offers)
 
 
+def _walk_json_dicts(value: Any) -> Iterator[dict[str, Any]]:
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from _walk_json_dicts(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _walk_json_dicts(child)
+
+
+def _aldi_next_data(source: str) -> Any:
+    match = re.search(
+        r'<script[^>]*id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>',
+        source,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if match is None:
+        raise ProductAwardError("ALDI Next.js data missing", code="PARSER")
+    try:
+        return json.loads(match.group(1))
+    except json.JSONDecodeError as exc:
+        raise ProductAwardError("ALDI Next.js data invalid", code="PARSER") from exc
+
+
+def refresh_aldi_offers(
+    candidate: ProductAwardCandidate,
+) -> tuple[RetailOfferVariant, ...]:
+    evidence = candidate.retail
+    if (
+        evidence.retailer != "ALDI"
+        or evidence.product_id != "190300"
+        or evidence.product_url != ALDI_NALTROS_URL
+    ):
+        return ()
+
+    source, final_url = _fetch_raw_html(
+        ALDI_NALTROS_URL,
+        frozenset({"www.aldi.es", "aldi.es"}),
+    )
+    if final_url != ALDI_NALTROS_URL:
+        raise ProductAwardError("ALDI product URL changed", code="PARSER")
+
+    next_data = _aldi_next_data(source)
+    matches: list[dict[str, Any]] = []
+    for item in _walk_json_dicts(next_data):
+        if item.get("brandName") != "NALTROS ®":
+            continue
+        if item.get("salesUnit") != "0,75 l unidad":
+            continue
+        references = item.get("productReferences")
+        if not isinstance(references, list):
+            continue
+        if not any(
+            isinstance(reference, dict)
+            and reference.get("type") == "KVArticleNumber"
+            and str(reference.get("value")) == "1903"
+            for reference in references
+        ):
+            continue
+        matches.append(item)
+
+    if not matches:
+        raise ProductAwardError("ALDI reviewed product data missing", code="PARSER")
+
+    signatures = {
+        (
+            item.get("isAvailable"),
+            item.get("isComingSoon"),
+            item.get("isRecall"),
+            json.dumps(item.get("currentPrice"), sort_keys=True),
+        )
+        for item in matches
+    }
+    if len(signatures) != 1:
+        raise ProductAwardError("ALDI product data is ambiguous", code="PARSER")
+
+    product = matches[0]
+    if product.get("isAvailable") is not True:
+        return ()
+    if product.get("isComingSoon") is True or product.get("isRecall") is True:
+        return ()
+
+    price_data = product.get("currentPrice")
+    if not isinstance(price_data, dict):
+        raise ProductAwardError("ALDI current price missing", code="PARSER")
+    price = _format_decimal_price(price_data.get("priceValue"))
+    base_prices = price_data.get("basePrice")
+    if price is None or not isinstance(base_prices, list):
+        raise ProductAwardError("ALDI current price shape changed", code="PARSER")
+
+    litre_prices = [
+        item.get("basePriceValue")
+        for item in base_prices
+        if isinstance(item, dict) and item.get("basePriceScale") == "l"
+    ]
+    if len(litre_prices) != 1:
+        raise ProductAwardError("ALDI litre price is ambiguous", code="PARSER")
+    unit_price = _format_decimal_price(litre_prices[0])
+    if unit_price is None:
+        raise ProductAwardError("ALDI litre price invalid", code="PARSER")
+
+    return (
+        RetailOfferVariant(
+            package="0,75 л",
+            price=f"{price} €",
+            unit_price=f"{unit_price} €/л",
+            product_id="190300",
+            product_url=ALDI_NALTROS_URL,
+        ),
+    )
+
+
 def refresh_retail_offers(
     candidate: ProductAwardCandidate,
 ) -> tuple[RetailOfferVariant, ...]:
     if candidate.retail.retailer == "Mercadona":
         return refresh_mercadona_offers(candidate)
+    if candidate.retail.retailer == "ALDI":
+        return refresh_aldi_offers(candidate)
     return ()
 
 
