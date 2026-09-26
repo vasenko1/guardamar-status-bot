@@ -381,6 +381,28 @@ class AyuntamientoProgrammeBackstopTest(unittest.IsolatedAsyncioTestCase):
             poster,
         )
 
+    def test_article_rejects_fiesta_photo_without_programme_filename(self):
+        article_url = (
+            "https://www.guardamardelsegura.es/2026/09/16/"
+            "fiestas-en-honor-a-la-virgen-del-rosario-2026/"
+        )
+        payload = b"""
+        <html><head>
+          <meta property="og:image"
+                content="/wp-content/uploads/2026/09/virgen-rosario-fiestas.jpg">
+        </head><body>
+          <img src="/wp-content/uploads/2026/09/virgen-rosario-fiestas.jpg">
+        </body></html>
+        """
+
+        self.assertIsNone(
+            _ayuntamiento_programme_image_url(
+                payload,
+                article_url,
+                "FIESTAS EN HONOR A LA VIRGEN DEL ROSARIO 2026",
+            )
+        )
+
     async def test_rosario_poster_keeps_same_day_timed_acts_separate(self):
         link = (
             "https://www.guardamardelsegura.es/2026/09/16/"
