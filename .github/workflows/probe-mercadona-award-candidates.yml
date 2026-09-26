@@ -1,4 +1,4 @@
-name: Probe WCCC results backend
+name: Probe WCCC results API
 
 on:
   push:
@@ -16,56 +16,39 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Inspect WCCC results page
+      - name: Inspect official WCCC API
         run: |
           python - <<'PY'
-          import html, re, urllib.parse, urllib.request
+          import json, re, urllib.request
 
-          headers={"User-Agent":"GuardamarMorningDigest/0.13"}
-          base="https://worldchampioncheese.org/results/"
-          req=urllib.request.Request(base,headers=headers)
+          headers={"Accept":"application/json","User-Agent":"GuardamarMorningDigest/0.13"}
+          js_url="https://worldchampioncheese.org/wp-content/plugins/wccc-usccc-plugin/dist/app.js"
+          req=urllib.request.Request(js_url,headers=headers)
           with urllib.request.urlopen(req,timeout=20) as r:
-              raw=r.read().decode("utf-8","replace")
-          print("HTML_BYTES",len(raw))
-          print("=== INTERESTING HTML ===")
-          for line in raw.splitlines():
-              low=html.unescape(line).lower()
-              if any(k in low for k in ("iframe","myentries","result","score","contestresult","embed","shortcode")):
-                  clean=re.sub(r"\s+"," ",html.unescape(line)).strip()
-                  if clean:
-                      print(clean[:1800])
+              js=r.read().decode("utf-8","replace")
 
-          scripts=[]
-          for m in re.finditer(r'<script[^>]+src=["\']([^"\']+)["\']',raw,re.I):
-              url=urllib.parse.urljoin(base,html.unescape(m.group(1)))
-              if url not in scripts:
-                  scripts.append(url)
-          print("=== SCRIPTS ===")
-          for url in scripts:
-              print(url)
+          print("=== APIDOMAIN CONTEXT ===")
+          for m in re.finditer(r"apiDomain",js):
+              a=max(0,m.start()-500); b=min(len(js),m.start()+900)
+              print(re.sub(r"\s+"," ",js[a:b])[:1400])
+              print("---")
 
-          print("=== JS HITS ===")
-          for url in scripts:
-              if not urllib.parse.urlsplit(url).hostname.endswith("worldchampioncheese.org"):
-                  continue
+          candidates=set(re.findall(r'https://[^"\'\s]+',js))
+          print("=== URL CANDIDATES ===")
+          for u in sorted(candidates):
+              if "myentries" in u.lower() or "api" in u.lower():
+                  print(u[:1000])
+
+          bases=["https://myentries.org","https://www.myentries.org","https://worldchampioncheese.org"]
+          for base in bases:
+              url=base+"/api/results/contests"
+              print("=== TRY",url,"===")
               try:
                   req=urllib.request.Request(url,headers=headers)
                   with urllib.request.urlopen(req,timeout=20) as r:
-                      data=r.read(2_000_000).decode("utf-8","replace")
+                      body=r.read()
+                      print("status",r.status,"type",r.headers.get_content_type(),"bytes",len(body))
+                      print(body.decode("utf-8","replace")[:12000])
               except Exception as e:
-                  print("ERR",url,type(e).__name__)
-                  continue
-              hits=[]
-              for pattern in (
-                  r'https?://[^"\'\s)]+',
-                  r'[^"\']{0,100}(?:myentries|results?|scores?|contest)[^"\']{0,180}',
-              ):
-                  for m in re.finditer(pattern,data,re.I):
-                      value=m.group(0)
-                      if value not in hits:
-                          hits.append(value)
-              if hits:
-                  print("SCRIPT",url)
-                  for hit in hits[:40]:
-                      print(re.sub(r"\s+"," ",hit)[:600])
+                  print("ERROR",type(e).__name__,str(e)[:500])
           PY
