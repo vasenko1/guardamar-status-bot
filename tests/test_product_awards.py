@@ -537,27 +537,33 @@ class AldiRetailRefreshTests(unittest.TestCase):
             return reviewed_starter_product_awards(2026)[2]
 
     def next_data_html(self, *, available=True, price=3.15):
+        product_payload = {
+            "products": [{
+                "brandName": "NALTROS ®",
+                "salesUnit": "0,75 l unidad",
+                "isAvailable": available,
+                "isComingSoon": False,
+                "isRecall": False,
+                "currentPrice": {
+                    "priceValue": price,
+                    "basePrice": [{
+                        "basePriceValue": 4.2,
+                        "basePriceScale": "l",
+                    }],
+                },
+                "productReferences": [{
+                    "type": "KVArticleNumber",
+                    "value": "1903",
+                }],
+            }],
+        }
         payload = {
             "props": {
                 "pageProps": {
-                    "product": {
-                        "brandName": "NALTROS ®",
-                        "salesUnit": "0,75 l unidad",
-                        "isAvailable": available,
-                        "isComingSoon": False,
-                        "isRecall": False,
-                        "currentPrice": {
-                            "priceValue": price,
-                            "basePrice": [{
-                                "basePriceValue": 4.2,
-                                "basePriceScale": "l",
-                            }],
-                        },
-                        "productReferences": [{
-                            "type": "KVArticleNumber",
-                            "value": "1903",
-                        }],
-                    },
+                    "apiData": json.dumps(
+                        product_payload,
+                        ensure_ascii=False,
+                    ),
                 },
             },
         }
