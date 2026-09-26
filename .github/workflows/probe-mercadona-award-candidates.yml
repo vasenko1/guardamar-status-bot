@@ -1,4 +1,4 @@
-name: Probe ALDI Algolia config
+name: Probe ALDI product index
 
 on:
   push:
@@ -16,39 +16,52 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Locate ALDI search client config
+      - name: Search public ALDI Algolia index
         run: |
           python - <<'PY'
-          import re, urllib.parse, urllib.request
-          ua={"User-Agent":"GuardamarMorningDigest/0.13"}
-          page="https://www.aldi.es/busqueda.html"
-          req=urllib.request.Request(page,headers=ua)
-          with urllib.request.urlopen(req,timeout=20) as r:
-              raw=r.read(2_000_000).decode("utf-8","replace")
-          scripts=[]
-          for m in re.finditer(r'<script[^>]+src=["\']([^"\']+)["\']',raw,re.I):
-              u=urllib.parse.urljoin(page,m.group(1))
-              if "_next/static/chunks/" in u and u not in scripts:
-                  scripts.append(u)
-          targets=("40994:","oY:", "an_prd_es_LANG_REGION_products2","searchClient","applicationId","apiKey")
-          for u in scripts:
-              try:
-                  req=urllib.request.Request(u,headers=ua)
-                  with urllib.request.urlopen(req,timeout=20) as r:
-                      js=r.read(4_000_000).decode("utf-8","replace")
-              except Exception:
+          import json, urllib.parse, urllib.request
+
+          app="L9KNU74IO7"
+          key="83df5acd172c42ab174afa4583232b5d"
+          url=f"https://{app}-dsn.algolia.net/1/indexes/*/queries"
+          headers={
+              "Content-Type":"application/json",
+              "x-algolia-application-id":app,
+              "x-algolia-api-key":key,
+              "User-Agent":"GuardamarMorningDigest/0.13",
+          }
+          indexes=[
+              "an_prd_es_es_products2",
+              "an_prd_es_ES_products2",
+              "an_prd_es_es_es_products2",
+          ]
+          queries=["Sal de Plata","atún claro aceite de oliva","atun claro aceite oliva"]
+          requests=[]
+          for index in indexes:
+              for query in queries:
+                  params=urllib.parse.urlencode({"query":query,"hitsPerPage":20})
+                  requests.append({"indexName":index,"params":params})
+          data=json.dumps({"requests":requests}).encode()
+          req=urllib.request.Request(url,data=data,headers=headers,method="POST")
+          try:
+              with urllib.request.urlopen(req,timeout=20) as r:
+                  obj=json.load(r)
+          except Exception as e:
+              print("ERROR",type(e).__name__,str(e))
+              raise
+          for request,result in zip(requests,obj.get("results",[])):
+              print("===",request["indexName"],request["params"],"===")
+              if "error" in result:
+                  print("ERROR_RESULT",result.get("message") or result.get("error"))
                   continue
-              positions=[]
-              for token in targets:
-                  pos=js.find(token)
-                  if pos>=0:
-                      positions.append((token,pos))
-              if not positions:
-                  continue
-              print("=== SCRIPT",u,"BYTES",len(js),"===")
-              for token,pos in positions:
-                  print("TOKEN",token)
-                  a=max(0,pos-1800); b=min(len(js),pos+7000)
-                  print(js[a:b])
-                  print("---")
+              print("nbHits",result.get("nbHits"))
+              for hit in result.get("hits",[])[:20]:
+                  keep={k:hit.get(k) for k in (
+                      "objectID","name","productSlug","brandName","variantName",
+                      "salesUnit","currentPrice","promotion","promotionPrices",
+                      "isAvailable","isComingSoon","advertisingOnlineDateFrom",
+                      "advertisingOnlineDateUntil","shortDescription",
+                      "longDescription","additionalAttributes","productReferences",
+                  )}
+                  print(json.dumps(keep,ensure_ascii=False,sort_keys=True))
           PY
