@@ -643,7 +643,7 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNone(merged[0].session_group_key)
 
-    def test_digest_compacts_known_sessions_without_completeness_claim(self):
+    def test_digest_compacts_known_sessions_with_outer_span_and_new_order(self):
         day = datetime(2026, 9, 26, tzinfo=TZ)
         urls = (
             "https://docs.google.com/forms/d/e/ONE/viewform",
@@ -659,7 +659,7 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
                 registration_url=url,
                 capacity_limited=True,
                 teaser="Разгадайте загадки и тайны музея.",
-                audience_label="для участников 8–12 лет",
+                participation_note="для участников 8–12 лет",
                 session_group_key="session:escape",
             )
             for hour, url in zip((11, 12, 13), urls)
@@ -675,16 +675,31 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             message.count("Эскейп-рум «Тайна музея Гуардамара»"), 1
         )
+        self.assertIn(
+            "<b>11:00–13:45</b> — "
+            "Эскейп-рум «Тайна музея Гуардамара»",
+            message,
+        )
         self.assertNotIn("3 сеанса", message)
-        self.assertNotIn("11:00–13:45 ·", message)
         self.assertIn("🕐 Сеансы:", message)
         self.assertEqual(message.count(">Регистрация</a>"), 3)
         self.assertEqual(message.count("места ограничены"), 1)
         self.assertEqual(message.count("Разгадайте загадки и тайны музея."), 1)
+        self.assertEqual(message.count("для участников 8–12 лет"), 1)
         self.assertEqual(message.count("Museo Arqueológico"), 1)
         self.assertIn("<b>11:00–11:45</b>", message)
         self.assertIn("<b>12:00–12:45</b>", message)
         self.assertIn("<b>13:00–13:45</b>", message)
+
+        teaser_pos = message.index("Разгадайте загадки и тайны музея.")
+        audience_pos = message.index("ℹ️ для участников 8–12 лет")
+        sessions_pos = message.index("🕐 Сеансы:")
+        place_pos = message.index("Museo Arqueológico")
+        capacity_pos = message.index("🎟 места ограничены")
+        self.assertLess(teaser_pos, audience_pos)
+        self.assertLess(audience_pos, sessions_pos)
+        self.assertLess(sessions_pos, place_pos)
+        self.assertLess(place_pos, capacity_pos)
 
     def test_translation_variation_does_not_break_existing_group_identity(self):
         day = datetime(2026, 9, 26, tzinfo=TZ)
@@ -744,6 +759,34 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("8–12 лет", message)
         self.assertIn("13–16 лет", message)
         self.assertEqual(message.count("Общее описание."), 1)
+
+    def test_session_header_omits_outer_span_when_an_end_is_unknown(self):
+        day = datetime(2026, 9, 26, tzinfo=TZ)
+        events = (
+            Event(
+                "Эскейп-рум «Тайна музея»",
+                day.replace(hour=11),
+                ends_at=day.replace(hour=11, minute=45),
+                session_group_key="session:escape",
+            ),
+            Event(
+                "Эскейп-рум «Тайна музея»",
+                day.replace(hour=12),
+                session_group_key="session:escape",
+            ),
+        )
+
+        message = build_message(MorningDigest(
+            weather=None,
+            warnings=(),
+            warnings_available=True,
+            events=events,
+        ))
+
+        self.assertIn("• Эскейп-рум «Тайна музея»", message)
+        self.assertNotIn("<b>11:00–12:00</b>", message)
+        self.assertIn("<b>11:00–11:45</b>", message)
+        self.assertIn("<b>12:00</b>", message)
 
     def test_cross_midnight_session_keeps_verified_end_time(self):
         day = datetime(2026, 9, 26, tzinfo=TZ)

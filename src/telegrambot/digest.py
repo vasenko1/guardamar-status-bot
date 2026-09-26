@@ -1293,6 +1293,48 @@ def _session_time_label(event) -> str:
     return label
 
 
+def _session_group_span_label(members: Sequence) -> Optional[str]:
+    """Return the known outer time span without claiming session completeness."""
+
+    starts = [
+        member.starts_at.astimezone(GUARDAMAR_TIMEZONE)
+        for member in members
+        if member.starts_at is not None
+    ]
+    ends = [
+        member.ends_at.astimezone(GUARDAMAR_TIMEZONE)
+        for member in members
+        if member.ends_at is not None
+    ]
+    if len(starts) != len(members) or len(ends) != len(members):
+        return None
+    local_day = starts[0].date()
+    if any(value.date() != local_day for value in (*starts, *ends)):
+        return None
+    return (
+        min(starts).strftime("%H:%M")
+        + "–"
+        + max(ends).strftime("%H:%M")
+    )
+
+
+def _session_location_context(event, indent: str) -> List[str]:
+    """Render common venue facts after the session list."""
+
+    rows = []
+    if event.place:
+        rows.append(indent + "📍 " + _event_place_link(
+            event.place, event.place_query
+        ))
+    if event.meeting_point and (
+        not event.place or not same_event_place(event.place, event.meeting_point)
+    ):
+        label = event.meeting_point
+        prefix = "" if label.casefold().startswith("место ") else "Место сбора: "
+        rows.append(indent + "👥 " + prefix + _event_place_link(label))
+    return rows
+
+
 def _session_member_context(member, parent):
     """Keep only verified context that differs from the common parent."""
 
@@ -1353,12 +1395,21 @@ def _render_session_group(members: Sequence) -> List[str]:
         _exhibition_title(parent.title)
         if parent.category == "exhibition" else parent.title
     )
-    block = [f"• {html.escape(_event_title(title))}"]
-    block.extend(_render_event_context(parent, "  "))
+    span = _session_group_span_label(ordered)
+    heading = html.escape(_event_title(title))
+    if span is not None:
+        heading = f"<b>{html.escape(span)}</b> — " + heading
+    block = [f"• {heading}"]
+
+    parent_without_location = replace(
+        parent,
+        place=None,
+        place_query=None,
+        meeting_point=None,
+    )
+    block.extend(_render_event_context(parent_without_location, "  "))
 
     common_capacity = all(member.capacity_limited for member in ordered)
-    if common_capacity:
-        block.append("  🎟 места ограничены")
     block.append("  🕐 Сеансы:")
     for member in ordered:
         access = _event_access_parts(
@@ -1372,6 +1423,10 @@ def _render_session_group(members: Sequence) -> List[str]:
             _session_member_context(member, parent),
             "      ",
         ))
+
+    block.extend(_session_location_context(parent, "  "))
+    if common_capacity:
+        block.append("  🎟 места ограничены")
     return block
 
 def _render_event_context(event, indent: str) -> List[str]:
