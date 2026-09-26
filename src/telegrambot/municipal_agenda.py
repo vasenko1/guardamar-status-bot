@@ -84,6 +84,7 @@ TURISMO_PROGRAMME_INDEX_URL = (
     "&_fields=id,modified,link,title,excerpt"
 )
 TURISMO_PROGRAMME_TEXT_SOURCE = "turismo_programme_text"
+TURISMO_PROGRAMME_TEXT_EXTRACTOR_VERSION = 2
 MAX_TURISMO_PROGRAMME_ARTICLES = 3
 TURISMO_PROGRAMME_HORIZON_DAYS = 44
 TURISMO_PROGRAMME_PAST_GRACE_DAYS = 14
@@ -1296,6 +1297,102 @@ def _merge_todo_incremental_state(
     return result
 
 
+class _WordPressProgrammeBlockParser(HTMLParser):
+    """Keep semantic text blocks from one official WordPress post body."""
+
+    _BLOCK_TAGS = frozenset({"p", "li", "h1", "h2", "h3", "h4", "h5", "h6"})
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.blocks: List[str] = []
+        self._depth = 0
+        self._parts: List[str] = []
+
+    def handle_starttag(
+        self,
+        tag: str,
+        attrs: List[Tuple[str, Optional[str]]],
+    ) -> None:
+        del attrs
+        if tag.casefold() not in self._BLOCK_TAGS:
+            return
+        if self._depth == 0:
+            self._parts = []
+        self._depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.casefold() not in self._BLOCK_TAGS or self._depth == 0:
+            return
+        self._depth -= 1
+        if self._depth:
+            return
+        value = " ".join(html.unescape(" ".join(self._parts)).split())
+        if value:
+            self.blocks.append(value)
+        self._parts = []
+
+    def handle_data(self, data: str) -> None:
+        if self._depth:
+            self._parts.append(data)
+
+
+_TURISMO_DATE_LEADING_BLOCK = re.compile(
+    r"^(?:el\s+)?"
+    r"(?:(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)\s+)?"
+    r"(?P<day>\d{1,2})\s+de\s+"
+    r"(?P<month>[a-záéíóúñ]+)"
+    r"(?:\s+de\s+(?P<year>\d{4}))?\b",
+    re.IGNORECASE,
+)
+
+
+def _turismo_programme_expected_dates(
+    content_html: Any,
+    local_day: date,
+) -> Tuple[date, ...]:
+    """Return only dates that lead an explicit WordPress content block."""
+
+    if not isinstance(content_html, str) or not content_html.strip():
+        return ()
+    parser = _WordPressProgrammeBlockParser()
+    try:
+        parser.feed(content_html)
+        parser.close()
+    except Exception:
+        return ()
+    expected = set()
+    for block in parser.blocks:
+        match = _TURISMO_DATE_LEADING_BLOCK.match(block)
+        if match is None:
+            continue
+        month = _SPANISH_MONTHS.get(match.group("month").casefold())
+        if month is None:
+            continue
+        try:
+            expected.add(date(
+                int(match.group("year") or local_day.year),
+                month,
+                int(match.group("day")),
+            ))
+        except ValueError:
+            continue
+    return tuple(sorted(expected))
+
+
+def _turismo_programme_missing_dates(
+    events: Tuple[SourceEvent, ...],
+    expected_dates: Tuple[date, ...],
+) -> Tuple[date, ...]:
+    return tuple(
+        day
+        for day in expected_dates
+        if not any(
+            event.start_date <= day <= event.end_date
+            for event in events
+        )
+    )
+
+
 def _plain_wordpress_text(
     value: Any,
     maximum: int = 12_000,
@@ -1397,7 +1494,8 @@ def _read_turismo_programme_candidates(
 
 def _read_turismo_programme_article(
     candidate: Dict[str, Any],
-) -> Optional[Tuple[str, str, str, str]]:
+    local_day: date,
+) -> Optional[Tuple[str, str, str, str, Tuple[date, ...]]]:
     identifier = candidate.get("id")
     if not isinstance(identifier, int):
         return None
@@ -1425,9 +1523,14 @@ def _read_turismo_programme_article(
     link = post.get("link")
     modified = post.get("modified")
     title = _plain_wordpress_text(post.get("title", {}).get("rendered"), 120)
+    content_html = post.get("content", {}).get("rendered")
     text = _plain_wordpress_text(
-        post.get("content", {}).get("rendered"),
+        content_html,
         truncate=False,
+    )
+    expected_dates = _turismo_programme_expected_dates(
+        content_html,
+        local_day,
     )
     if (
         title is None
@@ -1437,7 +1540,7 @@ def _read_turismo_programme_article(
         or link != candidate.get("link")
     ):
         return None
-    return link, modified, title, text
+    return link, modified, title, text, expected_dates
 
 
 def _normalize_turismo_programme_text(
@@ -1506,10 +1609,29 @@ async def _turismo_text_programme_events(
         for event in previous
         if event.end_date >= local_day and event.start_date <= horizon
     )
-    prior_articles = (
+    raw_prior_articles = (
         previous_state.get("articles", {})
         if isinstance(previous_state.get("articles", {}), dict)
         else {}
+    )
+    prior_articles = {
+        link: article
+        for link, article in raw_prior_articles.items()
+        if (
+            isinstance(article, dict)
+            and article.get("extractor_version")
+            == TURISMO_PROGRAMME_TEXT_EXTRACTOR_VERSION
+        )
+    }
+    trusted_titles = {
+        article.get("programme_title")
+        for article in prior_articles.values()
+        if isinstance(article.get("programme_title"), str)
+    }
+    previous = tuple(
+        event
+        for event in previous
+        if event.programme_title in trusted_titles
     )
     previous_by_title: Dict[str, Tuple[SourceEvent, ...]] = {}
     for article in prior_articles.values():
@@ -1526,7 +1648,10 @@ async def _turismo_text_programme_events(
         _read_turismo_programme_candidates, local_day
     )
     if candidates is None:
-        return previous, previous_state
+        return previous, {
+            "version": 1,
+            "articles": prior_articles,
+        }
 
     events: List[SourceEvent] = []
     next_articles: Dict[str, Dict[str, Any]] = {}
@@ -1548,7 +1673,8 @@ async def _turismo_text_programme_events(
             prior_events
             and isinstance(previous_article, dict)
             and previous_article.get("modified") == candidate["modified"]
-            and previous_article.get("extractor_version") == 1
+            and previous_article.get("extractor_version")
+            == TURISMO_PROGRAMME_TEXT_EXTRACTOR_VERSION
         ):
             events.extend(prior_events)
             next_articles[link] = dict(previous_article)
@@ -1556,7 +1682,9 @@ async def _turismo_text_programme_events(
             continue
 
         detail = await asyncio.to_thread(
-            _read_turismo_programme_article, candidate
+            _read_turismo_programme_article,
+            candidate,
+            local_day,
         )
         if detail is None:
             if prior_events and isinstance(previous_article, dict):
@@ -1564,13 +1692,20 @@ async def _turismo_text_programme_events(
                 next_articles[link] = dict(previous_article)
                 seen_titles.add(previous_title)
             continue
-        article_url, modified, programme_title, article_text = detail
+        (
+            article_url,
+            modified,
+            programme_title,
+            article_text,
+            expected_dates,
+        ) = detail
         fingerprint = hashlib.sha256(article_text.encode("utf-8")).hexdigest()
         if (
             prior_events
             and isinstance(previous_article, dict)
             and previous_article.get("sha256") == fingerprint
-            and previous_article.get("extractor_version") == 1
+            and previous_article.get("extractor_version")
+            == TURISMO_PROGRAMME_TEXT_EXTRACTOR_VERSION
         ):
             events.extend(prior_events)
             next_articles[article_url] = {
