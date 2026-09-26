@@ -1209,13 +1209,16 @@ Validation on the final functional head before removing the temporary
 branch-only workflow:
 
 - Python compileall: passed;
-- product-award modules: **64 tests passed**;
-- complete repository suite: **1355 tests passed**;
+- product-award modules: **65 tests passed**;
+- complete repository suite: **1356 tests passed**;
 - temporary validation workflow was removed from the final diff.
 - the six-day starter preview passed live exact-retail refresh for every
   candidate; the added Semicurado resolved to Mercadona SKU 11672 at
   approximately 280 g, 4.14 EUR and 14.80 EUR/kg in the reviewed `alc1`
   context.
+- final review also tightened Valle retail identity: the current Mercadona
+  supplier list must still contain Valle de San Juan itself; a distributor or
+  packer alone can no longer preserve the award-to-retail join.
 - live `product-awards-preview` on 26 September 2026 produced the reviewed WCCC Top-20 Entrepinares / Mercadona SKU 50952 article with a fresh official Mercadona offer: approximately 370 g, 6.19 EUR, 16.74 EUR/kg.
 
 The next implementation unit should therefore be one **real retailer evidence
