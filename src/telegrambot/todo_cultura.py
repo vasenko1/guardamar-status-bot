@@ -28,7 +28,7 @@ METADATA_PAGE_SIZE = 100
 METADATA_LIMIT_BYTES = 300_000
 ROLLING_WINDOW_DAYS = 7
 CURSOR_OVERLAP_MINUTES = 5
-PARSER_VERSION = 19
+PARSER_VERSION = 20
 API_URL = "https://todoculturavegabaja.es/wp-json/wp/v2/mec-events"
 
 
@@ -90,6 +90,7 @@ class TodoCulturaProgram:
     summaries: Tuple[TodoCulturaSummary, ...] = ()
     dates: Tuple[date, ...] = ()
     event_rows: Tuple[Tuple[date, str, str], ...] = ()
+    candidate_ids: Tuple[int, ...] = ()
     standalone: bool = False
 
 
@@ -1169,6 +1170,7 @@ def _metadata_candidate(
         "modified_gmt": modified,
         "link": link,
         "dates": sorted(day.isoformat() for day in hinted_dates),
+        "dates_source": "metadata",
         "processed_dates": [],
         "detail_checked": not hinted_dates,
         "detail_priority": detail_priority,
@@ -1371,25 +1373,49 @@ def _read_program_window(
     """Incrementally collect only sections entering the rolling week."""
 
     prior = prior_state if isinstance(prior_state, dict) else {}
-    if prior.get("parser_version") != PARSER_VERSION:
-        # Re-open the rolling window once when extraction capabilities change.
-        # The metadata cursor remains useful, but old coverage must not prevent
-        # richer event-local facts from being collected.
-        prior = {
-            **prior,
-            "cursor_modified_gmt": None,
-            "covered_dates": [],
-            "candidates": [
-                {
-                    **candidate,
-                    "processed_dates": [],
-                    "processed_chunks": {},
-                    "detail_checked": False,
-                }
-                for candidate in prior.get("candidates", [])
-                if isinstance(candidate, dict)
-            ],
-        }
+    prior_version = prior.get("parser_version")
+    if prior_version != PARSER_VERSION:
+        if prior_version == 19:
+            # v19 already reopened Todo pages to recover raw session rows.
+            # Preserve that work, but re-check each future candidate once so
+            # metadata date hints can be replaced by dates proven in detail.
+            prior = {
+                **prior,
+                "candidates": [
+                    {
+                        **candidate,
+                        "dates_source": candidate.get(
+                            "dates_source", "metadata"
+                        ),
+                        "detail_checked": (
+                            candidate.get("detail_checked", False)
+                            if candidate.get("dates_source") == "detail"
+                            else False
+                        ),
+                    }
+                    for candidate in prior.get("candidates", [])
+                    if isinstance(candidate, dict)
+                ],
+            }
+        else:
+            # Older parsers did not preserve the raw rows required by current
+            # session grouping, so reopen the rolling window completely.
+            prior = {
+                **prior,
+                "cursor_modified_gmt": None,
+                "covered_dates": [],
+                "candidates": [
+                    {
+                        **candidate,
+                        "dates_source": "metadata",
+                        "processed_dates": [],
+                        "processed_chunks": {},
+                        "detail_checked": False,
+                    }
+                    for candidate in prior.get("candidates", [])
+                    if isinstance(candidate, dict)
+                ],
+            }
     cursor = prior.get("cursor_modified_gmt")
     if not isinstance(cursor, str):
         cursor = None
@@ -1430,16 +1456,21 @@ def _read_program_window(
             existing is not None
             and existing.get("modified_gmt") == incoming["modified_gmt"]
         ):
-            # Keep full-page progress and discovered dates, but always refresh
-            # metadata-derived selection fields. Parser migrations deliberately
-            # reopen progress while the upstream modified timestamp may stay
-            # unchanged.
-            incoming["dates"] = existing.get("dates", incoming["dates"])
+            # Full-detail dates are stronger than REST excerpt hints. Keep
+            # them across unchanged metadata; otherwise refresh the hint.
+            if existing.get("dates_source") == "detail":
+                incoming["dates"] = existing.get("dates", incoming["dates"])
+                incoming["dates_source"] = "detail"
+                incoming["detail_checked"] = existing.get(
+                    "detail_checked", True
+                )
+            else:
+                incoming["dates_source"] = "metadata"
+                incoming["detail_checked"] = existing.get(
+                    "detail_checked", False
+                )
             incoming["processed_dates"] = existing.get(
                 "processed_dates", []
-            )
-            incoming["detail_checked"] = existing.get(
-                "detail_checked", False
             )
             incoming["processed_chunks"] = existing.get(
                 "processed_chunks", {}
@@ -1454,17 +1485,46 @@ def _read_program_window(
     start = local_day
     end = local_day + timedelta(days=ROLLING_WINDOW_DAYS - 1)
     horizon = local_day + timedelta(days=44)
-    selected = sorted(
-        candidates,
-        key=lambda candidate: _candidate_priority(
-            candidate, start, end, horizon
-        ),
-    )[:MAX_CANDIDATES]
-    selected = [
+    ordered = [
         candidate
-        for candidate in selected
+        for candidate in sorted(
+            candidates,
+            key=lambda candidate: _candidate_priority(
+                candidate, start, end, horizon
+            ),
+        )
         if _candidate_priority(candidate, start, end, horizon)[0] < 3
     ]
+    unchecked_local = [
+        candidate
+        for candidate in ordered
+        if (
+            candidate.get("scope") == "local"
+            and not candidate.get("detail_checked")
+            and candidate.get("dates_source", "metadata") == "metadata"
+            and any(
+                start <= day <= horizon
+                for day in _candidate_dates(candidate, "dates")
+            )
+        )
+    ]
+    fairness = min(
+        unchecked_local,
+        key=lambda candidate: (
+            _parse_modified(candidate.get("modified_gmt")) or datetime.max,
+            candidate["id"],
+        ),
+        default=None,
+    )
+    selected = []
+    if fairness is not None:
+        selected.append(fairness)
+    selected.extend(
+        candidate
+        for candidate in ordered
+        if fairness is None or candidate["id"] != fairness["id"]
+    )
+    selected = selected[:MAX_CANDIDATES]
     documents = _read_documents([candidate["id"] for candidate in selected])
     documents_by_id = {
         item.get("id"): item
@@ -1477,6 +1537,7 @@ def _read_program_window(
     admissions_by_month: Dict[str, List[TodoCulturaAdmission]] = {}
     registration_by_month: Dict[str, List[TodoCulturaParticipation]] = {}
     sources_by_month: Dict[str, List[Tuple[str, str]]] = {}
+    candidate_ids_by_month: Dict[str, set] = {}
     standalone_programs = []
     local_event_programs: List[TodoCulturaProgram] = []
     for candidate in selected:
@@ -1510,6 +1571,12 @@ def _read_program_window(
             )
         lines = _plain_lines(rendered)
         attributed = " ".join(lines).casefold()
+        sections = _date_sections(lines, local_day.year, local_day)
+        if sections:
+            candidate["dates"] = sorted(
+                day.isoformat() for day in sections
+            )
+            candidate["dates_source"] = "detail"
         candidate["detail_checked"] = True
         is_municipal_program = (
             "ayuntamiento de guardamar" in attributed
@@ -1532,7 +1599,16 @@ def _read_program_window(
                 >= MAX_PROGRAMS_PER_WINDOW
             ):
                 continue
-            text = "\n".join(lines)
+            dated_sections = [
+                (day, sections[day])
+                for day in pending
+                if day in sections
+            ]
+            text = (
+                "\n".join(section for _, section in dated_sections)
+                if dated_sections
+                else "\n".join(lines)
+            )
             if not text or len(text) > PROGRAM_TEXT_LIMIT:
                 continue
             local_event_programs.append(TodoCulturaProgram(
@@ -1541,6 +1617,12 @@ def _read_program_window(
                 source_url=link,
                 modified=modified,
                 dates=pending,
+                event_rows=tuple(
+                    (day, start_time, row)
+                    for day, section in dated_sections
+                    for start_time, row in _event_rows(section)
+                ),
+                candidate_ids=(candidate["id"],),
                 standalone=True,
             ))
             processed.update(pending)
@@ -1549,12 +1631,10 @@ def _read_program_window(
             )
             covered_dates.update(pending)
             continue
-        sections = _date_sections(lines, local_day.year, local_day)
         document_admissions = _admissions(rendered, local_day)
         document_registration = _registration_participation(
             rendered, local_day
         )
-        candidate["dates"] = sorted(day.isoformat() for day in sections)
         processed = _candidate_dates(candidate, "processed_dates")
         included = []
         for day, section in sorted(sections.items()):
@@ -1574,6 +1654,9 @@ def _read_program_window(
                     if day in detail.event_dates
                 )
                 sources_by_month.setdefault(month, []).append((link, modified))
+                candidate_ids_by_month.setdefault(month, set()).add(
+                    candidate["id"]
+                )
                 included.append(day)
                 continue
             addition = len(section) + (
@@ -1615,6 +1698,7 @@ def _read_program_window(
                         link,
                         modified,
                         tuple(document_admissions),
+                        candidate["id"],
                     ))
                     completed.add(chunk_hash)
                 progress[day.isoformat()] = sorted(completed)
@@ -1655,6 +1739,9 @@ def _read_program_window(
                 if day in detail.event_dates
             )
             sources_by_month.setdefault(month, []).append((link, modified))
+            candidate_ids_by_month.setdefault(month, set()).add(
+                candidate["id"]
+            )
             included.append(day)
             covered_dates.add(day)
         processed.update(included)
@@ -1690,6 +1777,7 @@ def _read_program_window(
                 for day, section in dated_sections
                 for start_time, row in _event_rows(section)
             ),
+            candidate_ids=tuple(sorted(candidate_ids_by_month.get(month, ()))),
         ))
     for (
         month,
@@ -1698,6 +1786,7 @@ def _read_program_window(
         link,
         modified,
         document_admissions,
+        candidate_id,
     ) in standalone_programs:
         programs.append(TodoCulturaProgram(
             text=text,
@@ -1718,6 +1807,7 @@ def _read_program_window(
                 (day, start_time, row)
                 for start_time, row in _event_rows(text)
             ),
+            candidate_ids=(candidate_id,),
         ))
     state = {
         "parser_version": PARSER_VERSION,
