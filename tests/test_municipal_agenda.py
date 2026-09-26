@@ -1317,8 +1317,14 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                 path,
                 translation_cache_path=translations,
             )
-            next_day = await fetch_today_municipal_events(
+            weekend = await fetch_today_municipal_events(
                 datetime(2026, 9, 26, 7, 0, tzinfo=TZ),
+                "",
+                path,
+                translation_cache_path=translations,
+            )
+            weekday = await fetch_today_municipal_events(
+                datetime(2026, 9, 28, 7, 0, tzinfo=TZ),
                 "",
                 path,
                 translation_cache_path=translations,
@@ -1329,9 +1335,19 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             first_day[0].starts_at.strftime("%H:%M"), "20:00"
         )
-        self.assertEqual(len(next_day), 1)
-        self.assertEqual(next_day[0].category, "exhibition")
-        self.assertIsNone(next_day[0].starts_at)
+        self.assertEqual(weekend, ())
+        self.assertEqual(len(weekday), 1)
+        self.assertEqual(weekday[0].category, "exhibition")
+        self.assertEqual(
+            weekday[0].starts_at.strftime("%H:%M"), "09:00"
+        )
+        self.assertEqual(
+            weekday[0].ends_at.strftime("%H:%M"), "20:00"
+        )
+        self.assertEqual(
+            weekday[0].schedule_note,
+            "в будни перерыв 13:30–17:00",
+        )
 
     async def test_invalid_structured_text_keeps_official_exhibitions(self):
         page = b"""
