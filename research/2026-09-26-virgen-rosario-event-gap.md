@@ -337,3 +337,37 @@ The current catalog already had the 26 September 17:00 Bingo through Todo
 Cultura; the missing 19:50 traslado and 20:00 mass remained a separate
 same-day completeness problem to verify after the repaired recovery and, if
 needed, the planned Ayuntamiento poster backstop.
+
+
+## Production conclusion after the section-context repair
+
+Production at commit
+`6675a8d254fabdf9bb323a808ee6339eb1b4de94` still rejected the generic
+Turismo Rosario article as incomplete. The municipal refresh itself succeeded,
+but `turismo_programme_text.articles` remained empty and the 26 September
+catalog still contained only the 17:00 Bingo from Todo Cultura. The 19:50
+traslado and 20:00 Mass/presentation remained absent.
+
+A source re-check found two important facts:
+
+1. Todo Cultura currently reproduces the expanded Rosario programme in text,
+   including the exact 26 September 17:00, 19:50 and 20:00 rows. It remains a
+   secondary reproduction, and the production Todo row-completeness guard was
+   still reporting 19:50 and 20:00 as unresolved.
+2. The first-party Ayuntamiento post from 16 September contains one large
+   programme image. That poster is the compact authoritative artifact with the
+   full multi-day schedule in two columns and exact times.
+
+The implementation therefore stops trying to make the generic Turismo prose
+carry same-day act completeness. Turismo remains a cheap discovery/text source;
+Todo remains supplemental. A separate bounded Ayuntamiento fiesta-poster
+backstop reads only recent fiesta-shaped municipal posts, discovers one
+event-specific upload, and uses the existing two-blind-reading vision policy
+only for a new or changed poster.
+
+The live source probe on the implementation branch resolved the Rosario post to
+the official image
+`PROG.-todo-Virgen-Rosario-2026-2122x3000.jpg`. Unit regressions require
+separate 26 September occurrences at 17:00, 19:50 and 20:00 when both readings
+agree. Production still needs to verify the real vision result after deploy;
+the source contract itself is now deterministic and bounded.
