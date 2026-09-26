@@ -290,6 +290,74 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("<b>12:00–12:45</b>", message)
         self.assertIn("<b>13:00–13:45</b>", message)
 
+    def test_group_without_all_end_times_does_not_invent_overall_range(self):
+        day = datetime(2026, 9, 26, tzinfo=TZ)
+        events = (
+            Event(
+                "Экскурсия по музею",
+                day.replace(hour=10),
+                place="Museo Arqueológico",
+                session_group_key="session:tour",
+                session_order=1,
+                session_count=2,
+            ),
+            Event(
+                "Экскурсия по музею",
+                day.replace(hour=12),
+                ends_at=day.replace(hour=12, minute=45),
+                place="Museo Arqueológico",
+                session_group_key="session:tour",
+                session_order=2,
+                session_count=2,
+            ),
+        )
+
+        message = build_message(MorningDigest(
+            weather=None,
+            warnings=(),
+            warnings_available=True,
+            events=events,
+        ))
+
+        self.assertIn("<b>2 сеанса</b> — Экскурсия по музею", message)
+        self.assertNotIn("10:00–12:45 · 2 сеанса", message)
+        self.assertIn("<b>10:00</b>", message)
+        self.assertIn("<b>12:00–12:45</b>", message)
+
+    def test_cross_midnight_session_keeps_its_end_time_without_group_range(self):
+        day = datetime(2026, 9, 26, tzinfo=TZ)
+        events = (
+            Event(
+                "Ночная программа",
+                day.replace(hour=21),
+                ends_at=day.replace(hour=22),
+                place="Castillo de Guardamar",
+                session_group_key="session:night",
+                session_order=1,
+                session_count=2,
+            ),
+            Event(
+                "Ночная программа",
+                day.replace(hour=23),
+                ends_at=day.replace(day=27, hour=1),
+                place="Castillo de Guardamar",
+                session_group_key="session:night",
+                session_order=2,
+                session_count=2,
+            ),
+        )
+
+        message = build_message(MorningDigest(
+            weather=None,
+            warnings=(),
+            warnings_available=True,
+            events=events,
+        ))
+
+        self.assertIn("<b>2 сеанса</b> — Ночная программа", message)
+        self.assertIn("<b>23:00–01:00</b>", message)
+        self.assertNotIn("21:00–01:00 · 2 сеанса", message)
+
     def test_digest_falls_back_to_separate_sessions_on_context_conflict(self):
         day = datetime(2026, 9, 26, tzinfo=TZ)
         first = Event(
