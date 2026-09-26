@@ -527,30 +527,29 @@ class SourceEvent:
 
 _SESSION_MARKER = (
     r"(?:(?:primer(?:a|o)?|segund(?:a|o|0)|tercer(?:a|o)?|cuart[oa]|"
-    r"quint[oa]|sext[oa]|[1-6](?:[.ºª]|er|ra)?)\\s+"
+    r"quint[oa]|sext[oa]|[1-6](?:[.ºª]|er|ra)?)\s+"
     r"(?:turno|sesi[oó]n|pase)|"
-    r"(?:turno|sesi[oó]n|pase)\\s*"
-    r"(?:n[úu]m(?:ero)?\\.?\\s*)?[1-6])"
+    r"(?:turno|sesi[oó]n|pase)\s*"
+    r"(?:n[úu]m(?:ero)?\.?\s*)?[1-6])"
 )
 _SESSION_PREFIX_TITLE = re.compile(
-    rf"^\\s*{_SESSION_MARKER}\\b"
-    r"\\s*(?:[-:–—]\\s*)?(?:para\\s+|de\\s+)?"
-    r"(?P<base>.+?)\\s*$",
+    rf"^\s*{_SESSION_MARKER}\b"
+    r"\s*(?:[-:–—]\s*)?(?:para\s+|de\s+)?"
+    r"(?P<base>.+?)\s*$",
     re.IGNORECASE,
 )
 _SESSION_SUFFIX_TITLE = re.compile(
-    rf"^\\s*(?P<base>.+?)\\s*"
-    rf"(?:[([]\\s*)?{_SESSION_MARKER}\\b\\s*(?:[)]]\\s*)?$",
+    rf"^\s*(?P<base>.+?)\s*"
+    rf"(?:[([]\s*)?{_SESSION_MARKER}\b\s*(?:[)]]\s*)?$",
     re.IGNORECASE,
 )
 _TODO_ROW_TITLE_LINE = re.compile(
-    r"^\\s*[–—-]\\s*(?:de\\s+)?"
-    r"\\d{1,2}(?:[,:.]\\d{2})?"
-    r"(?:\\s*(?:a|[-–—])\\s*\\d{1,2}(?:[,:.]\\d{2})?)?"
-    r"\\s*(?:h(?:oras?)?\\.?)?\\s*:\\s*(?P<title>.+?)\\s*$",
+    r"^\s*[–—-]\s*(?:de\s+)?"
+    r"\d{1,2}(?:[,:.]\d{2})?"
+    r"(?:\s*(?:a|[-–—])\s*\d{1,2}(?:[,:.]\d{2})?)?"
+    r"\s*(?:h(?:oras?)?\.?)?\s*:\s*(?P<title>.+?)\s*$",
     re.IGNORECASE,
 )
-
 
 def _session_base_title(title: str) -> Optional[str]:
     """Strip only an explicit numbered session marker from a source title."""
