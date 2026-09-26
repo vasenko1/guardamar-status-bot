@@ -66,7 +66,6 @@ PRIVATE_LABELS: dict[str, tuple[str, ...]] = {
         "Carrefour Sensation",
         "Carrefour El Mercado",
     ),
-    "Alcampo": ("Auchan",),
     "DIA": ("DIA",),
     "Masymas": ("Alteza", "Deleitum"),
 }
