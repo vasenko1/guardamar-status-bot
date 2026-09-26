@@ -1,4 +1,4 @@
-name: Resolve ALDI Naltros data node
+name: Resolve ALDI Naltros nested data
 
 on:
   push:
@@ -16,7 +16,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Extract exact Naltros node
+      - name: Extract nested product payload
         run: |
           python - <<'PY'
           import json, re, urllib.request
@@ -27,22 +27,38 @@ jobs:
           m=re.search(r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>',raw,re.S)
           if not m: raise SystemExit("NO_NEXT_DATA")
           data=json.loads(m.group(1))
-          hits=[]
-          def walk(v,path="root"):
+
+          found=[]
+          def inspect_string(value,path):
+              if "190300" not in value and "NALTROS" not in value.upper():
+                  return
+              print("STRING_PATH",path,"LEN",len(value))
+              print(value[:60000])
+              try:
+                  nested=json.loads(value)
+              except Exception:
+                  return
+              find_product(nested,path+"::<json>")
+
+          def find_product(v,path="root"):
               if isinstance(v,dict):
                   blob=json.dumps(v,ensure_ascii=False)
                   if (
                       ("currentPrice" in v or "salesUnit" in v or "productSlug" in v)
-                      and ("NALTROS" in blob.upper() or "cava-brut-190300" in blob.lower())
-                      and len(blob)<80000
+                      and ("190300" in blob or "NALTROS" in blob.upper())
                   ):
-                      hits.append((path,v))
-                  for k,x in v.items(): walk(x,f"{path}.{k}")
+                      found.append((path,v))
+                  for k,x in v.items():
+                      find_product(x,f"{path}.{k}")
               elif isinstance(v,list):
-                  for i,x in enumerate(v): walk(x,f"{path}[{i}]")
-          walk(data)
-          print("HITS",len(hits))
-          for path,obj in hits:
-              print("PATH",path)
-              print(json.dumps(obj,ensure_ascii=False,sort_keys=True)[:60000])
+                  for i,x in enumerate(v):
+                      find_product(x,f"{path}[{i}]")
+              elif isinstance(v,str):
+                  inspect_string(v,path)
+          find_product(data)
+
+          print("FOUND",len(found))
+          for path,obj in found:
+              print("PRODUCT_PATH",path)
+              print(json.dumps(obj,ensure_ascii=False,sort_keys=True)[:40000])
           PY
