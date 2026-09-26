@@ -18,11 +18,14 @@ from telegrambot.product_awards import (
     RetailOfferVariant,
     _ocu_product_name,
     _resolve_private_label,
+    build_current_publication,
     build_publication,
     discover_ocu_documents,
     discover_product_awards,
     load_ocu_item,
     parse_ocu_awards,
+    parse_wccc_top20,
+    refresh_mercadona_offers,
     scan_next_product_award,
 )
 
@@ -309,6 +312,145 @@ class OcuAdapterTests(unittest.TestCase):
         with patch("telegrambot.product_awards._fetch_page", return_value=document):
             item = load_ocu_item(document.url, 2026)
         self.assertEqual(item.candidates, ())
+
+
+class WcccAdapterTests(unittest.TestCase):
+    def test_reviewed_top20_entrepinares_maps_to_exact_mercadona_sku(self):
+        document = PageDocument(
+            "https://worldchampioncheese.org/2026-wccc-top-20-finalists/",
+            """
+            2026 WCCC Top 20 Finalists
+            Class #: 114 – Hard Mixed Milk Cheeses
+            Cheese: Seleccion Tostado Mixed Milk Cheese Extra Aged
+            Maker: Queserías Entrepinares S.A.U.
+            Company: Queserías Entrepinares
+            Location: Valladolid, Spain
+            """,
+            (),
+        )
+        found = parse_wccc_top20(document, 2026)
+        self.assertEqual(len(found), 1)
+        item = found[0]
+        self.assertEqual(item.retailer, "Mercadona")
+        self.assertEqual(item.retail.product_id, "50952")
+        self.assertEqual(item.retail.ean, "8480000509529")
+        self.assertEqual(item.editorial.production_country, "Испания")
+        self.assertEqual(item.editorial.producer, "Queserías Entrepinares S.A.U.")
+        self.assertEqual(item.editorial.comparison_size, 3375)
+        self.assertEqual(item.editorial.judge_count, 56)
+        self.assertEqual(item.result, "Top 20 finalist")
+
+    def test_wccc_reviewed_mapping_fails_closed_if_maker_changes(self):
+        document = PageDocument(
+            "https://worldchampioncheese.org/2026-wccc-top-20-finalists/",
+            """
+            2026 WCCC Top 20 Finalists
+            Class #: 114 – Hard Mixed Milk Cheeses
+            Cheese: Seleccion Tostado Mixed Milk Cheese Extra Aged
+            Maker: Different Maker
+            Company: Queserías Entrepinares
+            Location: Valladolid, Spain
+            """,
+            (),
+        )
+        with self.assertRaises(ProductAwardError):
+            parse_wccc_top20(document, 2026)
+
+
+class MercadonaRetailRefreshTests(unittest.TestCase):
+    def wccc_candidate(self):
+        document = PageDocument(
+            "https://worldchampioncheese.org/2026-wccc-top-20-finalists/",
+            """
+            2026 WCCC Top 20 Finalists
+            Class #: 114 – Hard Mixed Milk Cheeses
+            Cheese: Seleccion Tostado Mixed Milk Cheese Extra Aged
+            Maker: Queserías Entrepinares S.A.U.
+            Company: Queserías Entrepinares
+            Location: Valladolid, Spain
+            """,
+            (),
+        )
+        return parse_wccc_top20(document, 2026)[0]
+
+    def payload(self):
+        return {
+            "id": "50952",
+            "ean": "8480000509529",
+            "brand": "Hacendado",
+            "published": True,
+            "is_variable_weight": True,
+            "share_url": (
+                "https://tienda.mercadona.es/product/50952/"
+                "queso-anejo-tostado-mezcla-hacendado-pieza"
+            ),
+            "details": {
+                "suppliers": [{"name": "Queserías Entrepinares S.A.U."}],
+            },
+            "price_instructions": {
+                "unit_price": 6.19,
+                "reference_price": 16.74,
+                "reference_format": "kg",
+                "unit_size": 0.37,
+                "size_format": "kg",
+                "approx_size": True,
+            },
+        }
+
+    def test_exact_sku_refresh_returns_current_offer(self):
+        item = self.wccc_candidate()
+        with patch(
+            "telegrambot.product_awards._fetch_json",
+            return_value=self.payload(),
+        ):
+            offers = refresh_mercadona_offers(item)
+        self.assertEqual(len(offers), 1)
+        self.assertEqual(offers[0].package, "около 370 г")
+        self.assertEqual(offers[0].price, "6,19 €")
+        self.assertEqual(offers[0].unit_price, "16,74 €/кг")
+        self.assertEqual(offers[0].ean, "8480000509529")
+
+    def test_exact_sku_refresh_rejects_supplier_mismatch(self):
+        item = self.wccc_candidate()
+        payload = self.payload()
+        payload["details"] = {"suppliers": [{"name": "Another Supplier"}]}
+        with (
+            patch("telegrambot.product_awards._fetch_json", return_value=payload),
+            self.assertRaises(ProductAwardError),
+        ):
+            refresh_mercadona_offers(item)
+
+    def test_current_publication_requires_verified_live_offer(self):
+        item = self.wccc_candidate()
+        with patch(
+            "telegrambot.product_awards.refresh_retail_offers",
+            return_value=(),
+        ):
+            self.assertIsNone(build_current_publication(item))
+
+    def test_current_publication_has_store_price_and_expandable_method(self):
+        item = self.wccc_candidate()
+        offer = RetailOfferVariant(
+            package="около 370 г",
+            price="6,19 €",
+            unit_price="16,74 €/кг",
+            product_id="50952",
+            ean="8480000509529",
+        )
+        with patch(
+            "telegrambot.product_awards.refresh_retail_offers",
+            return_value=(offer,),
+        ):
+            publication = build_current_publication(item)
+        self.assertIsNotNone(publication)
+        message = publication.message
+        self.assertIn("в Mercadona — вошёл в мировой Top 20 сыров", message)
+        self.assertNotIn("99,25", message.split("</b>", 1)[0])
+        self.assertIn("около 370 г", message)
+        self.assertIn("6,19 €", message)
+        self.assertIn("16,74 €/кг", message)
+        self.assertIn("Queserías Entrepinares S.A.U., Вальядолид, Испания", message)
+        self.assertIn("<blockquote expandable>", message)
 
 
 class CandidateIdentityTests(unittest.TestCase):
