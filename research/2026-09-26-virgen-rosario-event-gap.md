@@ -402,3 +402,33 @@ del Rosario de Guardamar social presence and the San Jaime Apóstol parish site)
 are useful for manual corroboration but are not sufficiently stable lightweight
 runtime sources. No new Facebook, browser, OCR, or parish adapter is added.
 
+## 27 September production verification: supplemental alias duplicate
+
+The first production refresh after the Ayuntamiento programme backstop and
+programme-display work synchronized 77 municipal facts and confirmed that the
+official Rosario poster now supplies the future programme under one stable
+`programme_title` with ordered children.
+
+The refresh also exposed one narrow cross-source duplicate on 28 September at
+20:00. The official poster child was `Santa Misa con Homilía`, while Todo
+Cultura held the same occurrence under the longer supplemental title
+`Celebración de la misa y presentación de niños a la Virgen del Rosario`.
+The existing title-to-title overlap guard correctly refused to guess that these
+were identical, so both rows survived.
+
+The repair does not weaken generic deduplication. Todo already retains exact
+dated `event_rows`; those rows are stronger evidence than a model-normalized
+supplemental title. Before the existing merge, a Todo alias may be canonicalized
+to one already verified programme child only when:
+
+- the raw Todo row uniquely identifies one Todo occurrence;
+- date and non-null start time match exactly;
+- the same raw row supports exactly one programme child at that slot;
+- at least two claim-bearing words from the official child are present and the
+  existing title/row overlap is at least 0.5.
+
+Ambiguous or weak cases remain separate. The canonicalized alias then passes
+through the existing strict merge, preserving the official programme identity
+while allowing Todo to contribute ordinary corroborating fields such as place.
+No generic fuzzy threshold is relaxed, no Rosario-specific vocabulary is added,
+and there is no new network, model, storage, scheduler, or runtime cost.
