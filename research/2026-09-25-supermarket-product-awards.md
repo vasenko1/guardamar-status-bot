@@ -1,0 +1,1935 @@
+# Supermarket product awards: source and implementation research
+
+## Question
+
+How should the Guardamar Telegram bot build one long-lived editorial stream of
+award-winning supermarket own-brand products while staying cheap, deterministic
+and easy to extend across unrelated award bodies?
+
+The intended product is not an OCU-only feature. OCU is the first source, but
+the same stream should later be able to include cheese, wine, olive oil, jamón
+and other products from different competitions without creating a separate
+publication subsystem for every category.
+
+## Sources and systems checked
+
+### OCU
+
+- Owner: Organización de Consumidores y Usuarios.
+- Discovery surface used by the prototype: `https://www.ocu.org/ocu-salud`.
+- Reviewed report:
+  `https://www.ocu.org/alimentacion/platos-preparados/informe/salmorejos`.
+- Access/probes: September 2026.
+- Why useful: OCU publishes explicit comparative-test result labels and
+  product/brand names in human-readable HTML.
+
+### World Cheese Awards / Guild of Fine Food
+
+- Owner: Guild of Fine Food.
+- Directory surface:
+  `https://gff.co.uk/directory/?type=product`.
+- Access/probes: September 2026.
+- Why useful: official result directory with explicit medal terminology.
+- Current limitation observed during the POC: the 2026 year/results were not
+  yet present in the directory on 25 September 2026, so there was no real 2026
+  private-label result set to validate against.
+
+### Retailer catalogues tested during the POC
+
+- Mercadona public catalogue/Algolia path.
+- ALDI España public search.
+- Lidl España public search.
+
+These were evaluated only for optional price/image enrichment, not as award
+authorities.
+
+### Runtime AI experiment
+
+The first POC also tested Gemini structured extraction with OpenRouter as the
+existing secondary provider. This was an implementation experiment, not an
+award source.
+
+## Product scope
+
+The user-facing concept is one occasional stream:
+
+- one day an OCU-tested Hacendado product;
+- another day a cheese with a World Cheese Awards medal;
+- later a wine, olive oil, jamón or another supermarket own-brand product from
+  a credible independent competition.
+
+The stream should feel like useful editorial discovery, not advertising and not
+a technical bot card.
+
+The system should smooth bursts rather than publish several awards at once.
+The accepted schedule is one discovery run followed by at most one queued
+publication per day.
+
+## Retailer/private-label ownership allowlist
+
+The POC established a conservative own-brand allowlist:
+
+- Mercadona: Hacendado.
+- Consum: Consum, Consum Eco, Consum Kids, Kyrey, Vitality.
+- ALDI: La Tabla, Milsani, Cucina, Moser Roth, GutBio.
+- Lidl: Roncero, Deluxe, Milbona, Chef Select, Crownfield, Freshona, Gelatelli,
+  Vemondo, J.D. Gross, Favorina, La Cestera, Realvalle, Ocean Sea.
+- Carrefour: Carrefour, Carrefour Classic, Carrefour Extra, Carrefour Original,
+  Carrefour Sensation, Carrefour El Mercado.
+- Valencian Masymas / Juan Fornés: Alteza, Deleitum.
+
+Do not infer own-brand ownership from a retailer name, manufacturer name or
+seller relationship. Extend the allowlist only after a retailer-owned source
+or other strong evidence establishes the relationship.
+
+When labels overlap, prefer the most specific exact label. For example,
+`Carrefour Extra` is not reduced to the parent `Carrefour`.
+
+## OCU findings
+
+### Result semantics
+
+Keep OCU wording semantically exact:
+
+- `Mejor del Análisis` means the best result in the specific OCU comparative
+  analysis. It is not a generic medal or a universal category championship.
+- `Compra Maestra` is a value/balance distinction. Do not describe it as the
+  highest-quality product merely because it is selected by OCU.
+
+These two outcomes may coexist in one comparison and may belong to different
+products.
+
+### Salmorejo case used for live validation
+
+The 2026 OCU salmorejo report provided a strong real test case:
+
+- private label: Hacendado;
+- retailer: Mercadona;
+- product: salmorejo fresco de Hacendado;
+- result: Mejor del Análisis;
+- score: 70/100;
+- comparison size: 30 salmorejos;
+- the source also states that it was the best-rated product in the professional
+  tasting.
+
+The report was repeatedly fetched and parsed during development. The important
+lesson is that these core facts are already explicit enough for deterministic
+source parsing; a language model is not necessary to decide what the award is
+or which private label owns the result.
+
+A price published inside an OCU report is optional source metadata. If parsed,
+render it explicitly as a price stated in that study. It is not evidence of the
+current shelf price.
+
+### Discovery choice
+
+For production discovery, use OCU food report URLs under
+`/alimentacion/.../informe/`.
+
+Do not depend on OCU news articles as a second discovery stream for the same
+test. A report is a cleaner stable unit and avoids duplicate news/report
+representations of one comparison.
+
+A current-year report is accepted only when the adapter can establish the
+report year and parse an explicit accepted result next to an allowed private
+label. Ambiguous layout changes fail closed and leave the item eligible for a
+future retry.
+
+## World Cheese Awards findings
+
+WCA is still a good future source, but it should not be generalized before
+there is current real data to validate.
+
+The official directory exposed the concepts needed by a future adapter:
+
+- current/result year;
+- product identity;
+- explicit award level such as Super Gold, Gold, Silver or Bronze.
+
+Important semantic rule: a medal tier is not automatically "first place in the
+category". Never invent a category win unless the official result explicitly
+says so.
+
+Implementation should wait until 2026 results exist in the official directory.
+At that point, capture the actual HTML/query contract and define the adapter's
+stable event key from the real result representation.
+
+## Optional catalogue-enrichment experiment
+
+The POC tested live retailer catalogue lookup because a current price and exact
+product photo would make posts more attractive.
+
+The experiment showed why this must not be a core dependency.
+
+### Mercadona
+
+A live Salmorejo search returned at least two different current SKUs with the
+same visible product name:
+
+- SKU 39901: Salmorejo fresco Hacendado;
+- SKU 39966: Salmorejo fresco Hacendado.
+
+The OCU article did not expose enough package-size identity to choose between
+those SKUs without guessing. Therefore a seemingly straightforward
+"exact-name" match can still attach the wrong current price or image.
+
+### ALDI and Lidl
+
+Public search endpoints were technically usable during the POC, but that does
+not solve the general identity problem. Catalogue availability and naming are
+retailer-specific.
+
+### Other retailers
+
+No equally reliable low-cost exact-SKU price path was established for Consum,
+Carrefour or Valencian Masymas during the POC.
+
+### Conclusion
+
+Do not make live retailer catalogue lookup part of award discovery or
+publication eligibility.
+
+If enrichment is revisited later:
+
+- it must be optional;
+- it must prove exact SKU identity;
+- ambiguity means no enrichment;
+- no result may be blocked because price/photo is missing;
+- source-published award facts remain authoritative.
+
+## What the LLM POC taught us
+
+The first implementation intentionally explored whether one universal model
+call could turn arbitrary award pages into a common candidate contract.
+
+It worked often enough to prove the product idea, but repeated live runs exposed
+several distinct failure classes.
+
+### Entity-role instability
+
+For the same OCU Salmorejo source and same code, Gemini returned:
+
+- `private_label = Hacendado` in some runs;
+- `private_label = Mercadona` in another run.
+
+The source evidence itself still correctly contained
+`salmorejo fresco de Hacendado (Mercadona)`.
+
+This forced the code to stop trusting the model for brand ownership.
+
+### Product-name instability
+
+Later repeated runs returned both:
+
+- `salmorejo fresco de Hacendado`;
+- only `Hacendado`.
+
+When event identity depended on the model's product wording, one real award
+became two event IDs. A deterministic `product_key` layer was added to repair
+this, but that layer existed only because the model had been put in charge of
+source interpretation.
+
+### Editorial validation mismatch
+
+A Russian editorial note could correctly transliterate or translate a Spanish
+product name while a literal validator expected the Spanish token. Correct
+prose was therefore rejected even though the verified facts were present.
+
+### Provider availability
+
+A final live editorial preview hit:
+
+1. Gemini read timeout;
+2. OpenRouter fallback HTTP 403;
+3. complete failure of the award path before publication preview.
+
+The award source itself was healthy.
+
+### Architecture conclusion
+
+The failure pattern was not one isolated bug. Each repair created another
+generic layer:
+
+- model field validation;
+- deterministic private-label repair;
+- product-key recovery;
+- source retry semantics for rejected model output;
+- editorial-result validation;
+- secondary-provider behavior.
+
+That is unnecessary for sources whose award facts are explicitly published.
+
+The experiment should be retained as evidence not to reintroduce universal LLM
+extraction into this feature.
+
+## Accepted architecture
+
+Use one shared engine plus small source adapters.
+
+A source adapter owns source-specific interpretation. The shared engine owns
+only common operational behavior.
+
+### Adapter contract
+
+Each adapter provides:
+
+- `name`;
+- `discover(year)`: bounded current item identifiers;
+- `load(item_id, year)`: one deterministic parse returning an
+  `AwardSourceItem`.
+
+The item contains zero or more verified `ProductAwardCandidate` records.
+
+### Candidate contract
+
+Current common fields:
+
+- source kind;
+- source-defined event key;
+- source URL;
+- retailer;
+- private label;
+- product name;
+- result;
+- award body;
+- result year;
+- optional score;
+- optional source-published price;
+- optional sample size.
+
+The source adapter defines the stable `event_key`. The common engine hashes
+`source_kind + event_key` into the persistent event ID.
+
+This is intentionally different from a universal normalized product identity.
+The source that knows the award representation is the right place to define
+what constitutes one event.
+
+### Per-source baseline
+
+State records initialized source names independently.
+
+When a new adapter is deployed:
+
+1. its first successful discovery marks the existing item IDs as seen;
+2. historical results are not queued;
+3. already active sources keep their state unchanged;
+4. later new items from that adapter enter the shared queue normally.
+
+This is important for incremental expansion: adding wine awards in the future
+must not reset OCU or publish an archive of old wine medals.
+
+### Shared queue and delivery
+
+The queue is global across sources.
+
+- Discover at 13:50 Europe/Madrid.
+- Publish at 14:20.
+- FIFO is sufficient for the MVP.
+- At most one award post per local day.
+- A burst from several sources is naturally spread across later days.
+- Published and uncertain event histories permanently block duplicate enqueue.
+- Ambiguous Telegram send stays uncertain and is never automatically resent.
+- Explicit deterministic send failure may safely requeue for a future day.
+
+### Rendering
+
+Rendering is deterministic and source-semantic.
+
+OCU needs explicit wording for `Mejor del Análisis` and `Compra Maestra`.
+A future medal source may use a generic medal sentence only when that wording
+does not overstate the award.
+
+Do not add a language model merely to make the prose less repetitive. The
+volume of awards is low, and small reviewed templates are cheaper and safer.
+
+### Runtime footprint
+
+The desired no-change run is:
+
+- one bounded discovery request per active source family;
+- no browser;
+- no OCR;
+- no PDF;
+- no AI;
+- no retailer catalogue query;
+- one small JSON state;
+- no resident award process.
+
+## Implementation recipe for the next award source
+
+Before coding:
+
+1. Identify the official/authoritative result source.
+2. Record the exact result semantics. A `Gold`, `95 points`, `Best Buy`
+   and category winner are not interchangeable.
+3. Prove a bounded anonymous request from the Termux environment.
+4. Find a current-item list or another cheap change-detection surface.
+5. Find a stable source-native item/event identity.
+6. Confirm how the exact product brand is represented.
+7. Confirm private-label ownership independently.
+
+Then implement:
+
+1. `discover(year)` returning bounded item IDs.
+2. `load(item_id, year)` with strict host/content/size bounds.
+3. A fail-closed parser for only the facts the source explicitly supplies.
+4. A source-native `event_key`.
+5. Candidate mapping into the common contract.
+6. Tests for:
+   - current positive result;
+   - third-party brand rejection;
+   - old-year rejection;
+   - ambiguous product rejection;
+   - duplicate item/event behavior;
+   - known award-tier semantics;
+   - parser breakage leaves the item retryable.
+7. A read-only live probe.
+8. Registration in `SOURCE_ADAPTERS` only after the live probe passes.
+9. A first production discovery proving silent baseline for the new source.
+
+Do not create a new queue, cron, publisher, state file or notification
+framework for the new source.
+
+## Candidate future source families
+
+These remain research candidates, not production commitments:
+
+- World Cheese Awards / Guild of Fine Food;
+- wine competitions with official searchable result databases;
+- olive-oil competitions;
+- jamón/cured-meat competitions;
+- Great Taste and similar food-award directories.
+
+Prioritize sources that have official structured or stable HTML results and
+clear product identity. A prestigious award with an expensive or ambiguous
+source is lower priority than a slightly less broad award with a clean,
+verifiable public result surface.
+
+## Status and next validation
+
+Architecture: accepted.
+
+Implementation: PR #195.
+
+Production deployment: not yet approved at the time of this note.
+
+Before merge/deploy, the deterministic branch still needs the normal final
+read-only live preview and full regression review. That preview must work with
+Gemini, OpenRouter and Telegram credentials unset.
+
+---
+
+## Horizontal retailer and rich-editorial expansion — 25 September 2026
+
+### Scope after the second research pass
+
+The first proof of concept intentionally constrained the feed to supermarket own brands. The broader useful scope is now:
+
+- private-label products;
+- retailer-exclusive products whose exact commercial identity can be proven;
+- ordinary branded products that have won a credible award and whose exact SKU is currently listed by a supported Spanish supermarket.
+
+Public wording must preserve those distinctions. A listed or retailer-exclusive product must never be described as an own brand unless ownership is independently proven.
+
+The user-provided Salmorejo article is deliberately not stored as a project template or copied into this research. It is only a quality bar: a publication should contain enough verified material to explain what was tested, how the result was obtained, why the product stood out, and — when exact current retail identity is proven — the current price and an exact product photo.
+
+### Target retailer set
+
+The primary set should be seven Spanish supermarket chains:
+
+1. Mercadona;
+2. Lidl España;
+3. ALDI España;
+4. Consum;
+5. Carrefour España supermarket;
+6. Masymas / Juan Fornés Fornés in Comunidad Valenciana and Murcia;
+7. DIA España.
+
+DIA is a justified addition rather than generic chain expansion.
+
+DIA has a live official page for its 2026 Sabor del Año products with exact private-label products and current prices:
+https://www.dia.es/l/productos-premiados-dia
+
+Eroski and SPAR remain possible later additions. They are not needed for the first expansion.
+
+### Retail catalogue capability
+
+#### Mercadona
+
+Public product URLs use a numeric product identity under:
+https://tienda.mercadona.es/product/<id>/<slug>
+
+The earlier POC proved that public catalogue/search data can expose exact Mercadona SKU IDs, prices and product images.
+
+The critical identity finding remains: SKU 39901 and SKU 39966 both exposed the visible name Salmorejo fresco Hacendado. Therefore visible-name equality is never enough. An exact Mercadona product ID or another exact variant discriminator is required before current price or photo can be attached.
+
+Decision: technically usable, but the strictest matching rules are required.
+
+A 26 September 2026 browser-free probe established a concrete Guardamar
+contract:
+
+- postal code `03140` resolved to warehouse `alc1`;
+- exact product endpoint:
+  `https://tienda.mercadona.es/api/products/<id>/?lang=es&wh=alc1`;
+- reviewed SKU `50952` returned:
+  `Queso añejo tostado mezcla Hacendado`,
+  EAN `8480000509529`, `published=true`,
+  supplier `Queserías Entrepinares S.A.U.`,
+  unit price 6.19 EUR, approximate size 0.37 kg and reference price
+  16.74 EUR/kg;
+- the exact retail ingredient field identifies pasteurized cow milk 50%,
+  sheep milk 20% and goat milk 15%.
+
+The warehouse was returned in the postal endpoint response headers rather than
+its JSON body. To avoid an extra request and shared-transport changes on every
+publication, the MVP uses reviewed Guardamar warehouse `alc1` and fails closed
+if the exact product response changes. No catalogue search is performed.
+
+If the award source does not distinguish an exact Mercadona product strongly
+enough, do not enrich or publish it rather than guess.
+
+#### Lidl España
+
+Lidl has the strongest retailer-side award discovery surface found:
+https://www.lidl.es/c/premiados/a10092875
+
+On 25 September 2026 it exposed awarded groups across fresh salmon, beef, cheeses, fish, wine and other products, with current availability and often price/package data.
+
+Observed examples included Realvalle Entrecot de vacuno, approximately 300 g at 7.49 EUR, and Realvalle Solomillo de ternera, approximately 250 g at 9.95 EUR.
+
+Exact product pages can expose stable product paths and multiple images. Example:
+https://www.lidl.es/p/la-bien-pinta-vino-blanco-d-o-rueda-verdejo/p11037304
+
+Decision: Lidl should serve both as a retailer evidence source and a cheap retailer-first discovery surface. A retailer award badge is a discovery hint; when possible, the independent award authority must still verify the award semantics. Never transfer Lidl Great Britain or Lidl Ireland results to Lidl España merely because a private-label name matches.
+
+#### ALDI España
+
+Current exact ALDI pages expose a stable numeric product ID, exact name, package, current price and multiple images. They may also state the award.
+
+Observed examples:
+- LA TABLA Queso curado, 300 g, 3.35 EUR, explicitly described as Super Gold at World Cheese Awards:
+  https://www.aldi.es/producto/queso-curado-181600.html
+- LA TABLA Queso de oveja ahumado V de Navarra, 250 g, 4.29 EUR in the observed offer, explicitly described as bronze:
+  https://www.aldi.es/producto/queso-de-oveja-ahumado-v-de-navarra-601233500.html
+
+Decision: technically strong for exact-SKU price/photo verification. The competition authority should remain preferred for medal semantics. Preserve geographic price caveats published by ALDI.
+
+#### Consum
+
+Consum is one of the best technical retailer surfaces found.
+
+Official ecommerce pages expose:
+- stable Código producto;
+- often EAN;
+- exact volume/package;
+- current price and unit price;
+- product images.
+
+Observed examples:
+- CONSUM AOVE 0.5 L, code 7414787, 3.60 EUR;
+- CONSUM ECO AOVE 0.5 L, code 7304397, EAN 8414807543455, 4.75 EUR;
+- CONSUM Gouda tierno 350 g, code 7419021, EAN 8414807557421, 2.82 EUR.
+
+Decision: use Código producto as stable retailer identity and EAN, when present, as the strongest cross-source product key. Consum is ready for an enrichment adapter even if award discovery still comes from OCU or a specialist competition.
+
+#### Carrefour España
+
+The public Carrefour supermarket surface renders product names, package variants, prices and images and asks for a postcode to resolve local availability.
+
+A current Carrefour Extra AOVE category exposed several different sizes and variants:
+https://www.carrefour.es/supermercado/la-despensa/aceites-y-vinagres-carrefour-aceite-de-oliva-virgen-extra/F-1y9wiZ10siZp646/c
+
+Critical trap: Carrefour.es also contains marketplace products sold by third parties. A marketplace card is not evidence that a product is a Carrefour supermarket shelf item.
+
+Decision: restrict to the supermarket surface plus a configured postcode/store context; reject third-party marketplace seller cards; prefer exact EAN/REF or another stable first-party product ID; include package size in identity.
+
+#### Masymas / Juan Fornés Fornés
+
+The masymas name is used by several independent supermarket businesses. For this project the target is the Valencian/Murcian chain operated by Juan Fornés Fornés, S.A.
+
+Official online store:
+https://tienda.masymas.com
+
+Official FAQ:
+https://masymas.com/es/index.php?catid=11&id=135&option=com_content&view=article
+
+The FAQ states that product details can be viewed without registration and that online products use the same prices, offers and promotions as physical Masymas stores.
+
+The current shop is JavaScript-driven. This research pass did not yet prove a stable anonymous JSON product contract.
+
+Alteza is a shared distribution/private-label brand. An award for an Alteza product alone does not prove that the same SKU is currently sold by Juan Fornés.
+
+Decision: keep Masymas in scope because it is locally relevant and has a real online catalogue. Before coding, perform one bounded browser-free network/API probe. Require an exact Juan Fornés SKU/EAN/current product card before saying that an awarded Alteza item is currently available there. Never substitute another masymas company's catalogue.
+
+#### DIA España
+
+DIA has an unusually useful current award surface:
+https://www.dia.es/l/productos-premiados-dia
+
+Observed 2026 examples:
+- Burrata fresca Dia Selección Mundial 150 g — 2.19 EUR;
+- Tarta de queso Dia Caprichoso 250 g — 2.75 EUR.
+
+The page explicitly ties the products to Sabor del Año 2026 and current ecommerce sale.
+
+Decision: add DIA to the retailer set. Use the page for exact retail identity/current sale and as a discovery hint; verify award semantics through the award authority or another authoritative result source before registering an automated award adapter.
+
+#### Alcampo / Auchan — researched, then excluded
+
+Official Alcampo ecommerce was technically viable: the research found stable
+numeric product paths, price/unit price, package, image and legal product
+details. The observed Auchan Salmorejo 1 L card also provided a clean example
+of joining an OCU result to an exact retailer product.
+
+However, technical suitability is not enough for this local feature. Alcampo
+has low practical relevance for the Guardamar audience because there is no
+nearby store that most residents can conveniently use.
+
+Decision: **exclude Alcampo / Auchan from the active retailer scope**. Do not
+use it for runtime private-label matching, retailer enrichment, current-price
+refresh, photos or award publication. Keep this section only as historical
+research so the source is not re-evaluated from scratch later.
+
+### Award-source vertical review
+
+#### OCU
+
+Status: implemented source adapter; retain and enrich.
+
+The 7 July 2026 Salmorejo report proves that OCU can support a much richer deterministic article. It explicitly supplies:
+- 30 products;
+- labeling and composition review;
+- OCU health-scale evaluation;
+- blind professional chef tasting;
+- appearance, smell, taste and texture dimensions;
+- exact result and score;
+- professional-tasting distinction;
+- health classification;
+- source-published price.
+
+A source-specific renderer can use those facts without a language model.
+
+#### Sabor del Año
+
+Status: high-value source family; authoritative deterministic discovery contract still needs to be proven before registration.
+
+The 2026 result set includes direct supermarket products from Lidl and DIA. Public result reporting records 89 recognised food products in 2026, including Lidl fresh salmon, Lidl entrecôte and tenderloin, DIA natural yoghurt, DIA Selección Mundial burrata and DIA Caprichoso cheesecake.
+
+Semantic rule: this is consumer sensory recognition. Do not rewrite it as an objective category championship or first place unless the award authority explicitly publishes such a rank.
+
+Retailer pages are excellent identity/current-sale evidence but should not become the sole award authority when a dedicated award result is available.
+
+#### World Cheese Awards / Guild of Fine Food
+
+Status: high-priority future source; 2026 adapter must wait.
+
+Official dates:
+- judging: 12 November 2026 in Córdoba;
+- Gold, Silver, Bronze and Super Gold results: public directory within 24–48 hours;
+- trophy winners: 16 November 2026.
+
+Therefore no 2026 parser should be shipped on 25 September 2026. Probe and implement against the real November result format.
+
+Do not confuse World Cheese Awards with World Championship Cheese Contest.
+
+#### World Championship Cheese Contest 2026
+
+Status: current source candidate.
+
+Official 2026 Top 20 includes class 114 Hard Mixed Milk Cheeses, Seleccion Tostado Mixed Milk Cheese Extra Aged, Queserías Entrepinares, Valladolid.
+
+This proves current Spanish supplier relevance but does not prove a Mercadona SKU. The complete result database needs a bounded source probe and exact retail evidence.
+
+#### GourmetQuesos 2026
+
+Status: strong Spanish cheese source candidate.
+
+Official 16th GourmetQuesos data records more than 800 samples, 65 judges, two qualifying phases, 20 categories and 60 finalists. Judging includes rind, colour, texture, aroma, flavour, aftertaste and persistence.
+
+This is excellent rich-article context when an exact winner can be joined to an exact supermarket SKU.
+
+#### MUNDUS VINI
+
+Status: technically strong wine source candidate.
+
+Official result cards expose tasting edition, medal, submitter, country, wine category, quality level, denomination, vintage, alcohol, grape variety, bottle volume and recommended retail price.
+
+A current 2026 example submitted by Lidl Stiftung is 2025 Hacienda Uvanis Tinto Joven, MUNDUS VINI Summer Tasting 2026, DO Navarra, Garnacha, 0.75 L, RRP 4.99 EUR.
+
+Important rule: submitted by Lidl Stiftung does not prove current sale in Lidl España. A Spain-specific current Lidl card must match the exact wine, especially vintage, denomination and bottle size. Wine must never be matched only by label-family name.
+
+#### Great Taste
+
+Status: broad future source, second wave.
+
+Guild of Fine Food publishes searchable Great Taste results. The directory includes retailer/private-label products from multiple countries.
+
+Decision: accept only exact Spain retail SKU/EAN/current listing; never infer Lidl España or ALDI España availability from a UK/Ireland result.
+
+#### NYIOOC World Olive Oil Competition
+
+Status: promising AOVE source; exact retail match required.
+
+The 2026 official NYIOOC news surface records a Gold for Casa Juncal from Aceites Oro Bailén Galgón 99 and identifies it as a medium-intensity Picual AOVE.
+
+This becomes a supermarket article only when the exact award-winning commercial product/variant is proven to be the same current retailer SKU. Supplier relationship alone is insufficient.
+
+#### MAPA — Alimentos de España Mejores Jamones
+
+Status: authoritative vertical source candidate.
+
+The Ministry's 2026 results record 51 samples and winners including Jamón Serrano 24 - Monte Nevado and Jamón de bellota 100 % ibérico Guillén. The official method uses expert sensory panels and separate categories.
+
+This can create rich editorial context but still needs exact retail mapping before naming a supermarket.
+
+#### MAPA — Alimentos de España AOVE
+
+Status: authoritative award, unsafe for automatic supermarket-SKU transfer.
+
+The 2025–2026 competition admits bulk AOVE from a homogeneous lot of at least 10,000 kg and uses organoleptic plus physical/chemical evaluation.
+
+Permanent negative rule: a winning mill/producer is not evidence that every supermarket bottle produced by that company won. A supplier relationship must never transfer this award to a retail SKU without explicit commercial identity.
+
+#### Producto del Año — Marca Distribuidor
+
+Status: useful watch source; stable official scheduled result surface still needs validation.
+
+The 2026 distributor-brand results include retailer brands such as Lidl and Alteza. This is attractive because retailer identity can be explicit in the award.
+
+For Alteza, exact Juan Fornés retail evidence remains mandatory because the label is shared across a wider purchasing/distribution structure.
+
+### Award-to-retail identity gate
+
+Award evidence and retailer evidence are separate authorities.
+
+Accept a join, strongest first, when:
+1. exact EAN/GTIN matches;
+2. exact retailer SKU/product ID is explicitly tied to the awarded commercial product;
+3. exact commercial name plus variant plus package/vintage plus maker match, no competing same-name SKU exists, and category-specific identity rules pass.
+
+Reject when evidence is only:
+- manufacturer/supplier equality;
+- brand equality;
+- retailer relationship with the producer;
+- product-family name;
+- fuzzy text similarity;
+- same visible name with multiple SKUs;
+- same private-label brand in another country;
+- Carrefour marketplace listing from a third-party seller;
+- bulk/lot award with no explicit commercial retail mapping.
+
+No LLM or generic fuzzy matcher may override these rules.
+
+### Category-specific identity
+
+Wine:
+- exact label/cuvée;
+- vintage when stated;
+- DO/IGP/DOP or equivalent;
+- bottle size;
+- grape/variant where needed;
+- EAN preferred.
+
+Cheese:
+- exact commercial name;
+- milk/type;
+- maturation/age;
+- flavour variant;
+- format/weight when relevant;
+- maker.
+
+AOVE:
+- exact commercial brand/variant;
+- cultivar, campaign or style when part of award identity;
+- producer/bulk-lot award alone is insufficient.
+
+Jamón/cured meat:
+- exact commercial name;
+- ibérico percentage;
+- feed/category such as bellota or cebo;
+- recognised quality figure;
+- cured-age/product variant;
+- whole piece vs sliced format when the award distinguishes it.
+
+Fresh meat/fish:
+- preserve the range/cut scope the award actually names;
+- do not pretend one tray size won when the award covers the broader range.
+
+Olives:
+- exact variety/filling/salt/flavour variant and package when available.
+
+### Current price lifecycle
+
+Because the shared queue may delay publication for several days, do not freeze a current retailer price at award-discovery time.
+
+Preferred flow:
+1. award adapter proves the award;
+2. retailer evidence resolves an exact stable retailer product ID/EAN;
+3. immediately before publication, perform one bounded exact-SKU refresh;
+4. if still current, use refreshed price and availability;
+5. if price cannot be safely refreshed, omit the current-price sentence;
+6. never substitute a search-engine, aggregator or stale cached price.
+
+When a retailer varies price/stock by store or postcode, preserve that context. Use one explicit configured Guardamar retail context, not device/user geolocation.
+
+Retail identity may be necessary to claim that a third-party award product is currently sold by a chain. Live price itself remains optional.
+
+### Product photos
+
+Exact product images are technically exposed by several current retailer surfaces:
+- Lidl;
+- ALDI;
+- Consum;
+- Carrefour supermarket;
+- DIA;
+- Mercadona after exact SKU resolution.
+
+Masymas still requires the internal store contract probe.
+
+Rules:
+- only an exact matched SKU/product;
+- allowlisted HTTPS retailer or award-authority media host;
+- bounded image content type and size;
+- no Google/image-search result and no generic brand image;
+- if exact image is unavailable, publish text-only.
+
+Technical accessibility does not automatically grant republication rights. Before Telegram media is enabled for a retailer, record a terms/licence review for that media source. If the required reuse is not permitted or is unclear, retain the source link and publish text-only.
+
+Photo failure must never invalidate a verified award article.
+
+### Rich deterministic editorial contract
+
+The current ProductAwardCandidate is too narrow to consistently produce the desired article quality.
+
+Future source records should be able to retain a small reviewed set of verified facts such as:
+- award body and edition/year;
+- exact medal/result/tier;
+- category/class;
+- score/points;
+- number of compared products or entries;
+- number/type of judges or consumer testers;
+- judging method;
+- source-backed standout result;
+- source-backed nutrition/quality classification;
+- exact product identity attributes;
+- producer/maker;
+- source-published study price;
+- separately refreshed current retailer evidence.
+
+Do not add a free-form generic prose extractor. Each adapter should expose only source facts whose semantics are known.
+
+Renderer strategy:
+- OCU: comparison size, method, score, tasting result, health-scale result and exact current retail price when safely matched;
+- Sabor del Año: consumer sensory recognition and exact awarded range/product, without inventing category ranking;
+- cheese contests: medal/place/class, competition scale and published judging criteria;
+- MUNDUS VINI: medal/edition, vintage, DO, grape and bottle identity;
+- MAPA jamón: official category, sample scale and expert sensory process;
+- AOVE: exact commercial award identity and cultivar/style only when tied to the retail product.
+
+The renderer remains deterministic. A small source-renderer registry is cheaper and safer than runtime LLM editorial writing.
+
+### Discovery architecture
+
+Use two complementary directions while retaining one shared queue.
+
+Award-first:
+- OCU;
+- World Cheese Awards once 2026 results exist;
+- World Championship Cheese Contest;
+- GourmetQuesos;
+- MUNDUS VINI;
+- NYIOOC;
+- suitable MAPA awards;
+- Great Taste later.
+
+Retailer-first:
+- Lidl España Productos premiados;
+- DIA Productos premiados;
+- ALDI exact product/award editorial pages.
+
+Retailer-first pages provide a small already-relevant candidate set. The bot then verifies the award against its authority before queue eligibility. This avoids scanning huge global directories for thousands of irrelevant products.
+
+### Recommended implementation sequence
+
+1. Keep OCU as the first production adapter and complete its production-device read-only preview before deployment.
+2. Before production state exists, broaden the model so award identity and retail evidence are separate and private_label is no longer universal.
+3. Add retailer evidence adapters incrementally, starting with the clearest current contracts: Consum, ALDI, Lidl, DIA, then Carrefour with a marketplace guard.
+4. Perform dedicated bounded probes for Mercadona exact product JSON/API and Masymas / Juan Fornés internal JSON/API.
+5. Enrich the OCU fact model and renderer so it can create article-depth deterministic copy.
+6. Add one genuinely new award family only after a live current source probe. WCCC/GourmetQuesos and MUNDUS VINI are current candidates. World Cheese Awards 2026 waits for November.
+7. Add Telegram photo delivery only after exact media identity and source-specific terms/reuse review.
+
+Do not create retailer-specific cron jobs. Catalogue reads occur only while verifying a candidate or immediately before publication.
+
+### Architecture re-review
+
+ADR 0083 remains correct at the engine level:
+- one source-adapter award engine;
+- one queue;
+- per-source first-run baseline;
+- maximum one article per day;
+- no universal LLM parser;
+- source-native award event identity;
+- retail enrichment must never rewrite award identity.
+
+The assumption that every candidate is a private label is too narrow.
+
+The durable flow is:
+
+award evidence -> exact retail identity/evidence -> shared queue -> publication-time exact-SKU refresh -> rich deterministic renderer
+
+Award identity remains stable when price, stock or photo changes.
+
+A price/photo failure degrades the article instead of fabricating a replacement. Failure to prove that the awarded product is the same retail product must fail closed for any claim that it is currently sold by that chain.
+
+### Verified URLs from the horizontal pass
+
+Award-authority/result surfaces:
+
+- OCU 2026 Salmorejo report:
+  https://www.ocu.org/alimentacion/platos-preparados/informe/salmorejos
+- OCU Salmorejo methodology:
+  https://www.ocu.org/alimentacion/platos-preparados/asi-analizamos-salmorejos
+- World Cheese Awards 2026 information and dates:
+  https://gff.co.uk/for-producers/world-cheese-awards/
+- World Cheese Awards 2026 result publication terms:
+  https://gff.co.uk/world-cheese-awards-policies/terms-conditions/
+- World Championship Cheese Contest 2026 Top 20:
+  https://worldchampioncheese.org/2026-wccc-top-20-finalists/
+- GourmetQuesos 2026 official results/context:
+  https://www.gourmets.net/salon-gourmets/2026/catalogo-expositores/grupo-gourmets/16-gourmetquesos-campeonato-de-los-mejores-quesos-de-espana-2026
+- MUNDUS VINI results:
+  https://www.meininger.de/en/tastings/mundus-vini/results
+- MUNDUS VINI current Lidl-submitted Spanish example:
+  https://www.meininger.de/en/wine/awarded-wines/2025-hacienda-uvanis-tinto-joven-0
+- NYIOOC current Casa Juncal result/news:
+  https://news.nyiooc.org/release/aceites-oro-bailen-galgon-99-wins-four-golds-and-a-silver-at-2026-nyiooc
+- MAPA 2026 jamón award:
+  https://www.mapa.gob.es/en/alimentacion/temas/promo-alimentos/premios-alimentos/ultima_edicion_jamones
+- MAPA 2025–2026 AOVE competition:
+  https://www.mapa.gob.es/es/alimentacion/temas/promo-alimentos/premios-alimentos/ultima-campana-aceites
+
+Retailer evidence/discovery surfaces:
+
+- Lidl España awarded products:
+  https://www.lidl.es/c/premiados/a10092875
+- Lidl exact wine example:
+  https://www.lidl.es/p/la-bien-pinta-vino-blanco-d-o-rueda-verdejo/p11037304
+- ALDI exact Super Gold cheese example:
+  https://www.aldi.es/producto/queso-curado-181600.html
+- ALDI exact bronze cheese example:
+  https://www.aldi.es/producto/queso-de-oveja-ahumado-v-de-navarra-601233500.html
+- Consum exact product/EAN example:
+  https://tienda.consum.es/es/p/aceite-de-oliva-virgen-extra-ecologico/7304397
+- Carrefour supermarket AOVE category:
+  https://www.carrefour.es/supermercado/la-despensa/aceites-y-vinagres-carrefour-aceite-de-oliva-virgen-extra/F-1y9wiZ10siZp646/c
+- Masymas / Juan Fornés FAQ:
+  https://masymas.com/es/index.php?catid=11&id=135&option=com_content&view=article
+- Masymas / Juan Fornés online shop:
+  https://tienda.masymas.com
+- DIA 2026 awarded products:
+  https://www.dia.es/l/productos-premiados-dia
+Excluded-retailer historical evidence:
+
+- Alcampo / Auchan was technically verified during research but is intentionally
+  out of scope for Guardamar-local product-award publication because of low
+  practical local accessibility.
+
+Discovery-only evidence that is not yet approved as a scheduled award authority:
+
+- 2026 Sabor del Año result reporting:
+  https://www.foodretail.es/food/sabor-del-ano-2026distingue-a-89-productos-de-alimentacion.html
+
+Do not silently promote a discovery-only article into a production authority.
+A future implementation must still prove the responsible award body's own
+stable public result contract.
+
+### Photo-rights follow-up
+
+The technical ability to fetch an exact product image is not sufficient to
+republish it in Telegram.
+
+Current legal/terms checks on 25 September 2026 found explicit restrictions on
+copying, reproduction, distribution or public communication of site content
+without prior permission for several target retailers:
+
+- Lidl España;
+- Consum;
+- Carrefour España;
+- DIA España;
+- Masymas / Juan Fornés Fornés.
+
+Juan Fornés' own legal notice states that the information, graphic design and
+code are protected and expressly excludes reproduction, distribution,
+transformation and public communication of all or part of the site content.
+Its app terms likewise reserve exploitation rights in photographs and other
+content.
+
+The safe product decision is therefore stronger than the earlier generic
+"review terms before use" rule:
+
+- retailer product photos are **disabled by default**;
+- technical image URLs may still be inspected for identity verification;
+- a Telegram product photo is enabled only for a source where an explicit
+  licence, permission, press/media asset policy or other sufficiently clear
+  reuse right has been documented;
+- uncertainty means text-only publication;
+- never copy a retailer product image merely because the HTTP URL is public.
+
+This does not affect use of factual catalogue data such as exact product
+identity, package and current price when obtained through a permitted public
+surface.
+
+### Masymas domain/company negative test
+
+Do not treat an arbitrary site containing the masymas name as evidence for the
+target Valencian/Murcian retailer.
+
+A live investigation found that supermasymasonline.com belongs to HIJOS DE
+LUIS RODRÍGUEZ S.A. in Asturias, not JUAN FORNÉS FORNÉS S.A. A current Alteza
+product found there therefore cannot establish current availability in the
+Guardamar-area Masymas chain.
+
+The target company identity must be Juan Fornés Fornés, S.A.; its official
+online-store and masymas.com surfaces are the accepted starting point.
+
+### Final no-change cost rule
+
+The horizontal expansion must not become eight daily catalogue scans.
+
+Normal discovery remains award-first or retailer-award-list-first. Retailer
+catalogues are queried only when a relevant candidate exists:
+
+1. discover a bounded award/result item or a bounded retailer award lead;
+2. verify the independent award semantics;
+3. resolve one or a few exact retailer SKU candidates;
+4. enqueue only after the retail relationship can be stated correctly;
+5. immediately before publication, refresh only the already-resolved exact SKU
+   for current price/availability.
+
+Thus a quiet day should add almost no retailer catalogue traffic. No per-retailer
+cron, full catalogue crawl, browser session or continuous stock monitor is
+introduced.
+
+### Same-day price volatility proof
+
+DIA provided a useful live proof that award discovery price must not be treated
+as publication price.
+
+The official 2026 awarded-products page and exact product cards expose stable
+numeric product IDs:
+
+- Burrata fresca Dia Selección Mundial 150 g:
+  `/quesos/fresco/p/263576`;
+- Tarta de queso Dia Caprichoso 250 g:
+  `/yogures-y-postres/postres-tradicionales/p/307308`.
+
+Within the same research day, fresh indexed/opened representations already
+showed changed prices for these exact products. The specific values are not a
+durable project constant; the important result is that exact retail price can
+change between discovery and later rendering even when product identity is
+stable.
+
+This directly validates ADR 0084's publication-time exact-SKU refresh.
+
+### OCU is already horizontal across retailers
+
+OCU must not be modelled as a Mercadona-specific source.
+
+Current 2026 OCU material includes, among other examples:
+
+- Hacendado / Mercadona Salmorejo as Mejor del Análisis;
+- Carrefour Extra Black nata y chocolate negro as Mejor del Análisis;
+- current whole-milk comparison material with multiple supermarket products.
+
+OCU also contains Auchan / Alcampo results, but the project deliberately ignores
+them because Alcampo is outside the locally useful retailer scope.
+
+OCU exact comparator cards can expose strong retail identity facts such as EAN,
+format and manufacturer. These surfaces are useful for deterministic product
+identity, but award labels shown inside generic "alternatives" widgets must not
+be attributed to the page's primary product. The current report parser's local
+evidence rule remains correct.
+
+Future OCU expansion should evaluate comparator/category surfaces separately
+instead of weakening report-local parsing.
+
+### Current retailer-photo legal evidence
+
+The photo default-off policy is now supported by direct legal pages, not only a
+general copyright assumption.
+
+- Lidl España's legal notice prohibits reproduction, distribution and public
+  communication of site content for commercial purposes without authorization.
+- Consum's shop legal notice prohibits reproduction, distribution, public
+  communication, retransmission, copying and redistribution except personal
+  and private use.
+- Carrefour states that no licence is granted and specifically reserves
+  alteration, exploitation, reproduction, distribution and public
+  communication unless expressly authorized.
+- DIA's current legal notice gives only strictly private use and prohibits
+  copying, reproduction, public communication, transformation or distribution
+  for public or commercial purposes without prior written authorization.
+- Masymas / Juan Fornés' legal notice expressly excludes reproduction,
+  distribution, transformation and public communication of protected site
+  content.
+
+Therefore the project must not interpret "we can fetch the image" as "we may
+send the image to Telegram".
+
+### Pre-implementation code re-review
+
+The wider research was compared back against the current Python implementation
+before any production deployment.
+
+The shared operational model is still good, but the current code is not yet
+compatible with ADR 0084 and must remain draft.
+
+Required pre-production changes:
+
+1. `ProductAwardCandidate.private_label` is mandatory. It must no longer be
+   universal because a valid award product may be a third-party listed brand or
+   a retailer-exclusive product.
+2. The generic non-OCU renderer currently says every future product is
+   `собственной марки`. That wording becomes factually wrong for ordinary
+   listed brands and must be relationship-aware.
+3. Stable retail identity needs its own record: retailer, relationship type,
+   exact product ID and/or EAN, product URL, package/variant qualifiers and the
+   configured retail context needed for a later exact refresh. Live price and
+   photo URL must not become award event identity.
+4. Rich verified source facts need a small typed/source-specific context so
+   OCU, cheese, wine, jamón and consumer awards can render article-depth copy
+   without generic free-form extraction.
+5. Publication needs one optional exact-SKU retailer refresh before rendering.
+   It must not search the catalogue by fuzzy product name at send time.
+6. The common `_result_priority()` currently imposes one global ranking
+   (`trophy > super gold > gold > silver > bronze > OCU`). This does not scale
+   safely to unrelated award semantics such as Great Taste stars, category
+   places, OCU value labels and wine competition distinctions. Canonicalisation
+   of multiple results for the same source event belongs at the source adapter
+   boundary; the shared core should not invent a universal award hierarchy.
+7. Source discovery remains capped and bounded. Large global directories such
+   as Great Taste or WCA should therefore be filtered using a source-native
+   query/retailer-first lead rather than converted into a broad catalogue crawl.
+
+Things that should **not** be added:
+
+- a generic retailer search framework;
+- daily scans of all eight supermarket catalogues;
+- a database;
+- an image cache;
+- a browser;
+- fuzzy matching;
+- LLM product matching or prose generation;
+- one queue or cron per retailer/award body.
+
+Because no production product-award state has been established yet, evolving
+the serialized candidate/state schema now is cheaper and safer than maintaining
+a compatibility layer for an unused schema.
+
+## Implementation status — 26 September 2026
+
+The ADR 0084 foundation has now been implemented on draft PR #195 without
+adding any speculative retailer crawler.
+
+Implemented:
+
+- `ProductAwardCandidate` no longer assumes every product is a private label;
+- explicit `RetailEvidence` distinguishes `private_label`, `exclusive`
+  and `listed` relationships and can retain exact retailer product ID, EAN,
+  exact product URL and variant evidence;
+- award event identity remains source-native and independent of retail price,
+  stock and media;
+- state schema is version 6; no compatibility layer was added because the
+  feature has not yet established production state;
+- the shared core no longer ranks unrelated award vocabularies;
+- OCU owns its own `Mejor del Análisis` vs `Compra Maestra` precedence;
+- OCU coverage includes DIA private-label names in addition to the earlier
+  locally relevant allowlist, while Alcampo / Auchan is intentionally ignored;
+- labels identical to retailer names such as Carrefour or DIA require separate
+  product-brand evidence and are not accepted merely because the retailer name
+  appears in parentheses;
+- OCU editorial facts are separated into report-global method facts and
+  product-local distinctions so one product's tasting/quality statement cannot
+  leak to another result;
+- the deterministic renderer distinguishes private label, exclusive and listed
+  products;
+- publication-time retail enrichment now accepts a list of exact package
+  variants rather than one chosen price, so every verified package/price/unit
+  price can be shown without transferring an award to another SKU;
+- producer facts require an explicit production country; city/region remains
+  optional additional context;
+- headlines now lead with product + supermarket + award/result and keep numeric
+  score in the article body;
+- repeated award methodology renders in Telegram HTML
+  `<blockquote expandable>` rather than occupying the visible daily post;
+- OCU publication now requires overall/global score >=85/100 and sorts its own
+  eligible candidates by that native score; high partial subscores cannot pass
+  the gate;
+- the official WCCC 2026 Top-20 page is now registered as the second award
+  adapter, restricted to the reviewed 2026 contract rather than guessing future
+  URL/shape compatibility;
+- one exact WCCC-to-retail join is implemented: class 114
+  `Seleccion Tostado Mixed Milk Cheese Extra Aged` by
+  `Queserías Entrepinares S.A.U.` -> Mercadona SKU `50952`,
+  EAN `8480000509529`;
+- WCCC Top-20 is treated as an exceptional source-native tier even without a
+  public numeric score on the Top-20 page;
+- Mercadona exact-SKU refresh is implemented for the reviewed Guardamar
+  warehouse context and validates product ID, EAN, brand, supplier, published
+  status and official share URL before returning current package/price;
+- current retail price is now mandatory for public delivery: refresh failure
+  yields no publication and does not reserve the daily slot;
+- bounded publication scan checks up to four queued items, so one temporarily
+  unavailable/delisted product cannot block later verified candidates; skipped
+  items remain queued and are not marked published;
+- delivery queue, per-source baseline and at-most-once Telegram semantics remain;
+- the former one-item-per-day product policy is superseded by category-first
+  selection and a three-local-day public delivery cooldown.
+
+The feed is intentionally **at most one selected category winner every three
+local calendar days**, not a quota. If no category has an eligible ranked
+retail match, publication stays silent. Future adapters must preserve the
+source's real ordering and must not invent podium positions from unordered
+finalists or equal medal tiers.
+
+Deliberately **not** implemented yet:
+
+- no generic retailer catalogue search;
+- no continuous or daily scans of the six in-scope retailers;
+- Masymas still has no parser before its exact browser-free contract is
+  separately proven;
+- Mercadona retail refresh currently supports only exact reviewed product IDs;
+  it does not search the catalogue or discover related package sizes;
+- no retailer product-photo publication; the default remains text-only unless a
+  source-specific reuse right is documented;
+- broader WCCC class/result coverage is not implemented; only the reviewed
+  2026 Top-20 Entrepinares/Mercadona join is active.
+
+Validation on the final functional head before removing the temporary
+branch-only workflow:
+
+- Python compileall: passed;
+- product-award modules: **69 tests passed**;
+- merged current `main` before final validation; PR mergeability was restored without dropping unrelated event/digest changes;
+- complete repository suite: **1414 tests passed**;
+- temporary validation workflow was removed from the final diff.
+- the seven-day starter preview passed live exact-retail refresh for every
+  candidate; day 3 is NALTROS Brut at ALDI, live-reviewed at 0.75 l,
+  3.15 EUR and 4.20 EUR/l; the six cheese candidates also retained their
+  previously reviewed exact Mercadona offers.
+- final review also tightened Valle retail identity: the current Mercadona
+  supplier list must still contain Valle de San Juan itself; a distributor or
+  packer alone can no longer preserve the award-to-retail join.
+- live `product-awards-preview` on 26 September 2026 produced the reviewed WCCC Top-20 Entrepinares / Mercadona SKU 50952 article with a fresh official Mercadona offer: approximately 370 g, 6.19 EUR, 16.74 EUR/kg.
+
+The next broader retailer implementation should remain one source-specific
+contract at a time, not a generic catalogue framework. Consum remains the
+strongest clean candidate because its public catalogue can expose a stable
+product code and often EAN; Lidl and DIA are also strong candidates. Mercadona
+and the one reviewed ALDI NALTROS product now have browser-free exact-product
+refreshers. Masymas still needs its dedicated browser-free contract probe.
+Alcampo / Auchan remains intentionally excluded for local-utility reasons.
+
+
+
+### Starter-pool extension — Semicurado, 26 September 2026
+
+The reviewed launch pool was extended from five to six days after a direct
+Mercadona `alc1` probe resolved Valle de San Juan's WCCC 2026
+`Semicurado — 97.40` to current SKU `11672`:
+
+- retail name: `Queso semicurado de oveja Hacendado cortado en cuñitas`;
+- EAN: `8402001028861`;
+- legal product type: pasteurized sheep's-milk semicurado;
+- suppliers include `Valle de San Juan S.L.`;
+- current reviewed offer: approximately 280 g, 4.14 EUR, 14.80 EUR/kg;
+- published=true, no `unavailable_from`, no unavailable weekdays.
+
+This join is stronger than the unrelated Entrepinares mixed-milk semicurado
+SKUs (50943/50944/50945/50946), which are explicitly excluded from the Valle
+mapping. The seed keeps source-backed product/tasting/composition facts and
+does not copy unverified nutrition values from third-party price trackers.
+
+
+
+### Starter-pool extension — NALTROS Brut, 26 September 2026
+
+The launch pool was diversified from six cheese posts to seven days by adding
+one exact current ALDI cava candidate after the first two cheese posts.
+
+Award evidence:
+
+- OCU press release:
+  `https://www.ocu.org/organizacion/prensa/notas-de-prensa/2025/cavas191225`;
+- 25 D.O. Cava products compared;
+- NALTROS Brut (ALDI) global score: **94/100**;
+- OCU places it among the three standout cava and describes the expert tasting
+  panel as the most important part of the comparison;
+- the analysis also checks alcohol, sugar, volatile/total acidity, sulfites and
+  other additives;
+- exact OCU product page:
+  `https://www.ocu.org/alimentacion/vino/comparador/naltros-aldi-brut/210/124487`,
+  identifying D.O. Cava and winery Jaume Serra.
+
+Retail evidence:
+
+- exact ALDI card:
+  `https://www.aldi.es/producto/cava-brut-190300.html`;
+- browser-free raw HTML contains Next.js `__NEXT_DATA__`;
+- product payload lives at the reviewed
+  `props.pageProps.apiData` JSON-string field;
+- reviewed identity: `brandName=NALTROS ®`,
+  `salesUnit=0,75 l unidad`, `KVArticleNumber=1903`;
+- availability flags are explicit;
+- reviewed live offer on 26 September 2026: 3.15 EUR / 0.75 l and 4.20 EUR/l.
+
+Implementation decision: keep this as one exact source-specific retail
+refresher and a reviewed launch-seed award fact. Do not generalize it into a
+full ALDI catalogue crawler.
+
+#### AOVE candidate rejected for the launch seed
+
+Mercadona's official category/product APIs cleanly resolved Hacendado AOVE
+1 l to SKU `4740`, EAN `8402001001185`, current 4.45 EUR / 4.45 EUR/l,
+with current availability. The exact OCU card `109008` also confirms
+Hacendado AOVE and a 1000 ml format.
+
+However, the anonymous exact-product OCU HTML hides the product's own quality
+score behind `Ver resultados`. The apparent 89/100 Compra Maestra association
+can be inferred from surrounding comparator data and matching reference price,
+but it was not directly tied to exact product ID `109008` in the reviewed
+public product block. Under the fail-closed identity rule this is insufficient,
+so AOVE is deliberately **not** included in the starter seed.
+
+
+## Category-first redesign — 26 September 2026
+
+The earlier launch-pool idea is superseded before production. The user-facing
+feed now answers a narrower question: **what is the best currently purchasable
+product in each reviewed category among six major supermarket chains?**
+
+Active retail scope:
+
+1. Mercadona;
+2. Carrefour España supermarket;
+3. ALDI España;
+4. Lidl España;
+5. DIA España;
+6. Consum.
+
+Masymas / Juan Fornés and Alcampo / Auchan are no longer active matching targets
+for this feature. Keep their earlier research only to avoid repeating source
+investigation.
+
+### Selection algorithm
+
+For each broad reviewed category and award edition:
+
+1. take the source's explicit #1 result;
+2. require the source-specific exceptional-quality gate (>=85 overall where a
+   comparable 0-100 score exists);
+3. attempt exact current retail identity in the six active chains;
+4. if #1 has no exact current retail match, repeat for explicit #2;
+5. if #2 fails, repeat for explicit #3;
+6. if none of the explicitly ranked top three is currently sold in scope,
+   produce no event for that category/edition.
+
+Never manufacture a rank from unordered finalists, alphabetical result lists,
+equal medal tiers or a retailer's own marketing order. If the authority
+publishes only a category winner, there is no fallback #2/#3 unless another
+authoritative ordered source contract proves them.
+
+Only one selected product is retained per broad category/edition. Multiple
+97-99 point cheeses from one contest no longer become consecutive public posts.
+
+### Publication cadence
+
+Discovery may continue daily when bounded and cheap. Public delivery changes
+from daily to **at most once every three local calendar days**, measured from
+the last confirmed Telegram delivery. This must be a state cooldown rather than
+a `*/3` calendar schedule.
+
+### Source/category suitability review
+
+#### Cheese — strong overall podium source
+
+World Championship Cheese Contest 2026 publishes a genuine overall podium:
+
+1. Beemster Royaal Grand Cru — 98.68/100;
+2. Appenzeller Purple Label — 98.45/100;
+3. Alter Fritz — 98.41/100.
+
+The contest had 3,375 entries. This is a clean implementation model for the
+broad `cheese` category: test those exact three in order against the six
+retailers. A lower-ranked Spanish cheese must not replace them merely because it
+is easier to buy locally.
+
+World Cheese Awards and GourmetQuesos remain useful evidence sources, but do
+not automatically replace the WCCC broad-category podium. GourmetQuesos
+publishes first/second/third within 20 cheese classes plus one absolute winner;
+those class podiums should not be treated as 20 separate consumer categories
+without an explicit future product decision.
+
+MAPA's 2026 cheese awards publish one overall special winner plus winners in
+five milk/style modalities. This is authoritative Spanish evidence but does not
+provide a public overall #2/#3 fallback.
+
+#### Extra-virgin olive oil — strong ranked source
+
+EVOOLEUM 2026 exposes an ordered global Top 10 with numeric scores. The first
+three are:
+
+1. Di Molfetta Frantoiani di Coratina — 97;
+2. Monini Monocultivar Coratina Bio — 96;
+3. Oleum Hispania Nature Premium Pajarera — 96.
+
+This is suitable for the broad `extra_virgin_olive_oil` category once exact
+retail availability for ranks 1-3 is checked in the six chains.
+
+MAPA's AOVE award is authoritative for Spain but its public result shows one
+winner and two finalists per modality without ordering the two finalists.
+Therefore those finalists must not be re-labelled as #2/#3. The existing
+bulk-lot warning also remains: producer/lot success is not retail bottle
+identity.
+
+#### Wine — use consumer-meaningful styles, not one synthetic global wine rank
+
+Bacchus 2026 had 1,540 labels and explicitly names Best White, Best Rosé, Best
+Red and Best Sparkling wines. It also defines medal score bands (Grand Gold
+>=93, Gold 89-<93, Silver 85-<89), but its public medal list does not establish
+an ordered #2/#3 inside each style.
+
+Therefore the safe initial wine taxonomy is style-based:
+
+- `wine_red`;
+- `wine_white`;
+- `wine_rose`;
+- `wine_sparkling`.
+
+For each style, check the explicitly named best wine. Do not infer runner-up
+positions from other Grand Gold wines unless the source later exposes a
+reviewed ordered score contract.
+
+MAPA 2026 independently names best red, white, rosé, sparkling and fortified
+wine, but publishes only the winner of each modality. It can be a strong
+winner-only source, not a fabricated three-place podium.
+
+#### Jamón — two distinct consumer categories, winner-only source
+
+MAPA 2026 publishes:
+
+- best Jamón de Bellota Ibérico;
+- best Jamón Serrano / other recognized quality figure.
+
+Treat these as two separate consumer categories. The public result names the
+winner, not ordered second/third places. Each category therefore checks one
+winner only until an authoritative ranked fallback source is proven.
+
+#### Table olives — source still unresolved
+
+OLIVE JAPAN 2026 includes table olives, but its public structure is Premier,
+Gold and Silver rather than a clean overall ordered top three for table olives.
+It is not sufficient for the new strict podium algorithm.
+
+Keep `table_olives` pending. Do not publish an olives category until a
+credible source with an explicit winner or ordered podium and exact product
+identity is validated.
+
+### Consequence for the old starter seed
+
+The seven-item reviewed starter sequence (five Valle cheeses, one Entrepinares
+cheese and one ALDI cava) is **not production-valid under the new product
+concept** because six of seven entries represent the same broad cheese
+category.
+
+Do not deploy or seed that queue. Its exact SKU and retailer research remains
+useful evidence for future joins, but category selection must be recomputed from
+the authoritative podium before any launch.
+
+
+### Cross-source fallback inside one category
+
+A broad category may have more than one authoritative award/ranking source.
+Do not compare raw scores from unrelated competitions. Instead define an
+ordered list of independent source contracts for the category.
+
+Selection is sequential:
+
+1. take source A and exhaust only its explicit #1 -> #2 -> #3 in that order;
+2. each rank must pass the source-specific exceptional-quality gate and exact
+   current retail verification in one of the six active chains;
+3. if none of source A's eligible top three has a verified retail match, move
+   to source B and restart at source B's #1;
+4. never combine source A's #1 with source B's #2/#3 as if they formed one
+   podium;
+5. if a source publishes only a winner, test that winner once and then move to
+   the next source contract if it has no verified target-retail match.
+
+This preserves authority semantics while still allowing a consumer-relevant
+fallback when a world/global podium is not sold through the six supermarket
+chains.
+
+Where two products are genuinely tied by the authoritative source, retain the
+tie rather than manufacturing #1/#2. Prefer a candidate with a verified exact
+current retail match. If several tied candidates have equally strong retail
+evidence, preserve source order; do not invent a cross-source quality
+tie-breaker.
+
+### Current category matrix — 26 September 2026
+
+#### READY — sparkling wine / cava
+
+Primary Spanish-government source:
+
+- MAPA 2026 names `Cuvée D.S. 2019` by Freixenet as Best Sparkling Wine.
+- The reviewed public result exposes a winner only, not ordered #2/#3.
+- No exact current first-party listing for that vintage was established in the
+  six target supermarket chains during this pass.
+
+Secondary consumer-ranking source:
+
+- OCU analysed 25 D.O. Cava products.
+- Three products tie at 94/100; the first named is `Naltros Brut (ALDI)`.
+- ALDI currently exposes exact `NALTROS Cava Brut`, 0.75 l, at 3.15 EUR
+  (4.20 EUR/l), with DOP Cava and current product details.
+
+Decision: category is **READY** through the secondary OCU source after the
+winner-only MAPA source yields no verified current retail match. Keep the tie
+semantics; do not claim Naltros uniquely scored above the other 94-point cava.
+
+Sources:
+
+- https://www.mapa.gob.es/es/alimentacion/temas/promo-alimentos/premios-alimentos/galardonados_vino
+- https://www.ocu.org/organizacion/prensa/notas-de-prensa/2025/cavas191225
+- https://www.aldi.es/p/cava-brut-190300.html
+
+#### READY — gazpacho
+
+OCU compared 39 refrigerated gazpachos. `Real Fooding` is explicitly
+`Mejor del Análisis`, global score 90/100, and best in both professional
+tasting and OCU's healthy-scale assessment.
+
+Carrefour currently sells exact `Gazpacho fresco Realfooding sin gluten 1 l`
+for 4.05 EUR / 4.05 EUR/l. The card identifies manufacturer
+`CAÑA NATURE, S.L.U.` and country of origin Spain.
+
+Decision: **READY**, rank #1 directly matches an active target supermarket.
+
+Sources:
+
+- https://www.ocu.org/alimentacion/platos-preparados/informe/gazpachos
+- https://www.ocu.org/alimentacion/platos-preparados/asi-analizamos-gazpachos
+- https://www.carrefour.es/supermercado/gazpacho-fresco-realfooding-sin-gluten-1-l/R-VC4AECOMM-339275/p
+
+#### PENDING — tuna in olive oil
+
+OCU's explicit high-quality order:
+
+1. `Sal de Plata (ALDI)` — 86/100;
+2. `Hacendado (Mercadona)` — 85/100.
+
+Both pass the >=85 overall gate.
+
+The exact current ALDI permanent product card for the reviewed Sal de Plata
+olive-oil tuna format has not yet been proven. Because #1 is known by OCU to be
+an ALDI product, absence of a convenient public card is not sufficient evidence
+that it is no longer sold.
+
+Fallback #2 is technically proven current in Mercadona Guardamar context:
+
+- SKU `18002`;
+- EAN `8480000180025`;
+- `Atún claro en aceite de oliva Hacendado`;
+- current pack: 6 x 80 g gross, 360 g drained;
+- current reviewed price: 4.90 EUR;
+- supplier `ESCURIS, S.L.`;
+- ingredients: tuna, olive oil and salt;
+- published=true; no current unavailability flag.
+
+Decision: category remains **PENDING**, not READY for #2, until #1 is either
+proved currently available (then select #1) or positively rejected as no longer
+a current exact ALDI product. Do not demote #1 merely because one retailer is
+harder to inspect technically.
+
+Award source:
+
+- https://www.ocu.org/organizacion/prensa/notas-de-prensa/2023/atunclaroaceiteoliva050623
+
+Reviewed fallback retail URL:
+
+- https://tienda.mercadona.es/product/18002/atun-claro-aceite-oliva-hacendado-pack-6
+
+#### SKIP — broad cheese
+
+WCCC 2026 overall podium:
+
+1. Beemster Royaal Grand Cru — 98.68;
+2. Appenzeller Purple Label — 98.45;
+3. Alter Fritz — 98.41.
+
+The contest had 3,375 entries. No exact current first-party listing for these
+three cheeses was established in the six target chains.
+
+MAPA's Spanish cheese award is a strong secondary authority but exposes one
+overall special winner, `Cremositos del Zújar`, without an ordered broad
+#2/#3 fallback. No exact current target-retail match was established for that
+winner either.
+
+Decision: broad `cheese` = **SKIP** for now. Previously researched Valle de
+San Juan / Entrepinares supermarket cheeses remain useful retail/identity
+evidence but must not replace a higher broad-category podium simply because
+they are easier to buy.
+
+#### SKIP — extra-virgin olive oil under strict broad ranking
+
+EVOOLEUM 2026 overall top three:
+
+1. Di Molfetta Frantoiani di Coratina — 97;
+2. Monini Monocultivar Coratina Bio — 96;
+3. Oleum Hispania Nature Premium Pajarera — 96.
+
+No exact current first-party listing for any of these top three was established
+in the six target supermarket chains.
+
+OCU is a plausible secondary supermarket-oriented source and currently shows a
+93/100 `Mejor del Análisis` among 23 olive oils, while Carrefour currently
+lists products such as Oleoestepa. However the anonymous OCU public surface
+reviewed in this pass did not expose a sufficiently strong exact
+product-to-93/100 identity join. Do not infer the winner from surrounding cards
+or prices.
+
+Decision: AOVE = **SKIP/PENDING secondary source**, not production-ready.
+
+Sources:
+
+- https://www.evooleum.com/mejor-de-cada-categoria/
+- https://www.ocu.org/alimentacion/aceite-oliva
+
+#### SKIP — table olives
+
+VINAC uses blind tasting and awards three best table olives, but the reviewed
+public result does not establish an ordered #1/#2/#3 podium. Exact current
+target-retail matches for the awarded recipes were also not established.
+
+Decision: **SKIP** until a source exposes a real winner/podium with exact
+commercial identity.
+
+#### SKIP — jamón
+
+MAPA 2026 names winners for Jamón de Bellota Ibérico and Jamón Serrano /
+recognized-quality categories, but the public result does not provide ordered
+#2/#3 fallback. Exact current target-retail sale of the winners was not
+established.
+
+Decision: both jamón categories = **SKIP** for now.
+
+#### SKIP — low-score prepared-food categories
+
+The quality floor remains active even when a target retailer appears in the
+top results.
+
+Reviewed examples rejected:
+
+- tortilla de patatas: top overall quality in the reviewed OCU set is below
+  85/100;
+- torrijas: explicit top three exists and Mercadona is #2, but best overall
+  quality is only around 69/100;
+- prepared paella/rice: top global results are around the low 60s;
+- sardines in olive oil: reviewed target-retail examples are in the 60s.
+
+Do not publish a merely relative winner from a weak comparison.
+
+#### SEASONAL WATCH — Turrón de Alicante
+
+OCU's exact `De Nuestra Tierra (Carrefour) Turrón de Alicante` is
+`Mejor del Análisis` at 85/100 and therefore passes the minimum gate.
+
+The reviewed current Carrefour search did not establish the exact winner as a
+currently sellable product in September. Historic Carrefour documents prove
+the De Nuestra Tierra product family/EAN lineage but are not current stock
+evidence.
+
+Decision: **seasonal watch**, re-check exact Carrefour retail identity/current
+price around the Christmas assortment before selecting the category.
+
+### Current launch runway under category-first rules
+
+Confirmed production-quality categories right now:
+
+1. sparkling wine / cava -> NALTROS Brut at ALDI via OCU fallback;
+2. gazpacho -> Realfooding 1 l at Carrefour via OCU #1.
+
+Pending high-value categories:
+
+- tuna in olive oil -> resolve current ALDI rank #1 before allowing Mercadona
+  rank #2;
+- Turrón de Alicante -> seasonal current-retail confirmation;
+- AOVE -> exact secondary OCU winner identity;
+- MAPA wine styles -> exact current retail check of winner-only products.
+
+At a three-local-day cadence, the two READY categories provide only about six
+days of launch runway. This is still too small for production seeding. Keep
+researching until at least five independent broad categories are READY, then
+implement category-level state/dedup and the three-day cooldown.
+
+
+## Lightweight runtime architecture audit — 27 September 2026
+
+The category-first research above is retained, but the earlier runtime POC is
+not the implementation baseline.
+
+The old draft branch reached roughly 2,768 lines in
+`src/telegrambot/product_awards.py`, about 1,775 product-award test lines, a
+separate discovery/publication cron pair, a persistent discovery queue,
+per-source baselines, source-item seen state and a reviewed seven-item starter
+seed. Those mechanisms solved the earlier "continuous award feed" design, not
+the final product requirement.
+
+The final requirement is narrower:
+
+- publish at most one exceptional product every three local calendar days;
+- choose by broad consumer category, not by whichever new award item happened
+  to be discovered first;
+- within one category, evaluate authoritative sources in an explicit priority
+  order;
+- exhaust the source-native #1/#2/#3 in that source before considering the next
+  source;
+- never mix ranks across competitions;
+- only after a ranked award candidate is known, verify that the exact product
+  is currently sold by Mercadona, Carrefour España, ALDI España, Lidl España,
+  DIA España or Consum;
+- refresh the exact current price immediately before publication;
+- fail closed when exact retail identity or current price cannot be proven.
+
+### Runtime consequence
+
+A discovery queue is unnecessary. The cheapest production shape is one
+short-lived daily command:
+
+1. read the tiny state file;
+2. if fewer than three local calendar days have passed since the last confirmed
+   post, exit before making any network request;
+3. start after the last successfully published category and inspect the reviewed
+   category registry in deterministic order;
+4. for each category, query source #1 and test at most its explicit top three;
+5. only when none has an exact current retail match, move to source #2 and begin
+   again from its #1;
+6. once one exact current retail offer is proven, render and send one post;
+7. record the category/edition/event only after confirmed Telegram delivery.
+
+If no candidate is publishable, the run stays silent and does not consume the
+three-day slot.
+
+This removes the separate discovery cron, queue, source baselines, seen-item
+ledger and starter-seed lifecycle. It also means a non-due day costs zero award
+HTTP requests.
+
+### Source catalogue, not autonomous web research
+
+Production does not search the internet for new competitions. It contains a
+small reviewed registry of known authoritative award/comparison sources.
+Adding a new award family is an occasional code/research change.
+
+Each source adapter is intentionally small and source-specific. It returns only
+the source's explicit ordered podium (maximum three candidates), or one winner
+when the authority publishes no ordered #2/#3. It may not infer missing ranks
+from finalists, medal tiers, alphabetical lists or equal-score products.
+
+This is the intended meaning of "the bot works automatically": once a source
+and category are reviewed, the phone can read the current result, follow the
+rank fallback rule, verify the exact supermarket offer and current price, and
+publish without operator research.
+
+### Retail lookup policy
+
+Retail access is candidate-targeted, never a full catalogue crawl.
+
+Preferred exact identity evidence remains:
+
+1. EAN/GTIN;
+2. exact retailer product/SKU ID tied to the awarded product;
+3. exact commercial identity with every category-critical qualifier and no
+   competing same-name SKU.
+
+Retail adapters are added only for proven lightweight official contracts.
+Browser/Playwright, OCR, search-engine lookup, fuzzy matching and LLM product
+matching remain prohibited.
+
+Reusable work from the POC is limited to concepts or small helpers that still
+fit this model: bounded HTTP/host checks, exact Mercadona and ALDI offer
+verification, exact retail identity records, deterministic rendering and
+at-most-once Telegram send safety. The queue/discovery framework and reviewed
+cheese starter seed are deliberately not carried forward.
+
+### Activation gate
+
+Do not install a production cron or publish this feature until at least five
+independent broad categories are READY. As of the retained research matrix:
+
+- READY: sparkling wine / cava -> NALTROS Brut / ALDI;
+- READY: gazpacho -> Realfooding / Carrefour;
+- PENDING: tuna in olive oil -> resolve Sal de Plata / ALDI #1 before allowing
+  the proven Hacendado / Mercadona #2 fallback;
+- cheese, AOVE, table olives and jamón remain non-ready under the strict broad
+  category rules;
+- Turrón de Alicante remains a seasonal watch.
+
+The implementation branch should therefore remain documentation/research-only
+until the five-category launch gate is met. This avoids building and testing
+runtime paths for a feed that still lacks sufficient content runway.
+
+
+## Launch-gate completion and expanded source catalogue — 27 September 2026
+
+A fresh source re-check completed the minimum launch matrix without weakening the
+category-first rules.
+
+### READY — AOVE / extra-virgin olive oil
+
+Primary source remains EVOOLEUM 2026; its reviewed overall podium does not have
+an exact current match in the six target chains.
+
+The secondary source is OCU's latest 23-product supermarket AOVE analysis. OCU's
+official 27 December 2024 article explicitly says the ranking is led by
+**AOVE Oleoestepa, DOP Estepa**. The product was laboratory-tested and the
+analysis covers authenticity, oxidation/ageing, acidity and professional
+sensory assessment.
+
+Current exact retail evidence is Carrefour España supermarket:
+`Aceite de oliva virgen extra Oleoestepa 1 l.`, D.O. Estepa, Oleoestepa
+S.C.A., 1000 ml PET. The reviewed current card exposed 7.65 EUR / 7.65 EUR/l.
+
+Decision: **READY** through source #2 after the EVOOLEUM top three fail the
+current exact-retail gate.
+
+Sources:
+- https://www.ocu.org/alimentacion/aceite-oliva/informe/aceite-oliva-virgen-extra
+- https://www.ocu.org/organizacion/prensa/notas-de-prensa/2024/aceite271224
+- https://www.carrefour.es/supermercado/aceite-de-oliva-virgen-extra-oleoestepa-1-l/R-589802552/p
+- https://www.oleoestepa.com/aceite-de-calidad/premios-y-reconocimientos/
+
+### READY — coffee capsules
+
+The reviewed 2024 OCU capsule study covers 29 Nespresso/Dolce Gusto products,
+with laboratory chemistry/contaminant checks and an expert sensory panel.
+The reviewed result table places **AROM'ARTE (DIA) Intenso** at 85/100, the
+highest overall score in the Nespresso-with-caffeine group. OCU's exact current
+product page still identifies the same 20-capsule, 108 g, Nespresso-compatible
+product and marks it `Analizado en el laboratorio`.
+
+DIA currently exposes exact SKU **273821** as
+`Cápsulas de café intenso Dia Arom'arte 20 unidades`; the reviewed current
+price is about 3.80 EUR (0.19 EUR/capsule).
+
+Decision: **READY**. The immutable 2024 result is a reviewed source fact;
+publication-time runtime must revalidate the exact OCU product identity and
+the current DIA SKU/price rather than re-derive the historical ranking.
+
+Sources:
+- https://www.ocu.org/alimentacion/cafe/asi-analizamos
+- https://www.ocu.org/alimentacion/cafe/comparador/arom-arte-dia-intenso/273/103038
+- https://www.dia.es/cafe-cacao-e-infusiones/capsulas-compatibles-nespresso/p/273821
+
+### READY — spirits / anís
+
+MAPA's **Premio Alimentos de España Mejor Bebida Espirituosa con Indicación
+Geográfica 2026** names one national winner:
+**Anís Chinchón de la Alcoholera Dulce**, I.G. Chinchón, submitted/elaborated
+by González Byass Distribución.
+
+The commercial identity is unambiguous across current official retailer cards:
+- Carrefour: `Anís Chinchón dulce 1 l.`, 35% vol, I.G.P. Chinchón,
+  González Byass S.A.;
+- DIA: `Anís dulce Chinchon 1 L`, current SKU **275359**, González Byass;
+- Consum: `CHINCHON Anís Dulce Botella 1 L`, product code **7325533**.
+
+Reviewed prices during the investigation were 13.79 EUR in Carrefour/DIA and
+12.29 EUR in Consum. These are observations only; runtime must refresh one exact
+offer immediately before publication.
+
+Decision: **READY** and this is the fifth independent broad launch category.
+
+Sources:
+- https://www.mapa.gob.es/es/alimentacion/temas/promo-alimentos/premios-alimentos/galardonados-bebidas-espirituosas
+- https://www.mapa.gob.es/es/prensa/ultimas-noticias/detalle_noticias/el-ministerio-de-agricultura--pesca-y-alimentaci-n-otorga-el-premio-alimentos-de-espa-a-a-la-mejor-bebida-espirituosa-2026-a-an-s-chinch-n-de-la-alcoholera-dulce/fcb3ac3c-83ad-49a8-a35f-f187bb20d9ec
+- https://www.carrefour.es/supermercado/anis-chinchon-dulce-1-l/R-538001406/p
+- https://www.dia.es/cervezas-vinos-y-licores/cremas-licores-y-brandy/p/275359
+- https://tienda.consum.es/es/c/bebidas/licores/anis/5315
+
+### OCU admission guard: laboratory-tested products only
+
+OCU's current methodology page now explains that products not physically
+laboratory-tested may also receive AI-derived evaluations from objective
+characteristics and technical results of related products.
+
+For this feature, that is not equivalent evidence.
+
+An OCU product may qualify only when its exact OCU product/result evidence
+explicitly says **`Analizado en el laboratorio`** (or an equally explicit
+OCU statement proves it belonged to the physical comparative test). AI-derived
+OCU recommendations are ineligible for product-award publication.
+
+`Mejor del Análisis` keeps its OCU-defined meaning: best of the products
+compared.
+
+Source:
+- https://www.ocu.org/info/quienes-somos/nuestros-analisis
+
+### Still PENDING / seasonal
+
+**Tuna in olive oil:** unchanged. Sal de Plata / ALDI remains OCU #1 at 86/100,
+and Hacendado / Mercadona #2 is technically current, but #2 cannot be selected
+until the exact current Sal de Plata olive-oil SKU is found or #1 is reliably
+shown to be unavailable.
+
+**Turrón duro:** El Almendro 250 g is a strong OCU 85/100 route and Carrefour
+already exposes the exact 250 g product, but the reviewed current card was
+temporarily out of stock. Keep as seasonal watch and re-check in the Christmas
+assortment.
+
+### New high-quality source families
+
+The following sources passed the authority/semantics screen and should remain
+in the reviewed source catalogue for future category expansion. They do not
+become production adapters until an exact current target-retailer candidate is
+proved.
+
+- **Great Taste / Guild of Fine Food.** The 2026 Supreme Champion is Entrepeñas
+  Wagyu Beef Ham from Spain after more than 15,000 entries. Strong
+  champion semantics; no current exact target-six retail match yet.
+- **World Beer Awards.** Current 2026 country/world/category winners and medal
+  tables are machine-readable. Use only an explicit World Best or a uniquely
+  ordered relevant winner; medal groups alone are not ranks.
+- **MUNDUS VINI.** Blind expert wine competition with Best of Show/category
+  distinctions. Exact vintage/DO/bottle identity remains mandatory.
+- **Concours Mondial de Bruxelles.** Revelation/top distinctions are useful
+  winner sources; ordinary medal sets are not ordered podiums.
+- **International Wine Challenge.** Champion and Great Value Champion titles
+  are strong; retailer marketplace listings do not prove supermarket stock.
+- **Bacchus.** Large blind international wine competition; use explicit
+  category-best distinctions, not generic medal lists.
+- **World Steak Challenge.** Strong championship source. Lidl España carried
+  the 2025 world-winning Irish grass-fed Angus striploin as a limited April
+  2026 promotion; retain as a seasonal/promo watch, not current stock.
+- **MAPA Alimentos de España** should be treated as a family of national
+  winner-only sources (wine styles, spirits, jamón, AOVE and other official
+  categories).
+- **Producto del Año** and **Sabor del Año** remain discovery-only: the former
+  is primarily an innovation award and the latter commonly exposes an unordered
+  recognition set. Neither should be promoted to category ranking merely to
+  increase content volume.
+
+### Launch matrix after the re-check
+
+Five independent broad categories now satisfy the launch gate:
+
+1. sparkling wine / cava -> NALTROS Brut / ALDI;
+2. gazpacho -> Realfooding / Carrefour;
+3. AOVE -> Oleoestepa DOP Estepa / Carrefour;
+4. coffee capsules -> AROM'ARTE Intenso / DIA;
+5. spirits / anís -> Anís Chinchón Dulce / current exact target-chain offer.
+
+At a three-local-day cadence this is approximately fifteen days of initial
+runway. Runtime implementation may now begin, but it must use the lean
+on-demand ADR rather than the old POC queue/discovery architecture.
