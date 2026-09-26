@@ -640,6 +640,12 @@ def _session_source_plan(
         start_times = [events[index].start_time for index, _, _ in members]
         if len(set(start_times)) != len(start_times):
             continue
+        ordered_members = sorted(members, key=lambda item: item[1])
+        ordered_start_times = [
+            events[index].start_time for index, _, _ in ordered_members
+        ]
+        if ordered_start_times != sorted(ordered_start_times):
+            continue
         common = _session_common_facts(events[members[0][0]])
         if any(
             _session_common_facts(events[index]) != common
