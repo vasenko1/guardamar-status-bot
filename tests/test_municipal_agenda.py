@@ -60,7 +60,7 @@ from telegrambot.municipal_agenda import (
     refresh_municipal_catalog,
 )
 from telegrambot.gemini import GeminiError
-from telegrambot.event_translations import _key
+from telegrambot.event_translations import _key, spanish_fallback
 from telegrambot.facebook import FacebookError, FacebookPost
 from telegrambot.digest import build_event_section
 from telegrambot.todo_cultura import (
@@ -304,6 +304,49 @@ class MunicipalProgrammeDisplayTranslationTests(
         self.assertNotIn(parent, rendered)
         self.assertLess(rendered.index("17:00"), rendered.index("19:50"))
         self.assertLess(rendered.index("19:50"), rendered.index("20:00"))
+
+    async def test_programme_parent_falls_back_to_spanish_without_cache_entry(self):
+        day = date(2026, 9, 26)
+        parent = "FIESTAS EN HONOR A LA VIRGEN DEL ROSARIO 2026"
+        source = SourceEvent(
+            "Gran Bingo Benéfico", day, day, "17:00", None,
+            "Bajos del Ayuntamiento", "event",
+            (AYUNTAMIENTO_PROGRAMME_SOURCE,),
+            programme_title=parent, programme_order=10,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            snapshot = Path(directory) / "agenda.json"
+            translations = Path(directory) / "translations.json"
+            now = datetime(2026, 9, 26, 7, 30, tzinfo=TZ)
+            _write_snapshot(
+                snapshot,
+                _snapshot_data("", "", now, (source,)),
+            )
+            translations.write_text(
+                json.dumps({
+                    "version": 1,
+                    "entries": {
+                        _key("municipal_agenda", source.title_es): {
+                            "translation": "Благотворительное бинго",
+                        },
+                    },
+                }),
+                encoding="utf-8",
+            )
+
+            events = await fetch_today_municipal_events(
+                now,
+                "",
+                snapshot,
+                translation_cache_path=translations,
+            )
+
+        self.assertEqual(events[0].programme_title, parent)
+        self.assertEqual(
+            events[0].programme_display_title,
+            spanish_fallback(parent),
+        )
 
     def test_todo_duplicate_keeps_official_programme_identity(self):
         day = date(2026, 9, 26)
