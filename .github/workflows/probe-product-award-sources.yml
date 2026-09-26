@@ -76,10 +76,13 @@ jobs:
                   value = details[key]
                   if isinstance(value, (str, int, float, bool)) or value is None:
                       print("detail."+key, value)
+              print("detail.suppliers", json.dumps(details.get("suppliers"), ensure_ascii=False))
           nutrition = obj.get("nutrition_information")
           print("nutrition_type", type(nutrition).__name__)
           if isinstance(nutrition, dict):
               print("nutrition_keys", sorted(nutrition))
+              print("nutrition.ingredients", json.dumps(nutrition.get("ingredients"), ensure_ascii=False))
+              print("nutrition.allergens", json.dumps(nutrition.get("allergens"), ensure_ascii=False))
 
           print("=== WCCC RESULTS HTML LINKS ===")
           status, headers, body = request("https://worldchampioncheese.org/results/")
