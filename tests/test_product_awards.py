@@ -827,7 +827,14 @@ class EngineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "awards.json"
             state = ProductAwardState(path)
-            with patch("telegrambot.product_awards.SOURCE_ADAPTERS", (adapter,)):
+            offer = RetailOfferVariant(package="1 л", price="2,90 €")
+            with (
+                patch("telegrambot.product_awards.SOURCE_ADAPTERS", (adapter,)),
+                patch(
+                    "telegrambot.product_awards.refresh_retail_offers",
+                    return_value=(offer,),
+                ),
+            ):
                 publication = scan_next_product_award(
                     datetime(2026, 9, 25, tzinfo=MADRID),
                     state,
