@@ -109,6 +109,38 @@ class ProductAwardCommandTests(unittest.IsolatedAsyncioTestCase):
             discover.assert_called_once()
             send.assert_not_awaited()
 
+    async def test_missing_live_offer_does_not_reserve_delivery_slot(self):
+        item = self.candidate()
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "awards.json"
+            self.seed_queue(state_path, item)
+            with (
+                patch.dict(
+                    "os.environ",
+                    {
+                        "TELEGRAM_BOT_TOKEN": "token",
+                        "TELEGRAM_CHAT_ID": "@group",
+                        "PRODUCT_AWARDS_STATE_PATH": str(state_path),
+                    },
+                    clear=False,
+                ),
+                patch(
+                    "telegrambot.__main__.build_current_product_award_publication",
+                    return_value=None,
+                ),
+                patch(
+                    "telegrambot.__main__.send_message",
+                    new=AsyncMock(),
+                ) as send,
+            ):
+                self.assertEqual(await _run_command("product-awards"), 0)
+
+            send.assert_not_awaited()
+            state = ProductAwardState(state_path)
+            self.assertEqual(state.queue_size(), 1)
+            self.assertIsNone(state.last_delivery_day())
+            self.assertEqual(state.uncertain_events(), ())
+
     async def test_confirmed_text_send_publishes_event(self):
         item = self.candidate()
         publication = self.publication(item)
@@ -126,7 +158,7 @@ class ProductAwardCommandTests(unittest.IsolatedAsyncioTestCase):
                     clear=False,
                 ),
                 patch(
-                    "telegrambot.__main__.build_product_award_publication",
+                    "telegrambot.__main__.build_current_product_award_publication",
                     return_value=publication,
                 ),
                 patch(
@@ -160,7 +192,7 @@ class ProductAwardCommandTests(unittest.IsolatedAsyncioTestCase):
                     clear=False,
                 ),
                 patch(
-                    "telegrambot.__main__.build_product_award_publication",
+                    "telegrambot.__main__.build_current_product_award_publication",
                     return_value=publication,
                 ),
                 patch(
@@ -198,7 +230,7 @@ class ProductAwardCommandTests(unittest.IsolatedAsyncioTestCase):
                     clear=False,
                 ),
                 patch(
-                    "telegrambot.__main__.build_product_award_publication",
+                    "telegrambot.__main__.build_current_product_award_publication",
                     return_value=publication,
                 ),
                 patch(
