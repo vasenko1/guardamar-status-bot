@@ -1,4 +1,4 @@
-name: Probe award candidates research
+name: Probe WCCC result backend research
 
 on:
   push:
@@ -16,89 +16,58 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Probe exact Mercadona products and WCCC results client
+      - name: Locate and query WCCC backend
         run: |
           python - <<'PY'
-          import json, re, urllib.parse, urllib.request
+          import json, re, urllib.request
 
           UA={"Accept":"*/*","User-Agent":"GuardamarMorningDigest/0.13"}
 
-          def raw(url, limit=2_000_000):
+          def raw(url, limit=4_000_000):
               req=urllib.request.Request(url,headers=UA)
               with urllib.request.urlopen(req,timeout=20) as r:
                   return r.status, r.headers.get_content_type(), r.read(limit)
 
-          print("=== MERCADONA EXACT PRODUCTS ===")
-          for pid in ("4883","5548","11682","50944","11672"):
-              url=f"https://tienda.mercadona.es/api/products/{pid}/?lang=es&wh=alc1"
-              try:
-                  status,ctype,body=raw(url,500_000)
-                  obj=json.loads(body)
-              except Exception as e:
-                  print(pid,"ERROR",repr(e)); continue
-              details=obj.get("details") if isinstance(obj.get("details"),dict) else {}
-              nutrition=obj.get("nutrition_information") if isinstance(obj.get("nutrition_information"),dict) else {}
-              pi=obj.get("price_instructions") if isinstance(obj.get("price_instructions"),dict) else {}
-              print(json.dumps({
-                  "id":obj.get("id"),
-                  "display_name":obj.get("display_name"),
-                  "ean":obj.get("ean"),
-                  "brand":obj.get("brand"),
-                  "published":obj.get("published"),
-                  "unavailable_from":obj.get("unavailable_from"),
-                  "unavailable_weekdays":obj.get("unavailable_weekdays"),
-                  "share_url":obj.get("share_url"),
-                  "suppliers":details.get("suppliers"),
-                  "legal_name":details.get("legal_name"),
-                  "mandatory_mentions":details.get("mandatory_mentions"),
-                  "ingredients":nutrition.get("ingredients"),
-                  "unit_price":pi.get("unit_price"),
-                  "unit_size":pi.get("unit_size"),
-                  "size_format":pi.get("size_format"),
-                  "reference_price":pi.get("reference_price"),
-                  "reference_format":pi.get("reference_format"),
-              },ensure_ascii=False))
+          app="https://worldchampioncheese.org/wp-content/plugins/wccc-usccc-plugin/dist/app.js"
+          _,_,body=raw(app)
+          text=body.decode("utf-8","replace")
 
-          print("=== WCCC RESULTS PAGE ===")
-          page="https://worldchampioncheese.org/results/"
-          status,ctype,body=raw(page)
-          html=body.decode("utf-8","replace")
-          print("STATUS",status,"TYPE",ctype,"BYTES",len(body))
-          scripts=[]
-          for m in re.finditer(r'<script[^>]+src=["\']([^"\']+)["\']',html,re.I):
-              u=urllib.parse.urljoin(page,m.group(1))
-              if u not in scripts:
-                  scripts.append(u)
-          print("SCRIPTS",len(scripts))
-          for u in scripts:
-              print("SCRIPT",u)
+          print("=== APIDOMAIN CONTEXT ===")
+          for m in re.finditer(r'apiDomain',text):
+              a=max(0,m.start()-1000); b=min(len(text),m.start()+1600)
+              print(text[a:b])
+              print("\n---")
 
-          needles=("myentries","result","score","class","contest","api","graphql","ajax")
-          print("=== INTERESTING SCRIPT FRAGMENTS ===")
-          for u in scripts:
+          print("=== URL CANDIDATES ===")
+          urls=[]
+          for m in re.finditer(r'https?://[^"\'\\\s)]+',text):
+              u=m.group(0)
+              if u not in urls:
+                  urls.append(u)
+          for u in urls:
+              if any(k in u.lower() for k in ("wccc","usccc","contest","api","cheese")):
+                  print(u)
+
+          # Try domains found manually from app text in the same process.
+          domains=[]
+          patterns=[
+              r'apiDomain:"([^"]+)"',
+              r'apiDomain:"?([^",}]+)',
+              r'apiDomain=([^,;]+)',
+              r'"apiDomain":"([^"]+)"',
+          ]
+          for pat in patterns:
+              for m in re.finditer(pat,text):
+                  val=m.group(1).strip()
+                  if val.startswith("http") and val not in domains:
+                      domains.append(val.rstrip("/"))
+          print("DOMAINS",domains)
+
+          for domain in domains:
+              print("=== DOMAIN",domain,"===")
               try:
-                  _,_,body=raw(u,3_000_000)
+                  _,_,b=raw(domain+"/api/results/contests")
+                  print("CONTESTS",b.decode("utf-8","replace")[:12000])
               except Exception as e:
-                  print("SCRIPT_ERROR",u,repr(e)); continue
-              text=body.decode("utf-8","replace")
-              low=text.lower()
-              if not any(n in low for n in needles):
-                  continue
-              hits=[]
-              for pat in (
-                  r'https?://[^"\'\s)]+',
-                  r'/wp-json/[^"\'\s)]+',
-                  r'admin-ajax[^"\'\s)]+',
-                  r'ajaxurl[^;]{0,250}',
-                  r'graphql[^;]{0,250}',
-                  r'results?[^;]{0,250}',
-              ):
-                  for m in re.finditer(pat,text,re.I):
-                      frag=m.group(0)
-                      if any(k in frag.lower() for k in ("result","score","class","contest","api","ajax","graphql")):
-                          hits.append(frag[:500])
-              if hits:
-                  print("FROM",u)
-                  for h in list(dict.fromkeys(hits))[:80]:
-                      print("HIT",h)
+                  print("CONTESTS_ERROR",repr(e))
           PY
