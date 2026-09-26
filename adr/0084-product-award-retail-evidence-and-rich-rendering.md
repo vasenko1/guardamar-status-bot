@@ -47,6 +47,29 @@ The award source remains authoritative for:
 Retail evidence is a separate layer responsible for proving that the exact
 awarded product is currently associated with a supported Spanish supermarket.
 
+### Narrow first-party entrant exception for a reviewed launch seed
+
+The responsible award organizer remains the preferred authority for automated
+award discovery and result semantics.
+
+A one-time, hand-reviewed launch seed may use an official first-party
+entrant/producer result announcement when the organizer does not expose a
+complete accessible result table, but only when all of these are true:
+
+- the announcement names the exact competition edition/year;
+- it gives the exact commercial product plus explicit score/result/tier;
+- the organizer independently documents the judging method and score semantics;
+- a separate current retailer source proves the exact SKU/EAN, supplier,
+  recipe/variant and current sale;
+- there is no conflicting organizer or retailer evidence;
+- the reviewed facts are frozen as dated seed data rather than turned into a
+  generic scheduled producer-news parser;
+- public copy attributes the result to the producer/entrant source.
+
+This exception does not permit media reports, retailer marketing badges,
+manufacturer equality alone, fuzzy joins or a permanent assumption that
+producer claims are equivalent to an organizer result directory.
+
 The supported relationship types are:
 
 - private label;
@@ -145,11 +168,11 @@ Each visible offer preserves, when available:
 - exact retailer product ID or EAN;
 - exact product URL.
 
-If the same awarded commercial product is sold in several package sizes, show
-all verified current sizes and prices. Do not choose one "representative"
-package on the bot's behalf. A different flavour, recipe, maturation, vintage or
-otherwise distinct SKU does not inherit the award merely because the brand or
-product family matches.
+If the same awarded commercial product is sold in several package sizes or
+retail formats, show all reviewed current variants and prices with a visible
+format label. Do not choose one "representative" package on the bot's behalf.
+A different flavour, recipe, maturation, vintage or otherwise distinct SKU does
+not inherit the award merely because the brand or product family matches.
 
 Store/postcode/promotional context must be preserved. Never substitute a search
 engine, aggregator or stale cached price. Changing offers never change award
@@ -286,10 +309,11 @@ Both directions feed the same ADR 0083 queue.
 
 Distinguish two failures:
 
-- inability to prove current retailer identity: fail closed for any claim that
-  the award product is currently sold by that supermarket;
-- inability to refresh optional price/photo after identity is already proven:
-  degrade to a correct text-only article without current enrichment.
+- inability to prove a fresh current retailer offer, exact identity or price:
+  fail closed for public delivery and leave the queued event available for a
+  later retry;
+- inability to obtain an optional reusable product photo after the text article
+  is otherwise verified: publish text-only.
 
 The award itself must never be rewritten or guessed to compensate for retail
 enrichment failure.
