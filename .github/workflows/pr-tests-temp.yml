@@ -1,0 +1,62 @@
+name: Temporary Turismo scoped recovery tests
+
+on:
+  push:
+    branches:
+      - fix/turismo-programme-scoped-recovery
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e .
+      - run: python -m compileall -q src tests
+      - run: PYTHONPATH=src python -m unittest discover -s tests -v
+      - name: Probe live Rosario recovery slice
+        run: |
+          PYTHONPATH=src python - <<'PY'
+          from datetime import date
+          from telegrambot.municipal_agenda import (
+              _read_turismo_programme_candidates,
+              _read_turismo_programme_article,
+              _turismo_programme_recovery_text,
+          )
+
+          local_day = date(2026, 9, 26)
+          candidates = _read_turismo_programme_candidates(local_day)
+          assert candidates is not None
+          rosario = next(
+              item for item in candidates
+              if "virgen-del-rosario" in item["link"]
+          )
+          detail = _read_turismo_programme_article(rosario, local_day)
+          assert detail is not None
+          expected_dates = tuple(
+              day for day in detail[4] if day >= local_day
+          )
+          recovery_text = _turismo_programme_recovery_text(
+              detail[5], expected_dates
+          )
+          print("EXPECTED:", expected_dates)
+          print("RECOVERY_TEXT:")
+          print(recovery_text)
+          assert expected_dates == (
+              date(2026, 9, 26),
+              date(2026, 10, 3),
+              date(2026, 10, 4),
+              date(2026, 10, 7),
+              date(2026, 10, 15),
+              date(2026, 10, 18),
+          )
+          for day in expected_dates:
+              assert detail[5].get(day)
+          assert len(recovery_text) < len(detail[3])
+          PY
