@@ -665,20 +665,32 @@ catalogue polling.
 
 OCU is the first active award adapter. `Mejor del Análisis` means the best
 result in that specific OCU comparison. `Compra Maestra` is a value/balance
-distinction and is never described as the highest absolute quality.
+distinction and is never described as the highest absolute quality. OCU
+publication requires an overall/global score of at least **85/100**; a high
+health, tasting or other partial subscore cannot satisfy that gate.
 
 Articles are deterministic but may be substantially richer than the initial
 POC. A source adapter may retain verified context such as comparison/entry
 count, test or judging method, category/class, score, tasting result,
-nutrition/quality classification, vintage, DO, grape, maturation or other
-source-native identity facts. Small reviewed source-specific renderers turn
-those facts into article copy without runtime LLM writing.
+nutrition/quality classification, product description, composition, producer,
+production country, vintage, DO, grape, maturation or other source-native
+identity facts. If a producer is named publicly, country is mandatory; city or
+region is optional additional context.
+
+The headline contains the product, supermarket and award/result, not the numeric
+score. Repeated methodology is rendered inside Telegram's expandable HTML
+blockquote so the changing product facts remain visible without printing the
+same judging explanation in full every day.
 
 A queued item may wait several days. When exact retailer identity is known, the
-publication step may make one bounded exact-SKU refresh immediately before
-rendering. A fresh current price/availability statement is included only when
-that refresh is unambiguous. A source-published award-study price remains
-labelled as such.
+publication step may make one bounded exact-product refresh immediately before
+rendering. It returns all verified current package variants of that same awarded
+commercial product. Each shown row keeps package size, price and unit price
+when available. The bot never chooses one package on behalf of the reader, and
+never transfers the award to a different flavour/recipe/SKU.
+
+The feed sends at most one item per day rather than exactly one. If no
+source-specific exceptional candidate exists, that day stays quiet.
 
 Retailer product photos are disabled by default. Current legal checks found
 reuse restrictions on several target retailer sites. A Telegram image is
