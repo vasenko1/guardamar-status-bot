@@ -3469,10 +3469,6 @@ async def refresh_municipal_catalog(
                     )
                 if not new_todo_events:
                     continue
-                new_todo_events = _annotate_todo_source_sessions(
-                    new_todo_events,
-                    todo_program.event_rows,
-                )
                 refreshed_dates = set(todo_program.dates)
                 retained = (
                     tuple(
@@ -3527,6 +3523,11 @@ async def refresh_municipal_catalog(
         if todo_explicit_rows:
             todo_events = _expand_explicit_todo_dates(
                 todo_events, todo_explicit_rows
+            )
+        if todo_window is not None and todo_explicit_rows:
+            todo_events = _annotate_todo_source_sessions(
+                todo_events,
+                todo_explicit_rows,
             )
 
         facebook_source = old_sources.get("facebook", {})
