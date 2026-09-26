@@ -590,6 +590,33 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
             merged[1].starts_at.strftime("%H:%M"), "21:00"
         )
 
+    def test_merge_keeps_display_from_selected_programme_identity(self):
+        generic = Event(
+            title="Благотворительное бинго",
+            starts_at=START,
+            place="Bajos del Ayuntamiento",
+        )
+        programme = Event(
+            title="Благотворительное бинго",
+            starts_at=START,
+            place="Bajos del Ayuntamiento",
+            programme_title="FIESTAS EN HONOR A LA VIRGEN DEL ROSARIO 2026",
+            programme_display_title="Праздник в честь Девы Розария 2026",
+            programme_order=10,
+        )
+
+        merged = _merge_events((generic,), (programme,))
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(
+            merged[0].programme_title,
+            "FIESTAS EN HONOR A LA VIRGEN DEL ROSARIO 2026",
+        )
+        self.assertEqual(
+            merged[0].programme_display_title,
+            "Праздник в честь Девы Розария 2026",
+        )
+
     def test_same_path_date_time_but_different_function_remains_distinct(self):
         start = datetime(2026, 9, 19, 20, 0, tzinfo=MADRID)
         first = Event(
