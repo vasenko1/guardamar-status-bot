@@ -160,6 +160,64 @@ class RetailEvidence:
 
 
 @dataclass(frozen=True)
+class RetailOfferVariant:
+    """Fresh exact-SKU retail offer used only at publication time."""
+
+    package: str
+    price: str
+    unit_price: Optional[str] = None
+    product_id: Optional[str] = None
+    ean: Optional[str] = None
+    product_url: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        for name, value in (
+            ("package", self.package),
+            ("price", self.price),
+        ):
+            if not isinstance(value, str) or not value.strip():
+                raise ProductAwardError(
+                    f"retail offer needs {name}",
+                    code="INVALID",
+                )
+        for name, value in (
+            ("unit_price", self.unit_price),
+            ("product_id", self.product_id),
+            ("ean", self.ean),
+            ("product_url", self.product_url),
+        ):
+            if value is not None and (
+                not isinstance(value, str) or not value.strip()
+            ):
+                raise ProductAwardError(
+                    f"invalid retail offer {name}",
+                    code="INVALID",
+                )
+        if self.ean is not None and not re.fullmatch(r"\d{8,14}", self.ean):
+            raise ProductAwardError("invalid retail offer EAN/GTIN", code="INVALID")
+        if self.product_url is not None:
+            try:
+                parsed = urllib.parse.urlsplit(self.product_url)
+                port = parsed.port
+            except ValueError as exc:
+                raise ProductAwardError(
+                    "invalid retail offer product URL",
+                    code="INVALID",
+                ) from exc
+            if (
+                parsed.scheme != "https"
+                or parsed.hostname is None
+                or port not in {None, 443}
+                or parsed.username is not None
+                or parsed.password is not None
+            ):
+                raise ProductAwardError(
+                    "invalid retail offer product URL",
+                    code="INVALID",
+                )
+
+
+@dataclass(frozen=True)
 class AwardEditorialFacts:
     comparison_size: Optional[int] = None
     category: Optional[str] = None
@@ -168,7 +226,22 @@ class AwardEditorialFacts:
     standout: Optional[str] = None
     quality_label: Optional[str] = None
     producer: Optional[str] = None
+    producer_location: Optional[str] = None
+    production_country: Optional[str] = None
+    headline_claim: Optional[str] = None
+    product_summary: Optional[str] = None
+    tasting_notes: tuple[str, ...] = ()
+    composition_details: tuple[str, ...] = ()
+    nutrition_details: tuple[str, ...] = ()
+    method_summary: Optional[str] = None
     identity_details: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.producer is not None and self.production_country is None:
+            raise ProductAwardError(
+                "producer facts require production country",
+                code="INVALID",
+            )
 
 
 @dataclass(frozen=True)
@@ -685,12 +758,38 @@ def parse_ocu_awards(
     return tuple(unique[event_id] for event_id in order)
 
 
+def _score_out_of_100(value: Optional[str]) -> Optional[float]:
+    if value is None:
+        return None
+    match = re.fullmatch(r"(\d{1,3}(?:[.,]\d+)?)/100", value.strip())
+    if match is None:
+        return None
+    score = float(match.group(1).replace(",", "."))
+    return score if 0 <= score <= 100 else None
+
+
+def _ocu_publication_eligible(candidate: ProductAwardCandidate) -> bool:
+    """OCU editorial gate: only exceptional overall scores are publishable."""
+
+    score = _score_out_of_100(candidate.score)
+    return score is not None and score >= 85.0
+
+
 def load_ocu_item(url: str, year: int) -> AwardSourceItem:
     document = _fetch_page(
         url,
         frozenset({"www.ocu.org", "ocu.org"}),
     )
-    return AwardSourceItem(parse_ocu_awards(document, year))
+    candidates = [
+        candidate
+        for candidate in parse_ocu_awards(document, year)
+        if _ocu_publication_eligible(candidate)
+    ]
+    candidates.sort(
+        key=lambda candidate: _score_out_of_100(candidate.score) or 0.0,
+        reverse=True,
+    )
+    return AwardSourceItem(tuple(candidates))
 
 
 # Add future validated adapters here. A new adapter only needs a stable list of
@@ -747,81 +846,166 @@ def _ocu_method_sentence(facts: AwardEditorialFacts) -> Optional[str]:
     return "В исследовании " + ", ".join(parts) + "."
 
 
+def _render_offer(offer: RetailOfferVariant) -> str:
+    value = f"• <b>{html.escape(offer.package)}</b> — {html.escape(offer.price)}"
+    if offer.unit_price is not None:
+        value += f" · {html.escape(offer.unit_price)}"
+    return value
+
+
+def _render_method_block(candidate: ProductAwardCandidate) -> Optional[str]:
+    facts = candidate.editorial
+    lines: list[str] = []
+
+    if facts.method_summary is not None:
+        lines.append(facts.method_summary)
+    elif candidate.source_kind == "ocu":
+        method_sentence = _ocu_method_sentence(facts)
+        if candidate.sample_size is not None:
+            lines.append(f"OCU сравнила {candidate.sample_size} продуктов.")
+        if method_sentence is not None:
+            lines.append(method_sentence)
+    else:
+        if facts.comparison_size is not None:
+            lines.append(
+                f"В конкурсе участвовало {facts.comparison_size} продуктов."
+            )
+        if facts.judge_count is not None:
+            lines.append(f"Оценивали {facts.judge_count} судей.")
+
+    if not lines:
+        return None
+    escaped = "\n\n".join(html.escape(line) for line in lines)
+    return (
+        "<blockquote expandable><b>Как оценивали</b>\n\n"
+        + escaped
+        + "</blockquote>"
+    )
+
+
 def build_publication(
     candidate: ProductAwardCandidate,
     *,
-    current_price: Optional[str] = None,
+    current_offers: Sequence[RetailOfferVariant] = (),
 ) -> ProductAwardPublication:
     product = _display_product(candidate.product_name)
-    body_parts: list[str] = []
+    facts = candidate.editorial
+    sections: list[str] = []
 
     if candidate.source_kind == "ocu":
         if candidate.result == "Mejor del Análisis":
-            headline = f"{product} — лучший в тесте OCU"
-            if candidate.sample_size is not None:
-                body_parts.append(
-                    f"OCU сравнила {candidate.sample_size} продуктов. "
-                    f"{product} из {candidate.retailer} получил статус "
-                    "Mejor del Análisis — лучший результат сравнительного теста."
-                )
-            else:
-                body_parts.append(
-                    f"{product} из {candidate.retailer} получил статус "
-                    "Mejor del Análisis — лучший результат сравнительного теста OCU."
-                )
+            headline = f"{product} в {candidate.retailer} — лучший в тесте OCU"
+            intro = (
+                f"{product} получил статус Mejor del Análisis — "
+                "лучший результат сравнительного теста OCU."
+            )
         elif candidate.result == "Compra Maestra":
-            headline = f"{product} — Compra Maestra в тесте OCU"
-            if candidate.sample_size is not None:
-                body_parts.append(
-                    f"OCU сравнила {candidate.sample_size} продуктов. "
-                    f"{product} из {candidate.retailer} получил отметку "
-                    "Compra Maestra — за удачное соотношение качества и цены."
-                )
-            else:
-                body_parts.append(
-                    f"{product} из {candidate.retailer} получил отметку "
-                    "Compra Maestra — за удачное соотношение качества и цены."
-                )
+            headline = (
+                f"{product} в {candidate.retailer} — выбор OCU "
+                "по качеству и цене"
+            )
+            intro = (
+                f"{product} получил отметку Compra Maestra — "
+                "за удачное соотношение качества и цены."
+            )
         else:
-            headline = f"{product} — результат OCU"
-            body_parts.append(
-                f"{product} из {candidate.retailer} получил результат "
-                f"{candidate.result} в исследовании OCU."
-            )
-
-        method_sentence = _ocu_method_sentence(candidate.editorial)
-        if method_sentence is not None:
-            body_parts.append(method_sentence)
-        if candidate.editorial.standout == "best_professional_tasting":
-            body_parts.append(
-                "Особенно хорошо продукт показал себя на профессиональной "
-                "дегустации: OCU назвала его лучшим по этому этапу."
-            )
-        if candidate.editorial.quality_label is not None:
-            body_parts.append(
-                f"По своей шкале пищевого состава OCU также отнесла продукт "
-                f"к категории {candidate.editorial.quality_label}."
+            headline = f"{product} в {candidate.retailer} — результат OCU"
+            intro = (
+                f"{product} получил результат {candidate.result} "
+                "в исследовании OCU."
             )
     else:
-        headline = f"{product} — {candidate.result} на {candidate.award_body}"
-        body_parts.append(
+        claim = facts.headline_claim or (
+            f"{candidate.result} на {candidate.award_body}"
+        )
+        headline = f"{product} в {candidate.retailer} — {claim}"
+        intro = (
             f"{product}, {_retail_phrase(candidate)}, получил "
             f"{candidate.result} на {candidate.award_body}."
         )
 
-    details: list[str] = []
     if candidate.score is not None:
-        details.append(f"Итоговая оценка — {candidate.score}.")
-    if current_price is not None:
-        details.append(
-            f"Сейчас в {candidate.retailer} указана цена {current_price}."
+        intro += f" Итоговая оценка — {candidate.score}."
+    sections.append(html.escape(intro))
+
+    product_lines: list[str] = []
+    if facts.product_summary is not None:
+        product_lines.append(html.escape(facts.product_summary))
+    if facts.tasting_notes:
+        product_lines.append(
+            "<b>Вкус и особенности:</b> "
+            + html.escape("; ".join(facts.tasting_notes))
+            + "."
+        )
+    if facts.composition_details:
+        product_lines.append(
+            "<b>Состав:</b>\n"
+            + "\n".join(
+                "• " + html.escape(item)
+                for item in facts.composition_details
+            )
+        )
+    if facts.nutrition_details:
+        product_lines.append(
+            "<b>На 100 г:</b>\n"
+            + "\n".join(
+                "• " + html.escape(item)
+                for item in facts.nutrition_details
+            )
+        )
+    if product_lines:
+        sections.append(
+            "🧀 <b>Что это за продукт</b>\n\n"
+            + "\n\n".join(product_lines)
+        )
+
+    if facts.standout == "best_professional_tasting":
+        sections.append(
+            "Особенно хорошо продукт показал себя на профессиональной "
+            "дегустации: OCU назвала его лучшим по этому этапу."
+        )
+    if facts.quality_label is not None:
+        sections.append(
+            "По своей шкале пищевого состава OCU также отнесла продукт "
+            f"к категории {html.escape(facts.quality_label)}."
+        )
+
+    if facts.production_country is not None:
+        producer_bits: list[str] = []
+        if facts.producer is not None:
+            producer_bits.append(facts.producer)
+        if facts.producer_location is not None:
+            producer_bits.append(facts.producer_location)
+        producer_bits.append(facts.production_country)
+        if facts.producer is not None:
+            sections.append(
+                "<b>Производитель</b> — "
+                + html.escape(", ".join(producer_bits))
+                + "."
+            )
+        else:
+            sections.append(
+                "<b>Страна производства</b> — "
+                + html.escape(facts.production_country)
+                + "."
+            )
+
+    if current_offers:
+        unique_offers = tuple(dict.fromkeys(current_offers))
+        sections.append(
+            f"🛒 <b>Сейчас в {html.escape(candidate.retailer)}</b>\n\n"
+            + "\n".join(_render_offer(offer) for offer in unique_offers)
         )
     elif candidate.source_price is not None:
-        details.append(
-            f"В исследовании указана цена {candidate.source_price}."
+        sections.append(
+            "В исследовании указана цена "
+            + html.escape(candidate.source_price)
+            + "."
         )
-    if details:
-        body_parts.append(" ".join(details))
+
+    method_block = _render_method_block(candidate)
+    if method_block is not None:
+        sections.append(method_block)
 
     source_url = html.escape(candidate.source_url, quote=True)
     link_label = html.escape(_source_link_label(candidate))
@@ -829,7 +1013,7 @@ def build_publication(
         "🏆 <b>"
         + html.escape(headline)
         + "</b>\n\n"
-        + "\n\n".join(html.escape(part) for part in body_parts)
+        + "\n\n".join(sections)
         + f'\n\n🔗 <a href="{source_url}">{link_label}</a>'
     )
     if len(message) > 4096:
@@ -865,6 +1049,14 @@ def _editorial_to_dict(value: AwardEditorialFacts) -> dict[str, Any]:
         "standout": value.standout,
         "quality_label": value.quality_label,
         "producer": value.producer,
+        "producer_location": value.producer_location,
+        "production_country": value.production_country,
+        "headline_claim": value.headline_claim,
+        "product_summary": value.product_summary,
+        "tasting_notes": list(value.tasting_notes),
+        "composition_details": list(value.composition_details),
+        "nutrition_details": list(value.nutrition_details),
+        "method_summary": value.method_summary,
         "identity_details": list(value.identity_details),
     }
 
@@ -914,16 +1106,40 @@ def _editorial_from_dict(value: Any) -> AwardEditorialFacts:
         "standout",
         "quality_label",
         "producer",
+        "producer_location",
+        "production_country",
+        "headline_claim",
+        "product_summary",
+        "tasting_notes",
+        "composition_details",
+        "nutrition_details",
+        "method_summary",
         "identity_details",
     }:
         raise ProductAwardError("invalid queued editorial facts", code="STATE")
     for key in ("comparison_size", "judge_count"):
         if value[key] is not None and not isinstance(value[key], int):
             raise ProductAwardError("invalid queued editorial number", code="STATE")
-    for key in ("category", "standout", "quality_label", "producer"):
+    for key in (
+        "category",
+        "standout",
+        "quality_label",
+        "producer",
+        "producer_location",
+        "production_country",
+        "headline_claim",
+        "product_summary",
+        "method_summary",
+    ):
         if value[key] is not None and not isinstance(value[key], str):
             raise ProductAwardError("invalid queued editorial string", code="STATE")
-    for key in ("method_flags", "identity_details"):
+    for key in (
+        "method_flags",
+        "tasting_notes",
+        "composition_details",
+        "nutrition_details",
+        "identity_details",
+    ):
         if (
             not isinstance(value[key], list)
             or len(value[key]) > 32
@@ -938,6 +1154,14 @@ def _editorial_from_dict(value: Any) -> AwardEditorialFacts:
         standout=value["standout"],
         quality_label=value["quality_label"],
         producer=value["producer"],
+        producer_location=value["producer_location"],
+        production_country=value["production_country"],
+        headline_claim=value["headline_claim"],
+        product_summary=value["product_summary"],
+        tasting_notes=tuple(value["tasting_notes"]),
+        composition_details=tuple(value["composition_details"]),
+        nutrition_details=tuple(value["nutrition_details"]),
+        method_summary=value["method_summary"],
         identity_details=tuple(value["identity_details"]),
     )
 
@@ -1055,6 +1279,40 @@ def _merge_editorial_facts(
             "quality label",
         ),
         producer=_merge_optional(existing.producer, incoming.producer, "producer"),
+        producer_location=_merge_optional(
+            existing.producer_location,
+            incoming.producer_location,
+            "producer location",
+        ),
+        production_country=_merge_optional(
+            existing.production_country,
+            incoming.production_country,
+            "production country",
+        ),
+        headline_claim=_merge_optional(
+            existing.headline_claim,
+            incoming.headline_claim,
+            "headline claim",
+        ),
+        product_summary=_merge_optional(
+            existing.product_summary,
+            incoming.product_summary,
+            "product summary",
+        ),
+        tasting_notes=tuple(dict.fromkeys(
+            (*existing.tasting_notes, *incoming.tasting_notes)
+        )),
+        composition_details=tuple(dict.fromkeys(
+            (*existing.composition_details, *incoming.composition_details)
+        )),
+        nutrition_details=tuple(dict.fromkeys(
+            (*existing.nutrition_details, *incoming.nutrition_details)
+        )),
+        method_summary=_merge_optional(
+            existing.method_summary,
+            incoming.method_summary,
+            "method summary",
+        ),
         identity_details=tuple(dict.fromkeys(
             (*existing.identity_details, *incoming.identity_details)
         )),
@@ -1112,7 +1370,7 @@ def _merge_duplicate_candidate(
 
 
 class ProductAwardState:
-    VERSION = 5
+    VERSION = 6
     MAX_SEEN = 2_000
     MAX_QUEUE = 128
     MAX_HISTORY = 10_000
