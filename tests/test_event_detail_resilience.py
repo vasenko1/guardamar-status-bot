@@ -1060,6 +1060,51 @@ class TodoIncrementalStateTests(unittest.TestCase):
         self.assertEqual(merged["covered_dates"], ["2026-09-26"])
 
 
+    def test_changed_failed_candidate_does_not_restore_stale_progress(self):
+        previous = {
+            "parser_version": 19,
+            "cursor_modified_gmt": "2026-09-25T08:00:00",
+            "covered_dates": ["2026-09-26"],
+            "candidates": [{
+                "id": 7,
+                "modified_gmt": "2026-09-24T10:00:00",
+                "dates": ["2026-09-26"],
+                "processed_dates": ["2026-09-26"],
+                "processed_chunks": {"2026-09-26": ["old"]},
+                "detail_checked": True,
+                "scope": "local",
+            }],
+        }
+        attempted = {
+            "parser_version": 20,
+            "cursor_modified_gmt": "2026-09-26T08:00:00",
+            "covered_dates": ["2026-09-26"],
+            "candidates": [{
+                "id": 7,
+                "modified_gmt": "2026-09-26T07:00:00",
+                "dates": ["2026-09-26"],
+                "dates_source": "detail",
+                "processed_dates": ["2026-09-26"],
+                "processed_chunks": {"2026-09-26": ["new"]},
+                "detail_checked": True,
+                "scope": "local",
+            }],
+        }
+
+        merged = _merge_todo_incremental_state(
+            previous,
+            attempted,
+            completed_candidate_ids=set(),
+            failed_candidate_ids={7},
+        )
+
+        candidate = merged["candidates"][0]
+        self.assertEqual(candidate["processed_dates"], [])
+        self.assertEqual(candidate["processed_chunks"], {})
+        self.assertEqual(candidate["dates_source"], "detail")
+        self.assertEqual(merged["covered_dates"], [])
+
+
 class TodoPartialRefreshTests(unittest.IsolatedAsyncioTestCase):
     async def test_refresh_persists_live_escape_identity_from_raw_rows(self):
         local_day = date(2026, 9, 26)
