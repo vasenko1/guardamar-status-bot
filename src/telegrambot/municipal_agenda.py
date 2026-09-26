@@ -1069,11 +1069,12 @@ def _read_url(
     allowed_hosts: set[str],
     limit: int,
 ) -> Tuple[bytes, str]:
-    page_request = allowed_hosts == PAGE_HOSTS
+    path = urllib.parse.urlparse(url).path.casefold()
+    image_request = path.endswith((".jpg", ".jpeg", ".png", ".webp"))
     accepted_types = (
-        frozenset({"text/html"})
-        if page_request
-        else frozenset({"image/jpeg", "image/png", "image/webp"})
+        frozenset({"image/jpeg", "image/png", "image/webp"})
+        if image_request
+        else frozenset({"text/html"})
     )
     try:
         payload, _, mime_type = fetch_bounded(
@@ -1086,9 +1087,9 @@ def _read_url(
             timeout_seconds=REQUEST_TIMEOUT_SECONDS,
             headers={
                 "Accept": (
-                    "text/html"
-                    if page_request
-                    else "image/jpeg,image/png,image/webp"
+                    "image/jpeg,image/png,image/webp"
+                    if image_request
+                    else "text/html"
                 ),
                 "User-Agent": "GuardamarMorningDigest/0.12",
             },
@@ -1105,41 +1106,6 @@ def _read_url(
             ),
         ) from exc
     return payload, mime_type
-
-
-def _read_html_url(
-    url: str,
-    allowed_hosts: set[str],
-    limit: int,
-) -> bytes:
-    """Read bounded HTML from an explicitly allowed official host."""
-
-    try:
-        payload, _, _ = fetch_bounded(
-            url,
-            is_allowed_url=lambda value: _is_allowed_url(
-                value, allowed_hosts
-            ),
-            accepted_types=frozenset({"text/html"}),
-            limit_bytes=limit,
-            timeout_seconds=REQUEST_TIMEOUT_SECONDS,
-            headers={
-                "Accept": "text/html",
-                "User-Agent": "GuardamarMorningDigest/0.12",
-            },
-        )
-    except BoundedFetchError as exc:
-        raise MunicipalAgendaError(
-            f"Municipal HTML request failed: {exc.code}",
-            code=exc.code,
-            status=exc.status,
-            description=(
-                f"сервер вернул HTTP {exc.status}"
-                if exc.status is not None
-                else _TRANSPORT_DESCRIPTIONS.get(exc.code)
-            ),
-        ) from exc
-    return payload
 
 
 def _expand_explicit_todo_dates(
@@ -1542,7 +1508,7 @@ def _read_ayuntamiento_programme_candidates(
     """Discover a few recent first-party programme news articles."""
 
     try:
-        payload = _read_html_url(
+        payload, _ = _read_url(
             AYUNTAMIENTO_NEWS_URL,
             POSTER_HOSTS,
             PAGE_LIMIT_BYTES,
@@ -1650,7 +1616,7 @@ def _read_ayuntamiento_programme_article(
     ):
         return None
     try:
-        payload = _read_html_url(link, POSTER_HOSTS, PAGE_LIMIT_BYTES)
+        payload, _ = _read_url(link, POSTER_HOSTS, PAGE_LIMIT_BYTES)
     except MunicipalAgendaError:
         return None
 
