@@ -788,8 +788,7 @@ The researched first retailer set is:
 - Consum;
 - Carrefour España supermarket;
 - Masymas / Juan Fornés Fornés;
-- DIA España;
-- Alcampo / Auchan.
+- DIA España.
 
 Retailer evidence may prove private-label, retailer-exclusive or ordinary
 currently listed products. It must use exact EAN/GTIN, retailer SKU, or an
@@ -813,9 +812,13 @@ Current technical findings:
   prices/offers match physical stores, but its JavaScript shop still needs a
   bounded internal JSON/API probe;
 - DIA has an official 2026 awarded-products page with exact current products
-  and prices;
-- Alcampo exposes stable numeric product cards with current price, image and
-  product details.
+  and prices.
+
+Alcampo / Auchan was technically researched and has usable exact product
+identity, price and media surfaces, but it is deliberately excluded from the
+active retailer set because it has insufficient local utility for the Guardamar
+audience. Runtime matching and enrichment must ignore it unless the product
+scope is explicitly revised.
 
 A current price should be refreshed by exact SKU immediately before publication
 because the global queue can delay an item for several days. A failed price
@@ -824,7 +827,7 @@ or guessed match.
 
 Retailer product photos are disabled by default. The 25 September legal
 review found explicit content-reuse restrictions for multiple target retailers,
-including Lidl, Consum, Carrefour, Alcampo, DIA and Masymas / Juan Fornés.
+including Lidl, Consum, Carrefour, DIA and Masymas / Juan Fornés.
 Technical image availability may still help identity verification, but Telegram
 media requires a documented source-specific licence, permission or media policy
 that permits reuse. Otherwise publish text-only.
