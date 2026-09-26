@@ -1,0 +1,59 @@
+name: Probe exact Mercadona award SKU details
+
+on:
+  push:
+    branches:
+      - feat/private-label-product-awards-poc
+
+permissions:
+  contents: read
+
+jobs:
+  exact-sku:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Read exact SKU details
+        run: |
+          python - <<'PY'
+          import json, urllib.request
+          headers={"Accept":"application/json","User-Agent":"GuardamarMorningDigest/0.13"}
+          ids=["4883","11682","5548","50943","50944","50945","50946","11672","17926"]
+          for product_id in ids:
+              print(f"=== SKU {product_id} ===")
+              url=f"https://tienda.mercadona.es/api/products/{product_id}/?lang=es&wh=alc1"
+              try:
+                  req=urllib.request.Request(url,headers=headers)
+                  with urllib.request.urlopen(req,timeout=20) as r:
+                      obj=json.load(r)
+              except Exception as exc:
+                  print("ERROR",type(exc).__name__,str(exc))
+                  continue
+              details=obj.get("details") if isinstance(obj.get("details"),dict) else {}
+              nutrition=obj.get("nutrition_information") if isinstance(obj.get("nutrition_information"),dict) else {}
+              prices=obj.get("price_instructions") if isinstance(obj.get("price_instructions"),dict) else {}
+              out={
+                  "id":obj.get("id"),
+                  "name":obj.get("display_name"),
+                  "ean":obj.get("ean"),
+                  "brand":obj.get("brand"),
+                  "published":obj.get("published"),
+                  "unavailable_from":obj.get("unavailable_from"),
+                  "unavailable_weekdays":obj.get("unavailable_weekdays"),
+                  "share_url":obj.get("share_url"),
+                  "supplier":details.get("suppliers"),
+                  "legal_name":details.get("legal_name"),
+                  "mandatory_mentions":details.get("mandatory_mentions"),
+                  "ingredients":nutrition.get("ingredients"),
+                  "unit_price":prices.get("unit_price"),
+                  "reference_price":prices.get("reference_price"),
+                  "reference_format":prices.get("reference_format"),
+                  "unit_size":prices.get("unit_size"),
+                  "size_format":prices.get("size_format"),
+                  "approx_size":prices.get("approx_size"),
+              }
+              print(json.dumps(out,ensure_ascii=False))
+          PY
