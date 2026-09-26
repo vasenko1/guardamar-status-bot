@@ -700,7 +700,17 @@ def _annotate_todo_source_sessions(
         )
         families.setdefault(key, []).append((event_index, raw_parent))
 
-    annotated = list(events)
+    refreshed_days = {day for day, _, _ in rows}
+    annotated = [
+        replace(
+            event,
+            session_source_key=None,
+            session_parent_title_es=None,
+        )
+        if event.start_date in refreshed_days
+        else event
+        for event in events
+    ]
     for key, members in families.items():
         indexes = [index for index, _ in members]
         if len(indexes) < 2:
