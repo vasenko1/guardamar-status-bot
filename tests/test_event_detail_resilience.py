@@ -16,6 +16,7 @@ from telegrambot.municipal_agenda import (
     SourceEvent,
     _annotate_todo_source_sessions,
     _load_snapshot,
+    _merge_todo_incremental_state,
     _todo_session_parent_from_row,
     _session_source_plan,
     merge_text_and_poster_events,
@@ -387,6 +388,51 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(group_keys[0], group_keys[1])
         self.assertEqual(group_keys[2], group_keys[3])
         self.assertNotEqual(group_keys[0], group_keys[2])
+
+    def test_rosario_rows_are_not_mistaken_for_session_family(self):
+        day = date(2026, 9, 26)
+        events = (
+            SourceEvent(
+                "Gran bingo de regalos",
+                day, day, "17:00", None,
+                "Ayuntamiento", "event",
+                sources=("todo_cultura",),
+            ),
+            SourceEvent(
+                "Solemne traslado de la Virgen",
+                day, day, "19:50", None,
+                "Parroquia", "event",
+                sources=("todo_cultura",),
+            ),
+            SourceEvent(
+                "Santa Misa y presentación del cartel",
+                day, day, "20:00", None,
+                "Parroquia", "event",
+                sources=("todo_cultura",),
+            ),
+        )
+        rows = (
+            (
+                day, "17:00",
+                "2026-09-26\n– 17 h.: Gran bingo de regalos.",
+            ),
+            (
+                day, "19:50",
+                "2026-09-26\n– 19,50 h.: Solemne traslado de la Virgen.",
+            ),
+            (
+                day, "20:00",
+                "2026-09-26\n– 20 h.: Santa Misa y presentación del cartel.",
+            ),
+        )
+
+        annotated = _annotate_todo_source_sessions(events, rows)
+
+        self.assertTrue(all(
+            event.session_source_key is None
+            and event.session_parent_title_es is None
+            for event in annotated
+        ))
 
     def test_suffix_marker_is_supported_but_not_required_for_live_source(self):
         day = date(2026, 9, 26)
@@ -947,6 +993,116 @@ class TodoEvidenceTests(unittest.TestCase):
             normalize_extraction_candidates(
                 raw, "2026-09", "turismo_html", evidence
             )
+
+
+class TodoIncrementalStateTests(unittest.TestCase):
+    def test_partial_state_advances_only_completed_candidate_progress(self):
+        previous = {
+            "parser_version": 19,
+            "cursor_modified_gmt": "2026-09-25T08:00:00",
+            "covered_dates": [],
+            "candidates": [{
+                "id": 1,
+                "dates": ["2026-09-26"],
+                "processed_dates": [],
+                "processed_chunks": {},
+                "detail_checked": False,
+                "scope": "local",
+            }, {
+                "id": 2,
+                "dates": ["2026-09-26"],
+                "processed_dates": [],
+                "processed_chunks": {},
+                "detail_checked": False,
+                "scope": "local",
+            }],
+        }
+        attempted = {
+            "parser_version": 20,
+            "cursor_modified_gmt": "2026-09-26T08:00:00",
+            "covered_dates": ["2026-09-26"],
+            "candidates": [{
+                "id": 1,
+                "dates": ["2026-09-26"],
+                "dates_source": "detail",
+                "processed_dates": ["2026-09-26"],
+                "processed_chunks": {},
+                "detail_checked": True,
+                "scope": "local",
+            }, {
+                "id": 2,
+                "dates": ["2026-09-26"],
+                "dates_source": "detail",
+                "processed_dates": ["2026-09-26"],
+                "processed_chunks": {},
+                "detail_checked": True,
+                "scope": "local",
+            }],
+        }
+
+        merged = _merge_todo_incremental_state(
+            previous,
+            attempted,
+            completed_candidate_ids={1, 2},
+            failed_candidate_ids={2},
+        )
+
+        self.assertEqual(
+            merged["cursor_modified_gmt"],
+            previous["cursor_modified_gmt"],
+        )
+        self.assertEqual(merged["parser_version"], 20)
+        by_id = {item["id"]: item for item in merged["candidates"]}
+        self.assertEqual(by_id[1]["processed_dates"], ["2026-09-26"])
+        self.assertEqual(by_id[2]["processed_dates"], [])
+        self.assertEqual(by_id[2]["dates_source"], "detail")
+        self.assertTrue(by_id[2]["detail_checked"])
+        self.assertEqual(merged["covered_dates"], ["2026-09-26"])
+
+
+    def test_changed_failed_candidate_does_not_restore_stale_progress(self):
+        previous = {
+            "parser_version": 19,
+            "cursor_modified_gmt": "2026-09-25T08:00:00",
+            "covered_dates": ["2026-09-26"],
+            "candidates": [{
+                "id": 7,
+                "modified_gmt": "2026-09-24T10:00:00",
+                "dates": ["2026-09-26"],
+                "processed_dates": ["2026-09-26"],
+                "processed_chunks": {"2026-09-26": ["old"]},
+                "detail_checked": True,
+                "scope": "local",
+            }],
+        }
+        attempted = {
+            "parser_version": 20,
+            "cursor_modified_gmt": "2026-09-26T08:00:00",
+            "covered_dates": ["2026-09-26"],
+            "candidates": [{
+                "id": 7,
+                "modified_gmt": "2026-09-26T07:00:00",
+                "dates": ["2026-09-26"],
+                "dates_source": "detail",
+                "processed_dates": ["2026-09-26"],
+                "processed_chunks": {"2026-09-26": ["new"]},
+                "detail_checked": True,
+                "scope": "local",
+            }],
+        }
+
+        merged = _merge_todo_incremental_state(
+            previous,
+            attempted,
+            completed_candidate_ids=set(),
+            failed_candidate_ids={7},
+        )
+
+        candidate = merged["candidates"][0]
+        self.assertEqual(candidate["processed_dates"], [])
+        self.assertEqual(candidate["processed_chunks"], {})
+        self.assertEqual(candidate["dates_source"], "detail")
+        self.assertEqual(merged["covered_dates"], [])
 
 
 class TodoPartialRefreshTests(unittest.IsolatedAsyncioTestCase):

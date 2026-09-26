@@ -1207,6 +1207,86 @@ def _unmatched_todo_rows(
     )
 
 
+def _merge_todo_incremental_state(
+    previous: Dict[str, Any],
+    attempted: Dict[str, Any],
+    completed_candidate_ids: set[int],
+    failed_candidate_ids: set[int],
+) -> Dict[str, Any]:
+    """Persist safe Todo discovery while rolling back incomplete extraction."""
+
+    previous = previous if isinstance(previous, dict) else {}
+    attempted = attempted if isinstance(attempted, dict) else {}
+    previous_candidates = {
+        candidate.get("id"): candidate
+        for candidate in previous.get("candidates", [])
+        if isinstance(candidate, dict) and isinstance(candidate.get("id"), int)
+    }
+    successful_ids = set(completed_candidate_ids) - set(failed_candidate_ids)
+    merged_candidates = []
+    for candidate in attempted.get("candidates", []):
+        if not isinstance(candidate, dict) or not isinstance(
+            candidate.get("id"), int
+        ):
+            continue
+        identifier = candidate["id"]
+        if identifier in successful_ids:
+            merged_candidates.append(dict(candidate))
+            continue
+        prior_candidate = previous_candidates.get(identifier, {})
+        same_revision = (
+            isinstance(prior_candidate, dict)
+            and prior_candidate.get("modified_gmt")
+            == candidate.get("modified_gmt")
+        )
+        merged = dict(candidate)
+        merged["processed_dates"] = list(
+            prior_candidate.get("processed_dates", [])
+            if same_revision else []
+        )
+        merged["processed_chunks"] = dict(
+            prior_candidate.get("processed_chunks", {})
+            if same_revision
+            and isinstance(prior_candidate.get("processed_chunks", {}), dict)
+            else {}
+        )
+        merged_candidates.append(merged)
+
+    covered = {
+        value
+        for value in previous.get("covered_dates", [])
+        if isinstance(value, str)
+    }
+    for candidate in merged_candidates:
+        identifier = candidate.get("id")
+        prior_candidate = previous_candidates.get(identifier, {})
+        if (
+            isinstance(prior_candidate, dict)
+            and prior_candidate.get("modified_gmt")
+            != candidate.get("modified_gmt")
+        ):
+            covered.difference_update(
+                value
+                for value in (
+                    *prior_candidate.get("dates", []),
+                    *candidate.get("dates", []),
+                )
+                if isinstance(value, str)
+            )
+        if identifier in successful_ids:
+            covered.update(
+                value
+                for value in candidate.get("processed_dates", [])
+                if isinstance(value, str)
+            )
+
+    result = {**previous, **attempted}
+    result["cursor_modified_gmt"] = previous.get("cursor_modified_gmt")
+    result["covered_dates"] = sorted(covered)
+    result["candidates"] = merged_candidates
+    return result
+
+
 def _read_turismo_programme(local_day: date) -> Optional[Tuple[str, str, str, str]]:
     """Find the current official festival article and its full-size poster.
 
@@ -3386,6 +3466,8 @@ async def refresh_municipal_catalog(
         todo_events = prior_todo_events
         todo_window = None
         todo_state_complete = True
+        todo_completed_candidate_ids: set[int] = set()
+        todo_failed_candidate_ids: set[int] = set()
         todo_enrichment_programs: Tuple[object, ...] = ()
         todo_explicit_rows: Tuple[Tuple[date, str, str], ...] = ()
         try:
@@ -3478,6 +3560,14 @@ async def refresh_municipal_catalog(
                         (*new_todo_events, *corroborating_events),
                     )
                 program_complete = not pending_rows
+                if program_complete:
+                    todo_completed_candidate_ids.update(
+                        todo_program.candidate_ids
+                    )
+                else:
+                    todo_failed_candidate_ids.update(
+                        todo_program.candidate_ids
+                    )
                 if pending_rows:
                     todo_state_complete = False
                     missing = ", ".join(
@@ -3790,7 +3880,7 @@ async def refresh_municipal_catalog(
             }
         elif isinstance(poster_source, dict) and poster_source:
             source_state["mupi"] = poster_source
-        if todo_window is not None and todo_state_complete:
+        if todo_window is not None:
             evidence = [
                 detail
                 for program in todo_window.programs
@@ -3802,8 +3892,18 @@ async def refresh_municipal_catalog(
                 for admission in program.admissions
                 if admission.evidence
             ]
+            todo_state = (
+                todo_window.source_state
+                if todo_state_complete
+                else _merge_todo_incremental_state(
+                    todo_source if isinstance(todo_source, dict) else {},
+                    todo_window.source_state,
+                    todo_completed_candidate_ids,
+                    todo_failed_candidate_ids,
+                )
+            )
             source_state["todo_cultura"] = {
-                **todo_window.source_state,
+                **todo_state,
                 "checked_at": now.isoformat(),
                 "participation_evidence": [
                     {
@@ -3820,8 +3920,6 @@ async def refresh_municipal_catalog(
                     for detail in admission_evidence[:20]
                 ],
             }
-        elif todo_window is not None and isinstance(todo_source, dict) and todo_source:
-            source_state["todo_cultura"] = todo_source
         elif isinstance(todo_source, dict) and todo_source:
             source_state["todo_cultura"] = todo_source
         if programme_state:
