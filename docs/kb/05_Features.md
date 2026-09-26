@@ -695,15 +695,16 @@ source-specific exceptional candidate exists, that day stays quiet.
 Before the first production launch, a separate operator-only reviewed starter
 seed may create a bounded initial queue. It is not a new scheduled source and
 does not disable the normal per-source silent baseline. The 2026 seed currently
-contains five fully reviewed Mercadona candidates:
+contains six fully reviewed Mercadona candidates:
 
 1. Valle de San Juan Con Trufa — WCCC 99.30/100, best in class;
 2. Valle de San Juan Añejo — WCCC 99.25/100;
 3. Queserías Entrepinares Añejo Tostado — official WCCC Top 20;
 4. Valle de San Juan Afrutado — WCCC 97.40/100;
-5. Valle de San Juan Ibérico Añejo — WCCC 97.20/100.
+5. Valle de San Juan Semicurado — WCCC 97.40/100;
+6. Valle de San Juan Ibérico Añejo — WCCC 97.20/100.
 
-For the four Valle candidates, the entrant's official result announcement is a
+For the five Valle candidates, the entrant's official result announcement is a
 dated launch-seed fact, not a general automated source. Public copy explicitly
 attributes those scores to Valle de San Juan. Exact current Mercadona identity
 and prices are still revalidated immediately before seed and before each
