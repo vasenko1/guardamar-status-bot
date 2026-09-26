@@ -3770,17 +3770,7 @@ async def refresh_municipal_catalog(
                 ],
             }
         elif todo_window is not None and isinstance(todo_source, dict) and todo_source:
-            # Keep retryable cursor/coverage unchanged on a partial refresh,
-            # but persist the parser migration itself so it is not replayed
-            # on every sync.
-            parser_version = todo_window.source_state.get("parser_version")
-            source_state["todo_cultura"] = {
-                **todo_source,
-                **(
-                    {"parser_version": parser_version}
-                    if isinstance(parser_version, int) else {}
-                ),
-            }
+            source_state["todo_cultura"] = todo_source
         elif isinstance(todo_source, dict) and todo_source:
             source_state["todo_cultura"] = todo_source
         if programme_state:
