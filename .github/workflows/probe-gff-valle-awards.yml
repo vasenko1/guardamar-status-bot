@@ -1,0 +1,75 @@
+name: Probe GFF Valle awards
+
+on:
+  push:
+    branches:
+      - feat/private-label-product-awards-poc
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Inspect GFF directory metadata
+        run: |
+          python - <<'PY'
+          import html, re, urllib.parse, urllib.request
+
+          UA={"User-Agent":"GuardamarMorningDigest/0.13"}
+
+          def get(url):
+              req=urllib.request.Request(url,headers=UA)
+              with urllib.request.urlopen(req,timeout=20) as r:
+                  return r.read().decode("utf-8","replace")
+
+          base="https://gff.co.uk/directory/producer/?id=51670"
+          text=get(base)
+          print("=== SELECT OPTIONS ===")
+          for m in re.finditer(r'<select[^>]*name=["\']([^"\']+)["\'][^>]*>(.*?)</select>',text,re.I|re.S):
+              name=m.group(1)
+              if any(k in name.lower() for k in ("rating","year","award")):
+                  print("SELECT",name)
+                  for opt in re.finditer(r'<option[^>]*value=["\']?([^"\'> ]*)["\']?[^>]*>(.*?)</option>',m.group(2),re.I|re.S):
+                      label=re.sub(r'<[^>]+>',' ',opt.group(2))
+                      label=html.unescape(" ".join(label.split()))
+                      print(" ",repr(opt.group(1)),repr(label))
+
+          print("=== VALLE CARD CONTEXTS ===")
+          needles=[
+            "Queso de oveja añejo fuerte",
+            "Queso Afrutado",
+            "Ibérico con trufa",
+            "Ibérico Añejo",
+            "Semicurado suave y cremoso",
+          ]
+          for needle in needles:
+              print("\n---",needle,"---")
+              for m in re.finditer(re.escape(needle),text,re.I):
+                  lo=max(0,m.start()-1800); hi=min(len(text),m.end()+2800)
+                  chunk=text[lo:hi]
+                  print(re.sub(r'\s+',' ',chunk)[:5000])
+                  break
+
+          print("\n=== SEARCH URLS ===")
+          for needle in needles:
+              q=urllib.parse.urlencode({
+                  "type":"product",
+                  "keyword":needle,
+                  "per-page":"50",
+                  "awards-scheme":"2",
+              })
+              url="https://gff.co.uk/directory/?"+q
+              try:
+                  body=get(url)
+                  print("\nURL",url)
+                  pos=body.lower().find(needle.lower())
+                  print(re.sub(r'\s+',' ',body[max(0,pos-1000):pos+2500]) if pos>=0 else "NOT FOUND")
+              except Exception as exc:
+                  print("ERROR",needle,type(exc).__name__,str(exc))
+          PY
