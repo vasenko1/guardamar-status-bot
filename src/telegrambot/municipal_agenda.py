@@ -531,7 +531,7 @@ _SESSION_TITLE = re.compile(
     r"(?P<label_prefix>turno|sesi[oó]n|pase)|"
     r"(?P<label_suffix>turno|sesi[oó]n|pase)\s*"
     r"(?:n[úu]m(?:ero)?\.?\s*)?(?P<number_suffix>[1-6]))\b"
-    r"\s*(?:[:-–—]\s*)?(?:para\s+|de\s+)?"
+    r"\s*(?:[-:–—]\s*)?(?:para\s+|de\s+)?"
     r"(?P<base>.+?)\s*$",
     re.IGNORECASE,
 )
