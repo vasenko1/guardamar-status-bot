@@ -523,6 +523,146 @@ class SourceEvent:
     image_url: Optional[str] = None
 
 
+_SESSION_TITLE = re.compile(
+    r"^\\s*(?:(?P<ordinal>"
+    r"primer(?:a|o)?|segund(?:a|o|0)|tercer(?:a|o)?|cuart[oa]|"
+    r"quint[oa]|sext[oa])\\s+(?P<label>turno|sesi[oó]n|pase)|"
+    r"(?P<number_prefix>[1-6])(?:[.ºª]|er|ra)?\\s+"
+    r"(?P<label_prefix>turno|sesi[oó]n|pase)|"
+    r"(?P<label_suffix>turno|sesi[oó]n|pase)\\s*"
+    r"(?:n[úu]m(?:ero)?\\.?\\s*)?(?P<number_suffix>[1-6]))\\b"
+    r"\\s*(?:[:\\-–—]\\s*)?(?:para\\s+|de\\s+)?"
+    r"(?P<base>.+?)\\s*$",
+    re.IGNORECASE,
+)
+_SESSION_ORDINALS = {
+    "primer": 1, "primera": 1, "primero": 1,
+    "segunda": 2, "segundo": 2, "segund0": 2,
+    "tercer": 3, "tercera": 3, "tercero": 3,
+    "cuarta": 4, "cuarto": 4,
+    "quinta": 5, "quinto": 5,
+    "sexta": 6, "sexto": 6,
+}
+
+
+def _session_title_parts(title: str) -> Optional[Tuple[str, int]]:
+    """Return one explicit source-proven session base title and order."""
+
+    match = _SESSION_TITLE.fullmatch(" ".join(title.split()))
+    if match is None:
+        return None
+    ordinal = match.group("ordinal")
+    order = (
+        _SESSION_ORDINALS.get(ordinal.casefold())
+        if ordinal is not None
+        else int(match.group("number_prefix") or match.group("number_suffix"))
+    )
+    base = match.group("base").strip(" .,:;–—-")
+    if order is None or not 5 <= len(base) <= 180:
+        return None
+    return base, order
+
+
+def _session_base_key(value: str) -> str:
+    """Normalize punctuation only; never fuzzy-match separate activities."""
+
+    value = html.unescape(value).casefold()
+    value = value.replace("’", "'").replace("‘", "'")
+    value = value.replace("“", '"').replace("”", '"').replace("«", '"').replace("»", '"')
+    value = re.sub(r"[‐‑‒–—-]+", "-", value)
+    return " ".join(value.split()).strip(" .,:;-")
+
+
+def _session_common_facts(event: SourceEvent) -> tuple:
+    """Facts that must stay common before several occurrences can be grouped."""
+
+    return (
+        event.category,
+        (
+            canonical_event_place(event.place).casefold()
+            if event.place is not None else None
+        ),
+        event.teaser_es,
+        event.duration_minutes,
+        event.audience_label,
+        event.details,
+        event.place_query,
+        event.meeting_point,
+        event.schedule_note,
+        event.participation_note,
+        event.capacity_limited,
+    )
+
+
+def _session_source_plan(
+    events: Tuple[SourceEvent, ...],
+) -> Tuple[Tuple[str, Optional[str], Optional[int]], ...]:
+    """Plan display titles and session metadata before any translation.
+
+    Snapshot occurrences remain atomic. Only an explicit source marker such
+    as Primer turno, Segunda sesión or Pase 3 can prove the relationship.
+    Incomplete ordinal sequences fail open and remain separate.
+    """
+
+    plan: List[Tuple[str, Optional[str], Optional[int]]] = [
+        (event.title_es, None, None) for event in events
+    ]
+    candidates: Dict[tuple, List[Tuple[int, int, str]]] = {}
+    for index, event in enumerate(events):
+        if (
+            event.programme_title is not None
+            or event.start_date != event.end_date
+            or event.start_time is None
+        ):
+            continue
+        parsed = _session_title_parts(event.title_es)
+        if parsed is None:
+            continue
+        base_title, order = parsed
+        place_key = (
+            canonical_event_place(event.place).casefold()
+            if event.place is not None else None
+        )
+        key = (
+            event.start_date,
+            event.category,
+            place_key,
+            _session_base_key(base_title),
+        )
+        candidates.setdefault(key, []).append((index, order, base_title))
+
+    for key, members in candidates.items():
+        if len(members) < 2:
+            continue
+        orders = sorted(order for _, order, _ in members)
+        if orders != list(range(1, len(members) + 1)):
+            continue
+        start_times = [events[index].start_time for index, _, _ in members]
+        if len(set(start_times)) != len(start_times):
+            continue
+        common = _session_common_facts(events[members[0][0]])
+        if any(
+            _session_common_facts(events[index]) != common
+            for index, _, _ in members[1:]
+        ):
+            continue
+        base_titles = {
+            _session_base_key(base_title) for _, _, base_title in members
+        }
+        if len(base_titles) != 1:
+            continue
+        display_title = members[0][2]
+        group_key = "session:" + "|".join((
+            key[0].isoformat(),
+            key[1],
+            key[2] or "",
+            key[3],
+        ))
+        for index, order, _ in members:
+            plan[index] = (display_title, group_key, order)
+    return tuple(plan)
+
+
 def _display_ticket_price(
     source: SourceEvent,
 ) -> Tuple[Optional[int], bool]:
