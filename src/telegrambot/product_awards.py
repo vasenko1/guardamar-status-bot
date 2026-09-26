@@ -35,8 +35,12 @@ from .branding import with_footer
 LOGGER = logging.getLogger(__name__)
 
 OCU_INDEX_URL = "https://www.ocu.org/ocu-salud"
+WCCC_2026_TOP20_URL = "https://worldchampioncheese.org/2026-wccc-top-20-finalists/"
+MERCADONA_API_ROOT = "https://tienda.mercadona.es/api/products"
+MERCADONA_GUARDAMAR_WAREHOUSE = "alc1"  # reviewed for postal code 03140
 REQUEST_TIMEOUT_SECONDS = 20
 HTML_LIMIT_BYTES = 900_000
+JSON_LIMIT_BYTES = 256_000
 USER_AGENT = "GuardamarMorningDigest/0.13"
 
 PRIVATE_LABELS: dict[str, tuple[str, ...]] = {
@@ -441,6 +445,34 @@ def _fetch_page(url: str, hosts: frozenset[str]) -> PageDocument:
     return parser.document()
 
 
+def _fetch_json(url: str, hosts: frozenset[str]) -> Any:
+    try:
+        payload, _, _ = fetch_bounded(
+            url,
+            is_allowed_url=_host_policy(hosts),
+            accepted_types=frozenset({"application/json"}),
+            limit_bytes=JSON_LIMIT_BYTES,
+            timeout_seconds=REQUEST_TIMEOUT_SECONDS,
+            headers={
+                "Accept": "application/json",
+                "User-Agent": USER_AGENT,
+            },
+        )
+    except BoundedFetchError as exc:
+        raise ProductAwardError(
+            f"product-award JSON source failed: {exc.code}",
+            code=exc.code,
+            description="источник товара временно недоступен",
+        ) from exc
+    try:
+        return json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ProductAwardError(
+            "product-award JSON source is invalid",
+            code="PARSER",
+        ) from exc
+
+
 # ---------------------------------------------------------------------------
 # OCU adapter
 # ---------------------------------------------------------------------------
@@ -792,10 +824,139 @@ def load_ocu_item(url: str, year: int) -> AwardSourceItem:
     return AwardSourceItem(tuple(candidates))
 
 
+# ---------------------------------------------------------------------------
+# World Championship Cheese Contest 2026 — reviewed Top-20 slice
+# ---------------------------------------------------------------------------
+
+_WCCC_2026_CHEESE = "Seleccion Tostado Mixed Milk Cheese Extra Aged"
+_WCCC_2026_MAKER = "Queserías Entrepinares S.A.U."
+_WCCC_2026_COMPANY = "Queserías Entrepinares"
+_WCCC_2026_LOCATION = "Valladolid, Spain"
+_WCCC_2026_CLASS = "114"
+_WCCC_2026_RETAIL_PRODUCT_ID = "50952"
+_WCCC_2026_RETAIL_EAN = "8480000509529"
+_WCCC_2026_RETAIL_URL = (
+    "https://tienda.mercadona.es/product/50952/"
+    "queso-anejo-tostado-mezcla-hacendado-pieza"
+)
+
+
+def discover_wccc_documents(year: int) -> tuple[str, ...]:
+    # Only the reviewed 2026 publication contract is enabled. A future edition
+    # must be revalidated rather than guessed from a URL pattern.
+    if year != 2026:
+        return ()
+    try:
+        document = _fetch_page(
+            WCCC_2026_TOP20_URL,
+            frozenset({"worldchampioncheese.org"}),
+        )
+    except ProductAwardError as exc:
+        if exc.diagnostic_code == "HTTP-404":
+            return ()
+        raise
+    if _fold("2026 WCCC Top 20 Finalists") not in _fold(document.text):
+        raise ProductAwardError(
+            "WCCC Top-20 page has unexpected shape",
+            code="PARSER",
+        )
+    return (WCCC_2026_TOP20_URL,)
+
+
+def parse_wccc_top20(
+    document: PageDocument,
+    year: int,
+) -> tuple[ProductAwardCandidate, ...]:
+    if year != 2026:
+        return ()
+    lines = [line.strip() for line in document.text.splitlines() if line.strip()]
+    target = _fold(f"Cheese: {_WCCC_2026_CHEESE}")
+    for index, line in enumerate(lines):
+        if _fold(line) != target:
+            continue
+        start = max(0, index - 1)
+        end = min(len(lines), index + 5)
+        block = "\n".join(lines[start:end])
+        required = (
+            f"Class #: {_WCCC_2026_CLASS}",
+            f"Cheese: {_WCCC_2026_CHEESE}",
+            f"Maker: {_WCCC_2026_MAKER}",
+            f"Company: {_WCCC_2026_COMPANY}",
+            f"Location: {_WCCC_2026_LOCATION}",
+        )
+        if not all(_fold(value) in _fold(block) for value in required):
+            raise ProductAwardError(
+                "WCCC reviewed finalist block changed",
+                code="PARSER",
+            )
+        return (
+            ProductAwardCandidate(
+                source_kind="wccc",
+                event_key=(
+                    f"{year}|top20|class-{_WCCC_2026_CLASS}|"
+                    f"{_fold(_WCCC_2026_CHEESE)}"
+                ),
+                source_url=document.url,
+                product_name="Queso añejo tostado mezcla Hacendado",
+                result="Top 20 finalist",
+                award_body="World Championship Cheese Contest 2026",
+                result_year=year,
+                retail=RetailEvidence(
+                    retailer="Mercadona",
+                    relationship="private_label",
+                    label="Hacendado",
+                    product_id=_WCCC_2026_RETAIL_PRODUCT_ID,
+                    ean=_WCCC_2026_RETAIL_EAN,
+                    product_url=_WCCC_2026_RETAIL_URL,
+                    variant="pieza de peso variable",
+                ),
+                editorial=AwardEditorialFacts(
+                    comparison_size=3375,
+                    category="Hard Mixed Milk Cheeses",
+                    judge_count=56,
+                    producer=_WCCC_2026_MAKER,
+                    producer_location="Вальядолид",
+                    production_country="Испания",
+                    headline_claim="вошёл в мировой Top 20 сыров",
+                    product_summary=(
+                        "Твёрдый выдержанный сыр из смеси коровьего, "
+                        "овечьего и козьего молока."
+                    ),
+                    composition_details=(
+                        "коровье молоко — не менее 50%",
+                        "овечье молоко — не менее 20%",
+                        "козье молоко — не менее 15%",
+                    ),
+                    method_summary=(
+                        "В 2026 году 56 профессиональных судей оценивали "
+                        "3 375 продуктов. В жюри вошли сырные эксперты, "
+                        "закупщики, преподаватели молочной науки и исследователи "
+                        "из 22 стран. Оценивали вкус, структуру и текстуру, соль, "
+                        "цвет, послевкусие, упаковку и другие технические "
+                        "характеристики. Оценка начинается со 100 баллов, затем "
+                        "баллы снимаются за выявленные недостатки."
+                    ),
+                ),
+            ),
+        )
+    return ()
+
+
+def load_wccc_item(url: str, year: int) -> AwardSourceItem:
+    if url != WCCC_2026_TOP20_URL:
+        raise ProductAwardError("unexpected WCCC source URL", code="URL-POLICY")
+    document = _fetch_page(
+        url,
+        frozenset({"worldchampioncheese.org"}),
+    )
+    return AwardSourceItem(parse_wccc_top20(document, year))
+
+
 # Add future validated adapters here. A new adapter only needs a stable list of
 # item IDs and a loader that returns verified ProductAwardCandidate objects.
 SOURCE_ADAPTERS: tuple[AwardSourceAdapter, ...] = (
     AwardSourceAdapter("ocu", discover_ocu_documents, load_ocu_item),
+    AwardSourceAdapter("wccc", discover_wccc_documents, load_wccc_item),
 )
 
 
@@ -813,6 +974,8 @@ def _display_product(value: str) -> str:
 def _source_link_label(candidate: ProductAwardCandidate) -> str:
     if candidate.source_kind == "ocu":
         return "Исследование OCU"
+    if candidate.source_kind == "wccc":
+        return "World Championship Cheese Contest 2026"
     return candidate.award_body
 
 
@@ -914,6 +1077,13 @@ def build_publication(
                 f"{product} получил результат {candidate.result} "
                 "в исследовании OCU."
             )
+    elif candidate.source_kind == "wccc":
+        claim = facts.headline_claim or "вошёл в Top 20 конкурса WCCC"
+        headline = f"{product} в {candidate.retailer} — {claim}"
+        intro = (
+            f"{product}, {_retail_phrase(candidate)}, вошёл в Top 20 "
+            "финалистов World Championship Cheese Contest 2026."
+        )
     else:
         claim = facts.headline_claim or (
             f"{candidate.result} на {candidate.award_body}"
@@ -1022,6 +1192,154 @@ def build_publication(
             code="MESSAGE-LENGTH",
         )
     return ProductAwardPublication(candidate=candidate, message=message)
+
+
+# ---------------------------------------------------------------------------
+# Publication-time exact retail refresh
+# ---------------------------------------------------------------------------
+
+def _format_decimal_price(value: Any) -> Optional[str]:
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number < 0:
+        return None
+    return f"{number:.2f}".replace(".", ",")
+
+
+def _mercadona_package_label(payload: dict[str, Any]) -> Optional[str]:
+    prices = payload.get("price_instructions")
+    if not isinstance(prices, dict):
+        return None
+    size = prices.get("unit_size")
+    unit = prices.get("size_format")
+    if isinstance(size, bool) or not isinstance(size, (int, float)):
+        return None
+    if unit == "kg":
+        grams = int(round(float(size) * 1000))
+        label = f"{grams} г"
+    elif unit == "l":
+        millilitres = int(round(float(size) * 1000))
+        label = f"{millilitres} мл" if millilitres < 1000 else f"{size:g} л"
+    else:
+        return None
+    if payload.get("is_variable_weight") is True or prices.get("approx_size") is True:
+        label = "около " + label
+    return label
+
+
+def refresh_mercadona_offers(
+    candidate: ProductAwardCandidate,
+) -> tuple[RetailOfferVariant, ...]:
+    evidence = candidate.retail
+    if evidence.retailer != "Mercadona" or evidence.product_id is None:
+        return ()
+    if not re.fullmatch(r"\d{1,12}", evidence.product_id):
+        raise ProductAwardError("invalid Mercadona product ID", code="INVALID")
+
+    url = (
+        f"{MERCADONA_API_ROOT}/{evidence.product_id}/"
+        f"?lang=es&wh={MERCADONA_GUARDAMAR_WAREHOUSE}"
+    )
+    payload = _fetch_json(url, frozenset({"tienda.mercadona.es"}))
+    if not isinstance(payload, dict):
+        raise ProductAwardError("invalid Mercadona product payload", code="PARSER")
+    if str(payload.get("id")) != evidence.product_id:
+        raise ProductAwardError("Mercadona product ID mismatch", code="PARSER")
+    if payload.get("published") is not True:
+        return ()
+
+    ean = payload.get("ean")
+    if evidence.ean is not None and str(ean) != evidence.ean:
+        raise ProductAwardError("Mercadona EAN mismatch", code="PARSER")
+    brand = payload.get("brand")
+    if (
+        evidence.relationship == "private_label"
+        and evidence.label is not None
+        and _fold(str(brand)) != _fold(evidence.label)
+    ):
+        raise ProductAwardError("Mercadona brand mismatch", code="PARSER")
+
+    details = payload.get("details")
+    if candidate.editorial.producer is not None:
+        if not isinstance(details, dict):
+            raise ProductAwardError("Mercadona supplier data missing", code="PARSER")
+        suppliers = details.get("suppliers")
+        if not isinstance(suppliers, list):
+            raise ProductAwardError("Mercadona supplier data missing", code="PARSER")
+        names = {
+            _fold(str(item.get("name")))
+            for item in suppliers
+            if isinstance(item, dict) and item.get("name")
+        }
+        if _fold(candidate.editorial.producer) not in names:
+            raise ProductAwardError("Mercadona supplier mismatch", code="PARSER")
+
+    prices = payload.get("price_instructions")
+    package = _mercadona_package_label(payload)
+    if not isinstance(prices, dict) or package is None:
+        raise ProductAwardError("Mercadona offer shape changed", code="PARSER")
+
+    price = _format_decimal_price(prices.get("unit_price"))
+    reference = _format_decimal_price(prices.get("reference_price"))
+    reference_format = prices.get("reference_format")
+    if price is None:
+        return ()
+    unit_price = None
+    if reference is not None and reference_format in {"kg", "l"}:
+        suffix = "кг" if reference_format == "kg" else "л"
+        unit_price = f"{reference} €/{suffix}"
+
+    share_url = payload.get("share_url")
+    if not isinstance(share_url, str) or not _host_policy(
+        frozenset({"tienda.mercadona.es"})
+    )(share_url):
+        raise ProductAwardError("Mercadona product URL changed", code="PARSER")
+    if evidence.product_url is not None and share_url != evidence.product_url:
+        raise ProductAwardError("Mercadona product URL mismatch", code="PARSER")
+
+    return (
+        RetailOfferVariant(
+            package=package,
+            price=f"{price} €",
+            unit_price=unit_price,
+            product_id=evidence.product_id,
+            ean=str(ean) if ean is not None else None,
+            product_url=share_url,
+        ),
+    )
+
+
+def refresh_retail_offers(
+    candidate: ProductAwardCandidate,
+) -> tuple[RetailOfferVariant, ...]:
+    if candidate.retail.retailer == "Mercadona":
+        return refresh_mercadona_offers(candidate)
+    return ()
+
+
+def build_current_publication(
+    candidate: ProductAwardCandidate,
+) -> Optional[ProductAwardPublication]:
+    try:
+        offers = refresh_retail_offers(candidate)
+    except ProductAwardError as exc:
+        LOGGER.warning(
+            "Product-award retail refresh failed for %s [%s]",
+            candidate.event_id,
+            exc.diagnostic_code,
+        )
+        return None
+    if not offers:
+        LOGGER.info(
+            "Product-award candidate %s has no verified current retail offer",
+            candidate.event_id,
+        )
+        return None
+    return build_publication(candidate, current_offers=offers)
 
 
 # ---------------------------------------------------------------------------
@@ -1752,11 +2070,13 @@ def scan_next_product_award(
             state,
             preview=True,
         )
-        if not candidates:
-            return None
-        return build_publication(candidates[0])
+        for candidate in candidates:
+            publication = build_current_publication(candidate)
+            if publication is not None:
+                return publication
+        return None
 
     item = state.next_queue_item(now.date())
     if item is None:
         return None
-    return build_publication(item.candidate)
+    return build_current_publication(item.candidate)
