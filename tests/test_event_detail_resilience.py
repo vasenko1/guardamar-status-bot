@@ -135,6 +135,7 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
             ["Escape Room “El Misterio del Museo de Guardamar”"] * 3,
         )
         self.assertEqual([item[2] for item in plan], [1, 2, 3])
+        self.assertEqual([item[3] for item in plan], [3, 3, 3])
         self.assertEqual(len({item[1] for item in plan}), 1)
         self.assertIsNotNone(plan[0][1])
 
@@ -143,8 +144,8 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
 
         plan = _session_source_plan((first, third))
 
-        self.assertEqual(plan[0], (first.title_es, None, None))
-        self.assertEqual(plan[1], (third.title_es, None, None))
+        self.assertEqual(plan[0], (first.title_es, None, None, None))
+        self.assertEqual(plan[1], (third.title_es, None, None, None))
 
     def test_conflicting_common_fact_fails_open(self):
         first, second, third = self._escape_events()
@@ -157,7 +158,7 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
 
         plan = _session_source_plan((first, second, third))
 
-        self.assertTrue(all(group is None for _, group, _ in plan))
+        self.assertTrue(all(group is None for _, group, _, _ in plan))
 
     def test_nonchronological_ordinals_fail_open(self):
         first, second, third = self._escape_events()
@@ -166,7 +167,7 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
 
         plan = _session_source_plan((first, second, third))
 
-        self.assertTrue(all(group is None for _, group, _ in plan))
+        self.assertTrue(all(group is None for _, group, _, _ in plan))
 
     def test_incomplete_source_date_blocks_compact_grouping(self):
         events = self._escape_events()
@@ -175,7 +176,7 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
             frozenset({date(2026, 9, 26)}),
         )
 
-        self.assertTrue(all(group is None for _, group, _ in plan))
+        self.assertTrue(all(group is None for _, group, _, _ in plan))
         self.assertEqual([item[0] for item in plan], [
             event.title_es for event in events
         ])
@@ -211,12 +212,14 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
             when,
             session_group_key="session:test",
             session_order=1,
+            session_count=3,
         )
 
         merged = _merge_events((plain,), (session,))
 
         self.assertEqual(merged[0].session_group_key, "session:test")
         self.assertEqual(merged[0].session_order, 1)
+        self.assertEqual(merged[0].session_count, 3)
 
     def test_merge_clears_conflicting_session_metadata(self):
         when = datetime(2026, 9, 26, 11, 0, tzinfo=TZ)
@@ -225,18 +228,21 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
             when,
             session_group_key="session:a",
             session_order=1,
+            session_count=3,
         )
         conflicting = Event(
             "Эскейп-рум «Тайна музея»",
             when,
             session_group_key="session:b",
             session_order=1,
+            session_count=3,
         )
 
         merged = _merge_events((first,), (conflicting,))
 
         self.assertIsNone(merged[0].session_group_key)
         self.assertIsNone(merged[0].session_order)
+        self.assertIsNone(merged[0].session_count)
 
     def test_digest_compacts_three_sessions_without_losing_links(self):
         day = datetime(2026, 9, 26, tzinfo=TZ)
@@ -257,6 +263,7 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
                 audience_label="для участников 8–12 лет",
                 session_group_key="session:escape",
                 session_order=order,
+                session_count=3,
             )
             for order, hour, url in zip((1, 2, 3), (11, 12, 13), urls)
         )
@@ -292,6 +299,7 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
             audience_label="8–12 лет",
             session_group_key="session:escape",
             session_order=1,
+            session_count=2,
         )
         second = Event(
             "Эскейп-рум «Тайна музея»",
@@ -300,6 +308,7 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
             audience_label="13–16 лет",
             session_group_key="session:escape",
             session_order=2,
+            session_count=2,
         )
 
         message = build_message(MorningDigest(
@@ -307,6 +316,46 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
             warnings=(),
             warnings_available=True,
             events=(first, second),
+        ))
+
+        self.assertNotIn("2 сеанса</b>", message)
+        self.assertIn("Эскейп-рум «Тайна музея» (сеанс 1)", message)
+        self.assertIn("Эскейп-рум «Тайна музея» (сеанс 2)", message)
+
+    def test_missing_group_member_prevents_false_smaller_group(self):
+        day = datetime(2026, 9, 26, tzinfo=TZ)
+        events = (
+            Event(
+                "Эскейп-рум «Тайна музея»",
+                day.replace(hour=11),
+                place="Museo Arqueológico",
+                session_group_key="session:escape",
+                session_order=1,
+                session_count=3,
+            ),
+            Event(
+                "Эскейп-рум «Тайна музея»",
+                day.replace(hour=12),
+                place="Museo Arqueológico",
+                session_group_key="session:escape",
+                session_order=2,
+                session_count=3,
+            ),
+            # The third occurrence lost its group metadata after a conflicting
+            # merge.  The remaining two must never be advertised as a
+            # complete two-session activity.
+            Event(
+                "Эскейп-рум «Тайна музея»",
+                day.replace(hour=13),
+                place="Museo Arqueológico",
+            ),
+        )
+
+        message = build_message(MorningDigest(
+            weather=None,
+            warnings=(),
+            warnings_available=True,
+            events=events,
         ))
 
         self.assertNotIn("2 сеанса</b>", message)
