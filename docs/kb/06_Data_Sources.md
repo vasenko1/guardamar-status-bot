@@ -464,6 +464,37 @@ This prevents an early next-month poster from erasing the final days of the
 current program. The digest merges these facts with the separate local Agenda
 Guardamar catalog and removes duplicates.
 
+The monthly page is not assumed to contain complete patronal or festival
+programmes. A separate bounded first-party Turismo WordPress adapter reads one
+recent-post metadata index and considers at most three current-year
+programme-shaped Spanish articles whose title/excerpt contains a relevant
+explicit date. The dedicated Fiestas del Campo article remains on its existing
+narrow deterministic/poster path and is excluded from the generic adapter.
+For every other candidate, unchanged version-3 `modified` state reuses the
+last verified facts; a changed/new article fetches one bounded detail page and
+runs the existing evidence-bound official-text extractor. The raw WordPress
+body is also scanned deterministically for dates that lead semantic content
+blocks. Each date section includes its date-leading block and following
+paragraph/list/heading text until the next explicit date. Every such date from
+today through the next 44 days must have an extracted event starting exactly on
+that date. If the first extraction misses one or more required dates, one
+targeted bounded recovery sends only the missing date sections through the same
+official-programme text extractor, with those missing dates explicitly supplied
+as the recovery contract. Detail quotations may inherit their date only from
+the deterministic WordPress section for that same date; quotations from another
+date section cannot validate the event. Recovery also accepts explicit
+zero-padded morning times such as `08:00` / `desde las 08:00`, and strips an
+unsupported colon-prefixed parent title only when the remaining suffix is
+itself fully supported by the exact quotation. Recovery facts outside the
+requested missing dates are discarded. An article that is still incomplete is
+rejected. A broad date-range event cannot satisfy multiple explicit occurrence
+dates. Version-1
+and version-2 generic programme facts are not trusted after this recovery
+upgrade and are revalidated once. The article must still yield at least two
+validated programme events overall. The adapter is text-first: it does not OCR
+arbitrary article images. Temporary source/model failures retain only
+compatible last-good version-3 facts.
+
 Dated Monday library film rows in the same official Turismo `CINE` text are
 also read deterministically on every existing page refresh, including when the
 text hash is unchanged. A row may contribute its concrete film title, duration,
@@ -819,7 +850,7 @@ exists and its identifiers have been live-probed.
 Current researched candidates include:
 
 - World Championship Cheese Contest 2026: one automated official Top-20
-  Entrepinares / Mercadona exact-SKU join is implemented, plus four manually
+  Entrepinares / Mercadona exact-SKU join is implemented, plus five manually
   reviewed Valle de San Juan launch-seed candidates; broader automatic result
   coverage remains future work;
 - GourmetQuesos 2026: official Spanish result surface with more than 800
