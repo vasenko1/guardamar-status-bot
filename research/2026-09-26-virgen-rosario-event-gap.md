@@ -223,3 +223,40 @@ event start dates, performs at most one targeted recovery for missing dates,
 and rejects the article if coverage is still incomplete. Extractor version 2
 forces the production version-1 Rosario cache to be revalidated rather than
 retained.
+
+
+## Production verification of the v2 completeness gate
+
+The 18:58 production run at commit
+`881c706f1e03eb08953d2a32e10180982e6586b2` confirmed that the v2
+completeness gate itself behaved correctly: the official Rosario article was
+reported as incomplete, the municipal catalog still synchronized, and
+`sources.turismo_programme_text.articles` was left empty with zero events.
+The older partial v1 conference fact was therefore not resurrected.
+
+The outer `sync-municipal-events.sh` returned non-zero for a separate reason:
+the Library agenda request timed out later in the same sequential wrapper. AM
+Guardamar, FACV and Pesca continued and completed. The library timeout must not
+be interpreted as the Rosario failure.
+
+The remaining Rosario problem was the recovery primitive. V2 sent the whole
+official article through `extract_guardamar_standalone_events`, a prompt
+designed for a Todo Cultura standalone/multi-municipality article and constrained
+by a list of expected dates. That recovery still failed to cover all six
+required current/future Rosario dates.
+
+V3 keeps the same one-recovery budget but changes only the input/primitive:
+deterministically parsed WordPress date sections are retained as exact official
+text; for missing dates, the adapter concatenates only those sections and calls
+the ordinary evidence-bound municipal programme text extractor once. A date
+section contains its date-leading block plus following semantic blocks until
+the next explicit date, so heading-only dates retain their event descriptions.
+Recovered events whose start date is not one of the requested missing dates are
+discarded. The same exact-date completeness gate still decides whether the
+article may be accepted.
+
+A live source probe on the v3 branch produced a materially smaller recovery
+slice containing the actual Rosario programme text for all required dates,
+including the 26 September Bingo/traslado/Misa block, 3 October Petanca/Ofrenda/
+verbena details, 4 October Rosario de la Aurora, 7 October Día Grande acts,
+15 October conference and 18 October Encuentro de Auroros.

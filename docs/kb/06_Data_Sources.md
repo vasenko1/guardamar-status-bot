@@ -470,20 +470,23 @@ recent-post metadata index and considers at most three current-year
 programme-shaped Spanish articles whose title/excerpt contains a relevant
 explicit date. The dedicated Fiestas del Campo article remains on its existing
 narrow deterministic/poster path and is excluded from the generic adapter.
-For every other candidate, unchanged version-2 `modified` state reuses the
+For every other candidate, unchanged version-3 `modified` state reuses the
 last verified facts; a changed/new article fetches one bounded detail page and
 runs the existing evidence-bound official-text extractor. The raw WordPress
 body is also scanned deterministically for dates that lead semantic content
-blocks. Every such date from today through the next 44 days must have an
-extracted event starting on that date. If the first extraction misses one or
-more required dates, one targeted bounded recovery reuses the existing
-Guardamar standalone extractor for exactly those missing dates; an article
-that is still incomplete is rejected. A broad date-range event cannot satisfy
-multiple explicit occurrence dates. Version-1 generic programme facts are not
-trusted after this completeness upgrade and are revalidated once. The article
-must still yield at least two validated programme events overall. The adapter
-is text-first: it does not OCR arbitrary article images. Temporary
-source/model failures retain only compatible last-good version-2 facts.
+blocks. Each date section includes its date-leading block and following
+paragraph/list/heading text until the next explicit date. Every such date from
+today through the next 44 days must have an extracted event starting exactly on
+that date. If the first extraction misses one or more required dates, one
+targeted bounded recovery sends only the missing date sections through the same
+official-programme text extractor. Recovery facts outside the requested missing
+dates are discarded. An article that is still incomplete is rejected. A broad
+date-range event cannot satisfy multiple explicit occurrence dates. Version-1
+and version-2 generic programme facts are not trusted after this recovery
+upgrade and are revalidated once. The article must still yield at least two
+validated programme events overall. The adapter is text-first: it does not OCR
+arbitrary article images. Temporary source/model failures retain only
+compatible last-good version-3 facts.
 
 Dated Monday library film rows in the same official Turismo `CINE` text are
 also read deterministically on every existing page refresh, including when the
