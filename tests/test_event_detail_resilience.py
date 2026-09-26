@@ -276,6 +276,13 @@ class TodoPartialRefreshTests(unittest.IsolatedAsyncioTestCase):
                     return_value=(b"<html>sin agenda</html>", "text/html"),
                 ),
                 patch(
+                    "telegrambot.municipal_agenda.extract_official_agenda_text",
+                    side_effect=MunicipalAgendaError(
+                        "no text month",
+                        code="NO-TEXT-MONTH",
+                    ),
+                ),
+                patch(
                     "telegrambot.municipal_agenda.fetch_program_window",
                     new=AsyncMock(return_value=window),
                 ),
