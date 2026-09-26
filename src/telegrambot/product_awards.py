@@ -1,13 +1,13 @@
-"""Lightweight award feed for supermarket own-brand products.
+"""Lightweight award feed for verified supermarket-listed products.
 
 The core is intentionally source-agnostic:
-- each source adapter discovers stable source items and parses its own format;
-- adapters return verified ProductAwardCandidate objects with a source-defined
-  event key;
+- each award adapter discovers stable source items and parses its own format;
+- adapters return verified ProductAwardCandidate objects with source-defined
+  award identity plus explicit retail evidence;
 - the shared core only deduplicates, queues, renders and delivers at most one
   item per day.
 
-No LLM, browser, OCR, catalog/SKU lookup or price enrichment is required.
+No LLM, browser, OCR, fuzzy product matching or catalogue crawl is required.
 """
 
 from __future__ import annotations
@@ -90,25 +90,101 @@ class PageDocument:
     links: tuple[str, ...]
 
 
+RETAIL_RELATIONSHIPS = frozenset({"private_label", "exclusive", "listed"})
+
+
+@dataclass(frozen=True)
+class RetailEvidence:
+    retailer: str
+    relationship: str
+    label: Optional[str] = None
+    product_id: Optional[str] = None
+    ean: Optional[str] = None
+    product_url: Optional[str] = None
+    variant: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if not self.retailer.strip():
+            raise ProductAwardError("retailer evidence needs a retailer", code="INVALID")
+        if self.relationship not in RETAIL_RELATIONSHIPS:
+            raise ProductAwardError(
+                "unsupported retailer relationship",
+                code="INVALID",
+            )
+        if self.relationship == "private_label" and not (self.label or "").strip():
+            raise ProductAwardError(
+                "private-label evidence needs the label",
+                code="INVALID",
+            )
+        if self.ean is not None and not re.fullmatch(r"\d{8,14}", self.ean):
+            raise ProductAwardError("invalid retail EAN/GTIN", code="INVALID")
+        if self.product_url is not None:
+            try:
+                parsed = urllib.parse.urlsplit(self.product_url)
+                port = parsed.port
+            except ValueError as exc:
+                raise ProductAwardError(
+                    "invalid retail product URL",
+                    code="INVALID",
+                ) from exc
+            if (
+                parsed.scheme != "https"
+                or parsed.hostname is None
+                or port not in {None, 443}
+                or parsed.username is not None
+                or parsed.password is not None
+            ):
+                raise ProductAwardError("invalid retail product URL", code="INVALID")
+
+    @property
+    def has_exact_identity(self) -> bool:
+        return bool(self.ean or self.product_id)
+
+
+@dataclass(frozen=True)
+class AwardEditorialFacts:
+    comparison_size: Optional[int] = None
+    category: Optional[str] = None
+    judge_count: Optional[int] = None
+    method_flags: tuple[str, ...] = ()
+    standout: Optional[str] = None
+    quality_label: Optional[str] = None
+    producer: Optional[str] = None
+    identity_details: tuple[str, ...] = ()
+
+
 @dataclass(frozen=True)
 class ProductAwardCandidate:
     source_kind: str
     event_key: str
     source_url: str
-    retailer: str
-    private_label: str
     product_name: str
     result: str
     award_body: str
     result_year: int
+    retail: RetailEvidence
     score: Optional[str] = None
     source_price: Optional[str] = None
-    sample_size: Optional[int] = None
+    editorial: AwardEditorialFacts = AwardEditorialFacts()
 
     @property
     def event_id(self) -> str:
         canonical = f"{self.source_kind}|{self.event_key}"
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:24]
+
+    @property
+    def retailer(self) -> str:
+        return self.retail.retailer
+
+    @property
+    def private_label(self) -> Optional[str]:
+        if self.retail.relationship != "private_label":
+            return None
+        return self.retail.label
+
+    @property
+    def sample_size(self) -> Optional[int]:
+        return self.editorial.comparison_size
 
 
 @dataclass(frozen=True)
@@ -423,6 +499,39 @@ def _ocu_source_price(text: str) -> Optional[str]:
     return f"{amount} €/{unit}"
 
 
+def _ocu_editorial_facts(text: str, sample_size: Optional[int]) -> AwardEditorialFacts:
+    folded = _fold(text)
+    flags: list[str] = []
+    for needle, flag in (
+        ("etiquet", "labeling"),
+        ("composicion", "composition"),
+        ("valor nutricional", "nutrition"),
+        ("escala saludable", "nutrition"),
+        ("cata profesional", "professional_tasting"),
+    ):
+        if needle in folded and flag not in flags:
+            flags.append(flag)
+
+    standout = None
+    if (
+        "mejor valorado en la cata profesional" in folded
+        or "mejor valorada en la cata profesional" in folded
+    ):
+        standout = "best_professional_tasting"
+
+    quality_label = (
+        "Buena Elección"
+        if "buena eleccion" in folded
+        else None
+    )
+    return AwardEditorialFacts(
+        comparison_size=sample_size,
+        method_flags=tuple(flags),
+        standout=standout,
+        quality_label=quality_label,
+    )
+
+
 def parse_ocu_awards(
     document: PageDocument,
     year: int,
@@ -432,6 +541,7 @@ def parse_ocu_awards(
 
     lines = [line.strip() for line in document.text.splitlines() if line.strip()]
     sample_size = _ocu_sample_size(document.text)
+    editorial = _ocu_editorial_facts(document.text, sample_size)
     candidates: list[ProductAwardCandidate] = []
 
     previous_result_index = -1
@@ -489,15 +599,18 @@ def parse_ocu_awards(
             source_kind="ocu",
             event_key=event_key,
             source_url=document.url,
-            retailer=retailer,
-            private_label=private_label,
             product_name=product_name,
             result=result,
             award_body="OCU",
             result_year=year,
+            retail=RetailEvidence(
+                retailer=retailer,
+                relationship="private_label",
+                label=private_label,
+            ),
             score=score,
             source_price=source_price,
-            sample_size=sample_size,
+            editorial=editorial,
         ))
 
     unique: dict[str, ProductAwardCandidate] = {}
@@ -538,8 +651,40 @@ def _source_link_label(candidate: ProductAwardCandidate) -> str:
     return candidate.award_body
 
 
+def _retail_phrase(candidate: ProductAwardCandidate) -> str:
+    evidence = candidate.retail
+    if evidence.relationship == "private_label":
+        return (
+            f"продукт собственной марки {evidence.label} "
+            f"из {evidence.retailer}"
+        )
+    if evidence.relationship == "exclusive":
+        return f"товар, эксклюзивно представленный в {evidence.retailer}"
+    return f"товар, который продаётся в {evidence.retailer}"
+
+
+def _ocu_method_sentence(facts: AwardEditorialFacts) -> Optional[str]:
+    flags = set(facts.method_flags)
+    parts: list[str] = []
+    if "labeling" in flags and "composition" in flags:
+        parts.append("проверяли маркировку и состав")
+    elif "labeling" in flags:
+        parts.append("проверяли маркировку")
+    elif "composition" in flags:
+        parts.append("проверяли состав")
+    if "nutrition" in flags:
+        parts.append("оценивали пищевую ценность")
+    if "professional_tasting" in flags:
+        parts.append("проводили профессиональную дегустацию")
+    if not parts:
+        return None
+    return "В исследовании " + ", ".join(parts) + "."
+
+
 def build_publication(
     candidate: ProductAwardCandidate,
+    *,
+    current_price: Optional[str] = None,
 ) -> ProductAwardPublication:
     product = _display_product(candidate.product_name)
     body_parts: list[str] = []
@@ -577,18 +722,35 @@ def build_publication(
                 f"{product} из {candidate.retailer} получил результат "
                 f"{candidate.result} в исследовании OCU."
             )
+
+        method_sentence = _ocu_method_sentence(candidate.editorial)
+        if method_sentence is not None:
+            body_parts.append(method_sentence)
+        if candidate.editorial.standout == "best_professional_tasting":
+            body_parts.append(
+                "Особенно хорошо продукт показал себя на профессиональной "
+                "дегустации: OCU назвала его лучшим по этому этапу."
+            )
+        if candidate.editorial.quality_label is not None:
+            body_parts.append(
+                f"По своей шкале пищевого состава OCU также отнесла продукт "
+                f"к категории {candidate.editorial.quality_label}."
+            )
     else:
         headline = f"{product} — {candidate.result} на {candidate.award_body}"
         body_parts.append(
-            f"{product} собственной марки {candidate.private_label} "
-            f"из {candidate.retailer} получил {candidate.result} "
-            f"на {candidate.award_body}."
+            f"{product}, {_retail_phrase(candidate)}, получил "
+            f"{candidate.result} на {candidate.award_body}."
         )
 
     details: list[str] = []
     if candidate.score is not None:
         details.append(f"Итоговая оценка — {candidate.score}.")
-    if candidate.source_price is not None:
+    if current_price is not None:
+        details.append(
+            f"Сейчас в {candidate.retailer} указана цена {current_price}."
+        )
+    elif candidate.source_price is not None:
         details.append(
             f"В исследовании указана цена {candidate.source_price}."
         )
@@ -616,21 +778,102 @@ def build_publication(
 # Queue/state
 # ---------------------------------------------------------------------------
 
+def _retail_to_dict(value: RetailEvidence) -> dict[str, Any]:
+    return {
+        "retailer": value.retailer,
+        "relationship": value.relationship,
+        "label": value.label,
+        "product_id": value.product_id,
+        "ean": value.ean,
+        "product_url": value.product_url,
+        "variant": value.variant,
+    }
+
+
+def _editorial_to_dict(value: AwardEditorialFacts) -> dict[str, Any]:
+    return {
+        "comparison_size": value.comparison_size,
+        "category": value.category,
+        "judge_count": value.judge_count,
+        "method_flags": list(value.method_flags),
+        "standout": value.standout,
+        "quality_label": value.quality_label,
+        "producer": value.producer,
+        "identity_details": list(value.identity_details),
+    }
+
+
 def _candidate_to_dict(candidate: ProductAwardCandidate) -> dict[str, Any]:
     return {
         "source_kind": candidate.source_kind,
         "event_key": candidate.event_key,
         "source_url": candidate.source_url,
-        "retailer": candidate.retailer,
-        "private_label": candidate.private_label,
         "product_name": candidate.product_name,
         "result": candidate.result,
         "award_body": candidate.award_body,
         "result_year": candidate.result_year,
+        "retail": _retail_to_dict(candidate.retail),
         "score": candidate.score,
         "source_price": candidate.source_price,
-        "sample_size": candidate.sample_size,
+        "editorial": _editorial_to_dict(candidate.editorial),
     }
+
+
+def _retail_from_dict(value: Any) -> RetailEvidence:
+    if not isinstance(value, dict) or set(value) != {
+        "retailer",
+        "relationship",
+        "label",
+        "product_id",
+        "ean",
+        "product_url",
+        "variant",
+    }:
+        raise ProductAwardError("invalid queued retail evidence", code="STATE")
+    for key in ("retailer", "relationship"):
+        if not isinstance(value[key], str) or not value[key]:
+            raise ProductAwardError("invalid queued retail strings", code="STATE")
+    for key in ("label", "product_id", "ean", "product_url", "variant"):
+        if value[key] is not None and not isinstance(value[key], str):
+            raise ProductAwardError("invalid queued retail optional field", code="STATE")
+    return RetailEvidence(**value)
+
+
+def _editorial_from_dict(value: Any) -> AwardEditorialFacts:
+    if not isinstance(value, dict) or set(value) != {
+        "comparison_size",
+        "category",
+        "judge_count",
+        "method_flags",
+        "standout",
+        "quality_label",
+        "producer",
+        "identity_details",
+    }:
+        raise ProductAwardError("invalid queued editorial facts", code="STATE")
+    for key in ("comparison_size", "judge_count"):
+        if value[key] is not None and not isinstance(value[key], int):
+            raise ProductAwardError("invalid queued editorial number", code="STATE")
+    for key in ("category", "standout", "quality_label", "producer"):
+        if value[key] is not None and not isinstance(value[key], str):
+            raise ProductAwardError("invalid queued editorial string", code="STATE")
+    for key in ("method_flags", "identity_details"):
+        if (
+            not isinstance(value[key], list)
+            or len(value[key]) > 32
+            or not all(isinstance(item, str) and item for item in value[key])
+        ):
+            raise ProductAwardError("invalid queued editorial list", code="STATE")
+    return AwardEditorialFacts(
+        comparison_size=value["comparison_size"],
+        category=value["category"],
+        judge_count=value["judge_count"],
+        method_flags=tuple(value["method_flags"]),
+        standout=value["standout"],
+        quality_label=value["quality_label"],
+        producer=value["producer"],
+        identity_details=tuple(value["identity_details"]),
+    )
 
 
 def _candidate_from_dict(value: Any) -> ProductAwardCandidate:
@@ -640,15 +883,14 @@ def _candidate_from_dict(value: Any) -> ProductAwardCandidate:
         "source_kind",
         "event_key",
         "source_url",
-        "retailer",
-        "private_label",
         "product_name",
         "result",
         "award_body",
         "result_year",
+        "retail",
         "score",
         "source_price",
-        "sample_size",
+        "editorial",
     }
     if set(value) != expected:
         raise ProductAwardError("invalid queued product-award fields", code="STATE")
@@ -656,8 +898,6 @@ def _candidate_from_dict(value: Any) -> ProductAwardCandidate:
         "source_kind",
         "event_key",
         "source_url",
-        "retailer",
-        "private_label",
         "product_name",
         "result",
         "award_body",
@@ -669,9 +909,19 @@ def _candidate_from_dict(value: Any) -> ProductAwardCandidate:
     for key in ("score", "source_price"):
         if value[key] is not None and not isinstance(value[key], str):
             raise ProductAwardError("invalid queued product-award optional field", code="STATE")
-    if value["sample_size"] is not None and not isinstance(value["sample_size"], int):
-        raise ProductAwardError("invalid queued product-award sample size", code="STATE")
-    return ProductAwardCandidate(**value)
+    return ProductAwardCandidate(
+        source_kind=value["source_kind"],
+        event_key=value["event_key"],
+        source_url=value["source_url"],
+        product_name=value["product_name"],
+        result=value["result"],
+        award_body=value["award_body"],
+        result_year=value["result_year"],
+        retail=_retail_from_dict(value["retail"]),
+        score=value["score"],
+        source_price=value["source_price"],
+        editorial=_editorial_from_dict(value["editorial"]),
+    )
 
 
 def _queue_item_to_dict(item: ProductAwardQueueItem) -> dict[str, Any]:
@@ -704,20 +954,45 @@ def _queue_item_from_dict(value: Any) -> ProductAwardQueueItem:
     return ProductAwardQueueItem(event_id, detected_at, candidate)
 
 
-def _result_priority(candidate: ProductAwardCandidate) -> int:
-    folded = _fold(candidate.result)
-    for label, rank in (
-        ("trophy", 6),
-        ("super gold", 5),
-        ("gold", 4),
-        ("silver", 3),
-        ("bronze", 2),
-        ("mejor del analisis", 2),
-        ("compra maestra", 1),
-    ):
-        if _phrase_present(folded, label):
-            return rank
-    return 0
+def _merge_optional(existing: Any, incoming: Any, field: str) -> Any:
+    if existing is not None and incoming is not None and existing != incoming:
+        raise ProductAwardError(
+            f"conflicting product-award {field}",
+            code="STATE",
+        )
+    return incoming if incoming is not None else existing
+
+
+def _merge_editorial_facts(
+    existing: AwardEditorialFacts,
+    incoming: AwardEditorialFacts,
+) -> AwardEditorialFacts:
+    return AwardEditorialFacts(
+        comparison_size=_merge_optional(
+            existing.comparison_size,
+            incoming.comparison_size,
+            "comparison size",
+        ),
+        category=_merge_optional(existing.category, incoming.category, "category"),
+        judge_count=_merge_optional(
+            existing.judge_count,
+            incoming.judge_count,
+            "judge count",
+        ),
+        method_flags=tuple(dict.fromkeys(
+            (*existing.method_flags, *incoming.method_flags)
+        )),
+        standout=_merge_optional(existing.standout, incoming.standout, "standout"),
+        quality_label=_merge_optional(
+            existing.quality_label,
+            incoming.quality_label,
+            "quality label",
+        ),
+        producer=_merge_optional(existing.producer, incoming.producer, "producer"),
+        identity_details=tuple(dict.fromkeys(
+            (*existing.identity_details, *incoming.identity_details)
+        )),
+    )
 
 
 def _merge_duplicate_candidate(
@@ -726,26 +1001,52 @@ def _merge_duplicate_candidate(
 ) -> ProductAwardCandidate:
     if existing.event_id != incoming.event_id:
         raise ProductAwardError("cannot merge different award events", code="STATE")
-    base = incoming if _result_priority(incoming) > _result_priority(existing) else existing
-    other = existing if base is incoming else incoming
+    stable_existing = (
+        existing.source_kind,
+        existing.event_key,
+        existing.source_url,
+        existing.product_name,
+        existing.result,
+        existing.award_body,
+        existing.result_year,
+        existing.retail,
+    )
+    stable_incoming = (
+        incoming.source_kind,
+        incoming.event_key,
+        incoming.source_url,
+        incoming.product_name,
+        incoming.result,
+        incoming.award_body,
+        incoming.result_year,
+        incoming.retail,
+    )
+    if stable_existing != stable_incoming:
+        raise ProductAwardError(
+            "source adapter returned conflicting identity for one award event",
+            code="STATE",
+        )
     return ProductAwardCandidate(
-        source_kind=base.source_kind,
-        event_key=base.event_key,
-        source_url=base.source_url,
-        retailer=base.retailer,
-        private_label=base.private_label,
-        product_name=base.product_name,
-        result=base.result,
-        award_body=base.award_body,
-        result_year=base.result_year,
-        score=base.score or other.score,
-        source_price=base.source_price or other.source_price,
-        sample_size=base.sample_size or other.sample_size,
+        source_kind=existing.source_kind,
+        event_key=existing.event_key,
+        source_url=existing.source_url,
+        product_name=existing.product_name,
+        result=existing.result,
+        award_body=existing.award_body,
+        result_year=existing.result_year,
+        retail=existing.retail,
+        score=_merge_optional(existing.score, incoming.score, "score"),
+        source_price=_merge_optional(
+            existing.source_price,
+            incoming.source_price,
+            "source price",
+        ),
+        editorial=_merge_editorial_facts(existing.editorial, incoming.editorial),
     )
 
 
 class ProductAwardState:
-    VERSION = 4
+    VERSION = 5
     MAX_SEEN = 2_000
     MAX_QUEUE = 128
     MAX_HISTORY = 10_000
