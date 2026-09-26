@@ -1066,6 +1066,9 @@ def build_event_section(
     rendered_sessions = set()
     for event in events:
         programme = getattr(event, "programme_title", None)
+        programme_display = (
+            getattr(event, "programme_display_title", None) or programme
+        )
         session_group = getattr(event, "session_group_key", None)
         if programme:
             if programme in rendered_programmes:
@@ -1079,7 +1082,7 @@ def build_event_section(
                     getattr(candidate, "programme_order", None) or 0,
                 ),
             )
-            block = [f"• 🎉 {html.escape(programme)}"]
+            block = [f"• 🎉 {html.escape(programme_display)}"]
             for member in members:
                 block.append(_event_heading(member, "  ", bullet=False))
                 block.extend(_render_event_details(member, "    "))
