@@ -6,6 +6,8 @@ from email.message import Message
 from unittest.mock import patch
 
 from telegrambot.todo_cultura import (
+    MAX_CANDIDATES,
+    MAX_DOCUMENTS_PER_REQUEST,
     PARSER_VERSION,
     TodoCulturaError,
     _activity_summaries,
@@ -288,7 +290,7 @@ Reservas de entradas: https://www.agendaguardamar.com/espectaculo/2/x.html
     def test_oldest_unchecked_local_candidate_gets_bounded_fairness_slot(self):
         candidates = []
         documents = []
-        for identifier in range(1, 7):
+        for identifier in range(1, 9):
             link = (
                 "https://todoculturavegabaja.es/eventos/"
                 f"guardamar-evento-current-{identifier}/"
@@ -361,8 +363,16 @@ Reservas de entradas: https://www.agendaguardamar.com/espectaculo/2/x.html
                 "candidates": candidates,
             })
 
-        self.assertEqual(len(selected_ids), 6)
+        self.assertEqual(len(selected_ids), MAX_CANDIDATES)
         self.assertEqual(selected_ids[0], 99)
+
+    def test_detail_budget_stays_within_two_api_batches(self):
+        self.assertEqual(MAX_CANDIDATES, 8)
+        self.assertEqual(
+            (MAX_CANDIDATES + MAX_DOCUMENTS_PER_REQUEST - 1)
+            // MAX_DOCUMENTS_PER_REQUEST,
+            2,
+        )
 
     def test_v19_migration_preserves_progress_but_rechecks_dated_candidate(self):
         dated_link = (
