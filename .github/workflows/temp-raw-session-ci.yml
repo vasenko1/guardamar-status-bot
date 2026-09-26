@@ -1,4 +1,5 @@
 name: Temporary raw source session CI
+# final verification after ordering review
 
 on:
   push:
