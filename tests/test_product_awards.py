@@ -197,6 +197,23 @@ class OcuAdapterTests(unittest.TestCase):
         self.assertEqual(second.score, "68/100")
         self.assertEqual(second.source_price, "2,50 €/л")
 
+    def test_ocu_local_editorial_facts_do_not_leak_to_next_product(self):
+        document = PageDocument(
+            "https://www.ocu.org/alimentacion/foo/informe/bar",
+            """
+            07 julio 2026
+            Hemos analizado 20 productos.
+            cata profesional
+            salmorejo fresco de Hacendado (Mercadona) es el Mejor del Análisis.
+            Es el mejor valorado en la cata profesional.
+            queso curado Deluxe (Lidl) es Compra Maestra.
+            """,
+            (),
+        )
+        first, second = parse_ocu_awards(document, 2026)
+        self.assertEqual(first.editorial.standout, "best_professional_tasting")
+        self.assertIsNone(second.editorial.standout)
+
     def test_unparseable_award_product_fails_closed(self):
         document = PageDocument(
             "https://www.ocu.org/alimentacion/foo/informe/bar",
