@@ -1,4 +1,4 @@
-name: Probe Mercadona award candidates
+name: Probe WCCC results backend
 
 on:
   push:
@@ -16,40 +16,56 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Probe exact candidate SKUs
+      - name: Inspect WCCC results page
         run: |
           python - <<'PY'
-          import json, urllib.request
+          import html, re, urllib.parse, urllib.request
 
-          headers={"Accept":"application/json","User-Agent":"GuardamarMorningDigest/0.13"}
-          ids=["4883","17926","11682","5548","50943","50944","50945","50946","50952"]
-          for product_id in ids:
-              print(f"=== {product_id} ===")
-              url=f"https://tienda.mercadona.es/api/products/{product_id}/?lang=es&wh=alc1"
-              req=urllib.request.Request(url,headers=headers)
-              try:
-                  with urllib.request.urlopen(req,timeout=20) as r:
-                      obj=json.load(r)
-              except Exception as e:
-                  print("ERROR",type(e).__name__,str(e)[:300])
+          headers={"User-Agent":"GuardamarMorningDigest/0.13"}
+          base="https://worldchampioncheese.org/results/"
+          req=urllib.request.Request(base,headers=headers)
+          with urllib.request.urlopen(req,timeout=20) as r:
+              raw=r.read().decode("utf-8","replace")
+          print("HTML_BYTES",len(raw))
+          print("=== INTERESTING HTML ===")
+          for line in raw.splitlines():
+              low=html.unescape(line).lower()
+              if any(k in low for k in ("iframe","myentries","result","score","contestresult","embed","shortcode")):
+                  clean=re.sub(r"\s+"," ",html.unescape(line)).strip()
+                  if clean:
+                      print(clean[:1800])
+
+          scripts=[]
+          for m in re.finditer(r'<script[^>]+src=["\']([^"\']+)["\']',raw,re.I):
+              url=urllib.parse.urljoin(base,html.unescape(m.group(1)))
+              if url not in scripts:
+                  scripts.append(url)
+          print("=== SCRIPTS ===")
+          for url in scripts:
+              print(url)
+
+          print("=== JS HITS ===")
+          for url in scripts:
+              if not urllib.parse.urlsplit(url).hostname.endswith("worldchampioncheese.org"):
                   continue
-              print("id",obj.get("id"))
-              print("name",obj.get("display_name"))
-              print("ean",obj.get("ean"))
-              print("brand",obj.get("brand"))
-              print("published",obj.get("published"))
-              print("unavailable_from",obj.get("unavailable_from"))
-              print("unavailable_weekdays",obj.get("unavailable_weekdays"))
-              print("variable",obj.get("is_variable_weight"))
-              print("packaging",obj.get("packaging"))
-              print("share_url",obj.get("share_url"))
-              pi=obj.get("price_instructions") or {}
-              for key in ("unit_price","bulk_price","unit_size","size_format","reference_price","reference_format","approx_size"):
-                  print("price."+key,pi.get(key))
-              details=obj.get("details") or {}
-              print("legal_name",details.get("legal_name"))
-              print("mandatory_mentions",details.get("mandatory_mentions"))
-              print("suppliers",json.dumps(details.get("suppliers"),ensure_ascii=False))
-              nutrition=obj.get("nutrition_information") or {}
-              print("ingredients",json.dumps(nutrition.get("ingredients"),ensure_ascii=False))
+              try:
+                  req=urllib.request.Request(url,headers=headers)
+                  with urllib.request.urlopen(req,timeout=20) as r:
+                      data=r.read(2_000_000).decode("utf-8","replace")
+              except Exception as e:
+                  print("ERR",url,type(e).__name__)
+                  continue
+              hits=[]
+              for pattern in (
+                  r'https?://[^"\'\s)]+',
+                  r'[^"\']{0,100}(?:myentries|results?|scores?|contest)[^"\']{0,180}',
+              ):
+                  for m in re.finditer(pattern,data,re.I):
+                      value=m.group(0)
+                      if value not in hits:
+                          hits.append(value)
+              if hits:
+                  print("SCRIPT",url)
+                  for hit in hits[:40]:
+                      print(re.sub(r"\s+"," ",hit)[:600])
           PY
