@@ -252,9 +252,9 @@ Reservas de entradas: https://www.agendaguardamar.com/espectaculo/2/x.html
             "content": {"rendered": (
                 "<p>Fiestas patronales de Guardamar.</p>"
                 "<p>Sábado 26 de septiembre</p>"
-                "<p>17 h.: Gran bingo de regalos.</p>"
-                "<p>19,50 h.: Solemne traslado de la Virgen.</p>"
-                "<p>20 h.: Santa Misa y presentación del cartel.</p>"
+                "<p>– 17 h.: Gran bingo de regalos.</p>"
+                "<p>– 19,50 h.: Solemne traslado de la Virgen.</p>"
+                "<p>– 20 h.: Santa Misa y presentación del cartel.</p>"
             )},
         }
 
