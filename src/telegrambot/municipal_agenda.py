@@ -520,6 +520,7 @@ class SourceEvent:
     access_note: Optional[str] = None
     programme_title: Optional[str] = None
     programme_order: Optional[int] = None
+    session_parent_title_es: Optional[str] = None
     image_url: Optional[str] = None
 
 
@@ -558,18 +559,11 @@ def _session_base_key(value: str) -> str:
     return " ".join(value.split()).strip(" .,:;-")
 
 
-def _session_source_plan(
+def _annotate_source_sessions(
     events: Tuple[SourceEvent, ...],
-) -> Tuple[Tuple[str, Optional[str]], ...]:
-    """Identify source-proven session families before any translation.
+) -> Tuple[SourceEvent, ...]:
+    """Persist an explicit source session relationship before source merges."""
 
-    Date/place are sanity checks only.  Identity comes from an explicit
-    session marker plus the same normalized base source title.
-    """
-
-    plan: List[Tuple[str, Optional[str]]] = [
-        (event.title_es, None) for event in events
-    ]
     candidates: Dict[tuple, List[Tuple[int, str]]] = {}
     for index, event in enumerate(events):
         if (
@@ -588,13 +582,13 @@ def _session_source_plan(
         )
         candidates.setdefault(key, []).append((index, base_title))
 
-    for key, members in candidates.items():
+    annotated = list(events)
+    for members in candidates.values():
         if len(members) < 2:
             continue
         start_times = [events[index].start_time for index, _ in members]
         if len(set(start_times)) != len(start_times):
             continue
-
         known_places = {
             canonical_event_place(events[index].place).casefold()
             for index, _ in members
@@ -602,15 +596,53 @@ def _session_source_plan(
         }
         if len(known_places) > 1:
             continue
+        parent_title = members[0][1]
+        for index, _ in members:
+            annotated[index] = replace(
+                events[index],
+                session_parent_title_es=parent_title,
+            )
+    return tuple(annotated)
 
-        display_title = members[0][1]
+
+def _session_source_plan(
+    events: Tuple[SourceEvent, ...],
+) -> Tuple[Tuple[str, Optional[str]], ...]:
+    """Build translation/display groups from relationships proven upstream."""
+
+    plan: List[Tuple[str, Optional[str]]] = [
+        (event.title_es, None) for event in events
+    ]
+    families: Dict[tuple, List[int]] = {}
+    for index, event in enumerate(events):
+        parent_title = event.session_parent_title_es
+        if (
+            parent_title is None
+            or event.programme_title is not None
+            or event.start_date != event.end_date
+            or event.start_time is None
+        ):
+            continue
+        key = (
+            event.start_date,
+            event.category,
+            _session_base_key(parent_title),
+        )
+        families.setdefault(key, []).append(index)
+
+    for key, indexes in families.items():
+        if len(indexes) < 2:
+            continue
         group_key = "session:" + "|".join((
             key[0].isoformat(),
             key[1],
             key[2],
         ))
-        for index, _ in members:
-            plan[index] = (display_title, group_key)
+        parent_title = events[indexes[0]].session_parent_title_es
+        if parent_title is None:
+            continue
+        for index in indexes:
+            plan[index] = (parent_title, group_key)
     return tuple(plan)
 
 def _display_ticket_price(
@@ -1701,6 +1733,18 @@ def merge_text_and_poster_events(
         candidate_is_text = bool(
             set(poster_event.sources) & {"todo_cultura", "todo_cultura_reviewed"}
         )
+        current_parent = current.session_parent_title_es
+        candidate_parent = (
+            poster_event.session_parent_title_es if same_occurrence else None
+        )
+        if current_parent is None:
+            session_parent_title_es = candidate_parent
+        elif candidate_parent is None:
+            session_parent_title_es = current_parent
+        elif _session_base_key(current_parent) == _session_base_key(candidate_parent):
+            session_parent_title_es = current_parent
+        else:
+            session_parent_title_es = None
         merged[duplicate_index] = SourceEvent(
             **{
                 **current.__dict__,
@@ -1773,6 +1817,7 @@ def merge_text_and_poster_events(
                     current.programme_order if current.programme_order is not None
                     else poster_event.programme_order
                 ),
+                "session_parent_title_es": session_parent_title_es,
                 "image_url": current.image_url or poster_event.image_url,
             }
         )
@@ -2554,6 +2599,7 @@ def _snapshot_data(
                 "access_note": event.access_note,
                 "programme_title": event.programme_title,
                 "programme_order": event.programme_order,
+                "session_parent_title_es": event.session_parent_title_es,
                 "image_url": event.image_url,
             }
             for event in events
@@ -2640,6 +2686,20 @@ def _load_snapshot(path: Path) -> Optional[Dict[str, Any]]:
             normalized = normalized_events[0]
             if isinstance(raw, dict) and isinstance(raw.get("teaser_es"), str):
                 normalized = replace(normalized, teaser_es=raw["teaser_es"])
+            raw_session_parent = (
+                raw.get("session_parent_title_es")
+                if isinstance(raw, dict) else None
+            )
+            if raw_session_parent is not None:
+                if not isinstance(raw_session_parent, str):
+                    raise ValueError
+                raw_session_parent = " ".join(raw_session_parent.split()).strip()
+                if not 5 <= len(raw_session_parent) <= 180:
+                    raise ValueError
+                normalized = replace(
+                    normalized,
+                    session_parent_title_es=raw_session_parent,
+                )
             raw_image = raw.get("image_url") if isinstance(raw, dict) else None
             if raw_image is not None:
                 image_url = _normalized_turismo_image_url(raw_image)
@@ -3285,6 +3345,7 @@ async def refresh_municipal_catalog(
                     )
                 if not new_todo_events:
                     continue
+                new_todo_events = _annotate_source_sessions(new_todo_events)
                 refreshed_dates = set(todo_program.dates)
                 retained = (
                     tuple(

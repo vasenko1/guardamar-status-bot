@@ -14,7 +14,10 @@ from telegrambot.morning import _merge_events
 from telegrambot.municipal_agenda import (
     MunicipalAgendaError,
     SourceEvent,
+    _annotate_source_sessions,
+    _load_snapshot,
     _session_source_plan,
+    merge_text_and_poster_events,
     municipal_translation_items,
     _apply_reviewed_daily_schedules,
     _snapshot_data,
@@ -128,7 +131,8 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
         )
 
     def test_explicit_turnos_share_one_pretranslation_identity(self):
-        plan = _session_source_plan(self._escape_events())
+        annotated = _annotate_source_sessions(self._escape_events())
+        plan = _session_source_plan(annotated)
 
         self.assertEqual(
             [item[0] for item in plan],
@@ -140,7 +144,8 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
     def test_known_sessions_group_even_when_ordinal_sequence_is_incomplete(self):
         first, _, third = self._escape_events()
 
-        plan = _session_source_plan((first, third))
+        annotated = _annotate_source_sessions((first, third))
+        plan = _session_source_plan(annotated)
 
         self.assertEqual(
             [item[0] for item in plan],
@@ -159,7 +164,8 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
             }
         )
 
-        plan = _session_source_plan((first, second, third))
+        annotated = _annotate_source_sessions((first, second, third))
+        plan = _session_source_plan(annotated)
 
         self.assertEqual(len({group for _, group in plan}), 1)
         self.assertIsNotNone(plan[0][1])
@@ -170,7 +176,8 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
             **{**second.__dict__, "place": "Casa de Cultura"}
         )
 
-        plan = _session_source_plan((first, second, third))
+        annotated = _annotate_source_sessions((first, second, third))
+        plan = _session_source_plan(annotated)
 
         self.assertTrue(all(group is None for _, group in plan))
 
@@ -194,15 +201,78 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
             ),
         )
 
-        plan = _session_source_plan(events)
+        annotated = _annotate_source_sessions(events)
+        plan = _session_source_plan(annotated)
 
         self.assertEqual(
             plan,
             tuple((event.title_es, None) for event in events),
         )
 
+    def test_source_merge_preserves_session_identity_when_title_marker_is_lost(self):
+        todo = _annotate_source_sessions(self._escape_events())
+        day = date(2026, 9, 26)
+        generic = tuple(
+            SourceEvent(
+                title_es=(
+                    "Escape Room “El Misterio del Museo de Guardamar” "
+                    "para niños de entre 8 y 12 años"
+                ),
+                start_date=day,
+                end_date=day,
+                start_time=start,
+                end_time=end,
+                place="Museo Arqueológico de Guardamar",
+                category="event",
+                sources=("turismo_html",),
+            )
+            for start, end in (
+                ("11:00", "11:45"),
+                ("12:00", "12:45"),
+                ("13:00", "13:45"),
+            )
+        )
+
+        merged = merge_text_and_poster_events(generic, todo)
+
+        self.assertTrue(all(
+            event.session_parent_title_es
+            == "Escape Room “El Misterio del Museo de Guardamar”"
+            for event in merged
+        ))
+        self.assertTrue(all(
+            not event.title_es.casefold().startswith((
+                "primer turno", "segund0 turno", "tercer turno"
+            ))
+            for event in merged
+        ))
+        plan = _session_source_plan(merged)
+        self.assertEqual(len({group for _, group in plan}), 1)
+        self.assertIsNotNone(plan[0][1])
+
+    def test_snapshot_round_trip_preserves_source_session_identity(self):
+        events = _annotate_source_sessions(self._escape_events())
+        now = datetime(2026, 9, 26, 10, 0, tzinfo=TZ)
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "municipal.json"
+            _write_snapshot(
+                state_path,
+                _snapshot_data("", "", now, events),
+            )
+            loaded = _load_snapshot(state_path)
+
+        self.assertIsNotNone(loaded)
+        loaded_events = loaded["_events"]
+        self.assertEqual(
+            [event.session_parent_title_es for event in loaded_events],
+            ["Escape Room “El Misterio del Museo de Guardamar”"] * 3,
+        )
+        plan = _session_source_plan(loaded_events)
+        self.assertEqual(len({group for _, group in plan}), 1)
+        self.assertIsNotNone(plan[0][1])
+
     async def test_translation_queue_contains_base_title_once(self):
-        events = self._escape_events()
+        events = _annotate_source_sessions(self._escape_events())
         now = datetime(2026, 9, 26, 10, 0, tzinfo=TZ)
         with tempfile.TemporaryDirectory() as directory:
             state_path = Path(directory) / "municipal.json"
