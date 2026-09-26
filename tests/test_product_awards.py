@@ -692,6 +692,66 @@ class MercadonaRetailRefreshTests(unittest.TestCase):
             ["18,30 €/кг", "21,10 €/кг"],
         )
 
+    def test_valle_award_requires_valle_supplier_not_only_distributor(self):
+        item = ProductAwardCandidate(
+            source_kind="wccc_valle_seed",
+            event_key="2026|valle|semicurado|97.40",
+            source_url="https://valledesanjuan.com/example",
+            product_name="Queso semicurado de oveja Hacendado cortado en cuñitas",
+            result="97.40 points",
+            award_body="World Championship Cheese Contest 2026",
+            result_year=2026,
+            retail=RetailEvidence(
+                retailer="Mercadona",
+                relationship="private_label",
+                label="Hacendado",
+                product_id="11672",
+                ean="8402001028861",
+                product_url=(
+                    "https://tienda.mercadona.es/product/11672/"
+                    "queso-semicurado-oveja-hacendado-cortado-cunitas-pieza"
+                ),
+                variant="нарезка клиньями",
+            ),
+            score="97,40/100",
+            editorial=AwardEditorialFacts(
+                producer="Valle de San Juan",
+                production_country="Испания",
+            ),
+        )
+        payload = {
+            "id": "11672",
+            "ean": "8402001028861",
+            "brand": "Hacendado",
+            "published": True,
+            "is_variable_weight": True,
+            "unavailable_from": None,
+            "unavailable_weekdays": [],
+            "share_url": (
+                "https://tienda.mercadona.es/product/11672/"
+                "queso-semicurado-oveja-hacendado-cortado-cunitas-pieza"
+            ),
+            "details": {
+                "suppliers": [{"name": "Distribuciones Juan Luna S.L.U"}],
+            },
+            "nutrition_information": {
+                "ingredients": "<strong>Leche</strong> pasteurizada de oveja, sal.",
+            },
+            "price_instructions": {
+                "unit_price": 4.14,
+                "reference_price": 14.80,
+                "reference_format": "kg",
+                "unit_size": 0.28,
+                "size_format": "kg",
+                "approx_size": True,
+            },
+        }
+        with (
+            patch("telegrambot.product_awards._fetch_json", return_value=payload),
+            self.assertRaises(ProductAwardError),
+        ):
+            refresh_mercadona_offers(item)
+
     def test_current_publication_requires_verified_live_offer(self):
         item = self.wccc_candidate()
         with patch(
