@@ -166,3 +166,42 @@ inside a date block. Todo Cultura and other official sources may still add
 distinct same-day occurrences through the existing merge path. The generic
 adapter remains text-first and adds no OCR, browser, dependency, daemon, or
 scheduler.
+
+
+## 26 September 2026 amendment: section-context evidence in scoped recovery
+
+Production diagnostics of the scoped Rosario recovery showed that the model was
+returning useful official facts, but the generic evidence validator rejected
+most of them for structural reasons:
+
+- detail sentences often inherit their date from the preceding explicit
+  WordPress date heading, so the exact event quotation itself may not repeat the
+  date;
+- zero-padded morning times such as `08:00` and `06:00`, including
+  `desde las 08:00`, were not accepted by the time-evidence matcher;
+- the model sometimes prepended a parent programme heading such as
+  `XLI Encuentro de Auroros:` even when that prefix was absent from the exact
+  evidence quotation;
+- the generic multi-month programme prompt did not tell recovery that all
+  missing dates, including a September date in an October-heavy result, were
+  required.
+
+The scoped recovery contract now stays evidence-strict while accounting for
+that source structure:
+
+- recovery receives the already known missing dates explicitly in the model
+  prompt and states that the schema `month` field must not limit a
+  multi-month programme;
+- date evidence may be inherited only when the exact `evidence_es` quotation
+  is contained inside the deterministic WordPress section belonging to that
+  same explicit date. Evidence from another date section cannot satisfy it;
+- the time-evidence matcher accepts a zero-padded single-digit hour and the
+  explicit Spanish form `desde las HH:MM`;
+- only inside scoped Turismo recovery, an unsupported colon-prefixed parent
+  title may be reduced to its evidence-supported suffix. Unsupported words are
+  removed rather than trusted;
+- all ordinary title, time, place, exact-quotation and final exact-date
+  completeness checks remain in force.
+
+The recovery budget remains one model call. No new source, browser, OCR,
+scheduler, retry loop or persisted event type is added.
