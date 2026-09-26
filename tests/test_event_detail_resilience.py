@@ -168,6 +168,18 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(all(group is None for _, group, _ in plan))
 
+    def test_incomplete_source_date_blocks_compact_grouping(self):
+        events = self._escape_events()
+        plan = _session_source_plan(
+            events,
+            frozenset({date(2026, 9, 26)}),
+        )
+
+        self.assertTrue(all(group is None for _, group, _ in plan))
+        self.assertEqual([item[0] for item in plan], [
+            event.title_es for event in events
+        ])
+
     async def test_translation_queue_contains_base_title_once(self):
         events = self._escape_events()
         now = datetime(2026, 9, 26, 10, 0, tzinfo=TZ)
@@ -584,6 +596,10 @@ class TodoPartialRefreshTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             stored["sources"]["todo_cultura"]["cursor_modified_gmt"],
             old_state["cursor_modified_gmt"],
+        )
+        self.assertEqual(
+            stored["sources"]["todo_cultura"]["incomplete_dates"],
+            ["2026-09-26"],
         )
 
 
