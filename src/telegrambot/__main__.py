@@ -153,6 +153,12 @@ from .tomorrow_events import (
     produce_tomorrow_event_publication,
     tomorrow_notice_due,
 )
+from .product_awards import (
+    ProductAwardError,
+    ProductAwardState,
+    preview_publications as preview_product_awards,
+    select_publication as select_product_award_publication,
+)
 from .models import ColdHealthRisk, HeatHealthRisk
 from .state import PublicationState, StateError
 from .telegram import (
@@ -185,6 +191,7 @@ DEFAULT_AEMET_SNAPSHOT_PATH = "state/aemet.json"
 DEFAULT_OPERATIONAL_UPDATE_STATE_PATH = "state/operational_updates.json"
 DEFAULT_WEEKEND_STATE_PATH = "state/weekend.json"
 DEFAULT_TOMORROW_EVENTS_STATE_PATH = "state/tomorrow_events.json"
+DEFAULT_PRODUCT_AWARDS_STATE_PATH = "state/product_awards.json"
 DEFAULT_PHARMACY_STATE_PATH = "state/pharmacy.json"
 DEFAULT_EARTHQUAKE_STATE_PATH = "state/earthquakes.json"
 DEFAULT_EMERGENCY_RISK_STATE_PATH = "state/emergency_risks.json"
@@ -1354,6 +1361,56 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             )
             return 0
 
+    if command in {"product-awards", "product-awards-preview"}:
+        if command == "product-awards-preview":
+            publications = preview_product_awards(now)
+            if not publications:
+                print("No current reviewed product-award publications")
+            else:
+                print("\n\n===== NEXT CATEGORY =====\n\n".join(
+                    publication.message for publication in publications
+                ))
+            return 0
+
+        product_state = ProductAwardState(Path(os.environ.get(
+            "PRODUCT_AWARDS_STATE_PATH", DEFAULT_PRODUCT_AWARDS_STATE_PATH
+        )))
+        bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
+        chat_id = _required_environment("TELEGRAM_CHAT_ID")
+        with product_state.exclusive_run():
+            selected = select_product_award_publication(now, product_state)
+            if selected is None:
+                return 0
+            category_index, publication = selected
+            event_id = publication.candidate.event_id
+            product_state.mark_uncertain(event_id)
+            try:
+                message_id = await send_message(
+                    bot_token,
+                    chat_id,
+                    publication.message,
+                    disable_notification=False,
+                    max_attempts=1,
+                    retry_only_rate_limits=True,
+                )
+            except TelegramError as exc:
+                if is_ambiguous_send_failure(exc):
+                    logging.warning(
+                        "Product-award delivery uncertain [TELEGRAM-%s]; "
+                        "automatic resend disabled",
+                        exc.diagnostic_code,
+                    )
+                    return 0
+                product_state.clear_uncertain(event_id)
+                raise
+            product_state.confirm(event_id, category_index, now.date())
+            logging.info(
+                "SUCCESS: product award delivered: %s message_id=%d",
+                event_id,
+                message_id,
+            )
+            return 0
+
     if command in {"weekend", "weekend-preview"}:
         saturday, sunday = weekend_dates(now)
         gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
@@ -2049,6 +2106,7 @@ def main() -> None:
         StateError,
         OperationalUpdateStateError,
         TomorrowEventStateError,
+        ProductAwardError,
         ValueError,
     ) as exc:
         print(f"Command failed: {exc}", file=sys.stderr)
