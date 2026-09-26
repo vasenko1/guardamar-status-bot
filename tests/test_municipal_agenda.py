@@ -437,7 +437,7 @@ class AyuntamientoProgrammeBackstopTest(unittest.IsolatedAsyncioTestCase):
             ),
             patch(
                 "telegrambot.municipal_agenda._read_ayuntamiento_programme_article",
-                return_value=(link, title, "article-hash", poster_url),
+                return_value=(link, title, poster_url),
             ),
             patch(
                 "telegrambot.municipal_agenda._read_url",
@@ -497,7 +497,6 @@ class AyuntamientoProgrammeBackstopTest(unittest.IsolatedAsyncioTestCase):
             "articles": {
                 link: {
                     "programme_title": title,
-                    "article_sha256": "article-hash",
                     "poster_url": poster_url,
                     "poster_sha256": "poster-hash",
                     "extractor_version": AYUNTAMIENTO_PROGRAMME_EXTRACTOR_VERSION,
@@ -519,7 +518,7 @@ class AyuntamientoProgrammeBackstopTest(unittest.IsolatedAsyncioTestCase):
             ),
             patch(
                 "telegrambot.municipal_agenda._read_ayuntamiento_programme_article",
-                return_value=(link, title, "article-hash", poster_url),
+                return_value=(link, title, poster_url),
             ),
             patch(
                 "telegrambot.municipal_agenda._read_url",
@@ -590,7 +589,6 @@ class AyuntamientoProgrammeBackstopTest(unittest.IsolatedAsyncioTestCase):
             "articles": {
                 link: {
                     "programme_title": title,
-                    "article_sha256": "article-hash",
                     "poster_url": poster_url,
                     "poster_sha256": "poster-hash",
                     "extractor_version": AYUNTAMIENTO_PROGRAMME_EXTRACTOR_VERSION,
@@ -612,7 +610,7 @@ class AyuntamientoProgrammeBackstopTest(unittest.IsolatedAsyncioTestCase):
             ),
             patch(
                 "telegrambot.municipal_agenda._read_ayuntamiento_programme_article",
-                return_value=(link, title, "article-hash", poster_url),
+                return_value=(link, title, poster_url),
             ),
             patch(
                 "telegrambot.municipal_agenda._read_url",
