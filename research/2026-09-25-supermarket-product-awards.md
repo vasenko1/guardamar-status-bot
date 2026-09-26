@@ -1222,13 +1222,13 @@ branch-only workflow:
   packer alone can no longer preserve the award-to-retail join.
 - live `product-awards-preview` on 26 September 2026 produced the reviewed WCCC Top-20 Entrepinares / Mercadona SKU 50952 article with a fresh official Mercadona offer: approximately 370 g, 6.19 EUR, 16.74 EUR/kg.
 
-The next implementation unit should therefore be one **real retailer evidence
-adapter backed by a proven live source contract**, not another generic
-framework. Consum is the strongest clean candidate because its public catalogue
-can expose a stable product code and often EAN; ALDI, Lidl and DIA are also
-strong candidates. Mercadona and Masymas still need their dedicated
-browser-free contract probes. Alcampo / Auchan remains intentionally excluded
-for local-utility reasons.
+The next broader retailer implementation should remain one source-specific
+contract at a time, not a generic catalogue framework. Consum remains the
+strongest clean candidate because its public catalogue can expose a stable
+product code and often EAN; Lidl and DIA are also strong candidates. Mercadona
+and the one reviewed ALDI NALTROS product now have browser-free exact-product
+refreshers. Masymas still needs its dedicated browser-free contract probe.
+Alcampo / Auchan remains intentionally excluded for local-utility reasons.
 
 
 
@@ -1250,3 +1250,53 @@ SKUs (50943/50944/50945/50946), which are explicitly excluded from the Valle
 mapping. The seed keeps source-backed product/tasting/composition facts and
 does not copy unverified nutrition values from third-party price trackers.
 
+
+
+### Starter-pool extension — NALTROS Brut, 26 September 2026
+
+The launch pool was diversified from six cheese posts to seven days by adding
+one exact current ALDI cava candidate after the first two cheese posts.
+
+Award evidence:
+
+- OCU press release:
+  `https://www.ocu.org/organizacion/prensa/notas-de-prensa/2025/cavas191225`;
+- 25 D.O. Cava products compared;
+- NALTROS Brut (ALDI) global score: **94/100**;
+- OCU places it among the three standout cava and describes the expert tasting
+  panel as the most important part of the comparison;
+- the analysis also checks alcohol, sugar, volatile/total acidity, sulfites and
+  other additives;
+- exact OCU product page:
+  `https://www.ocu.org/alimentacion/vino/comparador/naltros-aldi-brut/210/124487`,
+  identifying D.O. Cava and winery Jaume Serra.
+
+Retail evidence:
+
+- exact ALDI card:
+  `https://www.aldi.es/producto/cava-brut-190300.html`;
+- browser-free raw HTML contains Next.js `__NEXT_DATA__`;
+- product payload lives at the reviewed
+  `props.pageProps.apiData` JSON-string field;
+- reviewed identity: `brandName=NALTROS ®`,
+  `salesUnit=0,75 l unidad`, `KVArticleNumber=1903`;
+- availability flags are explicit;
+- reviewed live offer on 26 September 2026: 3.15 EUR / 0.75 l and 4.20 EUR/l.
+
+Implementation decision: keep this as one exact source-specific retail
+refresher and a reviewed launch-seed award fact. Do not generalize it into a
+full ALDI catalogue crawler.
+
+#### AOVE candidate rejected for the launch seed
+
+Mercadona's official category/product APIs cleanly resolved Hacendado AOVE
+1 l to SKU `4740`, EAN `8402001001185`, current 4.45 EUR / 4.45 EUR/l,
+with current availability. The exact OCU card `109008` also confirms
+Hacendado AOVE and a 1000 ml format.
+
+However, the anonymous exact-product OCU HTML hides the product's own quality
+score behind `Ver resultados`. The apparent 89/100 Compra Maestra association
+can be inferred from surrounding comparator data and matching reference price,
+but it was not directly tied to exact product ID `109008` in the reviewed
+public product block. Under the fail-closed identity rule this is insufficient,
+so AOVE is deliberately **not** included in the starter seed.
