@@ -1390,7 +1390,11 @@ def _read_program_window(
                         "detail_checked": (
                             candidate.get("detail_checked", False)
                             if candidate.get("dates_source") == "detail"
-                            else False
+                            else (
+                                False
+                                if candidate.get("dates")
+                                else candidate.get("detail_checked", True)
+                            )
                         ),
                     }
                     for candidate in prior.get("candidates", [])
@@ -1410,7 +1414,7 @@ def _read_program_window(
                         "dates_source": "metadata",
                         "processed_dates": [],
                         "processed_chunks": {},
-                        "detail_checked": False,
+                        "detail_checked": not bool(candidate.get("dates")),
                     }
                     for candidate in prior.get("candidates", [])
                     if isinstance(candidate, dict)
