@@ -1910,6 +1910,224 @@ def _programme_article_metadata(
     )
 
 
+async def _ayuntamiento_programme_events(
+    api_key: str,
+    local_day: date,
+    previous: Tuple[SourceEvent, ...],
+    previous_state: Dict[str, Any],
+) -> Tuple[Tuple[SourceEvent, ...], Dict[str, Any]]:
+    """Read recent first-party fiesta posters only when their article changes."""
+
+    horizon = local_day + timedelta(days=AYUNTAMIENTO_PROGRAMME_HORIZON_DAYS)
+    previous = tuple(
+        event
+        for event in previous
+        if local_day <= event.end_date <= horizon
+    )
+    raw_prior_articles = (
+        previous_state.get("articles", {})
+        if isinstance(previous_state.get("articles", {}), dict)
+        else {}
+    )
+    prior_articles = {
+        link: article
+        for link, article in raw_prior_articles.items()
+        if (
+            isinstance(article, dict)
+            and article.get("extractor_version")
+            == AYUNTAMIENTO_PROGRAMME_EXTRACTOR_VERSION
+        )
+    }
+    previous_by_title: Dict[str, Tuple[SourceEvent, ...]] = {}
+    for article in prior_articles.values():
+        title = article.get("programme_title")
+        if not isinstance(title, str):
+            continue
+        previous_by_title[title] = tuple(
+            event
+            for event in previous
+            if event.programme_title == title
+        )
+
+    try:
+        candidates = await asyncio.to_thread(
+            _read_ayuntamiento_programme_candidates,
+            local_day,
+        )
+    except MunicipalAgendaError as exc:
+        LOGGER.warning(
+            "Official Ayuntamiento programme index unavailable: %s",
+            exc,
+        )
+        return previous, {
+            "version": 1,
+            "articles": prior_articles,
+        }
+
+    events: List[SourceEvent] = []
+    next_articles: Dict[str, Dict[str, Any]] = {}
+    seen_links = set()
+    for candidate in candidates:
+        link = candidate["link"]
+        seen_links.add(link)
+        previous_article = prior_articles.get(link, {})
+        previous_title = (
+            previous_article.get("programme_title")
+            if isinstance(previous_article, dict)
+            else None
+        )
+        prior_events = (
+            previous_by_title.get(previous_title, ())
+            if isinstance(previous_title, str)
+            else ()
+        )
+        try:
+            (
+                article_url,
+                programme_title,
+                article_hash,
+                poster_url,
+            ) = await asyncio.to_thread(
+                _read_ayuntamiento_programme_article,
+                candidate,
+            )
+        except MunicipalAgendaError as exc:
+            LOGGER.warning(
+                "Official Ayuntamiento programme article unavailable: %s",
+                exc,
+            )
+            if prior_events and isinstance(previous_article, dict):
+                events.extend(prior_events)
+                next_articles[link] = dict(previous_article)
+            continue
+
+        if (
+            prior_events
+            and isinstance(previous_article, dict)
+            and previous_article.get("article_sha256") == article_hash
+            and previous_article.get("poster_url") == poster_url
+            and previous_article.get("extractor_version")
+            == AYUNTAMIENTO_PROGRAMME_EXTRACTOR_VERSION
+        ):
+            events.extend(prior_events)
+            next_articles[article_url] = dict(previous_article)
+            continue
+
+        try:
+            poster, mime_type = await asyncio.to_thread(
+                _read_url,
+                poster_url,
+                POSTER_HOSTS,
+                POSTER_LIMIT_BYTES,
+            )
+            poster_hash = hashlib.sha256(poster).hexdigest()
+            if (
+                prior_events
+                and isinstance(previous_article, dict)
+                and previous_article.get("poster_sha256") == poster_hash
+                and previous_article.get("extractor_version")
+                == AYUNTAMIENTO_PROGRAMME_EXTRACTOR_VERSION
+            ):
+                events.extend(prior_events)
+                next_articles[article_url] = {
+                    **previous_article,
+                    "article_sha256": article_hash,
+                    "poster_url": poster_url,
+                }
+                continue
+
+            month = _poster_month(poster_url)
+            first = await extract_fiesta_programme_poster_events(
+                api_key,
+                poster,
+                mime_type,
+            )
+            second = await verify_fiesta_programme_poster_events(
+                api_key,
+                poster,
+                mime_type,
+            )
+            first_events = normalize_extraction_candidates(
+                {**first, "month": month},
+                month,
+                AYUNTAMIENTO_PROGRAMME_SOURCE,
+            )
+            second_events = normalize_extraction_candidates(
+                {**second, "month": month},
+                month,
+                AYUNTAMIENTO_PROGRAMME_SOURCE,
+            )
+            verified = intersect_verified_poster_events(
+                first_events,
+                second_events,
+            )
+            verified = tuple(
+                event
+                for event in verified
+                if local_day <= event.end_date <= horizon
+            )
+            if len(verified) < 2:
+                raise MunicipalAgendaError(
+                    "Official Ayuntamiento fiesta poster extraction was incomplete",
+                    code="PROGRAMME-INCOMPLETE",
+                    description="официальная программа праздника распознана неполно",
+                )
+            verified = _programme_article_metadata(
+                verified,
+                programme_title,
+            )
+            verified = tuple(
+                replace(event, image_url=poster_url)
+                for event in verified
+            )
+            events.extend(verified)
+            next_articles[article_url] = {
+                "programme_title": programme_title,
+                "article_sha256": article_hash,
+                "poster_url": poster_url,
+                "poster_sha256": poster_hash,
+                "extractor_version": AYUNTAMIENTO_PROGRAMME_EXTRACTOR_VERSION,
+            }
+        except (MunicipalAgendaError, GeminiError) as exc:
+            LOGGER.warning(
+                "Official Ayuntamiento fiesta poster unavailable: %s",
+                exc,
+            )
+            if prior_events and isinstance(previous_article, dict):
+                events.extend(prior_events)
+                next_articles[article_url] = dict(previous_article)
+
+    for link, article in prior_articles.items():
+        if link in seen_links:
+            continue
+        title = article.get("programme_title")
+        prior_events = (
+            previous_by_title.get(title, ())
+            if isinstance(title, str)
+            else ()
+        )
+        if prior_events:
+            events.extend(prior_events)
+            next_articles[link] = dict(article)
+
+    ordered = sorted(
+        {
+            _source_event_key(event): event
+            for event in events
+        }.values(),
+        key=lambda event: (
+            event.start_date,
+            event.start_time is None,
+            event.start_time or "",
+            normalized_title(event.title_es),
+        ),
+    )
+    return tuple(ordered[:MAX_EVENTS]), {
+        "version": 1,
+        "articles": next_articles,
+    }
+
+
 async def _turismo_text_programme_events(
     api_key: str,
     local_day: date,
