@@ -112,11 +112,21 @@ The first supported retailer research set is:
 - Consum;
 - Carrefour España supermarket;
 - Masymas / Juan Fornés Fornés;
-- DIA España;
-- Alcampo / Auchan.
+- DIA España.
 
 Retailer evidence adapters are not award adapters. They do not receive their
 own queues, state machines or schedules.
+
+### Excluded retailer: Alcampo / Auchan
+
+Alcampo / Auchan was technically researched and has usable exact product
+cards, but it is intentionally outside this feature's retailer scope because
+it has low practical local value for the Guardamar audience: there is no nearby
+store that most residents can conveniently use.
+
+Do not register Alcampo / Auchan in runtime private-label matching, retailer
+enrichment, price refresh or product-award publication unless the local scope
+is explicitly changed in a future decision.
 
 ### Publication-time price refresh
 
@@ -141,7 +151,7 @@ An exact image URL is not a licence to republish the image.
 The horizontal research found explicit intellectual-property restrictions on
 copying, reproduction, distribution or public communication of site content
 without permission for multiple target retailers, including Lidl, Consum,
-Carrefour, Alcampo, DIA and Masymas / Juan Fornés.
+Carrefour, DIA and Masymas / Juan Fornés.
 
 Therefore retailer product photos are disabled by default.
 
