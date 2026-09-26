@@ -1833,9 +1833,25 @@ def _aldi_next_data(source: str) -> Any:
     if match is None:
         raise ProductAwardError("ALDI Next.js data missing", code="PARSER")
     try:
-        return json.loads(match.group(1))
+        next_data = json.loads(match.group(1))
     except json.JSONDecodeError as exc:
         raise ProductAwardError("ALDI Next.js data invalid", code="PARSER") from exc
+
+    if not isinstance(next_data, dict):
+        raise ProductAwardError("ALDI Next.js root changed", code="PARSER")
+    props = next_data.get("props")
+    if not isinstance(props, dict):
+        raise ProductAwardError("ALDI Next.js props changed", code="PARSER")
+    page_props = props.get("pageProps")
+    if not isinstance(page_props, dict):
+        raise ProductAwardError("ALDI Next.js pageProps changed", code="PARSER")
+    api_data = page_props.get("apiData")
+    if not isinstance(api_data, str):
+        raise ProductAwardError("ALDI product payload missing", code="PARSER")
+    try:
+        return json.loads(api_data)
+    except json.JSONDecodeError as exc:
+        raise ProductAwardError("ALDI product payload invalid", code="PARSER") from exc
 
 
 def refresh_aldi_offers(
