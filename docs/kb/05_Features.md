@@ -651,17 +651,17 @@ The runtime contract is deliberately small:
 - the shared engine owns per-source silent baseline, deduplication, one queue,
   deterministic rendering, and Telegram delivery;
 - discovery runs at 13:50 Europe/Madrid;
-- publication runs at 14:20 and sends at most one queued award per local day;
+- publication runs at 14:20, but confirmed public delivery is limited to at most
+  one selected category winner every three local calendar days;
 - the first successful observation of a newly registered award source silently
   marks its existing items as seen, so new award families never backfill their
   historical archive.
 
-The active researched retailer set is Mercadona, Lidl España, ALDI España,
-Consum, Carrefour España supermarket, Masymas / Juan Fornés Fornés and
-DIA España. Alcampo / Auchan was technically researched but is intentionally
-excluded because it has low practical local utility for the Guardamar audience.
-Retailer evidence adapters do not get their own schedules or continuous
-catalogue polling.
+The active retailer set for product awards is exactly Mercadona, Carrefour
+España supermarket, ALDI España, Lidl España, DIA España and Consum. Masymas /
+Juan Fornés and Alcampo / Auchan remain useful historical research, but are
+outside this feature's active retail-matching scope. Retailer evidence adapters
+do not get their own schedules or continuous catalogue polling.
 
 OCU is the first active award adapter. `Mejor del Análisis` means the best
 result in that specific OCU comparison. `Compra Maestra` is a value/balance
@@ -689,36 +689,27 @@ commercial product. Each shown row keeps package size, retail format, price and
 unit price when available. The bot never chooses one package on behalf of the
 reader, and never transfers the award to a different flavour/recipe/SKU.
 
-The feed sends at most one item per day rather than exactly one. If no
-source-specific exceptional candidate exists, that day stays quiet.
+The feed selects one product per reviewed product category and award edition.
+A category adapter checks only the source's explicitly ordered #1, then #2,
+then #3 candidate and accepts the first one whose exact current product is
+verified in one of the six active retailers. If a source publishes only a
+winner, only that winner is checked. Unordered finalists or same-tier medals
+must never be converted into invented podium positions.
 
-Before the first production launch, a separate operator-only reviewed starter
-seed may create a bounded initial queue. It is not a new scheduled source and
-does not disable the normal per-source silent baseline. The 2026 seed currently
-contains seven fully reviewed candidates and deliberately introduces a
-different product category on day 3:
+Where a meaningful overall 0-100 score exists, the >=85 overall-score floor
+remains. A podium position cannot be rescued by a high partial subscore.
 
-1. Valle de San Juan Con Trufa at Mercadona — WCCC 99.30/100, best in class;
-2. Valle de San Juan Añejo at Mercadona — WCCC 99.25/100;
-3. NALTROS Brut at ALDI — OCU 94/100 among 25 cava;
-4. Queserías Entrepinares Añejo Tostado at Mercadona — official WCCC Top 20;
-5. Valle de San Juan Afrutado at Mercadona — WCCC 97.40/100;
-6. Valle de San Juan Semicurado at Mercadona — WCCC 97.40/100;
-7. Valle de San Juan Ibérico Añejo at Mercadona — WCCC 97.20/100.
+Public delivery is at most once every three local calendar days. Discovery may
+remain daily and cheap; the cooldown is enforced from the last confirmed
+delivery day. Empty categories stay silent.
 
-For the five Valle candidates, the entrant's official result announcement is a
-dated launch-seed fact, not a general automated source. Public copy explicitly
-attributes those scores to Valle de San Juan. NALTROS uses OCU's dated cava
-analysis as award evidence and one exact ALDI product card as current retail
-evidence. Exact current retail identity, availability and prices are still
-revalidated immediately before seed and before each publication.
+The previously reviewed seven-item starter seed is **superseded and must not
+be deployed**. It contains several cheeses from the same category and therefore
+does not satisfy the category-first product rule.
 
-Operator commands:
-
-- `product-awards-seed-preview` — read-only live preview of the complete
-  starter sequence;
-- `product-awards-seed` — all-or-nothing validation followed by idempotent
-  enqueueing; no Telegram send occurs.
+A future launch seed, if retained at all, must contain no more than one selected
+winner per reviewed category/edition after the same source-ranking and exact
+retail checks used by normal automation.
 
 Retailer product photos are disabled by default. Current legal checks found
 reuse restrictions on several target retailer sites. A Telegram image is
