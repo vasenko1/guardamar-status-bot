@@ -524,15 +524,15 @@ class SourceEvent:
 
 
 _SESSION_TITLE = re.compile(
-    r"^\\s*(?:(?P<ordinal>"
+    r"^\s*(?:(?P<ordinal>"
     r"primer(?:a|o)?|segund(?:a|o|0)|tercer(?:a|o)?|cuart[oa]|"
-    r"quint[oa]|sext[oa])\\s+(?P<label>turno|sesi[oó]n|pase)|"
-    r"(?P<number_prefix>[1-6])(?:[.ºª]|er|ra)?\\s+"
+    r"quint[oa]|sext[oa])\s+(?P<label>turno|sesi[oó]n|pase)|"
+    r"(?P<number_prefix>[1-6])(?:[.ºª]|er|ra)?\s+"
     r"(?P<label_prefix>turno|sesi[oó]n|pase)|"
-    r"(?P<label_suffix>turno|sesi[oó]n|pase)\\s*"
-    r"(?:n[úu]m(?:ero)?\\.?\\s*)?(?P<number_suffix>[1-6]))\\b"
-    r"\\s*(?:[:\\-–—]\\s*)?(?:para\\s+|de\\s+)?"
-    r"(?P<base>.+?)\\s*$",
+    r"(?P<label_suffix>turno|sesi[oó]n|pase)\s*"
+    r"(?:n[úu]m(?:ero)?\.?\s*)?(?P<number_suffix>[1-6]))\b"
+    r"\s*(?:[:-–—]\s*)?(?:para\s+|de\s+)?"
+    r"(?P<base>.+?)\s*$",
     re.IGNORECASE,
 )
 _SESSION_ORDINALS = {
