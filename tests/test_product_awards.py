@@ -27,6 +27,7 @@ from telegrambot.product_awards import (
     parse_ocu_awards,
     parse_wccc_top20,
     preview_starter_product_awards,
+    refresh_aldi_offers,
     refresh_mercadona_offers,
     reviewed_starter_product_awards,
     scan_next_product_award,
@@ -377,23 +378,24 @@ class StarterPoolTests(unittest.TestCase):
         )
         return parse_wccc_top20(document, 2026)[0]
 
-    def test_reviewed_seed_has_six_days_in_reviewed_order(self):
+    def test_reviewed_seed_has_seven_days_with_early_category_variety(self):
         with patch(
             "telegrambot.product_awards.load_wccc_item",
             return_value=AwardSourceItem((self.top20_candidate(),)),
         ):
             found = reviewed_starter_product_awards(2026)
 
-        self.assertEqual(len(found), 6)
+        self.assertEqual(len(found), 7)
         self.assertEqual(
             [item.retail.product_id for item in found],
-            ["4883", "50975", "50952", "11682", "11672", "5548"],
+            ["4883", "50975", "190300", "50952", "11682", "11672", "5548"],
         )
         self.assertEqual(
             [item.score for item in found],
             [
                 "99,30/100",
                 "99,25/100",
+                "94/100",
                 None,
                 "97,40/100",
                 "97,40/100",
@@ -403,7 +405,13 @@ class StarterPoolTests(unittest.TestCase):
         self.assertEqual(found[0].result, "Best of Class")
         self.assertEqual(found[0].editorial.production_country, "Испания")
         self.assertIn("valledesanjuan.com", found[0].source_url)
-        semicurado = found[4]
+        naltros = found[2]
+        self.assertEqual(naltros.retailer, "ALDI")
+        self.assertEqual(naltros.retail.relationship, "listed")
+        self.assertEqual(naltros.editorial.production_country, "Испания")
+        self.assertIn("игристых вин", naltros.editorial.headline_claim)
+
+        semicurado = found[5]
         self.assertEqual(semicurado.retail.ean, "8402001028861")
         self.assertEqual(
             semicurado.product_name,
@@ -481,14 +489,14 @@ class StarterPoolTests(unittest.TestCase):
                 )
             self.assertFalse(path.exists())
 
-    def test_starter_preview_requires_all_six_live_publications(self):
+    def test_starter_preview_requires_all_seven_live_publications(self):
         items = tuple(
             candidate(
                 event_key=f"starter-{index}",
                 product_name=f"продукт {index} Hacendado",
                 score=f"{99-index}/100",
             )
-            for index in range(6)
+            for index in range(7)
         )
         with (
             patch(
@@ -501,7 +509,125 @@ class StarterPoolTests(unittest.TestCase):
             ),
         ):
             publications = preview_starter_product_awards(2026)
-        self.assertEqual(len(publications), 6)
+        self.assertEqual(len(publications), 7)
+
+
+class AldiRetailRefreshTests(unittest.TestCase):
+    def naltros_candidate(self):
+        with patch(
+            "telegrambot.product_awards.load_wccc_item",
+            return_value=AwardSourceItem((
+                ProductAwardCandidate(
+                    source_kind="wccc",
+                    event_key="top20",
+                    source_url="https://worldchampioncheese.org/example",
+                    product_name="cheese",
+                    result="Top 20 finalist",
+                    award_body="WCCC",
+                    result_year=2026,
+                    retail=RetailEvidence(
+                        retailer="Mercadona",
+                        relationship="private_label",
+                        label="Hacendado",
+                        product_id="50952",
+                    ),
+                ),
+            )),
+        ):
+            return reviewed_starter_product_awards(2026)[2]
+
+    def next_data_html(self, *, available=True, price=3.15):
+        payload = {
+            "props": {
+                "pageProps": {
+                    "product": {
+                        "brandName": "NALTROS ®",
+                        "salesUnit": "0,75 l unidad",
+                        "isAvailable": available,
+                        "isComingSoon": False,
+                        "isRecall": False,
+                        "currentPrice": {
+                            "priceValue": price,
+                            "basePrice": [{
+                                "basePriceValue": 4.2,
+                                "basePriceScale": "l",
+                            }],
+                        },
+                        "productReferences": [{
+                            "type": "KVArticleNumber",
+                            "value": "1903",
+                        }],
+                    },
+                },
+            },
+        }
+        return (
+            '<html><body><script id="__NEXT_DATA__" '
+            'type="application/json">'
+            + json.dumps(payload, ensure_ascii=False)
+            + "</script></body></html>"
+        )
+
+    def test_exact_aldi_refresh_returns_current_offer(self):
+        item = self.naltros_candidate()
+        with patch(
+            "telegrambot.product_awards._fetch_raw_html",
+            return_value=(
+                self.next_data_html(),
+                "https://www.aldi.es/producto/cava-brut-190300.html",
+            ),
+        ):
+            offers = refresh_aldi_offers(item)
+        self.assertEqual(len(offers), 1)
+        self.assertEqual(offers[0].package, "0,75 л")
+        self.assertEqual(offers[0].price, "3,15 €")
+        self.assertEqual(offers[0].unit_price, "4,20 €/л")
+        self.assertEqual(offers[0].product_id, "190300")
+
+    def test_aldi_refresh_skips_unavailable_product(self):
+        item = self.naltros_candidate()
+        with patch(
+            "telegrambot.product_awards._fetch_raw_html",
+            return_value=(
+                self.next_data_html(available=False),
+                "https://www.aldi.es/producto/cava-brut-190300.html",
+            ),
+        ):
+            self.assertEqual(refresh_aldi_offers(item), ())
+
+    def test_aldi_refresh_rejects_identity_drift(self):
+        item = self.naltros_candidate()
+        source = self.next_data_html().replace("NALTROS ®", "OTHER BRAND")
+        with (
+            patch(
+                "telegrambot.product_awards._fetch_raw_html",
+                return_value=(
+                    source,
+                    "https://www.aldi.es/producto/cava-brut-190300.html",
+                ),
+            ),
+            self.assertRaises(ProductAwardError),
+        ):
+            refresh_aldi_offers(item)
+
+    def test_naltros_renderer_uses_wine_icon_and_keeps_score_out_of_title(self):
+        item = self.naltros_candidate()
+        offer = RetailOfferVariant(
+            package="0,75 л",
+            price="3,15 €",
+            unit_price="4,20 €/л",
+            product_id="190300",
+        )
+        message = build_publication(item, current_offers=(offer,)).message
+        title = message.split("</b>", 1)[0]
+        self.assertIn("Cava brut NALTROS в ALDI", title)
+        self.assertNotIn("94/100", title)
+        self.assertIn("94/100", message)
+        self.assertIn("🍾 <b>Что это за продукт</b>", message)
+        self.assertIn("Jaume Serra, Испания", message)
+        self.assertIn("0,75 л", message)
+        self.assertIn("3,15 €", message)
+        self.assertIn("<blockquote expandable>", message)
 
 
 class MercadonaRetailRefreshTests(unittest.TestCase):
