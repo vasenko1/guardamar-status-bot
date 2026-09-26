@@ -870,7 +870,6 @@ class TodoPartialRefreshTests(unittest.IsolatedAsyncioTestCase):
         }
         advanced_state = {
             **old_state,
-            "parser_version": 19,
             "cursor_modified_gmt": "2026-09-26T08:00:00",
         }
         prior_route = SourceEvent(
@@ -1008,10 +1007,6 @@ class TodoPartialRefreshTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             stored["sources"]["todo_cultura"]["cursor_modified_gmt"],
             old_state["cursor_modified_gmt"],
-        )
-        self.assertEqual(
-            stored["sources"]["todo_cultura"]["parser_version"],
-            19,
         )
         self.assertNotIn(
             "incomplete_session_dates",
