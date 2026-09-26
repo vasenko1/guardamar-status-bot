@@ -14,6 +14,8 @@ from telegrambot.municipal_agenda import (
     _current_events,
     _expand_explicit_todo_dates,
     _explicit_fiesta_article_events,
+    _evidence_supports_time,
+    _normalize_turismo_programme_text,
     _strict_quoted_todo_activity,
     _turismo_programme_blocks_by_date,
     _turismo_programme_events,
@@ -453,6 +455,143 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
             expected,
         )
 
+    def test_recovery_accepts_section_date_zero_padded_time_and_supported_suffix(self):
+        date_sections = {
+            date(2026, 9, 26): (
+                "26 de septiembre: Bingo Benéfico , traslado de la Virgen, "
+                "Santa Misa y presentación del cartel."
+            ),
+            date(2026, 10, 3): (
+                "3 de octubre: Trofeo de Petanca. "
+                "La jornada comenzará a las 10:00 horas con el XI Trofeo "
+                "de Petanca Virgen del Rosario en las pistas del Parque "
+                "Reina Sofía."
+            ),
+            date(2026, 10, 4): (
+                "4 de octubre: Rosario de la Aurora desde las 08:00 horas."
+            ),
+            date(2026, 10, 18): (
+                "18 de octubre: XLI Encuentro de Auroros. "
+                "La jornada comenzará a las 06:00 horas con la Despierta."
+            ),
+        }
+        source_text = "\n".join(date_sections.values())
+        result = {
+            "month": "octubre",
+            "events": [{
+                "title_es": (
+                    "Bingo Benéfico, traslado de la Virgen, Santa Misa "
+                    "y presentación del cartel"
+                ),
+                "start_date": "2026-09-26",
+                "end_date": "2026-09-26",
+                "start_time": None,
+                "end_time": None,
+                "place": None,
+                "evidence_es": date_sections[date(2026, 9, 26)],
+                "category": "event",
+            }, {
+                "title_es": "XI Trofeo de Petanca Virgen del Rosario",
+                "start_date": "2026-10-03",
+                "end_date": "2026-10-03",
+                "start_time": "10:00",
+                "end_time": None,
+                "place": "pistas del Parque Reina Sofía",
+                "evidence_es": (
+                    "La jornada comenzará a las 10:00 horas con el XI Trofeo "
+                    "de Petanca Virgen del Rosario en las pistas del Parque "
+                    "Reina Sofía."
+                ),
+                "category": "event",
+            }, {
+                "title_es": "Rosario de la Aurora",
+                "start_date": "2026-10-04",
+                "end_date": "2026-10-04",
+                "start_time": "08:00",
+                "end_time": None,
+                "place": None,
+                "evidence_es": (
+                    "4 de octubre: Rosario de la Aurora desde las 08:00 horas."
+                ),
+                "category": "event",
+            }, {
+                "title_es": "XLI Encuentro de Auroros: Despierta",
+                "start_date": "2026-10-18",
+                "end_date": "2026-10-18",
+                "start_time": "06:00",
+                "end_time": None,
+                "place": None,
+                "evidence_es": (
+                    "La jornada comenzará a las 06:00 horas con la Despierta."
+                ),
+                "category": "event",
+            }],
+        }
+
+        events = _normalize_turismo_programme_text(
+            result,
+            source_text,
+            source_date_sections=date_sections,
+        )
+
+        self.assertEqual(
+            {event.start_date for event in events},
+            {
+                date(2026, 9, 26),
+                date(2026, 10, 3),
+                date(2026, 10, 4),
+                date(2026, 10, 18),
+            },
+        )
+        self.assertTrue(
+            _evidence_supports_time(
+                "08:00",
+                "Rosario de la Aurora desde las 08:00 horas.",
+            )
+        )
+        self.assertTrue(
+            _evidence_supports_time(
+                "06:00",
+                "La jornada comenzará a las 06:00 horas con la Despierta.",
+            )
+        )
+        despierta = next(
+            event
+            for event in events
+            if event.start_date == date(2026, 10, 18)
+        )
+        self.assertEqual(despierta.title_es, "Despierta")
+
+    def test_recovery_date_context_does_not_cross_explicit_dates(self):
+        date_sections = {
+            date(2026, 10, 3): (
+                "3 de octubre: XI Trofeo de Petanca Virgen del Rosario."
+            ),
+            date(2026, 10, 4): (
+                "4 de octubre: Rosario de la Aurora."
+            ),
+        }
+        result = {
+            "month": "octubre",
+            "events": [{
+                "title_es": "XI Trofeo de Petanca Virgen del Rosario",
+                "start_date": "2026-10-04",
+                "end_date": "2026-10-04",
+                "start_time": None,
+                "end_time": None,
+                "place": None,
+                "evidence_es": date_sections[date(2026, 10, 3)],
+                "category": "event",
+            }],
+        }
+
+        with self.assertRaises(MunicipalAgendaError):
+            _normalize_turismo_programme_text(
+                result,
+                "\n".join(date_sections.values()),
+                source_date_sections=date_sections,
+            )
+
     async def test_all_invalid_initial_candidates_still_reach_scoped_recovery(self):
         link = (
             "https://guardamarturismo.com/"
@@ -556,7 +695,7 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(model.await_count, 2)
         model.assert_any_await("key", article_text)
-        model.assert_any_await("key", recovery_text)
+        model.assert_any_await("key", recovery_text, expected_dates)
         self.assertEqual(
             {event.start_date for event in events},
             set(expected_dates),
@@ -658,7 +797,7 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(model.await_count, 2)
         model.assert_any_await("key", "Programa completo Rosario")
-        model.assert_any_await("key", recovery_text)
+        model.assert_any_await("key", recovery_text, recovery_dates)
         self.assertEqual(
             {event.start_date for event in events},
             set(expected_dates),
@@ -779,6 +918,7 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
                 date_blocks,
                 (expected_dates[1], expected_dates[2]),
             ),
+            (expected_dates[1], expected_dates[2]),
         )
         self.assertEqual(events, ())
         self.assertEqual(state["articles"], {})

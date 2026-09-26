@@ -479,9 +479,16 @@ paragraph/list/heading text until the next explicit date. Every such date from
 today through the next 44 days must have an extracted event starting exactly on
 that date. If the first extraction misses one or more required dates, one
 targeted bounded recovery sends only the missing date sections through the same
-official-programme text extractor. Recovery facts outside the requested missing
-dates are discarded. An article that is still incomplete is rejected. A broad
-date-range event cannot satisfy multiple explicit occurrence dates. Version-1
+official-programme text extractor, with those missing dates explicitly supplied
+as the recovery contract. Detail quotations may inherit their date only from
+the deterministic WordPress section for that same date; quotations from another
+date section cannot validate the event. Recovery also accepts explicit
+zero-padded morning times such as `08:00` / `desde las 08:00`, and strips an
+unsupported colon-prefixed parent title only when the remaining suffix is
+itself fully supported by the exact quotation. Recovery facts outside the
+requested missing dates are discarded. An article that is still incomplete is
+rejected. A broad date-range event cannot satisfy multiple explicit occurrence
+dates. Version-1
 and version-2 generic programme facts are not trusted after this recovery
 upgrade and are revalidated once. The article must still yield at least two
 validated programme events overall. The adapter is text-first: it does not OCR

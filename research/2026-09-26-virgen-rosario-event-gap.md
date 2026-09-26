@@ -292,3 +292,48 @@ No evidence rule, completeness rule, source limit, cache version, scheduler, or
 model-call budget changes. A regression now covers the exact production shape:
 non-empty but fully invalid initial candidates followed by one valid scoped
 recovery.
+
+
+## Raw production recovery diagnosis after v3 control-flow fix
+
+A read-only diagnostic on production after commit
+`4d6162a8dee993c76ffd6f6c1d172210625f0401` captured the exact Rosario
+recovery request and raw Gemini JSON without mutating state.
+
+The recovery source slice was 3,985 characters and explicitly covered
+26 September and 3/4/7/15/18 October. Gemini returned twelve candidates, but
+none for 26 September. Its compatibility `month` field was simply
+`octubre`, which reinforced the need to tell recovery that the required dates
+may cross months.
+
+The candidate-level validator exposed three independent false-negative classes:
+
+1. **Date inherited from a section heading.** The 3 October Petanca and verbena
+   candidates, and most 7 October candidates, had exact title/time/place
+   evidence but their quotation did not repeat the date, so
+   `start_date_supported=False`.
+2. **Zero-padded morning time.** The exact line
+   `4 de octubre: Rosario de la Aurora desde las 08:00 horas.` supported the
+   date and title, but the old time matcher rejected `08:00`. Similar
+   zero-padded `06:00`, `08:00` and `09:00` rows appeared on 18 October.
+3. **Unsupported contextual title prefix.** The 18 October model titles such as
+   `XLI Encuentro de Auroros: Despierta` added a parent heading not present in
+   the exact event quotation. The suffix itself was source-supported.
+
+Only the 15 October conference passed every old gate, explaining why the whole
+recovery normalized to exactly one event.
+
+The correction keeps the validator fail-closed. For scoped recovery only, an
+event date may be supported by deterministic section context when its exact
+quotation is contained inside that same date's section. Cross-date evidence is
+explicitly regression-tested and rejected. Single-digit hours may be
+zero-padded and may use `desde las`. A colon-prefixed contextual title is
+reduced only to a suffix that already passes the ordinary title-evidence check.
+The recovery prompt also receives the exact missing dates and explicitly treats
+the schema month as non-limiting compatibility metadata for multi-month
+programmes.
+
+The current catalog already had the 26 September 17:00 Bingo through Todo
+Cultura; the missing 19:50 traslado and 20:00 mass remained a separate
+same-day completeness problem to verify after the repaired recovery and, if
+needed, the planned Ayuntamiento poster backstop.

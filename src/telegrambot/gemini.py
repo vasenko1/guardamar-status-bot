@@ -430,6 +430,7 @@ async def verify_agenda_poster_events(
 def _extract_agenda_text_events(
     api_key: str,
     source_text: str,
+    expected_dates: Sequence[date] = (),
 ) -> Dict[str, Any]:
     source_text = " ".join(source_text.split())
     if not 1 <= len(source_text) <= MAX_SOURCE_CHARACTERS:
@@ -437,6 +438,21 @@ def _extract_agenda_text_events(
             "Municipal agenda text has an invalid size",
             code="SOURCE-SIZE",
             description="текст официальной программы имеет неверный размер",
+        )
+    recovery_instruction = ""
+    if expected_dates:
+        recovery_instruction = (
+            " This is a bounded recovery over already selected official date "
+            "sections. EXPECTED_DATES are the only dates that may be returned: "
+            f"{json.dumps([value.isoformat() for value in expected_dates])}. "
+            "Return every explicitly named activity on those dates. Do not omit "
+            "a date when its section heading or dated summary line explicitly "
+            "names one or more activities. The source may span several months; "
+            "the schema month field is compatibility metadata only and must not "
+            "limit which EXPECTED_DATES are returned. A detail sentence may "
+            "inherit its date from the nearest preceding explicit date heading. "
+            "Keep title_es limited to words supported by evidence_es; do not "
+            "prepend a parent or section title that is absent from evidence_es."
         )
     prompt = (
         "Convert this official Spanish municipal cultural programme for "
@@ -458,7 +474,9 @@ def _extract_agenda_text_events(
         "one exact contiguous quotation from OFFICIAL TEXT that explicitly "
         "supports the complete title, start and end dates, every returned "
         "time, and the place. If one quotation cannot support all returned "
-        "facts, omit unsupported optional facts or the event.\n\nOFFICIAL TEXT:\n"
+        "facts, omit unsupported optional facts or the event."
+        + recovery_instruction
+        + "\n\nOFFICIAL TEXT:\n"
         + source_text
     )
     return _request_json(
@@ -472,6 +490,7 @@ def _extract_agenda_text_events(
 async def extract_agenda_text_events(
     api_key: str,
     source_text: str,
+    expected_dates: Sequence[date] = (),
 ) -> Dict[str, Any]:
     """Structure bounded official agenda text without image recognition."""
 
@@ -479,6 +498,7 @@ async def extract_agenda_text_events(
         _extract_agenda_text_events,
         api_key,
         source_text,
+        tuple(expected_dates),
     )
 
 

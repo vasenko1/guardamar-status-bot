@@ -1595,6 +1595,7 @@ def _normalize_turismo_programme_text(
     source_text: str,
     *,
     allow_all_invalid: bool = False,
+    source_date_sections: Optional[Dict[date, str]] = None,
 ) -> Tuple[SourceEvent, ...]:
     """Validate programme candidates independently without forcing one month."""
 
@@ -1603,12 +1604,26 @@ def _normalize_turismo_programme_text(
         raise MunicipalAgendaError("invalid Turismo programme event list")
     accepted: List[SourceEvent] = []
     for raw in raw_events:
+        candidate = raw
+        if source_date_sections is not None and isinstance(raw, dict):
+            evidence = _clean_text(raw.get("evidence_es"), 600)
+            title = _clean_text(raw.get("title_es"), 120)
+            if (
+                evidence is not None
+                and title is not None
+                and not _supported_title(title, evidence)
+                and ":" in title
+            ):
+                suffix = title.rsplit(":", 1)[1].strip()
+                if suffix and _supported_title(suffix, evidence):
+                    candidate = {**raw, "title_es": suffix}
         try:
             accepted.extend(normalize_extraction(
-                {"events": [raw]},
+                {"events": [candidate]},
                 None,
                 TURISMO_PROGRAMME_TEXT_SOURCE,
                 source_text,
+                source_date_sections,
             ))
         except MunicipalAgendaError:
             continue
@@ -1795,15 +1810,21 @@ async def _turismo_text_programme_events(
                             "фрагмент официальной статьи"
                         ),
                     )
+                recovery_date_sections = {
+                    day: "\n".join(date_blocks.get(day, ()))
+                    for day in missing_dates
+                }
                 recovered = await extract_agenda_text_events(
                     api_key,
                     recovery_text,
+                    missing_dates,
                 )
                 recovered_events = tuple(
                     event
                     for event in _normalize_turismo_programme_text(
                         recovered,
                         recovery_text,
+                        source_date_sections=recovery_date_sections,
                     )
                     if event.start_date in missing_dates
                 )
@@ -2385,23 +2406,39 @@ def _evidence_supports_date(value: date, evidence: str) -> bool:
     return value in _all_mentioned_dates(evidence, value)
 
 
+def _date_section_supports_evidence(
+    value: date,
+    evidence: str,
+    source_date_sections: Optional[Dict[date, str]],
+) -> bool:
+    if source_date_sections is None:
+        return False
+    section = source_date_sections.get(value)
+    return (
+        isinstance(section, str)
+        and evidence in " ".join(section.split())
+    )
+
+
 def _evidence_supports_time(value: str, evidence: str) -> bool:
     hour, minute = value.split(":")
-    hour_value = str(int(hour))
+    hour_number = int(hour)
+    hour_value = str(hour_number)
+    hour_pattern = rf"0?{hour_value}" if hour_number < 10 else hour_value
     minute_value = str(int(minute))
     if int(minute) == 0:
         pattern = (
             rf"(?<!\d)(?:"
-            rf"a\s+las\s+{hour_value}(?:[.,:]0{{1,2}})?"
+            rf"(?:a|desde)\s+las\s+{hour_pattern}(?:[.,:]0{{1,2}})?"
             rf"(?:\s*h(?:oras?)?\.?)?"
-            rf"|{hour_value}[.,:]0{{1,2}}(?:\s*h(?:oras?)?\.?)?"
-            rf"|{hour_value}\s+a\s+\d{{1,2}}"
+            rf"|{hour_pattern}[.,:]0{{1,2}}(?:\s*h(?:oras?)?\.?)?"
+            rf"|{hour_pattern}\s+a\s+\d{{1,2}}"
             rf"(?:[.,:]\d{{2}})?\s*h(?:oras?)?\.?"
-            rf"|{hour_value}\s*h(?:oras?)?\.?)\b"
+            rf"|{hour_pattern}\s*h(?:oras?)?\.?)\b"
         )
     else:
         pattern = (
-            rf"(?<!\d){hour_value}[.,:]{minute_value.zfill(2)}"
+            rf"(?<!\d){hour_pattern}[.,:]{minute_value.zfill(2)}"
             rf"\s*(?:h(?:oras?)?\.?)?\b"
         )
     return re.search(pattern, evidence, re.IGNORECASE) is not None
@@ -3186,6 +3223,7 @@ def normalize_extraction(
     expected_month: Optional[str] = None,
     source: str = "mupi",
     source_text: Optional[str] = None,
+    source_date_sections: Optional[Dict[date, str]] = None,
 ) -> Tuple[SourceEvent, ...]:
     """Validate OCR output and discard routine non-event entries."""
 
@@ -3269,8 +3307,22 @@ def normalize_extraction(
                     evidence,
                     allow_source_digit_typo=(source == "todo_cultura"),
                 )
-                or not _evidence_supports_date(start_date, evidence)
-                or not _evidence_supports_date(end_date, evidence)
+                or not (
+                    _evidence_supports_date(start_date, evidence)
+                    or _date_section_supports_evidence(
+                        start_date,
+                        evidence,
+                        source_date_sections,
+                    )
+                )
+                or not (
+                    _evidence_supports_date(end_date, evidence)
+                    or _date_section_supports_evidence(
+                        end_date,
+                        evidence,
+                        source_date_sections,
+                    )
+                )
                 or (
                     start_time is not None
                     and not _evidence_supports_time(start_time, evidence)
