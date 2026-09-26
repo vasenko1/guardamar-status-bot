@@ -762,7 +762,7 @@ the expandable public blockquote.
 
 #### Reviewed 2026 Valle de San Juan launch seed
 
-For the one-time launch queue only, four additional WCCC 2026 results were
+For the one-time launch queue only, five additional WCCC 2026 results were
 manually reviewed from Valle de San Juan's official entrant announcement:
 
 - Con Trufa — 99.30/100 and stated best in its category -> Mercadona SKU 4883,
@@ -771,6 +771,9 @@ manually reviewed from Valle de San Juan's official entrant announcement:
   SKU 50975 / EAN 2105600509750 and precut SKU 11680 /
   EAN 8402001028878;
 - Afrutado — 97.40/100 -> Mercadona SKU 11682, EAN 8402001028953;
+- Semicurado — 97.40/100 -> current Mercadona sheep semicurado SKU 11672,
+  EAN 8402001028861; the exact retail card identifies Valle de San Juan as a
+  supplier and the recipe as pasteurized sheep's milk;
 - Ibérico Añejo — 97.20/100 -> Mercadona SKU 5548, EAN 8402001048289.
 
 The mapping is additionally consistent with Valle de San Juan's official
@@ -783,7 +786,7 @@ award adapter.
 Dynamic claims are not frozen: every seed preview, seed operation and eventual
 publication still checks the exact Mercadona JSON for current SKU, EAN, brand,
 expected supplier, reviewed recipe markers, availability, share URL, package
-format and current price. If any of the five launch candidates fails that live
+format and current price. If any of the six launch candidates fails that live
 check, `product-awards-seed` changes no state.
 
 ### Mercadona exact-product retail refresh
