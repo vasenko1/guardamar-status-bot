@@ -1228,9 +1228,12 @@ def _session_group_is_renderable(members: Sequence) -> bool:
     ):
         return False
     orders = [getattr(member, "session_order", None) for member in members]
+    counts = [getattr(member, "session_count", None) for member in members]
     if (
         any(order is None for order in orders)
         or sorted(orders) != list(range(1, len(members) + 1))
+        or any(count is None for count in counts)
+        or any(count != len(members) for count in counts)
     ):
         return False
     starts = [member.starts_at for member in members]
