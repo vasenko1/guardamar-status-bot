@@ -1600,7 +1600,13 @@ def _ayuntamiento_programme_poster_url(
         "fiesta", "fiestas", "honor", "guardamar", "segura",
         "del", "de", "la", "el", "en", "todo",
     }
-    title_words = _claim_words(programme_title) - generic
+    title_words = {
+        word
+        for word in (_claim_words(programme_title) - generic)
+        if not word.isdigit()
+    }
+    if not title_words:
+        return None
     for candidate in reversed(parser.urls):
         url = urllib.parse.urljoin(article_url, candidate)
         parsed = urllib.parse.urlparse(url)
