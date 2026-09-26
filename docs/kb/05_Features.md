@@ -656,10 +656,12 @@ The runtime contract is deliberately small:
   marks its existing items as seen, so new award families never backfill their
   historical archive.
 
-The researched retailer set is Mercadona, Lidl España, ALDI España, Consum,
-Carrefour España supermarket, Masymas / Juan Fornés Fornés, DIA España and
-Alcampo / Auchan. Retailer evidence adapters do not get their own schedules or
-continuous catalogue polling.
+The active researched retailer set is Mercadona, Lidl España, ALDI España,
+Consum, Carrefour España supermarket, Masymas / Juan Fornés Fornés and
+DIA España. Alcampo / Auchan was technically researched but is intentionally
+excluded because it has low practical local utility for the Guardamar audience.
+Retailer evidence adapters do not get their own schedules or continuous
+catalogue polling.
 
 OCU is the first active award adapter. `Mejor del Análisis` means the best
 result in that specific OCU comparison. `Compra Maestra` is a value/balance
