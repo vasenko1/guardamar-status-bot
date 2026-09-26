@@ -1361,11 +1361,10 @@ def _read_turismo_programme_candidates(
         if "fiestas del campo" in folded_title:
             # Keep the existing evidence-complete Campo adapter independent.
             continue
-        if re.search(
-            r"\b(?:programa|fiestas?|feria|hogueras)\b",
-            folded_title,
-            re.IGNORECASE,
-        ) is None:
+        if not (
+            "programa" in folded_title
+            or re.match(r"^(?:fiestas?|feria|hogueras)\b", folded_title)
+        ):
             continue
         hints = _all_mentioned_dates(f"{title} {excerpt}", local_day)
         relevant = tuple(day for day in hints if earliest <= day <= horizon)
