@@ -944,6 +944,20 @@ _MERCADONA_CONTRACTS: dict[str, _MercadonaProductContract] = {
         ),
         recipe_markers=("vaca min 80", "oveja min 5", "cabra min 5"),
     ),
+    "11672": _MercadonaProductContract(
+        evidence=_mercadona_evidence(
+            "11672",
+            "8402001028861",
+            "https://tienda.mercadona.es/product/11672/"
+            "queso-semicurado-oveja-hacendado-cortado-cunitas-pieza",
+            variant="нарезка клиньями",
+        ),
+        supplier_names=(
+            "Valle de San Juan S.L.",
+            "Distribuciones Juan Luna S.L.U",
+        ),
+        recipe_markers=("leche pasteurizada de oveja",),
+    ),
     "5548": _MercadonaProductContract(
         evidence=_mercadona_evidence(
             "5548",
@@ -1171,6 +1185,29 @@ def _valle_wccc_seed_candidates() -> tuple[ProductAwardCandidate, ...]:
         ),
         ProductAwardCandidate(
             **common,
+            event_key="2026|valle|semicurado|97.40",
+            product_name="Queso semicurado de oveja Hacendado cortado en cuñitas",
+            result="97.40 points",
+            retail=_MERCADONA_CONTRACTS["11672"].evidence,
+            score="97,40/100",
+            editorial=AwardEditorialFacts(
+                **common_editorial,
+                headline_claim="получил выдающуюся оценку на мировом конкурсе",
+                product_summary=(
+                    "Полувыдержанный сыр из пастеризованного овечьего молока, "
+                    "продающийся уже нарезанным на небольшие клинья."
+                ),
+                tasting_notes=(
+                    "мягкий и сливочный вкус",
+                    "ноты сливок и сливочного масла",
+                    "лёгкая сладость",
+                    "среднеэластичная текстура",
+                ),
+                composition_details=("пастеризованное овечье молоко",),
+            ),
+        ),
+        ProductAwardCandidate(
+            **common,
             event_key="2026|valle|iberico-anejo|97.20",
             product_name="Queso añejo ibérico mezcla Hacendado cortado en cuñitas",
             result="97.20 points",
@@ -1219,7 +1256,7 @@ def reviewed_starter_product_awards(year: int) -> tuple[ProductAwardCandidate, .
     # Hand-reviewed launch order: strongest numeric results first, with the
     # organizer-confirmed Top-20 item inserted before the remaining 97-point
     # products. The shared runtime queue itself remains source-agnostic FIFO.
-    return (valle[0], valle[1], top20[0], valle[2], valle[3])
+    return (valle[0], valle[1], top20[0], valle[2], valle[3], valle[4])
 
 
 # Add future validated adapters here. A new adapter only needs a stable list of
