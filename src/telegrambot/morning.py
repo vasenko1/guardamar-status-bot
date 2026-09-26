@@ -497,6 +497,10 @@ def _merge_events(*groups):
                         current.registration_contact
                         or event.registration_contact
                     ),
+                    registration_url=(
+                        current.registration_url
+                        or event.registration_url
+                    ),
                     capacity_limited=(
                         current.capacity_limited or event.capacity_limited
                     ),
