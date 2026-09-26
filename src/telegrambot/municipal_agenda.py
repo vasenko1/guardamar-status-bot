@@ -1590,6 +1590,13 @@ async def _turismo_text_programme_events(
                 if event.end_date >= local_day and event.start_date <= horizon
             )
             if not article_events:
+                # The changed article was read and validated successfully, so
+                # it supersedes any older still-relevant occurrence. Do not let
+                # the retention pass resurrect stale events that the source has
+                # explicitly removed or moved outside the planning horizon.
+                if isinstance(previous_title, str):
+                    seen_titles.add(previous_title)
+                seen_titles.add(programme_title)
                 continue
             article_events = _programme_article_metadata(
                 article_events, programme_title
