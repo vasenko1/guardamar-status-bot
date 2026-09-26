@@ -544,11 +544,11 @@ _SESSION_ORDINALS = {
     "sexta": 6, "sexto": 6,
 }
 _TODO_SESSION_MARKER = re.compile(
-    r"\\b(?:primer(?:a|o)?|segund(?:a|o|0)|tercer(?:a|o)?|cuart[oa]|"
-    r"quint[oa]|sext[oa]|[1-6](?:[.ºª]|er|ra)?)\\s+"
-    r"(?:turno|sesi[oó]n|pase)\\b|"
-    r"\\b(?:turno|sesi[oó]n|pase)\\s*"
-    r"(?:n[úu]m(?:ero)?\\.?\\s*)?[1-6]\\b",
+    r"\b(?:primer(?:a|o)?|segund(?:a|o|0)|tercer(?:a|o)?|cuart[oa]|"
+    r"quint[oa]|sext[oa]|[1-6](?:[.ºª]|er|ra)?)\s+"
+    r"(?:turno|sesi[oó]n|pase)\b|"
+    r"\b(?:turno|sesi[oó]n|pase)\s*"
+    r"(?:n[úu]m(?:ero)?\.?\s*)?[1-6]\b",
     re.IGNORECASE,
 )
 
@@ -3755,7 +3755,7 @@ async def refresh_municipal_catalog(
 
 
 def _todo_incomplete_session_dates(state: Any) -> frozenset[date]:
-    """Return only validated dates whose Todo extraction is incomplete."""
+    """Return dates where an unresolved Todo row may hide a session."""
 
     if not isinstance(state, dict):
         return frozenset()
