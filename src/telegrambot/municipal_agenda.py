@@ -1837,6 +1837,18 @@ async def _ayuntamiento_programme_events(
                     first_events,
                     verified_events,
                 )
+                if (
+                    len(verified_poster_events) != len(first_events)
+                    or len(verified_poster_events) != len(verified_events)
+                ):
+                    raise MunicipalAgendaError(
+                        "Independent Ayuntamiento programme reads disagreed",
+                        code="PROGRAMME-INCOMPLETE",
+                        description=(
+                            "два независимых чтения официальной программы "
+                            "дали разные наборы мероприятий"
+                        ),
+                    )
                 article_events = merge_text_and_poster_events(
                     article_events,
                     verified_poster_events,
