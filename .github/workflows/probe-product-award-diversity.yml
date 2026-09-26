@@ -16,62 +16,33 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python -m pip install -e .
-      - name: Probe ALDI raw data and Mercadona category tree
+      - name: Probe OCU AOVE and Mercadona exact SKU
         run: |
           python - <<'PY'
-          import json, re, urllib.request
+          import json, urllib.request
 
           headers={"User-Agent":"GuardamarMorningDigest/0.13"}
 
-          print("=== ALDI RAW ===")
-          url="https://www.aldi.es/p/cava-brut-190300.html"
+          print("=== OCU AOVE RAW ===")
+          url="https://www.ocu.org/alimentacion/aceite-oliva/comparador/hacendado-mercadona-aove/196/109008"
           req=urllib.request.Request(url,headers={**headers,"Accept":"text/html"})
           with urllib.request.urlopen(req,timeout=20) as r:
               body=r.read().decode("utf-8","replace")
           print("bytes",len(body))
-          for needle in ("NALTROS","3.15","3,15","4.20","4,20","0,75","0.75","application/ld+json","price"):
+          for needle in ("109008","HACENDADO (MERCADONA) AOVE","89","Compra Maestra","4,86","4.86","1000 ml","Oleoestepa"):
               pos=body.lower().find(needle.lower())
               print("needle",needle,"pos",pos)
               if pos>=0:
-                  print(body[max(0,pos-500):pos+1600].replace("\n"," ")[:2200])
+                  print(body[max(0,pos-1200):pos+3000].replace("\n"," ")[:4500])
 
-          print("=== MERCADONA CATEGORY INDEX ===")
-          url="https://tienda.mercadona.es/api/categories/?lang=es&wh=alc1"
+          print("=== MERCADONA SKU 4740 ===")
+          url="https://tienda.mercadona.es/api/products/4740/?lang=es&wh=alc1"
           req=urllib.request.Request(url,headers={**headers,"Accept":"application/json"})
           with urllib.request.urlopen(req,timeout=20) as r:
-              categories=json.load(r)
-          print("root_type",type(categories).__name__)
-          items=categories if isinstance(categories,list) else categories.get("results",categories.get("categories",[]))
-          print("root_count",len(items) if isinstance(items,list) else -1)
-          if isinstance(items,list):
-              for item in items:
-                  if not isinstance(item,dict):
-                      continue
-                  print("ROOT",item.get("id"),item.get("name") or item.get("display_name") or item.get("title"))
-                  for key in ("categories","children","subcategories"):
-                      children=item.get(key)
-                      if isinstance(children,list):
-                          for child in children:
-                              if isinstance(child,dict):
-                                  name=child.get("name") or child.get("display_name") or child.get("title")
-                                  print(" CHILD",child.get("id"),name)
-                                  if name and any(x in name.lower() for x in ("aceite","vinagre")):
-                                      cid=child.get("id")
-                                      for detail_url in (
-                                          f"https://tienda.mercadona.es/api/categories/{cid}/?lang=es&wh=alc1",
-                                          f"https://tienda.mercadona.es/api/categories/{cid}?lang=es&wh=alc1",
-                                      ):
-                                          try:
-                                              rr=urllib.request.urlopen(urllib.request.Request(detail_url,headers={**headers,"Accept":"application/json"}),timeout=20)
-                                              data=json.load(rr)
-                                              text=json.dumps(data,ensure_ascii=False)
-                                              print(" DETAIL",detail_url,"bytes",len(text))
-                                              for needle in ("virgen extra","aove","hacendado"):
-                                                  pos=text.lower().find(needle)
-                                                  print("  needle",needle,"pos",pos)
-                                                  if pos>=0:
-                                                      print(text[max(0,pos-1200):pos+3500])
-                                          except Exception as exc:
-                                              print(" DETAIL_ERROR",detail_url,type(exc).__name__,str(exc))
+              obj=json.load(r)
+          for key in ("id","display_name","ean","brand","packaging","published","unavailable_from","unavailable_weekdays","share_url"):
+              print(key,repr(obj.get(key)))
+          print("price",json.dumps(obj.get("price_instructions"),ensure_ascii=False))
+          print("details",json.dumps(obj.get("details"),ensure_ascii=False))
+          print("nutrition",json.dumps(obj.get("nutrition_information"),ensure_ascii=False)[:5000])
           PY
