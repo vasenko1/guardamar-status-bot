@@ -1,0 +1,55 @@
+name: Dry run product awards
+
+on:
+  push:
+    branches:
+      - feat/private-label-product-awards-poc
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e .
+      - name: Live OCU dry run
+        run: |
+          python - <<'PY'
+          from datetime import datetime
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+          from zoneinfo import ZoneInfo
+
+          from telegrambot.product_awards import (
+              SOURCE_ADAPTERS,
+              ProductAwardState,
+              build_publication,
+              discover_product_awards,
+          )
+
+          now = datetime(2026, 9, 26, 12, 0, tzinfo=ZoneInfo("Europe/Madrid"))
+          with TemporaryDirectory() as d:
+              state = ProductAwardState(Path(d) / "awards.json")
+              candidates = discover_product_awards(now, state, preview=True)
+              print(f"CANDIDATES={len(candidates)}")
+              for i, c in enumerate(candidates, 1):
+                  print(f"=== CANDIDATE {i} ===")
+                  print("source_kind=", c.source_kind)
+                  print("retailer=", c.retailer)
+                  print("relationship=", c.retail.relationship)
+                  print("label=", c.retail.label)
+                  print("product=", c.product_name)
+                  print("result=", c.result)
+                  print("score=", c.score)
+                  print("source_price=", c.source_price)
+                  print("sample_size=", c.sample_size)
+                  print("source_url=", c.source_url)
+                  print("--- MESSAGE ---")
+                  print(build_publication(c).message)
+                  print("--- END MESSAGE ---")
+          PY
