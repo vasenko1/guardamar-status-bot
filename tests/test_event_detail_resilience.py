@@ -389,6 +389,51 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(group_keys[2], group_keys[3])
         self.assertNotEqual(group_keys[0], group_keys[2])
 
+    def test_rosario_rows_are_not_mistaken_for_session_family(self):
+        day = date(2026, 9, 26)
+        events = (
+            SourceEvent(
+                "Gran bingo de regalos",
+                day, day, "17:00", None,
+                "Ayuntamiento", "event",
+                sources=("todo_cultura",),
+            ),
+            SourceEvent(
+                "Solemne traslado de la Virgen",
+                day, day, "19:50", None,
+                "Parroquia", "event",
+                sources=("todo_cultura",),
+            ),
+            SourceEvent(
+                "Santa Misa y presentación del cartel",
+                day, day, "20:00", None,
+                "Parroquia", "event",
+                sources=("todo_cultura",),
+            ),
+        )
+        rows = (
+            (
+                day, "17:00",
+                "2026-09-26\n– 17 h.: Gran bingo de regalos.",
+            ),
+            (
+                day, "19:50",
+                "2026-09-26\n– 19,50 h.: Solemne traslado de la Virgen.",
+            ),
+            (
+                day, "20:00",
+                "2026-09-26\n– 20 h.: Santa Misa y presentación del cartel.",
+            ),
+        )
+
+        annotated = _annotate_todo_source_sessions(events, rows)
+
+        self.assertTrue(all(
+            event.session_source_key is None
+            and event.session_parent_title_es is None
+            for event in annotated
+        ))
+
     def test_suffix_marker_is_supported_but_not_required_for_live_source(self):
         day = date(2026, 9, 26)
         row = (
