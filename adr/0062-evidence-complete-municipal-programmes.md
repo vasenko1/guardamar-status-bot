@@ -83,3 +83,38 @@ The existing bounded Todo supplement is retained, with these clarifications:
 This amendment changes neither publication budgets nor editorial grouping.
 Todo Cultura remains supplemental; primary official festival-programme coverage
 is a separate source-adapter concern.
+
+
+## 26 September 2026 amendment: bounded official Turismo programme articles
+
+The Rosario audit also confirmed that the monthly cultural agenda is not the
+only first-party event publication surface. Turismo Guardamar regularly
+publishes separate WordPress articles for complete or multi-day programmes,
+including Virgen del Rosario, Moros y Cristianos, Hogueras, Feria del Comercio
+and Fiestas del Campo.
+
+The existing Campo adapter remains unchanged because it has stronger
+programme-specific deterministic rules and poster corroboration. A separate
+bounded text-first adapter now covers the wider article class:
+
+- one recent-post metadata request reads at most 20 official Spanish posts;
+- only current-year, programme-shaped titles with an explicit relevant date in
+  title/excerpt are candidates;
+- the existing Campo article is excluded from this generic path;
+- at most three candidate articles are considered per sync;
+- unchanged candidates reuse their last verified article events without a
+  detail read or model call;
+- changed/new candidates fetch one bounded first-party detail page and use the
+  existing evidence-bound official-text extractor;
+- a candidate is accepted as a programme only if its complete extracted article
+  contains at least two independently validated events before current/future
+  filtering;
+- only occurrences from today through the existing 44-day planning horizon are
+  retained;
+- temporary index/detail/model failures preserve still-relevant last-good facts;
+- no generic image OCR, browser, credential, daemon or extra scheduler is added.
+
+This extends discovery, not editorial policy. Verified programme occurrences
+enter the existing normalized event model with one `programme_title`; Todo
+Cultura may still enrich or time-match the same occurrence through the normal
+merge path.

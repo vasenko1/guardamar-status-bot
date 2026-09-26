@@ -78,6 +78,15 @@ TURISMO_POSTS_URL = (
     "?search=Fiestas%20del%20Campo&per_page=10"
     "&_fields=id,date,modified,link,title,content"
 )
+TURISMO_PROGRAMME_INDEX_URL = (
+    "https://guardamarturismo.com/wp-json/wp/v2/posts"
+    "?per_page=20&orderby=modified&order=desc"
+    "&_fields=id,modified,link,title,excerpt"
+)
+TURISMO_PROGRAMME_TEXT_SOURCE = "turismo_programme_text"
+MAX_TURISMO_PROGRAMME_ARTICLES = 3
+TURISMO_PROGRAMME_HORIZON_DAYS = 44
+TURISMO_PROGRAMME_PAST_GRACE_DAYS = 14
 CULTURA_GUARDAMAR_PAGE_URL = "https://www.facebook.com/culturaguardamar"
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 _TIME_PATTERN = re.compile(r"^\d{2}:\d{2}$")
@@ -1287,6 +1296,382 @@ def _merge_todo_incremental_state(
     return result
 
 
+def _plain_wordpress_text(
+    value: Any,
+    maximum: int = 12_000,
+    *,
+    truncate: bool = True,
+) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    text = " ".join(html.unescape(re.sub(r"<[^>]+>", " ", value)).split())
+    if not text:
+        return None
+    if len(text) > maximum:
+        return text[:maximum] if truncate else None
+    return text
+
+
+def _is_spanish_turismo_article(link: str) -> bool:
+    if not _is_allowed_url(link, PAGE_HOSTS):
+        return False
+    path = urllib.parse.urlparse(link).path.strip("/").casefold()
+    first = path.split("/", 1)[0] if path else ""
+    return first not in {"ca", "en", "fr"}
+
+
+def _read_turismo_programme_candidates(
+    local_day: date,
+) -> Optional[Tuple[Dict[str, Any], ...]]:
+    """Discover a few recent official programme-shaped Turismo posts."""
+
+    try:
+        payload, _, _ = fetch_bounded(
+            TURISMO_PROGRAMME_INDEX_URL,
+            is_allowed_url=lambda value: _is_allowed_url(value, PAGE_HOSTS),
+            accepted_types=frozenset({"application/json"}),
+            limit_bytes=300_000,
+            timeout_seconds=REQUEST_TIMEOUT_SECONDS,
+            headers={
+                "Accept": "application/json",
+                "User-Agent": "GuardamarMorningDigest/0.12",
+            },
+        )
+        posts = json.loads(payload)
+    except (BoundedFetchError, ValueError, UnicodeDecodeError):
+        return None
+    if not isinstance(posts, list):
+        return None
+
+    horizon = local_day + timedelta(days=TURISMO_PROGRAMME_HORIZON_DAYS)
+    earliest = local_day - timedelta(days=TURISMO_PROGRAMME_PAST_GRACE_DAYS)
+    candidates = []
+    for post in posts[:20]:
+        if not isinstance(post, dict) or not isinstance(post.get("id"), int):
+            continue
+        title = _plain_wordpress_text(post.get("title", {}).get("rendered"), 180)
+        excerpt = _plain_wordpress_text(
+            post.get("excerpt", {}).get("rendered"), 2_000
+        )
+        link = post.get("link")
+        modified = post.get("modified")
+        if not all(isinstance(value, str) for value in (link, modified)):
+            continue
+        if (
+            title is None
+            or excerpt is None
+            or str(local_day.year) not in title
+            or not _is_spanish_turismo_article(link)
+        ):
+            continue
+        folded_title = title.casefold()
+        if "fiestas del campo" in folded_title:
+            # Keep the existing evidence-complete Campo adapter independent.
+            continue
+        if not (
+            "programa" in folded_title
+            or re.match(r"^(?:fiestas?|feria|hogueras)\b", folded_title)
+        ):
+            continue
+        hints = _all_mentioned_dates(f"{title} {excerpt}", local_day)
+        relevant = tuple(day for day in hints if earliest <= day <= horizon)
+        if not relevant:
+            continue
+        future = tuple(day for day in relevant if day >= local_day)
+        distance = (
+            min((day - local_day).days for day in future)
+            if future
+            else min((local_day - day).days for day in relevant)
+            + TURISMO_PROGRAMME_HORIZON_DAYS
+        )
+        candidates.append({
+            "id": post["id"],
+            "link": link,
+            "modified": modified,
+            "title": title,
+            "distance": distance,
+        })
+    candidates.sort(key=lambda item: (item["distance"], item["link"]))
+    return tuple(candidates[:MAX_TURISMO_PROGRAMME_ARTICLES])
+
+
+def _read_turismo_programme_article(
+    candidate: Dict[str, Any],
+) -> Optional[Tuple[str, str, str, str]]:
+    identifier = candidate.get("id")
+    if not isinstance(identifier, int):
+        return None
+    url = (
+        "https://guardamarturismo.com/wp-json/wp/v2/posts/"
+        f"{identifier}?_fields=id,modified,link,title,content"
+    )
+    try:
+        payload, _, _ = fetch_bounded(
+            url,
+            is_allowed_url=lambda value: _is_allowed_url(value, PAGE_HOSTS),
+            accepted_types=frozenset({"application/json"}),
+            limit_bytes=250_000,
+            timeout_seconds=REQUEST_TIMEOUT_SECONDS,
+            headers={
+                "Accept": "application/json",
+                "User-Agent": "GuardamarMorningDigest/0.12",
+            },
+        )
+        post = json.loads(payload)
+    except (BoundedFetchError, ValueError, UnicodeDecodeError):
+        return None
+    if not isinstance(post, dict) or post.get("id") != identifier:
+        return None
+    link = post.get("link")
+    modified = post.get("modified")
+    title = _plain_wordpress_text(post.get("title", {}).get("rendered"), 120)
+    text = _plain_wordpress_text(
+        post.get("content", {}).get("rendered"),
+        truncate=False,
+    )
+    if (
+        title is None
+        or text is None
+        or not all(isinstance(value, str) for value in (link, modified))
+        or not _is_spanish_turismo_article(link)
+        or link != candidate.get("link")
+    ):
+        return None
+    return link, modified, title, text
+
+
+def _normalize_turismo_programme_text(
+    result: Dict[str, Any],
+    source_text: str,
+) -> Tuple[SourceEvent, ...]:
+    """Validate a programme article without forcing one calendar month."""
+
+    raw_events = result.get("events")
+    if not isinstance(raw_events, list) or len(raw_events) > MAX_EVENTS:
+        raise MunicipalAgendaError("invalid Turismo programme event list")
+    accepted: List[SourceEvent] = []
+    for raw in raw_events:
+        try:
+            accepted.extend(normalize_extraction(
+                {"events": [raw]},
+                None,
+                TURISMO_PROGRAMME_TEXT_SOURCE,
+                source_text,
+            ))
+        except MunicipalAgendaError:
+            continue
+    if raw_events and not accepted:
+        raise MunicipalAgendaError(
+            "Every Turismo programme event candidate was invalid",
+            code="NO-VALID-EVENTS",
+            description="все события официальной программы не прошли проверку",
+        )
+    return tuple(accepted)
+
+
+def _programme_article_metadata(
+    events: Tuple[SourceEvent, ...],
+    programme_title: str,
+) -> Tuple[SourceEvent, ...]:
+    ordered = sorted(
+        events,
+        key=lambda event: (
+            event.start_date,
+            event.start_time is None,
+            event.start_time or "",
+            normalized_title(event.title_es),
+        ),
+    )
+    return tuple(
+        replace(
+            event,
+            programme_title=programme_title,
+            programme_order=index * 10,
+        )
+        for index, event in enumerate(ordered, start=1)
+    )
+
+
+async def _turismo_text_programme_events(
+    api_key: str,
+    local_day: date,
+    previous: Tuple[SourceEvent, ...],
+    previous_state: Dict[str, Any],
+) -> Tuple[Tuple[SourceEvent, ...], Dict[str, Any]]:
+    """Collect a few official Turismo programme articles text-first."""
+
+    horizon = local_day + timedelta(days=TURISMO_PROGRAMME_HORIZON_DAYS)
+    previous = tuple(
+        event
+        for event in previous
+        if event.end_date >= local_day and event.start_date <= horizon
+    )
+    prior_articles = (
+        previous_state.get("articles", {})
+        if isinstance(previous_state.get("articles", {}), dict)
+        else {}
+    )
+    previous_by_title: Dict[str, Tuple[SourceEvent, ...]] = {}
+    for article in prior_articles.values():
+        if not isinstance(article, dict):
+            continue
+        title = article.get("programme_title")
+        if not isinstance(title, str):
+            continue
+        previous_by_title[title] = tuple(
+            event for event in previous if event.programme_title == title
+        )
+
+    candidates = await asyncio.to_thread(
+        _read_turismo_programme_candidates, local_day
+    )
+    if candidates is None:
+        return previous, previous_state
+
+    events: List[SourceEvent] = []
+    next_articles: Dict[str, Dict[str, Any]] = {}
+    seen_titles = set()
+    for candidate in candidates:
+        link = candidate["link"]
+        previous_article = prior_articles.get(link, {})
+        previous_title = (
+            previous_article.get("programme_title")
+            if isinstance(previous_article, dict)
+            else None
+        )
+        prior_events = (
+            previous_by_title.get(previous_title, ())
+            if isinstance(previous_title, str)
+            else ()
+        )
+        if (
+            prior_events
+            and isinstance(previous_article, dict)
+            and previous_article.get("modified") == candidate["modified"]
+            and previous_article.get("extractor_version") == 1
+        ):
+            events.extend(prior_events)
+            next_articles[link] = dict(previous_article)
+            seen_titles.add(previous_title)
+            continue
+
+        detail = await asyncio.to_thread(
+            _read_turismo_programme_article, candidate
+        )
+        if detail is None:
+            if prior_events and isinstance(previous_article, dict):
+                events.extend(prior_events)
+                next_articles[link] = dict(previous_article)
+                seen_titles.add(previous_title)
+            continue
+        article_url, modified, programme_title, article_text = detail
+        fingerprint = hashlib.sha256(article_text.encode("utf-8")).hexdigest()
+        if (
+            prior_events
+            and isinstance(previous_article, dict)
+            and previous_article.get("sha256") == fingerprint
+            and previous_article.get("extractor_version") == 1
+        ):
+            events.extend(prior_events)
+            next_articles[article_url] = {
+                **previous_article,
+                "modified": modified,
+            }
+            seen_titles.add(previous_title)
+            continue
+
+        try:
+            extracted = await extract_agenda_text_events(api_key, article_text)
+            all_article_events = _normalize_turismo_programme_text(
+                extracted, article_text
+            )
+            if len(all_article_events) < 2:
+                raise MunicipalAgendaError(
+                    "Official Turismo programme article was not programme-shaped",
+                    code="PROGRAMME-SHAPE",
+                    description=(
+                        "официальная статья не дала нескольких "
+                        "подтверждённых мероприятий"
+                    ),
+                )
+            article_events = tuple(
+                event
+                for event in all_article_events
+                if event.end_date >= local_day and event.start_date <= horizon
+            )
+            if not article_events:
+                # The changed article was read and validated successfully, so
+                # it supersedes any older still-relevant occurrence. Do not let
+                # the retention pass resurrect stale events that the source has
+                # explicitly removed or moved outside the planning horizon.
+                if isinstance(previous_title, str):
+                    seen_titles.add(previous_title)
+                seen_titles.add(programme_title)
+                continue
+            article_events = _programme_article_metadata(
+                article_events, programme_title
+            )
+        except (GeminiError, MunicipalAgendaError) as exc:
+            LOGGER.warning(
+                "Official Turismo programme article unavailable: %s", exc
+            )
+            if prior_events and isinstance(previous_article, dict):
+                events.extend(prior_events)
+                next_articles[link] = dict(previous_article)
+                seen_titles.add(previous_title)
+            continue
+
+        events.extend(article_events)
+        next_articles[article_url] = {
+            "modified": modified,
+            "sha256": fingerprint,
+            "programme_title": programme_title,
+            "extractor_version": 1,
+        }
+        seen_titles.add(programme_title)
+
+    # A programme may fall out of the recent-post index before its last
+    # occurrence. Retain only its still-relevant verified facts until expiry.
+    for link, article in prior_articles.items():
+        if not isinstance(article, dict):
+            continue
+        title = article.get("programme_title")
+        if not isinstance(title, str) or title in seen_titles:
+            continue
+        retained = previous_by_title.get(title, ())
+        if not retained:
+            continue
+        events.extend(retained)
+        next_articles[link] = dict(article)
+        seen_titles.add(title)
+
+    deduped = []
+    seen = set()
+    for event in sorted(
+        events,
+        key=lambda item: (
+            item.start_date,
+            item.start_time is None,
+            item.start_time or "",
+            normalized_title(item.title_es),
+        ),
+    ):
+        key = (
+            event.programme_title,
+            normalized_title(event.title_es),
+            event.start_date,
+            event.start_time,
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(event)
+    return tuple(deduped[:MAX_EVENTS]), {
+        "version": 1,
+        "articles": next_articles,
+    }
+
+
 def _read_turismo_programme(local_day: date) -> Optional[Tuple[str, str, str, str]]:
     """Find the current official festival article and its full-size poster.
 
@@ -1951,7 +2336,11 @@ def merge_text_and_poster_events(
         current = merged[duplicate_index]
         same_occurrence = _same_occurrence(current, poster_event)
         candidate_is_text = bool(
-            set(poster_event.sources) & {"todo_cultura", "todo_cultura_reviewed"}
+            set(poster_event.sources) & {
+                "todo_cultura",
+                "todo_cultura_reviewed",
+                TURISMO_PROGRAMME_TEXT_SOURCE,
+            }
         )
         current_session_key = current.session_source_key
         candidate_session_key = (
@@ -3009,8 +3398,12 @@ def _load_snapshot(path: Path) -> Optional[Dict[str, Any]]:
 
 
 _POSTER_SOURCES = frozenset({"mupi", "mupi_reviewed"})
-_TEXT_SOURCES = frozenset({"turismo_html", "todo_cultura",
-                           "todo_cultura_reviewed"})
+_TEXT_SOURCES = frozenset({
+    "turismo_html",
+    "turismo_programme_text",
+    "todo_cultura",
+    "todo_cultura_reviewed",
+})
 
 
 def _is_poster_only(event: SourceEvent) -> bool:
@@ -3328,6 +3721,10 @@ async def refresh_municipal_catalog(
         old_programme_events = tuple(
             event for event in old_events
             if "turismo_programme" in event.sources
+        )
+        old_programme_text_events = tuple(
+            event for event in old_events
+            if TURISMO_PROGRAMME_TEXT_SOURCE in event.sources
         )
 
         text_source = old_sources.get("turismo_html", {})
@@ -3768,8 +4165,23 @@ async def refresh_municipal_catalog(
         programme_events = tuple(
             _programme_source_metadata(event) for event in programme_events
         )
+        programme_text_source = old_sources.get(
+            TURISMO_PROGRAMME_TEXT_SOURCE, {}
+        )
+        programme_text_events, programme_text_state = (
+            await _turismo_text_programme_events(
+                api_key,
+                local_now.date(),
+                old_programme_text_events,
+                (
+                    programme_text_source
+                    if isinstance(programme_text_source, dict) else {}
+                ),
+            )
+        )
         events = merge_text_and_poster_events(text_events, poster_events)
         events = merge_text_and_poster_events(events, programme_events)
+        events = merge_text_and_poster_events(events, programme_text_events)
         events = merge_text_and_poster_events(events, todo_events)
         events = merge_text_and_poster_events(events, facebook_events)
         events = _normalize_exhibition_opening_times(events)
@@ -3924,6 +4336,11 @@ async def refresh_municipal_catalog(
             source_state["todo_cultura"] = todo_source
         if programme_state:
             source_state["turismo_programme"] = programme_state
+        if programme_text_state:
+            source_state[TURISMO_PROGRAMME_TEXT_SOURCE] = {
+                **programme_text_state,
+                "checked_at": now.isoformat(),
+            }
         if facebook_state:
             source_state["facebook"] = facebook_state
         source_state["cultura_guardamar"] = cultura_state

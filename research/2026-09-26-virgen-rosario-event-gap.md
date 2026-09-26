@@ -149,18 +149,23 @@ session family.
 ## Follow-up source work
 
 The Todo repair is necessary because Todo is already integrated and should not
-starve a local event, but Todo remains supplemental. Two independent primary
-source improvements are still desirable:
+starve a local event, but Todo remains supplemental.
 
-1. **Generic bounded Turismo programme discovery.** Generalize the existing
-   Campo-only WordPress programme adapter to programme-shaped official articles,
-   text-first and evidence-bound, while retaining Campo's narrow deterministic
-   overrides.
-2. **Ayuntamiento programme backstop.** Inspect the lightweight municipal news
+The first primary-source follow-up is now implemented separately: a bounded
+official Turismo WordPress programme adapter discovers current-year
+programme-shaped Spanish articles, reuses unchanged article state, reads only
+changed/new article text, requires evidence-bound structured facts, and keeps
+the existing Campo adapter independent. A live source probe on 26 September
+found the Rosario article as candidate ID `123664`, modified
+`2026-09-15T14:45:58`.
+
+One independent primary-source improvement remains desirable:
+
+1. **Ayuntamiento programme backstop.** Inspect the lightweight municipal news
    index for new/changed programme posts and process an event-specific official
    poster once when the page is image-only.
 
-These should remain separate changes so their source contracts, costs and
+That backstop should remain a separate change so its image contract, cost and
 failure behavior can be reviewed independently. Facebook image OCR and more
 frequent polling are not needed for this incident class.
 

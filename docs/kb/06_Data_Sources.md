@@ -464,6 +464,20 @@ This prevents an early next-month poster from erasing the final days of the
 current program. The digest merges these facts with the separate local Agenda
 Guardamar catalog and removes duplicates.
 
+The monthly page is not assumed to contain complete patronal or festival
+programmes. A separate bounded first-party Turismo WordPress adapter reads one
+recent-post metadata index and considers at most three current-year
+programme-shaped Spanish articles whose title/excerpt contains a relevant
+explicit date. The dedicated Fiestas del Campo article remains on its existing
+narrow deterministic/poster path and is excluded from the generic adapter.
+For every other candidate, unchanged `modified` state reuses the last verified
+facts; a changed/new article fetches one bounded detail page and runs the
+existing evidence-bound official-text extractor. The article must yield at
+least two validated programme events before date filtering, and only today's
+through the next 44 days are retained. The adapter is text-first: it does not
+OCR arbitrary article images. Temporary source/model failures retain
+still-relevant last-good facts.
+
 Dated Monday library film rows in the same official Turismo `CINE` text are
 also read deterministically on every existing page refresh, including when the
 text hash is unchanged. A row may contribute its concrete film title, duration,
