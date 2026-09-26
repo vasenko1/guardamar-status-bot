@@ -222,7 +222,8 @@ the Ayuntamiento news index. This is deliberately not generic image crawling:
   excluded;
 - at most two recent candidate articles are considered;
 - the detail page must expose one official `/wp-content/uploads/` image whose
-  filename or article-title overlap makes it programme-specific;
+  upload filename explicitly identifies it as a programme/tríptico; title overlap
+  may rank several programme images but can never make an ordinary fiesta photo eligible;
 - the selected official poster URL is the stable change identity; unchanged
   verified poster URLs reuse normalized facts without downloading the image or
   invoking a model;
