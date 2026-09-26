@@ -158,7 +158,9 @@ from .product_awards import (
     ProductAwardState,
     build_current_publication as build_current_product_award_publication,
     discover_product_awards,
+    preview_starter_product_awards,
     scan_next_product_award,
+    seed_starter_product_awards,
 )
 from .models import ColdHealthRisk, HeatHealthRisk
 from .state import PublicationState, StateError
@@ -1185,6 +1187,8 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         "product-awards-discover",
         "product-awards",
         "product-awards-preview",
+        "product-awards-seed",
+        "product-awards-seed-preview",
     }:
         award_state = ProductAwardState(Path(os.environ.get(
             "PRODUCT_AWARDS_STATE_PATH",
@@ -1201,6 +1205,31 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 print("No verified supermarket product award is eligible")
             else:
                 print(publication.message)
+            return 0
+
+        if command == "product-awards-seed-preview":
+            publications = preview_starter_product_awards(now.year)
+            if not publications:
+                print("No reviewed product-award starter pool exists")
+                return 0
+            for index, publication in enumerate(publications, 1):
+                if index > 1:
+                    print("\n\n====================\n\n")
+                print(f"ДЕНЬ {index}\n")
+                print(publication.message)
+            return 0
+
+        if command == "product-awards-seed":
+            with award_state.exclusive_run():
+                before = award_state.queue_size()
+                candidates = seed_starter_product_awards(now, award_state)
+                after = award_state.queue_size()
+            logging.info(
+                "Product-award starter seed verified=%d queue=%d->%d",
+                len(candidates),
+                before,
+                after,
+            )
             return 0
 
         if command == "product-awards-discover":
@@ -2108,6 +2137,7 @@ def main() -> None:
             "weekend", "weekend-preview",
             "tomorrow-events", "tomorrow-events-preview",
             "product-awards-discover", "product-awards", "product-awards-preview",
+            "product-awards-seed", "product-awards-seed-preview",
             "poll",
         ),
         default="run",
