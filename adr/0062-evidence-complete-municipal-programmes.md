@@ -45,3 +45,41 @@ deliberately narrow and evidence-bound; other festivals require their own
 source audit before extension. Operational verification must compare the
 published output with an independently collected calendar, not merely the
 poster examples supplied by a user.
+
+
+## 26 September 2026 amendment: Todo detail dates and queue progress
+
+A production miss during the Virgen del Rosario programme exposed a second
+incremental-coverage failure mode. Todo Cultura had already indexed the local
+Bingo page, but its REST excerpt described the whole patronal period
+`19 September–18 October`; the actual occurrence, `26 September`, was stated
+inside the full event document. The excerpt endpoints therefore ranked the page
+outside the current seven-day window. Repeated incomplete programme reads also
+rolled back progress for unrelated successful candidates, keeping the bounded
+queue sticky.
+
+The existing bounded Todo supplement is retained, with these clarifications:
+
+- REST title/excerpt dates are discovery hints, not authoritative occurrence
+  dates. When a downloaded local detail page contains explicit Spanish dated
+  section headings, those detail dates replace the metadata hints.
+- One of the existing six detail slots is ordered first for the oldest
+  unchecked local candidate inside the 44-day horizon. The six-detail,
+  four-document-per-request and three-programme limits do not increase.
+- Dated standalone detail pages expose the same deterministic timed
+  `event_rows` used by municipal programmes. Existing row completeness,
+  recovery and source-proven session grouping therefore apply without a new
+  event model or grouping path.
+- On an incomplete extraction, deterministic discovery facts such as the
+  detail-derived dates and checked status may persist. Processed dates/chunks
+  advance only for candidates whose selected programme completed; failed
+  candidates retain their prior extraction progress. Hard transport/model
+  exceptions still fall back to the previous Todo snapshot.
+- Parser version 20 performs a narrow migration from version 19: it preserves
+  the immediately preceding raw-session-row work and existing extraction
+  progress while rechecking dated candidates once for detail-date provenance.
+  Older parser states keep the existing full reopen behavior.
+
+This amendment changes neither publication budgets nor editorial grouping.
+Todo Cultura remains supplemental; primary official festival-programme coverage
+is a separate source-adapter concern.
