@@ -1,0 +1,82 @@
+name: Probe Mercadona cheese category v2
+
+on:
+  push:
+    branches:
+      - feat/private-label-product-awards-poc
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Probe cheese category
+        run: |
+          python - <<'PY'
+          import json, urllib.request
+
+          headers={"Accept":"application/json","User-Agent":"GuardamarMorningDigest/0.13"}
+
+          def get(url):
+              req=urllib.request.Request(url,headers=headers)
+              with urllib.request.urlopen(req,timeout=20) as r:
+                  return json.load(r)
+
+          root=get("https://tienda.mercadona.es/api/categories/?lang=es&wh=alc1")
+          candidates=[]
+          def walk(value, trail=()):
+              if isinstance(value, dict):
+                  name=value.get("name")
+                  ident=value.get("id")
+                  newtrail=trail+((str(name) if name else ""),)
+                  if isinstance(name,str) and any(x in name.lower() for x in ("queso","lácteo","lacteo")):
+                      candidates.append((ident,name," > ".join(x for x in newtrail if x)))
+                  for v in value.values():
+                      walk(v,newtrail)
+              elif isinstance(value,list):
+                  for v in value: walk(v,trail)
+          walk(root)
+          print("CATEGORY CANDIDATES")
+          for x in candidates: print(x)
+
+          ids=[]
+          for ident,name,_ in candidates:
+              if ident is not None and str(ident) not in ids:
+                  ids.append(str(ident))
+
+          for ident in ids:
+              print("=== CATEGORY",ident,"===")
+              try:
+                  data=get(f"https://tienda.mercadona.es/api/categories/{ident}/?lang=es&wh=alc1")
+              except Exception as e:
+                  print("ERROR",repr(e)); continue
+              def products(v):
+                  if isinstance(v,dict):
+                      if "display_name" in v and "id" in v:
+                          yield v
+                      for vv in v.values(): yield from products(vv)
+                  elif isinstance(v,list):
+                      for vv in v: yield from products(vv)
+              seen=set()
+              for p in products(data):
+                  pid=str(p.get("id"))
+                  if pid in seen: continue
+                  seen.add(pid)
+                  name=str(p.get("display_name",""))
+                  brand=str(p.get("brand",""))
+                  if brand.lower()=="hacendado" or any(k in name.lower() for k in ("trufa","afrutado","ibérico","iberico","semicurado","cremoso","añejo","anejo")):
+                      print(json.dumps({
+                          "id":pid,
+                          "name":name,
+                          "brand":brand,
+                          "ean":p.get("ean"),
+                          "share_url":p.get("share_url"),
+                          "price":p.get("price_instructions"),
+                      },ensure_ascii=False))
+          PY
