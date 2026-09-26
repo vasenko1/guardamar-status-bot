@@ -307,6 +307,48 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(event.session_source_key for event in escape))
         self.assertEqual(len({event.session_source_key for event in escape}), 1)
 
+    def test_ambiguous_same_time_session_row_does_not_create_identity(self):
+        day = date(2026, 9, 26)
+        first = SourceEvent(
+            "Escape room del museo (primer turno)",
+            day, day, "11:00", "11:45",
+            "Museo Arqueológico", "event",
+            sources=("todo_cultura",),
+        )
+        duplicate = SourceEvent(
+            "Escape room del museo para niños (primer turno)",
+            day, day, "11:00", "11:45",
+            "Museo Arqueológico", "event",
+            sources=("todo_cultura",),
+        )
+        second = SourceEvent(
+            "Escape room del museo (segundo turno)",
+            day, day, "12:00", "12:45",
+            "Museo Arqueológico", "event",
+            sources=("todo_cultura",),
+        )
+        rows = (
+            (
+                day, "11:00",
+                "2026-09-26\n"
+                "– 11 h.: Primer turno para Escape room del museo.",
+            ),
+            (
+                day, "12:00",
+                "2026-09-26\n"
+                "– 12 h.: Segundo turno para Escape room del museo.",
+            ),
+        )
+
+        annotated = _annotate_todo_source_sessions(
+            (first, duplicate, second),
+            rows,
+        )
+
+        self.assertTrue(all(
+            event.session_source_key is None for event in annotated
+        ))
+
     def test_two_raw_families_with_same_display_title_stay_separate(self):
         day = date(2026, 9, 26)
         events = tuple(
