@@ -25,8 +25,11 @@ from telegrambot.product_awards import (
     load_ocu_item,
     parse_ocu_awards,
     parse_wccc_top20,
+    preview_starter_product_awards,
     refresh_mercadona_offers,
+    reviewed_starter_product_awards,
     scan_next_product_award,
+    seed_starter_product_awards,
 )
 
 MADRID = ZoneInfo("Europe/Madrid")
@@ -357,6 +360,166 @@ class WcccAdapterTests(unittest.TestCase):
             parse_wccc_top20(document, 2026)
 
 
+class StarterPoolTests(unittest.TestCase):
+    def award_document(self, *, include_all=True):
+        tail = "Ibérico Añejo. 97,20 Disponible en MERCADONA." if include_all else ""
+        return PageDocument(
+            "https://valledesanjuan.com/"
+            "ocho-premios-que-saben-a-esfuerzo-origen-y-oficio/",
+            (
+                "Con Trufa. 99,30. Nuestro mejor puntuado y el mejor de su "
+                "categoría. Disponible en MERCADONA.\n"
+                "Añejo. 99,25 Disponible en MERCADONA.\n"
+                "Afrutado. 97,40 Disponible en MERCADONA.\n"
+                + tail
+            ),
+            (),
+        )
+
+    def portfolio_document(self):
+        return PageDocument(
+            "https://valledesanjuan.com/productos/mercadona/",
+            (
+                "Hacendado Curado Afrutado MEZCLA PASTEURIZADO\n"
+                "Hacendado Añejo Fuerte OVEJA LECHE CRUDA\n"
+                "Hacendado Con Trufa IBÉRICO LECHE CRUDA\n"
+                "Hacendado Añejo Ibérico IBÉRICO LECHE CRUDA"
+            ),
+            (),
+        )
+
+    def top20_candidate(self):
+        document = PageDocument(
+            "https://worldchampioncheese.org/2026-wccc-top-20-finalists/",
+            """
+            2026 WCCC Top 20 Finalists
+            Class #: 114 – Hard Mixed Milk Cheeses
+            Cheese: Seleccion Tostado Mixed Milk Cheese Extra Aged
+            Maker: Queserías Entrepinares S.A.U.
+            Company: Queserías Entrepinares
+            Location: Valladolid, Spain
+            """,
+            (),
+        )
+        return parse_wccc_top20(document, 2026)[0]
+
+    def test_reviewed_seed_has_five_days_in_reviewed_order(self):
+        pages = [self.award_document(), self.portfolio_document()]
+        with (
+            patch("telegrambot.product_awards._fetch_page", side_effect=pages),
+            patch(
+                "telegrambot.product_awards.load_wccc_item",
+                return_value=AwardSourceItem((self.top20_candidate(),)),
+            ),
+        ):
+            found = reviewed_starter_product_awards(2026)
+
+        self.assertEqual(len(found), 5)
+        self.assertEqual(
+            [item.retail.product_id for item in found],
+            ["4883", "50975", "50952", "11682", "5548"],
+        )
+        self.assertEqual(
+            [item.score for item in found],
+            ["99,30/100", "99,25/100", None, "97,40/100", "97,20/100"],
+        )
+        self.assertEqual(found[0].result, "Best of Class")
+        self.assertEqual(found[0].editorial.production_country, "Испания")
+
+    def test_reviewed_seed_fails_closed_if_one_award_fact_disappears(self):
+        pages = [self.award_document(include_all=False), self.portfolio_document()]
+        with (
+            patch("telegrambot.product_awards._fetch_page", side_effect=pages),
+            self.assertRaises(ProductAwardError),
+        ):
+            reviewed_starter_product_awards(2026)
+
+    def test_seed_is_atomic_and_idempotent(self):
+        items = (
+            candidate(event_key="starter-1", score="99/100"),
+            candidate(
+                event_key="starter-2",
+                product_name="другой продукт Hacendado",
+                score="98/100",
+            ),
+        )
+        publication = lambda item: ProductAwardPublication(item, "ok")
+        with tempfile.TemporaryDirectory() as directory:
+            state = ProductAwardState(Path(directory) / "awards.json")
+            with (
+                patch(
+                    "telegrambot.product_awards.reviewed_starter_product_awards",
+                    return_value=items,
+                ),
+                patch(
+                    "telegrambot.product_awards.build_current_publication",
+                    side_effect=publication,
+                ),
+            ):
+                seeded = seed_starter_product_awards(
+                    datetime(2026, 9, 26, tzinfo=MADRID),
+                    state,
+                )
+                seeded_again = seed_starter_product_awards(
+                    datetime(2026, 9, 26, tzinfo=MADRID),
+                    state,
+                )
+            self.assertEqual(seeded, items)
+            self.assertEqual(seeded_again, items)
+            self.assertEqual(state.queue_size(), 2)
+
+    def test_seed_does_not_touch_state_if_any_live_offer_is_missing(self):
+        items = (
+            candidate(event_key="starter-1", score="99/100"),
+            candidate(
+                event_key="starter-2",
+                product_name="другой продукт Hacendado",
+                score="98/100",
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "awards.json"
+            state = ProductAwardState(path)
+            with (
+                patch(
+                    "telegrambot.product_awards.reviewed_starter_product_awards",
+                    return_value=items,
+                ),
+                patch(
+                    "telegrambot.product_awards.build_current_publication",
+                    side_effect=(ProductAwardPublication(items[0], "ok"), None),
+                ),
+                self.assertRaises(ProductAwardError),
+            ):
+                seed_starter_product_awards(
+                    datetime(2026, 9, 26, tzinfo=MADRID),
+                    state,
+                )
+            self.assertFalse(path.exists())
+
+    def test_starter_preview_requires_all_five_live_publications(self):
+        items = tuple(
+            candidate(
+                event_key=f"starter-{index}",
+                product_name=f"продукт {index} Hacendado",
+                score=f"{99-index}/100",
+            )
+            for index in range(5)
+        )
+        with (
+            patch(
+                "telegrambot.product_awards.reviewed_starter_product_awards",
+                return_value=items,
+            ),
+            patch(
+                "telegrambot.product_awards.build_current_publication",
+                side_effect=lambda item: ProductAwardPublication(item, item.product_name),
+            ),
+        ):
+            publications = preview_starter_product_awards(2026)
+        self.assertEqual(len(publications), 5)
+
+
 class MercadonaRetailRefreshTests(unittest.TestCase):
     def wccc_candidate(self):
         document = PageDocument(
@@ -448,6 +611,92 @@ class MercadonaRetailRefreshTests(unittest.TestCase):
         payload["unavailable_from"] = "2026-09-26"
         with patch("telegrambot.product_awards._fetch_json", return_value=payload):
             self.assertEqual(refresh_mercadona_offers(item), ())
+
+    def test_reviewed_anejo_refresh_returns_both_current_packages(self):
+        item = ProductAwardCandidate(
+            source_kind="wccc_valle_seed",
+            event_key="2026|valle|anejo|99.25",
+            source_url="https://valledesanjuan.com/example",
+            product_name="Queso añejo fuerte de oveja Hacendado",
+            result="99.25 points",
+            award_body="World Championship Cheese Contest 2026",
+            result_year=2026,
+            retail=RetailEvidence(
+                retailer="Mercadona",
+                relationship="private_label",
+                label="Hacendado",
+                product_id="50975",
+                ean="2105600509750",
+                product_url=(
+                    "https://tienda.mercadona.es/product/50975/"
+                    "queso-anejo-fuerte-oveja-hacendado-pieza"
+                ),
+                variant="pieza de peso variable",
+            ),
+            score="99,25/100",
+            editorial=AwardEditorialFacts(
+                producer="Valle de San Juan",
+                production_country="Испания",
+            ),
+        )
+
+        def payload(product_id, *, cut=False):
+            return {
+                "id": product_id,
+                "ean": "8402001028878" if cut else "2105600509750",
+                "brand": "Hacendado",
+                "published": True,
+                "is_variable_weight": True,
+                "unavailable_from": None,
+                "unavailable_weekdays": [],
+                "share_url": (
+                    "https://tienda.mercadona.es/product/11680/"
+                    "queso-anejo-fuerte-oveja-hacendado-cortado-cunitas-pieza"
+                    if cut
+                    else "https://tienda.mercadona.es/product/50975/"
+                    "queso-anejo-fuerte-oveja-hacendado-pieza"
+                ),
+                "details": {
+                    "suppliers": [
+                        {
+                            "name": (
+                                "Valle de San Juan Palencia S.L"
+                                if cut
+                                else "Valle de San Juan Palencia S.L."
+                            )
+                        }
+                    ],
+                },
+                "nutrition_information": {
+                    "ingredients": "<strong>Leche</strong> cruda de oveja, sal."
+                },
+                "price_instructions": {
+                    "unit_price": 6.96 if cut else 6.04,
+                    "reference_price": 21.10 if cut else 18.30,
+                    "reference_format": "kg",
+                    "unit_size": 0.33,
+                    "size_format": "kg",
+                    "approx_size": True,
+                },
+            }
+
+        def fetch(url, hosts):
+            if "/11680/" in url:
+                return payload("11680", cut=True)
+            if "/50975/" in url:
+                return payload("50975")
+            self.fail(url)
+
+        with patch("telegrambot.product_awards._fetch_json", side_effect=fetch):
+            offers = refresh_mercadona_offers(item)
+
+        self.assertEqual(len(offers), 2)
+        self.assertEqual([offer.product_id for offer in offers], ["50975", "11680"])
+        self.assertEqual([offer.price for offer in offers], ["6,04 €", "6,96 €"])
+        self.assertEqual(
+            [offer.unit_price for offer in offers],
+            ["18,30 €/кг", "21,10 €/кг"],
+        )
 
     def test_current_publication_requires_verified_live_offer(self):
         item = self.wccc_candidate()
