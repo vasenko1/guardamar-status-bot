@@ -195,7 +195,8 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
             **{
                 **second.__dict__,
                 "title_es": (
-                    "Kвест infantil del museo (Segundo turno)"
+                    "Escape room infantil 'El misterio del museo de "
+                    "Guardamar' (Segundo turno)"
                 ),
                 "audience_label": "для участников 13–16 лет",
                 "teaser_es": None,
@@ -208,8 +209,8 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
         )
         plan = _session_source_plan(annotated)
 
-        # The intentionally unrelated translated/presentation-style wording
-        # cannot define identity. The raw Todo rows remain the authority.
+        # Extracted wording may vary, but it only maps verified source
+        # evidence to an occurrence. The raw Todo rows define the family.
         self.assertEqual(
             len({event.session_source_key for event in annotated}),
             1,
@@ -362,7 +363,10 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
         day = date(2026, 9, 26)
         generic = tuple(
             SourceEvent(
-                title_es="Actividad infantil en el Museo Arqueológico",
+                title_es=(
+                    "Escape room El misterio del museo de Guardamar "
+                    "para niños de 8 a 12 años"
+                ),
                 start_date=day,
                 end_date=day,
                 start_time=start,
