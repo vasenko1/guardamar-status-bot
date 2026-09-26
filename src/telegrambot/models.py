@@ -65,6 +65,7 @@ class Event:
     ticket_url: Optional[str] = None
     participation_note: Optional[str] = None
     registration_contact: Optional[str] = None
+    registration_url: Optional[str] = None
     capacity_limited: bool = False
     teaser: Optional[str] = None
     programme_title: Optional[str] = None

@@ -40,6 +40,11 @@ _LIBRARY_HALL = re.compile(
     r"biblioteca(?:\s+p[uú]blica)?\s+municipal\s*\(?hall\)?)$",
     re.IGNORECASE,
 )
+_ARCHAEOLOGICAL_MUSEUM = re.compile(
+    r"^museo\s+arqueol[oó]gico(?:\s+de)?\s+guardamar"
+    r"(?:\s+del\s+segura)?(?:\s*\(mag\))?$",
+    re.IGNORECASE,
+)
 
 
 def canonical_event_place(value: str) -> str:
@@ -50,6 +55,8 @@ def canonical_event_place(value: str) -> str:
         return "Escuela de Música"
     if _LIBRARY_HALL.fullmatch(compact):
         return "Biblioteca Municipal (Hall)"
+    if _ARCHAEOLOGICAL_MUSEUM.fullmatch(compact):
+        return "Museo Arqueológico"
     match = _EMBEDDED_STREET.search(compact)
     if match is None or not _CONTEXT_WORDS.search(compact[:match.start()]):
         return compact

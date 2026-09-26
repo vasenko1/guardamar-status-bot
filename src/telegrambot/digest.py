@@ -1248,10 +1248,21 @@ def _render_event_details(event, indent: str) -> List[str]:
         )
     if event.access_note:
         access.append(html.escape(event.access_note))
+    if event.registration_url:
+        access.append(
+            '<a href="' + html.escape(event.registration_url, quote=True)
+            + '">Регистрация</a>'
+        )
     if event.registration_contact:
         label = (
-            "" if event.access_note and "регистрац" in event.access_note.casefold()
-            else "регистрация: "
+            "контакт: "
+            if event.registration_url
+            else (
+                ""
+                if event.access_note
+                and "регистрац" in event.access_note.casefold()
+                else "регистрация: "
+            )
         )
         access.append(label + html.escape(event.registration_contact))
     if not event.access_note and event.capacity_limited:
