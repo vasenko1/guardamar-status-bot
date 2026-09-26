@@ -867,7 +867,7 @@ def _mercadona_evidence(
     ean: str,
     share_url: str,
     *,
-    variant: str = "pieza de peso variable",
+    variant: str = "кусок переменного веса",
 ) -> RetailEvidence:
     return RetailEvidence(
         retailer="Mercadona",
@@ -922,7 +922,7 @@ _MERCADONA_CONTRACTS: dict[str, _MercadonaProductContract] = {
             "8402001028878",
             "https://tienda.mercadona.es/product/11680/"
             "queso-anejo-fuerte-oveja-hacendado-cortado-cunitas-pieza",
-            variant="precortado en cuñitas",
+            variant="нарезка клиньями",
         ),
         supplier_names=(
             "Valle de San Juan Palencia S.L",
@@ -936,7 +936,7 @@ _MERCADONA_CONTRACTS: dict[str, _MercadonaProductContract] = {
             "8402001028953",
             "https://tienda.mercadona.es/product/11682/"
             "queso-curado-mezcla-afrutado-hacendado-cortado-cunitas-pieza",
-            variant="precortado en cuñitas",
+            variant="нарезка клиньями",
         ),
         supplier_names=(
             "Valle de San Juan Palencia S.L.",
@@ -950,7 +950,7 @@ _MERCADONA_CONTRACTS: dict[str, _MercadonaProductContract] = {
             "8402001048289",
             "https://tienda.mercadona.es/product/5548/"
             "queso-anejo-iberico-mezcla-hacendado-cortado-cunitas-pieza",
-            variant="precortado en cuñitas",
+            variant="нарезка клиньями",
         ),
         supplier_names=(
             "Valle de San Juan Palencia S.L.",
@@ -1025,15 +1025,7 @@ def parse_wccc_top20(
                 result="Top 20 finalist",
                 award_body="World Championship Cheese Contest 2026",
                 result_year=year,
-                retail=RetailEvidence(
-                    retailer="Mercadona",
-                    relationship="private_label",
-                    label="Hacendado",
-                    product_id=_WCCC_2026_RETAIL_PRODUCT_ID,
-                    ean=_WCCC_2026_RETAIL_EAN,
-                    product_url=_WCCC_2026_RETAIL_URL,
-                    variant="pieza de peso variable",
-                ),
+                retail=_MERCADONA_CONTRACTS["50952"].evidence,
                 editorial=AwardEditorialFacts(
                     comparison_size=3375,
                     category="Hard Mixed Milk Cheeses",
@@ -1367,16 +1359,20 @@ def build_publication(
     elif candidate.source_kind == "wccc_valle_seed":
         claim = facts.headline_claim or "получил высокую оценку на WCCC 2026"
         headline = f"{product} в {candidate.retailer} — {claim}"
+        prefix = (
+            "По результатам, опубликованным производителем Valle de San Juan, "
+            f"{product}, {_retail_phrase(candidate)}, получил "
+        )
         if candidate.result == "Best of Class":
             intro = (
-                f"{product}, {_retail_phrase(candidate)}, получил "
-                f"{candidate.score} на World Championship Cheese Contest 2026 "
+                prefix
+                + f"{candidate.score} на World Championship Cheese Contest 2026 "
                 "и стал лучшим в своей категории."
             )
         else:
             intro = (
-                f"{product}, {_retail_phrase(candidate)}, получил "
-                f"{candidate.score} на World Championship Cheese Contest 2026."
+                prefix
+                + f"{candidate.score} на World Championship Cheese Contest 2026."
             )
     else:
         claim = facts.headline_claim or (
@@ -1638,6 +1634,9 @@ def _refresh_one_mercadona_offer(
         raise ProductAwardError("Mercadona product URL changed", code="PARSER")
     if evidence.product_url is not None and share_url != evidence.product_url:
         raise ProductAwardError("Mercadona product URL mismatch", code="PARSER")
+
+    if evidence.variant is not None:
+        package = f"{package} · {evidence.variant}"
 
     return RetailOfferVariant(
         package=package,
