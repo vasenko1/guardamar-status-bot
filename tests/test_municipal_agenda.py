@@ -617,8 +617,9 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
         )
         model = AsyncMock(side_effect=(initial_result, recovery_result))
 
-        def normalized(result, source_text):
+        def normalized(result, source_text, **kwargs):
             if result is initial_result:
+                self.assertTrue(kwargs.get("allow_all_invalid"))
                 self.assertEqual(source_text, "Programa completo Rosario")
                 return initial_events
             if result is recovery_result:
@@ -735,8 +736,12 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
         )
         model = AsyncMock(side_effect=(first, second))
 
-        def normalized(result, _source_text):
-            return initial_events if result is first else recovered_events
+        def normalized(result, _source_text, **kwargs):
+            if result is first:
+                self.assertTrue(kwargs.get("allow_all_invalid"))
+                return initial_events
+            self.assertFalse(kwargs.get("allow_all_invalid", False))
+            return recovered_events
 
         with (
             patch(
