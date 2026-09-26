@@ -1,4 +1,4 @@
-name: Probe WCCC target class results
+name: Probe fifth award candidates
 
 on:
   push:
@@ -16,41 +16,55 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Fetch target WCCC classes
+      - name: Verify Mercadona tuna and inspect ALDI search
         run: |
           python - <<'PY'
-          import json, time, urllib.request
+          import json, re, urllib.parse, urllib.request
 
-          headers={"Accept":"application/json","User-Agent":"GuardamarMorningDigest/0.13"}
-          classes=[2189,2194,2195,2196,2197]
-          for cid in classes:
-              url=f"https://myentries.org/api/results/contest-class-results/{cid}"
-              print("=== CLASS",cid,"===")
-              req=urllib.request.Request(url,headers=headers)
+          ua={"User-Agent":"GuardamarMorningDigest/0.13"}
+
+          print("=== MERCADONA 18002 ===")
+          req=urllib.request.Request(
+              "https://tienda.mercadona.es/api/products/18002/?lang=es&wh=alc1",
+              headers={**ua,"Accept":"application/json"},
+          )
+          with urllib.request.urlopen(req,timeout=20) as r:
+              obj=json.load(r)
+          for key in ("id","display_name","ean","brand","packaging","published","unavailable_from","unavailable_weekdays","share_url"):
+              print(key,repr(obj.get(key)))
+          pi=obj.get("price_instructions") or {}
+          print("price",json.dumps(pi,ensure_ascii=False,sort_keys=True))
+          print("details",json.dumps(obj.get("details"),ensure_ascii=False,sort_keys=True)[:5000])
+          print("nutrition",json.dumps(obj.get("nutrition_information"),ensure_ascii=False,sort_keys=True)[:5000])
+
+          print("=== ALDI SEARCH HTML ===")
+          urls=[
+              "https://www.aldi.es/busqueda.html?search=at%C3%BAn+claro+aceite+de+oliva",
+              "https://www.aldi.es/busqueda.html?q=at%C3%BAn+claro+aceite+de+oliva",
+              "https://www.aldi.es/busqueda.html?query=at%C3%BAn+claro+aceite+de+oliva",
+          ]
+          for url in urls:
+              print("URL",url)
               try:
+                  req=urllib.request.Request(url,headers=ua)
                   with urllib.request.urlopen(req,timeout=20) as r:
-                      obj=json.load(r)
+                      text=r.read(1_500_000).decode("utf-8","replace")
+                  print("status",r.status,"bytes",len(text))
+                  for line in text.splitlines():
+                      low=line.lower()
+                      if "sal de plata" in low or "atun" in low or "atún" in low:
+                          clean=re.sub(r"\s+"," ",line).strip()
+                          print(clean[:1600])
               except Exception as e:
-                  print("ERROR",type(e).__name__,str(e)[:200])
-                  time.sleep(2)
-                  continue
-              blob=obj.get("results",obj) if isinstance(obj,dict) else obj
-              matches=[]
-              def walk(v):
-                  if isinstance(v,dict):
-                      scalar=" ".join(str(x) for x in v.values() if not isinstance(x,(dict,list))).upper()
-                      if any(k in scalar for k in ("VALLE DE SAN JUAN","QUESERÍAS ENTREPINARES","QUESERIAS ENTREPINARES")):
-                          matches.append(v.copy())
-                      for x in v.values(): walk(x)
-                  elif isinstance(v,list):
-                      for x in v: walk(x)
-              walk(blob)
-              print("MATCH_COUNT",len(matches))
-              seen=set()
-              for row in matches:
-                  key=json.dumps(row,ensure_ascii=False,sort_keys=True)
-                  if key in seen: continue
-                  seen.add(key)
-                  print(json.dumps(row,ensure_ascii=False,sort_keys=True))
-              time.sleep(2)
+                  print("ERROR",type(e).__name__,str(e)[:300])
+
+          print("=== ALDI JS/API HINTS ===")
+          req=urllib.request.Request("https://www.aldi.es/busqueda.html",headers=ua)
+          with urllib.request.urlopen(req,timeout=20) as r:
+              raw=r.read(1_500_000).decode("utf-8","replace")
+          for m in re.finditer(r'''(?:src|href)=["']([^"']+)["']''',raw,re.I):
+              u=urllib.parse.urljoin("https://www.aldi.es/busqueda.html",m.group(1))
+              low=u.lower()
+              if "search" in low or "product" in low or "api" in low:
+                  print(u[:1000])
           PY
