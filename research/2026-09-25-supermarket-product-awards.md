@@ -1180,6 +1180,9 @@ Implemented:
   status and official share URL before returning current package/price;
 - current retail price is now mandatory for public delivery: refresh failure
   yields no publication and does not reserve the daily slot;
+- bounded publication scan checks up to four queued items, so one temporarily
+  unavailable/delisted product cannot block later verified candidates; skipped
+  items remain queued and are not marked published;
 - delivery queue, per-source baseline, at-most-once Telegram semantics and
   one-item-per-day policy remain unchanged.
 
@@ -1206,8 +1209,8 @@ Validation on the final functional head before removing the temporary
 branch-only workflow:
 
 - Python compileall: passed;
-- product-award modules: **53 tests passed**;
-- complete repository suite: **1344 tests passed**;
+- product-award modules: **56 tests passed**;
+- complete repository suite: **1347 tests passed**;
 - temporary validation workflow was removed from the final diff.
 - live `product-awards-preview` on 26 September 2026 produced the reviewed WCCC Top-20 Entrepinares / Mercadona SKU 50952 article with a fresh official Mercadona offer: approximately 370 g, 6.19 EUR, 16.74 EUR/kg.
 
