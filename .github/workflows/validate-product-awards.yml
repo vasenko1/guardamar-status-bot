@@ -24,4 +24,4 @@ jobs:
       - name: Product award tests
         run: python -m unittest -v tests.test_product_awards tests.test_product_awards_main
       - name: Full test suite
-        run: python -m unittest discover -s tests -t . -v
+        run: python -m unittest discover -s tests -v
