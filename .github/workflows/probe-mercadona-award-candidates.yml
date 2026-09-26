@@ -16,44 +16,39 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Probe exact candidate SKUs
+      - name: Probe reviewed Mercadona candidate SKUs
         run: |
           python - <<'PY'
           import json, urllib.request
 
           headers={"Accept":"application/json","User-Agent":"GuardamarMorningDigest/0.13"}
-          ids=["4883","11682","5548","50943","50946","17926"]
-
-          for product_id in ids:
-              url=f"https://tienda.mercadona.es/api/products/{product_id}/?lang=es&wh=alc1"
+          skus=["4883","5548","11682","17926","11672"]
+          for sku in skus:
+              print(f"=== SKU {sku} ===")
+              url=f"https://tienda.mercadona.es/api/products/{sku}/?lang=es&wh=alc1"
               req=urllib.request.Request(url,headers=headers)
-              print(f"=== SKU {product_id} ===")
               try:
                   with urllib.request.urlopen(req,timeout=20) as r:
                       obj=json.load(r)
               except Exception as e:
-                  print("ERROR",type(e).__name__,str(e))
+                  print("ERROR",type(e).__name__,str(e)[:300])
                   continue
-
               print("id",obj.get("id"))
               print("display_name",obj.get("display_name"))
               print("ean",obj.get("ean"))
               print("brand",obj.get("brand"))
               print("published",obj.get("published"))
-              print("is_variable_weight",obj.get("is_variable_weight"))
               print("unavailable_from",obj.get("unavailable_from"))
               print("unavailable_weekdays",obj.get("unavailable_weekdays"))
               print("share_url",obj.get("share_url"))
-
-              details=obj.get("details") if isinstance(obj.get("details"),dict) else {}
+              print("is_variable_weight",obj.get("is_variable_weight"))
+              pi=obj.get("price_instructions") or {}
+              for key in ("unit_price","reference_price","reference_format","unit_size","size_format","approx_size"):
+                  print("price."+key,pi.get(key))
+              details=obj.get("details") or {}
               print("legal_name",details.get("legal_name"))
               print("mandatory_mentions",details.get("mandatory_mentions"))
               print("suppliers",json.dumps(details.get("suppliers"),ensure_ascii=False))
-
-              nutrition=obj.get("nutrition_information") if isinstance(obj.get("nutrition_information"),dict) else {}
-              print("ingredients",nutrition.get("ingredients"))
-
-              prices=obj.get("price_instructions") if isinstance(obj.get("price_instructions"),dict) else {}
-              for key in ("unit_price","reference_price","reference_format","unit_size","size_format","approx_size","selling_method"):
-                  print("price."+key,prices.get(key))
+              nutrition=obj.get("nutrition_information") or {}
+              print("ingredients",json.dumps(nutrition.get("ingredients"),ensure_ascii=False))
           PY
