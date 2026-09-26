@@ -400,6 +400,33 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
             "Escape room del museo",
         )
 
+    def test_general_numeric_and_spanish_session_markers_are_supported(self):
+        numeric = (
+            "2026-09-26\n"
+            "– 18 h.: 7º pase para Escape room nocturno."
+        )
+        spanish = (
+            "2026-09-26\n"
+            "– 19 h.: Séptimo turno para Escape room nocturno."
+        )
+        numbered = (
+            "2026-09-26\n"
+            "– 20 h.: Turno 12 de Escape room nocturno."
+        )
+
+        self.assertEqual(
+            _todo_session_parent_from_row(numeric),
+            "Escape room nocturno",
+        )
+        self.assertEqual(
+            _todo_session_parent_from_row(spanish),
+            "Escape room nocturno",
+        )
+        self.assertEqual(
+            _todo_session_parent_from_row(numbered),
+            "Escape room nocturno",
+        )
+
     def test_source_merge_preserves_raw_identity_when_title_marker_is_lost(self):
         todo = self._annotated_escape_events()
         day = date(2026, 9, 26)
