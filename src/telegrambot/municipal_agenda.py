@@ -524,57 +524,28 @@ class SourceEvent:
 
 
 _SESSION_TITLE = re.compile(
-    r"^\s*(?:(?P<ordinal>"
+    r"^\s*(?:(?:"
     r"primer(?:a|o)?|segund(?:a|o|0)|tercer(?:a|o)?|cuart[oa]|"
-    r"quint[oa]|sext[oa])\s+(?P<label>turno|sesi[oó]n|pase)|"
-    r"(?P<number_prefix>[1-6])(?:[.ºª]|er|ra)?\s+"
-    r"(?P<label_prefix>turno|sesi[oó]n|pase)|"
-    r"(?P<label_suffix>turno|sesi[oó]n|pase)\s*"
-    r"(?:n[úu]m(?:ero)?\.?\s*)?(?P<number_suffix>[1-6]))\b"
+    r"quint[oa]|sext[oa]|[1-6](?:[.ºª]|er|ra)?)\s+"
+    r"(?:turno|sesi[oó]n|pase)|"
+    r"(?:turno|sesi[oó]n|pase)\s*"
+    r"(?:n[úu]m(?:ero)?\.?\s*)?[1-6])\b"
     r"\s*(?:[-:–—]\s*)?(?:para\s+|de\s+)?"
     r"(?P<base>.+?)\s*$",
     re.IGNORECASE,
 )
-_SESSION_ORDINALS = {
-    "primer": 1, "primera": 1, "primero": 1,
-    "segunda": 2, "segundo": 2, "segund0": 2,
-    "tercer": 3, "tercera": 3, "tercero": 3,
-    "cuarta": 4, "cuarto": 4,
-    "quinta": 5, "quinto": 5,
-    "sexta": 6, "sexto": 6,
-}
-_TODO_SESSION_MARKER = re.compile(
-    r"\b(?:primer(?:a|o)?|segund(?:a|o|0)|tercer(?:a|o)?|cuart[oa]|"
-    r"quint[oa]|sext[oa]|[1-6](?:[.ºª]|er|ra)?)\s+"
-    r"(?:turno|sesi[oó]n|pase)\b|"
-    r"\b(?:turno|sesi[oó]n|pase)\s*"
-    r"(?:n[úu]m(?:ero)?\.?\s*)?[1-6]\b",
-    re.IGNORECASE,
-)
 
 
-def _todo_row_has_session_marker(row: str) -> bool:
-    """Return whether one unresolved Todo row could hide a session member."""
-
-    return _TODO_SESSION_MARKER.search(html.unescape(row)) is not None
-
-
-def _session_title_parts(title: str) -> Optional[Tuple[str, int]]:
-    """Return one explicit source-proven session base title and order."""
+def _session_base_title(title: str) -> Optional[str]:
+    """Return a base title only when the source explicitly marks a session."""
 
     match = _SESSION_TITLE.fullmatch(" ".join(title.split()))
     if match is None:
         return None
-    ordinal = match.group("ordinal")
-    order = (
-        _SESSION_ORDINALS.get(ordinal.casefold())
-        if ordinal is not None
-        else int(match.group("number_prefix") or match.group("number_suffix"))
-    )
     base = match.group("base").strip(" .,:;–—-")
-    if order is None or not 5 <= len(base) <= 180:
+    if not 5 <= len(base) <= 180:
         return None
-    return base, order
+    return base
 
 
 def _session_base_key(value: str) -> str:
@@ -587,108 +558,60 @@ def _session_base_key(value: str) -> str:
     return " ".join(value.split()).strip(" .,:;-")
 
 
-def _session_common_facts(event: SourceEvent) -> tuple:
-    """Facts that must stay common before several occurrences can be grouped."""
-
-    return (
-        event.category,
-        (
-            canonical_event_place(event.place).casefold()
-            if event.place is not None else None
-        ),
-        event.teaser_es,
-        event.duration_minutes,
-        event.audience_label,
-        event.details,
-        event.place_query,
-        event.meeting_point,
-        event.schedule_note,
-        event.participation_note,
-        event.capacity_limited,
-    )
-
-
 def _session_source_plan(
     events: Tuple[SourceEvent, ...],
-    blocked_dates: frozenset[date] = frozenset(),
-) -> Tuple[Tuple[str, Optional[str], Optional[int], Optional[int]], ...]:
-    """Plan display titles and session metadata before any translation.
+) -> Tuple[Tuple[str, Optional[str]], ...]:
+    """Identify source-proven session families before any translation.
 
-    Snapshot occurrences remain atomic. Only an explicit source marker such
-    as Primer turno, Segunda sesión or Pase 3 can prove the relationship.
-    Incomplete ordinal sequences fail open and remain separate.
+    Date/place are sanity checks only.  Identity comes from an explicit
+    session marker plus the same normalized base source title.
     """
 
-    plan: List[
-        Tuple[str, Optional[str], Optional[int], Optional[int]]
-    ] = [
-        (event.title_es, None, None, None) for event in events
+    plan: List[Tuple[str, Optional[str]]] = [
+        (event.title_es, None) for event in events
     ]
-    candidates: Dict[tuple, List[Tuple[int, int, str]]] = {}
+    candidates: Dict[tuple, List[Tuple[int, str]]] = {}
     for index, event in enumerate(events):
         if (
             event.programme_title is not None
             or event.start_date != event.end_date
             or event.start_time is None
-            or event.start_date in blocked_dates
         ):
             continue
-        parsed = _session_title_parts(event.title_es)
-        if parsed is None:
+        base_title = _session_base_title(event.title_es)
+        if base_title is None:
             continue
-        base_title, order = parsed
-        place_key = (
-            canonical_event_place(event.place).casefold()
-            if event.place is not None else None
-        )
         key = (
             event.start_date,
             event.category,
-            place_key,
             _session_base_key(base_title),
         )
-        candidates.setdefault(key, []).append((index, order, base_title))
+        candidates.setdefault(key, []).append((index, base_title))
 
     for key, members in candidates.items():
         if len(members) < 2:
             continue
-        orders = sorted(order for _, order, _ in members)
-        if orders != list(range(1, len(members) + 1)):
-            continue
-        start_times = [events[index].start_time for index, _, _ in members]
+        start_times = [events[index].start_time for index, _ in members]
         if len(set(start_times)) != len(start_times):
             continue
-        ordered_members = sorted(members, key=lambda item: item[1])
-        ordered_start_times = [
-            events[index].start_time for index, _, _ in ordered_members
-        ]
-        if ordered_start_times != sorted(ordered_start_times):
-            continue
-        common = _session_common_facts(events[members[0][0]])
-        if any(
-            _session_common_facts(events[index]) != common
-            for index, _, _ in members[1:]
-        ):
-            continue
-        base_titles = {
-            _session_base_key(base_title) for _, _, base_title in members
+
+        known_places = {
+            canonical_event_place(events[index].place).casefold()
+            for index, _ in members
+            if events[index].place is not None
         }
-        if len(base_titles) != 1:
+        if len(known_places) > 1:
             continue
-        display_title = ordered_members[0][2]
+
+        display_title = members[0][1]
         group_key = "session:" + "|".join((
             key[0].isoformat(),
             key[1],
-            key[2] or "",
-            key[3],
+            key[2],
         ))
-        session_count = len(members)
-        for index, order, _ in members:
-            plan[index] = (
-                display_title, group_key, order, session_count
-            )
+        for index, _ in members:
+            plan[index] = (display_title, group_key)
     return tuple(plan)
-
 
 def _display_ticket_price(
     source: SourceEvent,
@@ -3228,7 +3151,6 @@ async def refresh_municipal_catalog(
         todo_events = prior_todo_events
         todo_window = None
         todo_state_complete = True
-        todo_incomplete_session_dates = set()
         todo_enrichment_programs: Tuple[object, ...] = ()
         todo_explicit_rows: Tuple[Tuple[date, str, str], ...] = ()
         try:
@@ -3323,11 +3245,6 @@ async def refresh_municipal_catalog(
                 program_complete = not pending_rows
                 if pending_rows:
                     todo_state_complete = False
-                    todo_incomplete_session_dates.update(
-                        day
-                        for day, _, row in pending_rows
-                        if _todo_row_has_session_marker(row)
-                    )
                     missing = ", ".join(
                         f"{day.isoformat()} {start_time}"
                         for day, start_time, _ in pending_rows
@@ -3633,7 +3550,6 @@ async def refresh_municipal_catalog(
             }
         elif isinstance(poster_source, dict) and poster_source:
             source_state["mupi"] = poster_source
-        old_incomplete_session_dates = _todo_incomplete_session_dates(todo_source)
         if todo_window is not None and todo_state_complete:
             evidence = [
                 detail
@@ -3646,20 +3562,9 @@ async def refresh_municipal_catalog(
                 for admission in program.admissions
                 if admission.evidence
             ]
-            completed_dates = {
-                day
-                for program in todo_window.programs
-                for day in program.dates
-            }
-            remaining_incomplete_session_dates = (
-                old_incomplete_session_dates - completed_dates
-            )
             source_state["todo_cultura"] = {
                 **todo_window.source_state,
                 "checked_at": now.isoformat(),
-                "incomplete_session_dates": sorted(
-                    day.isoformat() for day in remaining_incomplete_session_dates
-                ),
                 "participation_evidence": [
                     {
                         "title_hint": detail.title_hint,
@@ -3675,16 +3580,8 @@ async def refresh_municipal_catalog(
                     for detail in admission_evidence[:20]
                 ],
             }
-        elif todo_window is not None:
-            source_state["todo_cultura"] = {
-                **(todo_source if isinstance(todo_source, dict) else {}),
-                "incomplete_session_dates": sorted(
-                    day.isoformat()
-                    for day in (
-                        old_incomplete_session_dates | todo_incomplete_session_dates
-                    )
-                ),
-            }
+        elif todo_window is not None and isinstance(todo_source, dict) and todo_source:
+            source_state["todo_cultura"] = todo_source
         elif isinstance(todo_source, dict) and todo_source:
             source_state["todo_cultura"] = todo_source
         if programme_state:
@@ -3752,37 +3649,6 @@ async def refresh_municipal_catalog(
         events = snapshot["_events"]
         return tuple(events)
     return tuple(events)
-
-
-def _todo_incomplete_session_dates(state: Any) -> frozenset[date]:
-    """Return dates where an unresolved Todo row may hide a session."""
-
-    if not isinstance(state, dict):
-        return frozenset()
-    raw = state.get("incomplete_session_dates", [])
-    if not isinstance(raw, list):
-        return frozenset()
-    result = set()
-    for value in raw:
-        if not isinstance(value, str):
-            continue
-        try:
-            result.add(date.fromisoformat(value))
-        except ValueError:
-            continue
-    return frozenset(result)
-
-
-async def _cached_session_blocked_dates(
-    state_path: Path,
-) -> frozenset[date]:
-    """Read fail-open session grouping gates from the local snapshot."""
-
-    snapshot = await asyncio.to_thread(_load_snapshot, state_path)
-    if snapshot is None:
-        return frozenset()
-    source = snapshot.get("sources", {}).get("todo_cultura", {})
-    return _todo_incomplete_session_dates(source)
 
 
 async def _cached_current_events(
@@ -3871,8 +3737,7 @@ async def fetch_today_municipal_events(
     source_events = await _cached_current_events(now, state_path, diagnostics)
     if not source_events:
         return ()
-    blocked_dates = await _cached_session_blocked_dates(state_path)
-    session_plan = _session_source_plan(source_events, blocked_dates)
+    session_plan = _session_source_plan(source_events)
     planned = list(zip(source_events, session_plan))
     translated_events = []
     if translation_cache_path is not None:
@@ -3885,14 +3750,10 @@ async def fetch_today_municipal_events(
                     display_source_title,
                 ),
                 session_group_key,
-                session_order,
-                session_count,
             )
             for source, (
                 display_source_title,
                 session_group_key,
-                session_order,
-                session_count,
             ) in planned
         ]
     else:
@@ -3941,26 +3802,16 @@ async def fetch_today_municipal_events(
                 source,
                 translated_by_title[display_source_title],
                 session_group_key,
-                session_order,
-                session_count,
             )
             for source, (
                 display_source_title,
                 session_group_key,
-                session_order,
-                session_count,
             ) in planned
             if display_source_title in translated_by_title
         ]
     result = []
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
-    for (
-        source,
-        title,
-        session_group_key,
-        session_order,
-        session_count,
-    ) in translated_events:
+    for source, title, session_group_key in translated_events:
         starts_at = None
         ends_at = None
         if source.start_time:
@@ -4129,12 +3980,6 @@ async def fetch_today_municipal_events(
                 session_group_key=(
                     None if source.programme_title else session_group_key
                 ),
-                session_order=(
-                    None if source.programme_title else session_order
-                ),
-                session_count=(
-                    None if source.programme_title else session_count
-                ),
                 is_final_day=(
                     source.start_date != source.end_date
                     and local_day == source.end_date
@@ -4152,11 +3997,10 @@ async def municipal_translation_items(
     """Return source identities and exact titles from the local catalog."""
 
     events = await _cached_current_events(now, state_path)
-    blocked_dates = await _cached_session_blocked_dates(state_path)
-    session_plan = _session_source_plan(events, blocked_dates)
+    session_plan = _session_source_plan(events)
     items = list(dict.fromkeys(
         ("municipal_agenda", display_source_title)
-        for display_source_title, _, _, _ in session_plan
+        for display_source_title, _ in session_plan
     ))
     items.extend((
         (

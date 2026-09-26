@@ -248,40 +248,18 @@ def _prefer_agenda_guardamar_venues(
     return tuple(result)
 
 
-def _merged_session_metadata(left, right, programme_title):
-    """Preserve one proven session identity, clearing only real conflicts."""
+def _merged_session_group_key(left, right, programme_title):
+    """Preserve source-proven session identity through cross-source merges."""
 
     if programme_title:
-        return None, None, None
+        return None
     left_key = getattr(left, "session_group_key", None)
     right_key = getattr(right, "session_group_key", None)
-    left_order = getattr(left, "session_order", None)
-    right_order = getattr(right, "session_order", None)
-    left_count = getattr(left, "session_count", None)
-    right_count = getattr(right, "session_count", None)
     if left_key is None:
-        return right_key, right_order, right_count
+        return right_key
     if right_key is None:
-        return left_key, left_order, left_count
-    if left_key != right_key:
-        return None, None, None
-    if (
-        left_order is not None
-        and right_order is not None
-        and left_order != right_order
-    ):
-        return None, None, None
-    if (
-        left_count is not None
-        and right_count is not None
-        and left_count != right_count
-    ):
-        return None, None, None
-    return (
-        left_key,
-        left_order if left_order is not None else right_order,
-        left_count if left_count is not None else right_count,
-    )
+        return left_key
+    return left_key if left_key == right_key else None
 
 
 def _merge_municipal_admission_aliases(events):
@@ -333,11 +311,7 @@ def _merge_municipal_admission_aliases(events):
             else (current, event)
         )
         programme_title = preferred.programme_title or alias.programme_title
-        (
-            session_group_key,
-            session_order,
-            session_count,
-        ) = _merged_session_metadata(
+        session_group_key = _merged_session_group_key(
             preferred, alias, programme_title
         )
         result[duplicate_index] = replace(
@@ -347,8 +321,6 @@ def _merge_municipal_admission_aliases(events):
             image_url=preferred.image_url or alias.image_url,
             programme_title=programme_title,
             session_group_key=session_group_key,
-            session_order=session_order,
-            session_count=session_count,
         )
 
     return tuple(result)
@@ -523,11 +495,7 @@ def _merge_events(*groups):
                 programme_title = (
                     current.programme_title or event.programme_title
                 )
-                (
-                    session_group_key,
-                    session_order,
-                    session_count,
-                ) = _merged_session_metadata(
+                session_group_key = _merged_session_group_key(
                     current, event, programme_title
                 )
                 result[duplicate_index] = replace(
@@ -588,8 +556,6 @@ def _merge_events(*groups):
                         else event.programme_order
                     ),
                     session_group_key=session_group_key,
-                    session_order=session_order,
-                    session_count=session_count,
                 )
                 continue
             result.append(event)
