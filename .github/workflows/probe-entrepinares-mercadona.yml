@@ -1,0 +1,48 @@
+name: Probe Entrepinares Mercadona joins
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/private-label-product-awards-poc
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Inspect candidate SKUs
+        run: |
+          python - <<'PY'
+          import json, urllib.request
+          ids=["50975","11680","50965","50966","50967","50968","50964","11669","11670","11671"]
+          headers={"Accept":"application/json","User-Agent":"GuardamarMorningDigest/0.13"}
+          for pid in ids:
+              print("===",pid,"===")
+              req=urllib.request.Request(f"https://tienda.mercadona.es/api/products/{pid}/?lang=es&wh=alc1",headers=headers)
+              try:
+                  with urllib.request.urlopen(req,timeout=20) as r:
+                      obj=json.load(r)
+              except Exception as e:
+                  print("ERROR",type(e).__name__,str(e)[:200]); continue
+              details=obj.get("details") or {}
+              nut=obj.get("nutrition_information") or {}
+              pi=obj.get("price_instructions") or {}
+              print(json.dumps({
+                  "id":obj.get("id"),"name":obj.get("display_name"),"ean":obj.get("ean"),
+                  "brand":obj.get("brand"),"published":obj.get("published"),
+                  "unavailable_from":obj.get("unavailable_from"),
+                  "unavailable_weekdays":obj.get("unavailable_weekdays"),
+                  "share_url":obj.get("share_url"),"packaging":obj.get("packaging"),
+                  "supplier":details.get("suppliers"),"legal_name":details.get("legal_name"),
+                  "mandatory_mentions":details.get("mandatory_mentions"),
+                  "origin":details.get("origin"),"ingredients":nut.get("ingredients"),
+                  "price":{k:pi.get(k) for k in ("unit_price","unit_size","size_format","reference_price","reference_format","approx_size")}
+              },ensure_ascii=False,sort_keys=True))
+          PY
