@@ -1196,7 +1196,7 @@ finalists or equal medal tiers.
 Deliberately **not** implemented yet:
 
 - no generic retailer catalogue search;
-- no continuous or daily scans of the seven in-scope retailers;
+- no continuous or daily scans of the six in-scope retailers;
 - Masymas still has no parser before its exact browser-free contract is
   separately proven;
 - Mercadona retail refresh currently supports only exact reviewed product IDs;
@@ -1446,3 +1446,229 @@ category.
 Do not deploy or seed that queue. Its exact SKU and retailer research remains
 useful evidence for future joins, but category selection must be recomputed from
 the authoritative podium before any launch.
+
+
+### Cross-source fallback inside one category
+
+A broad category may have more than one authoritative award/ranking source.
+Do not compare raw scores from unrelated competitions. Instead define an
+ordered list of independent source contracts for the category.
+
+Selection is sequential:
+
+1. take source A and exhaust only its explicit #1 -> #2 -> #3 in that order;
+2. each rank must pass the source-specific exceptional-quality gate and exact
+   current retail verification in one of the six active chains;
+3. if none of source A's eligible top three has a verified retail match, move
+   to source B and restart at source B's #1;
+4. never combine source A's #1 with source B's #2/#3 as if they formed one
+   podium;
+5. if a source publishes only a winner, test that winner once and then move to
+   the next source contract if it has no verified target-retail match.
+
+This preserves authority semantics while still allowing a consumer-relevant
+fallback when a world/global podium is not sold through the six supermarket
+chains.
+
+Where two products are genuinely tied by the authoritative source, retain the
+tie rather than manufacturing #1/#2. Prefer a candidate with a verified exact
+current retail match. If several tied candidates have equally strong retail
+evidence, preserve source order; do not invent a cross-source quality
+tie-breaker.
+
+### Current category matrix — 26 September 2026
+
+#### READY — sparkling wine / cava
+
+Primary Spanish-government source:
+
+- MAPA 2026 names `Cuvée D.S. 2019` by Freixenet as Best Sparkling Wine.
+- The reviewed public result exposes a winner only, not ordered #2/#3.
+- No exact current first-party listing for that vintage was established in the
+  six target supermarket chains during this pass.
+
+Secondary consumer-ranking source:
+
+- OCU analysed 25 D.O. Cava products.
+- Three products tie at 94/100; the first named is `Naltros Brut (ALDI)`.
+- ALDI currently exposes exact `NALTROS Cava Brut`, 0.75 l, at 3.15 EUR
+  (4.20 EUR/l), with DOP Cava and current product details.
+
+Decision: category is **READY** through the secondary OCU source after the
+winner-only MAPA source yields no verified current retail match. Keep the tie
+semantics; do not claim Naltros uniquely scored above the other 94-point cava.
+
+Sources:
+
+- https://www.mapa.gob.es/es/alimentacion/temas/promo-alimentos/premios-alimentos/galardonados_vino
+- https://www.ocu.org/organizacion/prensa/notas-de-prensa/2025/cavas191225
+- https://www.aldi.es/p/cava-brut-190300.html
+
+#### READY — gazpacho
+
+OCU compared 39 refrigerated gazpachos. `Real Fooding` is explicitly
+`Mejor del Análisis`, global score 90/100, and best in both professional
+tasting and OCU's healthy-scale assessment.
+
+Carrefour currently sells exact `Gazpacho fresco Realfooding sin gluten 1 l`
+for 4.05 EUR / 4.05 EUR/l. The card identifies manufacturer
+`CAÑA NATURE, S.L.U.` and country of origin Spain.
+
+Decision: **READY**, rank #1 directly matches an active target supermarket.
+
+Sources:
+
+- https://www.ocu.org/alimentacion/platos-preparados/informe/gazpachos
+- https://www.ocu.org/alimentacion/platos-preparados/asi-analizamos-gazpachos
+- https://www.carrefour.es/supermercado/gazpacho-fresco-realfooding-sin-gluten-1-l/R-VC4AECOMM-339275/p
+
+#### PENDING — tuna in olive oil
+
+OCU's explicit high-quality order:
+
+1. `Sal de Plata (ALDI)` — 86/100;
+2. `Hacendado (Mercadona)` — 85/100.
+
+Both pass the >=85 overall gate.
+
+The exact current ALDI permanent product card for the reviewed Sal de Plata
+olive-oil tuna format has not yet been proven. Because #1 is known by OCU to be
+an ALDI product, absence of a convenient public card is not sufficient evidence
+that it is no longer sold.
+
+Fallback #2 is technically proven current in Mercadona Guardamar context:
+
+- SKU `18002`;
+- EAN `8480000180025`;
+- `Atún claro en aceite de oliva Hacendado`;
+- current pack: 6 x 80 g gross, 360 g drained;
+- current reviewed price: 4.90 EUR;
+- supplier `ESCURIS, S.L.`;
+- ingredients: tuna, olive oil and salt;
+- published=true; no current unavailability flag.
+
+Decision: category remains **PENDING**, not READY for #2, until #1 is either
+proved currently available (then select #1) or positively rejected as no longer
+a current exact ALDI product. Do not demote #1 merely because one retailer is
+harder to inspect technically.
+
+Award source:
+
+- https://www.ocu.org/organizacion/prensa/notas-de-prensa/2023/atunclaroaceiteoliva050623
+
+Reviewed fallback retail URL:
+
+- https://tienda.mercadona.es/product/18002/atun-claro-aceite-oliva-hacendado-pack-6
+
+#### SKIP — broad cheese
+
+WCCC 2026 overall podium:
+
+1. Beemster Royaal Grand Cru — 98.68;
+2. Appenzeller Purple Label — 98.45;
+3. Alter Fritz — 98.41.
+
+The contest had 3,375 entries. No exact current first-party listing for these
+three cheeses was established in the six target chains.
+
+MAPA's Spanish cheese award is a strong secondary authority but exposes one
+overall special winner, `Cremositos del Zújar`, without an ordered broad
+#2/#3 fallback. No exact current target-retail match was established for that
+winner either.
+
+Decision: broad `cheese` = **SKIP** for now. Previously researched Valle de
+San Juan / Entrepinares supermarket cheeses remain useful retail/identity
+evidence but must not replace a higher broad-category podium simply because
+they are easier to buy.
+
+#### SKIP — extra-virgin olive oil under strict broad ranking
+
+EVOOLEUM 2026 overall top three:
+
+1. Di Molfetta Frantoiani di Coratina — 97;
+2. Monini Monocultivar Coratina Bio — 96;
+3. Oleum Hispania Nature Premium Pajarera — 96.
+
+No exact current first-party listing for any of these top three was established
+in the six target supermarket chains.
+
+OCU is a plausible secondary supermarket-oriented source and currently shows a
+93/100 `Mejor del Análisis` among 23 olive oils, while Carrefour currently
+lists products such as Oleoestepa. However the anonymous OCU public surface
+reviewed in this pass did not expose a sufficiently strong exact
+product-to-93/100 identity join. Do not infer the winner from surrounding cards
+or prices.
+
+Decision: AOVE = **SKIP/PENDING secondary source**, not production-ready.
+
+Sources:
+
+- https://www.evooleum.com/mejor-de-cada-categoria/
+- https://www.ocu.org/alimentacion/aceite-oliva
+
+#### SKIP — table olives
+
+VINAC uses blind tasting and awards three best table olives, but the reviewed
+public result does not establish an ordered #1/#2/#3 podium. Exact current
+target-retail matches for the awarded recipes were also not established.
+
+Decision: **SKIP** until a source exposes a real winner/podium with exact
+commercial identity.
+
+#### SKIP — jamón
+
+MAPA 2026 names winners for Jamón de Bellota Ibérico and Jamón Serrano /
+recognized-quality categories, but the public result does not provide ordered
+#2/#3 fallback. Exact current target-retail sale of the winners was not
+established.
+
+Decision: both jamón categories = **SKIP** for now.
+
+#### SKIP — low-score prepared-food categories
+
+The quality floor remains active even when a target retailer appears in the
+top results.
+
+Reviewed examples rejected:
+
+- tortilla de patatas: top overall quality in the reviewed OCU set is below
+  85/100;
+- torrijas: explicit top three exists and Mercadona is #2, but best overall
+  quality is only around 69/100;
+- prepared paella/rice: top global results are around the low 60s;
+- sardines in olive oil: reviewed target-retail examples are in the 60s.
+
+Do not publish a merely relative winner from a weak comparison.
+
+#### SEASONAL WATCH — Turrón de Alicante
+
+OCU's exact `De Nuestra Tierra (Carrefour) Turrón de Alicante` is
+`Mejor del Análisis` at 85/100 and therefore passes the minimum gate.
+
+The reviewed current Carrefour search did not establish the exact winner as a
+currently sellable product in September. Historic Carrefour documents prove
+the De Nuestra Tierra product family/EAN lineage but are not current stock
+evidence.
+
+Decision: **seasonal watch**, re-check exact Carrefour retail identity/current
+price around the Christmas assortment before selecting the category.
+
+### Current launch runway under category-first rules
+
+Confirmed production-quality categories right now:
+
+1. sparkling wine / cava -> NALTROS Brut at ALDI via OCU fallback;
+2. gazpacho -> Realfooding 1 l at Carrefour via OCU #1.
+
+Pending high-value categories:
+
+- tuna in olive oil -> resolve current ALDI rank #1 before allowing Mercadona
+  rank #2;
+- Turrón de Alicante -> seasonal current-retail confirmation;
+- AOVE -> exact secondary OCU winner identity;
+- MAPA wine styles -> exact current retail check of winner-only products.
+
+At a three-local-day cadence, the two READY categories provide only about six
+days of launch runway. This is still too small for production seeding. Keep
+researching until at least five independent broad categories are READY, then
+implement category-level state/dedup and the three-day cooldown.
