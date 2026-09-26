@@ -540,7 +540,7 @@ _SESSION_PREFIX_TITLE = re.compile(
 )
 _SESSION_SUFFIX_TITLE = re.compile(
     rf"^\s*(?P<base>.+?)\s*"
-    rf"(?:[([]\s*)?{_SESSION_MARKER}\b\s*(?:[)]]\s*)?$",
+    rf"(?:[\(\[]\s*)?{_SESSION_MARKER}\b\s*(?:[\)\]]\s*)?$",
     re.IGNORECASE,
 )
 _TODO_ROW_TITLE_LINE = re.compile(
@@ -560,7 +560,7 @@ def _session_base_title(title: str) -> Optional[str]:
         match = _SESSION_SUFFIX_TITLE.fullmatch(value)
     if match is None:
         return None
-    base = match.group("base").strip(" .,:;–—-'\"“”‘’«»")
+    base = match.group("base").strip(" .,:;–—-")
     if not 5 <= len(base) <= 180:
         return None
     return base
