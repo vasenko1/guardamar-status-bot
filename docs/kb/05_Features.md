@@ -695,20 +695,23 @@ source-specific exceptional candidate exists, that day stays quiet.
 Before the first production launch, a separate operator-only reviewed starter
 seed may create a bounded initial queue. It is not a new scheduled source and
 does not disable the normal per-source silent baseline. The 2026 seed currently
-contains six fully reviewed Mercadona candidates:
+contains seven fully reviewed candidates and deliberately introduces a
+different product category on day 3:
 
-1. Valle de San Juan Con Trufa — WCCC 99.30/100, best in class;
-2. Valle de San Juan Añejo — WCCC 99.25/100;
-3. Queserías Entrepinares Añejo Tostado — official WCCC Top 20;
-4. Valle de San Juan Afrutado — WCCC 97.40/100;
-5. Valle de San Juan Semicurado — WCCC 97.40/100;
-6. Valle de San Juan Ibérico Añejo — WCCC 97.20/100.
+1. Valle de San Juan Con Trufa at Mercadona — WCCC 99.30/100, best in class;
+2. Valle de San Juan Añejo at Mercadona — WCCC 99.25/100;
+3. NALTROS Brut at ALDI — OCU 94/100 among 25 cava;
+4. Queserías Entrepinares Añejo Tostado at Mercadona — official WCCC Top 20;
+5. Valle de San Juan Afrutado at Mercadona — WCCC 97.40/100;
+6. Valle de San Juan Semicurado at Mercadona — WCCC 97.40/100;
+7. Valle de San Juan Ibérico Añejo at Mercadona — WCCC 97.20/100.
 
 For the five Valle candidates, the entrant's official result announcement is a
 dated launch-seed fact, not a general automated source. Public copy explicitly
-attributes those scores to Valle de San Juan. Exact current Mercadona identity
-and prices are still revalidated immediately before seed and before each
-publication.
+attributes those scores to Valle de San Juan. NALTROS uses OCU's dated cava
+analysis as award evidence and one exact ALDI product card as current retail
+evidence. Exact current retail identity, availability and prices are still
+revalidated immediately before seed and before each publication.
 
 Operator commands:
 
