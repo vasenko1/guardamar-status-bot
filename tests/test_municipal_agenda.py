@@ -500,7 +500,7 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
                 None, None, None, "event",
                 (TURISMO_PROGRAMME_TEXT_SOURCE,),
             )
-            for day in recovery_dates
+            for day in (*recovery_dates, date(2026, 11, 1))
         )
         model = AsyncMock(side_effect=(initial_result, recovery_result))
 
