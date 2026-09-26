@@ -505,8 +505,10 @@ blind structured vision readings; only agreeing occurrences survive. The
 prompt treats tall two-column layouts and adjacent September/October dates as
 one programme and keeps separately timed same-day acts separate. Unchanged
 verified article state requires neither poster download nor model call. The
-adapter stores only normalized facts, article/poster hashes and URLs; raw HTML,
-poster bytes and model responses are not retained. Todo Cultura may reproduce
+adapter stores only normalized facts, the article/poster URLs and the verified
+poster hash; raw HTML, poster bytes and model responses are not retained. The
+official WordPress upload URL is the change identity, avoiding repeated image
+downloads when dynamic page markup changes without replacing the poster. Todo Cultura may reproduce
 the same programme in machine-readable text, but remains supplemental rather
 than the authority for a municipal poster.
 
