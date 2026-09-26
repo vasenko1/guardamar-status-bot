@@ -13,6 +13,7 @@ from telegrambot.product_awards import (
     PageDocument,
     ProductAwardCandidate,
     ProductAwardError,
+    ProductAwardPublication,
     ProductAwardState,
     RetailEvidence,
     RetailOfferVariant,
