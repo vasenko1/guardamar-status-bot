@@ -1638,8 +1638,11 @@ def _refresh_one_mercadona_offer(
                     "Mercadona ingredient data missing",
                     code="PARSER",
                 )
+            ingredient_text = html.unescape(
+                re.sub(r"<[^>]+>", " ", ingredients)
+            )
             if not all(
-                _phrase_present(ingredients, marker)
+                _phrase_present(ingredient_text, marker)
                 for marker in contract.recipe_markers
             ):
                 raise ProductAwardError(
