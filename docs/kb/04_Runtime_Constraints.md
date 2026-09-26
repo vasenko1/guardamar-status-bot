@@ -202,7 +202,14 @@ allowed for the guide.
 - The 05:10 municipal refresh may also read one bounded AM Guardamar WordPress
   REST post list (at most twelve posts and 300 KiB). It stores only normalized
   future public-event facts and reuses an unchanged post's `id` and `modified`
-  facts without another extraction. The 05:10 refresh may read one Todo Cultura metadata page, bounded
+  facts without another extraction. The same municipal refresh reads one
+  bounded recent Turismo WordPress metadata index for generic official
+  programme articles, considers at most three candidates, and fetches details
+  only for changed/new candidates. Each changed/new article gets one normal
+  evidence-bound text extraction and, only when deterministic date-leading
+  blocks prove missing current/future occurrence dates, at most one targeted
+  recovery extraction for those dates. Unchanged verified version-2 articles
+  require neither detail reads nor model calls. The 05:10 refresh may read one Todo Cultura metadata page, bounded
   to 100 records and 300 KiB, and up to
   six bounded detail records in at most two REST reads of four records and
   300 KiB each, while sending at most three selected programme
