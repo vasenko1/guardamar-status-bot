@@ -12,7 +12,7 @@ from html.parser import HTMLParser
 from typing import Any, Dict, List, Optional, Tuple
 
 from ._transport import BoundedFetchError, fetch_bounded
-from .event_urls import normalize_ticket_url
+from .event_urls import normalize_registration_url, normalize_ticket_url
 from .event_facts import route_difficulty_detail
 
 
@@ -28,7 +28,7 @@ METADATA_PAGE_SIZE = 100
 METADATA_LIMIT_BYTES = 300_000
 ROLLING_WINDOW_DAYS = 7
 CURSOR_OVERLAP_MINUTES = 5
-PARSER_VERSION = 17
+PARSER_VERSION = 20
 API_URL = "https://todoculturavegabaja.es/wp-json/wp/v2/mec-events"
 
 
@@ -59,7 +59,8 @@ class TodoCulturaParticipation:
     """Explicit event-local participation facts from the dated programme."""
 
     title_hint: str
-    registration_contact: str
+    registration_contact: Optional[str] = None
+    registration_url: Optional[str] = None
     participation_note: Optional[str] = None
     capacity_limited: bool = False
     evidence: str = ""
@@ -89,6 +90,7 @@ class TodoCulturaProgram:
     summaries: Tuple[TodoCulturaSummary, ...] = ()
     dates: Tuple[date, ...] = ()
     event_rows: Tuple[Tuple[date, str, str], ...] = ()
+    candidate_ids: Tuple[int, ...] = ()
     standalone: bool = False
 
 
@@ -149,7 +151,8 @@ def _event_rows(section: str) -> Tuple[Tuple[str, str], ...]:
 
 _SUMMARY_START = re.compile(
     r"^(?:habr[aá]|incluye|incluir[aá]|el\s+programa\s+incluye|"
-    r"contar[aá]\s+con|se\s+podr[aá]\s+disfrutar\s+de)\b",
+    r"contar[aá]\s+con|se\s+podr[aá]\s+disfrutar\s+de|"
+    r"los\s+participantes\s+de\s+la\s+actividad)\b",
     re.IGNORECASE,
 )
 _SUMMARY_REJECT = re.compile(
@@ -171,9 +174,18 @@ def _activity_summaries(section: str) -> Tuple[TodoCulturaSummary, ...]:
         title_hint = lines[1][:300]
         candidates = []
         for line in lines[2:]:
+            summary_match = _SUMMARY_START.search(line)
+            limit = (
+                260
+                if summary_match is not None
+                and line.casefold().startswith(
+                    "los participantes de la actividad"
+                )
+                else 220
+            )
             if (
-                20 <= len(line) <= 220
-                and _SUMMARY_START.search(line)
+                20 <= len(line) <= limit
+                and summary_match is not None
                 and _SUMMARY_REJECT.search(line) is None
             ):
                 candidates.append(line.rstrip(" .") + ".")
@@ -314,6 +326,34 @@ def _mentioned_dates(text: str, reference_date: date) -> set[date]:
     return result
 
 
+def _audience_note(anchor: str) -> Optional[str]:
+    """Return only an explicitly stated participant age bound."""
+
+    age = re.search(
+        r"(?:jóvenes|jovenes|personas|niños|niñas)"
+        r"(?:\s+de\s+entre|\s+de|\s+entre)?\s+"
+        r"(\d{1,2})\s+(?:a|y)\s+"
+        r"(\d{1,2})\s+años",
+        anchor,
+        re.IGNORECASE,
+    )
+    if age is not None:
+        audience = (
+            "молодёжи"
+            if re.search(r"\bjóvenes\b|\bjovenes\b", anchor, re.I)
+            else "участников"
+        )
+        return f"для {audience} {age.group(1)}–{age.group(2)} лет"
+    minimum_age = re.search(
+        r"(?:edades?\s+)?a\s+partir\s+de\s+(\d{1,2})\s+años",
+        anchor,
+        re.IGNORECASE,
+    )
+    if minimum_age is not None:
+        return f"для участников от {minimum_age.group(1)} лет"
+    return None
+
+
 def _participation(text: str) -> Tuple[TodoCulturaParticipation, ...]:
     """Bind only explicit registration rows to their preceding event row."""
 
@@ -372,18 +412,6 @@ def _participation(text: str) -> Tuple[TodoCulturaParticipation, ...]:
         contact = re.sub(
             r"\s+y\s+email\b", " или email", contact, flags=re.IGNORECASE
         )
-        age = re.search(
-            r"(?:jóvenes|jovenes|personas|niños|niñas)"
-            r"(?:\s+de|\s+entre)?\s+(\d{1,2})\s+(?:a|y)\s+"
-            r"(\d{1,2})\s+años",
-            anchor,
-            re.IGNORECASE,
-        )
-        minimum_age = re.search(
-            r"(?:edades?\s+)?a\s+partir\s+de\s+(\d{1,2})\s+años",
-            anchor,
-            re.IGNORECASE,
-        )
         context_lines = lines[anchor_index:index + 1]
         context = " ".join(context_lines)
         beginner_friendly = bool(re.search(
@@ -404,19 +432,9 @@ def _participation(text: str) -> Tuple[TodoCulturaParticipation, ...]:
             re.IGNORECASE,
         ))
         note_parts = []
-        if age is not None:
-            audience = (
-                "молодёжи"
-                if re.search(r"\bjóvenes\b|\bjovenes\b", anchor, re.I)
-                else "участников"
-            )
-            note_parts.append(
-                f"для {audience} {age.group(1)}–{age.group(2)} лет"
-            )
-        elif minimum_age is not None:
-            note_parts.append(
-                f"для участников от {minimum_age.group(1)} лет"
-            )
+        audience_note = _audience_note(anchor)
+        if audience_note is not None:
+            note_parts.append(audience_note)
         skill_parts = []
         if beginner_friendly:
             skill_parts.append("можно начать с нуля")
@@ -497,6 +515,18 @@ def _paragraphs(rendered: str) -> List[Tuple[str, str]]:
         if plain:
             result.append((fragment, plain))
     return result
+
+
+def _registration_url(fragment: str) -> Optional[str]:
+    """Keep only explicit registration links on approved form hosts."""
+
+    for raw_url in re.findall(
+        r"href\s*=\s*['\"]([^'\"]+)['\"]", fragment, re.IGNORECASE
+    ):
+        normalized = normalize_registration_url(html.unescape(raw_url))
+        if normalized is not None:
+            return normalized
+    return None
 
 
 def _ticket_url(fragment: str) -> Optional[str]:
@@ -618,6 +648,97 @@ def _all_mentioned_dates(text: str, reference_date: date) -> Tuple[date, ...]:
             except ValueError:
                 continue
     return tuple(sorted(result))
+
+
+def _registration_participation(
+    rendered: str,
+    reference_date: Optional[date] = None,
+) -> Tuple[TodoCulturaParticipation, ...]:
+    """Bind link-only registration forms to one explicit timed event row."""
+
+    result = []
+    seen = set()
+    title_hint = None
+    title_time = None
+    current_date = None
+    context_lines: List[str] = []
+    anchor = reference_date or date.today()
+    for paragraph, plain in _paragraphs(rendered):
+        header_date = _header_date(plain, anchor.year)
+        if header_date is not None:
+            current_date = header_date
+            title_hint = None
+            title_time = None
+            context_lines = []
+            continue
+        is_event_row = bool(
+            _EVENT_ROW.match(plain)
+            or _INLINE_EVENT_ROW.search(plain)
+            or re.match(
+                r"^\s*[–—•-]?\s*a\s+las\s+\d",
+                plain,
+                re.IGNORECASE,
+            )
+        )
+        if is_event_row:
+            title_hint = plain[:300]
+            title_time = _event_time(plain)
+            mentioned = _all_mentioned_dates(plain, anchor)
+            if mentioned:
+                current_date = min(
+                    mentioned,
+                    key=lambda candidate: abs((candidate - anchor).days),
+                )
+            context_lines = [plain]
+        elif title_hint is not None:
+            context_lines.append(plain)
+
+        if not re.match(
+            r"^(?:inscripci(?:ón|on|ones)(?:\s+y\s+reservas?)?"
+            r"|reservas?|para apuntarse)\s*:",
+            plain,
+            re.IGNORECASE,
+        ):
+            continue
+        registration_url = _registration_url(paragraph)
+        if (
+            registration_url is None
+            or title_hint is None
+            or title_time is None
+        ):
+            continue
+        if re.search(r"(?:\+34\s*)?(?:\d[\s.-]*){9}", plain) or re.search(
+            r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b",
+            plain,
+            re.IGNORECASE,
+        ):
+            # Existing contact parsing remains authoritative when the source
+            # already offers a phone number or email.
+            continue
+        event_dates = _all_mentioned_dates(title_hint, anchor)
+        if not event_dates and current_date is not None:
+            event_dates = (current_date,)
+        context = " ".join(context_lines[-6:])[:600]
+        key = (event_dates, title_time, registration_url)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(TodoCulturaParticipation(
+            title_hint=title_hint,
+            registration_url=registration_url,
+            participation_note=_audience_note(title_hint),
+            capacity_limited=bool(re.search(
+                r"\b(?:plazas|aforo)\b.{0,40}\blimitad[oa]s?\b",
+                context,
+                re.IGNORECASE,
+            )),
+            evidence=context,
+            event_dates=event_dates,
+            start_time=title_time,
+        ))
+        if len(result) == 12:
+            break
+    return tuple(result)
 
 
 def _distance_label(value: str) -> Optional[str]:
@@ -1049,6 +1170,7 @@ def _metadata_candidate(
         "modified_gmt": modified,
         "link": link,
         "dates": sorted(day.isoformat() for day in hinted_dates),
+        "dates_source": "metadata",
         "processed_dates": [],
         "detail_checked": not hinted_dates,
         "detail_priority": detail_priority,
@@ -1251,25 +1373,53 @@ def _read_program_window(
     """Incrementally collect only sections entering the rolling week."""
 
     prior = prior_state if isinstance(prior_state, dict) else {}
-    if prior.get("parser_version") != PARSER_VERSION:
-        # Re-open the rolling window once when extraction capabilities change.
-        # The metadata cursor remains useful, but old coverage must not prevent
-        # richer event-local facts from being collected.
-        prior = {
-            **prior,
-            "cursor_modified_gmt": None,
-            "covered_dates": [],
-            "candidates": [
-                {
-                    **candidate,
-                    "processed_dates": [],
-                    "processed_chunks": {},
-                    "detail_checked": False,
-                }
-                for candidate in prior.get("candidates", [])
-                if isinstance(candidate, dict)
-            ],
-        }
+    prior_version = prior.get("parser_version")
+    if prior_version != PARSER_VERSION:
+        if prior_version == 19:
+            # v19 already reopened Todo pages to recover raw session rows.
+            # Preserve that work, but re-check each future candidate once so
+            # metadata date hints can be replaced by dates proven in detail.
+            prior = {
+                **prior,
+                "candidates": [
+                    {
+                        **candidate,
+                        "dates_source": candidate.get(
+                            "dates_source", "metadata"
+                        ),
+                        "detail_checked": (
+                            candidate.get("detail_checked", False)
+                            if candidate.get("dates_source") == "detail"
+                            else (
+                                False
+                                if candidate.get("dates")
+                                else candidate.get("detail_checked", True)
+                            )
+                        ),
+                    }
+                    for candidate in prior.get("candidates", [])
+                    if isinstance(candidate, dict)
+                ],
+            }
+        else:
+            # Older parsers did not preserve the raw rows required by current
+            # session grouping, so reopen the rolling window completely.
+            prior = {
+                **prior,
+                "cursor_modified_gmt": None,
+                "covered_dates": [],
+                "candidates": [
+                    {
+                        **candidate,
+                        "dates_source": "metadata",
+                        "processed_dates": [],
+                        "processed_chunks": {},
+                        "detail_checked": not bool(candidate.get("dates")),
+                    }
+                    for candidate in prior.get("candidates", [])
+                    if isinstance(candidate, dict)
+                ],
+            }
     cursor = prior.get("cursor_modified_gmt")
     if not isinstance(cursor, str):
         cursor = None
@@ -1310,16 +1460,21 @@ def _read_program_window(
             existing is not None
             and existing.get("modified_gmt") == incoming["modified_gmt"]
         ):
-            # Keep full-page progress and discovered dates, but always refresh
-            # metadata-derived selection fields. Parser migrations deliberately
-            # reopen progress while the upstream modified timestamp may stay
-            # unchanged.
-            incoming["dates"] = existing.get("dates", incoming["dates"])
+            # Full-detail dates are stronger than REST excerpt hints. Keep
+            # them across unchanged metadata; otherwise refresh the hint.
+            if existing.get("dates_source") == "detail":
+                incoming["dates"] = existing.get("dates", incoming["dates"])
+                incoming["dates_source"] = "detail"
+                incoming["detail_checked"] = existing.get(
+                    "detail_checked", True
+                )
+            else:
+                incoming["dates_source"] = "metadata"
+                incoming["detail_checked"] = existing.get(
+                    "detail_checked", False
+                )
             incoming["processed_dates"] = existing.get(
                 "processed_dates", []
-            )
-            incoming["detail_checked"] = existing.get(
-                "detail_checked", False
             )
             incoming["processed_chunks"] = existing.get(
                 "processed_chunks", {}
@@ -1334,17 +1489,46 @@ def _read_program_window(
     start = local_day
     end = local_day + timedelta(days=ROLLING_WINDOW_DAYS - 1)
     horizon = local_day + timedelta(days=44)
-    selected = sorted(
-        candidates,
-        key=lambda candidate: _candidate_priority(
-            candidate, start, end, horizon
-        ),
-    )[:MAX_CANDIDATES]
-    selected = [
+    ordered = [
         candidate
-        for candidate in selected
+        for candidate in sorted(
+            candidates,
+            key=lambda candidate: _candidate_priority(
+                candidate, start, end, horizon
+            ),
+        )
         if _candidate_priority(candidate, start, end, horizon)[0] < 3
     ]
+    unchecked_local = [
+        candidate
+        for candidate in ordered
+        if (
+            candidate.get("scope") == "local"
+            and not candidate.get("detail_checked")
+            and candidate.get("dates_source", "metadata") == "metadata"
+            and any(
+                start <= day <= horizon
+                for day in _candidate_dates(candidate, "dates")
+            )
+        )
+    ]
+    fairness = min(
+        unchecked_local,
+        key=lambda candidate: (
+            _parse_modified(candidate.get("modified_gmt")) or datetime.max,
+            candidate["id"],
+        ),
+        default=None,
+    )
+    selected = []
+    if fairness is not None:
+        selected.append(fairness)
+    selected.extend(
+        candidate
+        for candidate in ordered
+        if fairness is None or candidate["id"] != fairness["id"]
+    )
+    selected = selected[:MAX_CANDIDATES]
     documents = _read_documents([candidate["id"] for candidate in selected])
     documents_by_id = {
         item.get("id"): item
@@ -1355,7 +1539,9 @@ def _read_program_window(
     section_lengths: Dict[str, int] = {}
     seen_sections = set()
     admissions_by_month: Dict[str, List[TodoCulturaAdmission]] = {}
+    registration_by_month: Dict[str, List[TodoCulturaParticipation]] = {}
     sources_by_month: Dict[str, List[Tuple[str, str]]] = {}
+    candidate_ids_by_month: Dict[str, set] = {}
     standalone_programs = []
     local_event_programs: List[TodoCulturaProgram] = []
     for candidate in selected:
@@ -1389,6 +1575,12 @@ def _read_program_window(
             )
         lines = _plain_lines(rendered)
         attributed = " ".join(lines).casefold()
+        sections = _date_sections(lines, local_day.year, local_day)
+        if sections:
+            candidate["dates"] = sorted(
+                day.isoformat() for day in sections
+            )
+            candidate["dates_source"] = "detail"
         candidate["detail_checked"] = True
         is_municipal_program = (
             "ayuntamiento de guardamar" in attributed
@@ -1411,7 +1603,16 @@ def _read_program_window(
                 >= MAX_PROGRAMS_PER_WINDOW
             ):
                 continue
-            text = "\n".join(lines)
+            dated_sections = [
+                (day, sections[day])
+                for day in pending
+                if day in sections
+            ]
+            text = (
+                "\n".join(section for _, section in dated_sections)
+                if dated_sections
+                else "\n".join(lines)
+            )
             if not text or len(text) > PROGRAM_TEXT_LIMIT:
                 continue
             local_event_programs.append(TodoCulturaProgram(
@@ -1420,6 +1621,12 @@ def _read_program_window(
                 source_url=link,
                 modified=modified,
                 dates=pending,
+                event_rows=tuple(
+                    (day, start_time, row)
+                    for day, section in dated_sections
+                    for start_time, row in _event_rows(section)
+                ),
+                candidate_ids=(candidate["id"],),
                 standalone=True,
             ))
             processed.update(pending)
@@ -1428,9 +1635,10 @@ def _read_program_window(
             )
             covered_dates.update(pending)
             continue
-        sections = _date_sections(lines, local_day.year, local_day)
         document_admissions = _admissions(rendered, local_day)
-        candidate["dates"] = sorted(day.isoformat() for day in sections)
+        document_registration = _registration_participation(
+            rendered, local_day
+        )
         processed = _candidate_dates(candidate, "processed_dates")
         included = []
         for day, section in sorted(sections.items()):
@@ -1444,7 +1652,15 @@ def _read_program_window(
                 admissions_by_month.setdefault(month, []).extend(
                     document_admissions
                 )
+                registration_by_month.setdefault(month, []).extend(
+                    detail
+                    for detail in document_registration
+                    if day in detail.event_dates
+                )
                 sources_by_month.setdefault(month, []).append((link, modified))
+                candidate_ids_by_month.setdefault(month, set()).add(
+                    candidate["id"]
+                )
                 included.append(day)
                 continue
             addition = len(section) + (
@@ -1486,6 +1702,7 @@ def _read_program_window(
                         link,
                         modified,
                         tuple(document_admissions),
+                        candidate["id"],
                     ))
                     completed.add(chunk_hash)
                 progress[day.isoformat()] = sorted(completed)
@@ -1520,7 +1737,15 @@ def _read_program_window(
             admissions_by_month.setdefault(month, []).extend(
                 document_admissions
             )
+            registration_by_month.setdefault(month, []).extend(
+                detail
+                for detail in document_registration
+                if day in detail.event_dates
+            )
             sources_by_month.setdefault(month, []).append((link, modified))
+            candidate_ids_by_month.setdefault(month, set()).add(
+                candidate["id"]
+            )
             included.append(day)
             covered_dates.add(day)
         processed.update(included)
@@ -1537,11 +1762,14 @@ def _read_program_window(
             source_url=source_values[0][0],
             modified=max(value[1] for value in source_values),
             admissions=tuple(dict.fromkeys(admissions_by_month[month])),
-            participation=tuple(dict.fromkeys(
-                replace(detail, event_dates=(day,))
-                for day, section in dated_sections
-                for detail in _participation(section)
-            )),
+            participation=tuple(dict.fromkeys((
+                *(
+                    replace(detail, event_dates=(day,))
+                    for day, section in dated_sections
+                    for detail in _participation(section)
+                ),
+                *registration_by_month.get(month, ()),
+            ))),
             summaries=tuple(dict.fromkeys(
                 replace(detail, event_dates=(day,))
                 for day, section in dated_sections
@@ -1553,6 +1781,7 @@ def _read_program_window(
                 for day, section in dated_sections
                 for start_time, row in _event_rows(section)
             ),
+            candidate_ids=tuple(sorted(candidate_ids_by_month.get(month, ()))),
         ))
     for (
         month,
@@ -1561,6 +1790,7 @@ def _read_program_window(
         link,
         modified,
         document_admissions,
+        candidate_id,
     ) in standalone_programs:
         programs.append(TodoCulturaProgram(
             text=text,
@@ -1581,6 +1811,7 @@ def _read_program_window(
                 (day, start_time, row)
                 for start_time, row in _event_rows(text)
             ),
+            candidate_ids=(candidate_id,),
         ))
     state = {
         "parser_version": PARSER_VERSION,

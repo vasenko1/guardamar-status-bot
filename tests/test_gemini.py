@@ -1,6 +1,7 @@
 import asyncio
 import json
 import unittest
+from datetime import date
 from unittest.mock import patch
 
 from telegrambot.gemini import (
@@ -149,6 +150,31 @@ class GeminiRequestTests(unittest.TestCase):
             AGENDA_EXTRACTION_SCHEMA,
         )
         self.assertNotIn("inlineData", str(request_json.call_args.args[1]))
+
+    def test_agenda_text_recovery_prompt_keeps_expected_dates_across_months(self):
+        with patch(
+            "telegrambot.gemini._request_json",
+            return_value={"month": "octubre", "events": []},
+        ) as request_json:
+            _extract_agenda_text_events(
+                "secret-key",
+                (
+                    "26 de septiembre: Bingo Benéfico. "
+                    "3 de octubre: XI Trofeo de Petanca."
+                ),
+                (
+                    date(2026, 9, 26),
+                    date(2026, 10, 3),
+                ),
+            )
+
+        prompt = request_json.call_args.args[1][0]["text"]
+        self.assertIn("EXPECTED_DATES", prompt)
+        self.assertIn("2026-09-26", prompt)
+        self.assertIn("2026-10-03", prompt)
+        self.assertIn("may span several months", prompt)
+        self.assertIn("must not limit", prompt)
+        self.assertIn("nearest preceding explicit date heading", prompt)
 
     def test_poster_verification_is_a_blind_second_reading(self):
         with patch(

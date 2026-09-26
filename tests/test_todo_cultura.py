@@ -229,6 +229,216 @@ Reservas de entradas: https://www.agendaguardamar.com/espectaculo/2/x.html
         self.assertEqual(candidate["scope"], "local")
         self.assertIn("2026-09-19", candidate["processed_dates"])
 
+    def test_standalone_detail_dates_replace_metadata_range_and_emit_rows(self):
+        link = (
+            "https://todoculturavegabaja.es/eventos/"
+            "guardamar-del-segura-evento-gran-bingo-virgen-del-rosario/"
+        )
+        metadata = [{
+            "id": 130435,
+            "modified_gmt": "2026-09-22T22:06:08",
+            "link": link,
+            "title": {"rendered": (
+                "Guardamar del Segura, evento: Gran bingo de regalos"
+            )},
+            "excerpt": {"rendered": (
+                "Fiestas patronales del 19 de septiembre al 18 de octubre."
+            )},
+        }]
+        document = {
+            "id": 130435,
+            "modified_gmt": "2026-09-22T22:06:08",
+            "link": link,
+            "content": {"rendered": (
+                "<p>Fiestas patronales de Guardamar.</p>"
+                "<p>Sábado 26 de septiembre</p>"
+                "<p>– 17 h.: Gran bingo de regalos.</p>"
+                "<p>– 19,50 h.: Solemne traslado de la Virgen.</p>"
+                "<p>– 20 h.: Santa Misa y presentación del cartel.</p>"
+            )},
+        }
+
+        with (
+            patch("telegrambot.todo_cultura._read_metadata", return_value=metadata),
+            patch(
+                "telegrambot.todo_cultura._read_documents",
+                return_value=[document],
+            ),
+        ):
+            window = _read_program_window(date(2026, 9, 26), {})
+
+        self.assertEqual(len(window.programs), 1)
+        program = window.programs[0]
+        self.assertTrue(program.standalone)
+        self.assertEqual(program.dates, (date(2026, 9, 26),))
+        self.assertEqual(program.candidate_ids, (130435,))
+        self.assertEqual(
+            [start_time for _, start_time, _ in program.event_rows],
+            ["17:00", "19:50", "20:00"],
+        )
+        candidate = next(
+            item for item in window.source_state["candidates"]
+            if item["id"] == 130435
+        )
+        self.assertEqual(candidate["dates"], ["2026-09-26"])
+        self.assertEqual(candidate["dates_source"], "detail")
+        self.assertTrue(candidate["detail_checked"])
+        self.assertIn("2026-09-26", candidate["processed_dates"])
+
+    def test_oldest_unchecked_local_candidate_gets_bounded_fairness_slot(self):
+        candidates = []
+        documents = []
+        for identifier in range(1, 7):
+            link = (
+                "https://todoculturavegabaja.es/eventos/"
+                f"guardamar-evento-current-{identifier}/"
+            )
+            candidates.append({
+                "id": identifier,
+                "modified_gmt": f"2026-09-25T1{identifier}:00:00",
+                "link": link,
+                "dates": ["2026-09-26"],
+                "dates_source": "metadata",
+                "processed_dates": [],
+                "processed_chunks": {},
+                "detail_checked": False,
+                "detail_priority": 0,
+                "scope": "local",
+            })
+            documents.append({
+                "id": identifier,
+                "modified_gmt": f"2026-09-25T1{identifier}:00:00",
+                "link": link,
+                "content": {"rendered": (
+                    "<p>Sábado 26 de septiembre</p>"
+                    f"<p>19 h.: Evento {identifier}.</p>"
+                )},
+            })
+        future_link = (
+            "https://todoculturavegabaja.es/eventos/"
+            "guardamar-evento-future/"
+        )
+        candidates.append({
+            "id": 99,
+            "modified_gmt": "2026-09-22T08:00:00",
+            "link": future_link,
+            "dates": ["2026-10-18"],
+            "dates_source": "metadata",
+            "processed_dates": [],
+            "processed_chunks": {},
+            "detail_checked": False,
+            "detail_priority": 0,
+            "scope": "local",
+        })
+        documents.append({
+            "id": 99,
+            "modified_gmt": "2026-09-22T08:00:00",
+            "link": future_link,
+            "content": {"rendered": (
+                "<p>Domingo 18 de octubre</p>"
+                "<p>19 h.: Evento futuro.</p>"
+            )},
+        })
+        selected_ids = []
+
+        def selected_documents(identifiers):
+            selected_ids.extend(identifiers)
+            return [
+                item for item in documents if item["id"] in identifiers
+            ]
+
+        with (
+            patch("telegrambot.todo_cultura._read_metadata", return_value=[]),
+            patch(
+                "telegrambot.todo_cultura._read_documents",
+                side_effect=selected_documents,
+            ),
+        ):
+            _read_program_window(date(2026, 9, 26), {
+                "parser_version": PARSER_VERSION,
+                "cursor_modified_gmt": "2026-09-25T20:00:00",
+                "covered_dates": [],
+                "candidates": candidates,
+            })
+
+        self.assertEqual(len(selected_ids), 6)
+        self.assertEqual(selected_ids[0], 99)
+
+    def test_v19_migration_preserves_progress_but_rechecks_dated_candidate(self):
+        dated_link = (
+            "https://todoculturavegabaja.es/eventos/"
+            "guardamar-evento-dated/"
+        )
+        undated_link = (
+            "https://todoculturavegabaja.es/eventos/"
+            "guardamar-evento-undated/"
+        )
+        prior = {
+            "parser_version": 19,
+            "cursor_modified_gmt": "2026-09-25T21:00:00",
+            "covered_dates": ["2026-09-26"],
+            "candidates": [{
+                "id": 1,
+                "modified_gmt": "2026-09-25T10:00:00",
+                "link": dated_link,
+                "dates": ["2026-09-26"],
+                "processed_dates": ["2026-09-26"],
+                "processed_chunks": {},
+                "detail_checked": True,
+                "scope": "local",
+            }, {
+                "id": 2,
+                "modified_gmt": "2026-09-25T11:00:00",
+                "link": undated_link,
+                "dates": [],
+                "processed_dates": [],
+                "processed_chunks": {},
+                "detail_checked": True,
+                "scope": "local",
+            }],
+        }
+        document = {
+            "id": 1,
+            "modified_gmt": "2026-09-25T10:00:00",
+            "link": dated_link,
+            "content": {"rendered": (
+                "<p>Sábado 26 de septiembre</p>"
+                "<p>19 h.: Evento ya procesado.</p>"
+            )},
+        }
+        selected_ids = []
+
+        def selected_documents(identifiers):
+            selected_ids.extend(identifiers)
+            return [document]
+
+        with (
+            patch("telegrambot.todo_cultura._read_metadata", return_value=[]),
+            patch(
+                "telegrambot.todo_cultura._read_documents",
+                side_effect=selected_documents,
+            ),
+        ):
+            window = _read_program_window(date(2026, 9, 26), prior)
+
+        self.assertEqual(selected_ids, [1])
+        self.assertEqual(
+            window.source_state["cursor_modified_gmt"],
+            "2026-09-25T21:00:00",
+        )
+        dated = next(
+            item for item in window.source_state["candidates"]
+            if item["id"] == 1
+        )
+        undated = next(
+            item for item in window.source_state["candidates"]
+            if item["id"] == 2
+        )
+        self.assertEqual(dated["dates_source"], "detail")
+        self.assertTrue(dated["detail_checked"])
+        self.assertEqual(dated["processed_dates"], ["2026-09-26"])
+        self.assertTrue(undated["detail_checked"])
+
     def test_local_single_day_candidate_precedes_broad_unknown_programme(self):
         local = {
             "id": 2,
@@ -424,7 +634,7 @@ Reservas de entradas: https://www.agendaguardamar.com/espectaculo/2/x.html
 
     def test_parser_upgrade_reopens_previously_covered_dates(self):
         prior = {
-            "parser_version": 4,
+            "parser_version": 18,
             "cursor_modified_gmt": "2026-08-07T10:00:00",
             "covered_dates": ["2026-08-09"],
             "candidates": [{

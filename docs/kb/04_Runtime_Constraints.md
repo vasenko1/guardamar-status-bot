@@ -68,8 +68,13 @@ persist update history.
 
 Deployment is a deliberate Tailscale SSH operation after tests, push, pull
 request, and merge to canonical `origin/main`. A production target must pass an
-ancestor check against the fetched `origin/main`; restart only the affected
-resident service. A temporary `DEVICE TEST ONLY` commit may run on Android only
+ancestor check against the fetched `origin/main`; restart every affected
+resident service. In particular, if deployed Python changes are reachable from
+the private `/preview` path, the long-lived `guardamar-preview` service must be
+restarted after the fast-forward and the replacement `telegrambot listen`
+process must be verified. Fresh one-shot commands such as CLI `preview` or
+`refresh-current` do not prove that the resident listener reloaded changed
+modules. A temporary `DEVICE TEST ONLY` commit may run on Android only
 for necessary Termux-specific verification and must restore the recorded clean
 production commit and service afterward. It never becomes a production release
 without merging to `main`. Deployment must not add a GitHub promotion branch,
@@ -197,7 +202,15 @@ allowed for the guide.
 - The 05:10 municipal refresh may also read one bounded AM Guardamar WordPress
   REST post list (at most twelve posts and 300 KiB). It stores only normalized
   future public-event facts and reuses an unchanged post's `id` and `modified`
-  facts without another extraction. The 05:10 refresh may read one Todo Cultura metadata page, bounded
+  facts without another extraction. The same municipal refresh reads one
+  bounded recent Turismo WordPress metadata index for generic official
+  programme articles, considers at most three candidates, and fetches details
+  only for changed/new candidates. Each changed/new article gets one normal
+  evidence-bound text extraction and, only when deterministic date-leading
+  blocks prove missing current/future occurrence dates, at most one targeted
+  recovery extraction over a smaller official-text slice containing only those
+  missing date sections. Unchanged verified version-3 articles require neither
+  detail reads nor model calls. The 05:10 refresh may read one Todo Cultura metadata page, bounded
   to 100 records and 300 KiB, and up to
   six bounded detail records in at most two REST reads of four records and
   300 KiB each, while sending at most three selected programme

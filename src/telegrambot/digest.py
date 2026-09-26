@@ -5,6 +5,7 @@ import logging
 import re
 import unicodedata
 import urllib.parse
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 from typing import List, Optional, Sequence
 from zoneinfo import ZoneInfo
@@ -1062,8 +1063,10 @@ def build_event_section(
 
     event_lines = ["", heading]
     rendered_programmes = set()
+    rendered_sessions = set()
     for event in events:
         programme = getattr(event, "programme_title", None)
+        session_group = getattr(event, "session_group_key", None)
         if programme:
             if programme in rendered_programmes:
                 continue
@@ -1080,6 +1083,23 @@ def build_event_section(
             for member in members:
                 block.append(_event_heading(member, "  ", bullet=False))
                 block.extend(_render_event_details(member, "    "))
+        elif session_group:
+            if session_group in rendered_sessions:
+                continue
+            members = tuple(
+                candidate for candidate in events
+                if (
+                    getattr(candidate, "programme_title", None) is None
+                    and getattr(candidate, "session_group_key", None)
+                    == session_group
+                )
+            )
+            if _session_group_is_renderable(members):
+                rendered_sessions.add(session_group)
+                block = _render_session_group(members)
+            else:
+                block = [_event_heading(event, "", bullet=True)]
+                block.extend(_render_event_details(event, "  "))
         else:
             block = [_event_heading(event, "", bullet=True)]
             block.extend(_render_event_details(event, "  "))
@@ -1184,9 +1204,232 @@ def _normalized_event_details(
     return result, difficulty_label
 
 
-def _render_event_details(event, indent: str) -> List[str]:
-    """One optional detail contract for standalone and programme events."""
+def _session_group_is_renderable(members: Sequence) -> bool:
+    """Render only a source-proven family with at least two timed occurrences."""
 
+    if len(members) < 2:
+        return False
+    group_key = getattr(members[0], "session_group_key", None)
+    if not group_key or any(
+        getattr(member, "session_group_key", None) != group_key
+        or getattr(member, "programme_title", None) is not None
+        or member.starts_at is None
+        for member in members
+    ):
+        return False
+    days = {
+        member.starts_at.astimezone(GUARDAMAR_TIMEZONE).date()
+        for member in members
+    }
+    return len(days) == 1
+
+
+def _common_nonempty_value(members: Sequence, field: str):
+    values = [
+        getattr(member, field)
+        for member in members
+        if getattr(member, field) not in (None, "", ())
+    ]
+    if not values:
+        return None
+    first = values[0]
+    return first if all(value == first for value in values[1:]) else None
+
+
+def _common_session_place(members: Sequence) -> Optional[str]:
+    known = [member.place for member in members if member.place]
+    if not known:
+        return None
+    first = known[0]
+    return first if all(same_event_place(first, place) for place in known[1:]) else None
+
+
+def _common_session_details(members: Sequence) -> tuple[str, ...]:
+    nonempty = [tuple(member.details) for member in members if member.details]
+    if not nonempty:
+        return ()
+    common = set(nonempty[0])
+    for details in nonempty[1:]:
+        common.intersection_update(details)
+    return tuple(detail for detail in nonempty[0] if detail in common)
+
+
+def _session_parent_event(members: Sequence):
+    """Build presentation-only common context without changing group identity."""
+
+    first = members[0]
+    place = _common_session_place(members)
+    return replace(
+        first,
+        starts_at=None,
+        ends_at=None,
+        place=place,
+        place_query=(
+            _common_nonempty_value(members, "place_query")
+            if place is not None else None
+        ),
+        route=_common_nonempty_value(members, "route"),
+        details=_common_session_details(members),
+        duration_minutes=_common_nonempty_value(members, "duration_minutes"),
+        audience_label=_common_nonempty_value(members, "audience_label"),
+        teaser=_common_nonempty_value(members, "teaser"),
+        meeting_point=_common_nonempty_value(members, "meeting_point"),
+        schedule_note=_common_nonempty_value(members, "schedule_note"),
+        participation_note=_common_nonempty_value(
+            members, "participation_note"
+        ),
+        active_until=None,
+        active_from=None,
+        is_final_day=False,
+    )
+
+
+def _session_time_label(event) -> str:
+    start = event.starts_at.astimezone(GUARDAMAR_TIMEZONE)
+    label = start.strftime("%H:%M")
+    if event.ends_at is not None and event.duration_minutes is None:
+        end = event.ends_at.astimezone(GUARDAMAR_TIMEZONE)
+        label += "–" + end.strftime("%H:%M")
+    return label
+
+
+def _session_group_span_label(members: Sequence) -> Optional[str]:
+    """Return the known outer time span without claiming session completeness."""
+
+    starts = [
+        member.starts_at.astimezone(GUARDAMAR_TIMEZONE)
+        for member in members
+        if member.starts_at is not None
+    ]
+    ends = [
+        member.ends_at.astimezone(GUARDAMAR_TIMEZONE)
+        for member in members
+        if member.ends_at is not None
+    ]
+    if len(starts) != len(members) or len(ends) != len(members):
+        return None
+    local_day = starts[0].date()
+    if any(value.date() != local_day for value in (*starts, *ends)):
+        return None
+    return (
+        min(starts).strftime("%H:%M")
+        + "–"
+        + max(ends).strftime("%H:%M")
+    )
+
+
+def _session_location_context(event, indent: str) -> List[str]:
+    """Render common venue facts after the session list."""
+
+    rows = []
+    if event.place:
+        rows.append(indent + "📍 " + _event_place_link(
+            event.place, event.place_query
+        ))
+    if event.meeting_point and (
+        not event.place or not same_event_place(event.place, event.meeting_point)
+    ):
+        label = event.meeting_point
+        prefix = "" if label.casefold().startswith("место ") else "Место сбора: "
+        rows.append(indent + "👥 " + prefix + _event_place_link(label))
+    return rows
+
+
+def _session_member_context(member, parent):
+    """Keep only verified context that differs from the common parent."""
+
+    place_is_common = (
+        member.place is None
+        or (
+            parent.place is not None
+            and same_event_place(member.place, parent.place)
+        )
+    )
+    return replace(
+        member,
+        starts_at=None,
+        ends_at=None,
+        place=None if place_is_common else member.place,
+        place_query=None if place_is_common else member.place_query,
+        route=None if member.route == parent.route else member.route,
+        details=tuple(
+            detail for detail in member.details
+            if detail not in parent.details
+        ),
+        duration_minutes=(
+            None
+            if member.duration_minutes == parent.duration_minutes
+            else member.duration_minutes
+        ),
+        audience_label=(
+            None
+            if member.audience_label == parent.audience_label
+            else member.audience_label
+        ),
+        teaser=None if member.teaser == parent.teaser else member.teaser,
+        meeting_point=(
+            None
+            if member.meeting_point == parent.meeting_point
+            else member.meeting_point
+        ),
+        schedule_note=(
+            None
+            if member.schedule_note == parent.schedule_note
+            else member.schedule_note
+        ),
+        participation_note=(
+            None
+            if member.participation_note == parent.participation_note
+            else member.participation_note
+        ),
+        active_until=None,
+        active_from=None,
+        is_final_day=False,
+    )
+
+
+def _render_session_group(members: Sequence) -> List[str]:
+    ordered = sorted(members, key=lambda member: member.starts_at)
+    parent = _session_parent_event(ordered)
+    title = (
+        _exhibition_title(parent.title)
+        if parent.category == "exhibition" else parent.title
+    )
+    span = _session_group_span_label(ordered)
+    heading = html.escape(_event_title(title))
+    if span is not None:
+        heading = f"<b>{html.escape(span)}</b> — " + heading
+    block = [f"• {heading}"]
+
+    parent_without_location = replace(
+        parent,
+        place=None,
+        place_query=None,
+        meeting_point=None,
+    )
+    block.extend(_render_event_context(parent_without_location, "  "))
+
+    common_capacity = all(member.capacity_limited for member in ordered)
+    block.append("  🕐 Сеансы:")
+    for member in ordered:
+        access = _event_access_parts(
+            member, include_capacity=not common_capacity
+        )
+        line = "    • <b>" + html.escape(_session_time_label(member)) + "</b>"
+        if access:
+            line += " — " + " · ".join(access)
+        block.append(line)
+        block.extend(_render_event_context(
+            _session_member_context(member, parent),
+            "      ",
+        ))
+
+    block.extend(_session_location_context(parent, "  "))
+    if common_capacity:
+        block.append("  🎟 места ограничены")
+    return block
+
+def _render_event_context(event, indent: str) -> List[str]:
     rows = []
     if event.route:
         rows.append(indent + "Маршрут: " + html.escape(event.route))
@@ -1223,6 +1466,10 @@ def _render_event_details(event, indent: str) -> List[str]:
         rows.append(indent + "👥 " + prefix + _event_place_link(label))
     if event.participation_note:
         rows.append(indent + "ℹ️ " + html.escape(event.participation_note))
+    return rows
+
+
+def _event_access_parts(event, *, include_capacity: bool = True) -> List[str]:
     access = []
     if event.ticket_price_cents == 0:
         ticket_label = (
@@ -1248,14 +1495,37 @@ def _render_event_details(event, indent: str) -> List[str]:
         )
     if event.access_note:
         access.append(html.escape(event.access_note))
+    if event.registration_url:
+        access.append(
+            '<a href="' + html.escape(event.registration_url, quote=True)
+            + '">Регистрация</a>'
+        )
     if event.registration_contact:
         label = (
-            "" if event.access_note and "регистрац" in event.access_note.casefold()
-            else "регистрация: "
+            "контакт: "
+            if event.registration_url
+            else (
+                ""
+                if event.access_note
+                and "регистрац" in event.access_note.casefold()
+                else "регистрация: "
+            )
         )
         access.append(label + html.escape(event.registration_contact))
-    if not event.access_note and event.capacity_limited:
+    if (
+        include_capacity
+        and not event.access_note
+        and event.capacity_limited
+    ):
         access.append("места ограничены")
+    return access
+
+
+def _render_event_details(event, indent: str) -> List[str]:
+    """One optional detail contract for standalone and programme events."""
+
+    rows = _render_event_context(event, indent)
+    access = _event_access_parts(event)
     if access:
         rows.append(indent + "🎟 " + " · ".join(access))
     return rows

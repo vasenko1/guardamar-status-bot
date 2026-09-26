@@ -248,6 +248,20 @@ def _prefer_agenda_guardamar_venues(
     return tuple(result)
 
 
+def _merged_session_group_key(left, right, programme_title):
+    """Preserve source-proven session identity through cross-source merges."""
+
+    if programme_title:
+        return None
+    left_key = getattr(left, "session_group_key", None)
+    right_key = getattr(right, "session_group_key", None)
+    if left_key is None:
+        return right_key
+    if right_key is None:
+        return left_key
+    return left_key if left_key == right_key else None
+
+
 def _merge_municipal_admission_aliases(events):
     """Collapse translated aliases proven to be the same municipal occurrence."""
 
@@ -296,11 +310,17 @@ def _merge_municipal_admission_aliases(events):
             if title_size(event) > title_size(current)
             else (current, event)
         )
+        programme_title = preferred.programme_title or alias.programme_title
+        session_group_key = _merged_session_group_key(
+            preferred, alias, programme_title
+        )
         result[duplicate_index] = replace(
             preferred,
             ticket_url=preferred.ticket_url or alias.ticket_url,
             place=preferred.place or alias.place,
             image_url=preferred.image_url or alias.image_url,
+            programme_title=programme_title,
+            session_group_key=session_group_key,
         )
 
     return tuple(result)
@@ -472,6 +492,12 @@ def _merge_events(*groups):
                     # loosely parsed Agenda detail should override the richer
                     # earlier event.  Deduplicate only.
                     continue
+                programme_title = (
+                    current.programme_title or event.programme_title
+                )
+                session_group_key = _merged_session_group_key(
+                    current, event, programme_title
+                )
                 result[duplicate_index] = replace(
                     current,
                     title=richer_title(current.title, event.title),
@@ -497,6 +523,10 @@ def _merge_events(*groups):
                         current.registration_contact
                         or event.registration_contact
                     ),
+                    registration_url=(
+                        current.registration_url
+                        or event.registration_url
+                    ),
                     capacity_limited=(
                         current.capacity_limited or event.capacity_limited
                     ),
@@ -519,14 +549,13 @@ def _merge_events(*groups):
                     active_from=current.active_from or event.active_from,
                     is_final_day=current.is_final_day or event.is_final_day,
                     image_url=current.image_url or event.image_url,
-                    programme_title=(
-                        current.programme_title or event.programme_title
-                    ),
+                    programme_title=programme_title,
                     programme_order=(
                         current.programme_order
                         if current.programme_order is not None
                         else event.programme_order
                     ),
+                    session_group_key=session_group_key,
                 )
                 continue
             result.append(event)

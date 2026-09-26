@@ -14,10 +14,21 @@ from telegrambot.municipal_agenda import (
     _current_events,
     _expand_explicit_todo_dates,
     _explicit_fiesta_article_events,
+    _evidence_supports_time,
+    _normalize_turismo_programme_text,
     _strict_quoted_todo_activity,
+    _turismo_programme_blocks_by_date,
     _turismo_programme_events,
+    _turismo_programme_expected_dates,
+    _turismo_programme_missing_dates,
+    _turismo_programme_recovery_text,
+    _turismo_text_programme_events,
     _unmatched_todo_rows,
     _read_turismo_programme,
+    _read_turismo_programme_article,
+    _read_turismo_programme_candidates,
+    TURISMO_PROGRAMME_TEXT_EXTRACTOR_VERSION,
+    TURISMO_PROGRAMME_TEXT_SOURCE,
     _enrich_admissions,
     _enrich_cultura_teasers,
     _enrich_todo_participation,
@@ -307,6 +318,818 @@ class ExplicitTodoDatesTest(unittest.TestCase):
         )
 
 
+class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
+    def test_discovers_rosario_and_ignores_non_programme_or_campo_posts(self):
+        posts = [{
+            "id": 101,
+            "modified": "2026-09-16T10:00:00",
+            "link": (
+                "https://guardamarturismo.com/"
+                "fiestas-de-la-virgen-del-rosario-de-guardamar-2026/"
+            ),
+            "title": {"rendered": (
+                "Fiestas de la Virgen del Rosario de Guardamar 2026"
+            )},
+            "excerpt": {"rendered": (
+                "El sábado 26 de septiembre continúan los actos."
+            )},
+        }, {
+            "id": 102,
+            "modified": "2026-09-17T10:00:00",
+            "link": "https://guardamarturismo.com/que-hacer-en-guardamar-2026/",
+            "title": {"rendered": "Qué hacer en Guardamar 2026"},
+            "excerpt": {"rendered": "Actividad el 27 de septiembre."},
+        }, {
+            "id": 103,
+            "modified": "2026-09-18T10:00:00",
+            "link": (
+                "https://guardamarturismo.com/"
+                "este-es-el-programa-de-fiestas-del-campo-de-guardamar-2026/"
+            ),
+            "title": {"rendered": "Programa Fiestas del Campo 2026"},
+            "excerpt": {"rendered": "Actos el 26 de septiembre."},
+        }, {
+            "id": 104,
+            "modified": "2026-09-18T10:00:00",
+            "link": "https://guardamarturismo.com/ca/fiestas-guardamar-2026/",
+            "title": {"rendered": "Fiestas Guardamar 2026"},
+            "excerpt": {"rendered": "Actes el 26 de septiembre."},
+        }]
+        payload = json.dumps(posts).encode("utf-8")
+        with patch(
+            "telegrambot.municipal_agenda.fetch_bounded",
+            return_value=(payload, "", "application/json"),
+        ):
+            candidates = _read_turismo_programme_candidates(
+                date(2026, 9, 26)
+            )
+
+        self.assertIsNotNone(candidates)
+        self.assertEqual([candidate["id"] for candidate in candidates], [101])
+
+    def test_oversized_programme_article_fails_closed(self):
+        link = (
+            "https://guardamarturismo.com/"
+            "fiestas-de-la-virgen-del-rosario-de-guardamar-2026/"
+        )
+        candidate = {
+            "id": 101,
+            "modified": "2026-09-16T10:00:00",
+            "link": link,
+            "title": "Fiestas de la Virgen del Rosario de Guardamar 2026",
+            "distance": 0,
+        }
+        payload = json.dumps({
+            "id": 101,
+            "modified": candidate["modified"],
+            "link": link,
+            "title": {"rendered": candidate["title"]},
+            "content": {"rendered": "x" * 12_001},
+        }).encode("utf-8")
+
+        with patch(
+            "telegrambot.municipal_agenda.fetch_bounded",
+            return_value=(payload, "", "application/json"),
+        ):
+            detail = _read_turismo_programme_article(
+                candidate, date(2026, 9, 26)
+            )
+
+        self.assertIsNone(detail)
+
+    def test_rosario_content_blocks_prove_expected_dates_without_range_endpoints(self):
+        content = (
+            "<p>Del 19 de septiembre al 18 de octubre se celebran las fiestas.</p>"
+            "<h3>26 de septiembre</h3>"
+            "<p>Gran bingo y traslado.</p>"
+            "<h3>3 de octubre</h3>"
+            "<h3>4 de octubre</h3>"
+            "<p>7 de octubre</p>"
+            "<h3>15 de octubre</h3>"
+            "<h3>18 de octubre</h3>"
+        )
+
+        expected = (
+            date(2026, 9, 26),
+            date(2026, 10, 3),
+            date(2026, 10, 4),
+            date(2026, 10, 7),
+            date(2026, 10, 15),
+            date(2026, 10, 18),
+        )
+        self.assertEqual(
+            _turismo_programme_expected_dates(
+                content, date(2026, 9, 26)
+            ),
+            expected,
+        )
+        blocks = _turismo_programme_blocks_by_date(
+            content, date(2026, 9, 26)
+        )
+        self.assertEqual(
+            blocks[date(2026, 9, 26)],
+            ("26 de septiembre", "Gran bingo y traslado."),
+        )
+        self.assertIn(
+            "Gran bingo y traslado.",
+            _turismo_programme_recovery_text(
+                blocks, (date(2026, 9, 26),)
+            ),
+        )
+
+    def test_date_range_event_does_not_cover_explicit_occurrence_dates(self):
+        broad = (SourceEvent(
+            "Fiestas del Rosario",
+            date(2026, 9, 19),
+            date(2026, 10, 18),
+            None, None, None, "event",
+            (TURISMO_PROGRAMME_TEXT_SOURCE,),
+        ),)
+        expected = (
+            date(2026, 9, 26),
+            date(2026, 10, 3),
+        )
+
+        self.assertEqual(
+            _turismo_programme_missing_dates(broad, expected),
+            expected,
+        )
+
+    def test_recovery_accepts_section_date_zero_padded_time_and_supported_suffix(self):
+        date_sections = {
+            date(2026, 9, 26): (
+                "26 de septiembre: Bingo Benéfico , traslado de la Virgen, "
+                "Santa Misa y presentación del cartel."
+            ),
+            date(2026, 10, 3): (
+                "3 de octubre: Trofeo de Petanca. "
+                "La jornada comenzará a las 10:00 horas con el XI Trofeo "
+                "de Petanca Virgen del Rosario en las pistas del Parque "
+                "Reina Sofía."
+            ),
+            date(2026, 10, 4): (
+                "4 de octubre: Rosario de la Aurora desde las 08:00 horas."
+            ),
+            date(2026, 10, 18): (
+                "18 de octubre: XLI Encuentro de Auroros. "
+                "La jornada comenzará a las 06:00 horas con la Despierta."
+            ),
+        }
+        source_text = "\n".join(date_sections.values())
+        result = {
+            "month": "octubre",
+            "events": [{
+                "title_es": (
+                    "Bingo Benéfico, traslado de la Virgen, Santa Misa "
+                    "y presentación del cartel"
+                ),
+                "start_date": "2026-09-26",
+                "end_date": "2026-09-26",
+                "start_time": None,
+                "end_time": None,
+                "place": None,
+                "evidence_es": date_sections[date(2026, 9, 26)],
+                "category": "event",
+            }, {
+                "title_es": "XI Trofeo de Petanca Virgen del Rosario",
+                "start_date": "2026-10-03",
+                "end_date": "2026-10-03",
+                "start_time": "10:00",
+                "end_time": None,
+                "place": "pistas del Parque Reina Sofía",
+                "evidence_es": (
+                    "La jornada comenzará a las 10:00 horas con el XI Trofeo "
+                    "de Petanca Virgen del Rosario en las pistas del Parque "
+                    "Reina Sofía."
+                ),
+                "category": "event",
+            }, {
+                "title_es": "Rosario de la Aurora",
+                "start_date": "2026-10-04",
+                "end_date": "2026-10-04",
+                "start_time": "08:00",
+                "end_time": None,
+                "place": None,
+                "evidence_es": (
+                    "4 de octubre: Rosario de la Aurora desde las 08:00 horas."
+                ),
+                "category": "event",
+            }, {
+                "title_es": "XLI Encuentro de Auroros: Despierta",
+                "start_date": "2026-10-18",
+                "end_date": "2026-10-18",
+                "start_time": "06:00",
+                "end_time": None,
+                "place": None,
+                "evidence_es": (
+                    "La jornada comenzará a las 06:00 horas con la Despierta."
+                ),
+                "category": "event",
+            }],
+        }
+
+        events = _normalize_turismo_programme_text(
+            result,
+            source_text,
+            source_date_sections=date_sections,
+        )
+
+        self.assertEqual(
+            {event.start_date for event in events},
+            {
+                date(2026, 9, 26),
+                date(2026, 10, 3),
+                date(2026, 10, 4),
+                date(2026, 10, 18),
+            },
+        )
+        self.assertTrue(
+            _evidence_supports_time(
+                "08:00",
+                "Rosario de la Aurora desde las 08:00 horas.",
+            )
+        )
+        self.assertTrue(
+            _evidence_supports_time(
+                "06:00",
+                "La jornada comenzará a las 06:00 horas con la Despierta.",
+            )
+        )
+        despierta = next(
+            event
+            for event in events
+            if event.start_date == date(2026, 10, 18)
+        )
+        self.assertEqual(despierta.title_es, "Despierta")
+
+    def test_recovery_date_context_does_not_cross_explicit_dates(self):
+        date_sections = {
+            date(2026, 10, 3): (
+                "3 de octubre: XI Trofeo de Petanca Virgen del Rosario."
+            ),
+            date(2026, 10, 4): (
+                "4 de octubre: Rosario de la Aurora."
+            ),
+        }
+        result = {
+            "month": "octubre",
+            "events": [{
+                "title_es": "XI Trofeo de Petanca Virgen del Rosario",
+                "start_date": "2026-10-04",
+                "end_date": "2026-10-04",
+                "start_time": None,
+                "end_time": None,
+                "place": None,
+                "evidence_es": date_sections[date(2026, 10, 3)],
+                "category": "event",
+            }],
+        }
+
+        with self.assertRaises(MunicipalAgendaError):
+            _normalize_turismo_programme_text(
+                result,
+                "\n".join(date_sections.values()),
+                source_date_sections=date_sections,
+            )
+
+    async def test_all_invalid_initial_candidates_still_reach_scoped_recovery(self):
+        link = (
+            "https://guardamarturismo.com/"
+            "fiestas-de-la-virgen-del-rosario-de-guardamar-2026/"
+        )
+        title = "Fiestas de la Virgen del Rosario de Guardamar 2026"
+        candidate = {
+            "id": 101,
+            "modified": "2026-09-16T10:00:00",
+            "link": link,
+            "title": title,
+            "distance": 0,
+        }
+        expected_dates = (
+            date(2026, 9, 26),
+            date(2026, 10, 3),
+        )
+        date_blocks = {
+            date(2026, 9, 26): (
+                "26 de septiembre: Gran Bingo Benéfico.",
+            ),
+            date(2026, 10, 3): (
+                "3 de octubre: XI Trofeo de Petanca.",
+            ),
+        }
+        article_text = " ".join(
+            block
+            for day in expected_dates
+            for block in date_blocks[day]
+        )
+        recovery_text = _turismo_programme_recovery_text(
+            date_blocks, expected_dates
+        )
+        invalid_initial = {
+            "month": "2026-09",
+            "events": [{
+                "title_es": "Actividad inventada",
+                "start_date": "2026-09-26",
+                "end_date": None,
+                "start_time": None,
+                "end_time": None,
+                "place": None,
+                "evidence_es": (
+                    "26 de septiembre: Gran Bingo Benéfico."
+                ),
+                "category": "event",
+            }],
+        }
+        valid_recovery = {
+            "month": "2026-09",
+            "events": [{
+                "title_es": "Gran Bingo Benéfico",
+                "start_date": "2026-09-26",
+                "end_date": None,
+                "start_time": None,
+                "end_time": None,
+                "place": None,
+                "evidence_es": (
+                    "26 de septiembre: Gran Bingo Benéfico."
+                ),
+                "category": "event",
+            }, {
+                "title_es": "XI Trofeo de Petanca",
+                "start_date": "2026-10-03",
+                "end_date": None,
+                "start_time": None,
+                "end_time": None,
+                "place": None,
+                "evidence_es": (
+                    "3 de octubre: XI Trofeo de Petanca."
+                ),
+                "category": "event",
+            }],
+        }
+        model = AsyncMock(side_effect=(invalid_initial, valid_recovery))
+
+        with (
+            patch(
+                "telegrambot.municipal_agenda._read_turismo_programme_candidates",
+                return_value=(candidate,),
+            ),
+            patch(
+                "telegrambot.municipal_agenda._read_turismo_programme_article",
+                return_value=(
+                    link,
+                    candidate["modified"],
+                    title,
+                    article_text,
+                    expected_dates,
+                    date_blocks,
+                ),
+            ),
+            patch(
+                "telegrambot.municipal_agenda.extract_agenda_text_events",
+                new=model,
+            ),
+        ):
+            events, state = await _turismo_text_programme_events(
+                "key", date(2026, 9, 26), (), {}
+            )
+
+        self.assertEqual(model.await_count, 2)
+        model.assert_any_await("key", article_text)
+        model.assert_any_await("key", recovery_text, expected_dates)
+        self.assertEqual(
+            {event.start_date for event in events},
+            set(expected_dates),
+        )
+        self.assertEqual(
+            state["articles"][link]["extractor_version"],
+            TURISMO_PROGRAMME_TEXT_EXTRACTOR_VERSION,
+        )
+
+    async def test_missing_rosario_dates_get_one_targeted_recovery(self):
+        link = (
+            "https://guardamarturismo.com/"
+            "fiestas-de-la-virgen-del-rosario-de-guardamar-2026/"
+        )
+        title = "Fiestas de la Virgen del Rosario de Guardamar 2026"
+        candidate = {
+            "id": 101,
+            "modified": "2026-09-16T10:00:00",
+            "link": link,
+            "title": title,
+            "distance": 0,
+        }
+        expected_dates = (
+            date(2026, 9, 26),
+            date(2026, 10, 3),
+            date(2026, 10, 4),
+            date(2026, 10, 7),
+            date(2026, 10, 15),
+            date(2026, 10, 18),
+        )
+        date_blocks = {
+            day: (f"{day.isoformat()} acto oficial",)
+            for day in expected_dates
+        }
+        initial_result = {"pass": "initial"}
+        recovery_result = {"pass": "recovery"}
+        initial_events = (
+            SourceEvent(
+                "Conferencia", date(2026, 10, 15), date(2026, 10, 15),
+                "19:00", None, "Biblioteca", "event",
+                (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            ),
+        )
+        recovery_dates = tuple(
+            day for day in expected_dates if day != date(2026, 10, 15)
+        )
+        recovery_text = _turismo_programme_recovery_text(
+            date_blocks,
+            recovery_dates,
+        )
+        recovered_events = tuple(
+            SourceEvent(
+                f"Acto {day.isoformat()}", day, day,
+                None, None, None, "event",
+                (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            )
+            for day in (*recovery_dates, date(2026, 11, 1))
+        )
+        model = AsyncMock(side_effect=(initial_result, recovery_result))
+
+        def normalized(result, source_text, **kwargs):
+            if result is initial_result:
+                self.assertTrue(kwargs.get("allow_all_invalid"))
+                self.assertEqual(source_text, "Programa completo Rosario")
+                return initial_events
+            if result is recovery_result:
+                self.assertEqual(source_text, recovery_text)
+                return recovered_events
+            raise AssertionError("unexpected extraction result")
+
+        with (
+            patch(
+                "telegrambot.municipal_agenda._read_turismo_programme_candidates",
+                return_value=(candidate,),
+            ),
+            patch(
+                "telegrambot.municipal_agenda._read_turismo_programme_article",
+                return_value=(
+                    link,
+                    candidate["modified"],
+                    title,
+                    "Programa completo Rosario",
+                    expected_dates,
+                    date_blocks,
+                ),
+            ),
+            patch(
+                "telegrambot.municipal_agenda.extract_agenda_text_events",
+                new=model,
+            ),
+            patch(
+                "telegrambot.municipal_agenda._normalize_turismo_programme_text",
+                side_effect=normalized,
+            ),
+        ):
+            events, state = await _turismo_text_programme_events(
+                "key", date(2026, 9, 26), (), {}
+            )
+
+        self.assertEqual(model.await_count, 2)
+        model.assert_any_await("key", "Programa completo Rosario")
+        model.assert_any_await("key", recovery_text, recovery_dates)
+        self.assertEqual(
+            {event.start_date for event in events},
+            set(expected_dates),
+        )
+        stored = state["articles"][link]
+        self.assertEqual(
+            stored["extractor_version"],
+            TURISMO_PROGRAMME_TEXT_EXTRACTOR_VERSION,
+        )
+        self.assertEqual(
+            stored["expected_dates"],
+            [day.isoformat() for day in expected_dates],
+        )
+
+    async def test_incomplete_recovery_rejects_programme_and_old_v1_cache(self):
+        link = (
+            "https://guardamarturismo.com/"
+            "fiestas-de-la-virgen-del-rosario-de-guardamar-2026/"
+        )
+        title = "Fiestas de la Virgen del Rosario de Guardamar 2026"
+        candidate = {
+            "id": 101,
+            "modified": "2026-09-16T10:00:00",
+            "link": link,
+            "title": title,
+            "distance": 0,
+        }
+        expected_dates = (
+            date(2026, 9, 26),
+            date(2026, 10, 3),
+            date(2026, 10, 4),
+        )
+        stale = (SourceEvent(
+            "Partial old fact", date(2026, 10, 15), date(2026, 10, 15),
+            None, None, None, "event",
+            (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            programme_title=title,
+            programme_order=10,
+        ),)
+        previous_state = {
+            "version": 1,
+            "articles": {
+                link: {
+                    "modified": candidate["modified"],
+                    "sha256": "partial-v1",
+                    "programme_title": title,
+                    "extractor_version": 1,
+                },
+            },
+        }
+        first = {"pass": "initial"}
+        second = {"pass": "recovery"}
+        date_blocks = {
+            day: (f"{day.isoformat()} acto oficial",)
+            for day in expected_dates
+        }
+        initial_events = (
+            SourceEvent(
+                "Acto 26", expected_dates[0], expected_dates[0],
+                None, None, None, "event",
+                (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            ),
+            SourceEvent(
+                "Acto pasado", date(2026, 9, 20), date(2026, 9, 20),
+                None, None, None, "event",
+                (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            ),
+        )
+        recovered_events = (
+            SourceEvent(
+                "Acto 3", expected_dates[1], expected_dates[1],
+                None, None, None, "event",
+                (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            ),
+        )
+        model = AsyncMock(side_effect=(first, second))
+
+        def normalized(result, _source_text, **kwargs):
+            if result is first:
+                self.assertTrue(kwargs.get("allow_all_invalid"))
+                return initial_events
+            self.assertFalse(kwargs.get("allow_all_invalid", False))
+            return recovered_events
+
+        with (
+            patch(
+                "telegrambot.municipal_agenda._read_turismo_programme_candidates",
+                return_value=(candidate,),
+            ),
+            patch(
+                "telegrambot.municipal_agenda._read_turismo_programme_article",
+                return_value=(
+                    link,
+                    candidate["modified"],
+                    title,
+                    "Programa incompleto",
+                    expected_dates,
+                    date_blocks,
+                ),
+            ),
+            patch(
+                "telegrambot.municipal_agenda.extract_agenda_text_events",
+                new=model,
+            ),
+            patch(
+                "telegrambot.municipal_agenda._normalize_turismo_programme_text",
+                side_effect=normalized,
+            ),
+        ):
+            events, state = await _turismo_text_programme_events(
+                "key", date(2026, 9, 26), stale, previous_state
+            )
+
+        self.assertEqual(model.await_count, 2)
+        model.assert_any_await(
+            "key",
+            _turismo_programme_recovery_text(
+                date_blocks,
+                (expected_dates[1], expected_dates[2]),
+            ),
+            (expected_dates[1], expected_dates[2]),
+        )
+        self.assertEqual(events, ())
+        self.assertEqual(state["articles"], {})
+
+    async def test_programme_article_is_text_first_and_keeps_one_future_act(self):
+        candidate = {
+            "id": 101,
+            "modified": "2026-09-16T10:00:00",
+            "link": (
+                "https://guardamarturismo.com/"
+                "fiestas-de-la-virgen-del-rosario-de-guardamar-2026/"
+            ),
+            "title": "Fiestas de la Virgen del Rosario de Guardamar 2026",
+            "distance": 0,
+        }
+        article_text = (
+            "El 20 de septiembre hubo un acto. "
+            "El 25 de septiembre hubo otro acto. "
+            "El 26 de septiembre habrá Gran bingo benéfico."
+        )
+        article_events = (
+            SourceEvent(
+                "Acto previo uno", date(2026, 9, 20), date(2026, 9, 20),
+                None, None, None, "event",
+                (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            ),
+            SourceEvent(
+                "Acto previo dos", date(2026, 9, 25), date(2026, 9, 25),
+                None, None, None, "event",
+                (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            ),
+            SourceEvent(
+                "Gran bingo benéfico", date(2026, 9, 26), date(2026, 9, 26),
+                None, None, None, "event",
+                (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            ),
+        )
+        extractor = AsyncMock(return_value={"month": "2026-09", "events": []})
+        with (
+            patch(
+                "telegrambot.municipal_agenda._read_turismo_programme_candidates",
+                return_value=(candidate,),
+            ),
+            patch(
+                "telegrambot.municipal_agenda._read_turismo_programme_article",
+                return_value=(
+                    candidate["link"],
+                    candidate["modified"],
+                    candidate["title"],
+                    article_text,
+                    (),
+                    {},
+                ),
+            ),
+            patch(
+                "telegrambot.municipal_agenda.extract_agenda_text_events",
+                new=extractor,
+            ),
+            patch(
+                "telegrambot.municipal_agenda._normalize_turismo_programme_text",
+                return_value=article_events,
+            ),
+        ):
+            events, state = await _turismo_text_programme_events(
+                "key", date(2026, 9, 26), (), {}
+            )
+
+        extractor.assert_awaited_once_with("key", article_text)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].title_es, "Gran bingo benéfico")
+        self.assertEqual(
+            events[0].programme_title,
+            "Fiestas de la Virgen del Rosario de Guardamar 2026",
+        )
+        self.assertEqual(events[0].programme_order, 10)
+        self.assertEqual(
+            state["articles"][candidate["link"]]["modified"],
+            candidate["modified"],
+        )
+
+    async def test_changed_article_without_current_events_drops_stale_occurrence(self):
+        link = (
+            "https://guardamarturismo.com/"
+            "fiestas-de-la-virgen-del-rosario-de-guardamar-2026/"
+        )
+        title = "Fiestas de la Virgen del Rosario de Guardamar 2026"
+        candidate = {
+            "id": 101,
+            "modified": "2026-09-26T09:00:00",
+            "link": link,
+            "title": title,
+            "distance": 0,
+        }
+        previous = (SourceEvent(
+            "Gran bingo benéfico", date(2026, 9, 26), date(2026, 9, 26),
+            "17:00", None, "Ayuntamiento", "event",
+            (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            programme_title=title,
+            programme_order=10,
+        ),)
+        previous_state = {
+            "version": 1,
+            "articles": {
+                link: {
+                    "modified": "2026-09-16T10:00:00",
+                    "sha256": "old",
+                    "programme_title": title,
+                    "extractor_version": TURISMO_PROGRAMME_TEXT_EXTRACTOR_VERSION,
+                },
+            },
+        }
+        past_events = (
+            SourceEvent(
+                "Acto previo uno", date(2026, 9, 20), date(2026, 9, 20),
+                None, None, None, "event",
+                (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            ),
+            SourceEvent(
+                "Acto previo dos", date(2026, 9, 25), date(2026, 9, 25),
+                None, None, None, "event",
+                (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            ),
+        )
+        with (
+            patch(
+                "telegrambot.municipal_agenda._read_turismo_programme_candidates",
+                return_value=(candidate,),
+            ),
+            patch(
+                "telegrambot.municipal_agenda._read_turismo_programme_article",
+                return_value=(
+                    link,
+                    candidate["modified"],
+                    title,
+                    "Programa actualizado sin actos futuros.",
+                    (),
+                    {},
+                ),
+            ),
+            patch(
+                "telegrambot.municipal_agenda.extract_agenda_text_events",
+                new=AsyncMock(return_value={"month": "2026-09", "events": []}),
+            ),
+            patch(
+                "telegrambot.municipal_agenda._normalize_turismo_programme_text",
+                return_value=past_events,
+            ),
+        ):
+            events, state = await _turismo_text_programme_events(
+                "key", date(2026, 9, 26), previous, previous_state
+            )
+
+        self.assertEqual(events, ())
+        self.assertEqual(state["articles"], {})
+
+    async def test_unchanged_article_reuses_verified_events_without_detail_read(self):
+        link = (
+            "https://guardamarturismo.com/"
+            "fiestas-de-la-virgen-del-rosario-de-guardamar-2026/"
+        )
+        title = "Fiestas de la Virgen del Rosario de Guardamar 2026"
+        candidate = {
+            "id": 101,
+            "modified": "2026-09-16T10:00:00",
+            "link": link,
+            "title": title,
+            "distance": 0,
+        }
+        previous = (SourceEvent(
+            "Gran bingo benéfico", date(2026, 9, 26), date(2026, 9, 26),
+            None, None, None, "event",
+            (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            programme_title=title,
+            programme_order=10,
+        ),)
+        previous_state = {
+            "version": 1,
+            "articles": {
+                link: {
+                    "modified": candidate["modified"],
+                    "sha256": "abc",
+                    "programme_title": title,
+                    "extractor_version": TURISMO_PROGRAMME_TEXT_EXTRACTOR_VERSION,
+                },
+            },
+        }
+        detail = patch(
+            "telegrambot.municipal_agenda._read_turismo_programme_article"
+        )
+        extractor = AsyncMock()
+        with (
+            patch(
+                "telegrambot.municipal_agenda._read_turismo_programme_candidates",
+                return_value=(candidate,),
+            ),
+            detail as detail_mock,
+            patch(
+                "telegrambot.municipal_agenda.extract_agenda_text_events",
+                new=extractor,
+            ),
+        ):
+            events, state = await _turismo_text_programme_events(
+                "key", date(2026, 9, 26), previous, previous_state
+            )
+
+        detail_mock.assert_not_called()
+        extractor.assert_not_awaited()
+        self.assertEqual(events, previous)
+        self.assertEqual(state, previous_state)
+
+
 class TurismoProgrammeFallbackTest(unittest.IsolatedAsyncioTestCase):
     async def test_same_url_replaced_poster_is_read_again(self):
         text = (
@@ -419,6 +1242,14 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         )
         programme_patcher.start()
         self.addCleanup(programme_patcher.stop)
+        programme_text_patcher = patch(
+            "telegrambot.municipal_agenda._turismo_text_programme_events",
+            new=AsyncMock(side_effect=lambda _key, _day, prior, state: (
+                prior, state
+            )),
+        )
+        programme_text_patcher.start()
+        self.addCleanup(programme_text_patcher.stop)
         patcher = patch(
             "telegrambot.municipal_agenda.fetch_program_window",
             new=AsyncMock(side_effect=TodoCulturaError(
@@ -1317,8 +2148,14 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
                 path,
                 translation_cache_path=translations,
             )
-            next_day = await fetch_today_municipal_events(
+            weekend = await fetch_today_municipal_events(
                 datetime(2026, 9, 26, 7, 0, tzinfo=TZ),
+                "",
+                path,
+                translation_cache_path=translations,
+            )
+            weekday = await fetch_today_municipal_events(
+                datetime(2026, 9, 28, 7, 0, tzinfo=TZ),
                 "",
                 path,
                 translation_cache_path=translations,
@@ -1329,9 +2166,19 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             first_day[0].starts_at.strftime("%H:%M"), "20:00"
         )
-        self.assertEqual(len(next_day), 1)
-        self.assertEqual(next_day[0].category, "exhibition")
-        self.assertIsNone(next_day[0].starts_at)
+        self.assertEqual(weekend, ())
+        self.assertEqual(len(weekday), 1)
+        self.assertEqual(weekday[0].category, "exhibition")
+        self.assertEqual(
+            weekday[0].starts_at.strftime("%H:%M"), "09:00"
+        )
+        self.assertEqual(
+            weekday[0].ends_at.strftime("%H:%M"), "20:00"
+        )
+        self.assertEqual(
+            weekday[0].schedule_note,
+            "в будни перерыв 13:30–17:00",
+        )
 
     async def test_invalid_structured_text_keeps_official_exhibitions(self):
         page = b"""
