@@ -371,6 +371,7 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
                 place="Museo Arqueológico",
                 session_group_key="session:escape",
                 session_order=1,
+                session_count=2,
             ),
             Event(
                 "Эскейп-рум «Тайна музея»",
@@ -378,6 +379,7 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
                 place="Museo Arqueológico",
                 session_group_key="session:escape",
                 session_order=2,
+                session_count=2,
             ),
         )
 
