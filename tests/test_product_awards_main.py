@@ -19,6 +19,8 @@ class ProductAwardCliTests(unittest.TestCase):
         for command in (
             "product-awards-preview",
             "product-awards-discover",
+            "product-awards-seed-preview",
+            "product-awards-seed",
             "product-awards",
         ):
             with self.subTest(command=command):
@@ -86,6 +88,73 @@ class ProductAwardCommandTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(scan.call_args.kwargs["preview"])
             send.assert_not_awaited()
             self.assertFalse(state_path.exists())
+
+    async def test_starter_seed_preview_is_read_only_and_needs_no_telegram(self):
+        first = self.publication()
+        second_item = ProductAwardCandidate(
+            source_kind="wccc_valle_seed",
+            event_key="starter:2",
+            source_url="https://valledesanjuan.com/example",
+            product_name="Queso Con Trufa Hacendado",
+            result="Best of Class",
+            award_body="World Championship Cheese Contest 2026",
+            result_year=2026,
+            retail=RetailEvidence(
+                retailer="Mercadona",
+                relationship="private_label",
+                label="Hacendado",
+                product_id="4883",
+            ),
+            score="99,30/100",
+        )
+        second = self.publication(second_item)
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "awards.json"
+            preview = Mock(return_value=(first, second))
+            with (
+                patch.dict(
+                    "os.environ",
+                    {"PRODUCT_AWARDS_STATE_PATH": str(state_path)},
+                    clear=False,
+                ),
+                patch(
+                    "telegrambot.__main__.preview_starter_product_awards",
+                    preview,
+                ),
+                patch("telegrambot.__main__.send_message", new=AsyncMock()) as send,
+            ):
+                self.assertEqual(await _run_command("product-awards-seed-preview"), 0)
+
+            preview.assert_called_once()
+            send.assert_not_awaited()
+            self.assertFalse(state_path.exists())
+
+    async def test_starter_seed_mutates_only_award_state(self):
+        item = self.candidate()
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "awards.json"
+
+            def seed(now, state):
+                state.enqueue_candidates((item,), now.date())
+                return (item,)
+
+            with (
+                patch.dict(
+                    "os.environ",
+                    {"PRODUCT_AWARDS_STATE_PATH": str(state_path)},
+                    clear=False,
+                ),
+                patch(
+                    "telegrambot.__main__.seed_starter_product_awards",
+                    side_effect=seed,
+                ) as seed_call,
+                patch("telegrambot.__main__.send_message", new=AsyncMock()) as send,
+            ):
+                self.assertEqual(await _run_command("product-awards-seed"), 0)
+
+            seed_call.assert_called_once()
+            send.assert_not_awaited()
+            self.assertEqual(ProductAwardState(state_path).queue_size(), 1)
 
     async def test_discovery_queues_without_telegram_or_gemini(self):
         item = self.candidate()
