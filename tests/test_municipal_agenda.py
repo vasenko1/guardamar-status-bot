@@ -562,6 +562,36 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(despierta.title_es, "Despierta")
 
+    def test_recovery_date_context_does_not_cross_explicit_dates(self):
+        date_sections = {
+            date(2026, 10, 3): (
+                "3 de octubre: XI Trofeo de Petanca Virgen del Rosario."
+            ),
+            date(2026, 10, 4): (
+                "4 de octubre: Rosario de la Aurora."
+            ),
+        }
+        result = {
+            "month": "octubre",
+            "events": [{
+                "title_es": "XI Trofeo de Petanca Virgen del Rosario",
+                "start_date": "2026-10-04",
+                "end_date": "2026-10-04",
+                "start_time": None,
+                "end_time": None,
+                "place": None,
+                "evidence_es": date_sections[date(2026, 10, 3)],
+                "category": "event",
+            }],
+        }
+
+        with self.assertRaises(MunicipalAgendaError):
+            _normalize_turismo_programme_text(
+                result,
+                "\n".join(date_sections.values()),
+                source_date_sections=date_sections,
+            )
+
     async def test_all_invalid_initial_candidates_still_reach_scoped_recovery(self):
         link = (
             "https://guardamarturismo.com/"
