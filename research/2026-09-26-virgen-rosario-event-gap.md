@@ -369,8 +369,10 @@ The implemented backstop discovers that article from the HTML index, rejects
 non-fiesta administrative posts and older candidates outside a 30-day discovery
 window, and selects only an official programme-like image with a semantic
 article-title match. The image path is reached only after text-first extraction
-cannot supply the programme. Two blind structured image readings are
-intersected so the backstop does not trust a single vision pass.
+cannot supply the programme. Two blind structured image readings are intersected so the backstop does not
+trust a single vision pass. The accepted intersection must also have the same
+event count as each independent reading; a disagreement is treated as
+incomplete rather than cached.
 
 A live source probe on the implementation branch found exactly one candidate
 for 26 September 2026, the Rosario article, with zero text date blocks and the
