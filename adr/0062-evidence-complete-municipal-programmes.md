@@ -223,8 +223,9 @@ the Ayuntamiento news index. This is deliberately not generic image crawling:
 - at most two recent candidate articles are considered;
 - the detail page must expose one official `/wp-content/uploads/` image whose
   filename or article-title overlap makes it programme-specific;
-- unchanged verified article state reuses normalized facts without downloading
-  the poster or invoking a model;
+- the selected official poster URL is the stable change identity; unchanged
+  verified poster URLs reuse normalized facts without downloading the image or
+  invoking a model;
 - a new or changed programme poster is downloaded once and receives two blind
   structured vision readings; only occurrences that agree across both readings
   survive;
