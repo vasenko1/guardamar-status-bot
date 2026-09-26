@@ -3785,6 +3785,8 @@ async def fetch_today_municipal_events(
     source_events = await _cached_current_events(now, state_path, diagnostics)
     if not source_events:
         return ()
+    session_plan = _session_source_plan(source_events)
+    planned = list(zip(source_events, session_plan))
     translated_events = []
     if translation_cache_path is not None:
         translated_events = [
@@ -3793,33 +3795,40 @@ async def fetch_today_municipal_events(
                 cached_title(
                     translation_cache_path,
                     "municipal_agenda",
-                    source.title_es,
+                    display_source_title,
                 ),
+                session_group_key,
+                session_order,
             )
-            for source in source_events
+            for source, (
+                display_source_title,
+                session_group_key,
+                session_order,
+            ) in planned
         ]
     else:
+        display_source_titles = [
+            metadata[0] for _, metadata in planned
+        ]
+        unique_titles = list(dict.fromkeys(display_source_titles))
+        translated_by_title = {}
         try:
-            titles = await translate_event_titles(
-                api_key, [event.title_es for event in source_events]
-            )
-            translated_events = list(zip(source_events, titles))
+            titles = await translate_event_titles(api_key, unique_titles)
+            translated_by_title.update(zip(unique_titles, titles))
         except GeminiError as batch_error:
-            failed_translations = 0
-            for source in source_events[
+            for display_source_title in unique_titles[
                 :MAX_INDIVIDUAL_TRANSLATION_RECOVERY
             ]:
                 try:
                     title = (await translate_event_titles(
-                        api_key, [source.title_es]
+                        api_key, [display_source_title]
                     ))[0]
                 except GeminiError:
-                    failed_translations += 1
                     continue
-                translated_events.append((source, title))
-            failed_translations += max(
-                0,
-                len(source_events) - MAX_INDIVIDUAL_TRANSLATION_RECOVERY,
+                translated_by_title[display_source_title] = title
+            failed_translations = sum(
+                display_source_title not in translated_by_title
+                for display_source_title in display_source_titles
             )
             if failed_translations and diagnostics is not None:
                 diagnostics.append(SourceDiagnostic(
@@ -3831,16 +3840,30 @@ async def fetch_today_municipal_events(
                         "предпросмотра"
                     ),
                 ))
-            if not translated_events:
+            if not translated_by_title:
                 raise MunicipalAgendaError(
                     "Event translation failed",
                     code=batch_error.diagnostic_code,
                     status=batch_error.server_status,
                     description=batch_error.safe_description,
                 ) from batch_error
+        translated_events = [
+            (
+                source,
+                translated_by_title[display_source_title],
+                session_group_key,
+                session_order,
+            )
+            for source, (
+                display_source_title,
+                session_group_key,
+                session_order,
+            ) in planned
+            if display_source_title in translated_by_title
+        ]
     result = []
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
-    for source, title in translated_events:
+    for source, title, session_group_key, session_order in translated_events:
         starts_at = None
         ends_at = None
         if source.start_time:
@@ -4006,6 +4029,12 @@ async def fetch_today_municipal_events(
                 programme_title=source.programme_title,
                 admission_evidence=source.admission_evidence,
                 programme_order=source.programme_order,
+                session_group_key=(
+                    None if source.programme_title else session_group_key
+                ),
+                session_order=(
+                    None if source.programme_title else session_order
+                ),
                 is_final_day=(
                     source.start_date != source.end_date
                     and local_day == source.end_date
@@ -4023,10 +4052,11 @@ async def municipal_translation_items(
     """Return source identities and exact titles from the local catalog."""
 
     events = await _cached_current_events(now, state_path)
-    items = [
-        ("municipal_agenda", event.title_es)
-        for event in events
-    ]
+    session_plan = _session_source_plan(events)
+    items = list(dict.fromkeys(
+        ("municipal_agenda", display_source_title)
+        for display_source_title, _, _ in session_plan
+    ))
     items.extend((
         (
             "municipal_cinema_teaser"
