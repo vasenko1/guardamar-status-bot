@@ -156,7 +156,7 @@ from .tomorrow_events import (
 from .product_awards import (
     ProductAwardError,
     ProductAwardState,
-    build_publication as build_product_award_publication,
+    build_current_publication as build_current_product_award_publication,
     discover_product_awards,
     scan_next_product_award,
 )
@@ -1231,7 +1231,12 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     logging.info("SKIP: product-award queue is empty")
                 return 0
 
-            publication = build_product_award_publication(item.candidate)
+            publication = build_current_product_award_publication(item.candidate)
+            if publication is None:
+                logging.info(
+                    "SKIP: product-award has no verified current retail offer"
+                )
+                return 0
             if not award_state.begin_delivery(item, now.date()):
                 logging.info("SKIP: product-award delivery slot no longer available")
                 return 0
