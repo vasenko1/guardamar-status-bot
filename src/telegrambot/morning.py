@@ -262,6 +262,20 @@ def _merged_session_group_key(left, right, programme_title):
     return left_key if left_key == right_key else None
 
 
+def _merged_programme_display_title(left, right, programme_title):
+    """Keep display text only from the event that supplied programme identity."""
+
+    if not programme_title:
+        return None
+    for event in (left, right):
+        if (
+            getattr(event, "programme_title", None) == programme_title
+            and getattr(event, "programme_display_title", None)
+        ):
+            return event.programme_display_title
+    return None
+
+
 def _merge_municipal_admission_aliases(events):
     """Collapse translated aliases proven to be the same municipal occurrence."""
 
@@ -311,6 +325,9 @@ def _merge_municipal_admission_aliases(events):
             else (current, event)
         )
         programme_title = preferred.programme_title or alias.programme_title
+        programme_display_title = _merged_programme_display_title(
+            preferred, alias, programme_title
+        )
         session_group_key = _merged_session_group_key(
             preferred, alias, programme_title
         )
@@ -320,6 +337,7 @@ def _merge_municipal_admission_aliases(events):
             place=preferred.place or alias.place,
             image_url=preferred.image_url or alias.image_url,
             programme_title=programme_title,
+            programme_display_title=programme_display_title,
             session_group_key=session_group_key,
         )
 
@@ -495,6 +513,9 @@ def _merge_events(*groups):
                 programme_title = (
                     current.programme_title or event.programme_title
                 )
+                programme_display_title = _merged_programme_display_title(
+                    current, event, programme_title
+                )
                 session_group_key = _merged_session_group_key(
                     current, event, programme_title
                 )
@@ -550,6 +571,7 @@ def _merge_events(*groups):
                     is_final_day=current.is_final_day or event.is_final_day,
                     image_url=current.image_url or event.image_url,
                     programme_title=programme_title,
+                    programme_display_title=programme_display_title,
                     programme_order=(
                         current.programme_order
                         if current.programme_order is not None

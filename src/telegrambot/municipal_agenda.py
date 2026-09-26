@@ -5286,6 +5286,14 @@ async def fetch_today_municipal_events(
                     display_source_title,
                 ),
                 session_group_key,
+                (
+                    cached_title(
+                        translation_cache_path,
+                        "municipal_programme_title",
+                        source.programme_title,
+                    )
+                    if source.programme_title else None
+                ),
             )
             for source, (
                 display_source_title,
@@ -5296,7 +5304,14 @@ async def fetch_today_municipal_events(
         display_source_titles = [
             metadata[0] for _, metadata in planned
         ]
-        unique_titles = list(dict.fromkeys(display_source_titles))
+        programme_titles = list(dict.fromkeys(
+            source.programme_title
+            for source, _ in planned
+            if source.programme_title
+        ))
+        unique_titles = list(dict.fromkeys(
+            (*display_source_titles, *programme_titles)
+        ))
         translated_by_title = {}
         try:
             titles = await translate_event_titles(api_key, unique_titles)
@@ -5338,6 +5353,13 @@ async def fetch_today_municipal_events(
                 source,
                 translated_by_title[display_source_title],
                 session_group_key,
+                (
+                    translated_by_title.get(
+                        source.programme_title,
+                        spanish_fallback(source.programme_title),
+                    )
+                    if source.programme_title else None
+                ),
             )
             for source, (
                 display_source_title,
@@ -5347,7 +5369,7 @@ async def fetch_today_municipal_events(
         ]
     result = []
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
-    for source, title, session_group_key in translated_events:
+    for source, title, session_group_key, programme_display_title in translated_events:
         starts_at = None
         ends_at = None
         if source.start_time:
@@ -5511,6 +5533,7 @@ async def fetch_today_municipal_events(
                 access_note=source.access_note,
                 teaser=teaser,
                 programme_title=source.programme_title,
+                programme_display_title=programme_display_title,
                 admission_evidence=source.admission_evidence,
                 programme_order=source.programme_order,
                 session_group_key=(
@@ -5538,6 +5561,11 @@ async def municipal_translation_items(
         ("municipal_agenda", display_source_title)
         for display_source_title, _ in session_plan
     ))
+    items.extend(dict.fromkeys(
+        ("municipal_programme_title", event.programme_title)
+        for event in events
+        if event.programme_title
+    ))
     items.extend((
         (
             "municipal_cinema_teaser"
@@ -5550,4 +5578,4 @@ async def municipal_translation_items(
         ),
         event.teaser_es,
     ) for event in events if event.teaser_es)
-    return tuple(items)
+    return tuple(dict.fromkeys(items))

@@ -371,3 +371,34 @@ the official image
 separate 26 September occurrences at 17:00, 19:50 and 20:00 when both readings
 agree. Production still needs to verify the real vision result after deploy;
 the source contract itself is now deterministic and bounded.
+
+## Final architecture audit: grouping display and bounded Todo breadth
+
+The post-incident audit found no need for a Rosario-specific event type, parser,
+renderer, scheduler or source. The existing generic `programme_title` plus
+`programme_order` contract is sufficient for Fiestas del Campo, Rosario and
+future programme-shaped official events.
+
+For resident-facing Russian copy, the parent programme name is now presentation
+only. The source-derived Spanish `programme_title` remains the grouping
+identity, while a runtime-only `programme_display_title` is prepared through
+the existing translation cache. Missing translation falls back to normalized
+Spanish without affecting membership. Equal Russian display strings cannot
+merge different source programme identities.
+
+The Todo detail breadth is increased from six to eight candidates, not to ten
+or an open-ended value. `MAX_DOCUMENTS_PER_REQUEST` remains four, therefore
+six candidates required two detail REST requests (4+2) and eight still require
+two (4+4). Ten would require a third request. `MAX_PROGRAMS_PER_WINDOW`
+remains three, so this change increases deterministic detail inspection only;
+it does not increase the model/extraction programme budget. The trade-off is
+two additional detail records to validate and a slightly larger chance that a
+malformed selected supplemental page fails that Todo run. Todo remains optional
+and fail-closed, so this risk is contained.
+
+The existing Ayuntamiento poster adapter is not broadened in this change.
+Religious/organizer surfaces discovered during research (including the Virgen
+del Rosario de Guardamar social presence and the San Jaime Apóstol parish site)
+are useful for manual corroboration but are not sufficiently stable lightweight
+runtime sources. No new Facebook, browser, OCR, or parish adapter is added.
+

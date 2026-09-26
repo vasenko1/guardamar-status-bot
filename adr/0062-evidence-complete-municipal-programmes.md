@@ -248,3 +248,33 @@ rest of the municipal catalog.
 This adds no scheduler, daemon, browser, dependency, retry loop or general OCR
 pipeline. It reuses the existing 05:10 municipal refresh, bounded transport,
 normalized catalog, duplicate merge, and two-reading poster policy.
+
+## 26 September 2026 amendment: programme display identity and Todo detail breadth
+
+The Rosario incident also exposed two bounded presentation/discovery gaps that do
+not require another event model or source adapter.
+
+Programme membership remains source-derived. `programme_title` is the stable
+identity used for grouping, merging and editorial units; it is never replaced by
+a translation. The runtime `Event` may additionally carry a translated
+`programme_display_title`. That display value is prepared through the existing
+bounded event-title translation cache before publication and falls back to a
+normalized Spanish source title when unavailable. Two different programme
+identities therefore remain separate even if their Russian display strings are
+equal. No persisted municipal snapshot schema changes.
+
+Todo Cultura remains supplemental, but its detail-selection breadth increases
+from six to eight candidates. The REST client already batches at most four IDs
+per detail request, so both six and eight candidates require at most two bounded
+detail requests. The extraction ceiling remains `MAX_PROGRAMS_PER_WINDOW = 3`;
+there is no increase in model calls, programme sections, scheduler work,
+dependencies, or persistent candidate bounds. Raising the detail limit beyond
+eight would cross the current two-request boundary and requires a separate
+runtime-cost review.
+
+Regression coverage uses the real Rosario 26 September shape: 17:00 Bingo,
+19:50 traslado and 20:00 Misa/presentation share one source programme identity,
+render in chronological order under one translated parent, and a corroborating
+Todo Bingo row cannot create a duplicate or replace the official programme
+identity.
+
