@@ -499,7 +499,10 @@ def _ocu_source_price(text: str) -> Optional[str]:
     return f"{amount} €/{unit}"
 
 
-def _ocu_editorial_facts(text: str, sample_size: Optional[int]) -> AwardEditorialFacts:
+def _ocu_global_editorial_facts(
+    text: str,
+    sample_size: Optional[int],
+) -> AwardEditorialFacts:
     folded = _fold(text)
     flags: list[str] = []
     for needle, flag in (
@@ -511,22 +514,27 @@ def _ocu_editorial_facts(text: str, sample_size: Optional[int]) -> AwardEditoria
     ):
         if needle in folded and flag not in flags:
             flags.append(flag)
+    return AwardEditorialFacts(
+        comparison_size=sample_size,
+        method_flags=tuple(flags),
+    )
 
+
+def _ocu_local_editorial_facts(
+    global_facts: AwardEditorialFacts,
+    text: str,
+) -> AwardEditorialFacts:
+    folded = _fold(text)
     standout = None
     if (
         "mejor valorado en la cata profesional" in folded
         or "mejor valorada en la cata profesional" in folded
     ):
         standout = "best_professional_tasting"
-
-    quality_label = (
-        "Buena Elección"
-        if "buena eleccion" in folded
-        else None
-    )
+    quality_label = "Buena Elección" if "buena eleccion" in folded else None
     return AwardEditorialFacts(
-        comparison_size=sample_size,
-        method_flags=tuple(flags),
+        comparison_size=global_facts.comparison_size,
+        method_flags=global_facts.method_flags,
         standout=standout,
         quality_label=quality_label,
     )
@@ -541,7 +549,7 @@ def parse_ocu_awards(
 
     lines = [line.strip() for line in document.text.splitlines() if line.strip()]
     sample_size = _ocu_sample_size(document.text)
-    editorial = _ocu_editorial_facts(document.text, sample_size)
+    global_editorial = _ocu_global_editorial_facts(document.text, sample_size)
     candidates: list[ProductAwardCandidate] = []
 
     previous_result_index = -1
@@ -589,6 +597,7 @@ def parse_ocu_awards(
         window = " ".join(lines[index:end])
         score = _ocu_score(window)
         source_price = _ocu_source_price(window)
+        editorial = _ocu_local_editorial_facts(global_editorial, window)
         event_key = "|".join((
             str(year),
             document.url,
