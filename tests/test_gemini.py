@@ -1,6 +1,7 @@
 import asyncio
 import json
 import unittest
+from datetime import date
 from unittest.mock import patch
 
 from telegrambot.gemini import (
@@ -162,8 +163,8 @@ class GeminiRequestTests(unittest.TestCase):
                     "3 de octubre: XI Trofeo de Petanca."
                 ),
                 (
-                    __import__("datetime").date(2026, 9, 26),
-                    __import__("datetime").date(2026, 10, 3),
+                    date(2026, 9, 26),
+                    date(2026, 10, 3),
                 ),
             )
 
