@@ -19,6 +19,7 @@ from telegrambot.municipal_agenda import (
     _turismo_text_programme_events,
     _unmatched_todo_rows,
     _read_turismo_programme,
+    _read_turismo_programme_article,
     _read_turismo_programme_candidates,
     TURISMO_PROGRAMME_TEXT_SOURCE,
     _enrich_admissions,
@@ -358,6 +359,34 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNotNone(candidates)
         self.assertEqual([candidate["id"] for candidate in candidates], [101])
+
+    def test_oversized_programme_article_fails_closed(self):
+        link = (
+            "https://guardamarturismo.com/"
+            "fiestas-de-la-virgen-del-rosario-de-guardamar-2026/"
+        )
+        candidate = {
+            "id": 101,
+            "modified": "2026-09-16T10:00:00",
+            "link": link,
+            "title": "Fiestas de la Virgen del Rosario de Guardamar 2026",
+            "distance": 0,
+        }
+        payload = json.dumps({
+            "id": 101,
+            "modified": candidate["modified"],
+            "link": link,
+            "title": {"rendered": candidate["title"]},
+            "content": {"rendered": "x" * 12_001},
+        }).encode("utf-8")
+
+        with patch(
+            "telegrambot.municipal_agenda.fetch_bounded",
+            return_value=(payload, "", "application/json"),
+        ):
+            detail = _read_turismo_programme_article(candidate)
+
+        self.assertIsNone(detail)
 
     async def test_programme_article_is_text_first_and_keeps_one_future_act(self):
         candidate = {
