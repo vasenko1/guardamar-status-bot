@@ -619,6 +619,31 @@ def _match_todo_rows(
     return tuple(matched)
 
 
+def _strict_session_row_matches(
+    rows: Tuple[Tuple[date, str, str], ...],
+    events: Tuple[SourceEvent, ...],
+) -> Tuple[Tuple[Tuple[date, str, str], Optional[int]], ...]:
+    """Fail open unless one occurrence uniquely matches each session row."""
+
+    available = set(range(len(events)))
+    matched = []
+    for row_info in rows:
+        day, start_time, row = row_info
+        candidates = [
+            index
+            for index, event in enumerate(events)
+            if index in available
+            and event.start_date == day
+            and event.start_time == start_time
+            and _word_overlap(event.title_es, row) >= 0.5
+        ]
+        event_index = candidates[0] if len(candidates) == 1 else None
+        if event_index is not None:
+            available.remove(event_index)
+        matched.append((row_info, event_index))
+    return tuple(matched)
+
+
 def _session_display_title(
     events: Tuple[SourceEvent, ...],
     indexes: List[int],
@@ -647,7 +672,9 @@ def _annotate_todo_source_sessions(
     """Persist relationships proven by raw Todo rows before any source merge."""
 
     families: Dict[tuple, List[Tuple[int, str]]] = {}
-    for (day, start_time, row), event_index in _match_todo_rows(rows, events):
+    for (day, start_time, row), event_index in _strict_session_row_matches(
+        rows, events
+    ):
         if event_index is None:
             continue
         event = events[event_index]
@@ -655,6 +682,15 @@ def _annotate_todo_source_sessions(
             continue
         raw_parent = _todo_session_parent_from_row(row)
         if raw_parent is None:
+            continue
+        shared_words = (
+            _normalized_words(event.title_es)
+            & _normalized_words(raw_parent)
+        )
+        if (
+            len(shared_words) < 2
+            or _word_overlap(event.title_es, raw_parent) < 0.35
+        ):
             continue
         key = (
             day,
