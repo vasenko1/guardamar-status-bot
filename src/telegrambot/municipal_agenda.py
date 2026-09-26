@@ -672,10 +672,25 @@ def _annotate_todo_source_sessions(
 ) -> Tuple[SourceEvent, ...]:
     """Persist relationships proven by raw Todo rows before any source merge."""
 
+    row_matches = _strict_session_row_matches(rows, events)
+    refreshed_indexes = {
+        event_index
+        for _, event_index in row_matches
+        if event_index is not None
+    }
+    annotated = [
+        replace(
+            event,
+            session_source_key=None,
+            session_parent_title_es=None,
+        )
+        if index in refreshed_indexes
+        else event
+        for index, event in enumerate(events)
+    ]
+
     families: Dict[tuple, List[Tuple[int, str]]] = {}
-    for (day, start_time, row), event_index in _strict_session_row_matches(
-        rows, events
-    ):
+    for (day, start_time, row), event_index in row_matches:
         if event_index is None:
             continue
         event = events[event_index]
@@ -700,7 +715,6 @@ def _annotate_todo_source_sessions(
         )
         families.setdefault(key, []).append((event_index, raw_parent))
 
-    annotated = list(events)
     for key, members in families.items():
         indexes = [index for index, _ in members]
         if len(indexes) < 2:
