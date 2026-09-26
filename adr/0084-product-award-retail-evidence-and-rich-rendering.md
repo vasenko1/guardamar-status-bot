@@ -247,26 +247,72 @@ Examples:
 Do not reintroduce runtime LLM editorial generation merely to make articles
 longer.
 
-### Exceptional-product publication gate
+### Category-first podium selection
 
-This feed is not a daily catalogue of every award-labelled product. It may send
-at most one item per day, but a day with no exceptional candidate stays quiet.
+The feed is not a catalogue of every highly scored product. Its editorial unit
+is one **best currently purchasable product per reviewed supermarket category
+and award edition**.
 
-Eligibility is source-specific:
+For each reviewed category/source pair, the source adapter may expose at most
+three candidates in the source's explicit rank order:
 
-- for a source with a meaningful overall 0-100 score, the default minimum is
-  **85/100** on that source's overall/global score;
-- a high subscore, nutrition scale, tasting subscore or other partial metric
-  must never satisfy the gate on its own;
-- sources without a comparable overall score must define an explicitly
-  exceptional source-native result, such as Best of Class, category winner,
-  Super Gold or an equivalent reviewed top tier;
-- ordinary medals or generic "awarded" badges are insufficient unless the
-  source-specific adapter has an equally strong reviewed rule.
+1. check the source-native #1 product;
+2. if its exact commercial product is not currently sold by an in-scope
+   retailer, check #2;
+3. if #2 also has no exact current retail match, check #3;
+4. if none of the explicitly ranked top three has a verified current retail
+   match, publish nothing for that category/edition.
 
-Each adapter may order its own eligible candidates by its native result/score.
-The shared queue remains source-agnostic FIFO and must not compare unrelated
-award systems.
+Never infer second or third place from unordered finalists, medal lists,
+alphabetical tables or equal medal tiers. If an authoritative source publishes
+only one winner, the adapter checks only that winner.
+
+The active retailer scope for this feature is exactly:
+
+- Mercadona;
+- Carrefour España supermarket;
+- ALDI España;
+- Lidl España;
+- DIA España;
+- Consum.
+
+Masymas / Juan Fornés and Alcampo / Auchan remain historically researched but
+are outside the active category-selection scope.
+
+The category taxonomy is deliberately broad and reviewed. Do not multiply one
+consumer concept into dozens of competition classes merely to create more
+content. Cheese is one editorial category unless a future product decision
+explicitly changes that. Wine may use consumer-meaningful styles such as red,
+white, rosé and sparkling when the authoritative competition itself judges
+those styles separately and does not publish a meaningful overall wine podium.
+
+### Exceptional-product quality floor
+
+Podium position does not automatically make a weak comparison worth
+publishing.
+
+- where the source publishes a meaningful comparable overall 0-100 score, the
+  candidate must normally score **at least 85/100**;
+- only the source's overall/global product score can satisfy that floor;
+- a nutrition subscore, tasting subscore or other partial metric cannot qualify
+  a product;
+- for sources whose highest source-native tier is itself an explicitly
+  exceptional podium/championship result, the reviewed source contract may use
+  that tier instead of a numeric floor.
+
+Ranking is always source/category-native. The shared engine must not compare a
+cheese score, wine medal and OCU score on one universal ladder.
+
+### Three-day publication cadence
+
+Discovery and retail verification may still run daily when cheap, but public
+delivery is limited to **at most one category winner every three local calendar
+days**.
+
+The cooldown is state-based from the last confirmed delivery day rather than a
+calendar cron such as every third date. Missed or empty days therefore do not
+shift into an unsafe schedule, and a category with no eligible top-three retail
+match simply stays silent.
 
 ### Daily article presentation
 
