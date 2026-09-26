@@ -1361,22 +1361,27 @@ def _turismo_programme_blocks_by_date(
     except Exception:
         return {}
     grouped: Dict[date, List[str]] = {}
+    active_day: Optional[date] = None
     for block in parser.blocks:
         match = _TURISMO_DATE_LEADING_BLOCK.match(block)
-        if match is None:
+        if match is not None:
+            month = _SPANISH_MONTHS.get(match.group("month").casefold())
+            if month is None:
+                active_day = None
+                continue
+            try:
+                active_day = date(
+                    int(match.group("year") or local_day.year),
+                    month,
+                    int(match.group("day")),
+                )
+            except ValueError:
+                active_day = None
+                continue
+            grouped.setdefault(active_day, []).append(block)
             continue
-        month = _SPANISH_MONTHS.get(match.group("month").casefold())
-        if month is None:
-            continue
-        try:
-            day = date(
-                int(match.group("year") or local_day.year),
-                month,
-                int(match.group("day")),
-            )
-        except ValueError:
-            continue
-        grouped.setdefault(day, []).append(block)
+        if active_day is not None:
+            grouped.setdefault(active_day, []).append(block)
     return {
         day: tuple(values)
         for day, values in grouped.items()
