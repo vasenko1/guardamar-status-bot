@@ -418,6 +418,26 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
             ),
         )
 
+    def test_date_range_event_does_not_cover_explicit_occurrence_dates(self):
+        broad = (SourceEvent(
+            "Fiestas del Rosario",
+            date(2026, 9, 19),
+            date(2026, 10, 18),
+            None, None, None, "event",
+            (TURISMO_PROGRAMME_TEXT_SOURCE,),
+        ),)
+        expected = (
+            date(2026, 9, 26),
+            date(2026, 10, 3),
+        )
+
+        from telegrambot.municipal_agenda import _turismo_programme_missing_dates
+
+        self.assertEqual(
+            _turismo_programme_missing_dates(broad, expected),
+            expected,
+        )
+
     async def test_missing_rosario_dates_get_one_targeted_recovery(self):
         link = (
             "https://guardamarturismo.com/"
@@ -447,11 +467,9 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
                 "19:00", None, "Biblioteca", "event",
                 (TURISMO_PROGRAMME_TEXT_SOURCE,),
             ),
-            SourceEvent(
-                "Procesión final", date(2026, 10, 18), date(2026, 10, 18),
-                None, None, None, "event",
-                (TURISMO_PROGRAMME_TEXT_SOURCE,),
-            ),
+        )
+        recovery_dates = tuple(
+            day for day in expected_dates if day != date(2026, 10, 15)
         )
         recovered_events = tuple(
             SourceEvent(
@@ -459,7 +477,7 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
                 None, None, None, "event",
                 (TURISMO_PROGRAMME_TEXT_SOURCE,),
             )
-            for day in expected_dates[:4]
+            for day in recovery_dates
         )
         model = AsyncMock(return_value=initial_result)
         recovery = AsyncMock(return_value=recovery_result)
@@ -507,7 +525,7 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
         recovery.assert_awaited_once_with(
             "key",
             "Programa completo Rosario",
-            expected_dates[:4],
+            recovery_dates,
         )
         self.assertEqual(
             {event.start_date for event in events},
