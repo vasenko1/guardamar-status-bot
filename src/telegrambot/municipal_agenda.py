@@ -596,6 +596,7 @@ def _session_common_facts(event: SourceEvent) -> tuple:
 
 def _session_source_plan(
     events: Tuple[SourceEvent, ...],
+    blocked_dates: frozenset[date] = frozenset(),
 ) -> Tuple[Tuple[str, Optional[str], Optional[int]], ...]:
     """Plan display titles and session metadata before any translation.
 
@@ -613,6 +614,7 @@ def _session_source_plan(
             event.programme_title is not None
             or event.start_date != event.end_date
             or event.start_time is None
+            or event.start_date in blocked_dates
         ):
             continue
         parsed = _session_title_parts(event.title_es)
@@ -3207,6 +3209,7 @@ async def refresh_municipal_catalog(
         todo_events = prior_todo_events
         todo_window = None
         todo_state_complete = True
+        todo_incomplete_dates = set()
         todo_enrichment_programs: Tuple[object, ...] = ()
         todo_explicit_rows: Tuple[Tuple[date, str, str], ...] = ()
         try:
@@ -3301,6 +3304,9 @@ async def refresh_municipal_catalog(
                 program_complete = not pending_rows
                 if pending_rows:
                     todo_state_complete = False
+                    todo_incomplete_dates.update(
+                        day for day, _, _ in pending_rows
+                    )
                     missing = ", ".join(
                         f"{day.isoformat()} {start_time}"
                         for day, start_time, _ in pending_rows
@@ -3606,6 +3612,7 @@ async def refresh_municipal_catalog(
             }
         elif isinstance(poster_source, dict) and poster_source:
             source_state["mupi"] = poster_source
+        old_incomplete_dates = _todo_incomplete_dates(todo_source)
         if todo_window is not None and todo_state_complete:
             evidence = [
                 detail
@@ -3618,9 +3625,20 @@ async def refresh_municipal_catalog(
                 for admission in program.admissions
                 if admission.evidence
             ]
+            completed_dates = {
+                day
+                for program in todo_window.programs
+                for day in program.dates
+            }
+            remaining_incomplete_dates = (
+                old_incomplete_dates - completed_dates
+            )
             source_state["todo_cultura"] = {
                 **todo_window.source_state,
                 "checked_at": now.isoformat(),
+                "incomplete_dates": sorted(
+                    day.isoformat() for day in remaining_incomplete_dates
+                ),
                 "participation_evidence": [
                     {
                         "title_hint": detail.title_hint,
@@ -3635,6 +3653,16 @@ async def refresh_municipal_catalog(
                     }
                     for detail in admission_evidence[:20]
                 ],
+            }
+        elif todo_window is not None:
+            source_state["todo_cultura"] = {
+                **(todo_source if isinstance(todo_source, dict) else {}),
+                "incomplete_dates": sorted(
+                    day.isoformat()
+                    for day in (
+                        old_incomplete_dates | todo_incomplete_dates
+                    )
+                ),
             }
         elif isinstance(todo_source, dict) and todo_source:
             source_state["todo_cultura"] = todo_source
@@ -3703,6 +3731,37 @@ async def refresh_municipal_catalog(
         events = snapshot["_events"]
         return tuple(events)
     return tuple(events)
+
+
+def _todo_incomplete_dates(state: Any) -> frozenset[date]:
+    """Return only validated dates whose Todo extraction is incomplete."""
+
+    if not isinstance(state, dict):
+        return frozenset()
+    raw = state.get("incomplete_dates", [])
+    if not isinstance(raw, list):
+        return frozenset()
+    result = set()
+    for value in raw:
+        if not isinstance(value, str):
+            continue
+        try:
+            result.add(date.fromisoformat(value))
+        except ValueError:
+            continue
+    return frozenset(result)
+
+
+async def _cached_session_blocked_dates(
+    state_path: Path,
+) -> frozenset[date]:
+    """Read fail-open session grouping gates from the local snapshot."""
+
+    snapshot = await asyncio.to_thread(_load_snapshot, state_path)
+    if snapshot is None:
+        return frozenset()
+    source = snapshot.get("sources", {}).get("todo_cultura", {})
+    return _todo_incomplete_dates(source)
 
 
 async def _cached_current_events(
@@ -3791,7 +3850,8 @@ async def fetch_today_municipal_events(
     source_events = await _cached_current_events(now, state_path, diagnostics)
     if not source_events:
         return ()
-    session_plan = _session_source_plan(source_events)
+    blocked_dates = await _cached_session_blocked_dates(state_path)
+    session_plan = _session_source_plan(source_events, blocked_dates)
     planned = list(zip(source_events, session_plan))
     translated_events = []
     if translation_cache_path is not None:
@@ -4058,7 +4118,8 @@ async def municipal_translation_items(
     """Return source identities and exact titles from the local catalog."""
 
     events = await _cached_current_events(now, state_path)
-    session_plan = _session_source_plan(events)
+    blocked_dates = await _cached_session_blocked_dates(state_path)
+    session_plan = _session_source_plan(events, blocked_dates)
     items = list(dict.fromkeys(
         ("municipal_agenda", display_source_title)
         for display_source_title, _, _ in session_plan
