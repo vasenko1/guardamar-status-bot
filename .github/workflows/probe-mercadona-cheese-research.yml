@@ -1,4 +1,4 @@
-name: Probe Mercadona cheese category research
+name: Probe award candidates research
 
 on:
   push:
@@ -16,78 +16,89 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Probe cheese category
+      - name: Probe exact Mercadona products and WCCC results client
         run: |
           python - <<'PY'
-          import json, urllib.request
+          import json, re, urllib.parse, urllib.request
 
-          headers={"Accept":"application/json","User-Agent":"GuardamarMorningDigest/0.13"}
+          UA={"Accept":"*/*","User-Agent":"GuardamarMorningDigest/0.13"}
 
-          def get(url):
-              req=urllib.request.Request(url,headers=headers)
+          def raw(url, limit=2_000_000):
+              req=urllib.request.Request(url,headers=UA)
               with urllib.request.urlopen(req,timeout=20) as r:
-                  return json.load(r)
+                  return r.status, r.headers.get_content_type(), r.read(limit)
 
-          root=get("https://tienda.mercadona.es/api/categories/?lang=es&wh=alc1")
-          candidates=[]
-          def walk(value, trail=()):
-              if isinstance(value, dict):
-                  name=value.get("name")
-                  ident=value.get("id")
-                  newtrail=trail+((str(name) if name else ""),)
-                  if isinstance(name,str) and any(x in name.lower() for x in ("queso","lácteo","lacteo")):
-                      candidates.append((ident,name," > ".join(x for x in newtrail if x)))
-                  for v in value.values():
-                      walk(v,newtrail)
-              elif isinstance(value,list):
-                  for v in value:
-                      walk(v,trail)
-          walk(root)
-          print("CATEGORY CANDIDATES")
-          for x in candidates:
-              print(x)
-
-          ids=[]
-          for ident,name,_ in candidates:
-              if ident is not None and str(ident) not in ids:
-                  ids.append(str(ident))
-
-          print("CATEGORY IDS", ids)
-          for ident in ids:
-              print("=== CATEGORY",ident,"===")
+          print("=== MERCADONA EXACT PRODUCTS ===")
+          for pid in ("4883","5548","11682","50944","11672"):
+              url=f"https://tienda.mercadona.es/api/products/{pid}/?lang=es&wh=alc1"
               try:
-                  data=get(f"https://tienda.mercadona.es/api/categories/{ident}/?lang=es&wh=alc1")
+                  status,ctype,body=raw(url,500_000)
+                  obj=json.loads(body)
               except Exception as e:
-                  print("ERROR",repr(e))
+                  print(pid,"ERROR",repr(e)); continue
+              details=obj.get("details") if isinstance(obj.get("details"),dict) else {}
+              nutrition=obj.get("nutrition_information") if isinstance(obj.get("nutrition_information"),dict) else {}
+              pi=obj.get("price_instructions") if isinstance(obj.get("price_instructions"),dict) else {}
+              print(json.dumps({
+                  "id":obj.get("id"),
+                  "display_name":obj.get("display_name"),
+                  "ean":obj.get("ean"),
+                  "brand":obj.get("brand"),
+                  "published":obj.get("published"),
+                  "unavailable_from":obj.get("unavailable_from"),
+                  "unavailable_weekdays":obj.get("unavailable_weekdays"),
+                  "share_url":obj.get("share_url"),
+                  "suppliers":details.get("suppliers"),
+                  "legal_name":details.get("legal_name"),
+                  "mandatory_mentions":details.get("mandatory_mentions"),
+                  "ingredients":nutrition.get("ingredients"),
+                  "unit_price":pi.get("unit_price"),
+                  "unit_size":pi.get("unit_size"),
+                  "size_format":pi.get("size_format"),
+                  "reference_price":pi.get("reference_price"),
+                  "reference_format":pi.get("reference_format"),
+              },ensure_ascii=False))
+
+          print("=== WCCC RESULTS PAGE ===")
+          page="https://worldchampioncheese.org/results/"
+          status,ctype,body=raw(page)
+          html=body.decode("utf-8","replace")
+          print("STATUS",status,"TYPE",ctype,"BYTES",len(body))
+          scripts=[]
+          for m in re.finditer(r'<script[^>]+src=["\']([^"\']+)["\']',html,re.I):
+              u=urllib.parse.urljoin(page,m.group(1))
+              if u not in scripts:
+                  scripts.append(u)
+          print("SCRIPTS",len(scripts))
+          for u in scripts:
+              print("SCRIPT",u)
+
+          needles=("myentries","result","score","class","contest","api","graphql","ajax")
+          print("=== INTERESTING SCRIPT FRAGMENTS ===")
+          for u in scripts:
+              try:
+                  _,_,body=raw(u,3_000_000)
+              except Exception as e:
+                  print("SCRIPT_ERROR",u,repr(e)); continue
+              text=body.decode("utf-8","replace")
+              low=text.lower()
+              if not any(n in low for n in needles):
                   continue
-
-              def products(v):
-                  if isinstance(v,dict):
-                      if "display_name" in v and "id" in v:
-                          yield v
-                      for vv in v.values():
-                          yield from products(vv)
-                  elif isinstance(v,list):
-                      for vv in v:
-                          yield from products(vv)
-
-              seen=set()
-              for p in products(data):
-                  pid=str(p.get("id"))
-                  if pid in seen:
-                      continue
-                  seen.add(pid)
-                  name=str(p.get("display_name",""))
-                  brand=str(p.get("brand",""))
-                  if brand.lower()=="hacendado" or any(k in name.lower() for k in ("trufa","afrutado","ibérico","iberico","semicurado","cremoso","añejo","anejo")):
-                      print(json.dumps({
-                          "id":pid,
-                          "name":name,
-                          "brand":brand,
-                          "ean":p.get("ean"),
-                          "share_url":p.get("share_url"),
-                          "price_instructions":p.get("price_instructions"),
-                          "published":p.get("published"),
-                          "is_variable_weight":p.get("is_variable_weight"),
-                      },ensure_ascii=False))
+              hits=[]
+              for pat in (
+                  r'https?://[^"\'\s)]+',
+                  r'/wp-json/[^"\'\s)]+',
+                  r'admin-ajax[^"\'\s)]+',
+                  r'ajaxurl[^;]{0,250}',
+                  r'graphql[^;]{0,250}',
+                  r'results?[^;]{0,250}',
+              ):
+                  for m in re.finditer(pat,text,re.I):
+                      frag=m.group(0)
+                      if any(k in frag.lower() for k in ("result","score","class","contest","api","ajax","graphql")):
+                          hits.append(frag[:500])
+              if hits:
+                  print("FROM",u)
+                  for h in list(dict.fromkeys(hits))[:80]:
+                      print("HIT",h)
           PY
