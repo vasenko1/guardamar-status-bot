@@ -1,0 +1,78 @@
+name: Probe ALDI Algolia exact product
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/private-label-product-awards-poc
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Search exact Sal de Plata product
+        run: |
+          python - <<'PY'
+          import json, urllib.parse, urllib.request
+
+          app="L9KNU74IO7"
+          key="83df5acd172c42ab174afa4583232b5d"
+          endpoint=f"https://{app}-dsn.algolia.net/1/indexes/*/queries"
+          headers={
+              "Content-Type":"application/json",
+              "x-algolia-application-id":app,
+              "x-algolia-api-key":key,
+              "User-Agent":"GuardamarMorningDigest/0.13",
+          }
+          indexes=[
+              "an_prd_es_es_products2",
+              "an_prd_es_es_products",
+              "an_prd_es_products2",
+          ]
+          queries=["Sal de Plata","atún claro aceite de oliva","atun claro aceite oliva"]
+          requests=[]
+          meta=[]
+          for index in indexes:
+              for query in queries:
+                  params=urllib.parse.urlencode({"query":query,"hitsPerPage":50})
+                  requests.append({"indexName":index,"params":params})
+                  meta.append((index,query))
+          req=urllib.request.Request(
+              endpoint,
+              data=json.dumps({"requests":requests}).encode(),
+              headers=headers,
+              method="POST",
+          )
+          try:
+              with urllib.request.urlopen(req,timeout=20) as r:
+                  obj=json.load(r)
+          except urllib.error.HTTPError as e:
+              print("HTTP_ERROR",e.code,e.read().decode("utf-8","replace")[:5000])
+              raise
+          for (index,query),result in zip(meta,obj.get("results",[])):
+              print("===",index,"|",query,"===")
+              if "error" in result or "message" in result and "hits" not in result:
+                  print(json.dumps(result,ensure_ascii=False)[:3000])
+                  continue
+              print("nbHits",result.get("nbHits"))
+              for hit in result.get("hits",[])[:50]:
+                  blob=json.dumps(hit,ensure_ascii=False).lower()
+                  if "sal de plata" not in blob and "atún" not in blob and "atun" not in blob:
+                      continue
+                  keep={k:hit.get(k) for k in (
+                      "objectID","name","productSlug","brandName","variantName",
+                      "salesUnit","currentPrice","promotion","promotionPrices",
+                      "isAvailable","isComingSoon","advertisingOnlineDateFrom",
+                      "advertisingOnlineDateUntil","shortDescription",
+                      "longDescription","additionalAttributes","productReferences",
+                      "isDrainedWeight","drainedWeightValue","drainedWeightUnit",
+                  )}
+                  print(json.dumps(keep,ensure_ascii=False,sort_keys=True))
+          PY
