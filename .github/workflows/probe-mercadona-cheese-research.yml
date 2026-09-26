@@ -1,4 +1,4 @@
-name: Probe WCCC 2026 medal results research
+name: Probe WCCC 2026 Valle results research
 
 on:
   push:
@@ -16,61 +16,43 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Query WCCC official result API
+      - name: Query exact WCCC medal entries
         run: |
           python - <<'PY'
           import json, urllib.request
-
           UA={"Accept":"application/json","User-Agent":"GuardamarMorningDigest/0.13"}
-          BASE="https://myentries.org/api/results"
+          url="https://myentries.org/api/results/contest-top-three-per-class/71"
+          req=urllib.request.Request(url,headers=UA)
+          with urllib.request.urlopen(req,timeout=20) as r:
+              data=json.load(r)
 
-          def get(path):
-              req=urllib.request.Request(BASE+path,headers=UA)
-              with urllib.request.urlopen(req,timeout=20) as r:
-                  return json.load(r)
-
-          contests=get("/contests")
-          print("=== CONTESTS ===")
-          print(json.dumps(contests,ensure_ascii=False)[:30000])
-
-          rows=contests.get("results",contests) if isinstance(contests,dict) else contests
+          targets=("valle de san juan","trufa","afrutado","iberico anejo","ibérico añejo","semicurado")
+          rows=data.get("results",[])
+          print("CLASSES",len(rows))
           matches=[]
-          if isinstance(rows,list):
-              for c in rows:
-                  if not isinstance(c,dict): continue
-                  blob=json.dumps(c,ensure_ascii=False).lower()
-                  if "2026" in blob and ("world" in blob or "wccc" in blob):
-                      matches.append(c)
-          print("=== 2026 WCCC MATCHES ===")
+          for row in rows:
+              if not isinstance(row,dict): continue
+              cls=row.get("class") or {}
+              entries=row.get("entries") or {}
+              iterable=entries.values() if isinstance(entries,dict) else entries
+              for entry in iterable:
+                  if not isinstance(entry,dict): continue
+                  text=" ".join(str(entry.get(k) or "") for k in ("maker","company","brand_name","description")).lower()
+                  if any(t in text for t in targets):
+                      matches.append({
+                          "class_id":cls.get("id"),
+                          "class_number":cls.get("number"),
+                          "class_name":cls.get("name"),
+                          "class_description":cls.get("description"),
+                          "place":entry.get("place"),
+                          "score":entry.get("score_average"),
+                          "maker":entry.get("maker"),
+                          "company":entry.get("company"),
+                          "brand_name":entry.get("brand_name"),
+                          "description":entry.get("description"),
+                          "city":entry.get("city"),
+                          "state":entry.get("state"),
+                          "country":entry.get("country"),
+                      })
           print(json.dumps(matches,ensure_ascii=False,indent=2))
-
-          for contest in matches:
-              cid=contest.get("id")
-              if cid is None: continue
-              print("=== TOP THREE PER CLASS",cid,"===")
-              top=get(f"/contest-top-three-per-class/{cid}")
-              # Print only entries related to Valle de San Juan / target products.
-              found=[]
-              def walk(v, trail=()):
-                  if isinstance(v,dict):
-                      blob=json.dumps(v,ensure_ascii=False).lower()
-                      if any(k in blob for k in (
-                          "valle de san juan","trufa","afrutado",
-                          "iberico anejo","ibérico añejo","semicurado",
-                      )):
-                          found.append((trail,v))
-                      for k,vv in v.items():
-                          walk(vv,trail+(str(k),))
-                  elif isinstance(v,list):
-                      for i,vv in enumerate(v):
-                          walk(vv,trail+(str(i),))
-              walk(top)
-              print("FOUND",len(found))
-              seen=set()
-              for trail,obj in found:
-                  key=json.dumps(obj,ensure_ascii=False,sort_keys=True)
-                  if key in seen: continue
-                  seen.add(key)
-                  print("PATH","/".join(trail))
-                  print(json.dumps(obj,ensure_ascii=False))
           PY
