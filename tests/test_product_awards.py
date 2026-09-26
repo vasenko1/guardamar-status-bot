@@ -287,7 +287,7 @@ class RendererTests(unittest.TestCase):
         self.assertIn("соотношение качества и цены", publication.message)
         self.assertNotIn("лучший результат сравнительного теста", publication.message)
 
-    def test_future_adapter_uses_generic_renderer(self):
+    def test_future_private_label_adapter_uses_generic_renderer(self):
         item = candidate(
             source_kind="wine",
             event_key="wine:42",
@@ -304,7 +304,36 @@ class RendererTests(unittest.TestCase):
         message = build_publication(item).message
         self.assertIn("Gold", message)
         self.assertIn("Example Wine Awards", message)
+        self.assertIn("собственной марки Example Label", message)
         self.assertIn("ALDI", message)
+
+    def test_listed_brand_is_not_called_private_label(self):
+        item = ProductAwardCandidate(
+            source_kind="olive-oil",
+            event_key="oil:42",
+            source_url="https://example.com/award/42",
+            product_name="Casa Juncal Picual",
+            result="Gold",
+            award_body="Example Olive Oil Awards",
+            result_year=2026,
+            retail=RetailEvidence(
+                retailer="Mercadona",
+                relationship="listed",
+                product_id="12345",
+                product_url="https://tienda.mercadona.es/product/12345/example",
+            ),
+        )
+        message = build_publication(item).message
+        self.assertIn("который продаётся в Mercadona", message)
+        self.assertNotIn("собственной марки", message)
+
+    def test_exact_current_price_overrides_source_study_price(self):
+        message = build_publication(
+            candidate(source_price="3 €/л"),
+            current_price="2,90 €/л",
+        ).message
+        self.assertIn("Сейчас в Mercadona указана цена 2,90 €/л", message)
+        self.assertNotIn("В исследовании указана цена 3 €/л", message)
 
 
 class EngineTests(unittest.TestCase):
@@ -486,6 +515,16 @@ class ProductAwardStateTests(unittest.TestCase):
             )
             self.assertEqual((added, updated, ignored), (0, 1, 0))
             self.assertEqual(state.queue_size(), 1)
+
+    def test_core_does_not_rank_conflicting_award_vocabularies(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = ProductAwardState(Path(directory) / "awards.json")
+            state.initialize_source("fake", ())
+            first = candidate(event_key="stable", result="Gold")
+            conflicting = candidate(event_key="stable", result="Super Gold")
+            state.enqueue_candidates((first,), date(2026, 9, 25))
+            with self.assertRaises(ProductAwardError):
+                state.enqueue_candidates((conflicting,), date(2026, 9, 25))
 
     def test_one_delivery_slot_per_day(self):
         with tempfile.TemporaryDirectory() as directory:
