@@ -61,7 +61,6 @@ class DigestMessageTests(unittest.TestCase):
                     programme_title="Fiestas del Campo",
                     programme_order=1,
                     session_group_key="session:should-not-render",
-                    session_order=1,
                 ),
                 Event(
                     "Салют",
@@ -69,7 +68,6 @@ class DigestMessageTests(unittest.TestCase):
                     programme_title="Fiestas del Campo",
                     programme_order=2,
                     session_group_key="session:should-not-render",
-                    session_order=2,
                 ),
             ),
         )
