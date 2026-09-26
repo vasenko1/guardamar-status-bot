@@ -299,10 +299,21 @@ def _fold(value: str) -> str:
     )
 
 
+def _phrase_count(text: str, phrase: str) -> int:
+    tokens = _fold(text).split()
+    needle = _fold(phrase).split()
+    if not needle or len(needle) > len(tokens):
+        return 0
+    width = len(needle)
+    return sum(
+        1
+        for index in range(len(tokens) - width + 1)
+        if tokens[index : index + width] == needle
+    )
+
+
 def _phrase_present(text: str, phrase: str) -> bool:
-    folded_text = _fold(text)
-    folded_phrase = _fold(phrase)
-    return bool(folded_phrase) and f" {folded_phrase} " in f" {folded_text} "
+    return _phrase_count(text, phrase) > 0
 
 
 def _host_policy(hosts: frozenset[str]):
@@ -419,10 +430,16 @@ def _resolve_private_label(text: str) -> Optional[tuple[str, str]]:
     matches: list[tuple[int, int, str, str]] = []
     for retailer, labels in PRIVATE_LABELS.items():
         for label in labels:
-            if _phrase_present(text, label):
-                matches.append(
-                    (len(_fold(label).split()), len(_fold(label)), retailer, label)
-                )
+            if not _phrase_present(text, label):
+                continue
+            if (
+                _fold(label) == _fold(retailer)
+                and _phrase_count(text, label) < 2
+            ):
+                continue
+            matches.append(
+                (len(_fold(label).split()), len(_fold(label)), retailer, label)
+            )
     if not matches:
         return None
     matches.sort(reverse=True)
