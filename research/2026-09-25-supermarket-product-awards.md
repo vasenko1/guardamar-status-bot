@@ -463,7 +463,30 @@ The earlier POC proved that public catalogue/search data can expose exact Mercad
 
 The critical identity finding remains: SKU 39901 and SKU 39966 both exposed the visible name Salmorejo fresco Hacendado. Therefore visible-name equality is never enough. An exact Mercadona product ID or another exact variant discriminator is required before current price or photo can be attached.
 
-Decision: technically usable, but the strictest matching rules are required. If the award source does not distinguish same-name SKUs, publish without live Mercadona enrichment rather than guess.
+Decision: technically usable, but the strictest matching rules are required.
+
+A 26 September 2026 browser-free probe established a concrete Guardamar
+contract:
+
+- postal code `03140` resolved to warehouse `alc1`;
+- exact product endpoint:
+  `https://tienda.mercadona.es/api/products/<id>/?lang=es&wh=alc1`;
+- reviewed SKU `50952` returned:
+  `Queso añejo tostado mezcla Hacendado`,
+  EAN `8480000509529`, `published=true`,
+  supplier `Queserías Entrepinares S.A.U.`,
+  unit price 6.19 EUR, approximate size 0.37 kg and reference price
+  16.74 EUR/kg;
+- the exact retail ingredient field identifies pasteurized cow milk 50%,
+  sheep milk 20% and goat milk 15%.
+
+The warehouse was returned in the postal endpoint response headers rather than
+its JSON body. To avoid an extra request and shared-transport changes on every
+publication, the MVP uses reviewed Guardamar warehouse `alc1` and fails closed
+if the exact product response changes. No catalogue search is performed.
+
+If the award source does not distinguish an exact Mercadona product strongly
+enough, do not enrich or publish it rather than guess.
 
 #### Lidl España
 
@@ -1143,6 +1166,20 @@ Implemented:
 - OCU publication now requires overall/global score >=85/100 and sorts its own
   eligible candidates by that native score; high partial subscores cannot pass
   the gate;
+- the official WCCC 2026 Top-20 page is now registered as the second award
+  adapter, restricted to the reviewed 2026 contract rather than guessing future
+  URL/shape compatibility;
+- one exact WCCC-to-retail join is implemented: class 114
+  `Seleccion Tostado Mixed Milk Cheese Extra Aged` by
+  `Queserías Entrepinares S.A.U.` -> Mercadona SKU `50952`,
+  EAN `8480000509529`;
+- WCCC Top-20 is treated as an exceptional source-native tier even without a
+  public numeric score on the Top-20 page;
+- Mercadona exact-SKU refresh is implemented for the reviewed Guardamar
+  warehouse context and validates product ID, EAN, brand, supplier, published
+  status and official share URL before returning current package/price;
+- current retail price is now mandatory for public delivery: refresh failure
+  yields no publication and does not reserve the daily slot;
 - delivery queue, per-source baseline, at-most-once Telegram semantics and
   one-item-per-day policy remain unchanged.
 
@@ -1156,14 +1193,14 @@ Deliberately **not** implemented yet:
 
 - no generic retailer catalogue search;
 - no continuous or daily scans of the seven in-scope retailers;
-- no Mercadona or Masymas parser before their exact browser-free contract is
+- Masymas still has no parser before its exact browser-free contract is
   separately proven;
-- no real publication-time retailer HTTP refresh yet — the renderer and data
-  model now expose the safe boundary for it, but no source-specific retail
-  adapter is registered;
+- Mercadona retail refresh currently supports only exact reviewed product IDs;
+  it does not search the catalogue or discover related package sizes;
 - no retailer product-photo publication; the default remains text-only unless a
   source-specific reuse right is documented;
-- no new award source is registered beyond OCU.
+- broader WCCC class/result coverage is not implemented; only the reviewed
+  2026 Top-20 Entrepinares/Mercadona join is active.
 
 Validation on the final functional head before removing the temporary
 branch-only workflow:
