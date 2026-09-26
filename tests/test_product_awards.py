@@ -143,6 +143,23 @@ class OcuAdapterTests(unittest.TestCase):
             ("Carrefour", "Carrefour Extra"),
         )
 
+    def test_retailer_name_in_parentheses_is_not_private_label(self):
+        self.assertIsNone(
+            _resolve_private_label("Yogur Danone (Carrefour) es Compra Maestra")
+        )
+        self.assertIsNone(
+            _resolve_private_label("Yogur Danone (DIA) es Compra Maestra")
+        )
+        self.assertEqual(
+            _resolve_private_label("leche Carrefour (Carrefour) es Compra Maestra"),
+            ("Carrefour", "Carrefour"),
+        )
+        self.assertEqual(
+            _resolve_private_label("yogur DIA (DIA) es Compra Maestra"),
+            ("DIA", "DIA"),
+        )
+
+
     def test_horizontal_private_labels_include_alcampo_and_dia(self):
         self.assertEqual(
             _resolve_private_label("salmorejo Auchan (Alcampo)"),
