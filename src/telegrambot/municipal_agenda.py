@@ -684,7 +684,7 @@ def _annotate_todo_source_sessions(
             continue
 
         raw_parent = members[0][1]
-        source_key = "todo:" + hashlib.sha256(
+        source_key = "todo_cultura:" + hashlib.sha256(
             key[2].encode("utf-8")
         ).hexdigest()
         parent_title = _session_display_title(events, indexes, raw_parent)
@@ -2803,10 +2803,13 @@ def _load_snapshot(path: Path) -> Optional[Dict[str, Any]]:
                 raw.get("session_parent_title_es")
                 if isinstance(raw, dict) else None
             )
-            if raw_session_key is not None or raw_session_parent is not None:
+            if raw_session_key is not None:
                 if (
                     not isinstance(raw_session_key, str)
-                    or not re.fullmatch(r"todo:[0-9a-f]{64}", raw_session_key)
+                    or not re.fullmatch(
+                        r"[a-z][a-z0-9_]{1,31}:[0-9a-f]{64}",
+                        raw_session_key,
+                    )
                     or not isinstance(raw_session_parent, str)
                 ):
                     raise ValueError
@@ -2818,6 +2821,10 @@ def _load_snapshot(path: Path) -> Optional[Dict[str, Any]]:
                     session_source_key=raw_session_key,
                     session_parent_title_es=raw_session_parent,
                 )
+            elif raw_session_parent is not None and not isinstance(
+                raw_session_parent, str
+            ):
+                raise ValueError
             raw_image = raw.get("image_url") if isinstance(raw, dict) else None
             if raw_image is not None:
                 image_url = _normalized_turismo_image_url(raw_image)
