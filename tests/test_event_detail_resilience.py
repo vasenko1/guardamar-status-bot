@@ -159,6 +159,15 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(all(group is None for _, group, _ in plan))
 
+    def test_nonchronological_ordinals_fail_open(self):
+        first, second, third = self._escape_events()
+        first = SourceEvent(**{**first.__dict__, "start_time": "13:00"})
+        third = SourceEvent(**{**third.__dict__, "start_time": "11:00"})
+
+        plan = _session_source_plan((first, second, third))
+
+        self.assertTrue(all(group is None for _, group, _ in plan))
+
     async def test_translation_queue_contains_base_title_once(self):
         events = self._escape_events()
         now = datetime(2026, 9, 26, 10, 0, tzinfo=TZ)
@@ -286,6 +295,36 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
             warnings=(),
             warnings_available=True,
             events=(first, second),
+        ))
+
+        self.assertNotIn("2 сеанса</b>", message)
+        self.assertIn("Эскейп-рум «Тайна музея» (сеанс 1)", message)
+        self.assertIn("Эскейп-рум «Тайна музея» (сеанс 2)", message)
+
+    def test_digest_falls_back_when_session_order_is_not_chronological(self):
+        day = datetime(2026, 9, 26, tzinfo=TZ)
+        events = (
+            Event(
+                "Эскейп-рум «Тайна музея»",
+                day.replace(hour=13),
+                place="Museo Arqueológico",
+                session_group_key="session:escape",
+                session_order=1,
+            ),
+            Event(
+                "Эскейп-рум «Тайна музея»",
+                day.replace(hour=11),
+                place="Museo Arqueológico",
+                session_group_key="session:escape",
+                session_order=2,
+            ),
+        )
+
+        message = build_message(MorningDigest(
+            weather=None,
+            warnings=(),
+            warnings_available=True,
+            events=events,
         ))
 
         self.assertNotIn("2 сеанса</b>", message)
