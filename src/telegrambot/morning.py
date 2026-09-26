@@ -248,6 +248,30 @@ def _prefer_agenda_guardamar_venues(
     return tuple(result)
 
 
+def _merged_session_metadata(left, right, programme_title):
+    """Preserve one proven session identity, clearing only real conflicts."""
+
+    if programme_title:
+        return None, None
+    left_key = getattr(left, "session_group_key", None)
+    right_key = getattr(right, "session_group_key", None)
+    left_order = getattr(left, "session_order", None)
+    right_order = getattr(right, "session_order", None)
+    if left_key is None:
+        return right_key, right_order
+    if right_key is None:
+        return left_key, left_order
+    if left_key != right_key:
+        return None, None
+    if (
+        left_order is not None
+        and right_order is not None
+        and left_order != right_order
+    ):
+        return None, None
+    return left_key, left_order if left_order is not None else right_order
+
+
 def _merge_municipal_admission_aliases(events):
     """Collapse translated aliases proven to be the same municipal occurrence."""
 
@@ -296,11 +320,18 @@ def _merge_municipal_admission_aliases(events):
             if title_size(event) > title_size(current)
             else (current, event)
         )
+        programme_title = preferred.programme_title or alias.programme_title
+        session_group_key, session_order = _merged_session_metadata(
+            preferred, alias, programme_title
+        )
         result[duplicate_index] = replace(
             preferred,
             ticket_url=preferred.ticket_url or alias.ticket_url,
             place=preferred.place or alias.place,
             image_url=preferred.image_url or alias.image_url,
+            programme_title=programme_title,
+            session_group_key=session_group_key,
+            session_order=session_order,
         )
 
     return tuple(result)
@@ -472,6 +503,12 @@ def _merge_events(*groups):
                     # loosely parsed Agenda detail should override the richer
                     # earlier event.  Deduplicate only.
                     continue
+                programme_title = (
+                    current.programme_title or event.programme_title
+                )
+                session_group_key, session_order = _merged_session_metadata(
+                    current, event, programme_title
+                )
                 result[duplicate_index] = replace(
                     current,
                     title=richer_title(current.title, event.title),
@@ -523,14 +560,14 @@ def _merge_events(*groups):
                     active_from=current.active_from or event.active_from,
                     is_final_day=current.is_final_day or event.is_final_day,
                     image_url=current.image_url or event.image_url,
-                    programme_title=(
-                        current.programme_title or event.programme_title
-                    ),
+                    programme_title=programme_title,
                     programme_order=(
                         current.programme_order
                         if current.programme_order is not None
                         else event.programme_order
                     ),
+                    session_group_key=session_group_key,
+                    session_order=session_order,
                 )
                 continue
             result.append(event)
