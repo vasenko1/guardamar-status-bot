@@ -224,6 +224,124 @@ class MunicipalCinemaTranslationTests(unittest.IsolatedAsyncioTestCase):
 
 
 
+class MunicipalProgrammeDisplayTranslationTests(
+    unittest.IsolatedAsyncioTestCase
+):
+    async def test_rosario_programme_translates_parent_without_changing_identity(self):
+        day = date(2026, 9, 26)
+        parent = "FIESTAS EN HONOR A LA VIRGEN DEL ROSARIO 2026"
+        parent_ru = "Праздник в честь Девы Розария 2026"
+        sources = (
+            SourceEvent(
+                "Gran Bingo Benéfico", day, day, "17:00", None,
+                "Bajos del Ayuntamiento", "event",
+                (AYUNTAMIENTO_PROGRAMME_SOURCE,),
+                programme_title=parent, programme_order=10,
+            ),
+            SourceEvent(
+                "Traslado de la Virgen del Rosario al altar mayor",
+                day, day, "19:50", None, None, "event",
+                (AYUNTAMIENTO_PROGRAMME_SOURCE,),
+                programme_title=parent, programme_order=20,
+            ),
+            SourceEvent(
+                "Santa Misa y presentación del cartel de fiestas",
+                day, day, "20:00", None,
+                "Iglesia parroquial San Jaime Apóstol", "event",
+                (AYUNTAMIENTO_PROGRAMME_SOURCE,),
+                programme_title=parent, programme_order=30,
+            ),
+        )
+        translations_by_source = {
+            "Gran Bingo Benéfico": "Благотворительное бинго",
+            "Traslado de la Virgen del Rosario al altar mayor":
+                "Перенос Девы Розария к главному алтарю",
+            "Santa Misa y presentación del cartel de fiestas":
+                "Святая месса и представление афиши праздника",
+        }
+
+        with tempfile.TemporaryDirectory() as directory:
+            snapshot = Path(directory) / "agenda.json"
+            translations = Path(directory) / "translations.json"
+            now = datetime(2026, 9, 26, 7, 30, tzinfo=TZ)
+            _write_snapshot(
+                snapshot,
+                _snapshot_data("", "", now, sources),
+            )
+            entries = {
+                _key("municipal_agenda", source_title): {
+                    "translation": translated,
+                }
+                for source_title, translated in translations_by_source.items()
+            }
+            entries[_key("municipal_programme_title", parent)] = {
+                "translation": parent_ru,
+            }
+            translations.write_text(
+                json.dumps({"version": 1, "entries": entries}),
+                encoding="utf-8",
+            )
+
+            items = await municipal_translation_items(now, snapshot)
+            events = await fetch_today_municipal_events(
+                now,
+                "",
+                snapshot,
+                translation_cache_path=translations,
+            )
+
+        self.assertEqual(
+            items.count(("municipal_programme_title", parent)),
+            1,
+        )
+        self.assertEqual({event.programme_title for event in events}, {parent})
+        self.assertEqual(
+            {event.programme_display_title for event in events},
+            {parent_ru},
+        )
+        rendered = "\n".join(build_event_section(events, "События дня"))
+        self.assertEqual(rendered.count(parent_ru), 1)
+        self.assertNotIn(parent, rendered)
+        self.assertLess(rendered.index("17:00"), rendered.index("19:50"))
+        self.assertLess(rendered.index("19:50"), rendered.index("20:00"))
+
+    def test_todo_duplicate_keeps_official_programme_identity(self):
+        day = date(2026, 9, 26)
+        parent = "FIESTAS EN HONOR A LA VIRGEN DEL ROSARIO 2026"
+        official = (
+            SourceEvent(
+                "Gran Bingo Benéfico", day, day, "17:00", None,
+                "Bajos del Ayuntamiento", "event",
+                (AYUNTAMIENTO_PROGRAMME_SOURCE,),
+                programme_title=parent, programme_order=10,
+            ),
+            SourceEvent(
+                "Traslado de la Virgen del Rosario al altar mayor",
+                day, day, "19:50", None, None, "event",
+                (AYUNTAMIENTO_PROGRAMME_SOURCE,),
+                programme_title=parent, programme_order=20,
+            ),
+            SourceEvent(
+                "Santa Misa y presentación del cartel de fiestas",
+                day, day, "20:00", None,
+                "Iglesia parroquial San Jaime Apóstol", "event",
+                (AYUNTAMIENTO_PROGRAMME_SOURCE,),
+                programme_title=parent, programme_order=30,
+            ),
+        )
+        todo = SourceEvent(
+            "Gran bingo de regalos", day, day, "17:00", None,
+            "Bajos del Ayuntamiento", "event", ("todo_cultura",),
+        )
+
+        merged = merge_text_and_poster_events(official, (todo,))
+
+        self.assertEqual(len(merged), 3)
+        bingo = next(event for event in merged if event.start_time == "17:00")
+        self.assertEqual(bingo.programme_title, parent)
+        self.assertIn("todo_cultura", bingo.sources)
+
+
 class ExplicitTodoDatesTest(unittest.TestCase):
     def test_same_time_different_event_does_not_cover_missing_row(self):
         tour = SourceEvent(
