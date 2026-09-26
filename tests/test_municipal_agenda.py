@@ -433,6 +433,79 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
             candidate["modified"],
         )
 
+    async def test_changed_article_without_current_events_drops_stale_occurrence(self):
+        link = (
+            "https://guardamarturismo.com/"
+            "fiestas-de-la-virgen-del-rosario-de-guardamar-2026/"
+        )
+        title = "Fiestas de la Virgen del Rosario de Guardamar 2026"
+        candidate = {
+            "id": 101,
+            "modified": "2026-09-26T09:00:00",
+            "link": link,
+            "title": title,
+            "distance": 0,
+        }
+        previous = (SourceEvent(
+            "Gran bingo benéfico", date(2026, 9, 26), date(2026, 9, 26),
+            "17:00", None, "Ayuntamiento", "event",
+            (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            programme_title=title,
+            programme_order=10,
+        ),)
+        previous_state = {
+            "version": 1,
+            "articles": {
+                link: {
+                    "modified": "2026-09-16T10:00:00",
+                    "sha256": "old",
+                    "programme_title": title,
+                    "extractor_version": 1,
+                },
+            },
+        }
+        past_events = (
+            SourceEvent(
+                "Acto previo uno", date(2026, 9, 20), date(2026, 9, 20),
+                None, None, None, "event",
+                (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            ),
+            SourceEvent(
+                "Acto previo dos", date(2026, 9, 25), date(2026, 9, 25),
+                None, None, None, "event",
+                (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            ),
+        )
+        with (
+            patch(
+                "telegrambot.municipal_agenda._read_turismo_programme_candidates",
+                return_value=(candidate,),
+            ),
+            patch(
+                "telegrambot.municipal_agenda._read_turismo_programme_article",
+                return_value=(
+                    link,
+                    candidate["modified"],
+                    title,
+                    "Programa actualizado sin actos futuros.",
+                ),
+            ),
+            patch(
+                "telegrambot.municipal_agenda.extract_agenda_text_events",
+                new=AsyncMock(return_value={"month": "2026-09", "events": []}),
+            ),
+            patch(
+                "telegrambot.municipal_agenda._normalize_turismo_programme_text",
+                return_value=past_events,
+            ),
+        ):
+            events, state = await _turismo_text_programme_events(
+                "key", date(2026, 9, 26), previous, previous_state
+            )
+
+        self.assertEqual(events, ())
+        self.assertEqual(state["articles"], {})
+
     async def test_unchanged_article_reuses_verified_events_without_detail_read(self):
         link = (
             "https://guardamarturismo.com/"
