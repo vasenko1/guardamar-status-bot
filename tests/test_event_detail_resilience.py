@@ -16,6 +16,7 @@ from telegrambot.municipal_agenda import (
     SourceEvent,
     _annotate_todo_source_sessions,
     _load_snapshot,
+    _merge_todo_incremental_state,
     _todo_session_parent_from_row,
     _session_source_plan,
     merge_text_and_poster_events,
@@ -947,6 +948,71 @@ class TodoEvidenceTests(unittest.TestCase):
             normalize_extraction_candidates(
                 raw, "2026-09", "turismo_html", evidence
             )
+
+
+class TodoIncrementalStateTests(unittest.TestCase):
+    def test_partial_state_advances_only_completed_candidate_progress(self):
+        previous = {
+            "parser_version": 19,
+            "cursor_modified_gmt": "2026-09-25T08:00:00",
+            "covered_dates": [],
+            "candidates": [{
+                "id": 1,
+                "dates": ["2026-09-26"],
+                "processed_dates": [],
+                "processed_chunks": {},
+                "detail_checked": False,
+                "scope": "local",
+            }, {
+                "id": 2,
+                "dates": ["2026-09-26"],
+                "processed_dates": [],
+                "processed_chunks": {},
+                "detail_checked": False,
+                "scope": "local",
+            }],
+        }
+        attempted = {
+            "parser_version": 20,
+            "cursor_modified_gmt": "2026-09-26T08:00:00",
+            "covered_dates": ["2026-09-26"],
+            "candidates": [{
+                "id": 1,
+                "dates": ["2026-09-26"],
+                "dates_source": "detail",
+                "processed_dates": ["2026-09-26"],
+                "processed_chunks": {},
+                "detail_checked": True,
+                "scope": "local",
+            }, {
+                "id": 2,
+                "dates": ["2026-09-26"],
+                "dates_source": "detail",
+                "processed_dates": ["2026-09-26"],
+                "processed_chunks": {},
+                "detail_checked": True,
+                "scope": "local",
+            }],
+        }
+
+        merged = _merge_todo_incremental_state(
+            previous,
+            attempted,
+            completed_candidate_ids={1, 2},
+            failed_candidate_ids={2},
+        )
+
+        self.assertEqual(
+            merged["cursor_modified_gmt"],
+            previous["cursor_modified_gmt"],
+        )
+        self.assertEqual(merged["parser_version"], 20)
+        by_id = {item["id"]: item for item in merged["candidates"]}
+        self.assertEqual(by_id[1]["processed_dates"], ["2026-09-26"])
+        self.assertEqual(by_id[2]["processed_dates"], [])
+        self.assertEqual(by_id[2]["dates_source"], "detail")
+        self.assertTrue(by_id[2]["detail_checked"])
+        self.assertEqual(merged["covered_dates"], ["2026-09-26"])
 
 
 class TodoPartialRefreshTests(unittest.IsolatedAsyncioTestCase):
