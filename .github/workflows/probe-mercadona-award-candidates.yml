@@ -1,4 +1,4 @@
-name: Probe ALDI search module
+name: Probe ALDI Algolia config
 
 on:
   push:
@@ -16,7 +16,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Locate module 17851
+      - name: Locate ALDI search client config
         run: |
           python - <<'PY'
           import re, urllib.parse, urllib.request
@@ -30,6 +30,7 @@ jobs:
               u=urllib.parse.urljoin(page,m.group(1))
               if "_next/static/chunks/" in u and u not in scripts:
                   scripts.append(u)
+          targets=("40994:","oY:", "an_prd_es_LANG_REGION_products2","searchClient","applicationId","apiKey")
           for u in scripts:
               try:
                   req=urllib.request.Request(u,headers=ua)
@@ -37,12 +38,17 @@ jobs:
                       js=r.read(4_000_000).decode("utf-8","replace")
               except Exception:
                   continue
-              for token in ("17851:","17851=(","17851:(e","17851:(t"):
+              positions=[]
+              for token in targets:
                   pos=js.find(token)
                   if pos>=0:
-                      print("FOUND",u,"TOKEN",token,"BYTES",len(js))
-                      a=max(0,pos-1200); b=min(len(js),pos+22000)
-                      print(js[a:b])
-                      raise SystemExit
-          print("NOT_FOUND")
+                      positions.append((token,pos))
+              if not positions:
+                  continue
+              print("=== SCRIPT",u,"BYTES",len(js),"===")
+              for token,pos in positions:
+                  print("TOKEN",token)
+                  a=max(0,pos-1800); b=min(len(js),pos+7000)
+                  print(js[a:b])
+                  print("---")
           PY
