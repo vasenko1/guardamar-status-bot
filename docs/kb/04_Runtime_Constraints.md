@@ -218,7 +218,7 @@ allowed for the guide.
   No arbitrary municipal image is sent to vision. The 05:10 refresh may read
   one Todo Cultura metadata page, bounded
   to 100 records and 300 KiB, and up to
-  six bounded detail records in at most two REST reads of four records and
+  eight bounded detail records in at most two REST reads of four records and
   300 KiB each, while sending at most three selected programme
   sections to extraction. It keeps a five-minute cursor
   overlap, at most 100 lightweight candidates and 45 covered dates. Unchanged
