@@ -140,23 +140,25 @@ A source-published price may be displayed with explicit wording such as
 "in the OCU study the stated price is ...". It must not be presented as a live
 store price unless a future enrichment contract proves an exact current SKU.
 
-Images, live prices and retailer catalogue data may be reconsidered later as an
-optional enrichment layer only when exact identity is unambiguous. Enrichment
-failure must never suppress an otherwise valid award post.
-
-The initial production publication is text-only.
+This initial restriction was superseded by ADR 0084 before production.
+Current public delivery requires an exact freshly verified retail offer; award
+evidence and retailer evidence remain separate, and ambiguous retail identity
+fails closed. Images remain disabled by default unless reuse rights are
+documented.
 
 ### Queue and delivery
 
 Keep one shared queue for every award source.
 
 - Daily discovery: 13:50 Europe/Madrid.
-- Daily publication: 14:20 Europe/Madrid.
-- Publish at most one queued award per local day.
+- Daily publication check: 14:20 Europe/Madrid.
+- ADR 0084 supersedes the original daily cadence: publish at most one selected
+  category winner every three local calendar days, measured from the last
+  confirmed delivery.
 - First successful observation of each newly added source is a silent baseline.
 - Confirmed Telegram send moves an event to permanent published history.
 - Before a non-idempotent Telegram send, move the event to uncertain state and
-  reserve the daily slot.
+  reserve the current delivery slot.
 - Ambiguous Telegram delivery remains uncertain and is not automatically
   resent.
 - Explicit deterministic send failure returns the event to the queue for a
