@@ -2319,7 +2319,11 @@ def merge_text_and_poster_events(
         current = merged[duplicate_index]
         same_occurrence = _same_occurrence(current, poster_event)
         candidate_is_text = bool(
-            set(poster_event.sources) & {"todo_cultura", "todo_cultura_reviewed"}
+            set(poster_event.sources) & {
+                "todo_cultura",
+                "todo_cultura_reviewed",
+                TURISMO_PROGRAMME_TEXT_SOURCE,
+            }
         )
         current_session_key = current.session_source_key
         candidate_session_key = (
