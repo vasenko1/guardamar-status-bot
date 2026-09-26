@@ -1223,18 +1223,29 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
         chat_id = _required_environment("TELEGRAM_CHAT_ID")
         with award_state.exclusive_run():
-            item = award_state.next_queue_item(now.date())
-            if item is None:
+            items = award_state.queue_items(now.date())
+            if not items:
                 if award_state.last_delivery_day() == now.date().isoformat():
                     logging.info("SKIP: product-award daily slot already used")
                 else:
                     logging.info("SKIP: product-award queue is empty")
                 return 0
 
-            publication = build_current_product_award_publication(item.candidate)
-            if publication is None:
+            item = None
+            publication = None
+            for queued in items:
+                candidate_publication = build_current_product_award_publication(
+                    queued.candidate
+                )
+                if candidate_publication is None:
+                    continue
+                item = queued
+                publication = candidate_publication
+                break
+
+            if item is None or publication is None:
                 logging.info(
-                    "SKIP: product-award has no verified current retail offer"
+                    "SKIP: no queued product award has a verified current retail offer"
                 )
                 return 0
             if not award_state.begin_delivery(item, now.date()):
