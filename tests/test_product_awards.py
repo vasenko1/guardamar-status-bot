@@ -15,11 +15,13 @@ from telegrambot.product_awards import (
     ProductAwardError,
     ProductAwardState,
     RetailEvidence,
+    RetailOfferVariant,
     _ocu_product_name,
     _resolve_private_label,
     build_publication,
     discover_ocu_documents,
     discover_product_awards,
+    load_ocu_item,
     parse_ocu_awards,
     scan_next_product_award,
 )
@@ -268,6 +270,47 @@ class OcuAdapterTests(unittest.TestCase):
             parse_ocu_awards(document, 2026)
 
 
+    def test_ocu_loader_filters_below_85_and_orders_strongest_first(self):
+        document = PageDocument(
+            "https://www.ocu.org/alimentacion/foo/informe/bar",
+            """
+            07 julio 2026
+            producto premium Hacendado (Mercadona) es Mejor del Análisis.
+            con una calificación global de 85/100.
+            producto reserva Deluxe (Lidl) es Mejor del Análisis.
+            con una calificación global de 92/100.
+            producto normal DIA (DIA) es Mejor del Análisis.
+            con una calificación global de 84/100.
+            """,
+            (),
+        )
+        with patch("telegrambot.product_awards._fetch_page", return_value=document):
+            item = load_ocu_item(document.url, 2026)
+        self.assertEqual([candidate.score for candidate in item.candidates], [
+            "92/100",
+            "85/100",
+        ])
+        self.assertEqual([candidate.retailer for candidate in item.candidates], [
+            "Lidl",
+            "Mercadona",
+        ])
+
+    def test_ocu_high_subscore_without_high_overall_score_is_not_enough(self):
+        document = PageDocument(
+            "https://www.ocu.org/alimentacion/foo/informe/bar",
+            """
+            07 julio 2026
+            Escala Saludable 90/100.
+            producto clásico Carrefour (Carrefour) es Mejor del Análisis.
+            con una calificación global de 70/100.
+            """,
+            (),
+        )
+        with patch("telegrambot.product_awards._fetch_page", return_value=document):
+            item = load_ocu_item(document.url, 2026)
+        self.assertEqual(item.candidates, ())
+
+
 class CandidateIdentityTests(unittest.TestCase):
     def test_ocu_event_identity_changes_for_new_year(self):
         url = "https://www.ocu.org/alimentacion/foo/informe/bar"
@@ -326,7 +369,7 @@ class RendererTests(unittest.TestCase):
     def test_ocu_best_in_test_message_is_deterministic(self):
         publication = build_publication(candidate())
         self.assertIn(
-            "Salmorejo fresco de Hacendado — лучший в тесте OCU",
+            "Salmorejo fresco de Hacendado в Mercadona — лучший в тесте OCU",
             publication.message,
         )
         self.assertIn("OCU сравнила 30 продуктов", publication.message)
@@ -422,13 +465,72 @@ class RendererTests(unittest.TestCase):
         self.assertIn("который продаётся в Mercadona", message)
         self.assertNotIn("собственной марки", message)
 
-    def test_exact_current_price_overrides_source_study_price(self):
+    def test_exact_current_offers_override_source_study_price(self):
         message = build_publication(
             candidate(source_price="3 €/л"),
-            current_price="2,90 €/л",
+            current_offers=(
+                RetailOfferVariant(
+                    package="1 л",
+                    price="2,90 €",
+                    unit_price="2,90 €/л",
+                    product_id="39966",
+                ),
+                RetailOfferVariant(
+                    package="330 мл",
+                    price="1,25 €",
+                    unit_price="3,79 €/л",
+                    product_id="39901",
+                ),
+            ),
         ).message
-        self.assertIn("Сейчас в Mercadona указана цена 2,90 €/л", message)
+        self.assertIn("Сейчас в Mercadona", message)
+        self.assertIn("<b>1 л</b> — 2,90 € · 2,90 €/л", message)
+        self.assertIn("<b>330 мл</b> — 1,25 € · 3,79 €/л", message)
         self.assertNotIn("В исследовании указана цена 3 €/л", message)
+
+    def test_methodology_is_expandable_and_not_repeated_in_main_copy(self):
+        item = ProductAwardCandidate(
+            source_kind="cheese",
+            event_key="wccc:1",
+            source_url="https://example.com/wccc/1",
+            product_name="Ibérico Añejo Hacendado",
+            result="Gold",
+            award_body="World Championship Cheese Contest 2026",
+            result_year=2026,
+            retail=RetailEvidence(
+                retailer="Mercadona",
+                relationship="private_label",
+                label="Hacendado",
+                product_id="12345",
+            ),
+            score="97,20/100",
+            editorial=AwardEditorialFacts(
+                producer="Valle de San Juan",
+                producer_location="Palencia",
+                production_country="Испания",
+                headline_claim="получил международную награду",
+                product_summary="Выдержанный сыр из смеси трёх видов молока.",
+                tasting_notes=("насыщенный вкус", "твёрдая и ломкая текстура"),
+                method_summary=(
+                    "В конкурсе участвовало 3 375 продуктов. "
+                    "Сыры оценивали профессиональные судьи."
+                ),
+            ),
+        )
+        message = build_publication(item).message
+        self.assertIn(
+            "Ibérico Añejo Hacendado в Mercadona — получил международную награду",
+            message,
+        )
+        self.assertNotIn("97,20", message.split("</b>", 1)[0])
+        self.assertIn("Итоговая оценка — 97,20/100", message)
+        self.assertIn("Valle de San Juan, Palencia, Испания", message)
+        self.assertIn("<blockquote expandable><b>Как оценивали</b>", message)
+        self.assertEqual(message.count("В конкурсе участвовало 3 375 продуктов"), 1)
+
+    def test_producer_requires_country(self):
+        with self.assertRaises(ProductAwardError):
+            AwardEditorialFacts(producer="Example Producer")
 
 
 class EngineTests(unittest.TestCase):
