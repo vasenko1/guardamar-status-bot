@@ -10,8 +10,10 @@ from telegrambot.gemini import (
     GeminiError,
     _extract_agenda_events,
     _extract_agenda_text_events,
+    _extract_programme_poster_events,
     _request_json,
     _verify_agenda_poster_events,
+    _verify_programme_poster_events,
     _compose_traffic_notice,
     compose_traffic_notice,
     translate_event_titles,
@@ -175,6 +177,39 @@ class GeminiRequestTests(unittest.TestCase):
         self.assertIn("may span several months", prompt)
         self.assertIn("must not limit", prompt)
         self.assertIn("nearest preceding explicit date heading", prompt)
+
+    def test_event_programme_poster_prompt_preserves_separate_same_day_rows(self):
+        with patch(
+            "telegrambot.gemini._request_json",
+            return_value={"month": "2026-09", "events": []},
+        ) as request_json:
+            _extract_programme_poster_events(
+                "secret-key",
+                b"image",
+                "image/jpeg",
+            )
+
+        prompt = request_json.call_args.args[1][0]["text"]
+        self.assertIn("event-specific programme poster", prompt)
+        self.assertIn("multiple months", prompt)
+        self.assertIn("different explicit times", prompt)
+        self.assertIn("never merge", prompt)
+
+    def test_event_programme_poster_verification_is_independent(self):
+        with patch(
+            "telegrambot.gemini._request_json",
+            return_value={"month": "2026-09", "events": []},
+        ) as request_json:
+            _verify_programme_poster_events(
+                "secret-key",
+                b"image",
+                "image/jpeg",
+            )
+
+        prompt = request_json.call_args.args[1][0]["text"]
+        self.assertIn("Independently read", prompt)
+        self.assertIn("separately timed acts", prompt)
+        self.assertNotIn("CANDIDATES", prompt)
 
     def test_poster_verification_is_a_blind_second_reading(self):
         with patch(
