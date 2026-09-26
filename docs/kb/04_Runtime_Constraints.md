@@ -68,8 +68,13 @@ persist update history.
 
 Deployment is a deliberate Tailscale SSH operation after tests, push, pull
 request, and merge to canonical `origin/main`. A production target must pass an
-ancestor check against the fetched `origin/main`; restart only the affected
-resident service. A temporary `DEVICE TEST ONLY` commit may run on Android only
+ancestor check against the fetched `origin/main`; restart every affected
+resident service. In particular, if deployed Python changes are reachable from
+the private `/preview` path, the long-lived `guardamar-preview` service must be
+restarted after the fast-forward and the replacement `telegrambot listen`
+process must be verified. Fresh one-shot commands such as CLI `preview` or
+`refresh-current` do not prove that the resident listener reloaded changed
+modules. A temporary `DEVICE TEST ONLY` commit may run on Android only
 for necessary Termux-specific verification and must restore the recorded clean
 production commit and service afterward. It never becomes a production release
 without merging to `main`. Deployment must not add a GitHub promotion branch,
