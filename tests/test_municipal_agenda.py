@@ -482,6 +482,71 @@ class AyuntamientoProgrammeBackstopTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first.await_count, 1)
         self.assertEqual(second.await_count, 1)
 
+    async def test_unchanged_verified_article_without_active_events_skips_model(self):
+        link = (
+            "https://www.guardamardelsegura.es/2026/09/16/"
+            "fiestas-en-honor-a-la-virgen-del-rosario-2026/"
+        )
+        title = "FIESTAS EN HONOR A LA VIRGEN DEL ROSARIO 2026"
+        poster_url = (
+            "https://www.guardamardelsegura.es/wp-content/uploads/2026/09/"
+            "PROG.-todo-Virgen-Rosario-2026-2122x3000.jpg"
+        )
+        state = {
+            "version": 1,
+            "articles": {
+                link: {
+                    "programme_title": title,
+                    "article_sha256": "article-hash",
+                    "poster_url": poster_url,
+                    "poster_sha256": "poster-hash",
+                    "extractor_version": AYUNTAMIENTO_PROGRAMME_EXTRACTOR_VERSION,
+                },
+            },
+        }
+        read_poster = AsyncMock()
+        first = AsyncMock()
+        second = AsyncMock()
+
+        with (
+            patch(
+                "telegrambot.municipal_agenda._read_ayuntamiento_programme_candidates",
+                return_value=({
+                    "link": link,
+                    "title": title,
+                    "published": "2026-09-16",
+                },),
+            ),
+            patch(
+                "telegrambot.municipal_agenda._read_ayuntamiento_programme_article",
+                return_value=(link, title, "article-hash", poster_url),
+            ),
+            patch(
+                "telegrambot.municipal_agenda._read_url",
+                new=read_poster,
+            ),
+            patch(
+                "telegrambot.municipal_agenda.extract_fiesta_programme_poster_events",
+                new=first,
+            ),
+            patch(
+                "telegrambot.municipal_agenda.verify_fiesta_programme_poster_events",
+                new=second,
+            ),
+        ):
+            events, next_state = await _ayuntamiento_programme_events(
+                "key",
+                date(2026, 10, 19),
+                (),
+                state,
+            )
+
+        self.assertEqual(events, ())
+        read_poster.assert_not_awaited()
+        first.assert_not_awaited()
+        second.assert_not_awaited()
+        self.assertEqual(next_state["articles"][link], state["articles"][link])
+
     async def test_unchanged_article_reuses_verified_poster_without_model(self):
         link = (
             "https://www.guardamardelsegura.es/2026/09/16/"
