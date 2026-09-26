@@ -1795,9 +1795,13 @@ async def _turismo_text_programme_events(
                     api_key,
                     recovery_text,
                 )
-                recovered_events = _normalize_turismo_programme_text(
-                    recovered,
-                    recovery_text,
+                recovered_events = tuple(
+                    event
+                    for event in _normalize_turismo_programme_text(
+                        recovered,
+                        recovery_text,
+                    )
+                    if event.start_date in missing_dates
                 )
                 all_article_events = tuple(
                     (*all_article_events, *recovered_events)
