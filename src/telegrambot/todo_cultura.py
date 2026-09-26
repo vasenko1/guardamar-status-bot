@@ -330,7 +330,8 @@ def _audience_note(anchor: str) -> Optional[str]:
 
     age = re.search(
         r"(?:jóvenes|jovenes|personas|niños|niñas)"
-        r"(?:\s+de|\s+entre)?\s+(\d{1,2})\s+(?:a|y)\s+"
+        r"(?:\s+de\s+entre|\s+de|\s+entre)?\s+"
+        r"(\d{1,2})\s+(?:a|y)\s+"
         r"(\d{1,2})\s+años",
         anchor,
         re.IGNORECASE,
