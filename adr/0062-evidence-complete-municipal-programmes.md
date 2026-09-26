@@ -234,10 +234,12 @@ the following:
 - at least one non-numeric semantic filename token shared with the article
   title, preventing a generic year-only programme image from qualifying.
 
-A changed/new event-specific poster is read twice independently. Only
-occurrences agreeing on date, start time and sufficient title identity survive
-the existing verified-poster intersection. Separately timed acts on the same
-date remain separate occurrences. The poster may span multiple months; the
+A changed/new event-specific poster is read twice independently. The two
+validated readings must agree completely: the verified intersection must have
+the same event count as each reading, otherwise the article remains fail-closed.
+Within that complete agreement, occurrences match on date, start time and
+sufficient title identity. Separately timed acts on the same date remain
+separate occurrences. The poster may span multiple months; the
 schema month field is compatibility metadata only.
 
 The adapter stores only bounded per-article metadata and normalized future
