@@ -2139,6 +2139,7 @@ def _normalize_turismo_programme_text(
     *,
     allow_all_invalid: bool = False,
     source_date_sections: Optional[Dict[date, str]] = None,
+    source: str = TURISMO_PROGRAMME_TEXT_SOURCE,
 ) -> Tuple[SourceEvent, ...]:
     """Validate programme candidates independently without forcing one month."""
 
@@ -2164,7 +2165,7 @@ def _normalize_turismo_programme_text(
             accepted.extend(normalize_extraction(
                 {"events": [candidate]},
                 None,
-                TURISMO_PROGRAMME_TEXT_SOURCE,
+                source,
                 source_text,
                 source_date_sections,
             ))
