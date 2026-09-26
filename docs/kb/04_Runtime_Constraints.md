@@ -208,8 +208,9 @@ allowed for the guide.
   only for changed/new candidates. Each changed/new article gets one normal
   evidence-bound text extraction and, only when deterministic date-leading
   blocks prove missing current/future occurrence dates, at most one targeted
-  recovery extraction for those dates. Unchanged verified version-2 articles
-  require neither detail reads nor model calls. The 05:10 refresh may read one Todo Cultura metadata page, bounded
+  recovery extraction over a smaller official-text slice containing only those
+  missing date sections. Unchanged verified version-3 articles require neither
+  detail reads nor model calls. The 05:10 refresh may read one Todo Cultura metadata page, bounded
   to 100 records and 300 KiB, and up to
   six bounded detail records in at most two REST reads of four records and
   300 KiB each, while sending at most three selected programme
