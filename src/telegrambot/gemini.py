@@ -427,6 +427,90 @@ async def verify_agenda_poster_events(
     )
 
 
+def _read_fiesta_programme_poster(
+    api_key: str,
+    image: bytes,
+    mime_type: str,
+    *,
+    independent: bool,
+) -> Dict[str, Any]:
+    if mime_type not in IMAGE_MIME_TYPES:
+        raise GeminiError(
+            "Fiesta programme requires an image",
+            code="CONTENT-TYPE",
+            description="программа праздника должна быть изображением",
+        )
+    opening = (
+        "Independently read this official Ayuntamiento de Guardamar fiesta "
+        "programme poster from scratch. You have not seen another extraction. "
+        if independent else
+        "Read this official Ayuntamiento de Guardamar fiesta programme poster. "
+    )
+    prompt = (
+        opening
+        + "The programme may be a tall two-column poster and may span two "
+        "calendar months. Follow the printed dates, not visual column order. "
+        "Return every explicitly dated public act as its own event record. "
+        "When several acts occur on the same day, keep them as separate records "
+        "when the poster gives separate times or separately named acts. Never "
+        "collapse a transfer, Mass, presentation, procession, concert, bingo, "
+        "offering, or other separately timed act into one generic festival row. "
+        "Expand repeated dates into separate records. Preserve the visible "
+        "Spanish event name, exact date, exact time and explicit place. "
+        "Transcribe every visible digit exactly; use null rather than guessing "
+        "a hard-to-read time or place. Use ISO YYYY-MM-DD dates and HH:MM "
+        "24-hour times. The poster may contain September and October together; "
+        "the JSON month field is compatibility metadata only and must not cause "
+        "events from the other visible month to be omitted. Exclude decorative "
+        "headings and undated descriptive text. Return the fixed JSON schema. "
+        "Set evidence_es to null because the source is an image."
+    )
+    return _request_json(
+        api_key,
+        [
+            {"text": prompt},
+            {"inlineData": {
+                "mimeType": mime_type,
+                "data": base64.b64encode(image).decode("ascii"),
+            }},
+        ],
+        AGENDA_EXTRACTION_SCHEMA,
+        8_000,
+    )
+
+
+async def extract_fiesta_programme_poster_events(
+    api_key: str,
+    image: bytes,
+    mime_type: str,
+) -> Dict[str, Any]:
+    """Extract one official event-specific fiesta programme poster."""
+
+    return await asyncio.to_thread(
+        _read_fiesta_programme_poster,
+        api_key,
+        image,
+        mime_type,
+        independent=False,
+    )
+
+
+async def verify_fiesta_programme_poster_events(
+    api_key: str,
+    image: bytes,
+    mime_type: str,
+) -> Dict[str, Any]:
+    """Blind second reading of an official fiesta programme poster."""
+
+    return await asyncio.to_thread(
+        _read_fiesta_programme_poster,
+        api_key,
+        image,
+        mime_type,
+        independent=True,
+    )
+
+
 def _extract_agenda_text_events(
     api_key: str,
     source_text: str,
