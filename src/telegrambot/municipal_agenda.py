@@ -1234,15 +1234,19 @@ def _merge_todo_incremental_state(
             merged_candidates.append(dict(candidate))
             continue
         prior_candidate = previous_candidates.get(identifier, {})
+        same_revision = (
+            isinstance(prior_candidate, dict)
+            and prior_candidate.get("modified_gmt")
+            == candidate.get("modified_gmt")
+        )
         merged = dict(candidate)
         merged["processed_dates"] = list(
             prior_candidate.get("processed_dates", [])
-            if isinstance(prior_candidate, dict)
-            else []
+            if same_revision else []
         )
         merged["processed_chunks"] = dict(
             prior_candidate.get("processed_chunks", {})
-            if isinstance(prior_candidate, dict)
+            if same_revision
             and isinstance(prior_candidate.get("processed_chunks", {}), dict)
             else {}
         )
@@ -1254,7 +1258,22 @@ def _merge_todo_incremental_state(
         if isinstance(value, str)
     }
     for candidate in merged_candidates:
-        if candidate.get("id") in successful_ids:
+        identifier = candidate.get("id")
+        prior_candidate = previous_candidates.get(identifier, {})
+        if (
+            isinstance(prior_candidate, dict)
+            and prior_candidate.get("modified_gmt")
+            != candidate.get("modified_gmt")
+        ):
+            covered.difference_update(
+                value
+                for value in (
+                    *prior_candidate.get("dates", []),
+                    *candidate.get("dates", []),
+                )
+                if isinstance(value, str)
+            )
+        if identifier in successful_ids:
             covered.update(
                 value
                 for value in candidate.get("processed_dates", [])
