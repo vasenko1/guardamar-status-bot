@@ -1,0 +1,36 @@
+name: Probe starter award sources
+
+on:
+  push:
+    branches:
+      - feat/private-label-product-awards-poc
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e .
+      - name: Probe reviewed source transport
+        run: |
+          python - <<'PY'
+          from telegrambot.product_awards import _fetch_page, ProductAwardError
+          cases=[
+            ("valle-awards","https://valledesanjuan.com/ocho-premios-que-saben-a-esfuerzo-origen-y-oficio/",frozenset({"valledesanjuan.com","www.valledesanjuan.com"})),
+            ("valle-mercadona","https://valledesanjuan.com/productos/mercadona/",frozenset({"valledesanjuan.com","www.valledesanjuan.com"})),
+            ("wccc-top20","https://worldchampioncheese.org/2026-wccc-top-20-finalists/",frozenset({"worldchampioncheese.org"})),
+          ]
+          for name,url,hosts in cases:
+              try:
+                  doc=_fetch_page(url,hosts)
+                  print(name,"OK",len(doc.text),doc.url)
+                  print(doc.text[:300].replace("\n"," | "))
+              except ProductAwardError as exc:
+                  print(name,"ERROR",exc.diagnostic_code,repr(str(exc)))
+          PY
