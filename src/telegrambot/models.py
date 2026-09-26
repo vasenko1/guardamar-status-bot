@@ -70,6 +70,9 @@ class Event:
     teaser: Optional[str] = None
     programme_title: Optional[str] = None
     programme_order: Optional[int] = None
+    session_group_key: Optional[str] = None
+    session_order: Optional[int] = None
+    session_count: Optional[int] = None
     duration_minutes: Optional[int] = None
     audience_label: Optional[str] = None
     details: Tuple[str, ...] = ()
