@@ -435,7 +435,7 @@ The user-provided Salmorejo article is deliberately not stored as a project temp
 
 ### Target retailer set
 
-The primary set should be eight Spanish supermarket chains:
+The primary set should be seven Spanish supermarket chains:
 
 1. Mercadona;
 2. Lidl España;
@@ -443,16 +443,12 @@ The primary set should be eight Spanish supermarket chains:
 4. Consum;
 5. Carrefour España supermarket;
 6. Masymas / Juan Fornés Fornés in Comunidad Valenciana and Murcia;
-7. DIA España;
-8. Alcampo / Auchan.
+7. DIA España.
 
-DIA and Alcampo are justified additions rather than generic chain expansion.
+DIA is a justified addition rather than generic chain expansion.
 
 DIA has a live official page for its 2026 Sabor del Año products with exact private-label products and current prices:
 https://www.dia.es/l/productos-premiados-dia
-
-Alcampo has a current exact online card for its Auchan 1 L salmorejo, while OCU independently identifies Auchan / Alcampo as Compra Maestra in the 2026 Salmorejo comparison:
-https://www.compraonline.alcampo.es/products/auchan-salmorejo-pasteurizado-elaborado-con-aceite-de-oliva-virgen-extra-1-l-producto-alcampo/87442
 
 Eroski and SPAR remain possible later additions. They are not needed for the first expansion.
 
@@ -555,16 +551,21 @@ The page explicitly ties the products to Sabor del Año 2026 and current ecommer
 
 Decision: add DIA to the retailer set. Use the page for exact retail identity/current sale and as a discovery hint; verify award semantics through the award authority or another authoritative result source before registering an automated award adapter.
 
-#### Alcampo / Auchan
+#### Alcampo / Auchan — researched, then excluded
 
-Official Alcampo ecommerce exposes stable numeric product paths, image, price/unit price, package, ingredients and legal product details.
+Official Alcampo ecommerce was technically viable: the research found stable
+numeric product paths, price/unit price, package, image and legal product
+details. The observed Auchan Salmorejo 1 L card also provided a clean example
+of joining an OCU result to an exact retailer product.
 
-Observed exact card:
-https://www.compraonline.alcampo.es/products/auchan-salmorejo-pasteurizado-elaborado-con-aceite-de-oliva-virgen-extra-1-l-producto-alcampo/87442
+However, technical suitability is not enough for this local feature. Alcampo
+has low practical relevance for the Guardamar audience because there is no
+nearby store that most residents can conveniently use.
 
-On 25 September 2026 it showed Auchan Salmorejo 1 L at 2.09 EUR and identified it as Producto Alcampo.
-
-Decision: add Alcampo. Numeric product ID plus package gives strong retailer identity and makes it a good test for joining an external award result to a live catalogue product.
+Decision: **exclude Alcampo / Auchan from the active retailer scope**. Do not
+use it for runtime private-label matching, retailer enrichment, current-price
+refresh, photos or award publication. Keep this section only as historical
+research so the source is not re-evaluated from scratch later.
 
 ### Award-source vertical review
 
@@ -758,7 +759,6 @@ Exact product images are technically exposed by several current retailer surface
 - Consum;
 - Carrefour supermarket;
 - DIA;
-- Alcampo;
 - Mercadona after exact SKU resolution.
 
 Masymas still requires the internal store contract probe.
@@ -830,7 +830,7 @@ Retailer-first pages provide a small already-relevant candidate set. The bot the
 
 1. Keep OCU as the first production adapter and complete its production-device read-only preview before deployment.
 2. Before production state exists, broaden the model so award identity and retail evidence are separate and private_label is no longer universal.
-3. Add retailer evidence adapters incrementally, starting with the clearest current contracts: Consum, ALDI, Lidl, Alcampo, DIA, then Carrefour with a marketplace guard.
+3. Add retailer evidence adapters incrementally, starting with the clearest current contracts: Consum, ALDI, Lidl, DIA, then Carrefour with a marketplace guard.
 4. Perform dedicated bounded probes for Mercadona exact product JSON/API and Masymas / Juan Fornés internal JSON/API.
 5. Enrich the OCU fact model and renderer so it can create article-depth deterministic copy.
 6. Add one genuinely new award family only after a live current source probe. WCCC/GourmetQuesos and MUNDUS VINI are current candidates. World Cheese Awards 2026 waits for November.
@@ -906,8 +906,11 @@ Retailer evidence/discovery surfaces:
   https://tienda.masymas.com
 - DIA 2026 awarded products:
   https://www.dia.es/l/productos-premiados-dia
-- Alcampo exact Auchan Salmorejo example:
-  https://www.compraonline.alcampo.es/products/auchan-salmorejo-pasteurizado-elaborado-con-aceite-de-oliva-virgen-extra-1-l-producto-alcampo/87442
+Excluded-retailer historical evidence:
+
+- Alcampo / Auchan was technically verified during research but is intentionally
+  out of scope for Guardamar-local product-award publication because of low
+  practical local accessibility.
 
 Discovery-only evidence that is not yet approved as a scheduled award authority:
 
@@ -930,7 +933,6 @@ without prior permission for several target retailers:
 - Lidl España;
 - Consum;
 - Carrefour España;
-- Alcampo;
 - DIA España;
 - Masymas / Juan Fornés Fornés.
 
@@ -1014,10 +1016,11 @@ OCU must not be modelled as a Mercadona-specific source.
 Current 2026 OCU material includes, among other examples:
 
 - Hacendado / Mercadona Salmorejo as Mejor del Análisis;
-- Auchan / Alcampo Salmorejo as Compra Maestra;
 - Carrefour Extra Black nata y chocolate negro as Mejor del Análisis;
-- current whole-milk comparison material where Hacendado, Auchan and Carrefour
-  are Compra Maestra options.
+- current whole-milk comparison material with multiple supermarket products.
+
+OCU also contains Auchan / Alcampo results, but the project deliberately ignores
+them because Alcampo is outside the locally useful retailer scope.
 
 OCU exact comparator cards can expose strong retail identity facts such as EAN,
 format and manufacturer. These surfaces are useful for deterministic product
@@ -1041,9 +1044,6 @@ general copyright assumption.
 - Carrefour states that no licence is granted and specifically reserves
   alteration, exploitation, reproduction, distribution and public
   communication unless expressly authorized.
-- Alcampo permits transferring content only for exclusive personal,
-  non-commercial use and prohibits distribution/transmission/publication and
-  similar reuse.
 - DIA's current legal notice gives only strictly private use and prohibits
   copying, reproduction, public communication, transformation or distribution
   for public or commercial purposes without prior written authorization.
@@ -1121,8 +1121,8 @@ Implemented:
   feature has not yet established production state;
 - the shared core no longer ranks unrelated award vocabularies;
 - OCU owns its own `Mejor del Análisis` vs `Compra Maestra` precedence;
-- OCU coverage now includes verified Auchan / Alcampo and DIA private-label
-  names in addition to the earlier allowlist;
+- OCU coverage includes DIA private-label names in addition to the earlier
+  locally relevant allowlist, while Alcampo / Auchan is intentionally ignored;
 - labels identical to retailer names such as Carrefour or DIA require separate
   product-brand evidence and are not accepted merely because the retailer name
   appears in parentheses;
@@ -1139,7 +1139,7 @@ Implemented:
 Deliberately **not** implemented yet:
 
 - no generic retailer catalogue search;
-- no continuous or daily scans of the eight retailers;
+- no continuous or daily scans of the seven in-scope retailers;
 - no Mercadona or Masymas parser before their exact browser-free contract is
   separately proven;
 - no real publication-time retailer HTTP refresh yet — the renderer and data
@@ -1160,7 +1160,8 @@ branch-only workflow:
 The next implementation unit should therefore be one **real retailer evidence
 adapter backed by a proven live source contract**, not another generic
 framework. Consum is the strongest clean candidate because its public catalogue
-can expose a stable product code and often EAN; ALDI, Lidl, Alcampo and DIA are
-also strong candidates. Mercadona and Masymas still need their dedicated
-browser-free contract probes.
+can expose a stable product code and often EAN; ALDI, Lidl and DIA are also
+strong candidates. Mercadona and Masymas still need their dedicated
+browser-free contract probes. Alcampo / Auchan remains intentionally excluded
+for local-utility reasons.
 
