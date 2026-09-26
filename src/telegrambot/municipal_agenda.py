@@ -2002,8 +2002,7 @@ async def _ayuntamiento_programme_events(
             continue
 
         if (
-            prior_events
-            and isinstance(previous_article, dict)
+            isinstance(previous_article, dict)
             and previous_article.get("article_sha256") == article_hash
             and previous_article.get("poster_url") == poster_url
             and previous_article.get("extractor_version")
@@ -2022,8 +2021,7 @@ async def _ayuntamiento_programme_events(
             )
             poster_hash = hashlib.sha256(poster).hexdigest()
             if (
-                prior_events
-                and isinstance(previous_article, dict)
+                isinstance(previous_article, dict)
                 and previous_article.get("poster_sha256") == poster_hash
                 and previous_article.get("extractor_version")
                 == AYUNTAMIENTO_PROGRAMME_EXTRACTOR_VERSION
@@ -2061,26 +2059,26 @@ async def _ayuntamiento_programme_events(
                 first_events,
                 second_events,
             )
-            verified = tuple(
-                event
-                for event in verified
-                if local_day <= event.end_date <= horizon
-            )
             if len(verified) < 2:
                 raise MunicipalAgendaError(
                     "Official Ayuntamiento fiesta poster extraction was incomplete",
                     code="PROGRAMME-INCOMPLETE",
                     description="официальная программа праздника распознана неполно",
                 )
-            verified = _programme_article_metadata(
-                verified,
+            active_verified = tuple(
+                event
+                for event in verified
+                if local_day <= event.end_date <= horizon
+            )
+            active_verified = _programme_article_metadata(
+                active_verified,
                 programme_title,
             )
-            verified = tuple(
+            active_verified = tuple(
                 replace(event, image_url=poster_url)
-                for event in verified
+                for event in active_verified
             )
-            events.extend(verified)
+            events.extend(active_verified)
             next_articles[article_url] = {
                 "programme_title": programme_title,
                 "article_sha256": article_hash,
