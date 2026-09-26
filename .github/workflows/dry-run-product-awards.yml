@@ -17,39 +17,78 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install -e .
-      - name: Live OCU dry run
+      - name: Render three verified test candidates
         run: |
           python - <<'PY'
-          from datetime import datetime
-          from pathlib import Path
-          from tempfile import TemporaryDirectory
-          from zoneinfo import ZoneInfo
-
           from telegrambot.product_awards import (
-              SOURCE_ADAPTERS,
-              ProductAwardState,
+              AwardEditorialFacts,
+              ProductAwardCandidate,
+              RetailEvidence,
               build_publication,
-              discover_product_awards,
           )
 
-          now = datetime(2026, 9, 26, 12, 0, tzinfo=ZoneInfo("Europe/Madrid"))
-          with TemporaryDirectory() as d:
-              state = ProductAwardState(Path(d) / "awards.json")
-              candidates = discover_product_awards(now, state, preview=True)
-              print(f"CANDIDATES={len(candidates)}")
-              for i, c in enumerate(candidates, 1):
-                  print(f"=== CANDIDATE {i} ===")
-                  print("source_kind=", c.source_kind)
-                  print("retailer=", c.retailer)
-                  print("relationship=", c.retail.relationship)
-                  print("label=", c.retail.label)
-                  print("product=", c.product_name)
-                  print("result=", c.result)
-                  print("score=", c.score)
-                  print("source_price=", c.source_price)
-                  print("sample_size=", c.sample_size)
-                  print("source_url=", c.source_url)
-                  print("--- MESSAGE ---")
-                  print(build_publication(c).message)
-                  print("--- END MESSAGE ---")
+          cases = [
+              ProductAwardCandidate(
+                  source_kind="ocu",
+                  event_key="2026|ocu-salmorejo|hacienda",
+                  source_url="https://www.ocu.org/alimentacion/platos-preparados/informe/salmorejos",
+                  product_name="salmorejo fresco de Hacendado",
+                  result="Mejor del Análisis",
+                  award_body="OCU",
+                  result_year=2026,
+                  retail=RetailEvidence(
+                      retailer="Mercadona",
+                      relationship="private_label",
+                      label="Hacendado",
+                  ),
+                  score="70/100",
+                  source_price="3 €/л",
+                  editorial=AwardEditorialFacts(
+                      comparison_size=30,
+                      method_flags=("labeling","composition","nutrition","professional_tasting"),
+                      standout="best_professional_tasting",
+                      quality_label="Buena Elección",
+                  ),
+              ),
+              ProductAwardCandidate(
+                  source_kind="ocu",
+                  event_key="2026|ocu-helado|carrefour-extra-black",
+                  source_url="https://www.ocu.org/alimentacion/dulces/comparador-helados/carrefour-extra-black-nata-y-chocolate-negro/593/127145",
+                  product_name="Carrefour Extra Black nata y chocolate negro",
+                  result="Mejor del Análisis",
+                  award_body="OCU",
+                  result_year=2026,
+                  retail=RetailEvidence(
+                      retailer="Carrefour",
+                      relationship="private_label",
+                      label="Carrefour Extra",
+                  ),
+                  score="65/100",
+                  source_price="10,7 €/л",
+                  editorial=AwardEditorialFacts(
+                      method_flags=("labeling","nutrition"),
+                  ),
+              ),
+              ProductAwardCandidate(
+                  source_kind="sabor_del_ano",
+                  event_key="2026|dia|263576",
+                  source_url="https://www.dia.es/l/productos-premiados-dia",
+                  product_name="Burrata fresca Dia Selección Mundial 150 g",
+                  result="Sabor del Año 2026",
+                  award_body="Sabor del Año",
+                  result_year=2026,
+                  retail=RetailEvidence(
+                      retailer="DIA",
+                      relationship="private_label",
+                      label="Dia Selección Mundial",
+                      product_id="263576",
+                      product_url="https://www.dia.es/quesos/fresco/p/263576",
+                  ),
+              ),
+          ]
+
+          for i, case in enumerate(cases, 1):
+              print(f"=== DAY {i} ===")
+              print(build_publication(case).message)
+              print(f"=== END DAY {i} ===")
           PY
