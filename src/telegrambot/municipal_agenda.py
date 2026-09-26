@@ -1387,7 +1387,7 @@ def _turismo_programme_missing_dates(
         day
         for day in expected_dates
         if not any(
-            event.start_date <= day <= event.end_date
+            event.start_date == day
             for event in events
         )
     )
@@ -1720,15 +1720,6 @@ async def _turismo_text_programme_events(
             all_article_events = _normalize_turismo_programme_text(
                 extracted, article_text
             )
-            if len(all_article_events) < 2:
-                raise MunicipalAgendaError(
-                    "Official Turismo programme article was not programme-shaped",
-                    code="PROGRAMME-SHAPE",
-                    description=(
-                        "официальная статья не дала нескольких "
-                        "подтверждённых мероприятий"
-                    ),
-                )
             relevant_expected_dates = tuple(
                 day
                 for day in expected_dates
@@ -1762,6 +1753,15 @@ async def _turismo_text_programme_events(
                     description=(
                         "официальная статья содержит даты, которые "
                         "не были извлечены"
+                    ),
+                )
+            if len(all_article_events) < 2:
+                raise MunicipalAgendaError(
+                    "Official Turismo programme article was not programme-shaped",
+                    code="PROGRAMME-SHAPE",
+                    description=(
+                        "официальная статья не дала нескольких "
+                        "подтверждённых мероприятий"
                     ),
                 )
             article_events = tuple(
