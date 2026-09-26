@@ -1333,10 +1333,9 @@ def _read_ayuntamiento_programme_candidates(
 
 def _read_ayuntamiento_programme_article(
     candidate: Dict[str, str],
-) -> Tuple[str, str, str, str]:
+) -> Tuple[str, str, str]:
     link = candidate["link"]
     payload = _read_official_html(link)
-    article_hash = hashlib.sha256(payload).hexdigest()
     poster_url = _ayuntamiento_programme_image_url(
         payload,
         link,
@@ -1348,7 +1347,7 @@ def _read_ayuntamiento_programme_article(
             code="NO-PROGRAMME-IMAGE",
             description="в официальной публикации не найдена программа-картинка",
         )
-    return link, candidate["title"], article_hash, poster_url
+    return link, candidate["title"], poster_url
 
 
 def _expand_explicit_todo_dates(
@@ -1985,7 +1984,6 @@ async def _ayuntamiento_programme_events(
             (
                 article_url,
                 programme_title,
-                article_hash,
                 poster_url,
             ) = await asyncio.to_thread(
                 _read_ayuntamiento_programme_article,
@@ -2003,7 +2001,6 @@ async def _ayuntamiento_programme_events(
 
         if (
             isinstance(previous_article, dict)
-            and previous_article.get("article_sha256") == article_hash
             and previous_article.get("poster_url") == poster_url
             and previous_article.get("extractor_version")
             == AYUNTAMIENTO_PROGRAMME_EXTRACTOR_VERSION
@@ -2029,7 +2026,6 @@ async def _ayuntamiento_programme_events(
                 events.extend(prior_events)
                 next_articles[article_url] = {
                     **previous_article,
-                    "article_sha256": article_hash,
                     "poster_url": poster_url,
                 }
                 continue
@@ -2081,7 +2077,6 @@ async def _ayuntamiento_programme_events(
             events.extend(active_verified)
             next_articles[article_url] = {
                 "programme_title": programme_title,
-                "article_sha256": article_hash,
                 "poster_url": poster_url,
                 "poster_sha256": poster_hash,
                 "extractor_version": AYUNTAMIENTO_PROGRAMME_EXTRACTOR_VERSION,
