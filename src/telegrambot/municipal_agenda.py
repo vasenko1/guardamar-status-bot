@@ -527,10 +527,11 @@ class SourceEvent:
 
 _SESSION_MARKER = (
     r"(?:(?:primer(?:a|o)?|segund(?:a|o|0)|tercer(?:a|o)?|cuart[oa]|"
-    r"quint[oa]|sext[oa]|[1-6](?:[.ºª]|er|ra)?)\s+"
+    r"quint[oa]|sext[oa]|s[eé]ptim[oa]|octav[oa]|noven[oa]|d[eé]cim[oa]|"
+    r"[1-9]\d?(?:[.ºª]|er|ra)?)\s+"
     r"(?:turno|sesi[oó]n|pase)|"
     r"(?:turno|sesi[oó]n|pase)\s*"
-    r"(?:n[úu]m(?:ero)?\.?\s*)?[1-6])"
+    r"(?:n[úu]m(?:ero)?\.?\s*)?[1-9]\d?)"
 )
 _SESSION_PREFIX_TITLE = re.compile(
     rf"^\s*{_SESSION_MARKER}\b"
