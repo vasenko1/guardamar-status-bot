@@ -128,19 +128,32 @@ Do not register Alcampo / Auchan in runtime private-label matching, retailer
 enrichment, price refresh or product-award publication unless the local scope
 is explicitly changed in a future decision.
 
-### Publication-time price refresh
+### Publication-time retail offers
 
 A candidate may remain in the global queue for several days. Current retail
 price must therefore not be frozen at award discovery.
 
-If a stable retailer product identity is available, publication may perform
-one bounded exact-SKU refresh immediately before rendering.
+If stable retailer product identity is available, publication may perform one
+bounded exact-product refresh immediately before rendering. The result is a
+small list of exact retail offer variants rather than one chosen price.
 
-- Fresh exact price/availability may be included.
-- Store/postcode/promotional context must be preserved.
-- If price refresh fails or becomes ambiguous, omit the current-price sentence.
-- Never substitute a search-engine or aggregator price.
-- A changing price never changes award event identity.
+Each visible offer preserves, when available:
+
+- exact package/weight/volume;
+- current price;
+- current unit price;
+- exact retailer product ID or EAN;
+- exact product URL.
+
+If the same awarded commercial product is sold in several package sizes, show
+all verified current sizes and prices. Do not choose one "representative"
+package on the bot's behalf. A different flavour, recipe, maturation, vintage or
+otherwise distinct SKU does not inherit the award merely because the brand or
+product family matches.
+
+Store/postcode/promotional context must be preserved. Never substitute a search
+engine, aggregator or stale cached price. Changing offers never change award
+event identity.
 
 Use a configured Guardamar retail context rather than user/device geolocation.
 
@@ -182,8 +195,13 @@ The shared record may retain optional verified editorial facts such as:
 - judging/test method;
 - source-backed tasting or quality distinction;
 - source-backed nutrition/quality class;
-- producer/maker;
+- product description, tasting notes, composition and nutrition facts;
+- producer/maker, producer location and production country;
 - identity qualifiers such as vintage, DO, grape or maturation.
+
+Whenever the public article names a producer, the production country is
+mandatory. A city/region may be shown as extra context but never replaces the
+country.
 
 These facts are source-backed data, not generated prose.
 
@@ -200,6 +218,41 @@ Examples:
 
 Do not reintroduce runtime LLM editorial generation merely to make articles
 longer.
+
+### Exceptional-product publication gate
+
+This feed is not a daily catalogue of every award-labelled product. It may send
+at most one item per day, but a day with no exceptional candidate stays quiet.
+
+Eligibility is source-specific:
+
+- for a source with a meaningful overall 0-100 score, the default minimum is
+  **85/100** on that source's overall/global score;
+- a high subscore, nutrition scale, tasting subscore or other partial metric
+  must never satisfy the gate on its own;
+- sources without a comparable overall score must define an explicitly
+  exceptional source-native result, such as Best of Class, category winner,
+  Super Gold or an equivalent reviewed top tier;
+- ordinary medals or generic "awarded" badges are insufficient unless the
+  source-specific adapter has an equally strong reviewed rule.
+
+Each adapter may order its own eligible candidates by its native result/score.
+The shared queue remains source-agnostic FIFO and must not compare unrelated
+award systems.
+
+### Daily article presentation
+
+The headline leads with the product, the supermarket where residents can buy
+it, and the award/result. Numeric score is useful evidence in the body but is
+not used as the headline.
+
+The main visible section should contain the changing resident value: product
+identity, result, score, product characteristics, producer/country and current
+retail offers.
+
+Repeated explanation of a competition or test method belongs in a Telegram
+HTML expandable blockquote (`<blockquote expandable>`), headed `Как оценивали`.
+This keeps daily posts compact while preserving methodological detail on demand.
 
 ### Award result precedence is source-specific
 
