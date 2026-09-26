@@ -40,6 +40,6 @@ jobs:
           assert detail[0].endswith(
               "/2026/09/16/fiestas-en-honor-a-la-virgen-del-rosario-2026/"
           )
-          assert "PROG." in detail[3] or "prog" in detail[3].lower()
-          assert detail[3].lower().endswith((".jpg", ".jpeg", ".png", ".webp"))
+          assert "PROG." in detail[2] or "prog" in detail[2].lower()
+          assert detail[2].lower().endswith((".jpg", ".jpeg", ".png", ".webp"))
           PY
