@@ -1,4 +1,4 @@
-name: Probe WCCC public results API
+name: Probe selected WCCC 2026 classes
 
 on:
   push:
@@ -16,66 +16,53 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Resolve 2026 WCCC and Valle results
+      - name: Read only relevant WCCC classes
         run: |
           python - <<'PY'
-          import json, urllib.request
+          import json, time, urllib.request
 
           headers={
               "Accept":"application/json",
               "X-Requested-With":"XMLHttpRequest",
               "User-Agent":"GuardamarMorningDigest/0.13",
           }
-
-          def get_json(path):
-              url="https://myentries.org"+path
-              req=urllib.request.Request(url,headers=headers)
+          def get(path):
+              req=urllib.request.Request("https://myentries.org"+path,headers=headers)
               with urllib.request.urlopen(req,timeout=20) as r:
-                  obj=json.load(r)
-                  print("GET",path,"STATUS",r.status,"TYPE",r.headers.get_content_type())
-                  return obj
+                  return json.load(r)
 
-          contests=get_json("/api/results/contests")
-          print("CONTESTS_TYPE",type(contests).__name__)
-          print("CONTESTS",json.dumps(contests,ensure_ascii=False)[:20000])
+          classes=get("/api/results/contest-classes/71")
+          selected=[]
+          for item in classes:
+              name=str(item.get("name",""))
+              desc=str(item.get("description",""))
+              number=item.get("number")
+              folded=(name+" "+desc).lower()
+              if (
+                  "sheep" in folded
+                  or "mixed milk" in folded
+                  or "mixed-milk" in folded
+                  or (isinstance(number,(int,float)) and 108 <= float(number) <= 120)
+              ):
+                  selected.append(item)
+          print("SELECTED_CLASSES",json.dumps(selected,ensure_ascii=False))
 
-          def walk(v):
-              if isinstance(v,dict):
-                  yield v
-                  for x in v.values(): yield from walk(x)
-              elif isinstance(v,list):
-                  for x in v: yield from walk(x)
-
-          contest_candidates=[]
-          for d in walk(contests):
-              text=" ".join(str(d.get(k,"")) for k in ("title","name","year","id","category"))
-              if "2026" in text and ("championship" in text.lower() or "cheese" in text.lower()):
-                  if d not in contest_candidates:
-                      contest_candidates.append(d)
-          print("CONTEST_CANDIDATES",json.dumps(contest_candidates,ensure_ascii=False)[:20000])
-
-          ids=[]
-          for d in contest_candidates:
-              value=d.get("id")
-              if isinstance(value,(int,str)) and str(value).isdigit() and str(value) not in ids:
-                  ids.append(str(value))
-
-          for cid in ids[:10]:
-              classes=get_json(f"/api/results/contest-classes/{cid}")
-              print("CLASSES",cid,json.dumps(classes,ensure_ascii=False)[:30000])
-              class_ids=[]
-              for d in walk(classes):
-                  value=d.get("id")
-                  if isinstance(value,(int,str)) and str(value).isdigit() and str(value) not in class_ids:
-                      class_ids.append(str(value))
-              for class_id in class_ids:
-                  try:
-                      results=get_json(f"/api/results/contest-class-results/{class_id}")
-                  except Exception as e:
-                      print("CLASS_ERROR",class_id,type(e).__name__,str(e)[:200])
-                      continue
-                  raw=json.dumps(results,ensure_ascii=False)
-                  low=raw.lower()
-                  if any(term in low for term in ("valle de san juan","entrepinares","tostado","trufa","afrutado")):
-                      print("MATCH_CLASS",class_id,raw[:50000])
+          # Small bounded set only. Stop once all expected Valle/Entrepinares
+          # names are accounted for or after the reviewed selected classes.
+          terms=("valle de san juan","entrepinares")
+          matches=[]
+          for item in selected:
+              cid=item["id"]
+              time.sleep(0.35)
+              try:
+                  result=get(f"/api/results/contest-class-results/{cid}")
+              except Exception as e:
+                  print("ERROR",item.get("number"),cid,type(e).__name__,str(e)[:120])
+                  continue
+              raw=json.dumps(result,ensure_ascii=False)
+              if any(term in raw.lower() for term in terms):
+                  row={"class":item,"result":result}
+                  matches.append(row)
+                  print("MATCH",json.dumps(row,ensure_ascii=False))
+          print("MATCH_COUNT",len(matches))
           PY
