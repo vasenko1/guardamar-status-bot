@@ -48,6 +48,46 @@ class DigestMessageTests(unittest.TestCase):
         self.assertLess(message.index("Концерт"), message.index("Салют"))
         self.assertIn("Другой концерт", message)
 
+    def test_programme_display_title_never_becomes_group_identity(self):
+        day = datetime(2026, 9, 26, tzinfo=GUARDAMAR_TIMEZONE)
+        digest = MorningDigest(
+            weather=None,
+            warnings=(),
+            warnings_available=True,
+            events=(
+                Event(
+                    "Бинго",
+                    day.replace(hour=17),
+                    programme_title="ROSARIO-SOURCE-A",
+                    programme_display_title="Праздник Девы Розария",
+                    programme_order=1,
+                ),
+                Event(
+                    "Месса",
+                    day.replace(hour=20),
+                    programme_title="ROSARIO-SOURCE-A",
+                    programme_display_title="Праздник Девы Розария",
+                    programme_order=2,
+                ),
+                Event(
+                    "Другой акт",
+                    day.replace(hour=21),
+                    programme_title="ROSARIO-SOURCE-B",
+                    programme_display_title="Праздник Девы Розария",
+                    programme_order=1,
+                ),
+            ),
+        )
+
+        message = build_message(digest)
+
+        self.assertEqual(message.count("Праздник Девы Розария"), 2)
+        self.assertIn("<b>17:00</b> — Бинго", message)
+        self.assertIn("<b>20:00</b> — Месса", message)
+        self.assertIn("<b>21:00</b> — Другой акт", message)
+        self.assertNotIn("ROSARIO-SOURCE-A", message)
+        self.assertNotIn("ROSARIO-SOURCE-B", message)
+
     def test_programme_group_takes_precedence_over_session_metadata(self):
         day = datetime(2026, 9, 12, tzinfo=GUARDAMAR_TIMEZONE)
         digest = MorningDigest(
