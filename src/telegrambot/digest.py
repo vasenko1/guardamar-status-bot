@@ -1236,6 +1236,10 @@ def _session_group_is_renderable(members: Sequence) -> bool:
     starts = [member.starts_at for member in members]
     if any(value is None for value in starts) or len(set(starts)) != len(starts):
         return False
+    ordered = sorted(members, key=lambda member: member.session_order)
+    ordered_starts = [member.starts_at for member in ordered]
+    if ordered_starts != sorted(ordered_starts):
+        return False
     days = {
         value.astimezone(GUARDAMAR_TIMEZONE).date()
         for value in starts if value is not None
