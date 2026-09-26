@@ -407,17 +407,31 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
             "<h3>18 de octubre</h3>"
         )
 
+        expected = (
+            date(2026, 9, 26),
+            date(2026, 10, 3),
+            date(2026, 10, 4),
+            date(2026, 10, 7),
+            date(2026, 10, 15),
+            date(2026, 10, 18),
+        )
         self.assertEqual(
             _turismo_programme_expected_dates(
                 content, date(2026, 9, 26)
             ),
-            (
-                date(2026, 9, 26),
-                date(2026, 10, 3),
-                date(2026, 10, 4),
-                date(2026, 10, 7),
-                date(2026, 10, 15),
-                date(2026, 10, 18),
+            expected,
+        )
+        blocks = _turismo_programme_blocks_by_date(
+            content, date(2026, 9, 26)
+        )
+        self.assertEqual(
+            blocks[date(2026, 9, 26)],
+            ("26 de septiembre", "Gran bingo y traslado."),
+        )
+        self.assertIn(
+            "Gran bingo y traslado.",
+            _turismo_programme_recovery_text(
+                blocks, (date(2026, 9, 26),)
             ),
         )
 
