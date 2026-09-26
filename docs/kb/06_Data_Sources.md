@@ -817,8 +817,40 @@ award adapter.
 Dynamic claims are not frozen: every seed preview, seed operation and eventual
 publication still checks the exact Mercadona JSON for current SKU, EAN, brand,
 expected supplier, reviewed recipe markers, availability, share URL, package
-format and current price. If any of the six launch candidates fails that live
-check, `product-awards-seed` changes no state.
+format and current price. NALTROS is validated through its own exact ALDI
+contract described below. If any of the seven launch candidates fails its live
+retail check, `product-awards-seed` changes no state.
+
+### Reviewed NALTROS / ALDI launch seed
+
+The seventh launch candidate is deliberately from a different product category:
+
+- award source: OCU's 19 December 2025 cava analysis;
+- exact product: `NALTROS (ALDI) Brut`;
+- comparison size: 25 cava;
+- overall score: 94/100;
+- OCU identifies it among the three standout products and separately describes
+  it as the best brut in the tasting;
+- current retailer product:
+  `https://www.aldi.es/producto/cava-brut-190300.html`.
+
+The ALDI page is browser-free and exposes its current product contract inside
+Next.js `__NEXT_DATA__`, specifically the JSON-encoded
+`props.pageProps.apiData` field. The refresher accepts only the reviewed
+product with brand `NALTROS ®`, sales unit `0,75 l unidad`, internal
+`KVArticleNumber=1903`, current availability and a non-recalled/non-coming-soon
+state. Current price and litre price come from that same embedded first-party
+payload.
+
+On 26 September 2026 the reviewed live values were 3.15 EUR per 0.75 l bottle
+and 4.20 EUR/l. The award fact is frozen as reviewed seed data; the retailer
+price/availability is not.
+
+The exact OCU Hacendado AOVE 1000 ml / Mercadona SKU 4740 path was also
+investigated for seed diversity. Retail identity was strong, but the anonymous
+OCU exact-product page did not expose its overall score in the local
+product-ID block. The apparent 89/100 association from comparator context was
+therefore rejected as too indirect for the starter pool.
 
 ### Mercadona exact-product retail refresh
 
