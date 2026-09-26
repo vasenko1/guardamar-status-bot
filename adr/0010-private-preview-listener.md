@@ -32,9 +32,18 @@ infrastructure.
 ## Consequences
 
 The optional listener has one idle network request and a small Python memory
-footprint. Android may kill it, so deployment may restart it without affecting
-daily publication. Pending commands older than two minutes are acknowledged
-but ignored after restart.
+footprint. It is a long-lived Python process: imported application modules stay
+in memory until the listener exits. Therefore a Git fast-forward does not make
+new preview code active inside an already-running listener.
+
+Any production deployment that changes Python code reachable from `/preview`
+must restart the `guardamar-preview` runit service and verify the replacement
+`telegrambot listen` process. One-shot CLI commands such as
+`python -m telegrambot preview` and `refresh-current` start fresh interpreters
+and therefore cannot be used as evidence that the resident listener reloaded
+the deployment. Android may also kill the listener independently; restarting it
+does not affect daily publication. Pending commands older than two minutes are
+acknowledged but ignored after restart.
 
 ## Alternatives rejected
 

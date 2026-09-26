@@ -26,8 +26,18 @@ operated remotely before that unlock.
   `origin/main` commit as `TARGET_SHA`, and require
   `git merge-base --is-ancestor "$TARGET_SHA" origin/main` to succeed. Stop if
   the gate fails; a permanent production feature branch is not allowed.
-- Restart only the resident service affected by a change. One-shot cron tasks
-  use the changed checkout on their next invocation.
+- Restart every resident service whose loaded Python code is affected by a
+  deployment. One-shot cron tasks use the changed checkout on their next
+  invocation.
+- In particular, any production rollout that changes Python code reachable
+  from the private `/preview` path must restart the `guardamar-preview`
+  runit service after the fast-forward. A successful CLI
+  `python -m telegrambot preview` or `refresh-current` is not sufficient:
+  those are fresh processes, while the resident `telegrambot listen`
+  process keeps already-imported modules in memory.
+- After restarting `guardamar-preview`, verify both `sv status` and that a
+  live `telegrambot ... listen` process exists before considering the
+  deployment complete.
 - Remove the GitHub Actions promotion workflow, `deploy` branch update path,
   and daily `deploy.sh` cron task.
 - Keep all services private to the tailnet with key-only SSH; expose no public
@@ -55,6 +65,8 @@ rollout flow.
   after a reboot.
 - Existing publication and monitoring cron schedules remain independent of
   code deployment.
+- A deployment is incomplete if a changed resident listener is left running
+  with pre-deploy Python modules loaded in memory.
 - A feature may be tested temporarily on Android without becoming a production
   release, while every lasting production version remains reachable from
   `origin/main`.
