@@ -66,6 +66,20 @@ jobs:
                       print("price."+key, pi[key])
           print("ean", obj.get("ean"))
           print("share_url", obj.get("share_url"))
+          print("brand", obj.get("brand"))
+          print("origin", obj.get("origin"))
+          details = obj.get("details")
+          print("details_type", type(details).__name__)
+          if isinstance(details, dict):
+              print("detail_keys", sorted(details))
+              for key in sorted(details):
+                  value = details[key]
+                  if isinstance(value, (str, int, float, bool)) or value is None:
+                      print("detail."+key, value)
+          nutrition = obj.get("nutrition_information")
+          print("nutrition_type", type(nutrition).__name__)
+          if isinstance(nutrition, dict):
+              print("nutrition_keys", sorted(nutrition))
 
           print("=== WCCC RESULTS HTML LINKS ===")
           status, headers, body = request("https://worldchampioncheese.org/results/")
