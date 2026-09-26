@@ -1,0 +1,50 @@
+name: Temporary Ayuntamiento programme backstop tests
+
+on:
+  push:
+    branches:
+      - fix/ayuntamiento-programme-poster-backstop
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e .
+      - run: python -m compileall -q src tests
+      - run: PYTHONPATH=src python -m unittest discover -s tests -v
+      - name: Probe live Ayuntamiento Rosario article
+        run: |
+          PYTHONPATH=src python - <<'PY'
+          from datetime import date
+          from telegrambot.municipal_agenda import (
+              _read_ayuntamiento_programme_candidates,
+              _read_ayuntamiento_programme_article,
+          )
+
+          day = date(2026, 9, 26)
+          candidates = _read_ayuntamiento_programme_candidates(day)
+          assert candidates is not None
+          rosario = next(
+              item for item in candidates
+              if "virgen-del-rosario" in item["link"]
+          )
+          detail = _read_ayuntamiento_programme_article(rosario, day)
+          assert detail is not None
+          print("CANDIDATES:", candidates)
+          print("ARTICLE:", detail[0])
+          print("TEXT_LEN:", len(detail[3]))
+          print("DATES:", tuple(sorted(detail[4])))
+          print("POSTER:", detail[5])
+          assert detail[5] == (
+              "https://www.guardamardelsegura.es/wp-content/uploads/2026/09/"
+              "PROG.-todo-Virgen-Rosario-2026-2122x3000.jpg"
+          )
+          PY
