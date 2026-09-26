@@ -544,7 +544,10 @@ class MercadonaRetailRefreshTests(unittest.TestCase):
         ):
             offers = refresh_mercadona_offers(item)
         self.assertEqual(len(offers), 1)
-        self.assertEqual(offers[0].package, "около 370 г")
+        self.assertEqual(
+            offers[0].package,
+            "около 370 г · кусок переменного веса",
+        )
         self.assertEqual(offers[0].price, "6,19 €")
         self.assertEqual(offers[0].unit_price, "16,74 €/кг")
         self.assertEqual(offers[0].ean, "8480000509529")
@@ -660,6 +663,13 @@ class MercadonaRetailRefreshTests(unittest.TestCase):
         self.assertEqual([offer.product_id for offer in offers], ["50975", "11680"])
         self.assertEqual([offer.price for offer in offers], ["6,04 €", "6,96 €"])
         self.assertEqual(
+            [offer.package for offer in offers],
+            [
+                "около 330 г · кусок переменного веса",
+                "около 330 г · нарезка клиньями",
+            ],
+        )
+        self.assertEqual(
             [offer.unit_price for offer in offers],
             ["18,30 €/кг", "21,10 €/кг"],
         )
@@ -690,7 +700,7 @@ class MercadonaRetailRefreshTests(unittest.TestCase):
         message = publication.message
         self.assertIn("в Mercadona — вошёл в мировой Top 20 сыров", message)
         self.assertNotIn("99,25", message.split("</b>", 1)[0])
-        self.assertIn("около 370 г", message)
+        self.assertIn("около 370 г · кусок переменного веса", message)
         self.assertIn("6,19 €", message)
         self.assertIn("16,74 €/кг", message)
         self.assertIn("Queserías Entrepinares S.A.U., Вальядолид, Испания", message)
