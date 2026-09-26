@@ -46,6 +46,7 @@ jobs:
           pc = headers.get("x-customer-pc") or headers.get("X-Customer-Pc")
           print("pc", pc)
           print("wh", wh)
+          print("postal_body", body.decode("utf-8", "replace"))
 
           print("=== MERCADONA PRODUCT 50952 ===")
           suffix = f"?lang=es&wh={wh}" if wh else "?lang=es"
