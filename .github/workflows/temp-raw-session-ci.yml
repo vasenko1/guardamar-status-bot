@@ -1,4 +1,5 @@
 name: Temporary raw source session CI
+# final marker syntax verification
 
 on:
   push:
