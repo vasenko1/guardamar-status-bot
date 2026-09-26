@@ -16,28 +16,40 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Probe exact candidate discovery
+      - name: Probe exact candidate SKUs
         run: |
           python - <<'PY'
-          import json, urllib.parse, urllib.request
+          import json, urllib.request
 
           headers={"Accept":"application/json","User-Agent":"GuardamarMorningDigest/0.13"}
-          queries=["trufa","afrutado","ibérico añejo","semicurado","añejo fuerte","curado afrutado"]
-          endpoints=[
-              "https://tienda.mercadona.es/api/search/?query={q}&lang=es&wh=alc1",
-              "https://tienda.mercadona.es/api/products/search/?query={q}&lang=es&wh=alc1",
-          ]
-          for template in endpoints:
-              print("=== ENDPOINT", template, "===")
-              for query in queries:
-                  url=template.format(q=urllib.parse.quote(query))
-                  req=urllib.request.Request(url,headers=headers)
-                  try:
-                      with urllib.request.urlopen(req,timeout=20) as r:
-                          body=r.read()
-                          print("QUERY",query,"STATUS",r.status,"TYPE",r.headers.get_content_type(),"BYTES",len(body))
-                          text=body.decode("utf-8","replace")
-                          print(text[:4000])
-                  except Exception as e:
-                      print("QUERY",query,"ERROR",type(e).__name__,str(e)[:300])
+          ids=["4883","17926","11682","5548","50943","50944","50945","50946","50952"]
+          for product_id in ids:
+              print(f"=== {product_id} ===")
+              url=f"https://tienda.mercadona.es/api/products/{product_id}/?lang=es&wh=alc1"
+              req=urllib.request.Request(url,headers=headers)
+              try:
+                  with urllib.request.urlopen(req,timeout=20) as r:
+                      obj=json.load(r)
+              except Exception as e:
+                  print("ERROR",type(e).__name__,str(e)[:300])
+                  continue
+              print("id",obj.get("id"))
+              print("name",obj.get("display_name"))
+              print("ean",obj.get("ean"))
+              print("brand",obj.get("brand"))
+              print("published",obj.get("published"))
+              print("unavailable_from",obj.get("unavailable_from"))
+              print("unavailable_weekdays",obj.get("unavailable_weekdays"))
+              print("variable",obj.get("is_variable_weight"))
+              print("packaging",obj.get("packaging"))
+              print("share_url",obj.get("share_url"))
+              pi=obj.get("price_instructions") or {}
+              for key in ("unit_price","bulk_price","unit_size","size_format","reference_price","reference_format","approx_size"):
+                  print("price."+key,pi.get(key))
+              details=obj.get("details") or {}
+              print("legal_name",details.get("legal_name"))
+              print("mandatory_mentions",details.get("mandatory_mentions"))
+              print("suppliers",json.dumps(details.get("suppliers"),ensure_ascii=False))
+              nutrition=obj.get("nutrition_information") or {}
+              print("ingredients",json.dumps(nutrition.get("ingredients"),ensure_ascii=False))
           PY
