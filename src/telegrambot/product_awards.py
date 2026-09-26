@@ -36,6 +36,11 @@ LOGGER = logging.getLogger(__name__)
 
 OCU_INDEX_URL = "https://www.ocu.org/ocu-salud"
 WCCC_2026_TOP20_URL = "https://worldchampioncheese.org/2026-wccc-top-20-finalists/"
+VALLE_WCCC_2026_URL = (
+    "https://valledesanjuan.com/"
+    "ocho-premios-que-saben-a-esfuerzo-origen-y-oficio/"
+)
+VALLE_MERCADONA_URL = "https://valledesanjuan.com/productos/mercadona/"
 MERCADONA_API_ROOT = "https://tienda.mercadona.es/api/products"
 MERCADONA_GUARDAMAR_WAREHOUSE = "alc1"  # reviewed for postal code 03140
 REQUEST_TIMEOUT_SECONDS = 20
@@ -306,6 +311,13 @@ class AwardSourceAdapter:
     name: str
     discover: Callable[[int], tuple[str, ...]]
     load: Callable[[str, int], AwardSourceItem]
+
+
+@dataclass(frozen=True)
+class _MercadonaProductContract:
+    evidence: RetailEvidence
+    supplier_names: tuple[str, ...]
+    recipe_markers: tuple[str, ...] = ()
 
 
 class _PageParser(HTMLParser):
@@ -841,6 +853,118 @@ _WCCC_2026_RETAIL_URL = (
     "queso-anejo-tostado-mezcla-hacendado-pieza"
 )
 
+_WCCC_2026_METHOD_SUMMARY = (
+    "В 2026 году 56 профессиональных судей оценивали 3 375 продуктов. "
+    "В жюри вошли сырные эксперты, закупщики, преподаватели молочной науки "
+    "и исследователи из 22 стран. Каждую заявку осматривают, нюхают и "
+    "дегустируют технические судьи. Оценка начинается со 100 баллов, затем "
+    "баллы снимаются за недостатки вкуса, структуры и текстуры, соли, цвета, "
+    "послевкусия, упаковки и других характеристик."
+)
+
+
+def _mercadona_evidence(
+    product_id: str,
+    ean: str,
+    share_url: str,
+    *,
+    variant: str = "pieza de peso variable",
+) -> RetailEvidence:
+    return RetailEvidence(
+        retailer="Mercadona",
+        relationship="private_label",
+        label="Hacendado",
+        product_id=product_id,
+        ean=ean,
+        product_url=share_url,
+        variant=variant,
+    )
+
+
+_MERCADONA_CONTRACTS: dict[str, _MercadonaProductContract] = {
+    "50952": _MercadonaProductContract(
+        evidence=_mercadona_evidence(
+            "50952",
+            "8480000509529",
+            _WCCC_2026_RETAIL_URL,
+        ),
+        supplier_names=("Queserías Entrepinares S.A.U.",),
+        recipe_markers=("vaca 50", "oveja 20", "cabra 15"),
+    ),
+    "4883": _MercadonaProductContract(
+        evidence=_mercadona_evidence(
+            "4883",
+            "8480000048837",
+            "https://tienda.mercadona.es/product/4883/"
+            "queso-curado-mezcla-con-trufa-hacendado-pieza",
+        ),
+        supplier_names=(
+            "Valle de San Juan Palencia S.L.",
+            "Valle de San Juan S.L.",
+        ),
+        recipe_markers=("vaca min 35", "oveja min 25", "cabra min 25", "trufa min 2"),
+    ),
+    "50975": _MercadonaProductContract(
+        evidence=_mercadona_evidence(
+            "50975",
+            "2105600509750",
+            "https://tienda.mercadona.es/product/50975/"
+            "queso-anejo-fuerte-oveja-hacendado-pieza",
+        ),
+        supplier_names=(
+            "Valle de San Juan Palencia S.L.",
+            "Valle de San Juan S.L.",
+        ),
+        recipe_markers=("leche cruda de oveja",),
+    ),
+    "11680": _MercadonaProductContract(
+        evidence=_mercadona_evidence(
+            "11680",
+            "8402001028878",
+            "https://tienda.mercadona.es/product/11680/"
+            "queso-anejo-fuerte-oveja-hacendado-cortado-cunitas-pieza",
+            variant="precortado en cuñitas",
+        ),
+        supplier_names=(
+            "Valle de San Juan Palencia S.L",
+            "Distribuciones Juan Luna S.L.U",
+        ),
+        recipe_markers=("leche cruda de oveja",),
+    ),
+    "11682": _MercadonaProductContract(
+        evidence=_mercadona_evidence(
+            "11682",
+            "8402001028953",
+            "https://tienda.mercadona.es/product/11682/"
+            "queso-curado-mezcla-afrutado-hacendado-cortado-cunitas-pieza",
+            variant="precortado en cuñitas",
+        ),
+        supplier_names=(
+            "Valle de San Juan Palencia S.L.",
+            "Distribuciones Juan Luna S.L.U",
+        ),
+        recipe_markers=("vaca min 80", "oveja min 5", "cabra min 5"),
+    ),
+    "5548": _MercadonaProductContract(
+        evidence=_mercadona_evidence(
+            "5548",
+            "8402001048289",
+            "https://tienda.mercadona.es/product/5548/"
+            "queso-anejo-iberico-mezcla-hacendado-cortado-cunitas-pieza",
+            variant="precortado en cuñitas",
+        ),
+        supplier_names=(
+            "Valle de San Juan Palencia S.L.",
+            "Distribuciones Juan Luna S.L.U.",
+        ),
+        recipe_markers=("vaca min 35", "oveja min 25", "cabra min 25"),
+    ),
+}
+
+_MERCADONA_RELATED_VARIANTS: dict[str, tuple[str, ...]] = {
+    "50975": ("11680",),
+}
+
 
 def discover_wccc_documents(year: int) -> tuple[str, ...]:
     # Only the reviewed 2026 publication contract is enabled. A future edition
@@ -928,15 +1052,7 @@ def parse_wccc_top20(
                         "овечье молоко — не менее 20%",
                         "козье молоко — не менее 15%",
                     ),
-                    method_summary=(
-                        "В 2026 году 56 профессиональных судей оценивали "
-                        "3 375 продуктов. В жюри вошли сырные эксперты, "
-                        "закупщики, преподаватели молочной науки и исследователи "
-                        "из 22 стран. Оценивали вкус, структуру и текстуру, соль, "
-                        "цвет, послевкусие, упаковку и другие технические "
-                        "характеристики. Оценка начинается со 100 баллов, затем "
-                        "баллы снимаются за выявленные недостатки."
-                    ),
+                    method_summary=_WCCC_2026_METHOD_SUMMARY,
                 ),
             ),
         )
@@ -951,6 +1067,204 @@ def load_wccc_item(url: str, year: int) -> AwardSourceItem:
         frozenset({"worldchampioncheese.org"}),
     )
     return AwardSourceItem(parse_wccc_top20(document, year))
+
+
+# ---------------------------------------------------------------------------
+# Reviewed one-time launch seed
+# ---------------------------------------------------------------------------
+
+def _require_seed_phrase(document: PageDocument, phrase: str) -> None:
+    if not _phrase_present(document.text, phrase):
+        raise ProductAwardError(
+            f"reviewed starter evidence changed: {phrase}",
+            code="PARSER",
+        )
+
+
+def _valle_wccc_seed_candidates(
+    award_document: PageDocument,
+    retail_portfolio: PageDocument,
+) -> tuple[ProductAwardCandidate, ...]:
+    # The organizer does not expose a complete public machine-readable 2026
+    # result table. For this reviewed one-time seed only, Valle de San Juan's
+    # own entrant announcement is accepted because it gives exact scores and
+    # explicitly says these products are sold by Mercadona. Retail identity is
+    # independently revalidated against exact Mercadona SKU/EAN/supplier/recipe.
+    for phrase in (
+        "Con Trufa 99,30",
+        "Añejo 99,25",
+        "Afrutado 97,40",
+        "Ibérico Añejo 97,20",
+    ):
+        _require_seed_phrase(award_document, phrase)
+    for phrase in (
+        "Hacendado Curado Afrutado",
+        "Hacendado Añejo Fuerte",
+        "Hacendado Con Trufa",
+        "Hacendado Añejo Ibérico",
+    ):
+        _require_seed_phrase(retail_portfolio, phrase)
+
+    common = dict(
+        source_kind="wccc_valle_seed",
+        source_url=award_document.url,
+        award_body="World Championship Cheese Contest 2026",
+        result_year=2026,
+    )
+    common_editorial = dict(
+        comparison_size=3375,
+        judge_count=56,
+        producer="Valle de San Juan",
+        producer_location="Паленсия",
+        production_country="Испания",
+        method_summary=_WCCC_2026_METHOD_SUMMARY,
+    )
+
+    return (
+        ProductAwardCandidate(
+            **common,
+            event_key="2026|valle|con-trufa|99.30",
+            product_name="Queso curado mezcla con trufa Hacendado",
+            result="Best of Class",
+            retail=_MERCADONA_CONTRACTS["4883"].evidence,
+            score="99,30/100",
+            editorial=AwardEditorialFacts(
+                **common_editorial,
+                headline_claim="стал лучшим в своей категории на мировом конкурсе",
+                product_summary=(
+                    "Выдержанный иберийский сыр из сырого коровьего, овечьего "
+                    "и козьего молока с кремом из трюфеля."
+                ),
+                tasting_notes=(
+                    "выраженный аромат трюфеля",
+                    "землистые и грибные оттенки",
+                    "ноты сливочного масла и лёгкая сладость",
+                    "ломкая текстура",
+                ),
+                composition_details=(
+                    "коровье молоко — не менее 35%",
+                    "овечье молоко — не менее 25%",
+                    "козье молоко — не менее 25%",
+                    "крем из трюфеля — не менее 2%",
+                ),
+                nutrition_details=(
+                    "437 ккал",
+                    "жиры — 37 г",
+                    "белки — 24 г",
+                    "соль — 2 г",
+                ),
+            ),
+        ),
+        ProductAwardCandidate(
+            **common,
+            event_key="2026|valle|anejo|99.25",
+            product_name="Queso añejo fuerte de oveja Hacendado",
+            result="99.25 points",
+            retail=_MERCADONA_CONTRACTS["50975"].evidence,
+            score="99,25/100",
+            editorial=AwardEditorialFacts(
+                **common_editorial,
+                headline_claim="получил выдающуюся оценку на мировом конкурсе",
+                product_summary=(
+                    "Долго выдержанный сыр из сырого овечьего молока."
+                ),
+                tasting_notes=(
+                    "интенсивный и стойкий вкус",
+                    "ноты овечьего сливочного масла, кожи, ферментированных трав и злаков",
+                    "приятная пикантность в долгом послевкусии",
+                    "интенсивность — 6 из 6",
+                ),
+                composition_details=("сырое овечье молоко",),
+                nutrition_details=(
+                    "470 ккал",
+                    "жиры — 40 г",
+                    "белки — 25 г",
+                    "соль — 1,7 г",
+                ),
+            ),
+        ),
+        ProductAwardCandidate(
+            **common,
+            event_key="2026|valle|afrutado|97.40",
+            product_name="Queso curado mezcla afrutado Hacendado cortado en cuñitas",
+            result="97.40 points",
+            retail=_MERCADONA_CONTRACTS["11682"].evidence,
+            score="97,40/100",
+            editorial=AwardEditorialFacts(
+                **common_editorial,
+                headline_claim="получил выдающуюся оценку на мировом конкурсе",
+                product_summary=(
+                    "Выдержанный пастеризованный сыр из смеси коровьего, "
+                    "овечьего и козьего молока, продающийся уже нарезанным "
+                    "на небольшие клинья."
+                ),
+                composition_details=(
+                    "коровье молоко — не менее 80%",
+                    "овечье молоко — не менее 5%",
+                    "козье молоко — не менее 5%",
+                ),
+            ),
+        ),
+        ProductAwardCandidate(
+            **common,
+            event_key="2026|valle|iberico-anejo|97.20",
+            product_name="Queso añejo ibérico mezcla Hacendado cortado en cuñitas",
+            result="97.20 points",
+            retail=_MERCADONA_CONTRACTS["5548"].evidence,
+            score="97,20/100",
+            editorial=AwardEditorialFacts(
+                **common_editorial,
+                headline_claim="получил выдающуюся оценку на мировом конкурсе",
+                product_summary=(
+                    "Долго выдержанный иберийский сыр из сырого коровьего, "
+                    "овечьего и козьего молока."
+                ),
+                tasting_notes=(
+                    "глубокий и стойкий вкус после длительной выдержки",
+                    "плотная и ломкая текстура",
+                    "интенсивность — 5 из 6",
+                ),
+                composition_details=(
+                    "коровье молоко — не менее 35%",
+                    "овечье молоко — не менее 25%",
+                    "козье молоко — не менее 25%",
+                ),
+                nutrition_details=(
+                    "437 ккал",
+                    "жиры — 37 г",
+                    "белки — 24 г",
+                    "соль — 2 г",
+                ),
+            ),
+        ),
+    )
+
+
+def reviewed_starter_product_awards(year: int) -> tuple[ProductAwardCandidate, ...]:
+    if year != 2026:
+        return ()
+
+    award_document = _fetch_page(
+        VALLE_WCCC_2026_URL,
+        frozenset({"valledesanjuan.com", "www.valledesanjuan.com"}),
+    )
+    portfolio_document = _fetch_page(
+        VALLE_MERCADONA_URL,
+        frozenset({"valledesanjuan.com", "www.valledesanjuan.com"}),
+    )
+    valle = _valle_wccc_seed_candidates(award_document, portfolio_document)
+
+    top20 = load_wccc_item(WCCC_2026_TOP20_URL, 2026).candidates
+    if len(top20) != 1:
+        raise ProductAwardError(
+            "reviewed WCCC Top-20 starter candidate is unavailable",
+            code="PARSER",
+        )
+
+    # Hand-reviewed launch order: strongest numeric results first, with the
+    # organizer-confirmed Top-20 item inserted before the remaining 97-point
+    # products. The shared runtime queue itself remains source-agnostic FIFO.
+    return (valle[0], valle[1], top20[0], valle[2], valle[3])
 
 
 # Add future validated adapters here. A new adapter only needs a stable list of
@@ -977,6 +1291,8 @@ def _source_link_label(candidate: ProductAwardCandidate) -> str:
         return "Исследование OCU"
     if candidate.source_kind == "wccc":
         return "World Championship Cheese Contest 2026"
+    if candidate.source_kind == "wccc_valle_seed":
+        return "Результаты Valle de San Juan на WCCC 2026"
     return candidate.award_body
 
 
@@ -1085,6 +1401,20 @@ def build_publication(
             f"{product}, {_retail_phrase(candidate)}, вошёл в Top 20 "
             "финалистов World Championship Cheese Contest 2026."
         )
+    elif candidate.source_kind == "wccc_valle_seed":
+        claim = facts.headline_claim or "получил высокую оценку на WCCC 2026"
+        headline = f"{product} в {candidate.retailer} — {claim}"
+        if candidate.result == "Best of Class":
+            intro = (
+                f"{product}, {_retail_phrase(candidate)}, получил "
+                f"{candidate.score} на World Championship Cheese Contest 2026 "
+                "и стал лучшим в своей категории."
+            )
+        else:
+            intro = (
+                f"{product}, {_retail_phrase(candidate)}, получил "
+                f"{candidate.score} на World Championship Cheese Contest 2026."
+            )
     else:
         claim = facts.headline_claim or (
             f"{candidate.result} на {candidate.award_body}"
@@ -1095,7 +1425,7 @@ def build_publication(
             f"{candidate.result} на {candidate.award_body}."
         )
 
-    if candidate.score is not None:
+    if candidate.score is not None and candidate.source_kind != "wccc_valle_seed":
         intro += f" Итоговая оценка — {candidate.score}."
     sections.append(html.escape(intro))
 
@@ -1232,14 +1562,19 @@ def _mercadona_package_label(payload: dict[str, Any]) -> Optional[str]:
     return label
 
 
-def refresh_mercadona_offers(
+def _refresh_one_mercadona_offer(
     candidate: ProductAwardCandidate,
-) -> tuple[RetailOfferVariant, ...]:
-    evidence = candidate.retail
-    if evidence.retailer != "Mercadona" or evidence.product_id is None:
-        return ()
-    if not re.fullmatch(r"\d{1,12}", evidence.product_id):
+    evidence: RetailEvidence,
+) -> Optional[RetailOfferVariant]:
+    if evidence.product_id is None or not re.fullmatch(r"\d{1,12}", evidence.product_id):
         raise ProductAwardError("invalid Mercadona product ID", code="INVALID")
+
+    contract = _MERCADONA_CONTRACTS.get(evidence.product_id)
+    if contract is not None and evidence != contract.evidence:
+        raise ProductAwardError(
+            "Mercadona reviewed identity contract changed",
+            code="PARSER",
+        )
 
     url = (
         f"{MERCADONA_API_ROOT}/{evidence.product_id}/"
@@ -1251,9 +1586,9 @@ def refresh_mercadona_offers(
     if str(payload.get("id")) != evidence.product_id:
         raise ProductAwardError("Mercadona product ID mismatch", code="PARSER")
     if payload.get("published") is not True:
-        return ()
+        return None
     if payload.get("unavailable_from") not in {None, ""}:
-        return ()
+        return None
     unavailable_weekdays = payload.get("unavailable_weekdays")
     if not isinstance(unavailable_weekdays, list):
         raise ProductAwardError(
@@ -1261,7 +1596,7 @@ def refresh_mercadona_offers(
             code="PARSER",
         )
     if unavailable_weekdays:
-        return ()
+        return None
 
     ean = payload.get("ean")
     if evidence.ean is not None and str(ean) != evidence.ean:
@@ -1275,41 +1610,44 @@ def refresh_mercadona_offers(
         raise ProductAwardError("Mercadona brand mismatch", code="PARSER")
 
     details = payload.get("details")
-    if candidate.source_kind == "wccc" and evidence.product_id == "50952":
-        nutrition = payload.get("nutrition_information")
-        if not isinstance(nutrition, dict):
-            raise ProductAwardError(
-                "Mercadona ingredient data missing",
-                code="PARSER",
-            )
-        ingredients = nutrition.get("ingredients")
-        if not isinstance(ingredients, str):
-            raise ProductAwardError(
-                "Mercadona ingredient data missing",
-                code="PARSER",
-            )
-        folded_ingredients = _fold(ingredients)
-        if not all(
-            marker in folded_ingredients
-            for marker in ("vaca 50", "oveja 20", "cabra 15")
-        ):
-            raise ProductAwardError(
-                "Mercadona awarded recipe changed",
-                code="PARSER",
-            )
+    if not isinstance(details, dict):
+        raise ProductAwardError("Mercadona supplier data missing", code="PARSER")
+    suppliers = details.get("suppliers")
+    if not isinstance(suppliers, list):
+        raise ProductAwardError("Mercadona supplier data missing", code="PARSER")
+    supplier_names = {
+        _fold(str(item.get("name")))
+        for item in suppliers
+        if isinstance(item, dict) and item.get("name")
+    }
 
-    if candidate.editorial.producer is not None:
-        if not isinstance(details, dict):
-            raise ProductAwardError("Mercadona supplier data missing", code="PARSER")
-        suppliers = details.get("suppliers")
-        if not isinstance(suppliers, list):
-            raise ProductAwardError("Mercadona supplier data missing", code="PARSER")
-        names = {
-            _fold(str(item.get("name")))
-            for item in suppliers
-            if isinstance(item, dict) and item.get("name")
-        }
-        if _fold(candidate.editorial.producer) not in names:
+    if contract is not None:
+        expected_suppliers = {_fold(name) for name in contract.supplier_names}
+        if not supplier_names & expected_suppliers:
+            raise ProductAwardError("Mercadona supplier mismatch", code="PARSER")
+        if contract.recipe_markers:
+            nutrition = payload.get("nutrition_information")
+            if not isinstance(nutrition, dict):
+                raise ProductAwardError(
+                    "Mercadona ingredient data missing",
+                    code="PARSER",
+                )
+            ingredients = nutrition.get("ingredients")
+            if not isinstance(ingredients, str):
+                raise ProductAwardError(
+                    "Mercadona ingredient data missing",
+                    code="PARSER",
+                )
+            if not all(
+                _phrase_present(ingredients, marker)
+                for marker in contract.recipe_markers
+            ):
+                raise ProductAwardError(
+                    "Mercadona awarded recipe changed",
+                    code="PARSER",
+                )
+    elif candidate.editorial.producer is not None:
+        if _fold(candidate.editorial.producer) not in supplier_names:
             raise ProductAwardError("Mercadona supplier mismatch", code="PARSER")
 
     prices = payload.get("price_instructions")
@@ -1321,7 +1659,7 @@ def refresh_mercadona_offers(
     reference = _format_decimal_price(prices.get("reference_price"))
     reference_format = prices.get("reference_format")
     if price is None:
-        return ()
+        return None
     unit_price = None
     if reference is not None and reference_format in {"kg", "l"}:
         suffix = "кг" if reference_format == "kg" else "л"
@@ -1335,16 +1673,39 @@ def refresh_mercadona_offers(
     if evidence.product_url is not None and share_url != evidence.product_url:
         raise ProductAwardError("Mercadona product URL mismatch", code="PARSER")
 
-    return (
-        RetailOfferVariant(
-            package=package,
-            price=f"{price} €",
-            unit_price=unit_price,
-            product_id=evidence.product_id,
-            ean=str(ean) if ean is not None else None,
-            product_url=share_url,
-        ),
+    return RetailOfferVariant(
+        package=package,
+        price=f"{price} €",
+        unit_price=unit_price,
+        product_id=evidence.product_id,
+        ean=str(ean) if ean is not None else None,
+        product_url=share_url,
     )
+
+
+def refresh_mercadona_offers(
+    candidate: ProductAwardCandidate,
+) -> tuple[RetailOfferVariant, ...]:
+    evidence = candidate.retail
+    if evidence.retailer != "Mercadona" or evidence.product_id is None:
+        return ()
+
+    identities: list[RetailEvidence] = [evidence]
+    for related_id in _MERCADONA_RELATED_VARIANTS.get(evidence.product_id, ()):
+        contract = _MERCADONA_CONTRACTS.get(related_id)
+        if contract is None:
+            raise ProductAwardError(
+                "Mercadona related retail contract is missing",
+                code="PARSER",
+            )
+        identities.append(contract.evidence)
+
+    offers: list[RetailOfferVariant] = []
+    for identity in identities:
+        offer = _refresh_one_mercadona_offer(candidate, identity)
+        if offer is not None:
+            offers.append(offer)
+    return tuple(offers)
 
 
 def refresh_retail_offers(
@@ -1374,6 +1735,45 @@ def build_current_publication(
         )
         return None
     return build_publication(candidate, current_offers=offers)
+
+
+def preview_starter_product_awards(
+    year: int,
+) -> tuple[ProductAwardPublication, ...]:
+    candidates = reviewed_starter_product_awards(year)
+    publications: list[ProductAwardPublication] = []
+    for candidate in candidates:
+        publication = build_current_publication(candidate)
+        if publication is None:
+            raise ProductAwardError(
+                "reviewed starter pool is not fully available",
+                code="SEED-INCOMPLETE",
+            )
+        publications.append(publication)
+    return tuple(publications)
+
+
+def seed_starter_product_awards(
+    now: datetime,
+    state: "ProductAwardState",
+) -> tuple[ProductAwardCandidate, ...]:
+    candidates = reviewed_starter_product_awards(now.year)
+    if not candidates:
+        raise ProductAwardError(
+            "no reviewed starter pool exists for this year",
+            code="SEED-UNAVAILABLE",
+        )
+
+    # Validate the complete launch set before touching persistent state.
+    for candidate in candidates:
+        if build_current_publication(candidate) is None:
+            raise ProductAwardError(
+                "reviewed starter pool is not fully available",
+                code="SEED-INCOMPLETE",
+            )
+
+    state.enqueue_candidates(candidates, now.date())
+    return candidates
 
 
 # ---------------------------------------------------------------------------
