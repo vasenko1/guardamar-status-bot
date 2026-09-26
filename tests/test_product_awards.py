@@ -7,12 +7,14 @@ from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from telegrambot.product_awards import (
+    AwardEditorialFacts,
     AwardSourceAdapter,
     AwardSourceItem,
     PageDocument,
     ProductAwardCandidate,
     ProductAwardError,
     ProductAwardState,
+    RetailEvidence,
     _ocu_product_name,
     _resolve_private_label,
     build_publication,
@@ -44,15 +46,18 @@ def candidate(
         source_kind=source_kind,
         event_key=event_key,
         source_url=source_url,
-        retailer=retailer,
-        private_label=private_label,
         product_name=product_name,
         result=result,
         award_body=award_body,
         result_year=result_year,
+        retail=RetailEvidence(
+            retailer=retailer,
+            relationship="private_label",
+            label=private_label,
+        ),
         score=score,
         source_price=source_price,
-        sample_size=sample_size,
+        editorial=AwardEditorialFacts(comparison_size=sample_size),
     )
 
 
