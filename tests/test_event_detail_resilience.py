@@ -759,6 +759,107 @@ class TodoEvidenceTests(unittest.TestCase):
 
 
 class TodoPartialRefreshTests(unittest.IsolatedAsyncioTestCase):
+    async def test_refresh_persists_live_escape_identity_from_raw_rows(self):
+        local_day = date(2026, 9, 26)
+        rows = SessionGroupingTests._escape_rows()
+        program = TodoCulturaProgram(
+            text="\n".join(row for _, _, row in rows),
+            sha256="todo-live-session",
+            source_url="https://todoculturavegabaja.es/eventos/guardamar/",
+            modified="2026-09-26T10:00:00",
+            dates=(local_day,),
+            event_rows=rows,
+        )
+        window = TodoCulturaWindow(
+            programs=(program,),
+            source_state={
+                "parser_version": 19,
+                "cursor_modified_gmt": "2026-09-26T10:00:00",
+                "covered_dates": ["2026-09-26"],
+                "candidates": [],
+            },
+        )
+        raw_events = []
+        for event, (_, _, row) in zip(
+            SessionGroupingTests._escape_events(),
+            rows,
+        ):
+            evidence = " ".join(row.split())
+            raw_events.append({
+                "title_es": event.title_es,
+                "start_date": "2026-09-26",
+                "end_date": "2026-09-26",
+                "start_time": event.start_time,
+                "end_time": event.end_time,
+                "place": "Museo Arqueológico",
+                "evidence_es": evidence,
+                "category": "event",
+            })
+        extracted = {"month": "2026-09", "events": raw_events}
+        now = datetime(2026, 9, 26, 10, 15, tzinfo=TZ)
+
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "municipal.json"
+            with (
+                patch(
+                    "telegrambot.municipal_agenda._read_url",
+                    return_value=(b"<html>sin agenda</html>", "text/html"),
+                ),
+                patch(
+                    "telegrambot.municipal_agenda.extract_official_agenda_text",
+                    side_effect=MunicipalAgendaError(
+                        "no text month",
+                        code="NO-TEXT-MONTH",
+                    ),
+                ),
+                patch(
+                    "telegrambot.municipal_agenda.fetch_program_window",
+                    new=AsyncMock(return_value=window),
+                ),
+                patch(
+                    "telegrambot.municipal_agenda.extract_agenda_text_events",
+                    new=AsyncMock(return_value=extracted),
+                ),
+                patch(
+                    "telegrambot.municipal_agenda.fetch_facebook_posts",
+                    new=AsyncMock(return_value=()),
+                ),
+                patch(
+                    "telegrambot.municipal_agenda._turismo_programme_events",
+                    new=AsyncMock(return_value=((), {})),
+                ),
+            ):
+                current = await refresh_municipal_catalog(
+                    "key", now, state_path
+                )
+
+            loaded = _load_snapshot(state_path)
+
+        escape = tuple(
+            event for event in current
+            if event.start_time in {"11:00", "12:00", "13:00"}
+        )
+        self.assertEqual(len(escape), 3)
+        self.assertEqual(
+            len({event.session_source_key for event in escape}),
+            1,
+        )
+        self.assertNotIn(None, {event.session_source_key for event in escape})
+        self.assertTrue(all(
+            event.session_parent_title_es
+            == "Escape room El misterio del museo de Guardamar"
+            for event in escape
+        ))
+
+        self.assertIsNotNone(loaded)
+        loaded_escape = tuple(
+            event for event in loaded["_events"]
+            if event.start_time in {"11:00", "12:00", "13:00"}
+        )
+        plan = _session_source_plan(loaded_escape)
+        self.assertEqual(len({group for _, group in plan}), 1)
+        self.assertIsNotNone(plan[0][1])
+
     async def test_partial_rows_are_kept_without_advancing_todo_state(self):
         local_day = date(2026, 9, 26)
         old_state = {
