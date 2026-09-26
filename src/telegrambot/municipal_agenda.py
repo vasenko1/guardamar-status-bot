@@ -84,7 +84,7 @@ TURISMO_PROGRAMME_INDEX_URL = (
     "&_fields=id,modified,link,title,excerpt"
 )
 TURISMO_PROGRAMME_TEXT_SOURCE = "turismo_programme_text"
-TURISMO_PROGRAMME_TEXT_EXTRACTOR_VERSION = 2
+TURISMO_PROGRAMME_TEXT_EXTRACTOR_VERSION = 3
 MAX_TURISMO_PROGRAMME_ARTICLES = 3
 TURISMO_PROGRAMME_HORIZON_DAYS = 44
 TURISMO_PROGRAMME_PAST_GRACE_DAYS = 14
@@ -1346,21 +1346,21 @@ _TURISMO_DATE_LEADING_BLOCK = re.compile(
 )
 
 
-def _turismo_programme_expected_dates(
+def _turismo_programme_blocks_by_date(
     content_html: Any,
     local_day: date,
-) -> Tuple[date, ...]:
-    """Return only dates that lead an explicit WordPress content block."""
+) -> Dict[date, Tuple[str, ...]]:
+    """Return exact date-leading WordPress blocks grouped by occurrence date."""
 
     if not isinstance(content_html, str) or not content_html.strip():
-        return ()
+        return {}
     parser = _WordPressProgrammeBlockParser()
     try:
         parser.feed(content_html)
         parser.close()
     except Exception:
-        return ()
-    expected = set()
+        return {}
+    grouped: Dict[date, List[str]] = {}
     for block in parser.blocks:
         match = _TURISMO_DATE_LEADING_BLOCK.match(block)
         if match is None:
@@ -1369,14 +1369,46 @@ def _turismo_programme_expected_dates(
         if month is None:
             continue
         try:
-            expected.add(date(
+            day = date(
                 int(match.group("year") or local_day.year),
                 month,
                 int(match.group("day")),
-            ))
+            )
         except ValueError:
             continue
-    return tuple(sorted(expected))
+        grouped.setdefault(day, []).append(block)
+    return {
+        day: tuple(values)
+        for day, values in grouped.items()
+    }
+
+
+def _turismo_programme_expected_dates(
+    content_html: Any,
+    local_day: date,
+) -> Tuple[date, ...]:
+    """Return only dates that lead an explicit WordPress content block."""
+
+    return tuple(sorted(
+        _turismo_programme_blocks_by_date(content_html, local_day)
+    ))
+
+
+def _turismo_programme_recovery_text(
+    blocks_by_date: Dict[date, Tuple[str, ...]],
+    missing_dates: Tuple[date, ...],
+) -> str:
+    """Build one small official-text slice containing only missing date rows."""
+
+    rows = []
+    seen = set()
+    for day in missing_dates:
+        for block in blocks_by_date.get(day, ()):
+            if block in seen:
+                continue
+            seen.add(block)
+            rows.append(block)
+    return "\n".join(rows)
 
 
 def _turismo_programme_missing_dates(
@@ -1495,7 +1527,16 @@ def _read_turismo_programme_candidates(
 def _read_turismo_programme_article(
     candidate: Dict[str, Any],
     local_day: date,
-) -> Optional[Tuple[str, str, str, str, Tuple[date, ...]]]:
+) -> Optional[
+    Tuple[
+        str,
+        str,
+        str,
+        str,
+        Tuple[date, ...],
+        Dict[date, Tuple[str, ...]],
+    ]
+]:
     identifier = candidate.get("id")
     if not isinstance(identifier, int):
         return None
@@ -1528,10 +1569,11 @@ def _read_turismo_programme_article(
         content_html,
         truncate=False,
     )
-    expected_dates = _turismo_programme_expected_dates(
+    date_blocks = _turismo_programme_blocks_by_date(
         content_html,
         local_day,
     )
+    expected_dates = tuple(sorted(date_blocks))
     if (
         title is None
         or text is None
@@ -1540,7 +1582,7 @@ def _read_turismo_programme_article(
         or link != candidate.get("link")
     ):
         return None
-    return link, modified, title, text, expected_dates
+    return link, modified, title, text, expected_dates, date_blocks
 
 
 def _normalize_turismo_programme_text(
@@ -1698,6 +1740,7 @@ async def _turismo_text_programme_events(
             programme_title,
             article_text,
             expected_dates,
+            date_blocks,
         ) = detail
         fingerprint = hashlib.sha256(article_text.encode("utf-8")).hexdigest()
         if (
@@ -1730,14 +1773,26 @@ async def _turismo_text_programme_events(
                 relevant_expected_dates,
             )
             if missing_dates:
-                recovered = await extract_guardamar_standalone_events(
-                    api_key,
-                    article_text,
+                recovery_text = _turismo_programme_recovery_text(
+                    date_blocks,
                     missing_dates,
+                )
+                if not recovery_text:
+                    raise MunicipalAgendaError(
+                        "Official Turismo programme recovery text was empty",
+                        code="PROGRAMME-INCOMPLETE",
+                        description=(
+                            "для пропущенных дат не найден подтверждающий "
+                            "фрагмент официальной статьи"
+                        ),
+                    )
+                recovered = await extract_agenda_text_events(
+                    api_key,
+                    recovery_text,
                 )
                 recovered_events = _normalize_turismo_programme_text(
                     recovered,
-                    article_text,
+                    recovery_text,
                 )
                 all_article_events = tuple(
                     (*all_article_events, *recovered_events)
