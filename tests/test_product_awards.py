@@ -377,25 +377,43 @@ class StarterPoolTests(unittest.TestCase):
         )
         return parse_wccc_top20(document, 2026)[0]
 
-    def test_reviewed_seed_has_five_days_in_reviewed_order(self):
+    def test_reviewed_seed_has_six_days_in_reviewed_order(self):
         with patch(
             "telegrambot.product_awards.load_wccc_item",
             return_value=AwardSourceItem((self.top20_candidate(),)),
         ):
             found = reviewed_starter_product_awards(2026)
 
-        self.assertEqual(len(found), 5)
+        self.assertEqual(len(found), 6)
         self.assertEqual(
             [item.retail.product_id for item in found],
-            ["4883", "50975", "50952", "11682", "5548"],
+            ["4883", "50975", "50952", "11682", "11672", "5548"],
         )
         self.assertEqual(
             [item.score for item in found],
-            ["99,30/100", "99,25/100", None, "97,40/100", "97,20/100"],
+            [
+                "99,30/100",
+                "99,25/100",
+                None,
+                "97,40/100",
+                "97,40/100",
+                "97,20/100",
+            ],
         )
         self.assertEqual(found[0].result, "Best of Class")
         self.assertEqual(found[0].editorial.production_country, "Испания")
         self.assertIn("valledesanjuan.com", found[0].source_url)
+        semicurado = found[4]
+        self.assertEqual(semicurado.retail.ean, "8402001028861")
+        self.assertEqual(
+            semicurado.product_name,
+            "Queso semicurado de oveja Hacendado cortado en cuñitas",
+        )
+        self.assertEqual(
+            semicurado.editorial.composition_details,
+            ("пастеризованное овечье молоко",),
+        )
+        self.assertIn("сливочный", " ".join(semicurado.editorial.tasting_notes))
 
     def test_reviewed_seed_exists_only_for_reviewed_2026_launch(self):
         self.assertEqual(reviewed_starter_product_awards(2027), ())
@@ -463,14 +481,14 @@ class StarterPoolTests(unittest.TestCase):
                 )
             self.assertFalse(path.exists())
 
-    def test_starter_preview_requires_all_five_live_publications(self):
+    def test_starter_preview_requires_all_six_live_publications(self):
         items = tuple(
             candidate(
                 event_key=f"starter-{index}",
                 product_name=f"продукт {index} Hacendado",
                 score=f"{99-index}/100",
             )
-            for index in range(5)
+            for index in range(6)
         )
         with (
             patch(
@@ -483,7 +501,7 @@ class StarterPoolTests(unittest.TestCase):
             ),
         ):
             publications = preview_starter_product_awards(2026)
-        self.assertEqual(len(publications), 5)
+        self.assertEqual(len(publications), 6)
 
 
 class MercadonaRetailRefreshTests(unittest.TestCase):
