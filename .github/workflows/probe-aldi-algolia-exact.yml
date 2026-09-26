@@ -21,9 +21,7 @@ jobs:
         run: |
           python - <<'PY'
           import json, urllib.parse, urllib.request
-
-          app="L9KNU74IO7"
-          key="83df5acd172c42ab174afa4583232b5d"
+          app="L9KNU74IO7"; key="83df5acd172c42ab174afa4583232b5d"
           endpoint=f"https://{app}-dsn.algolia.net/1/indexes/*/queries"
           headers={
               "Content-Type":"application/json",
@@ -31,36 +29,17 @@ jobs:
               "x-algolia-api-key":key,
               "User-Agent":"GuardamarMorningDigest/0.13",
           }
-          indexes=[
-              "an_prd_es_es_products2",
-              "an_prd_es_es_products",
-              "an_prd_es_products2",
-          ]
+          index="an_prd_es_es_pen_products2"
           queries=["Sal de Plata","atún claro aceite de oliva","atun claro aceite oliva"]
-          requests=[]
-          meta=[]
-          for index in indexes:
-              for query in queries:
-                  params=urllib.parse.urlencode({"query":query,"hitsPerPage":50})
-                  requests.append({"indexName":index,"params":params})
-                  meta.append((index,query))
-          req=urllib.request.Request(
-              endpoint,
-              data=json.dumps({"requests":requests}).encode(),
-              headers=headers,
-              method="POST",
-          )
-          try:
-              with urllib.request.urlopen(req,timeout=20) as r:
-                  obj=json.load(r)
-          except urllib.error.HTTPError as e:
-              print("HTTP_ERROR",e.code,e.read().decode("utf-8","replace")[:5000])
-              raise
-          for (index,query),result in zip(meta,obj.get("results",[])):
-              print("===",index,"|",query,"===")
-              if "error" in result or "message" in result and "hits" not in result:
-                  print(json.dumps(result,ensure_ascii=False)[:3000])
-                  continue
+          requests=[]; meta=[]
+          for query in queries:
+              params=urllib.parse.urlencode({"query":query,"hitsPerPage":50})
+              requests.append({"indexName":index,"params":params}); meta.append(query)
+          req=urllib.request.Request(endpoint,data=json.dumps({"requests":requests}).encode(),headers=headers,method="POST")
+          with urllib.request.urlopen(req,timeout=20) as r:
+              obj=json.load(r)
+          for query,result in zip(meta,obj.get("results",[])):
+              print("=== QUERY",query,"===")
               print("nbHits",result.get("nbHits"))
               for hit in result.get("hits",[])[:50]:
                   blob=json.dumps(hit,ensure_ascii=False).lower()
