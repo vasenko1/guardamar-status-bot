@@ -470,13 +470,20 @@ recent-post metadata index and considers at most three current-year
 programme-shaped Spanish articles whose title/excerpt contains a relevant
 explicit date. The dedicated Fiestas del Campo article remains on its existing
 narrow deterministic/poster path and is excluded from the generic adapter.
-For every other candidate, unchanged `modified` state reuses the last verified
-facts; a changed/new article fetches one bounded detail page and runs the
-existing evidence-bound official-text extractor. The article must yield at
-least two validated programme events before date filtering, and only today's
-through the next 44 days are retained. The adapter is text-first: it does not
-OCR arbitrary article images. Temporary source/model failures retain
-still-relevant last-good facts.
+For every other candidate, unchanged version-2 `modified` state reuses the
+last verified facts; a changed/new article fetches one bounded detail page and
+runs the existing evidence-bound official-text extractor. The raw WordPress
+body is also scanned deterministically for dates that lead semantic content
+blocks. Every such date from today through the next 44 days must have an
+extracted event starting on that date. If the first extraction misses one or
+more required dates, one targeted bounded recovery reuses the existing
+Guardamar standalone extractor for exactly those missing dates; an article
+that is still incomplete is rejected. A broad date-range event cannot satisfy
+multiple explicit occurrence dates. Version-1 generic programme facts are not
+trusted after this completeness upgrade and are revalidated once. The article
+must still yield at least two validated programme events overall. The adapter
+is text-first: it does not OCR arbitrary article images. Temporary
+source/model failures retain only compatible last-good version-2 facts.
 
 Dated Monday library film rows in the same official Turismo `CINE` text are
 also read deterministically on every existing page refresh, including when the
