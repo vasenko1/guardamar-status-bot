@@ -69,7 +69,6 @@ class Event:
     capacity_limited: bool = False
     teaser: Optional[str] = None
     programme_title: Optional[str] = None
-    programme_display_title: Optional[str] = None
     programme_order: Optional[int] = None
     session_group_key: Optional[str] = None
     duration_minutes: Optional[int] = None
@@ -83,6 +82,7 @@ class Event:
     route: Optional[str] = None
     admission_evidence: Optional[str] = None
     image_url: Optional[str] = None
+    programme_display_title: Optional[str] = None
 
 
 @dataclass(frozen=True)
