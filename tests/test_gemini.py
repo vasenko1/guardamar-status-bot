@@ -10,6 +10,7 @@ from telegrambot.gemini import (
     GeminiError,
     _extract_agenda_events,
     _extract_agenda_text_events,
+    _read_fiesta_programme_poster,
     _request_json,
     _verify_agenda_poster_events,
     _compose_traffic_notice,
@@ -175,6 +176,25 @@ class GeminiRequestTests(unittest.TestCase):
         self.assertIn("may span several months", prompt)
         self.assertIn("must not limit", prompt)
         self.assertIn("nearest preceding explicit date heading", prompt)
+
+    def test_fiesta_programme_prompt_keeps_two_column_same_day_acts_separate(self):
+        with patch(
+            "telegrambot.gemini._request_json",
+            return_value={"month": "2026-09", "events": []},
+        ) as request_json:
+            _read_fiesta_programme_poster(
+                "secret-key",
+                b"image",
+                "image/jpeg",
+                independent=True,
+            )
+
+        prompt = request_json.call_args.args[1][0]["text"]
+        self.assertIn("two-column poster", prompt)
+        self.assertIn("span two calendar months", prompt)
+        self.assertIn("separate times", prompt)
+        self.assertIn("transfer, Mass, presentation", prompt)
+        self.assertIn("from scratch", prompt)
 
     def test_poster_verification_is_a_blind_second_reading(self):
         with patch(
