@@ -491,6 +491,85 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len({group for _, group in plan}), 1)
         self.assertIsNotNone(plan[0][1])
 
+    def test_fresh_unique_non_session_rows_clear_stale_session_metadata(self):
+        day = date(2026, 9, 26)
+        stale = tuple(
+            SourceEvent(
+                title_es=title,
+                start_date=day,
+                end_date=day,
+                start_time=start,
+                end_time=None,
+                place="Museo Arqueológico",
+                category="event",
+                sources=("todo_cultura",),
+                session_source_key="todo_cultura:" + "a" * 64,
+                session_parent_title_es="Escape room antiguo",
+            )
+            for title, start in (
+                ("Taller infantil A", "11:00"),
+                ("Taller infantil B", "12:00"),
+            )
+        )
+        rows = (
+            (
+                day,
+                "11:00",
+                "2026-09-26\n– 11 h.: Taller infantil A.",
+            ),
+            (
+                day,
+                "12:00",
+                "2026-09-26\n– 12 h.: Taller infantil B.",
+            ),
+        )
+
+        refreshed = _annotate_todo_source_sessions(stale, rows)
+
+        self.assertTrue(all(
+            event.session_source_key is None
+            and event.session_parent_title_es is None
+            for event in refreshed
+        ))
+        self.assertTrue(all(
+            group is None
+            for _, group in _session_source_plan(refreshed)
+        ))
+
+    def test_ambiguous_fresh_row_does_not_erase_last_known_session_metadata(self):
+        day = date(2026, 9, 26)
+        source_key = "todo_cultura:" + "b" * 64
+        events = (
+            SourceEvent(
+                "Escape room del museo (primer turno)",
+                day, day, "11:00", "11:45",
+                "Museo Arqueológico", "event",
+                sources=("todo_cultura",),
+                session_source_key=source_key,
+                session_parent_title_es="Escape room del museo",
+            ),
+            SourceEvent(
+                "Escape room del museo para niños (primer turno)",
+                day, day, "11:00", "11:45",
+                "Museo Arqueológico", "event",
+                sources=("todo_cultura",),
+                session_source_key=source_key,
+                session_parent_title_es="Escape room del museo",
+            ),
+        )
+        rows = ((
+            day,
+            "11:00",
+            "2026-09-26\n– 11 h.: Primer turno para Escape room del museo.",
+        ),)
+
+        refreshed = _annotate_todo_source_sessions(events, rows)
+
+        self.assertEqual(
+            [event.session_source_key for event in refreshed],
+            [source_key, source_key],
+        )
+
     def test_legacy_parent_without_source_key_is_ignored_not_corrupt(self):
         events = self._escape_events()
         now = datetime(2026, 9, 26, 10, 0, tzinfo=TZ)
