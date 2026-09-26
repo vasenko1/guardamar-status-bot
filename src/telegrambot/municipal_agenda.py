@@ -30,7 +30,7 @@ from .gemini import (
 from .event_translations import (
     cached_title, cached_translation, reviewed_translation, spanish_fallback,
 )
-from .event_urls import normalize_ticket_url
+from .event_urls import normalize_registration_url, normalize_ticket_url
 from .event_places import canonical_event_place, event_place_is_map_safe
 from .event_facts import ROUTE_DIFFICULTY_PREFIX
 from .facebook import FacebookError, FacebookPost, fetch_facebook_posts
@@ -507,6 +507,7 @@ class SourceEvent:
     ticket_url: Optional[str] = None
     participation_note: Optional[str] = None
     registration_contact: Optional[str] = None
+    registration_url: Optional[str] = None
     capacity_limited: bool = False
     admission_evidence: Optional[str] = None
     teaser_es: Optional[str] = None
@@ -1362,14 +1363,34 @@ def _word_overlap(left: str, right: str) -> float:
     )
 
 
-def _supported_title(title: str, evidence: str) -> bool:
-    """Require every meaningful title word to occur in the exact quotation."""
+def _supported_title(
+    title: str,
+    evidence: str,
+    *,
+    allow_source_digit_typo: bool = False,
+) -> bool:
+    """Require source-supported title words, tolerating one obvious digit typo."""
 
     title_words = _claim_words(title)
     evidence_words = _claim_words(evidence)
     if not title_words:
         return False
-    return title_words <= evidence_words
+    if title_words <= evidence_words:
+        return True
+    if not allow_source_digit_typo:
+        return False
+    missing = title_words - evidence_words
+    if len(missing) != 1:
+        return False
+    target = next(iter(missing))
+    if not target.isalpha():
+        return False
+    return any(
+        len(candidate) == len(target)
+        and any(char.isdigit() for char in candidate)
+        and sum(left != right for left, right in zip(target, candidate)) == 1
+        for candidate in evidence_words - title_words
+    )
 
 
 def _claim_words(value: str) -> set[str]:
@@ -1629,6 +1650,10 @@ def merge_text_and_poster_events(
                 "registration_contact": (
                     current.registration_contact
                     or (poster_event.registration_contact if same_occurrence else None)
+                ),
+                "registration_url": (
+                    current.registration_url
+                    or (poster_event.registration_url if same_occurrence else None)
                 ),
                 "capacity_limited": (
                     current.capacity_limited
@@ -1927,6 +1952,7 @@ def _enrich_todo_participation(
             facts = {
                 (
                     detail.registration_contact,
+                    detail.registration_url,
                     detail.participation_note,
                     detail.capacity_limited,
                     detail.start_time,
@@ -1968,6 +1994,9 @@ def _enrich_todo_participation(
             ),
             registration_contact=(
                 event.registration_contact or best.registration_contact
+            ),
+            registration_url=(
+                event.registration_url or best.registration_url
             ),
             capacity_limited=(
                 event.capacity_limited or best.capacity_limited
@@ -2230,7 +2259,11 @@ def normalize_extraction(
                 evidence is None
                 or len(evidence) < 10
                 or evidence not in " ".join(source_text.split())
-                or not _supported_title(title_es, evidence)
+                or not _supported_title(
+                    title_es,
+                    evidence,
+                    allow_source_digit_typo=(source == "todo_cultura"),
+                )
                 or not _evidence_supports_date(start_date, evidence)
                 or not _evidence_supports_date(end_date, evidence)
                 or (
@@ -2276,6 +2309,13 @@ def normalize_extraction(
         registration_contact = _clean_text(
             raw.get("registration_contact"), 180
         )
+        registration_url = raw.get("registration_url")
+        if registration_url is not None:
+            if not isinstance(registration_url, str):
+                raise MunicipalAgendaError("invalid event registration URL")
+            registration_url = normalize_registration_url(registration_url)
+            if registration_url is None:
+                raise MunicipalAgendaError("invalid event registration URL")
         capacity_limited = raw.get("capacity_limited", False)
         if not isinstance(capacity_limited, bool):
             raise MunicipalAgendaError("invalid event capacity flag")
@@ -2321,6 +2361,7 @@ def normalize_extraction(
             ticket_url=ticket_url,
             participation_note=participation_note,
             registration_contact=registration_contact,
+            registration_url=registration_url,
             capacity_limited=capacity_limited,
             admission_evidence=admission_evidence,
             duration_minutes=duration_minutes,
@@ -2410,6 +2451,7 @@ def _snapshot_data(
                 "ticket_url": event.ticket_url,
                 "participation_note": event.participation_note,
                 "registration_contact": event.registration_contact,
+                "registration_url": event.registration_url,
                 "capacity_limited": event.capacity_limited,
                 "admission_evidence": event.admission_evidence,
                 "teaser_es": event.teaser_es,
@@ -3018,6 +3060,7 @@ async def refresh_municipal_catalog(
         )
         todo_events = prior_todo_events
         todo_window = None
+        todo_state_complete = True
         todo_enrichment_programs: Tuple[object, ...] = ()
         todo_explicit_rows: Tuple[Tuple[date, str, str], ...] = ()
         try:
@@ -3109,19 +3152,29 @@ async def refresh_municipal_catalog(
                         todo_program.event_rows,
                         (*new_todo_events, *corroborating_events),
                     )
+                program_complete = not pending_rows
                 if pending_rows:
+                    todo_state_complete = False
                     missing = ", ".join(
                         f"{day.isoformat()} {start_time}"
                         for day, start_time, _ in pending_rows
                     )
-                    raise MunicipalAgendaError(
-                        "Todo Cultura extraction was incomplete",
-                        code="TODO-INCOMPLETE",
-                        description=(
-                            "не все строки программы распознаны; "
-                            f"не подтверждено время {missing}"
-                        ),
+                    LOGGER.warning(
+                        "Todo Cultura extraction incomplete; keeping verified "
+                        "rows without advancing source state: %s",
+                        missing,
                     )
+                    if diagnostics is not None:
+                        diagnostics.append(SourceDiagnostic(
+                            "TODO-CULTURA-TODO-INCOMPLETE",
+                            "Todo Cultura Vega Baja",
+                            (
+                                "не все строки программы распознаны; "
+                                f"не подтверждено время {missing}; "
+                                "проверенные строки сохранены, источник "
+                                "будет перечитан"
+                            ),
+                        ))
                 new_todo_events = _expand_explicit_todo_dates(
                     new_todo_events, todo_program.event_rows
                 )
@@ -3143,18 +3196,22 @@ async def refresh_municipal_catalog(
                 if not new_todo_events:
                     continue
                 refreshed_dates = set(todo_program.dates)
-                retained = tuple(
-                    event
-                    for event in todo_events
-                    if not any(
-                        event.start_date <= target <= event.end_date
-                        and candidate.start_date <= target <= candidate.end_date
-                        and _word_overlap(
-                            event.title_es, candidate.title_es
-                        ) >= 0.5
-                        for target in refreshed_dates
-                        for candidate in new_todo_events
+                retained = (
+                    tuple(
+                        event
+                        for event in todo_events
+                        if not any(
+                            event.start_date <= target <= event.end_date
+                            and candidate.start_date <= target <= candidate.end_date
+                            and _word_overlap(
+                                event.title_es, candidate.title_es
+                            ) >= 0.5
+                            for target in refreshed_dates
+                            for candidate in new_todo_events
+                        )
                     )
+                    if program_complete
+                    else todo_events
                 )
                 todo_events = merge_text_and_poster_events(
                     retained,
@@ -3309,17 +3366,28 @@ async def refresh_municipal_catalog(
             )
             if current_admissions:
                 events = _enrich_admissions(events, current_admissions)
+            current_participation = tuple(
+                detail
+                for program in todo_window.programs
+                for detail in program.participation
+            )
+            target_dates = tuple(dict.fromkeys(
+                day
+                for program in todo_window.programs
+                for day in program.dates
+            ))
+            if current_participation:
+                for target_date in target_dates:
+                    events = _enrich_todo_participation(
+                        events, current_participation, target_date
+                    )
             current_summaries = tuple(
                 summary
                 for program in todo_window.programs
                 for summary in program.summaries
             )
             if current_summaries:
-                for target_date in tuple(dict.fromkeys(
-                    day
-                    for program in todo_window.programs
-                    for day in program.dates
-                )):
+                for target_date in target_dates:
                     events = _enrich_todo_summaries(
                         events, current_summaries, target_date
                     )
@@ -3392,7 +3460,7 @@ async def refresh_municipal_catalog(
             }
         elif isinstance(poster_source, dict) and poster_source:
             source_state["mupi"] = poster_source
-        if todo_window is not None:
+        if todo_window is not None and todo_state_complete:
             evidence = [
                 detail
                 for program in todo_window.programs
@@ -3785,6 +3853,7 @@ async def fetch_today_municipal_events(
                 ticket_url=source.ticket_url,
                 participation_note=participation_note,
                 registration_contact=source.registration_contact,
+                registration_url=source.registration_url,
                 capacity_limited=source.capacity_limited,
                 duration_minutes=source.duration_minutes,
                 audience_label=audience_label,
