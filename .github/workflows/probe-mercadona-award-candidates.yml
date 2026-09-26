@@ -1,4 +1,4 @@
-name: Probe WCCC full results
+name: Probe WCCC result backend
 
 on:
   push:
@@ -16,34 +16,64 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Probe MyEntries results
+      - name: Probe MyEntries app and semicurado SKU
         run: |
           python - <<'PY'
-          import re, urllib.request
-          url="https://myentries.org/results"
-          req=urllib.request.Request(url,headers={"User-Agent":"GuardamarMorningDigest/0.13"})
-          with urllib.request.urlopen(req,timeout=20) as r:
-              body=r.read()
-              print("status",r.status)
-              print("type",r.headers.get_content_type())
-              print("final",r.geturl())
-          text=body.decode("utf-8","replace")
-          print("bytes",len(body))
-          for needle in ("2026","World Championship","Valle","Entrepinares","result","api","graphql","fetch(","axios","script"):
-              print("NEEDLE",needle,"COUNT",text.lower().count(needle.lower()))
-          print("=== URLS ===")
-          seen=[]
-          for m in re.finditer(r'https?://[^"\'<>\s]+',text):
-              u=m.group(0).replace("&amp;","&")
-              if u not in seen:
-                  seen.append(u)
-          for u in seen[:120]:
-              print(u)
-          print("=== FORM/AJAX LINES ===")
-          for line in text.splitlines():
-              low=line.lower()
-              if any(x in low for x in ("form", "ajax", "fetch(", "axios", "api/", "results", "contest")):
-                  compact=" ".join(line.split())
-                  if compact:
-                      print(compact[:1200])
+          import json, re, urllib.request
+
+          ua={"User-Agent":"GuardamarMorningDigest/0.13"}
+
+          def get(url):
+              req=urllib.request.Request(url,headers=ua)
+              with urllib.request.urlopen(req,timeout=20) as r:
+                  return r.read(), r.geturl(), r.headers.get_content_type()
+
+          body,_,_=get("https://myentries.org/results")
+          html=body.decode("utf-8","replace")
+          m=re.search(r'<script[^>]+src=["\']([^"\']*app\.js)["\']',html,re.I)
+          print("APP",m.group(1) if m else None)
+          if m:
+              app_url=m.group(1)
+              if app_url.startswith("/"):
+                  app_url="https://myentries.org"+app_url
+              js,_,_=get(app_url)
+              text=js.decode("utf-8","replace")
+              print("APP_BYTES",len(js))
+              patterns=set()
+              for mm in re.finditer(r'["\']([^"\']*(?:result|contest|api)[^"\']*)["\']',text,re.I):
+                  value=mm.group(1)
+                  if len(value)<400:
+                      patterns.add(value)
+              for value in sorted(patterns):
+                  print("TOKEN",value)
+              for needle in ("axios","results","contest","/api","api/"):
+                  print("=== CONTEXT",needle,"===")
+                  pos=0
+                  shown=0
+                  while shown<12:
+                      pos=text.lower().find(needle.lower(),pos)
+                      if pos<0: break
+                      print(text[max(0,pos-500):pos+900])
+                      pos+=len(needle)
+                      shown+=1
+
+          print("=== MERCADONA 11672 ===")
+          body,_,_=get("https://tienda.mercadona.es/api/products/11672/?lang=es&wh=alc1")
+          obj=json.loads(body)
+          details=obj.get("details") or {}
+          nutrition=obj.get("nutrition_information") or {}
+          pi=obj.get("price_instructions") or {}
+          print(json.dumps({
+              "id":obj.get("id"),
+              "name":obj.get("display_name"),
+              "ean":obj.get("ean"),
+              "published":obj.get("published"),
+              "unavailable_from":obj.get("unavailable_from"),
+              "unavailable_weekdays":obj.get("unavailable_weekdays"),
+              "share_url":obj.get("share_url"),
+              "suppliers":details.get("suppliers"),
+              "legal_name":details.get("legal_name"),
+              "ingredients":nutrition.get("ingredients"),
+              "price":{k:pi.get(k) for k in ("unit_price","unit_size","size_format","reference_price","reference_format","approx_size")},
+          },ensure_ascii=False))
           PY
