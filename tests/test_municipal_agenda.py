@@ -1508,6 +1508,14 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         )
         programme_text_patcher.start()
         self.addCleanup(programme_text_patcher.stop)
+        ayuntamiento_programme_patcher = patch(
+            "telegrambot.municipal_agenda._ayuntamiento_programme_events",
+            new=AsyncMock(side_effect=lambda _key, _day, prior, state: (
+                prior, state
+            )),
+        )
+        ayuntamiento_programme_patcher.start()
+        self.addCleanup(ayuntamiento_programme_patcher.stop)
         patcher = patch(
             "telegrambot.municipal_agenda.fetch_program_window",
             new=AsyncMock(side_effect=TodoCulturaError(
