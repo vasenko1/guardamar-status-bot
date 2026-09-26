@@ -1198,7 +1198,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 preview=True,
             )
             if publication is None:
-                print("No verified private-label product award is eligible")
+                print("No verified supermarket product award is eligible")
             else:
                 print(publication.message)
             return 0
@@ -1261,7 +1261,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 "SUCCESS: product award delivered: %s / %s / %s "
                 "(event %s, message %s)",
                 publication.candidate.retailer,
-                publication.candidate.private_label,
+                publication.candidate.retail.relationship,
                 publication.candidate.result,
                 item.event_id,
                 message_id,
