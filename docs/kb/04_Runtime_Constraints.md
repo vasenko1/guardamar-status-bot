@@ -210,7 +210,13 @@ allowed for the guide.
   blocks prove missing current/future occurrence dates, at most one targeted
   recovery extraction over a smaller official-text slice containing only those
   missing date sections. Unchanged verified version-3 articles require neither
-  detail reads nor model calls. The 05:10 refresh may read one Todo Cultura metadata page, bounded
+  detail reads nor model calls. The same refresh may read one bounded
+  Ayuntamiento news index and at most two recent fiesta detail pages. Only a
+  new or changed event-specific official poster is downloaded, with a 4 MiB
+  bound, and it receives exactly two blind structured vision readings; an
+  unchanged verified article requires no poster download and no model call.
+  No arbitrary municipal image is sent to vision. The 05:10 refresh may read
+  one Todo Cultura metadata page, bounded
   to 100 records and 300 KiB, and up to
   six bounded detail records in at most two REST reads of four records and
   300 KiB each, while sending at most three selected programme
