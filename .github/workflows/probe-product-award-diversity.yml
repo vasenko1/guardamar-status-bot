@@ -16,33 +16,38 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Probe OCU AOVE and Mercadona exact SKU
+      - name: Probe exact OCU product blocks
         run: |
           python - <<'PY'
-          import json, urllib.request
+          import re, urllib.request
 
-          headers={"User-Agent":"GuardamarMorningDigest/0.13"}
-
-          print("=== OCU AOVE RAW ===")
-          url="https://www.ocu.org/alimentacion/aceite-oliva/comparador/hacendado-mercadona-aove/196/109008"
-          req=urllib.request.Request(url,headers={**headers,"Accept":"text/html"})
-          with urllib.request.urlopen(req,timeout=20) as r:
-              body=r.read().decode("utf-8","replace")
-          print("bytes",len(body))
-          for needle in ("109008","HACENDADO (MERCADONA) AOVE","89","Compra Maestra","4,86","4.86","1000 ml","Oleoestepa"):
-              pos=body.lower().find(needle.lower())
-              print("needle",needle,"pos",pos)
-              if pos>=0:
-                  print(body[max(0,pos-1200):pos+3000].replace("\n"," ")[:4500])
-
-          print("=== MERCADONA SKU 4740 ===")
-          url="https://tienda.mercadona.es/api/products/4740/?lang=es&wh=alc1"
-          req=urllib.request.Request(url,headers={**headers,"Accept":"application/json"})
-          with urllib.request.urlopen(req,timeout=20) as r:
-              obj=json.load(r)
-          for key in ("id","display_name","ean","brand","packaging","published","unavailable_from","unavailable_weekdays","share_url"):
-              print(key,repr(obj.get(key)))
-          print("price",json.dumps(obj.get("price_instructions"),ensure_ascii=False))
-          print("details",json.dumps(obj.get("details"),ensure_ascii=False))
-          print("nutrition",json.dumps(obj.get("nutrition_information"),ensure_ascii=False)[:5000])
+          headers={"User-Agent":"GuardamarMorningDigest/0.13","Accept":"text/html"}
+          cases=[
+              ("AOVE","https://www.ocu.org/alimentacion/aceite-oliva/comparador/hacendado-mercadona-aove/196/109008","109008"),
+              ("NALTROS","https://www.ocu.org/alimentacion/vino/comparador/naltros-aldi-brut/210/124487","124487"),
+          ]
+          for label,url,pid in cases:
+              print("===",label,pid,"===")
+              with urllib.request.urlopen(urllib.request.Request(url,headers=headers),timeout=20) as r:
+                  body=r.read().decode("utf-8","replace")
+              needles=[
+                  f'data-productphoenixid="{pid}"',
+                  f'open-quality-box-{pid}',
+                  f'data-selector="open-quality-box-{pid}"',
+                  f'data-compare-id="{pid}"',
+              ]
+              positions=[]
+              for needle in needles:
+                  start=0
+                  while True:
+                      pos=body.find(needle,start)
+                      if pos<0: break
+                      positions.append(pos)
+                      start=pos+1
+              print("positions",sorted(set(positions)))
+              for pos in sorted(set(positions))[:8]:
+                  block=body[max(0,pos-3500):pos+5500]
+                  print("---BLOCK---")
+                  print(re.sub(r"\s+"," ",block)[:9000])
+                  print("---END---")
           PY
