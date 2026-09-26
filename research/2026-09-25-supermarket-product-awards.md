@@ -1206,10 +1206,10 @@ Validation on the final functional head before removing the temporary
 branch-only workflow:
 
 - Python compileall: passed;
-- product-award modules: **46 tests passed**;
-- complete repository suite: **1337 tests passed**;
+- product-award modules: **53 tests passed**;
+- complete repository suite: **1344 tests passed**;
 - temporary validation workflow was removed from the final diff.
-- live `product-awards-preview` on 26 September 2026 returned no eligible item after the >=85 OCU gate; this is expected because WCCC and retailer price-refresh adapters are not yet registered.
+- live `product-awards-preview` on 26 September 2026 produced the reviewed WCCC Top-20 Entrepinares / Mercadona SKU 50952 article with a fresh official Mercadona offer: approximately 370 g, 6.19 EUR, 16.74 EUR/kg.
 
 The next implementation unit should therefore be one **real retailer evidence
 adapter backed by a proven live source contract**, not another generic
