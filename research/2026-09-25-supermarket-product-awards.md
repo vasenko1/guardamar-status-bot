@@ -1104,3 +1104,63 @@ Because no production product-award state has been established yet, evolving
 the serialized candidate/state schema now is cheaper and safer than maintaining
 a compatibility layer for an unused schema.
 
+## Implementation status — 26 September 2026
+
+The ADR 0084 foundation has now been implemented on draft PR #195 without
+adding any speculative retailer crawler.
+
+Implemented:
+
+- `ProductAwardCandidate` no longer assumes every product is a private label;
+- explicit `RetailEvidence` distinguishes `private_label`, `exclusive`
+  and `listed` relationships and can retain exact retailer product ID, EAN,
+  exact product URL and variant evidence;
+- award event identity remains source-native and independent of retail price,
+  stock and media;
+- state schema is version 5; no compatibility layer was added because the
+  feature has not yet established production state;
+- the shared core no longer ranks unrelated award vocabularies;
+- OCU owns its own `Mejor del Análisis` vs `Compra Maestra` precedence;
+- OCU coverage now includes verified Auchan / Alcampo and DIA private-label
+  names in addition to the earlier allowlist;
+- labels identical to retailer names such as Carrefour or DIA require separate
+  product-brand evidence and are not accepted merely because the retailer name
+  appears in parentheses;
+- OCU editorial facts are separated into report-global method facts and
+  product-local distinctions so one product's tasting/quality statement cannot
+  leak to another result;
+- the deterministic renderer distinguishes private label, exclusive and listed
+  products and accepts an optional freshly verified `current_price`;
+- current price, when provided, takes precedence over an award-study price in
+  public wording;
+- delivery queue, per-source baseline, at-most-once Telegram semantics and
+  one-item-per-day policy remain unchanged.
+
+Deliberately **not** implemented yet:
+
+- no generic retailer catalogue search;
+- no continuous or daily scans of the eight retailers;
+- no Mercadona or Masymas parser before their exact browser-free contract is
+  separately proven;
+- no real publication-time retailer HTTP refresh yet — the renderer and data
+  model now expose the safe boundary for it, but no source-specific retail
+  adapter is registered;
+- no retailer product-photo publication; the default remains text-only unless a
+  source-specific reuse right is documented;
+- no new award source is registered beyond OCU.
+
+Validation on the final functional head before removing the temporary
+branch-only workflow:
+
+- Python compileall: passed;
+- product-award modules: **41 tests passed**;
+- complete repository suite: **1332 tests passed**;
+- temporary validation workflow was removed from the final diff.
+
+The next implementation unit should therefore be one **real retailer evidence
+adapter backed by a proven live source contract**, not another generic
+framework. Consum is the strongest clean candidate because its public catalogue
+can expose a stable product code and often EAN; ALDI, Lidl, Alcampo and DIA are
+also strong candidates. Mercadona and Masymas still need their dedicated
+browser-free contract probes.
+
