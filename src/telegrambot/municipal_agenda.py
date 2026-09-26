@@ -4565,6 +4565,10 @@ async def refresh_municipal_catalog(
             event for event in old_events
             if TURISMO_PROGRAMME_TEXT_SOURCE in event.sources
         )
+        old_ayuntamiento_programme_events = tuple(
+            event for event in old_events
+            if AYUNTAMIENTO_PROGRAMME_SOURCE in event.sources
+        )
 
         text_source = old_sources.get("turismo_html", {})
         if not page_text:
@@ -5018,9 +5022,29 @@ async def refresh_municipal_catalog(
                 ),
             )
         )
+        ayuntamiento_programme_source = old_sources.get(
+            AYUNTAMIENTO_PROGRAMME_SOURCE, {}
+        )
+        (
+            ayuntamiento_programme_events,
+            ayuntamiento_programme_state,
+        ) = await _ayuntamiento_programme_events(
+            api_key,
+            local_now.date(),
+            old_ayuntamiento_programme_events,
+            (
+                ayuntamiento_programme_source
+                if isinstance(ayuntamiento_programme_source, dict)
+                else {}
+            ),
+        )
         events = merge_text_and_poster_events(text_events, poster_events)
         events = merge_text_and_poster_events(events, programme_events)
         events = merge_text_and_poster_events(events, programme_text_events)
+        events = merge_text_and_poster_events(
+            events,
+            ayuntamiento_programme_events,
+        )
         events = merge_text_and_poster_events(events, todo_events)
         events = merge_text_and_poster_events(events, facebook_events)
         events = _normalize_exhibition_opening_times(events)
@@ -5178,6 +5202,11 @@ async def refresh_municipal_catalog(
         if programme_text_state:
             source_state[TURISMO_PROGRAMME_TEXT_SOURCE] = {
                 **programme_text_state,
+                "checked_at": now.isoformat(),
+            }
+        if ayuntamiento_programme_state:
+            source_state[AYUNTAMIENTO_PROGRAMME_SOURCE] = {
+                **ayuntamiento_programme_state,
                 "checked_at": now.isoformat(),
             }
         if facebook_state:
