@@ -1279,10 +1279,9 @@ def _session_count_label(count: int) -> str:
 def _session_time_label(event) -> str:
     start = event.starts_at.astimezone(GUARDAMAR_TIMEZONE)
     label = start.strftime("%H:%M")
-    if event.ends_at is not None:
+    if event.ends_at is not None and event.duration_minutes is None:
         end = event.ends_at.astimezone(GUARDAMAR_TIMEZONE)
-        if end.date() == start.date():
-            label += "–" + end.strftime("%H:%M")
+        label += "–" + end.strftime("%H:%M")
     return label
 
 
