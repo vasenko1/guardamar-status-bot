@@ -205,3 +205,46 @@ that source structure:
 
 The recovery budget remains one model call. No new source, browser, OCR,
 scheduler, retry loop or persisted event type is added.
+
+
+## 26 September 2026 amendment: Ayuntamiento fiesta-poster backstop
+
+Production verification after the section-context repair still left the Rosario
+programme fail-closed: the generic Turismo text did not produce complete
+same-day occurrences, while the official Ayuntamiento article published one
+event-specific programme image containing the full two-column schedule.
+
+A separate first-party backstop therefore reads only recent fiesta posts from
+the Ayuntamiento news index. This is deliberately not generic image crawling:
+
+- only dated same-year Ayuntamiento news links whose visible title is
+  fiesta-shaped are candidates; the specialized Fiestas del Campo adapter is
+  excluded;
+- at most two recent candidate articles are considered;
+- the detail page must expose one official `/wp-content/uploads/` image whose
+  upload filename explicitly identifies it as a programme/tríptico; title overlap
+  may rank several programme images but can never make an ordinary fiesta photo eligible;
+- the selected official poster URL is the stable change identity; unchanged
+  verified poster URLs reuse normalized facts without downloading the image or
+  invoking a model;
+- a new or changed programme poster is downloaded once and receives two blind
+  structured vision readings; only occurrences that agree across both readings
+  survive;
+- the fiesta-poster prompt explicitly handles tall two-column programmes,
+  September/October spans, and several separately timed acts on the same day;
+- the official image is never treated as evidence for an inferred time or place:
+  illegible fields remain null;
+- normalized occurrences are merged ahead of supplemental Todo Cultura facts,
+  so a readable first-party poster can supply exact same-day acts without
+  creating a parallel publication path;
+- the poster bytes and raw OCR/model responses are not persisted.
+
+For Rosario, the regression contract keeps the 26 September rows separate at
+17:00 (Bingo), 19:50 (traslado) and 20:00 (Santa Misa / presentation) when both
+blind readings support them. The adapter remains optional and fail-closed: a
+missing or ambiguous poster cannot fabricate coverage and does not block the
+rest of the municipal catalog.
+
+This adds no scheduler, daemon, browser, dependency, retry loop or general OCR
+pipeline. It reuses the existing 05:10 municipal refresh, bounded transport,
+normalized catalog, duplicate merge, and two-reading poster policy.

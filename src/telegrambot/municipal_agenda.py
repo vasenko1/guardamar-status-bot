@@ -23,9 +23,11 @@ from .gemini import (
     GeminiError,
     extract_agenda_events,
     extract_agenda_text_events,
+    extract_fiesta_programme_poster_events,
     extract_guardamar_standalone_events,
     translate_event_titles,
     verify_agenda_poster_events,
+    verify_fiesta_programme_poster_events,
 )
 from .event_translations import (
     cached_title, cached_translation, reviewed_translation, spanish_fallback,
@@ -88,6 +90,11 @@ TURISMO_PROGRAMME_TEXT_EXTRACTOR_VERSION = 3
 MAX_TURISMO_PROGRAMME_ARTICLES = 3
 TURISMO_PROGRAMME_HORIZON_DAYS = 44
 TURISMO_PROGRAMME_PAST_GRACE_DAYS = 14
+AYUNTAMIENTO_NEWS_URL = "https://www.guardamardelsegura.es/noticias/"
+AYUNTAMIENTO_PROGRAMME_SOURCE = "ayuntamiento_programme"
+AYUNTAMIENTO_PROGRAMME_EXTRACTOR_VERSION = 1
+MAX_AYUNTAMIENTO_PROGRAMME_ARTICLES = 2
+AYUNTAMIENTO_PROGRAMME_HORIZON_DAYS = 44
 CULTURA_GUARDAMAR_PAGE_URL = "https://www.facebook.com/culturaguardamar"
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 _TIME_PATTERN = re.compile(r"^\d{2}:\d{2}$")
@@ -1042,6 +1049,192 @@ class _PosterParser(HTMLParser):
             self.urls.append(candidate)
 
 
+class _AyuntamientoProgrammeIndexParser(HTMLParser):
+    """Collect dated official news links and their visible anchor text."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.links: List[Tuple[str, str]] = []
+        self._href: Optional[str] = None
+        self._parts: List[str] = []
+
+    def handle_starttag(
+        self,
+        tag: str,
+        attrs: List[Tuple[str, Optional[str]]],
+    ) -> None:
+        if tag.casefold() != "a" or self._href is not None:
+            return
+        href = dict(attrs).get("href")
+        if href:
+            self._href = href
+            self._parts = []
+
+    def handle_data(self, data: str) -> None:
+        if self._href is not None:
+            self._parts.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.casefold() != "a" or self._href is None:
+            return
+        title = " ".join(html.unescape(" ".join(self._parts)).split())
+        self.links.append((self._href, title))
+        self._href = None
+        self._parts = []
+
+
+class _AyuntamientoProgrammeImageParser(HTMLParser):
+    """Collect event-specific upload images from one Ayuntamiento article."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.og_images: List[str] = []
+        self.images: List[str] = []
+
+    def handle_starttag(
+        self,
+        tag: str,
+        attrs: List[Tuple[str, Optional[str]]],
+    ) -> None:
+        values = dict(attrs)
+        lowered = tag.casefold()
+        if lowered == "meta":
+            prop = (values.get("property") or values.get("name") or "").casefold()
+            content = values.get("content")
+            if prop in {"og:image", "twitter:image"} and content:
+                self.og_images.append(content)
+            return
+        if lowered != "img":
+            return
+        for key in ("src", "data-src", "data-lazy-src"):
+            candidate = values.get(key)
+            if candidate:
+                self.images.append(candidate)
+        srcset = values.get("srcset")
+        if srcset:
+            for item in srcset.split(","):
+                candidate = item.strip().split(" ", 1)[0]
+                if candidate:
+                    self.images.append(candidate)
+
+
+def _normalized_ayuntamiento_url(value: str, base_url: str) -> Optional[str]:
+    try:
+        url = urllib.parse.urljoin(base_url, value)
+        parsed = urllib.parse.urlsplit(url)
+        port = parsed.port
+    except (TypeError, ValueError):
+        return None
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname not in POSTER_HOSTS
+        or port not in {None, 443}
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        return None
+    return urllib.parse.urlunsplit(parsed._replace(query="", fragment=""))
+
+
+_AYUNTAMIENTO_DATED_POST = re.compile(
+    r"^/(?P<year>\d{4})/(?P<month>\d{2})/(?P<day>\d{2})/[^/]+/?$"
+)
+
+
+def _ayuntamiento_programme_candidates_from_html(
+    payload: bytes,
+    local_day: date,
+) -> Tuple[Dict[str, str], ...]:
+    parser = _AyuntamientoProgrammeIndexParser()
+    parser.feed(payload.decode("utf-8", "replace"))
+    parser.close()
+    result: List[Dict[str, str]] = []
+    seen = set()
+    for href, title in parser.links:
+        url = _normalized_ayuntamiento_url(href, AYUNTAMIENTO_NEWS_URL)
+        if url is None or url in seen:
+            continue
+        match = _AYUNTAMIENTO_DATED_POST.match(urllib.parse.urlparse(url).path)
+        if match is None:
+            continue
+        try:
+            published = date(
+                int(match.group("year")),
+                int(match.group("month")),
+                int(match.group("day")),
+            )
+        except ValueError:
+            continue
+        normalized = " ".join(title.split())
+        title_folded = normalized.casefold()
+        if (
+            published.year != local_day.year
+            or published < local_day - timedelta(days=90)
+            or published > local_day + timedelta(days=7)
+            or "fiest" not in title_folded
+            or "campo" in title_folded
+        ):
+            continue
+        seen.add(url)
+        result.append({
+            "link": url,
+            "title": normalized,
+            "published": published.isoformat(),
+        })
+        if len(result) >= MAX_AYUNTAMIENTO_PROGRAMME_ARTICLES:
+            break
+    return tuple(result)
+
+
+def _ayuntamiento_programme_image_url(
+    payload: bytes,
+    article_url: str,
+    title: str,
+) -> Optional[str]:
+    parser = _AyuntamientoProgrammeImageParser()
+    parser.feed(payload.decode("utf-8", "replace"))
+    parser.close()
+    title_words = {
+        word
+        for word in re.sub(
+            r"[^\w]+", " ", title.casefold(), flags=re.UNICODE
+        ).split()
+        if len(word) >= 5 and word not in {"fiestas", "honor"}
+    }
+    ranked = []
+    seen = set()
+    for is_meta, candidate in (
+        *((True, value) for value in parser.og_images),
+        *((False, value) for value in parser.images),
+    ):
+        url = _normalized_ayuntamiento_url(candidate, article_url)
+        if url is None or url in seen:
+            continue
+        parsed = urllib.parse.urlparse(url)
+        path = urllib.parse.unquote(parsed.path)
+        path_folded = path.casefold()
+        if (
+            "/wp-content/uploads/" not in path_folded
+            or not path_folded.endswith((".jpg", ".jpeg", ".png", ".webp"))
+        ):
+            continue
+        filename = path.rsplit("/", 1)[-1].casefold()
+        programme_hint = any(
+            term in filename
+            for term in ("prog", "program", "triptico")
+        )
+        if not programme_hint:
+            continue
+        overlap = sum(word in filename for word in title_words)
+        score = 20 + min(overlap, 5) + (2 if is_meta else 0)
+        seen.add(url)
+        ranked.append((score, url))
+    if not ranked:
+        return None
+    ranked.sort(key=lambda item: (-item[0], item[1]))
+    return ranked[0][1]
+
+
 def _is_allowed_url(url: str, allowed_hosts: set[str]) -> bool:
     parsed = urllib.parse.urlparse(url)
     return parsed.scheme == "https" and parsed.hostname in allowed_hosts
@@ -1098,6 +1291,59 @@ def _read_url(
             ),
         ) from exc
     return payload, mime_type
+
+
+def _read_official_html(url: str, limit: int = PAGE_LIMIT_BYTES) -> bytes:
+    try:
+        payload, _, _ = fetch_bounded(
+            url,
+            is_allowed_url=lambda value: _is_allowed_url(value, POSTER_HOSTS),
+            accepted_types=frozenset({"text/html"}),
+            limit_bytes=limit,
+            timeout_seconds=REQUEST_TIMEOUT_SECONDS,
+            headers={
+                "Accept": "text/html",
+                "User-Agent": "GuardamarMorningDigest/0.12",
+            },
+        )
+    except BoundedFetchError as exc:
+        raise MunicipalAgendaError(
+            f"Ayuntamiento programme request failed: {exc.code}",
+            code=exc.code,
+            status=exc.status,
+            description=(
+                f"сервер вернул HTTP {exc.status}"
+                if exc.status is not None
+                else _TRANSPORT_DESCRIPTIONS.get(exc.code)
+            ),
+        ) from exc
+    return payload
+
+
+def _read_ayuntamiento_programme_candidates(
+    local_day: date,
+) -> Tuple[Dict[str, str], ...]:
+    payload = _read_official_html(AYUNTAMIENTO_NEWS_URL)
+    return _ayuntamiento_programme_candidates_from_html(payload, local_day)
+
+
+def _read_ayuntamiento_programme_article(
+    candidate: Dict[str, str],
+) -> Tuple[str, str, str]:
+    link = candidate["link"]
+    payload = _read_official_html(link)
+    poster_url = _ayuntamiento_programme_image_url(
+        payload,
+        link,
+        candidate["title"],
+    )
+    if poster_url is None:
+        raise MunicipalAgendaError(
+            "Official Ayuntamiento programme image was not found",
+            code="NO-PROGRAMME-IMAGE",
+            description="в официальной публикации не найдена программа-картинка",
+        )
+    return link, candidate["title"], poster_url
 
 
 def _expand_explicit_todo_dates(
@@ -1657,6 +1903,218 @@ def _programme_article_metadata(
         )
         for index, event in enumerate(ordered, start=1)
     )
+
+
+async def _ayuntamiento_programme_events(
+    api_key: str,
+    local_day: date,
+    previous: Tuple[SourceEvent, ...],
+    previous_state: Dict[str, Any],
+) -> Tuple[Tuple[SourceEvent, ...], Dict[str, Any]]:
+    """Read recent first-party fiesta posters only when their article changes."""
+
+    horizon = local_day + timedelta(days=AYUNTAMIENTO_PROGRAMME_HORIZON_DAYS)
+    previous = tuple(
+        event
+        for event in previous
+        if local_day <= event.end_date <= horizon
+    )
+    raw_prior_articles = (
+        previous_state.get("articles", {})
+        if isinstance(previous_state.get("articles", {}), dict)
+        else {}
+    )
+    prior_articles = {
+        link: article
+        for link, article in raw_prior_articles.items()
+        if (
+            isinstance(article, dict)
+            and article.get("extractor_version")
+            == AYUNTAMIENTO_PROGRAMME_EXTRACTOR_VERSION
+        )
+    }
+    previous_by_title: Dict[str, Tuple[SourceEvent, ...]] = {}
+    for article in prior_articles.values():
+        title = article.get("programme_title")
+        if not isinstance(title, str):
+            continue
+        previous_by_title[title] = tuple(
+            event
+            for event in previous
+            if event.programme_title == title
+        )
+
+    try:
+        candidates = await asyncio.to_thread(
+            _read_ayuntamiento_programme_candidates,
+            local_day,
+        )
+    except MunicipalAgendaError as exc:
+        LOGGER.warning(
+            "Official Ayuntamiento programme index unavailable: %s",
+            exc,
+        )
+        return previous, {
+            "version": 1,
+            "articles": prior_articles,
+        }
+
+    events: List[SourceEvent] = []
+    next_articles: Dict[str, Dict[str, Any]] = {}
+    seen_links = set()
+    for candidate in candidates:
+        link = candidate["link"]
+        seen_links.add(link)
+        previous_article = prior_articles.get(link, {})
+        previous_title = (
+            previous_article.get("programme_title")
+            if isinstance(previous_article, dict)
+            else None
+        )
+        prior_events = (
+            previous_by_title.get(previous_title, ())
+            if isinstance(previous_title, str)
+            else ()
+        )
+        try:
+            (
+                article_url,
+                programme_title,
+                poster_url,
+            ) = await asyncio.to_thread(
+                _read_ayuntamiento_programme_article,
+                candidate,
+            )
+        except MunicipalAgendaError as exc:
+            LOGGER.warning(
+                "Official Ayuntamiento programme article unavailable: %s",
+                exc,
+            )
+            if prior_events and isinstance(previous_article, dict):
+                events.extend(prior_events)
+                next_articles[link] = dict(previous_article)
+            continue
+
+        if (
+            isinstance(previous_article, dict)
+            and previous_article.get("poster_url") == poster_url
+            and previous_article.get("extractor_version")
+            == AYUNTAMIENTO_PROGRAMME_EXTRACTOR_VERSION
+        ):
+            events.extend(prior_events)
+            next_articles[article_url] = dict(previous_article)
+            continue
+
+        try:
+            poster, mime_type = await asyncio.to_thread(
+                _read_url,
+                poster_url,
+                POSTER_HOSTS,
+                POSTER_LIMIT_BYTES,
+            )
+            poster_hash = hashlib.sha256(poster).hexdigest()
+            if (
+                isinstance(previous_article, dict)
+                and previous_article.get("poster_sha256") == poster_hash
+                and previous_article.get("extractor_version")
+                == AYUNTAMIENTO_PROGRAMME_EXTRACTOR_VERSION
+            ):
+                events.extend(prior_events)
+                next_articles[article_url] = {
+                    **previous_article,
+                    "poster_url": poster_url,
+                }
+                continue
+
+            month = _poster_month(poster_url)
+            first = await extract_fiesta_programme_poster_events(
+                api_key,
+                poster,
+                mime_type,
+            )
+            second = await verify_fiesta_programme_poster_events(
+                api_key,
+                poster,
+                mime_type,
+            )
+            first_events = normalize_extraction_candidates(
+                {**first, "month": month},
+                month,
+                AYUNTAMIENTO_PROGRAMME_SOURCE,
+            )
+            second_events = normalize_extraction_candidates(
+                {**second, "month": month},
+                month,
+                AYUNTAMIENTO_PROGRAMME_SOURCE,
+            )
+            verified = intersect_verified_poster_events(
+                first_events,
+                second_events,
+            )
+            if len(verified) < 2:
+                raise MunicipalAgendaError(
+                    "Official Ayuntamiento fiesta poster extraction was incomplete",
+                    code="PROGRAMME-INCOMPLETE",
+                    description="официальная программа праздника распознана неполно",
+                )
+            active_verified = tuple(
+                event
+                for event in verified
+                if local_day <= event.end_date <= horizon
+            )
+            active_verified = _programme_article_metadata(
+                active_verified,
+                programme_title,
+            )
+            active_verified = tuple(
+                replace(event, image_url=poster_url)
+                for event in active_verified
+            )
+            events.extend(active_verified)
+            next_articles[article_url] = {
+                "programme_title": programme_title,
+                "poster_url": poster_url,
+                "poster_sha256": poster_hash,
+                "extractor_version": AYUNTAMIENTO_PROGRAMME_EXTRACTOR_VERSION,
+            }
+        except (MunicipalAgendaError, GeminiError) as exc:
+            LOGGER.warning(
+                "Official Ayuntamiento fiesta poster unavailable: %s",
+                exc,
+            )
+            if prior_events and isinstance(previous_article, dict):
+                events.extend(prior_events)
+                next_articles[article_url] = dict(previous_article)
+
+    for link, article in prior_articles.items():
+        if link in seen_links:
+            continue
+        title = article.get("programme_title")
+        prior_events = (
+            previous_by_title.get(title, ())
+            if isinstance(title, str)
+            else ()
+        )
+        if prior_events:
+            events.extend(prior_events)
+            next_articles[link] = dict(article)
+
+    ordered = sorted(
+        {
+            _source_event_key(event): event
+            for event in events
+        }.values(),
+        key=lambda event: (
+            event.start_date,
+            event.start_time is None,
+            event.start_time or "",
+            normalized_title(event.title_es),
+        ),
+    )
+    return tuple(ordered[:MAX_EVENTS]), {
+        "version": 1,
+        "articles": next_articles,
+    }
 
 
 async def _turismo_text_programme_events(
@@ -4021,6 +4479,10 @@ async def refresh_municipal_catalog(
             event for event in old_events
             if TURISMO_PROGRAMME_TEXT_SOURCE in event.sources
         )
+        old_ayuntamiento_programme_events = tuple(
+            event for event in old_events
+            if AYUNTAMIENTO_PROGRAMME_SOURCE in event.sources
+        )
 
         text_source = old_sources.get("turismo_html", {})
         if not page_text:
@@ -4474,8 +4936,27 @@ async def refresh_municipal_catalog(
                 ),
             )
         )
+        ayuntamiento_programme_source = old_sources.get(
+            AYUNTAMIENTO_PROGRAMME_SOURCE, {}
+        )
+        (
+            ayuntamiento_programme_events,
+            ayuntamiento_programme_state,
+        ) = await _ayuntamiento_programme_events(
+            api_key,
+            local_now.date(),
+            old_ayuntamiento_programme_events,
+            (
+                ayuntamiento_programme_source
+                if isinstance(ayuntamiento_programme_source, dict) else {}
+            ),
+        )
         events = merge_text_and_poster_events(text_events, poster_events)
         events = merge_text_and_poster_events(events, programme_events)
+        events = merge_text_and_poster_events(
+            events,
+            ayuntamiento_programme_events,
+        )
         events = merge_text_and_poster_events(events, programme_text_events)
         events = merge_text_and_poster_events(events, todo_events)
         events = merge_text_and_poster_events(events, facebook_events)
@@ -4634,6 +5115,11 @@ async def refresh_municipal_catalog(
         if programme_text_state:
             source_state[TURISMO_PROGRAMME_TEXT_SOURCE] = {
                 **programme_text_state,
+                "checked_at": now.isoformat(),
+            }
+        if ayuntamiento_programme_state:
+            source_state[AYUNTAMIENTO_PROGRAMME_SOURCE] = {
+                **ayuntamiento_programme_state,
                 "checked_at": now.isoformat(),
             }
         if facebook_state:
