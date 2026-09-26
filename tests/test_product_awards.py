@@ -135,6 +135,17 @@ class OcuAdapterTests(unittest.TestCase):
             ("Carrefour", "Carrefour Extra"),
         )
 
+    def test_horizontal_private_labels_include_alcampo_and_dia(self):
+        self.assertEqual(
+            _resolve_private_label("salmorejo Auchan (Alcampo)"),
+            ("Alcampo", "Auchan"),
+        )
+        self.assertEqual(
+            _resolve_private_label("yogur DIA (DIA)"),
+            ("DIA", "DIA"),
+        )
+
+
     def test_product_name_uses_local_words_before_label(self):
         line = (
             "Teniendo en cuenta todo, obtenemos que el salmorejo fresco "
@@ -213,6 +224,20 @@ class OcuAdapterTests(unittest.TestCase):
         first, second = parse_ocu_awards(document, 2026)
         self.assertEqual(first.editorial.standout, "best_professional_tasting")
         self.assertIsNone(second.editorial.standout)
+
+    def test_ocu_result_precedence_is_source_specific(self):
+        document = PageDocument(
+            "https://www.ocu.org/alimentacion/foo/informe/bar",
+            """
+            07 julio 2026
+            producto suave Hacendado (Mercadona) es Compra Maestra.
+            producto suave Hacendado (Mercadona) es Mejor del Análisis.
+            """,
+            (),
+        )
+        found = parse_ocu_awards(document, 2026)
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0].result, "Mejor del Análisis")
 
     def test_unparseable_award_product_fails_closed(self):
         document = PageDocument(
