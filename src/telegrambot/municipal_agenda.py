@@ -1729,6 +1729,41 @@ async def _turismo_text_programme_events(
                         "подтверждённых мероприятий"
                     ),
                 )
+            relevant_expected_dates = tuple(
+                day
+                for day in expected_dates
+                if local_day <= day <= horizon
+            )
+            missing_dates = _turismo_programme_missing_dates(
+                all_article_events,
+                relevant_expected_dates,
+            )
+            if missing_dates:
+                recovered = await extract_guardamar_standalone_events(
+                    api_key,
+                    article_text,
+                    missing_dates,
+                )
+                recovered_events = _normalize_turismo_programme_text(
+                    recovered,
+                    article_text,
+                )
+                all_article_events = tuple(
+                    (*all_article_events, *recovered_events)
+                )
+                missing_dates = _turismo_programme_missing_dates(
+                    all_article_events,
+                    relevant_expected_dates,
+                )
+            if missing_dates:
+                raise MunicipalAgendaError(
+                    "Official Turismo programme article extraction was incomplete",
+                    code="PROGRAMME-INCOMPLETE",
+                    description=(
+                        "официальная статья содержит даты, которые "
+                        "не были извлечены"
+                    ),
+                )
             article_events = tuple(
                 event
                 for event in all_article_events
@@ -1761,7 +1796,12 @@ async def _turismo_text_programme_events(
             "modified": modified,
             "sha256": fingerprint,
             "programme_title": programme_title,
-            "extractor_version": 1,
+            "extractor_version": TURISMO_PROGRAMME_TEXT_EXTRACTOR_VERSION,
+            "expected_dates": [
+                day.isoformat()
+                for day in expected_dates
+                if local_day <= day <= horizon
+            ],
         }
         seen_titles.add(programme_title)
 
