@@ -760,6 +760,32 @@ finish, packaging and other appropriate attributes, beginning from 100 points
 and deducting for defects. This repeated methodology is rendered only inside
 the expandable public blockquote.
 
+#### Reviewed 2026 Valle de San Juan launch seed
+
+For the one-time launch queue only, four additional WCCC 2026 results were
+manually reviewed from Valle de San Juan's official entrant announcement:
+
+- Con Trufa — 99.30/100 and stated best in its category -> Mercadona SKU 4883,
+  EAN 8480000048837;
+- Añejo — 99.25/100 -> current Hacendado Añejo Fuerte exact retail variants
+  SKU 50975 / EAN 2105600509750 and precut SKU 11680 /
+  EAN 8402001028878;
+- Afrutado — 97.40/100 -> Mercadona SKU 11682, EAN 8402001028953;
+- Ibérico Añejo — 97.20/100 -> Mercadona SKU 5548, EAN 8402001048289.
+
+The mapping is additionally consistent with Valle de San Juan's official
+Mercadona portfolio and its Guild of Fine Food producer directory. The producer
+host is not reliably reachable from the bot's bounded urllib runtime, so these
+historical award facts are frozen as reviewed seed data dated 26 September
+2026; they are not fetched on every run and are not registered as an automatic
+award adapter.
+
+Dynamic claims are not frozen: every seed preview, seed operation and eventual
+publication still checks the exact Mercadona JSON for current SKU, EAN, brand,
+expected supplier, reviewed recipe markers, availability, share URL, package
+format and current price. If any of the five launch candidates fails that live
+check, `product-awards-seed` changes no state.
+
 ### Mercadona exact-product retail refresh
 
 For Guardamar's reviewed postcode context `03140`, the Mercadona postal
@@ -770,8 +796,11 @@ probe. Publication therefore performs one bounded exact-product JSON GET:
 
 The response is accepted only when exact product ID, expected EAN, private-label
 brand, supplier (when known), published status and official share URL remain
-consistent. Current package price and unit price are then rendered. Search,
-fuzzy name matching and catalogue crawling are not used.
+consistent. Current package/retail-format price and unit price are then rendered. A small
+reviewed related-SKU list is allowed only when the variants are independently
+proved to be the same awarded commercial product; this is used for the two
+current Añejo Fuerte formats. Search, fuzzy name matching and catalogue crawling
+are not used.
 
 A missing, changed or ambiguous current retail offer blocks the public
 publication and leaves the queue item unconsumed for a later retry.
@@ -786,9 +815,10 @@ exists and its identifiers have been live-probed.
 
 Current researched candidates include:
 
-- World Championship Cheese Contest 2026: one reviewed Top-20 Entrepinares /
-  Mercadona exact-SKU join is now implemented; broader result coverage remains
-  future work;
+- World Championship Cheese Contest 2026: one automated official Top-20
+  Entrepinares / Mercadona exact-SKU join is implemented, plus four manually
+  reviewed Valle de San Juan launch-seed candidates; broader automatic result
+  coverage remains future work;
 - GourmetQuesos 2026: official Spanish result surface with more than 800
   entries, 65 judges and 20 categories;
 - MUNDUS VINI: strong product identity on official cards, including vintage,
