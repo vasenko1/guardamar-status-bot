@@ -685,12 +685,36 @@ same judging explanation in full every day.
 A queued item may wait several days. When exact retailer identity is known, the
 publication step may make one bounded exact-product refresh immediately before
 rendering. It returns all verified current package variants of that same awarded
-commercial product. Each shown row keeps package size, price and unit price
-when available. The bot never chooses one package on behalf of the reader, and
-never transfers the award to a different flavour/recipe/SKU.
+commercial product. Each shown row keeps package size, retail format, price and
+unit price when available. The bot never chooses one package on behalf of the
+reader, and never transfers the award to a different flavour/recipe/SKU.
 
 The feed sends at most one item per day rather than exactly one. If no
 source-specific exceptional candidate exists, that day stays quiet.
+
+Before the first production launch, a separate operator-only reviewed starter
+seed may create a bounded initial queue. It is not a new scheduled source and
+does not disable the normal per-source silent baseline. The 2026 seed currently
+contains five fully reviewed Mercadona candidates:
+
+1. Valle de San Juan Con Trufa — WCCC 99.30/100, best in class;
+2. Valle de San Juan Añejo — WCCC 99.25/100;
+3. Queserías Entrepinares Añejo Tostado — official WCCC Top 20;
+4. Valle de San Juan Afrutado — WCCC 97.40/100;
+5. Valle de San Juan Ibérico Añejo — WCCC 97.20/100.
+
+For the four Valle candidates, the entrant's official result announcement is a
+dated launch-seed fact, not a general automated source. Public copy explicitly
+attributes those scores to Valle de San Juan. Exact current Mercadona identity
+and prices are still revalidated immediately before seed and before each
+publication.
+
+Operator commands:
+
+- `product-awards-seed-preview` — read-only live preview of the complete
+  starter sequence;
+- `product-awards-seed` — all-or-nothing validation followed by idempotent
+  enqueueing; no Telegram send occurs.
 
 Retailer product photos are disabled by default. Current legal checks found
 reuse restrictions on several target retailer sites. A Telegram image is
