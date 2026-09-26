@@ -1222,3 +1222,23 @@ strong candidates. Mercadona and Masymas still need their dedicated
 browser-free contract probes. Alcampo / Auchan remains intentionally excluded
 for local-utility reasons.
 
+
+
+### Starter-pool extension — Semicurado, 26 September 2026
+
+The reviewed launch pool was extended from five to six days after a direct
+Mercadona `alc1` probe resolved Valle de San Juan's WCCC 2026
+`Semicurado — 97.40` to current SKU `11672`:
+
+- retail name: `Queso semicurado de oveja Hacendado cortado en cuñitas`;
+- EAN: `8402001028861`;
+- legal product type: pasteurized sheep's-milk semicurado;
+- suppliers include `Valle de San Juan S.L.`;
+- current reviewed offer: approximately 280 g, 4.14 EUR, 14.80 EUR/kg;
+- published=true, no `unavailable_from`, no unavailable weekdays.
+
+This join is stronger than the unrelated Entrepinares mixed-milk semicurado
+SKUs (50943/50944/50945/50946), which are explicitly excluded from the Valle
+mapping. The seed keeps source-backed product/tasting/composition facts and
+does not copy unverified nutrition values from third-party price trackers.
+
