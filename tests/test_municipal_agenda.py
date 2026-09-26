@@ -16,6 +16,7 @@ from telegrambot.municipal_agenda import (
     _ayuntamiento_programme_events,
     _ayuntamiento_programme_image_url,
     _cached_current_events,
+    _canonicalize_todo_programme_aliases,
     _current_events,
     _expand_explicit_todo_dates,
     _explicit_fiesta_article_events,
@@ -383,6 +384,127 @@ class MunicipalProgrammeDisplayTranslationTests(
         bingo = next(event for event in merged if event.start_time == "17:00")
         self.assertEqual(bingo.programme_title, parent)
         self.assertIn("todo_cultura", bingo.sources)
+
+    def test_todo_raw_row_canonicalizes_unique_programme_alias(self):
+        day = date(2026, 9, 28)
+        parent = "FIESTAS EN HONOR A LA VIRGEN DEL ROSARIO 2026"
+        image_url = (
+            "https://www.guardamardelsegura.es/wp-content/uploads/2026/09/"
+            "PROG.-todo-Virgen-Rosario-2026-2122x3000.jpg"
+        )
+        official = SourceEvent(
+            "Santa Misa con Homilía",
+            day,
+            day,
+            "20:00",
+            None,
+            None,
+            "event",
+            (AYUNTAMIENTO_PROGRAMME_SOURCE,),
+            programme_title=parent,
+            programme_order=30,
+            image_url=image_url,
+        )
+        todo = SourceEvent(
+            "Celebración de la misa y presentación de niños a la Virgen del Rosario",
+            day,
+            day,
+            "20:00",
+            None,
+            "Iglesia parroquial San Jaime Apóstol",
+            "event",
+            ("todo_cultura",),
+        )
+        rows = ((
+            day,
+            "20:00",
+            (
+                "2026-09-28\n"
+                "– 20:00 h.: Celebración de la Santa Misa con Homilía "
+                "y presentación de niños a la Virgen del Rosario en la "
+                "Iglesia parroquial San Jaime Apóstol."
+            ),
+        ),)
+
+        canonicalized = _canonicalize_todo_programme_aliases(
+            (official,),
+            (todo,),
+            rows,
+        )
+        merged = merge_text_and_poster_events(
+            (official,),
+            canonicalized,
+        )
+
+        self.assertEqual(len(canonicalized), 1)
+        self.assertEqual(canonicalized[0].title_es, official.title_es)
+        self.assertEqual(canonicalized[0].programme_title, parent)
+        self.assertEqual(canonicalized[0].programme_order, 30)
+        self.assertEqual(canonicalized[0].image_url, image_url)
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0].title_es, "Santa Misa con Homilía")
+        self.assertEqual(
+            merged[0].place,
+            "Iglesia parroquial San Jaime Apóstol",
+        )
+        self.assertEqual(merged[0].programme_title, parent)
+        self.assertEqual(
+            set(merged[0].sources),
+            {AYUNTAMIENTO_PROGRAMME_SOURCE, "todo_cultura"},
+        )
+
+    def test_todo_raw_row_keeps_different_same_time_act_separate(self):
+        day = date(2026, 9, 28)
+        parent = "FIESTAS EN HONOR A LA VIRGEN DEL ROSARIO 2026"
+        official = SourceEvent(
+            "Santa Misa con Homilía",
+            day,
+            day,
+            "20:00",
+            None,
+            None,
+            "event",
+            (AYUNTAMIENTO_PROGRAMME_SOURCE,),
+            programme_title=parent,
+            programme_order=30,
+        )
+        todo = SourceEvent(
+            "Concierto de órgano",
+            day,
+            day,
+            "20:00",
+            None,
+            "Iglesia parroquial San Jaime Apóstol",
+            "event",
+            ("todo_cultura",),
+        )
+        rows = ((
+            day,
+            "20:00",
+            (
+                "2026-09-28\n"
+                "– 20:00 h.: Concierto de órgano en la Iglesia parroquial "
+                "San Jaime Apóstol."
+            ),
+        ),)
+
+        canonicalized = _canonicalize_todo_programme_aliases(
+            (official,),
+            (todo,),
+            rows,
+        )
+        merged = merge_text_and_poster_events(
+            (official,),
+            canonicalized,
+        )
+
+        self.assertEqual(canonicalized, (todo,))
+        self.assertEqual(len(merged), 2)
+        self.assertEqual(
+            {event.title_es for event in merged},
+            {"Santa Misa con Homilía", "Concierto de órgano"},
+        )
 
 
 class ExplicitTodoDatesTest(unittest.TestCase):
