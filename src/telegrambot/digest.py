@@ -5,6 +5,7 @@ import logging
 import re
 import unicodedata
 import urllib.parse
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 from typing import List, Optional, Sequence
 from zoneinfo import ZoneInfo
@@ -1097,11 +1098,7 @@ def build_event_section(
                 rendered_sessions.add(session_group)
                 block = _render_session_group(members)
             else:
-                block = [
-                    _event_heading(
-                        event, "", bullet=True, session_fallback=True
-                    )
-                ]
+                block = [_event_heading(event, "", bullet=True)]
                 block.extend(_render_event_details(event, "  "))
         else:
             block = [_event_heading(event, "", bullet=True)]
@@ -1115,18 +1112,10 @@ def build_event_section(
     return event_lines if len(event_lines) > 2 else []
 
 
-def _event_heading(
-    event,
-    indent: str,
-    *,
-    bullet: bool,
-    session_fallback: bool = False,
-) -> str:
+def _event_heading(event, indent: str, *, bullet: bool) -> str:
     title = event.title
     if event.category == "exhibition":
         title = _exhibition_title(title)
-    if session_fallback and getattr(event, "session_order", None) is not None:
-        title = f"{title} (сеанс {event.session_order})"
     title = html.escape(_event_title(title))
     if event.is_final_day:
         title = f"Последний день: {title}"
@@ -1216,7 +1205,7 @@ def _normalized_event_details(
 
 
 def _session_group_is_renderable(members: Sequence) -> bool:
-    """Fail open unless all non-access facts still describe one activity."""
+    """Render only a source-proven family with at least two timed occurrences."""
 
     if len(members) < 2:
         return False
@@ -1224,56 +1213,75 @@ def _session_group_is_renderable(members: Sequence) -> bool:
     if not group_key or any(
         getattr(member, "session_group_key", None) != group_key
         or getattr(member, "programme_title", None) is not None
+        or member.starts_at is None
         for member in members
     ):
         return False
-    orders = [getattr(member, "session_order", None) for member in members]
-    counts = [getattr(member, "session_count", None) for member in members]
-    if (
-        any(order is None for order in orders)
-        or sorted(orders) != list(range(1, len(members) + 1))
-        or any(count is None for count in counts)
-        or any(count != len(members) for count in counts)
-    ):
-        return False
-    starts = [member.starts_at for member in members]
-    if any(value is None for value in starts) or len(set(starts)) != len(starts):
-        return False
-    ordered = sorted(members, key=lambda member: member.session_order)
-    ordered_starts = [member.starts_at for member in ordered]
-    if ordered_starts != sorted(ordered_starts):
-        return False
     days = {
-        value.astimezone(GUARDAMAR_TIMEZONE).date()
-        for value in starts if value is not None
+        member.starts_at.astimezone(GUARDAMAR_TIMEZONE).date()
+        for member in members
     }
-    if len(days) != 1:
-        return False
+    return len(days) == 1
+
+
+def _common_nonempty_value(members: Sequence, field: str):
+    values = [
+        getattr(member, field)
+        for member in members
+        if getattr(member, field) not in (None, "", ())
+    ]
+    if not values:
+        return None
+    first = values[0]
+    return first if all(value == first for value in values[1:]) else None
+
+
+def _common_session_place(members: Sequence) -> Optional[str]:
+    known = [member.place for member in members if member.place]
+    if not known:
+        return None
+    first = known[0]
+    return first if all(same_event_place(first, place) for place in known[1:]) else None
+
+
+def _common_session_details(members: Sequence) -> tuple[str, ...]:
+    nonempty = [tuple(member.details) for member in members if member.details]
+    if not nonempty:
+        return ()
+    common = set(nonempty[0])
+    for details in nonempty[1:]:
+        common.intersection_update(details)
+    return tuple(detail for detail in nonempty[0] if detail in common)
+
+
+def _session_parent_event(members: Sequence):
+    """Build presentation-only common context without changing group identity."""
 
     first = members[0]
-    common_fields = (
-        "title", "category", "teaser", "duration_minutes", "audience_label",
-        "details", "place_query", "meeting_point", "schedule_note",
-        "participation_note", "capacity_limited", "active_until",
-        "active_from", "route", "is_final_day",
+    place = _common_session_place(members)
+    return replace(
+        first,
+        starts_at=None,
+        ends_at=None,
+        place=place,
+        place_query=(
+            _common_nonempty_value(members, "place_query")
+            if place is not None else None
+        ),
+        route=_common_nonempty_value(members, "route"),
+        details=_common_session_details(members),
+        duration_minutes=_common_nonempty_value(members, "duration_minutes"),
+        audience_label=_common_nonempty_value(members, "audience_label"),
+        teaser=_common_nonempty_value(members, "teaser"),
+        meeting_point=_common_nonempty_value(members, "meeting_point"),
+        schedule_note=_common_nonempty_value(members, "schedule_note"),
+        participation_note=_common_nonempty_value(
+            members, "participation_note"
+        ),
+        active_until=None,
+        active_from=None,
+        is_final_day=False,
     )
-    if any(
-        any(getattr(member, field) != getattr(first, field)
-            for field in common_fields)
-        for member in members[1:]
-    ):
-        return False
-    places = [member.place for member in members]
-    if any(place is None for place in places):
-        return all(place is None for place in places)
-    return all(
-        same_event_place(places[0], place)
-        for place in places[1:]
-    )
-
-
-def _session_count_label(count: int) -> str:
-    return f"{count} сеанса" if 2 <= count <= 4 else f"{count} сеансов"
 
 
 def _session_time_label(event) -> str:
@@ -1281,50 +1289,22 @@ def _session_time_label(event) -> str:
     label = start.strftime("%H:%M")
     if event.ends_at is not None and event.duration_minutes is None:
         end = event.ends_at.astimezone(GUARDAMAR_TIMEZONE)
-        label += "–" + end.strftime("%H:%M")
+        if end.date() == start.date():
+            label += "–" + end.strftime("%H:%M")
     return label
 
 
 def _render_session_group(members: Sequence) -> List[str]:
-    ordered = sorted(members, key=lambda member: member.session_order)
-    first = ordered[0]
+    ordered = sorted(members, key=lambda member: member.starts_at)
+    parent = _session_parent_event(ordered)
     title = (
-        _exhibition_title(first.title)
-        if first.category == "exhibition" else first.title
+        _exhibition_title(parent.title)
+        if parent.category == "exhibition" else parent.title
     )
-    starts = [
-        member.starts_at.astimezone(GUARDAMAR_TIMEZONE)
-        for member in ordered
-    ]
-    ends = [
-        member.ends_at.astimezone(GUARDAMAR_TIMEZONE)
-        if member.ends_at is not None else None
-        for member in ordered
-    ]
-    count_label = _session_count_label(len(ordered))
-    if (
-        all(end is not None for end in ends)
-        and all(end.date() == starts[0].date() for end in ends)
-    ):
-        interval = (
-            min(starts).strftime("%H:%M")
-            + "–"
-            + max(end for end in ends if end is not None).strftime("%H:%M")
-        )
-        when = f"{interval} · {count_label}"
-    else:
-        when = count_label
-    block = [
-        f"• <b>{html.escape(when)}</b> — "
-        f"{html.escape(_event_title(title))}"
-    ]
-    block.extend(_render_event_context(first, "  "))
+    block = [f"• {html.escape(_event_title(title))}"]
+    block.extend(_render_event_context(parent, "  "))
 
-    common_capacity = (
-        first.capacity_limited
-        and all(member.capacity_limited for member in ordered)
-        and all(member.access_note is None for member in ordered)
-    )
+    common_capacity = all(member.capacity_limited for member in ordered)
     if common_capacity:
         block.append("  🎟 места ограничены")
     block.append("  🕐 Сеансы:")
@@ -1337,7 +1317,6 @@ def _render_session_group(members: Sequence) -> List[str]:
             line += " — " + " · ".join(access)
         block.append(line)
     return block
-
 
 def _render_event_context(event, indent: str) -> List[str]:
     rows = []
