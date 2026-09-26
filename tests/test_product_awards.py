@@ -99,8 +99,8 @@ class OcuAdapterTests(unittest.TestCase):
             (),
         )
         result = parse_ocu_awards(document, 2026)
-        self.assertEqual(len(result), 2)
-        best, value = result
+        self.assertEqual(len(result), 1)
+        best = result[0]
 
         self.assertEqual(best.retailer, "Mercadona")
         self.assertEqual(best.private_label, "Hacendado")
@@ -112,13 +112,6 @@ class OcuAdapterTests(unittest.TestCase):
         self.assertEqual(best.retail.relationship, "private_label")
         self.assertIn("professional_tasting", best.editorial.method_flags)
         self.assertEqual(best.editorial.standout, "best_professional_tasting")
-
-        self.assertEqual(value.retailer, "Alcampo")
-        self.assertEqual(value.private_label, "Auchan")
-        self.assertEqual(value.product_name, "salmorejo Auchan")
-        self.assertEqual(value.result, "Compra Maestra")
-        self.assertEqual(value.sample_size, 30)
-        self.assertIsNone(value.editorial.standout)
 
     def test_old_report_is_ignored_in_current_year(self):
         document = PageDocument(
@@ -160,11 +153,12 @@ class OcuAdapterTests(unittest.TestCase):
         )
 
 
-    def test_horizontal_private_labels_include_alcampo_and_dia(self):
-        self.assertEqual(
-            _resolve_private_label("salmorejo Auchan (Alcampo)"),
-            ("Alcampo", "Auchan"),
+    def test_alcampo_is_outside_local_retailer_scope(self):
+        self.assertIsNone(
+            _resolve_private_label("salmorejo Auchan (Alcampo)")
         )
+
+    def test_horizontal_private_labels_include_dia(self):
         self.assertEqual(
             _resolve_private_label("yogur DIA (DIA)"),
             ("DIA", "DIA"),
