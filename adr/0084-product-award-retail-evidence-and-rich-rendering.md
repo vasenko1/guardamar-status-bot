@@ -127,15 +127,17 @@ when needed.
 
 ### Retailer scope
 
-The first supported retailer research set is:
+The active retailer scope for category selection is:
 
 - Mercadona;
-- Lidl España;
-- ALDI España;
-- Consum;
 - Carrefour España supermarket;
-- Masymas / Juan Fornés Fornés;
-- DIA España.
+- ALDI España;
+- Lidl España;
+- DIA España;
+- Consum.
+
+Masymas / Juan Fornés was researched earlier but is now outside the active
+product-award retailer scope.
 
 Retailer evidence adapters are not award adapters. They do not receive their
 own queues, state machines or schedules.
@@ -183,7 +185,7 @@ Use a configured Guardamar retail context rather than user/device geolocation.
 A public award article requires at least one freshly verified exact retail
 offer. If the retailer refresh fails, the product disappears, or identity
 becomes ambiguous, do not publish a price-less article and do not consume the
-daily delivery slot. Keep the queued event for a later retry.
+three-day delivery slot. Keep the queued event for a later retry.
 
 ### Photos are disabled by default and require explicit reuse clearance
 
@@ -191,8 +193,9 @@ An exact image URL is not a licence to republish the image.
 
 The horizontal research found explicit intellectual-property restrictions on
 copying, reproduction, distribution or public communication of site content
-without permission for multiple target retailers, including Lidl, Consum,
-Carrefour, DIA and Masymas / Juan Fornés.
+without permission for multiple researched retailers, including Lidl, Consum, Carrefour, DIA and
+Masymas / Juan Fornés. The Masymas legal finding is retained as historical
+research even though that retailer is no longer in active scope.
 
 Therefore retailer product photos are disabled by default.
 
@@ -405,7 +408,8 @@ responsible award body when that source is available.
 
 ### Snapshot price during award discovery
 
-Rejected. The one-item-per-day queue can make a price stale before publication.
+Rejected. Queue delay and the three-day public cadence can make a price stale
+before publication.
 
 ### Use any public product photo found on the web
 
