@@ -1251,6 +1251,16 @@ def refresh_mercadona_offers(
         raise ProductAwardError("Mercadona product ID mismatch", code="PARSER")
     if payload.get("published") is not True:
         return ()
+    if payload.get("unavailable_from") not in {None, ""}:
+        return ()
+    unavailable_weekdays = payload.get("unavailable_weekdays")
+    if not isinstance(unavailable_weekdays, list):
+        raise ProductAwardError(
+            "Mercadona availability shape changed",
+            code="PARSER",
+        )
+    if unavailable_weekdays:
+        return ()
 
     ean = payload.get("ean")
     if evidence.ean is not None and str(ean) != evidence.ean:
@@ -1264,6 +1274,29 @@ def refresh_mercadona_offers(
         raise ProductAwardError("Mercadona brand mismatch", code="PARSER")
 
     details = payload.get("details")
+    if candidate.source_kind == "wccc" and evidence.product_id == "50952":
+        nutrition = payload.get("nutrition_information")
+        if not isinstance(nutrition, dict):
+            raise ProductAwardError(
+                "Mercadona ingredient data missing",
+                code="PARSER",
+            )
+        ingredients = nutrition.get("ingredients")
+        if not isinstance(ingredients, str):
+            raise ProductAwardError(
+                "Mercadona ingredient data missing",
+                code="PARSER",
+            )
+        folded_ingredients = _fold(ingredients)
+        if not all(
+            marker in folded_ingredients
+            for marker in ("vaca 50", "oveja 20", "cabra 15")
+        ):
+            raise ProductAwardError(
+                "Mercadona awarded recipe changed",
+                code="PARSER",
+            )
+
     if candidate.editorial.producer is not None:
         if not isinstance(details, dict):
             raise ProductAwardError("Mercadona supplier data missing", code="PARSER")
