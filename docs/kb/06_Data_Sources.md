@@ -727,11 +727,54 @@ Initially accepted result semantics:
 
 The September 2026 live validation case is the OCU salmorejo report:
 Hacendado / Mercadona, `salmorejo fresco de Hacendado`,
-`Mejor del Análisis`, score 70/100, comparison size 30. These facts were
-explicit in the source and therefore do not require AI extraction.
+`Mejor del Análisis`, score 70/100, comparison size 30. It is now deliberately
+below the publication gate because OCU requires an overall score of at least
+85/100.
 
-A report-published price is optional metadata. When retained, public copy must
-say that the price was stated in the study. It is not a current-catalogue claim.
+A report-published price is source metadata only. Public award posts require a
+fresh exact-product retailer offer before delivery; a study price is never used
+as a substitute for the current supermarket price.
+
+### World Championship Cheese Contest 2026
+
+The first registered non-OCU award source is the official WCMA Top-20 page:
+
+`https://worldchampioncheese.org/2026-wccc-top-20-finalists/`
+
+Only one reviewed retail join is currently enabled:
+
+- class 114, `Seleccion Tostado Mixed Milk Cheese Extra Aged`;
+- maker `Queserías Entrepinares S.A.U.`;
+- location Valladolid, Spain;
+- exact Mercadona SKU `50952`, EAN `8480000509529`,
+  `Queso añejo tostado mezcla Hacendado`.
+
+The official WCCC page proves that the cheese reached the 2026 Top 20. The
+Mercadona exact-product JSON independently confirms the exact SKU, Hacendado
+brand, supplier `Queserías Entrepinares S.A.U.`, current publication state,
+package size and price. A producer-only or name-only join is never accepted.
+
+The reviewed 2026 competition context is 3,375 entries and 56 professional
+judges. WCCC technical judging assesses flavor, body/texture, salt, color,
+finish, packaging and other appropriate attributes, beginning from 100 points
+and deducting for defects. This repeated methodology is rendered only inside
+the expandable public blockquote.
+
+### Mercadona exact-product retail refresh
+
+For Guardamar's reviewed postcode context `03140`, the Mercadona postal
+service resolved warehouse `alc1` during the 26 September 2026 browser-free
+probe. Publication therefore performs one bounded exact-product JSON GET:
+
+`https://tienda.mercadona.es/api/products/<product_id>/?lang=es&wh=alc1`
+
+The response is accepted only when exact product ID, expected EAN, private-label
+brand, supplier (when known), published status and official share URL remain
+consistent. Current package price and unit price are then rendered. Search,
+fuzzy name matching and catalogue crawling are not used.
+
+A missing, changed or ambiguous current retail offer blocks the public
+publication and leaves the queue item unconsumed for a later retry.
 
 ### Future award sources
 
@@ -743,8 +786,9 @@ exists and its identifiers have been live-probed.
 
 Current researched candidates include:
 
-- World Championship Cheese Contest 2026: official current results exist,
-  including Spanish entries, but supermarket SKU mapping remains separate;
+- World Championship Cheese Contest 2026: one reviewed Top-20 Entrepinares /
+  Mercadona exact-SKU join is now implemented; broader result coverage remains
+  future work;
 - GourmetQuesos 2026: official Spanish result surface with more than 800
   entries, 65 judges and 20 categories;
 - MUNDUS VINI: strong product identity on official cards, including vintage,
