@@ -141,6 +141,63 @@ class ProductAwardCommandTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(state.last_delivery_day())
             self.assertEqual(state.uncertain_events(), ())
 
+    async def test_unpublishable_front_item_does_not_block_next_item(self):
+        first = self.candidate()
+        second = ProductAwardCandidate(
+            source_kind=first.source_kind,
+            event_key="ocu:second",
+            source_url=first.source_url,
+            product_name="otro producto Hacendado",
+            result=first.result,
+            award_body=first.award_body,
+            result_year=first.result_year,
+            retail=first.retail,
+            score=first.score,
+            source_price=first.source_price,
+        )
+        publication = self.publication(second)
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "awards.json"
+            state = ProductAwardState(state_path)
+            state.initialize_source("ocu", ())
+            state.enqueue_candidates((first, second), date.today())
+
+            def build(candidate):
+                if candidate.event_id == first.event_id:
+                    return None
+                return publication
+
+            with (
+                patch.dict(
+                    "os.environ",
+                    {
+                        "TELEGRAM_BOT_TOKEN": "token",
+                        "TELEGRAM_CHAT_ID": "@group",
+                        "PRODUCT_AWARDS_STATE_PATH": str(state_path),
+                    },
+                    clear=False,
+                ),
+                patch(
+                    "telegrambot.__main__.build_current_product_award_publication",
+                    side_effect=build,
+                ),
+                patch(
+                    "telegrambot.__main__.send_message",
+                    new=AsyncMock(return_value=99),
+                ) as send,
+            ):
+                self.assertEqual(await _run_command("product-awards"), 0)
+
+            send.assert_awaited_once()
+            state = ProductAwardState(state_path)
+            self.assertTrue(state.published(second.event_id))
+            self.assertFalse(state.published(first.event_id))
+            self.assertEqual(state.queue_size(), 1)
+            self.assertEqual(
+                state.next_queue_item(date.today()),
+                None,
+            )
+
     async def test_confirmed_text_send_publishes_event(self):
         item = self.candidate()
         publication = self.publication(item)
