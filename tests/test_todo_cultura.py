@@ -424,7 +424,7 @@ Reservas de entradas: https://www.agendaguardamar.com/espectaculo/2/x.html
 
     def test_parser_upgrade_reopens_previously_covered_dates(self):
         prior = {
-            "parser_version": 4,
+            "parser_version": 18,
             "cursor_modified_gmt": "2026-08-07T10:00:00",
             "covered_dates": ["2026-08-09"],
             "candidates": [{

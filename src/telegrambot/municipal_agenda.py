@@ -520,27 +520,45 @@ class SourceEvent:
     access_note: Optional[str] = None
     programme_title: Optional[str] = None
     programme_order: Optional[int] = None
+    session_source_key: Optional[str] = None
     session_parent_title_es: Optional[str] = None
     image_url: Optional[str] = None
 
 
-_SESSION_TITLE = re.compile(
-    r"^\s*(?:(?:"
-    r"primer(?:a|o)?|segund(?:a|o|0)|tercer(?:a|o)?|cuart[oa]|"
-    r"quint[oa]|sext[oa]|[1-6](?:[.ºª]|er|ra)?)\s+"
+_SESSION_MARKER = (
+    r"(?:(?:primer(?:a|o)?|segund(?:a|o|0)|tercer(?:a|o)?|cuart[oa]|"
+    r"quint[oa]|sext[oa]|s[eé]ptim[oa]|octav[oa]|noven[oa]|d[eé]cim[oa]|"
+    r"[1-9]\d?(?:[.ºª]|er|ra)?)\s+"
     r"(?:turno|sesi[oó]n|pase)|"
     r"(?:turno|sesi[oó]n|pase)\s*"
-    r"(?:n[úu]m(?:ero)?\.?\s*)?[1-6])\b"
+    r"(?:n[úu]m(?:ero)?\.?\s*)?[1-9]\d?)"
+)
+_SESSION_PREFIX_TITLE = re.compile(
+    rf"^\s*{_SESSION_MARKER}\b"
     r"\s*(?:[-:–—]\s*)?(?:para\s+|de\s+)?"
     r"(?P<base>.+?)\s*$",
     re.IGNORECASE,
 )
-
+_SESSION_SUFFIX_TITLE = re.compile(
+    rf"^\s*(?P<base>.+?)\s*"
+    rf"(?:[\(\[]\s*)?{_SESSION_MARKER}\b\s*(?:[\)\]]\s*)?$",
+    re.IGNORECASE,
+)
+_TODO_ROW_TITLE_LINE = re.compile(
+    r"^\s*[–—-]\s*(?:de\s+)?"
+    r"\d{1,2}(?:[,:.]\d{2})?"
+    r"(?:\s*(?:a|[-–—])\s*\d{1,2}(?:[,:.]\d{2})?)?"
+    r"\s*(?:h(?:oras?)?\.?)?\s*:\s*(?P<title>.+?)\s*$",
+    re.IGNORECASE,
+)
 
 def _session_base_title(title: str) -> Optional[str]:
-    """Return a base title only when the source explicitly marks a session."""
+    """Strip only an explicit numbered session marker from a source title."""
 
-    match = _SESSION_TITLE.fullmatch(" ".join(title.split()))
+    value = " ".join(title.split())
+    match = _SESSION_PREFIX_TITLE.fullmatch(value)
+    if match is None:
+        match = _SESSION_SUFFIX_TITLE.fullmatch(value)
     if match is None:
         return None
     base = match.group("base").strip(" .,:;–—-")
@@ -550,7 +568,7 @@ def _session_base_title(title: str) -> Optional[str]:
 
 
 def _session_base_key(value: str) -> str:
-    """Normalize punctuation only; never fuzzy-match separate activities."""
+    """Normalize source identity punctuation; never fuzzy-match activities."""
 
     value = html.unescape(value).casefold()
     value = value.replace("’", "'").replace("‘", "'")
@@ -559,47 +577,157 @@ def _session_base_key(value: str) -> str:
     return " ".join(value.split()).strip(" .,:;-")
 
 
-def _annotate_source_sessions(
-    events: Tuple[SourceEvent, ...],
-) -> Tuple[SourceEvent, ...]:
-    """Persist an explicit source session relationship before source merges."""
+def _todo_session_parent_from_row(row: str) -> Optional[str]:
+    """Read an explicit session relationship from the raw Todo row only."""
 
-    candidates: Dict[tuple, List[Tuple[int, str]]] = {}
-    for index, event in enumerate(events):
+    lines = [" ".join(line.split()) for line in row.splitlines() if line.strip()]
+    if len(lines) < 2:
+        return None
+    title_match = _TODO_ROW_TITLE_LINE.fullmatch(lines[1])
+    if title_match is None:
+        return None
+    return _session_base_title(title_match.group("title"))
+
+
+def _match_todo_rows(
+    rows: Tuple[Tuple[date, str, str], ...],
+    events: Tuple[SourceEvent, ...],
+) -> Tuple[Tuple[Tuple[date, str, str], Optional[int]], ...]:
+    """Bind each raw row to at most one verified occurrence by date/time/title."""
+
+    available = set(range(len(events)))
+    matched = []
+    for row_info in rows:
+        day, start_time, row = row_info
+        candidates = sorted(
+            (
+                (_word_overlap(event.title_es, row), index)
+                for index, event in enumerate(events)
+                if index in available
+                and event.start_date == day
+                and event.start_time == start_time
+            ),
+            reverse=True,
+        )
+        event_index = (
+            candidates[0][1]
+            if candidates and candidates[0][0] >= 0.5
+            else None
+        )
+        if event_index is not None:
+            available.remove(event_index)
+        matched.append((row_info, event_index))
+    return tuple(matched)
+
+
+def _strict_session_row_matches(
+    rows: Tuple[Tuple[date, str, str], ...],
+    events: Tuple[SourceEvent, ...],
+) -> Tuple[Tuple[Tuple[date, str, str], Optional[int]], ...]:
+    """Fail open unless one occurrence uniquely matches each session row."""
+
+    available = set(range(len(events)))
+    matched = []
+    for row_info in rows:
+        day, start_time, row = row_info
+        candidates = [
+            index
+            for index, event in enumerate(events)
+            if index in available
+            and event.start_date == day
+            and event.start_time == start_time
+            and _word_overlap(event.title_es, row) >= 0.5
+        ]
+        event_index = candidates[0] if len(candidates) == 1 else None
+        if event_index is not None:
+            available.remove(event_index)
+        matched.append((row_info, event_index))
+    return tuple(matched)
+
+
+def _session_display_title(
+    events: Tuple[SourceEvent, ...],
+    indexes: List[int],
+    raw_parent: str,
+) -> str:
+    """Choose one pre-translation display title after identity is already fixed."""
+
+    candidates = []
+    for index in indexes:
+        event_title = events[index].title_es
+        cleaned = _session_base_title(event_title) or event_title
         if (
-            event.programme_title is not None
-            or event.start_date != event.end_date
-            or event.start_time is None
+            len(_normalized_words(cleaned) & _normalized_words(raw_parent)) >= 2
+            and _word_overlap(cleaned, raw_parent) >= 0.35
+        ):
+            candidates.append(cleaned)
+    if not candidates:
+        candidates = [events[index].title_es for index in indexes]
+    return min(candidates, key=lambda value: (len(value), value.casefold()))
+
+
+def _annotate_todo_source_sessions(
+    events: Tuple[SourceEvent, ...],
+    rows: Tuple[Tuple[date, str, str], ...],
+) -> Tuple[SourceEvent, ...]:
+    """Persist relationships proven by raw Todo rows before any source merge."""
+
+    families: Dict[tuple, List[Tuple[int, str]]] = {}
+    for (day, start_time, row), event_index in _strict_session_row_matches(
+        rows, events
+    ):
+        if event_index is None:
+            continue
+        event = events[event_index]
+        if event.programme_title is not None:
+            continue
+        raw_parent = _todo_session_parent_from_row(row)
+        if raw_parent is None:
+            continue
+        shared_words = (
+            _normalized_words(event.title_es)
+            & _normalized_words(raw_parent)
+        )
+        if (
+            len(shared_words) < 2
+            or _word_overlap(event.title_es, raw_parent) < 0.35
         ):
             continue
-        base_title = _session_base_title(event.title_es)
-        if base_title is None:
-            continue
         key = (
-            event.start_date,
+            day,
             event.category,
-            _session_base_key(base_title),
+            _session_base_key(raw_parent),
         )
-        candidates.setdefault(key, []).append((index, base_title))
+        families.setdefault(key, []).append((event_index, raw_parent))
 
     annotated = list(events)
-    for members in candidates.values():
-        if len(members) < 2:
+    for key, members in families.items():
+        indexes = [index for index, _ in members]
+        if len(indexes) < 2:
             continue
-        start_times = [events[index].start_time for index, _ in members]
-        if len(set(start_times)) != len(start_times):
+        start_times = [events[index].start_time for index in indexes]
+        if (
+            any(value is None for value in start_times)
+            or len(set(start_times)) != len(start_times)
+        ):
             continue
         known_places = {
             canonical_event_place(events[index].place).casefold()
-            for index, _ in members
+            for index in indexes
             if events[index].place is not None
         }
         if len(known_places) > 1:
             continue
-        parent_title = members[0][1]
-        for index, _ in members:
+
+        raw_parent = members[0][1]
+        source_key = "todo_cultura:" + hashlib.sha256(
+            key[2].encode("utf-8")
+        ).hexdigest()
+        parent_title = _session_display_title(events, indexes, raw_parent)
+        for index in indexes:
             annotated[index] = replace(
                 events[index],
+                session_source_key=source_key,
                 session_parent_title_es=parent_title,
             )
     return tuple(annotated)
@@ -608,16 +736,16 @@ def _annotate_source_sessions(
 def _session_source_plan(
     events: Tuple[SourceEvent, ...],
 ) -> Tuple[Tuple[str, Optional[str]], ...]:
-    """Build translation/display groups from relationships proven upstream."""
+    """Build translation/display groups from source relationships fixed upstream."""
 
     plan: List[Tuple[str, Optional[str]]] = [
         (event.title_es, None) for event in events
     ]
     families: Dict[tuple, List[int]] = {}
     for index, event in enumerate(events):
-        parent_title = event.session_parent_title_es
         if (
-            parent_title is None
+            event.session_source_key is None
+            or event.session_parent_title_es is None
             or event.programme_title is not None
             or event.start_date != event.end_date
             or event.start_time is None
@@ -626,21 +754,32 @@ def _session_source_plan(
         key = (
             event.start_date,
             event.category,
-            _session_base_key(parent_title),
+            event.session_source_key,
         )
         families.setdefault(key, []).append(index)
 
     for key, indexes in families.items():
         if len(indexes) < 2:
             continue
+        start_times = [events[index].start_time for index in indexes]
+        if len(set(start_times)) != len(start_times):
+            continue
         group_key = "session:" + "|".join((
             key[0].isoformat(),
             key[1],
             key[2],
         ))
-        parent_title = events[indexes[0]].session_parent_title_es
-        if parent_title is None:
+        parent_titles = {
+            event.session_parent_title_es
+            for event in (events[index] for index in indexes)
+            if event.session_parent_title_es is not None
+        }
+        if not parent_titles:
             continue
+        parent_title = min(
+            parent_titles,
+            key=lambda value: (len(value), value.casefold()),
+        )
         for index in indexes:
             plan[index] = (parent_title, group_key)
     return tuple(plan)
@@ -1047,24 +1186,11 @@ def _unmatched_todo_rows(
 ) -> Tuple[Tuple[date, str, str], ...]:
     """Require a distinct evidence-matching occurrence for each timed row."""
 
-    available = set(range(len(events)))
-    missing = []
-    for day, start_time, row in rows:
-        matches = sorted(
-            (
-                (_word_overlap(event.title_es, row), index)
-                for index, event in enumerate(events)
-                if index in available
-                and event.start_date == day
-                and event.start_time == start_time
-            ),
-            reverse=True,
-        )
-        if matches and matches[0][0] >= 0.5:
-            available.remove(matches[0][1])
-        else:
-            missing.append((day, start_time, row))
-    return tuple(missing)
+    return tuple(
+        row_info
+        for row_info, event_index in _match_todo_rows(rows, events)
+        if event_index is None
+    )
 
 
 def _read_turismo_programme(local_day: date) -> Optional[Tuple[str, str, str, str]]:
@@ -1733,17 +1859,34 @@ def merge_text_and_poster_events(
         candidate_is_text = bool(
             set(poster_event.sources) & {"todo_cultura", "todo_cultura_reviewed"}
         )
+        current_session_key = current.session_source_key
+        candidate_session_key = (
+            poster_event.session_source_key if same_occurrence else None
+        )
         current_parent = current.session_parent_title_es
         candidate_parent = (
             poster_event.session_parent_title_es if same_occurrence else None
         )
-        if current_parent is None:
+        if current_session_key is None:
+            session_source_key = candidate_session_key
             session_parent_title_es = candidate_parent
-        elif candidate_parent is None:
+        elif candidate_session_key is None:
+            session_source_key = current_session_key
             session_parent_title_es = current_parent
-        elif _session_base_key(current_parent) == _session_base_key(candidate_parent):
-            session_parent_title_es = current_parent
+        elif current_session_key == candidate_session_key:
+            session_source_key = current_session_key
+            parent_candidates = [
+                value for value in (current_parent, candidate_parent) if value
+            ]
+            session_parent_title_es = (
+                min(
+                    parent_candidates,
+                    key=lambda value: (len(value), value.casefold()),
+                )
+                if parent_candidates else None
+            )
         else:
+            session_source_key = None
             session_parent_title_es = None
         merged[duplicate_index] = SourceEvent(
             **{
@@ -1817,6 +1960,7 @@ def merge_text_and_poster_events(
                     current.programme_order if current.programme_order is not None
                     else poster_event.programme_order
                 ),
+                "session_source_key": session_source_key,
                 "session_parent_title_es": session_parent_title_es,
                 "image_url": current.image_url or poster_event.image_url,
             }
@@ -2599,6 +2743,7 @@ def _snapshot_data(
                 "access_note": event.access_note,
                 "programme_title": event.programme_title,
                 "programme_order": event.programme_order,
+                "session_source_key": event.session_source_key,
                 "session_parent_title_es": event.session_parent_title_es,
                 "image_url": event.image_url,
             }
@@ -2686,20 +2831,36 @@ def _load_snapshot(path: Path) -> Optional[Dict[str, Any]]:
             normalized = normalized_events[0]
             if isinstance(raw, dict) and isinstance(raw.get("teaser_es"), str):
                 normalized = replace(normalized, teaser_es=raw["teaser_es"])
+            raw_session_key = (
+                raw.get("session_source_key")
+                if isinstance(raw, dict) else None
+            )
             raw_session_parent = (
                 raw.get("session_parent_title_es")
                 if isinstance(raw, dict) else None
             )
-            if raw_session_parent is not None:
-                if not isinstance(raw_session_parent, str):
+            if raw_session_key is not None:
+                if (
+                    not isinstance(raw_session_key, str)
+                    or not re.fullmatch(
+                        r"[a-z][a-z0-9_]{1,31}:[0-9a-f]{64}",
+                        raw_session_key,
+                    )
+                    or not isinstance(raw_session_parent, str)
+                ):
                     raise ValueError
                 raw_session_parent = " ".join(raw_session_parent.split()).strip()
                 if not 5 <= len(raw_session_parent) <= 180:
                     raise ValueError
                 normalized = replace(
                     normalized,
+                    session_source_key=raw_session_key,
                     session_parent_title_es=raw_session_parent,
                 )
+            elif raw_session_parent is not None and not isinstance(
+                raw_session_parent, str
+            ):
+                raise ValueError
             raw_image = raw.get("image_url") if isinstance(raw, dict) else None
             if raw_image is not None:
                 image_url = _normalized_turismo_image_url(raw_image)
@@ -3345,7 +3506,6 @@ async def refresh_municipal_catalog(
                     )
                 if not new_todo_events:
                     continue
-                new_todo_events = _annotate_source_sessions(new_todo_events)
                 refreshed_dates = set(todo_program.dates)
                 retained = (
                     tuple(
@@ -3397,6 +3557,11 @@ async def refresh_municipal_catalog(
         # future dates when an unrelated programme row fails model parsing.
         # Keep the cursor unchanged, but do not discard those deterministic
         # recurring dates from the newly fetched official-attributed text.
+        if todo_window is not None and todo_explicit_rows:
+            todo_events = _annotate_todo_source_sessions(
+                todo_events,
+                todo_explicit_rows,
+            )
         if todo_explicit_rows:
             todo_events = _expand_explicit_todo_dates(
                 todo_events, todo_explicit_rows
