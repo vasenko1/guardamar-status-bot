@@ -1209,14 +1209,14 @@ Validation on the final functional head before removing the temporary
 branch-only workflow:
 
 - Python compileall: passed;
-- product-award modules: **65 tests passed**;
+- product-award modules: **69 tests passed**;
 - merged current `main` before final validation; PR mergeability was restored without dropping unrelated event/digest changes;
-- complete repository suite: **1410 tests passed**;
+- complete repository suite: **1414 tests passed**;
 - temporary validation workflow was removed from the final diff.
-- the six-day starter preview passed live exact-retail refresh for every
-  candidate; the added Semicurado resolved to Mercadona SKU 11672 at
-  approximately 280 g, 4.14 EUR and 14.80 EUR/kg in the reviewed `alc1`
-  context.
+- the seven-day starter preview passed live exact-retail refresh for every
+  candidate; day 3 is NALTROS Brut at ALDI, live-reviewed at 0.75 l,
+  3.15 EUR and 4.20 EUR/l; the six cheese candidates also retained their
+  previously reviewed exact Mercadona offers.
 - final review also tightened Valle retail identity: the current Mercadona
   supplier list must still contain Valle de San Juan itself; a distributor or
   packer alone can no longer preserve the award-to-retail join.
