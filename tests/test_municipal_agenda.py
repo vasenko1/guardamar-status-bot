@@ -16,11 +16,13 @@ from telegrambot.municipal_agenda import (
     _explicit_fiesta_article_events,
     _strict_quoted_todo_activity,
     _turismo_programme_events,
+    _turismo_programme_expected_dates,
     _turismo_text_programme_events,
     _unmatched_todo_rows,
     _read_turismo_programme,
     _read_turismo_programme_article,
     _read_turismo_programme_candidates,
+    TURISMO_PROGRAMME_TEXT_EXTRACTOR_VERSION,
     TURISMO_PROGRAMME_TEXT_SOURCE,
     _enrich_admissions,
     _enrich_cultura_teasers,
@@ -384,9 +386,244 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
             "telegrambot.municipal_agenda.fetch_bounded",
             return_value=(payload, "", "application/json"),
         ):
-            detail = _read_turismo_programme_article(candidate)
+            detail = _read_turismo_programme_article(
+                candidate, date(2026, 9, 26)
+            )
 
         self.assertIsNone(detail)
+
+    def test_rosario_content_blocks_prove_expected_dates_without_range_endpoints(self):
+        content = (
+            "<p>Del 19 de septiembre al 18 de octubre se celebran las fiestas.</p>"
+            "<h3>26 de septiembre</h3>"
+            "<p>Gran bingo y traslado.</p>"
+            "<h3>3 de octubre</h3>"
+            "<h3>4 de octubre</h3>"
+            "<p>7 de octubre</p>"
+            "<h3>15 de octubre</h3>"
+            "<h3>18 de octubre</h3>"
+        )
+
+        self.assertEqual(
+            _turismo_programme_expected_dates(
+                content, date(2026, 9, 26)
+            ),
+            (
+                date(2026, 9, 26),
+                date(2026, 10, 3),
+                date(2026, 10, 4),
+                date(2026, 10, 7),
+                date(2026, 10, 15),
+                date(2026, 10, 18),
+            ),
+        )
+
+    async def test_missing_rosario_dates_get_one_targeted_recovery(self):
+        link = (
+            "https://guardamarturismo.com/"
+            "fiestas-de-la-virgen-del-rosario-de-guardamar-2026/"
+        )
+        title = "Fiestas de la Virgen del Rosario de Guardamar 2026"
+        candidate = {
+            "id": 101,
+            "modified": "2026-09-16T10:00:00",
+            "link": link,
+            "title": title,
+            "distance": 0,
+        }
+        expected_dates = (
+            date(2026, 9, 26),
+            date(2026, 10, 3),
+            date(2026, 10, 4),
+            date(2026, 10, 7),
+            date(2026, 10, 15),
+            date(2026, 10, 18),
+        )
+        initial_result = {"pass": "initial"}
+        recovery_result = {"pass": "recovery"}
+        initial_events = (
+            SourceEvent(
+                "Conferencia", date(2026, 10, 15), date(2026, 10, 15),
+                "19:00", None, "Biblioteca", "event",
+                (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            ),
+            SourceEvent(
+                "Procesión final", date(2026, 10, 18), date(2026, 10, 18),
+                None, None, None, "event",
+                (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            ),
+        )
+        recovered_events = tuple(
+            SourceEvent(
+                f"Acto {day.isoformat()}", day, day,
+                None, None, None, "event",
+                (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            )
+            for day in expected_dates[:4]
+        )
+        model = AsyncMock(return_value=initial_result)
+        recovery = AsyncMock(return_value=recovery_result)
+
+        def normalized(result, _source_text):
+            if result is initial_result:
+                return initial_events
+            if result is recovery_result:
+                return recovered_events
+            raise AssertionError("unexpected extraction result")
+
+        with (
+            patch(
+                "telegrambot.municipal_agenda._read_turismo_programme_candidates",
+                return_value=(candidate,),
+            ),
+            patch(
+                "telegrambot.municipal_agenda._read_turismo_programme_article",
+                return_value=(
+                    link,
+                    candidate["modified"],
+                    title,
+                    "Programa completo Rosario",
+                    expected_dates,
+                ),
+            ),
+            patch(
+                "telegrambot.municipal_agenda.extract_agenda_text_events",
+                new=model,
+            ),
+            patch(
+                "telegrambot.municipal_agenda.extract_guardamar_standalone_events",
+                new=recovery,
+            ),
+            patch(
+                "telegrambot.municipal_agenda._normalize_turismo_programme_text",
+                side_effect=normalized,
+            ),
+        ):
+            events, state = await _turismo_text_programme_events(
+                "key", date(2026, 9, 26), (), {}
+            )
+
+        model.assert_awaited_once_with("key", "Programa completo Rosario")
+        recovery.assert_awaited_once_with(
+            "key",
+            "Programa completo Rosario",
+            expected_dates[:4],
+        )
+        self.assertEqual(
+            {event.start_date for event in events},
+            set(expected_dates),
+        )
+        stored = state["articles"][link]
+        self.assertEqual(
+            stored["extractor_version"],
+            TURISMO_PROGRAMME_TEXT_EXTRACTOR_VERSION,
+        )
+        self.assertEqual(
+            stored["expected_dates"],
+            [day.isoformat() for day in expected_dates],
+        )
+
+    async def test_incomplete_recovery_rejects_programme_and_old_v1_cache(self):
+        link = (
+            "https://guardamarturismo.com/"
+            "fiestas-de-la-virgen-del-rosario-de-guardamar-2026/"
+        )
+        title = "Fiestas de la Virgen del Rosario de Guardamar 2026"
+        candidate = {
+            "id": 101,
+            "modified": "2026-09-16T10:00:00",
+            "link": link,
+            "title": title,
+            "distance": 0,
+        }
+        expected_dates = (
+            date(2026, 9, 26),
+            date(2026, 10, 3),
+            date(2026, 10, 4),
+        )
+        stale = (SourceEvent(
+            "Partial old fact", date(2026, 10, 15), date(2026, 10, 15),
+            None, None, None, "event",
+            (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            programme_title=title,
+            programme_order=10,
+        ),)
+        previous_state = {
+            "version": 1,
+            "articles": {
+                link: {
+                    "modified": candidate["modified"],
+                    "sha256": "partial-v1",
+                    "programme_title": title,
+                    "extractor_version": 1,
+                },
+            },
+        }
+        first = {"pass": "initial"}
+        second = {"pass": "recovery"}
+        initial_events = (
+            SourceEvent(
+                "Acto 26", expected_dates[0], expected_dates[0],
+                None, None, None, "event",
+                (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            ),
+            SourceEvent(
+                "Acto pasado", date(2026, 9, 20), date(2026, 9, 20),
+                None, None, None, "event",
+                (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            ),
+        )
+        recovered_events = (
+            SourceEvent(
+                "Acto 3", expected_dates[1], expected_dates[1],
+                None, None, None, "event",
+                (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            ),
+        )
+        recovery = AsyncMock(return_value=second)
+
+        def normalized(result, _source_text):
+            return initial_events if result is first else recovered_events
+
+        with (
+            patch(
+                "telegrambot.municipal_agenda._read_turismo_programme_candidates",
+                return_value=(candidate,),
+            ),
+            patch(
+                "telegrambot.municipal_agenda._read_turismo_programme_article",
+                return_value=(
+                    link,
+                    candidate["modified"],
+                    title,
+                    "Programa incompleto",
+                    expected_dates,
+                ),
+            ),
+            patch(
+                "telegrambot.municipal_agenda.extract_agenda_text_events",
+                new=AsyncMock(return_value=first),
+            ),
+            patch(
+                "telegrambot.municipal_agenda.extract_guardamar_standalone_events",
+                new=recovery,
+            ),
+            patch(
+                "telegrambot.municipal_agenda._normalize_turismo_programme_text",
+                side_effect=normalized,
+            ),
+        ):
+            events, state = await _turismo_text_programme_events(
+                "key", date(2026, 9, 26), stale, previous_state
+            )
+
+        recovery.assert_awaited_once_with(
+            "key",
+            "Programa incompleto",
+            (expected_dates[1], expected_dates[2]),
+        )
+        self.assertEqual(events, ())
+        self.assertEqual(state["articles"], {})
 
     async def test_programme_article_is_text_first_and_keeps_one_future_act(self):
         candidate = {
@@ -434,6 +671,7 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
                     candidate["modified"],
                     candidate["title"],
                     article_text,
+                    (),
                 ),
             ),
             patch(
@@ -489,7 +727,7 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
                     "modified": "2026-09-16T10:00:00",
                     "sha256": "old",
                     "programme_title": title,
-                    "extractor_version": 1,
+                    "extractor_version": TURISMO_PROGRAMME_TEXT_EXTRACTOR_VERSION,
                 },
             },
         }
@@ -517,6 +755,7 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
                     candidate["modified"],
                     title,
                     "Programa actualizado sin actos futuros.",
+                    (),
                 ),
             ),
             patch(
@@ -562,7 +801,7 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
                     "modified": candidate["modified"],
                     "sha256": "abc",
                     "programme_title": title,
-                    "extractor_version": 1,
+                    "extractor_version": TURISMO_PROGRAMME_TEXT_EXTRACTOR_VERSION,
                 },
             },
         }
