@@ -15,6 +15,7 @@ from telegrambot.municipal_agenda import (
     MunicipalAgendaError,
     SourceEvent,
     _session_source_plan,
+    _todo_row_has_session_marker,
     municipal_translation_items,
     _apply_reviewed_daily_schedules,
     _snapshot_data,
@@ -180,6 +181,20 @@ class SessionGroupingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([item[0] for item in plan], [
             event.title_es for event in events
         ])
+
+    def test_only_explicit_session_rows_trigger_incomplete_session_gate(self):
+        self.assertFalse(_todo_row_has_session_marker(
+            "2026-09-26 – 8,30 h.: Free tour al punto geodésico."
+        ))
+        self.assertFalse(_todo_row_has_session_marker(
+            "2026-09-26 – 10 h.: Visita guiada al castillo."
+        ))
+        self.assertTrue(_todo_row_has_session_marker(
+            "2026-09-26 – 14 h.: Cuarto turno para Escape Room."
+        ))
+        self.assertTrue(_todo_row_has_session_marker(
+            "2026-09-26 – 15 h.: Escape Room, sesión 4."
+        ))
 
     async def test_translation_queue_contains_base_title_once(self):
         events = self._escape_events()
@@ -717,8 +732,8 @@ class TodoPartialRefreshTests(unittest.IsolatedAsyncioTestCase):
             old_state["cursor_modified_gmt"],
         )
         self.assertEqual(
-            stored["sources"]["todo_cultura"]["incomplete_dates"],
-            ["2026-09-26"],
+            stored["sources"]["todo_cultura"]["incomplete_session_dates"],
+            [],
         )
 
 

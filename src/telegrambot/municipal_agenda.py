@@ -543,6 +543,20 @@ _SESSION_ORDINALS = {
     "quinta": 5, "quinto": 5,
     "sexta": 6, "sexto": 6,
 }
+_TODO_SESSION_MARKER = re.compile(
+    r"\b(?:primer(?:a|o)?|segund(?:a|o|0)|tercer(?:a|o)?|cuart[oa]|"
+    r"quint[oa]|sext[oa]|[1-6](?:[.ºª]|er|ra)?)\s+"
+    r"(?:turno|sesi[oó]n|pase)\b|"
+    r"\b(?:turno|sesi[oó]n|pase)\s*"
+    r"(?:n[úu]m(?:ero)?\.?\s*)?[1-6]\b",
+    re.IGNORECASE,
+)
+
+
+def _todo_row_has_session_marker(row: str) -> bool:
+    """Return whether one unresolved Todo row could hide a session member."""
+
+    return _TODO_SESSION_MARKER.search(html.unescape(row)) is not None
 
 
 def _session_title_parts(title: str) -> Optional[Tuple[str, int]]:
@@ -3214,7 +3228,7 @@ async def refresh_municipal_catalog(
         todo_events = prior_todo_events
         todo_window = None
         todo_state_complete = True
-        todo_incomplete_dates = set()
+        todo_incomplete_session_dates = set()
         todo_enrichment_programs: Tuple[object, ...] = ()
         todo_explicit_rows: Tuple[Tuple[date, str, str], ...] = ()
         try:
@@ -3309,8 +3323,10 @@ async def refresh_municipal_catalog(
                 program_complete = not pending_rows
                 if pending_rows:
                     todo_state_complete = False
-                    todo_incomplete_dates.update(
-                        day for day, _, _ in pending_rows
+                    todo_incomplete_session_dates.update(
+                        day
+                        for day, _, row in pending_rows
+                        if _todo_row_has_session_marker(row)
                     )
                     missing = ", ".join(
                         f"{day.isoformat()} {start_time}"
@@ -3617,7 +3633,7 @@ async def refresh_municipal_catalog(
             }
         elif isinstance(poster_source, dict) and poster_source:
             source_state["mupi"] = poster_source
-        old_incomplete_dates = _todo_incomplete_dates(todo_source)
+        old_incomplete_session_dates = _todo_incomplete_session_dates(todo_source)
         if todo_window is not None and todo_state_complete:
             evidence = [
                 detail
@@ -3635,14 +3651,14 @@ async def refresh_municipal_catalog(
                 for program in todo_window.programs
                 for day in program.dates
             }
-            remaining_incomplete_dates = (
-                old_incomplete_dates - completed_dates
+            remaining_incomplete_session_dates = (
+                old_incomplete_session_dates - completed_dates
             )
             source_state["todo_cultura"] = {
                 **todo_window.source_state,
                 "checked_at": now.isoformat(),
-                "incomplete_dates": sorted(
-                    day.isoformat() for day in remaining_incomplete_dates
+                "incomplete_session_dates": sorted(
+                    day.isoformat() for day in remaining_incomplete_session_dates
                 ),
                 "participation_evidence": [
                     {
@@ -3662,10 +3678,10 @@ async def refresh_municipal_catalog(
         elif todo_window is not None:
             source_state["todo_cultura"] = {
                 **(todo_source if isinstance(todo_source, dict) else {}),
-                "incomplete_dates": sorted(
+                "incomplete_session_dates": sorted(
                     day.isoformat()
                     for day in (
-                        old_incomplete_dates | todo_incomplete_dates
+                        old_incomplete_session_dates | todo_incomplete_session_dates
                     )
                 ),
             }
@@ -3738,12 +3754,12 @@ async def refresh_municipal_catalog(
     return tuple(events)
 
 
-def _todo_incomplete_dates(state: Any) -> frozenset[date]:
-    """Return only validated dates whose Todo extraction is incomplete."""
+def _todo_incomplete_session_dates(state: Any) -> frozenset[date]:
+    """Return dates where an unresolved Todo row may hide a session."""
 
     if not isinstance(state, dict):
         return frozenset()
-    raw = state.get("incomplete_dates", [])
+    raw = state.get("incomplete_session_dates", [])
     if not isinstance(raw, list):
         return frozenset()
     result = set()
@@ -3766,7 +3782,7 @@ async def _cached_session_blocked_dates(
     if snapshot is None:
         return frozenset()
     source = snapshot.get("sources", {}).get("todo_cultura", {})
-    return _todo_incomplete_dates(source)
+    return _todo_incomplete_session_dates(source)
 
 
 async def _cached_current_events(
