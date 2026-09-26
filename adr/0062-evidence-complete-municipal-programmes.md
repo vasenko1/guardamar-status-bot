@@ -139,15 +139,21 @@ Generic first-party programme articles now have an explicit completeness gate:
   that date; one broad multi-day event cannot satisfy several explicit
   occurrence dates;
 - when the first official-text extraction misses required dates, at most one
-  targeted recovery call reuses the existing Guardamar standalone extractor
-  with exactly those missing dates;
+  targeted recovery call is allowed. Recovery no longer sends the whole article
+  through the Todo-specific standalone prompt: it builds one bounded official
+  text slice from the missing date sections and reuses the ordinary
+  evidence-bound municipal programme text extractor;
+- the date-section slice contains the date-leading block and following semantic
+  blocks up to the next explicit date, so a heading-only date does not lose its
+  event description. Recovered facts are accepted only when their exact
+  `start_date` is one of the requested missing dates;
 - if any required date is still missing after that bounded recovery, the
   article is rejected as incomplete and no new article state is accepted;
-- the Turismo programme-text extractor version is raised to 2. Version-1
-  article facts are not trusted or retained during this migration, so the
-  production partial Rosario snapshot must be revalidated instead of silently
-  reused;
-- unchanged version-2 articles still reuse last-good verified facts with no
+- the Turismo programme-text extractor version is raised to 3. Version-1 and
+  version-2 article facts are not trusted or retained during this migration, so
+  both the original partial Rosario snapshot and the later fail-closed v2
+  attempt are revalidated;
+- unchanged version-3 articles still reuse last-good verified facts with no
   detail read or model call.
 
 This remains date-level completeness, not an attempt to invent or count acts
