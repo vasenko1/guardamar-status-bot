@@ -1289,9 +1289,61 @@ def _session_time_label(event) -> str:
     label = start.strftime("%H:%M")
     if event.ends_at is not None and event.duration_minutes is None:
         end = event.ends_at.astimezone(GUARDAMAR_TIMEZONE)
-        if end.date() == start.date():
-            label += "–" + end.strftime("%H:%M")
+        label += "–" + end.strftime("%H:%M")
     return label
+
+
+def _session_member_context(member, parent):
+    """Keep only verified context that differs from the common parent."""
+
+    place_is_common = (
+        member.place is None
+        or (
+            parent.place is not None
+            and same_event_place(member.place, parent.place)
+        )
+    )
+    return replace(
+        member,
+        starts_at=None,
+        ends_at=None,
+        place=None if place_is_common else member.place,
+        place_query=None if place_is_common else member.place_query,
+        route=None if member.route == parent.route else member.route,
+        details=tuple(
+            detail for detail in member.details
+            if detail not in parent.details
+        ),
+        duration_minutes=(
+            None
+            if member.duration_minutes == parent.duration_minutes
+            else member.duration_minutes
+        ),
+        audience_label=(
+            None
+            if member.audience_label == parent.audience_label
+            else member.audience_label
+        ),
+        teaser=None if member.teaser == parent.teaser else member.teaser,
+        meeting_point=(
+            None
+            if member.meeting_point == parent.meeting_point
+            else member.meeting_point
+        ),
+        schedule_note=(
+            None
+            if member.schedule_note == parent.schedule_note
+            else member.schedule_note
+        ),
+        participation_note=(
+            None
+            if member.participation_note == parent.participation_note
+            else member.participation_note
+        ),
+        active_until=None,
+        active_from=None,
+        is_final_day=False,
+    )
 
 
 def _render_session_group(members: Sequence) -> List[str]:
@@ -1316,6 +1368,10 @@ def _render_session_group(members: Sequence) -> List[str]:
         if access:
             line += " — " + " · ".join(access)
         block.append(line)
+        block.extend(_render_event_context(
+            _session_member_context(member, parent),
+            "      ",
+        ))
     return block
 
 def _render_event_context(event, indent: str) -> List[str]:
