@@ -1,0 +1,60 @@
+name: Probe product award diversity
+
+on:
+  push:
+    branches:
+      - feat/private-label-product-awards-poc
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e .
+      - name: Probe ALDI page and Mercadona catalogue
+        run: |
+          python - <<'PY'
+          import json
+          import urllib.request
+          from telegrambot.product_awards import _fetch_page
+
+          print("=== ALDI NALTROS TEXT ===")
+          doc = _fetch_page(
+              "https://www.aldi.es/p/cava-brut-190300.html",
+              frozenset({"www.aldi.es", "aldi.es"}),
+          )
+          for line in [x.strip() for x in doc.text.splitlines() if x.strip()]:
+              folded=line.lower()
+              if any(token in folded for token in (
+                  "naltros","cava brut","dop cava","0,75","3.15","3,15",
+                  "4.20","4,20","11,5","nota de cata","amarillo","burbuja",
+                  "frutal","persistente"
+              )):
+                  print(line)
+
+          print("=== MERCADONA CATEGORIES ===")
+          url="https://tienda.mercadona.es/api/categories/?lang=es&wh=alc1"
+          req=urllib.request.Request(
+              url,
+              headers={"Accept":"application/json","User-Agent":"GuardamarMorningDigest/0.13"},
+          )
+          try:
+              with urllib.request.urlopen(req,timeout=20) as r:
+                  body=r.read()
+                  print("status",r.status,"type",r.headers.get_content_type(),"bytes",len(body))
+                  obj=json.loads(body)
+                  text=json.dumps(obj,ensure_ascii=False)
+                  for needle in ("virgen extra","aove","aceite de oliva"):
+                      pos=text.lower().find(needle)
+                      print("needle",needle,"pos",pos)
+                      if pos>=0:
+                          print(text[max(0,pos-1800):pos+5000])
+          except Exception as exc:
+              print("categories_error",type(exc).__name__,str(exc))
+          PY
