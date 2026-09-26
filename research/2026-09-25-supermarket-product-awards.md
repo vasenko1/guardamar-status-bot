@@ -1210,7 +1210,8 @@ branch-only workflow:
 
 - Python compileall: passed;
 - product-award modules: **65 tests passed**;
-- complete repository suite: **1356 tests passed**;
+- merged current `main` before final validation; PR mergeability was restored without dropping unrelated event/digest changes;
+- complete repository suite: **1410 tests passed**;
 - temporary validation workflow was removed from the final diff.
 - the six-day starter preview passed live exact-retail refresh for every
   candidate; the added Semicurado resolved to Mercadona SKU 11672 at
