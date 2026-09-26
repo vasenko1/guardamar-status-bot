@@ -260,3 +260,35 @@ slice containing the actual Rosario programme text for all required dates,
 including the 26 September Bingo/traslado/Misa block, 3 October Petanca/Ofrenda/
 verbena details, 4 October Rosario de la Aurora, 7 October Día Grande acts,
 15 October conference and 18 October Encuentro de Auroros.
+
+
+## Production verification of the v3 recovery path
+
+The first production run of v3 at 20:03–20:04 reached the new adapter with a
+clean municipal-sync exit code, but Rosario was still not accepted. The log
+contained:
+
+`Official Turismo programme article unavailable: Every Turismo programme event candidate was invalid`
+
+and the stored generic programme state remained `articles={}` with zero
+events.
+
+This exposed a control-flow bug rather than another source-coverage problem.
+The v3 implementation had the correct scoped recovery text, but
+`_normalize_turismo_programme_text()` still raised immediately when the
+full-article model response contained candidates and every candidate failed the
+existing exact-evidence checks. The exception occurred before missing dates
+were calculated, so the one scoped recovery call never ran.
+
+The correction is intentionally narrow: the first full-article normalization
+is now best-effort. Invalid candidates are still discarded by the same strict
+validator, but an all-invalid first pass becomes an empty accepted set and
+therefore marks every required date as missing. The already-bounded scoped
+recovery then runs once. Recovery normalization remains strict; if its returned
+candidates are also all invalid, or if any required date is still uncovered,
+the article remains rejected.
+
+No evidence rule, completeness rule, source limit, cache version, scheduler, or
+model-call budget changes. A regression now covers the exact production shape:
+non-empty but fully invalid initial candidates followed by one valid scoped
+recovery.

@@ -138,6 +138,11 @@ Generic first-party programme articles now have an explicit completeness gate:
 - every required date must have an extracted event whose `start_date` equals
   that date; one broad multi-day event cannot satisfy several explicit
   occurrence dates;
+- the first full-article extraction is best-effort input to the completeness
+  gate. Individually invalid candidates are discarded; even when all initial
+  candidates are invalid, that is treated as zero accepted events so the single
+  bounded recovery still gets a chance to run. The recovery extraction itself
+  remains strict and must yield evidence-valid facts;
 - when the first official-text extraction misses required dates, at most one
   targeted recovery call is allowed. Recovery no longer sends the whole article
   through the Todo-specific standalone prompt: it builds one bounded official

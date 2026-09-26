@@ -1593,8 +1593,10 @@ def _read_turismo_programme_article(
 def _normalize_turismo_programme_text(
     result: Dict[str, Any],
     source_text: str,
+    *,
+    allow_all_invalid: bool = False,
 ) -> Tuple[SourceEvent, ...]:
-    """Validate a programme article without forcing one calendar month."""
+    """Validate programme candidates independently without forcing one month."""
 
     raw_events = result.get("events")
     if not isinstance(raw_events, list) or len(raw_events) > MAX_EVENTS:
@@ -1610,7 +1612,7 @@ def _normalize_turismo_programme_text(
             ))
         except MunicipalAgendaError:
             continue
-    if raw_events and not accepted:
+    if raw_events and not accepted and not allow_all_invalid:
         raise MunicipalAgendaError(
             "Every Turismo programme event candidate was invalid",
             code="NO-VALID-EVENTS",
@@ -1766,7 +1768,9 @@ async def _turismo_text_programme_events(
         try:
             extracted = await extract_agenda_text_events(api_key, article_text)
             all_article_events = _normalize_turismo_programme_text(
-                extracted, article_text
+                extracted,
+                article_text,
+                allow_all_invalid=True,
             )
             relevant_expected_dates = tuple(
                 day

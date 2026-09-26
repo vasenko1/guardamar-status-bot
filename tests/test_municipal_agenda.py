@@ -453,6 +453,119 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
             expected,
         )
 
+    async def test_all_invalid_initial_candidates_still_reach_scoped_recovery(self):
+        link = (
+            "https://guardamarturismo.com/"
+            "fiestas-de-la-virgen-del-rosario-de-guardamar-2026/"
+        )
+        title = "Fiestas de la Virgen del Rosario de Guardamar 2026"
+        candidate = {
+            "id": 101,
+            "modified": "2026-09-16T10:00:00",
+            "link": link,
+            "title": title,
+            "distance": 0,
+        }
+        expected_dates = (
+            date(2026, 9, 26),
+            date(2026, 10, 3),
+        )
+        date_blocks = {
+            date(2026, 9, 26): (
+                "26 de septiembre: Gran Bingo Benéfico.",
+            ),
+            date(2026, 10, 3): (
+                "3 de octubre: XI Trofeo de Petanca.",
+            ),
+        }
+        article_text = " ".join(
+            block
+            for day in expected_dates
+            for block in date_blocks[day]
+        )
+        recovery_text = _turismo_programme_recovery_text(
+            date_blocks, expected_dates
+        )
+        invalid_initial = {
+            "month": "2026-09",
+            "events": [{
+                "title_es": "Actividad inventada",
+                "start_date": "2026-09-26",
+                "end_date": None,
+                "start_time": None,
+                "end_time": None,
+                "place": None,
+                "evidence_es": (
+                    "26 de septiembre: Gran Bingo Benéfico."
+                ),
+                "category": "event",
+            }],
+        }
+        valid_recovery = {
+            "month": "2026-09",
+            "events": [{
+                "title_es": "Gran Bingo Benéfico",
+                "start_date": "2026-09-26",
+                "end_date": None,
+                "start_time": None,
+                "end_time": None,
+                "place": None,
+                "evidence_es": (
+                    "26 de septiembre: Gran Bingo Benéfico."
+                ),
+                "category": "event",
+            }, {
+                "title_es": "XI Trofeo de Petanca",
+                "start_date": "2026-10-03",
+                "end_date": None,
+                "start_time": None,
+                "end_time": None,
+                "place": None,
+                "evidence_es": (
+                    "3 de octubre: XI Trofeo de Petanca."
+                ),
+                "category": "event",
+            }],
+        }
+        model = AsyncMock(side_effect=(invalid_initial, valid_recovery))
+
+        with (
+            patch(
+                "telegrambot.municipal_agenda._read_turismo_programme_candidates",
+                return_value=(candidate,),
+            ),
+            patch(
+                "telegrambot.municipal_agenda._read_turismo_programme_article",
+                return_value=(
+                    link,
+                    candidate["modified"],
+                    title,
+                    article_text,
+                    expected_dates,
+                    date_blocks,
+                ),
+            ),
+            patch(
+                "telegrambot.municipal_agenda.extract_agenda_text_events",
+                new=model,
+            ),
+        ):
+            events, state = await _turismo_text_programme_events(
+                "key", date(2026, 9, 26), (), {}
+            )
+
+        self.assertEqual(model.await_count, 2)
+        model.assert_any_await("key", article_text)
+        model.assert_any_await("key", recovery_text)
+        self.assertEqual(
+            {event.start_date for event in events},
+            set(expected_dates),
+        )
+        self.assertEqual(
+            state["articles"][link]["extractor_version"],
+            TURISMO_PROGRAMME_TEXT_EXTRACTOR_VERSION,
+        )
+
     async def test_missing_rosario_dates_get_one_targeted_recovery(self):
         link = (
             "https://guardamarturismo.com/"
@@ -504,8 +617,9 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
         )
         model = AsyncMock(side_effect=(initial_result, recovery_result))
 
-        def normalized(result, source_text):
+        def normalized(result, source_text, **kwargs):
             if result is initial_result:
+                self.assertTrue(kwargs.get("allow_all_invalid"))
                 self.assertEqual(source_text, "Programa completo Rosario")
                 return initial_events
             if result is recovery_result:
@@ -622,8 +736,12 @@ class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
         )
         model = AsyncMock(side_effect=(first, second))
 
-        def normalized(result, _source_text):
-            return initial_events if result is first else recovered_events
+        def normalized(result, _source_text, **kwargs):
+            if result is first:
+                self.assertTrue(kwargs.get("allow_all_invalid"))
+                return initial_events
+            self.assertFalse(kwargs.get("allow_all_invalid", False))
+            return recovered_events
 
         with (
             patch(
