@@ -499,8 +499,10 @@ When a patronal programme is image-first on the municipal site, a separate
 Ayuntamiento backstop reads `https://www.guardamardelsegura.es/noticias/`.
 It considers at most two recent same-year fiesta-shaped posts and excludes
 Fiestas del Campo because that programme already has a dedicated adapter. A
-detail page is eligible only when it exposes one event-specific official
-`/wp-content/uploads/` programme image. New or changed posters receive two
+detail page is eligible only when it exposes an official
+`/wp-content/uploads/` image whose upload filename explicitly identifies a
+programme/tríptico; ordinary fiesta photos remain ineligible even when their
+filename overlaps the article title. New or changed posters receive two
 blind structured vision readings; only agreeing occurrences survive. The
 prompt treats tall two-column layouts and adjacent September/October dates as
 one programme and keeps separately timed same-day acts separate. Unchanged
