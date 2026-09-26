@@ -380,12 +380,22 @@ class MercadonaRetailRefreshTests(unittest.TestCase):
             "brand": "Hacendado",
             "published": True,
             "is_variable_weight": True,
+            "unavailable_from": None,
+            "unavailable_weekdays": [],
             "share_url": (
                 "https://tienda.mercadona.es/product/50952/"
                 "queso-anejo-tostado-mezcla-hacendado-pieza"
             ),
             "details": {
                 "suppliers": [{"name": "Queserías Entrepinares S.A.U."}],
+            },
+            "nutrition_information": {
+                "ingredients": (
+                    "<strong>Leche</strong> [pasteurizada de vaca (50%*), "
+                    "pasteurizada de oveja (20%*) y pasteurizada de cabra "
+                    "(15%*)], sal, cuajo y fermentos lácticos."
+                ),
+                "allergens": "Contiene leche.",
             },
             "price_instructions": {
                 "unit_price": 6.19,
@@ -419,6 +429,25 @@ class MercadonaRetailRefreshTests(unittest.TestCase):
             self.assertRaises(ProductAwardError),
         ):
             refresh_mercadona_offers(item)
+
+    def test_exact_sku_refresh_rejects_recipe_drift(self):
+        item = self.wccc_candidate()
+        payload = self.payload()
+        payload["nutrition_information"]["ingredients"] = (
+            "<strong>Leche</strong> de vaca (70%) y oveja (10%)."
+        )
+        with (
+            patch("telegrambot.product_awards._fetch_json", return_value=payload),
+            self.assertRaises(ProductAwardError),
+        ):
+            refresh_mercadona_offers(item)
+
+    def test_exact_sku_refresh_skips_unavailable_product(self):
+        item = self.wccc_candidate()
+        payload = self.payload()
+        payload["unavailable_from"] = "2026-09-26"
+        with patch("telegrambot.product_awards._fetch_json", return_value=payload):
+            self.assertEqual(refresh_mercadona_offers(item), ())
 
     def test_current_publication_requires_verified_live_offer(self):
         item = self.wccc_candidate()
