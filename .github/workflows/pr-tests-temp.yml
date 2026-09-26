@@ -25,8 +25,11 @@ jobs:
           PYTHONPATH=src python - <<'PY'
           from datetime import date
           from telegrambot.municipal_agenda import (
+              POSTER_HOSTS,
+              POSTER_LIMIT_BYTES,
               _read_ayuntamiento_programme_candidates,
               _read_ayuntamiento_programme_article,
+              _read_url,
           )
 
           candidates = _read_ayuntamiento_programme_candidates(date(2026, 9, 26))
@@ -42,4 +45,13 @@ jobs:
           )
           assert "PROG." in detail[2] or "prog" in detail[2].lower()
           assert detail[2].lower().endswith((".jpg", ".jpeg", ".png", ".webp"))
+          poster, mime = _read_url(
+              detail[2],
+              POSTER_HOSTS,
+              POSTER_LIMIT_BYTES,
+          )
+          print("POSTER_BYTES:", len(poster))
+          print("POSTER_MIME:", mime)
+          assert 100_000 < len(poster) <= POSTER_LIMIT_BYTES
+          assert mime in {"image/jpeg", "image/png", "image/webp"}
           PY
