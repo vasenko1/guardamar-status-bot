@@ -16,8 +16,11 @@ from telegrambot.municipal_agenda import (
     _explicit_fiesta_article_events,
     _strict_quoted_todo_activity,
     _turismo_programme_events,
+    _turismo_text_programme_events,
     _unmatched_todo_rows,
     _read_turismo_programme,
+    _read_turismo_programme_candidates,
+    TURISMO_PROGRAMME_TEXT_SOURCE,
     _enrich_admissions,
     _enrich_cultura_teasers,
     _enrich_todo_participation,
@@ -307,6 +310,185 @@ class ExplicitTodoDatesTest(unittest.TestCase):
         )
 
 
+class TurismoProgrammeArticleDiscoveryTest(unittest.IsolatedAsyncioTestCase):
+    def test_discovers_rosario_and_ignores_non_programme_or_campo_posts(self):
+        posts = [{
+            "id": 101,
+            "modified": "2026-09-16T10:00:00",
+            "link": (
+                "https://guardamarturismo.com/"
+                "fiestas-de-la-virgen-del-rosario-de-guardamar-2026/"
+            ),
+            "title": {"rendered": (
+                "Fiestas de la Virgen del Rosario de Guardamar 2026"
+            )},
+            "excerpt": {"rendered": (
+                "El sábado 26 de septiembre continúan los actos."
+            )},
+        }, {
+            "id": 102,
+            "modified": "2026-09-17T10:00:00",
+            "link": "https://guardamarturismo.com/que-hacer-en-guardamar-2026/",
+            "title": {"rendered": "Qué hacer en Guardamar 2026"},
+            "excerpt": {"rendered": "Actividad el 27 de septiembre."},
+        }, {
+            "id": 103,
+            "modified": "2026-09-18T10:00:00",
+            "link": (
+                "https://guardamarturismo.com/"
+                "este-es-el-programa-de-fiestas-del-campo-de-guardamar-2026/"
+            ),
+            "title": {"rendered": "Programa Fiestas del Campo 2026"},
+            "excerpt": {"rendered": "Actos el 26 de septiembre."},
+        }, {
+            "id": 104,
+            "modified": "2026-09-18T10:00:00",
+            "link": "https://guardamarturismo.com/ca/fiestas-guardamar-2026/",
+            "title": {"rendered": "Fiestas Guardamar 2026"},
+            "excerpt": {"rendered": "Actes el 26 de septiembre."},
+        }]
+        payload = json.dumps(posts).encode("utf-8")
+        with patch(
+            "telegrambot.municipal_agenda.fetch_bounded",
+            return_value=(payload, "", "application/json"),
+        ):
+            candidates = _read_turismo_programme_candidates(
+                date(2026, 9, 26)
+            )
+
+        self.assertIsNotNone(candidates)
+        self.assertEqual([candidate["id"] for candidate in candidates], [101])
+
+    async def test_programme_article_is_text_first_and_keeps_one_future_act(self):
+        candidate = {
+            "id": 101,
+            "modified": "2026-09-16T10:00:00",
+            "link": (
+                "https://guardamarturismo.com/"
+                "fiestas-de-la-virgen-del-rosario-de-guardamar-2026/"
+            ),
+            "title": "Fiestas de la Virgen del Rosario de Guardamar 2026",
+            "distance": 0,
+        }
+        article_text = (
+            "El 20 de septiembre hubo un acto. "
+            "El 25 de septiembre hubo otro acto. "
+            "El 26 de septiembre habrá Gran bingo benéfico."
+        )
+        article_events = (
+            SourceEvent(
+                "Acto previo uno", date(2026, 9, 20), date(2026, 9, 20),
+                None, None, None, "event",
+                (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            ),
+            SourceEvent(
+                "Acto previo dos", date(2026, 9, 25), date(2026, 9, 25),
+                None, None, None, "event",
+                (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            ),
+            SourceEvent(
+                "Gran bingo benéfico", date(2026, 9, 26), date(2026, 9, 26),
+                None, None, None, "event",
+                (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            ),
+        )
+        extractor = AsyncMock(return_value={"month": "2026-09", "events": []})
+        with (
+            patch(
+                "telegrambot.municipal_agenda._read_turismo_programme_candidates",
+                return_value=(candidate,),
+            ),
+            patch(
+                "telegrambot.municipal_agenda._read_turismo_programme_article",
+                return_value=(
+                    candidate["link"],
+                    candidate["modified"],
+                    candidate["title"],
+                    article_text,
+                ),
+            ),
+            patch(
+                "telegrambot.municipal_agenda.extract_agenda_text_events",
+                new=extractor,
+            ),
+            patch(
+                "telegrambot.municipal_agenda._normalize_turismo_programme_text",
+                return_value=article_events,
+            ),
+        ):
+            events, state = await _turismo_text_programme_events(
+                "key", date(2026, 9, 26), (), {}
+            )
+
+        extractor.assert_awaited_once_with("key", article_text)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].title_es, "Gran bingo benéfico")
+        self.assertEqual(
+            events[0].programme_title,
+            "Fiestas de la Virgen del Rosario de Guardamar 2026",
+        )
+        self.assertEqual(events[0].programme_order, 10)
+        self.assertEqual(
+            state["articles"][candidate["link"]]["modified"],
+            candidate["modified"],
+        )
+
+    async def test_unchanged_article_reuses_verified_events_without_detail_read(self):
+        link = (
+            "https://guardamarturismo.com/"
+            "fiestas-de-la-virgen-del-rosario-de-guardamar-2026/"
+        )
+        title = "Fiestas de la Virgen del Rosario de Guardamar 2026"
+        candidate = {
+            "id": 101,
+            "modified": "2026-09-16T10:00:00",
+            "link": link,
+            "title": title,
+            "distance": 0,
+        }
+        previous = (SourceEvent(
+            "Gran bingo benéfico", date(2026, 9, 26), date(2026, 9, 26),
+            None, None, None, "event",
+            (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            programme_title=title,
+            programme_order=10,
+        ),)
+        previous_state = {
+            "version": 1,
+            "articles": {
+                link: {
+                    "modified": candidate["modified"],
+                    "sha256": "abc",
+                    "programme_title": title,
+                    "extractor_version": 1,
+                },
+            },
+        }
+        detail = patch(
+            "telegrambot.municipal_agenda._read_turismo_programme_article"
+        )
+        extractor = AsyncMock()
+        with (
+            patch(
+                "telegrambot.municipal_agenda._read_turismo_programme_candidates",
+                return_value=(candidate,),
+            ),
+            detail as detail_mock,
+            patch(
+                "telegrambot.municipal_agenda.extract_agenda_text_events",
+                new=extractor,
+            ),
+        ):
+            events, state = await _turismo_text_programme_events(
+                "key", date(2026, 9, 26), previous, previous_state
+            )
+
+        detail_mock.assert_not_called()
+        extractor.assert_not_awaited()
+        self.assertEqual(events, previous)
+        self.assertEqual(state, previous_state)
+
+
 class TurismoProgrammeFallbackTest(unittest.IsolatedAsyncioTestCase):
     async def test_same_url_replaced_poster_is_read_again(self):
         text = (
@@ -419,6 +601,14 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         )
         programme_patcher.start()
         self.addCleanup(programme_patcher.stop)
+        programme_text_patcher = patch(
+            "telegrambot.municipal_agenda._turismo_text_programme_events",
+            new=AsyncMock(side_effect=lambda _key, _day, prior, state: (
+                prior, state
+            )),
+        )
+        programme_text_patcher.start()
+        self.addCleanup(programme_text_patcher.stop)
         patcher = patch(
             "telegrambot.municipal_agenda.fetch_program_window",
             new=AsyncMock(side_effect=TodoCulturaError(
