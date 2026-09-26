@@ -1,4 +1,4 @@
-name: Probe selected WCCC 2026 classes
+name: Probe ALDI Naltros exact product
 
 on:
   push:
@@ -16,53 +16,38 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Read only relevant WCCC classes
+      - name: Inspect Naltros Next data
         run: |
           python - <<'PY'
-          import json, time, urllib.request
-
-          headers={
-              "Accept":"application/json",
-              "X-Requested-With":"XMLHttpRequest",
-              "User-Agent":"GuardamarMorningDigest/0.13",
-          }
-          def get(path):
-              req=urllib.request.Request("https://myentries.org"+path,headers=headers)
-              with urllib.request.urlopen(req,timeout=20) as r:
-                  return json.load(r)
-
-          classes=get("/api/results/contest-classes/71")
-          selected=[]
-          for item in classes:
-              name=str(item.get("name",""))
-              desc=str(item.get("description",""))
-              number=item.get("number")
-              folded=(name+" "+desc).lower()
-              if (
-                  "sheep" in folded
-                  or "mixed milk" in folded
-                  or "mixed-milk" in folded
-                  or (isinstance(number,(int,float)) and 108 <= float(number) <= 120)
-              ):
-                  selected.append(item)
-          print("SELECTED_CLASSES",json.dumps(selected,ensure_ascii=False))
-
-          # Small bounded set only. Stop once all expected Valle/Entrepinares
-          # names are accounted for or after the reviewed selected classes.
-          terms=("valle de san juan","entrepinares")
+          import json, re, urllib.request
+          url="https://www.aldi.es/p/cava-brut-190300.html"
+          req=urllib.request.Request(url,headers={"User-Agent":"GuardamarMorningDigest/0.13"})
+          with urllib.request.urlopen(req,timeout=20) as r:
+              raw=r.read(2_000_000).decode("utf-8","replace")
+              print("STATUS",r.status,"TYPE",r.headers.get_content_type(),"BYTES",len(raw),"FINAL",r.geturl())
+          m=re.search(r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>',raw,re.S)
+          if not m:
+              raise SystemExit("NO_NEXT_DATA")
+          data=json.loads(m.group(1))
           matches=[]
-          for item in selected:
-              cid=item["id"]
-              time.sleep(0.35)
-              try:
-                  result=get(f"/api/results/contest-class-results/{cid}")
-              except Exception as e:
-                  print("ERROR",item.get("number"),cid,type(e).__name__,str(e)[:120])
-                  continue
-              raw=json.dumps(result,ensure_ascii=False)
-              if any(term in raw.lower() for term in terms):
-                  row={"class":item,"result":result}
-                  matches.append(row)
-                  print("MATCH",json.dumps(row,ensure_ascii=False))
-          print("MATCH_COUNT",len(matches))
+          def walk(v,path="root"):
+              if isinstance(v,dict):
+                  if str(v.get("objectID",""))=="190300":
+                      matches.append((path,v))
+                  for k,x in v.items():
+                      walk(x,f"{path}.{k}")
+              elif isinstance(v,list):
+                  for i,x in enumerate(v):
+                      walk(x,f"{path}[{i}]")
+          walk(data)
+          print("MATCHES",len(matches))
+          for path,obj in matches:
+              print("PATH",path)
+              keep={k:obj.get(k) for k in (
+                  "objectID","name","productSlug","brandName","salesUnit",
+                  "isAvailable","isComingSoon","isRecall","currentPrice",
+                  "productReferences","longDescription"
+              )}
+              print(json.dumps(keep,ensure_ascii=False,sort_keys=True))
+          print("REGION",((data.get("props") or {}).get("pageProps") or {}).get("page",{}).get("region"))
           PY
