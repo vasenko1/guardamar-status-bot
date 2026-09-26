@@ -920,15 +920,17 @@ A source-specific deterministic adapter is preferred over a universal parser.
 
 ADR 0084 separates retailer evidence from award evidence.
 
-The researched first retailer set is:
+The active product-award retailer set is:
 
 - Mercadona;
-- Lidl España;
-- ALDI España;
-- Consum;
 - Carrefour España supermarket;
-- Masymas / Juan Fornés Fornés;
-- DIA España.
+- ALDI España;
+- Lidl España;
+- DIA España;
+- Consum.
+
+Masymas / Juan Fornés remains in historical source research but is not an
+active matching target.
 
 Retailer evidence may prove private-label, retailer-exclusive or ordinary
 currently listed products. It must use exact EAN/GTIN, retailer SKU, or an
@@ -948,9 +950,8 @@ Current technical findings:
   images and is one of the cleanest enrichment sources;
 - Carrefour supermarket exposes current prices/images but requires
   postcode/store context and a marketplace guard;
-- Masymas / Juan Fornés allows anonymous product viewing and states that online
-  prices/offers match physical stores, but its JavaScript shop still needs a
-  bounded internal JSON/API probe;
+- Masymas / Juan Fornés was historically researched, but no active adapter
+  should be added while it remains outside the six-retailer scope;
 - DIA has an official 2026 awarded-products page with exact current products
   and prices.
 
@@ -961,13 +962,15 @@ audience. Runtime matching and enrichment must ignore it unless the product
 scope is explicitly revised.
 
 A current price should be refreshed by exact SKU immediately before publication
-because the global queue can delay an item for several days. A failed price
-refresh omits the current-price sentence; it never causes an aggregator price
-or guessed match.
+because the global queue and three-day cadence can delay an item. A failed or
+ambiguous current-retail refresh blocks that public article for the run and
+preserves the queued candidate; it never falls back to an aggregator price,
+stale study price or guessed match.
 
 Retailer product photos are disabled by default. The 25 September legal
-review found explicit content-reuse restrictions for multiple target retailers,
-including Lidl, Consum, Carrefour, DIA and Masymas / Juan Fornés.
+review found explicit content-reuse restrictions for multiple researched
+retailers, including Lidl, Consum, Carrefour, DIA and Masymas / Juan Fornés.
+The Masymas finding is historical and does not imply active retailer scope.
 Technical image availability may still help identity verification, but Telegram
 media requires a documented source-specific licence, permission or media policy
 that permits reuse. Otherwise publish text-only.
