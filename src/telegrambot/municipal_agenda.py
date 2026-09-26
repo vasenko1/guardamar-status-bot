@@ -1221,16 +1221,12 @@ def _ayuntamiento_programme_image_url(
         filename = path.rsplit("/", 1)[-1].casefold()
         programme_hint = any(
             term in filename
-            for term in ("prog", "program", "triptico", "fiest")
+            for term in ("prog", "program", "triptico")
         )
-        overlap = sum(word in filename for word in title_words)
-        if not programme_hint and overlap < 2:
+        if not programme_hint:
             continue
-        score = (
-            (20 if programme_hint else 0)
-            + min(overlap, 5)
-            + (2 if is_meta else 0)
-        )
+        overlap = sum(word in filename for word in title_words)
+        score = 20 + min(overlap, 5) + (2 if is_meta else 0)
         seen.add(url)
         ranked.append((score, url))
     if not ranked:
