@@ -764,7 +764,6 @@ def _annotate_todo_source_sessions(
     return tuple(annotated)
 
 
-
 def _canonicalize_todo_programme_aliases(
     programme_events: Tuple[SourceEvent, ...],
     todo_events: Tuple[SourceEvent, ...],
@@ -823,6 +822,7 @@ def _canonicalize_todo_programme_aliases(
         )
 
     return tuple(rewritten)
+
 
 def _session_source_plan(
     events: Tuple[SourceEvent, ...],
