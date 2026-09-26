@@ -99,18 +99,26 @@ class OcuAdapterTests(unittest.TestCase):
             (),
         )
         result = parse_ocu_awards(document, 2026)
-        self.assertEqual(len(result), 1)
-        item = result[0]
-        self.assertEqual(item.retailer, "Mercadona")
-        self.assertEqual(item.private_label, "Hacendado")
-        self.assertEqual(item.product_name, "salmorejo fresco de Hacendado")
-        self.assertEqual(item.result, "Mejor del Análisis")
-        self.assertEqual(item.score, "70/100")
-        self.assertEqual(item.source_price, "3 €/л")
-        self.assertEqual(item.sample_size, 30)
-        self.assertEqual(item.retail.relationship, "private_label")
-        self.assertIn("professional_tasting", item.editorial.method_flags)
-        self.assertEqual(item.editorial.standout, "best_professional_tasting")
+        self.assertEqual(len(result), 2)
+        best, value = result
+
+        self.assertEqual(best.retailer, "Mercadona")
+        self.assertEqual(best.private_label, "Hacendado")
+        self.assertEqual(best.product_name, "salmorejo fresco de Hacendado")
+        self.assertEqual(best.result, "Mejor del Análisis")
+        self.assertEqual(best.score, "70/100")
+        self.assertEqual(best.source_price, "3 €/л")
+        self.assertEqual(best.sample_size, 30)
+        self.assertEqual(best.retail.relationship, "private_label")
+        self.assertIn("professional_tasting", best.editorial.method_flags)
+        self.assertEqual(best.editorial.standout, "best_professional_tasting")
+
+        self.assertEqual(value.retailer, "Alcampo")
+        self.assertEqual(value.private_label, "Auchan")
+        self.assertEqual(value.product_name, "salmorejo Auchan")
+        self.assertEqual(value.result, "Compra Maestra")
+        self.assertEqual(value.sample_size, 30)
+        self.assertIsNone(value.editorial.standout)
 
     def test_old_report_is_ignored_in_current_year(self):
         document = PageDocument(
