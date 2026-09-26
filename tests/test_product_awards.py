@@ -362,33 +362,6 @@ class WcccAdapterTests(unittest.TestCase):
 
 
 class StarterPoolTests(unittest.TestCase):
-    def award_document(self, *, include_all=True):
-        tail = "Ibérico Añejo. 97,20 Disponible en MERCADONA." if include_all else ""
-        return PageDocument(
-            "https://valledesanjuan.com/"
-            "ocho-premios-que-saben-a-esfuerzo-origen-y-oficio/",
-            (
-                "Con Trufa. 99,30. Nuestro mejor puntuado y el mejor de su "
-                "categoría. Disponible en MERCADONA.\n"
-                "Añejo. 99,25 Disponible en MERCADONA.\n"
-                "Afrutado. 97,40 Disponible en MERCADONA.\n"
-                + tail
-            ),
-            (),
-        )
-
-    def portfolio_document(self):
-        return PageDocument(
-            "https://valledesanjuan.com/productos/mercadona/",
-            (
-                "Hacendado Curado Afrutado MEZCLA PASTEURIZADO\n"
-                "Hacendado Añejo Fuerte OVEJA LECHE CRUDA\n"
-                "Hacendado Con Trufa IBÉRICO LECHE CRUDA\n"
-                "Hacendado Añejo Ibérico IBÉRICO LECHE CRUDA"
-            ),
-            (),
-        )
-
     def top20_candidate(self):
         document = PageDocument(
             "https://worldchampioncheese.org/2026-wccc-top-20-finalists/",
@@ -405,13 +378,9 @@ class StarterPoolTests(unittest.TestCase):
         return parse_wccc_top20(document, 2026)[0]
 
     def test_reviewed_seed_has_five_days_in_reviewed_order(self):
-        pages = [self.award_document(), self.portfolio_document()]
-        with (
-            patch("telegrambot.product_awards._fetch_page", side_effect=pages),
-            patch(
-                "telegrambot.product_awards.load_wccc_item",
-                return_value=AwardSourceItem((self.top20_candidate(),)),
-            ),
+        with patch(
+            "telegrambot.product_awards.load_wccc_item",
+            return_value=AwardSourceItem((self.top20_candidate(),)),
         ):
             found = reviewed_starter_product_awards(2026)
 
@@ -426,14 +395,10 @@ class StarterPoolTests(unittest.TestCase):
         )
         self.assertEqual(found[0].result, "Best of Class")
         self.assertEqual(found[0].editorial.production_country, "Испания")
+        self.assertIn("valledesanjuan.com", found[0].source_url)
 
-    def test_reviewed_seed_fails_closed_if_one_award_fact_disappears(self):
-        pages = [self.award_document(include_all=False), self.portfolio_document()]
-        with (
-            patch("telegrambot.product_awards._fetch_page", side_effect=pages),
-            self.assertRaises(ProductAwardError),
-        ):
-            reviewed_starter_product_awards(2026)
+    def test_reviewed_seed_exists_only_for_reviewed_2026_launch(self):
+        self.assertEqual(reviewed_starter_product_awards(2027), ())
 
     def test_seed_is_atomic_and_idempotent(self):
         items = (
