@@ -1,4 +1,4 @@
-name: Probe WCCC relevant classes
+name: Probe WCCC target class results
 
 on:
   push:
@@ -16,18 +16,41 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Identify relevant WCCC 2026 classes
+      - name: Fetch target WCCC classes
         run: |
           python - <<'PY'
-          import json, urllib.request
+          import json, time, urllib.request
 
           headers={"Accept":"application/json","User-Agent":"GuardamarMorningDigest/0.13"}
-          req=urllib.request.Request("https://myentries.org/api/results/contest-classes/71",headers=headers)
-          with urllib.request.urlopen(req,timeout=20) as r:
-              classes=json.load(r)
-          terms=("mixed","flavored","flavour","sheep","goat","hard cheese","semi-soft","semi-hard")
-          for cls in classes:
-              blob=(str(cls.get("name",""))+" "+str(cls.get("description",""))).lower()
-              if any(term in blob for term in terms):
-                  print(cls["id"],cls["number"],cls["name"],"::",cls.get("description","")[:400])
+          classes=[2189,2194,2195,2196,2197]
+          for cid in classes:
+              url=f"https://myentries.org/api/results/contest-class-results/{cid}"
+              print("=== CLASS",cid,"===")
+              req=urllib.request.Request(url,headers=headers)
+              try:
+                  with urllib.request.urlopen(req,timeout=20) as r:
+                      obj=json.load(r)
+              except Exception as e:
+                  print("ERROR",type(e).__name__,str(e)[:200])
+                  time.sleep(2)
+                  continue
+              blob=obj.get("results",obj) if isinstance(obj,dict) else obj
+              matches=[]
+              def walk(v):
+                  if isinstance(v,dict):
+                      scalar=" ".join(str(x) for x in v.values() if not isinstance(x,(dict,list))).upper()
+                      if any(k in scalar for k in ("VALLE DE SAN JUAN","QUESERÍAS ENTREPINARES","QUESERIAS ENTREPINARES")):
+                          matches.append(v.copy())
+                      for x in v.values(): walk(x)
+                  elif isinstance(v,list):
+                      for x in v: walk(x)
+              walk(blob)
+              print("MATCH_COUNT",len(matches))
+              seen=set()
+              for row in matches:
+                  key=json.dumps(row,ensure_ascii=False,sort_keys=True)
+                  if key in seen: continue
+                  seen.add(key)
+                  print(json.dumps(row,ensure_ascii=False,sort_keys=True))
+              time.sleep(2)
           PY
