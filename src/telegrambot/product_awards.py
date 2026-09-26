@@ -41,6 +41,7 @@ MERCADONA_GUARDAMAR_WAREHOUSE = "alc1"  # reviewed for postal code 03140
 REQUEST_TIMEOUT_SECONDS = 20
 HTML_LIMIT_BYTES = 900_000
 JSON_LIMIT_BYTES = 256_000
+MAX_PUBLICATION_CANDIDATES = 4
 USER_AGENT = "GuardamarMorningDigest/0.13"
 
 PRIVATE_LABELS: dict[str, tuple[str, ...]] = {
@@ -1924,11 +1925,25 @@ class ProductAwardState:
             self._write(value)
         return added, updated, ignored
 
-    def next_queue_item(self, local_day: date) -> Optional[ProductAwardQueueItem]:
+    def queue_items(
+        self,
+        local_day: date,
+        *,
+        limit: int = MAX_PUBLICATION_CANDIDATES,
+    ) -> tuple[ProductAwardQueueItem, ...]:
+        if not isinstance(limit, int) or not 1 <= limit <= MAX_PUBLICATION_CANDIDATES:
+            raise ProductAwardError("invalid product-award queue read limit", code="INVALID")
         value = self._read()
-        if value["last_delivery_day"] == local_day.isoformat() or not value["queue"]:
-            return None
-        return _queue_item_from_dict(value["queue"][0])
+        if value["last_delivery_day"] == local_day.isoformat():
+            return ()
+        return tuple(
+            _queue_item_from_dict(raw)
+            for raw in value["queue"][:limit]
+        )
+
+    def next_queue_item(self, local_day: date) -> Optional[ProductAwardQueueItem]:
+        items = self.queue_items(local_day, limit=1)
+        return items[0] if items else None
 
     def begin_delivery(
         self,
@@ -2109,7 +2124,8 @@ def scan_next_product_award(
                 return publication
         return None
 
-    item = state.next_queue_item(now.date())
-    if item is None:
-        return None
-    return build_current_publication(item.candidate)
+    for item in state.queue_items(now.date()):
+        publication = build_current_publication(item.candidate)
+        if publication is not None:
+            return publication
+    return None
