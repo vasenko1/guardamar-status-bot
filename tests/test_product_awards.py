@@ -196,6 +196,18 @@ class PriceParserTests(unittest.TestCase):
             "7,65 €",
         )
 
+    def test_repeated_page_title_does_not_capture_cart_total(self):
+        text = (
+            "Exact Product - Test Market "
+            "Productos 0,00 € Pedidos "
+            "Exact Product Detalles del producto "
+            "3,80 € 0,19 €/UNIDAD Añadir"
+        )
+        self.assertEqual(
+            _price_after_title(text, "Exact Product"),
+            "3,80 €",
+        )
+
     def test_missing_price_fails_closed(self):
         self.assertIsNone(_price_after_title("Exact Product Añadir", "Exact Product"))
 
