@@ -303,8 +303,8 @@ class SelectionTests(unittest.TestCase):
         refresh.assert_not_called()
 
     def test_next_source_is_used_only_after_primary_is_exhausted(self):
-        first = candidate("first", source_priority=1, rank=1)
-        fallback = candidate("fallback", source_priority=2, rank=1)
+        first = candidate("first", rank=1)
+        fallback = candidate("fallback", rank=1)
         categories = (
             ReviewedCategory(
                 "test",
