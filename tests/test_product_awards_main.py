@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from telegrambot.__main__ import _run_command, main
 from telegrambot.product_awards import (
@@ -51,7 +51,7 @@ class ProductAwardCliTests(unittest.TestCase):
             with self.subTest(command=command):
                 with (
                     patch("sys.argv", ["telegrambot", command]),
-                    patch("telegrambot.__main__._run_command", return_value=object()),
+                    patch("telegrambot.__main__._run_command", new=Mock(return_value=object())),
                     patch("telegrambot.__main__.asyncio.run", return_value=0) as run,
                 ):
                     with self.assertRaises(SystemExit) as raised:
