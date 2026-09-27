@@ -1403,7 +1403,12 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     return 0
                 product_state.clear_uncertain(event_id)
                 raise
-            product_state.confirm(event_id, category_index, now.date())
+            product_state.confirm(
+                event_id,
+                publication.candidate.selection_key,
+                category_index,
+                now.date(),
+            )
             logging.info(
                 "SUCCESS: product award delivered: %s message_id=%d",
                 event_id,
