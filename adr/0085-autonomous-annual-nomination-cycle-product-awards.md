@@ -1233,15 +1233,67 @@ and sometimes exact scores.
 
 The preferred OCU architecture is therefore layered:
 
-1. **primary transport:** anonymous first-party ProductSelectors/quality API,
-   if the exact frontend call is confirmed to return the required public fields;
-2. **identity fallback:** comparator `SerializedSearchUniverse` for the tested
-   product universe and stable OCU product ids;
-3. **editorial fallback/enrichment:** public report/news pages for methodology,
-   narrative winner claims and source-cycle dates.
+1. **winner/source-cycle authority:** public OCU report/news/press pages when
+   they explicitly name the best product/subtype and score;
+2. **tested-product identity:** comparator `SerializedSearchUniverse`;
+3. **methodology enrichment:** anonymous first-party quality-box API, which is
+   proven to expose test context but not subscriber-gated score/rank/badges;
+4. **minimal HTML fallback** only for simple public fields.
 
-This minimizes dependence on HTML structure while keeping a safe fallback if the
-API schema drifts or becomes gated.
+This reflects the measured access boundary: use the stable API where it is
+public, but do not depend on entitlement-gated result fields.
+
+### OCU quality-box API entitlement result
+
+The exact first-party frontend request was reproduced anonymously on the
+production Redmi/Termux device:
+
+`POST /ProductSelectorsAPI/PsfQualityBoxes/RenderQualityBox/<scID>`
+
+with the same fields used by OCU's frontend:
+
+- `productId`;
+- `productPhoenixId`;
+- `mainPageId`;
+- `isModel`;
+- `qualityboxGuid`;
+- `redirectUrl`.
+
+The request used no Cookie header, no Authorization header and no subscriber
+token.
+
+For five different products the endpoint returned HTTP 200, valid JSON and one
+HTML update, but the rendered result contained:
+
+- laboratory-tested marker;
+- OCU global-quality scale labels;
+- evaluation dimensions/methodology;
+- analysis date;
+- `Acceso exclusivo` / join / account-login call to action;
+
+and **did not expose the product score, quality band, Mejor del Análisis badge or
+Compra Maestra badge**.
+
+Therefore:
+
+- the endpoint itself is anonymous and stable enough to reuse for public
+  methodology/context if useful;
+- score/rank/badge data are entitlement-gated;
+- the autonomous bot must not attempt to bypass that entitlement;
+- this quality-box endpoint is **not** the primary winner-selection contract.
+
+The OCU runtime hierarchy is now:
+
+1. public first-party report/news/press content for explicit winner/subtype/score
+   claims and source-cycle date;
+2. comparator embedded `SerializedSearchUniverse` for the tested product
+   universe and stable OCU product ids;
+3. anonymous quality-box API only for public methodology/test-context enrichment
+   when it materially adds article facts;
+4. minimal HTML parsing as fallback.
+
+The API remains preferable to duplicating methodology DOM parsing, but it cannot
+replace public winner evidence.
 
 ### Gran Premio a la Innovación / Producto del Año
 
