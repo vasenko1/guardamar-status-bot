@@ -16,6 +16,7 @@ from telegrambot.telegram import TelegramError
 def publication() -> ProductAwardPublication:
     candidate = ReviewedCandidate(
         category_key="test",
+        selection_key="test:2026",
         event_id="test:event",
         source_name="Test",
         source_url="https://award.example/result",
