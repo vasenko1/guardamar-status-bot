@@ -3936,16 +3936,27 @@ The next read-only probe should:
 
 ### Public OCU feed strategy and Producto del Año source — 27 September 2026
 
-#### Do not depend on OCU member-only quality controls
+#### OCU transport policy: API-first if the frontend call is anonymously public
 
-The deep production probe exposed a critical policy/architecture fact:
-the OCU comparator's `Calidad` sort option is disabled and labelled
-`Contenido Exclusivo`.
+The deep production probe exposed two facts at once:
 
-Therefore internal ProductSelectors/quality-box calls must not become a runtime
-dependency merely because their frontend wiring is technically visible.
+- some comparator quality UI is labelled `Contenido Exclusivo`;
+- the first-party frontend also exposes structured ProductSelectors and
+  quality-box transport.
 
-The useful public OCU surfaces are already sufficient for a safer architecture.
+The correct engineering conclusion is not to reject the API. DOM parsing is the
+more fragile contract. The next probe must reproduce the exact frontend request
+and classify its access semantics.
+
+If the call works anonymously without subscriber credentials or entitlement
+tokens and returns the fields already exposed to the public frontend, that
+first-party API should be the **primary runtime contract**.
+
+If the call requires authenticated/member access, the bot must not bypass that
+control and should use public report/comparator surfaces instead.
+
+This distinction gives the best stability without assuming that every visible
+frontend endpoint is fair game.
 
 #### OCU has public dated discovery feeds
 
@@ -4058,3 +4069,24 @@ Spanish retailer chains among the Spanish winners.
 Therefore PLMA is worth monitoring opportunistically but does not justify a
 dedicated adapter before higher-yield Spanish sources are exhausted.
 
+
+
+#### OCU architecture correction: API stability vs DOM stability
+
+A first-party API consumed by OCU's own frontend is expected to be more robust
+against layout redesigns than CSS/DOM parsing. The prospective adapter should
+therefore maintain a transport hierarchy:
+
+1. anonymous first-party API/JSON contract;
+2. serialized JSON already embedded in the page;
+3. minimal HTML fallback;
+4. public editorial/report page for narrative/methodology enrichment.
+
+Health monitoring should fingerprint HTTP status, content type and a small set
+of required schema fields. A schema drift in the primary API should raise one
+admin alert and allow the fallback layer to continue if it still validates the
+same source cycle/product identity.
+
+Do not create dual parsing complexity unless the fallback is materially simpler:
+the fallback exists for graceful degradation, not to maintain two full
+independent implementations forever.
