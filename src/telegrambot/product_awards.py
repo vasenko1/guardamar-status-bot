@@ -199,10 +199,16 @@ def _price_after_title(text: str, title: str) -> Optional[str]:
     index = folded_text.find(folded_title)
     if index < 0:
         return None
-    # _fold preserves ordinary digits/punctuation well enough for a bounded
-    # post-title window; only the first currency-formatted value is accepted.
-    window = folded_text[index:index + 3000]
-    match = re.search(r"(?<!\d)(\d{1,3}[.,]\d{2})\s*€", window)
+
+    # Price must belong to the exact product card: accept it only before the
+    # first Add button after the exact title. This prevents a missing/out-of-
+    # stock main product from borrowing a price from later recommendations.
+    window = folded_text[index:index + 1500]
+    add_index = window.find(_fold("Añadir"))
+    if add_index < 0:
+        return None
+    product_card = window[:add_index]
+    match = re.search(r"(?<!\d)(\d{1,3}[.,]\d{2})\s*€", product_card)
     if match is None:
         return None
     return match.group(1).replace(".", ",") + " €"
@@ -327,8 +333,6 @@ def _refresh_offer(candidate: ReviewedCandidate) -> Optional[RetailOffer]:
         return None
 
     if candidate.retailer_kind in {"carrefour", "dia"}:
-        if _fold("Añadir") not in _fold(text):
-            return None
         price = _price_after_title(text, candidate.retailer_title)
     else:
         raise ProductAwardError("unknown retailer adapter", code="CONFIG")
