@@ -51,6 +51,72 @@ def candidate(
     )
 
 
+class TransportHeaderTests(unittest.TestCase):
+    def test_award_fetch_keeps_lightweight_service_headers(self):
+        item = candidate("award")
+        with patch.object(
+            awards,
+            "fetch_bounded",
+            return_value=(
+                b"<html><body>winner</body></html>",
+                item.source_url,
+                "text/html",
+            ),
+        ) as fetch:
+            awards._verify_award(item)
+
+        headers = fetch.call_args.kwargs["headers"]
+        self.assertEqual(headers["User-Agent"], awards.USER_AGENT)
+        self.assertNotIn("Sec-Fetch-Mode", headers)
+
+    def test_retail_fetch_uses_proven_navigation_headers(self):
+        item = candidate("retail")
+        page = "<html><body>Exact Product 2,50 € Añadir</body></html>".encode("utf-8")
+        with patch.object(
+            awards,
+            "fetch_bounded",
+            return_value=(
+                page,
+                item.retailer_url,
+                "text/html",
+            ),
+        ) as fetch:
+            offer = awards._refresh_offer(item)
+
+        self.assertIsNotNone(offer)
+        self.assertEqual(offer.price, "2,50 €")
+        headers = fetch.call_args.kwargs["headers"]
+        self.assertEqual(headers, awards.RETAIL_NAVIGATION_HEADERS)
+        self.assertEqual(headers["Sec-Fetch-Mode"], "navigate")
+        self.assertEqual(headers["Sec-Fetch-Dest"], "document")
+        self.assertEqual(headers["Sec-Fetch-Site"], "none")
+        self.assertEqual(headers["Sec-Fetch-User"], "?1")
+
+
+    def test_aldi_retail_keeps_lightweight_request_profile(self):
+        item = candidate("aldi")
+        item = ReviewedCandidate(
+            **{
+                **item.__dict__,
+                "retailer": "ALDI",
+                "retailer_kind": "aldi",
+            }
+        )
+        offer = RetailOffer(
+            "ALDI",
+            "0,75 l",
+            "3,15 €",
+            item.retailer_url,
+        )
+        with (
+            patch.object(awards, "_fetch_html", return_value="<html></html>") as fetch,
+            patch.object(awards, "_aldi_offer", return_value=offer),
+        ):
+            self.assertEqual(awards._refresh_offer(item), offer)
+
+        self.assertIsNone(fetch.call_args.kwargs["headers"])
+
+
 class PriceParserTests(unittest.TestCase):
     def test_aldi_offer_uses_exact_embedded_product_contract(self):
         item = candidate("aldi")
@@ -130,8 +196,25 @@ class PriceParserTests(unittest.TestCase):
             "7,65 €",
         )
 
+    def test_repeated_page_title_does_not_capture_cart_total(self):
+        text = (
+            "Exact Product - Test Market "
+            "Productos 0,00 € Pedidos "
+            "Exact Product Detalles del producto "
+            "3,80 € 0,19 €/UNIDAD Añadir"
+        )
+        self.assertEqual(
+            _price_after_title(text, "Exact Product"),
+            "3,80 €",
+        )
+
     def test_missing_price_fails_closed(self):
         self.assertIsNone(_price_after_title("Exact Product Añadir", "Exact Product"))
+
+    def test_zero_price_fails_closed(self):
+        self.assertIsNone(
+            _price_after_title("Exact Product 0,00 € Añadir", "Exact Product")
+        )
 
     def test_price_does_not_leak_from_recommended_product(self):
         text = (

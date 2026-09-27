@@ -30,6 +30,23 @@ LOGGER = logging.getLogger(__name__)
 REQUEST_TIMEOUT_SECONDS = 15
 HTML_LIMIT_BYTES = 768_000
 USER_AGENT = "GuardamarMorningDigest/0.13"
+RETAIL_NAVIGATION_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Linux; Android 14; Mobile) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/140.0.0.0 Mobile Safari/537.36"
+    ),
+    "Accept": (
+        "text/html,application/xhtml+xml,application/xml;q=0.9,"
+        "image/avif,image/webp,*/*;q=0.8"
+    ),
+    "Accept-Language": "es-ES,es;q=0.9,en;q=0.5",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-User": "?1",
+    "Sec-Fetch-Dest": "document",
+}
 COOLDOWN_DAYS = 3
 STATE_SCHEMA_VERSION = 1
 MAX_HISTORY = 128
@@ -137,17 +154,23 @@ def _allowed(hosts: frozenset[str]):
     return check
 
 
-def _fetch_html(url: str, hosts: frozenset[str]) -> str:
+def _fetch_html(
+    url: str,
+    hosts: frozenset[str],
+    *,
+    headers: Optional[dict[str, str]] = None,
+) -> str:
+    request_headers = headers or {
+        "Accept": "text/html,application/xhtml+xml",
+        "User-Agent": USER_AGENT,
+    }
     try:
         payload, _, _ = fetch_bounded(
             url,
             is_allowed_url=_allowed(hosts),
             limit_bytes=HTML_LIMIT_BYTES,
             timeout_seconds=REQUEST_TIMEOUT_SECONDS,
-            headers={
-                "Accept": "text/html,application/xhtml+xml",
-                "User-Agent": USER_AGENT,
-            },
+            headers=request_headers,
             accepted_types=frozenset({"text/html", "application/xhtml+xml"}),
         )
     except BoundedFetchError as exc:
@@ -196,30 +219,45 @@ def _require_markers(text: str, markers: tuple[str, ...], *, code: str) -> None:
 def _price_after_title(text: str, title: str) -> Optional[str]:
     folded_text = _fold(text)
     folded_title = _fold(title)
-    index = folded_text.find(folded_title)
-    if index < 0:
+    folded_add = _fold("Añadir")
+
+    # Retail pages may repeat the exact product title in the document <title>
+    # before the site header/cart. DIA then exposes the cart total (0,00 €)
+    # before the real body product card. Evaluate every exact-title occurrence
+    # that reaches an Add button and prefer the nearest title -> Add segment,
+    # which corresponds to the body product card on the reviewed SSR pages.
+    candidates: list[tuple[int, str]] = []
+    start = 0
+    while True:
+        index = folded_text.find(folded_title, start)
+        if index < 0:
+            break
+        window = folded_text[index:index + 1500]
+        add_index = window.find(folded_add)
+        if add_index >= 0:
+            candidates.append((add_index, window[:add_index]))
+        start = index + len(folded_title)
+
+    if not candidates:
         return None
 
-    # Price must belong to the exact product card: accept it only before the
-    # first Add button after the exact title. This prevents a missing/out-of-
-    # stock main product from borrowing a price from later recommendations.
-    window = folded_text[index:index + 1500]
-    add_index = window.find(_fold("Añadir"))
-    if add_index < 0:
-        return None
-    product_card = window[:add_index]
     unavailable_markers = (
         "agotado",
         "no disponible",
         "sin stock",
         "temporalmente agotado",
     )
-    if any(_fold(marker) in product_card for marker in unavailable_markers):
-        return None
-    match = re.search(r"(?<!\d)(\d{1,3}[.,]\d{2})\s*€", product_card)
-    if match is None:
-        return None
-    return match.group(1).replace(".", ",") + " €"
+    for _, product_card in sorted(candidates, key=lambda item: item[0]):
+        if any(_fold(marker) in product_card for marker in unavailable_markers):
+            continue
+        match = re.search(r"(?<!\d)(\d{1,3}[.,]\d{2})\s*€", product_card)
+        if match is None:
+            continue
+        raw_price = match.group(1).replace(",", ".")
+        if float(raw_price) <= 0:
+            continue
+        return match.group(1).replace(".", ",") + " €"
+    return None
 
 
 def _walk_json_dicts(value) -> Iterator[dict]:
@@ -329,7 +367,20 @@ def _verify_award(candidate: ReviewedCandidate) -> None:
 
 
 def _refresh_offer(candidate: ReviewedCandidate) -> Optional[RetailOffer]:
-    source = _fetch_html(candidate.retailer_url, candidate.retailer_hosts)
+    # Carrefour and DIA reject the lightweight service UA but return the same
+    # public server-rendered product HTML for a normal top-level navigation.
+    # Keep ALDI on the existing lightweight request because its exact Next.js
+    # contract already works there.
+    retail_headers = (
+        RETAIL_NAVIGATION_HEADERS
+        if candidate.retailer_kind in {"carrefour", "dia"}
+        else None
+    )
+    source = _fetch_html(
+        candidate.retailer_url,
+        candidate.retailer_hosts,
+        headers=retail_headers,
+    )
 
     if candidate.retailer_kind == "aldi":
         return _aldi_offer(candidate, source)

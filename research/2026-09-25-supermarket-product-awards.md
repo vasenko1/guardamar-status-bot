@@ -1933,3 +1933,52 @@ Five independent broad categories now satisfy the launch gate:
 At a three-local-day cadence this is approximately fifteen days of initial
 runway. Runtime implementation may now begin, but it must use the lean
 on-demand ADR rather than the old POC queue/discovery architecture.
+
+
+## Production Termux retailer HTTP finding — 27 September 2026
+
+The first production-device live preview after merge commit
+`e648fbf08c900326d7c61ee877baeac7a24e9652` proved that the award-side
+contracts were healthy but the retailer-side request profile was too minimal.
+
+Observed on the actual Termux device:
+
+- OCU cava, OCU gazpacho, OCU AOVE, OCU AROM'ARTE and MAPA spirits authority
+  pages all passed their existing source-marker validation.
+- ALDI NALTROS passed with the existing exact embedded Next.js contract and
+  returned 3.15 EUR.
+- Carrefour Realfooding, Carrefour Oleoestepa, DIA AROM'ARTE and Carrefour
+  Anís Chinchón all returned HTTP 403 with the service User-Agent.
+- Replacing only the retailer request headers with a normal top-level browser
+  navigation profile returned HTTP 200 for all four exact product pages.
+- The returned HTML stayed small (roughly 70-90 KiB) and contained every
+  reviewed exact-product marker; no cookie, JavaScript execution, browser
+  runtime, challenge solver, OCR or catalogue crawl was required.
+
+Runtime decision: preserve the lightweight service request profile for award
+authorities. Use the proven browser-navigation header profile only for exact
+retailer product HTML. Keep the same HTTPS host allowlist, 15-second timeout,
+768 KiB ceiling, exact identity markers, product-card price scoping and
+fail-closed behaviour.
+
+This is an HTTP compatibility fix, not a relaxation of retail identity or
+availability evidence.
+
+
+A second production-device preview exposed a DIA-specific parser trap after the
+HTTP 403 fix: the page header/cart contains `0,00 €` after a repeated document
+title, while the actual AROM'ARTE product card contains `3,80 €` immediately
+before its `Añadir` button. The original first-title parser therefore selected
+the cart total.
+
+Runtime follow-up:
+- scope price extraction to the exact-title occurrence nearest the matching
+  `Añadir` product-card boundary;
+- preserve the existing unavailable/out-of-stock guards so recommendation
+  prices cannot leak into the selected product;
+- reject zero prices fail-closed, since a zero value is not a publishable
+  current supermarket offer for this feature.
+
+The other four live preview prices were correct during the same validation:
+NALTROS 3.15 EUR, Realfooding 4.05 EUR, Oleoestepa 7.65 EUR and Anís Chinchón
+13.79 EUR.
