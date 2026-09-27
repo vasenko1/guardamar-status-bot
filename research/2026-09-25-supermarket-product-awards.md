@@ -2938,3 +2938,203 @@ send Telegram messages.
 
 If those device probes reproduce the researched contracts, the retailer side of
 ADR 0085 is strong enough for a prototype autonomous dry-run.
+
+
+
+### Local retailer-scope amendment: remove Carrefour, add Masymas — 27 September 2026
+
+#### Final active retailer set for the autonomous research
+
+Carrefour is removed completely from the future autonomous Product Awards
+retailer scope. This is both a simplification and a local-utility correction:
+there is no Carrefour supermarket in Guardamar, while Masymas / Juan Fornés
+does have a Guardamar store.
+
+The target six are now:
+
+1. Mercadona;
+2. Masymas / Juan Fornés Fornés;
+3. ALDI España;
+4. Lidl España;
+5. DIA España;
+6. Consum.
+
+Earlier Carrefour search/validation findings remain historical evidence only and
+must not be carried into ADR 0085 implementation.
+
+#### Masymas / Juan Fornés identity and local relevance
+
+The target Masymas is **Juan Fornés Fornés, S.A.**, the Valencian/Murcian chain,
+not another retailer using a similar masymas name.
+
+Official company/current ecommerce evidence:
+
+- Masymas terms identify JUAN FORNÉS FORNÉS, S.A. as the online seller.
+- Official online-purchase terms state that product prices are the current
+  prices shown on the Masymas website and that orders are subject to current
+  stock/availability.
+- The delivery scope includes towns in which there is a Masymas Fornés store.
+- Guardamar del Segura has a Masymas supermarket at Av. del Puerto 18-20.
+- The online store has been publicly described by Juan Fornés as offering about
+  8,000 references.
+
+Official/storefront sources:
+
+- https://masymas.com/es/condiciones-de-compra-online
+- https://tienda.masymas.com/
+- https://www.masymas.com/es/empresa/historia-fornes.html
+
+#### Masymas platform/search hypothesis
+
+The official Masymas online storefront is a JavaScript application that loads
+assets from the Fornés-specific Aktios domain:
+
+`cdn-fornes.aktiosdigitalservices.com`.
+
+Aktios' own eCommerce page lists both **Consum** and **Masymas** among the
+supermarket chains using its eCommerce platform. Consum's current TOL-style
+catalogue REST contract is already proven in this research.
+
+This is strong evidence that Masymas may expose a similar first-party catalogue
+API family, but it is **not enough to copy Consum endpoints by assumption**.
+
+Masymas therefore remains:
+
+- platform identity: PROVEN;
+- official online catalogue/current prices: PROVEN;
+- local Guardamar relevance: PROVEN;
+- exact browser-free search endpoint: PENDING production-device probe;
+- exact product/EAN endpoint: PENDING production-device probe.
+
+The first production-device probe should test the same TOL namespace only as a
+hypothesis and, if needed, inspect a bounded number of first-party frontend
+bundles for literal API path strings. No browser is required for that probe.
+
+If Masymas exposes a stable TOL search/detail contract, it becomes one of the
+strongest retailers in the architecture because it is both locally present and
+built for online grocery ordering.
+
+If it does not, leave Masymas retailer-first/category-page or validation-only;
+do not introduce browser automation merely to force search.
+
+#### Multiple SKUs can be useful package options
+
+The earlier Mercadona warning that one visible product name can map to multiple
+SKUs should not be interpreted as "choose exactly one SKU".
+
+Real current evidence shows the useful case:
+
+- Mercadona SKU 39901: Hacendado fresh salmorejo, 1 L;
+- Mercadona SKU 39966: Hacendado fresh salmorejo, 0.33 L.
+
+The visible commercial name is the same and the variants are useful consumer
+package options. OCU's 2026 salmorejo methodology, however, explicitly says the
+comparison bought **1-litre salmorejos**, so the tested award evidence is tied
+at least to a 1 L sample.
+
+This leads to a stricter but more useful rule:
+
+1. one SKU is the **award-anchor offer** when its package/variant matches the
+   tested or awarded identity exactly;
+2. additional SKUs may be shown as **equivalent package options** only when
+   first-party evidence proves that they are the same commercial formulation
+   and differ only by package/quantity;
+3. alternative packaging never changes the award event identity;
+4. different recipes/flavours/vintages/maturation/origin/quality tiers remain
+   different products even if the visible name is similar.
+
+The optional additional offers should not block publication. One exact award
+anchor is sufficient.
+
+This avoids both extremes:
+- throwing away useful small/large package prices;
+- incorrectly transferring an award to a merely similar SKU.
+
+#### Diversity identity with package variants
+
+All proven package variants of the same awarded commercial product share one
+canonical product key for scheduling.
+
+Therefore:
+- 0.33 L and 1 L Hacendado salmorejo do not count as two different products;
+- they may appear together in one article;
+- they do not consume separate diversity slots;
+- a later genuinely different nomination for the same canonical product is
+  considered a repeat product under the existing diversity-round rules.
+
+#### Current launch baseline after Carrefour removal
+
+The historical five READY production items cannot be reused unchanged for the
+future autonomous scope.
+
+Still directly supported inside the new six-retailer scope:
+
+- NALTROS Brut -> ALDI;
+- AROM'ARTE Intenso -> DIA;
+- Anís Chinchón Dulce -> DIA and Consum.
+
+No exact current first-party match has yet been established in the new scope
+for:
+
+- Realfooding Gazpacho, previously validated through Carrefour;
+- Oleoestepa DOP Estepa, previously validated through Carrefour.
+
+Those two become **UNRESOLVED under the new retailer scope**, not automatically
+invalid. Masymas search is one of the first useful places to test them once its
+production-device search contract is proven.
+
+The historical Product Awards runtime currently deployed is intentionally not
+changed by this research PR. This amendment describes only the prospective ADR
+0085 autonomous architecture.
+
+#### New search priority after local-scope change
+
+When an award source provides no retailer hint, use local utility plus contract
+quality to avoid needless requests.
+
+Suggested initial order:
+
+1. Mercadona — local Guardamar store, strong search/detail identity;
+2. Masymas / Juan Fornés — local Guardamar store, once TOL contract is proven;
+3. Consum — very strong product-code/EAN contract;
+4. ALDI — strong peninsula search;
+5. DIA — retailer-first/limited search;
+6. Lidl — retailer-first/positive-only search.
+
+A source-provided explicit retailer hint overrides this order. Example: an OCU
+winner labelled ALDI goes directly to ALDI first.
+
+The engine still stops after one exact eligible retailer is found, while that
+retailer's same-product package variants may be collected cheaply for optional
+price display.
+
+#### Revised retailer contract table
+
+| Retailer | Candidate search | Exact identity | Local/runtime role |
+| --- | --- | --- | --- |
+| Mercadona | proven storefront Algolia | proven product JSON / SKU / EAN | GREEN, local-first |
+| Masymas / Juan Fornés | TOL-style contract strongly indicated, exact endpoint pending phone probe | official online catalogue/pricing proven; API detail pending | AMBER, high-priority local target |
+| Consum | proven first-party REST search | proven product id + often EAN | GREEN |
+| ALDI España | proven regional Algolia | proven exact product/application data | GREEN |
+| DIA España | technically proven search/category JSON | proven stable SKU + exact SSR | AMBER-GREEN, prefer retailer-first |
+| Lidl España | proven JSON search, incomplete online grocery coverage | exact first-party page | AMBER-GREEN, positive-only |
+
+Carrefour is no longer part of the table.
+
+#### Revised production-device probe gate
+
+Before ADR 0085 is accepted, the actual Redmi/Termux network must perform one
+read-only bounded probe for:
+
+- Mercadona: search against the Guardamar `alc1` index plus exact product;
+- Masymas: storefront HTML/platform markers, candidate TOL catalogue/search
+  endpoint, exact detail/EAN if exposed;
+- Consum: REST search plus exact detail/EAN;
+- ALDI: peninsula search plus exact product;
+- DIA: one bounded search/category request plus exact SSR product;
+- Lidl: `/q/api/search` with required parameters/headers plus one exact page.
+
+The probe records only safe operational facts: HTTP status, content type,
+bounded byte count, number of results and a few identity fields.
+
+It creates no state, changes no cron and sends no Telegram message.
