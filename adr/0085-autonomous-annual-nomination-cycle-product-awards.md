@@ -1195,6 +1195,103 @@ page payload regardless of component nesting.
 
 This is a contract-discovery task, not an OCR task.
 
+## Public-first OCU discovery and innovation-award source
+
+Further source research simplifies the OCU design and adds one promising
+high-yield annual source family.
+
+### OCU runtime should use public editorial feeds, not exclusive quality controls
+
+Current OCU comparator HTML marks the `Calidad` sorter as disabled
+`Contenido Exclusivo`. Even though the first-party frontend exposes internal
+ProductSelectors/quality-box plumbing, the autonomous bot should not depend on
+or attempt to reproduce member-only quality-result access.
+
+OCU also exposes public, date-ordered, paginated first-party content feeds:
+
+- `/todas-las-informaciones/informes`;
+- `/todas-las-informaciones/noticias`;
+- public press-note feeds under `/organizacion/prensa/notas-de-prensa`.
+
+These surfaces publish dated food-analysis/report links. For example, the public
+Informes feed exposes `Los mejores salmorejos envasados de 2026`, while
+public food reports/press notes expose analysis methodology, standout products
+and sometimes exact scores.
+
+The preferred OCU discovery architecture is therefore:
+
+1. poll only the first bounded page(s) of public report/news feeds;
+2. process only newly seen food-analysis/report URLs;
+3. extract source-native public winner/subtype claims, scores and methodology;
+4. use comparator raw HTML / `SerializedSearchUniverse` only to validate the
+   tested product universe and stable OCU product identity;
+5. never use member-only quality-box access as a runtime dependency.
+
+This is cheaper, clearer and more robust than reproducing internal quality
+requests.
+
+### Gran Premio a la Innovación / Producto del Año
+
+The official Spanish Producto del Año source is structurally attractive for the
+autonomous pool.
+
+Its official winner page publishes deterministic pairs:
+
+- exact winner/product or product range;
+- explicit category;
+- edition year.
+
+Current 2026 human-food/beverage examples include:
+
+- Celta + Proteína — Bebidas Lácteas;
+- Takis Blue Heat — Snacks;
+- Extratiernos / Croquetería ELPOZO — Cárnicos + Platos Preparados;
+- Lipton Ice Tea Mango Maracuyá — Refrescos de Té;
+- Dinamic Protein bars — Barritas Proteicas;
+- Salsas del Chef La Palma Coolinary — Salsas;
+- Serpis Nature — Aceitunas;
+- Maison Perrier Chic — Combinados sin alcohol;
+- Nescafé Latte Baileys — Cafés Refrigerados;
+- Kong Strong Hydration — Refrescos;
+- 1954 Premium Gourmet — Embutidos;
+- Charcutería Selecta Legado Ibérico — Charcutería Ibérica;
+- Blédina — Alimentación Infantil.
+
+The official methodology is consumer-led and explicitly about **innovation**,
+not general product quality:
+
+- direct vote from more than 10,000 representative consumers;
+- product test with 100 target consumers per candidate;
+- one highest-scoring winner per homogeneous category.
+
+Therefore its semantic award dimension must be `innovation`. It does not
+compete or deduplicate automatically with OCU `quality/comparative-analysis`
+or Sabor del Año `consumer-sensory` merely because the broad product category
+is the same.
+
+This source has clean text, annual editions and mass-market product identity,
+so it deserves a high-priority retail-yield pass.
+
+### Producto Marca Distribuidor variant
+
+The same organizer publishes a separate private-label/distributor edition.
+Current official pages expose category/product pairs for prior editions and can
+contain retailer-specific products such as DIA/Lidl/private-label ranges.
+
+Treat this as a separate programme under the same organizer and only admit an
+edition when the official current-year winner page is published.
+
+### PLMA remains opportunistic
+
+PLMA's International Salute to Excellence Awards have strong methodology and
+structured categories, but the 2026 Spanish winner presence is limited and the
+published retailer list is dominated by non-target chains; EROSKI is the clear
+Spanish retailer in the current result summary.
+
+Do not build a dedicated PLMA adapter until a current winner from one of the six
+active retailers is observed. It can remain a low-cost opportunistic source
+checked through the general research process.
+
 ## Implementation gate
 
 Do not implement this ADR until research has proved:
