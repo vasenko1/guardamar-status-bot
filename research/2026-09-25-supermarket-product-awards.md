@@ -2338,3 +2338,155 @@ First prove read-only:
 
 ADR 0085 records the proposed architecture. ADR 0083 remains the active
 production architecture until these gates pass.
+
+### Second architecture review: health, article richness and media
+
+#### Admin observability without a monitoring subsystem
+
+The autonomous design needs one private administrator alert path, but not a new
+monitoring service. Adapter health can live in the same compact product-award
+state and alerts can be emitted by the existing one-shot execution when health
+changes.
+
+Important distinction:
+- no product match, sold-out product, below-threshold quality or no new edition
+  are normal content outcomes and must not page the administrator;
+- parser/schema drift, contract-breaking 403/404, invalid response contract,
+  persistent transport failure or ambiguous result structure are operational
+  failures and should mark that component degraded/broken.
+
+Alert only on transitions. Deterministic schema/contract failures alert once
+immediately; transient network failures require a small repetition/sustained
+failure threshold. The same fault remains silent until recovery, and recovery
+sends one confirmation.
+
+Every alert should identify the feature and stage, for example:
+`Product Awards / award source / MAPA cheese / RESULT-SCHEMA` or
+`Product Awards / retailer search / Carrefour / HTTP-403`.
+
+Safe alert context should include diagnostic code, first/last failure time,
+impact and remaining ready-pool runway, but never credentials or arbitrary
+source response bodies.
+
+A separate runway transition warning is valuable even when no adapter is
+technically broken. Crossing below a small ready-pool threshold can warn the
+administrator weeks before content is exhausted.
+
+#### OCU is a rolling source, not strictly an annual source
+
+OCU's own comparator documentation states that some comparators update every
+15-30 days while others update one or more times per year:
+https://www.ocu.org/consumo-familia/derechos-consumidor/informe/comparadores
+
+Therefore the generic autonomous identity must use a source cycle/revision, not
+assume that every event is keyed only by year. Annual award bodies can simply
+use their edition year as the source cycle.
+
+#### Rich article evidence is available without runtime AI
+
+Several authoritative sources publish enough methodology to create much richer
+deterministic articles.
+
+OCU currently documents that selected products are purchased anonymously like a
+normal consumer and sent to independent specialist laboratories. Its award
+labels remain Mejor del Análisis, Compra Maestra and Compra ECO:
+https://www.ocu.org/info/quienes-somos/nuestros-analisis
+
+MAPA's 2026 cheese award publishes unusually rich process facts: admitted
+producer/sample requirements, sensory score sheets, panels of five expert
+tasters, a two-stage selection, an 80-point threshold for finalists and
+physical-chemical/microbiological/species checks:
+https://www.mapa.gob.es/es/alimentacion/temas/promo-alimentos/premios-alimentos/ultimaedicionpremioquesos
+
+International Wine Challenge publishes a blind multi-stage judging process.
+Wines are grouped into coded tasting flights; initial panels contain 3-4 expert
+judges from roles such as winemakers, buyers, sommeliers and educators, and
+medal wines are re-tasted/confirmed at senior level:
+https://www.internationalwinechallenge.com/judging-process.html
+
+GourmetQuesos 2026 publishes more than 800 entries, 65 judges, two qualifying
+phases, 20 categories, finalists and sensory criteria including rind, colour,
+texture, aroma, flavour, aftertaste and persistence:
+https://www.gourmets.net/salon-gourmets/2026/catalogo-expositores/grupo-gourmets/16-gourmetquesos-campeonato-de-los-mejores-quesos-de-espana-2026
+
+World Beer Awards documents a three-round taste hierarchy: country style
+winners, worldwide style comparison, then World's Best category titles. Its
+official material describes specialist/international beer-expert panels and
+blind judging:
+https://www.worldbeerawards.com/how-to-enter
+
+These examples support a deterministic rich-article model with fields such as
+entry/sample count, judge/tester count, blind/lab flags, judging phases,
+criteria, score, producer, origin and category-specific product attributes.
+
+Each fact must retain source provenance. Award methodology comes from the award
+authority; current price/availability/package comes from the retailer.
+
+#### Image transport is easy; reuse rights are the real gate
+
+Telegram Bot API `sendPhoto` accepts an HTTP URL and Telegram downloads the
+remote image. Current Bot API documentation also limits photo captions to 1024
+characters and states a 5 MB limit for photos sent by URL:
+https://core.telegram.org/bots/api
+
+The repository already contains a bounded HTTPS `send_photo_url` implementation,
+so image transport does not require a new dependency.
+
+However, the retained legal review already found restrictive reproduction/public
+communication terms for several retailer sites. A public product-image URL is
+therefore not enough to permit republication in Telegram.
+
+Preferred image evidence order:
+1. award organizer press/media asset with explicit reuse permission;
+2. producer/manufacturer press asset with explicit reuse permission;
+3. retailer product image only where reuse permission is clear;
+4. otherwise text-only.
+
+To avoid two-message transactional complexity, first keep one publication as
+one Telegram message: use photo+caption only when the approved image exists and
+the complete article fits the 1024-character caption; otherwise publish the
+richer text-only article.
+
+#### Overengineering review
+
+Still rejected:
+- universal award scraper;
+- generic supermarket crawler;
+- search-engine runtime discovery;
+- browser/Playwright/Selenium;
+- OCR for normal award/runtime paths;
+- LLM extraction, translation or product matching;
+- fuzzy similarity identity joins;
+- relational database/vector index;
+- separate daemon per source or retailer;
+- continuous stock/price monitoring;
+- automatic two-message photo/article bundle in the first autonomous version.
+
+Still justified:
+- one small adapter per recurring award source;
+- one small search/identity adapter per supported retailer where a cheap
+  official contract is proven;
+- one compact rolling ready pool;
+- one controlled semantic nomination vocabulary;
+- one small health map with transition-based admin alerts;
+- deterministic source-specific rendering;
+- one exact offer refresh immediately before publication.
+
+#### Remaining research before implementation
+
+1. Prove bounded browser-free search/index contracts for the six target
+   retailers, prioritising Mercadona, ALDI, Consum and Carrefour because their
+   exact-product refresh is already stronger than discovery.
+2. Run a real 30-50 winner dry sample across OCU/MAPA/IWC/GourmetQuesos and
+   measure exact retail-match yield in the six chains.
+3. Record request counts, payload sizes, false/ambiguous matches and the number
+   of candidates that resolve by EAN, retailer SKU or exact commercial identity.
+4. Estimate actual ready-event runway after semantic deduplication and physical
+   product diversity rules.
+5. Test source health-state transitions and admin-alert wording without sending
+   public messages.
+6. Audit image reuse rights source-by-source; do not make product photos a
+   launch gate for autonomy.
+
+Only after this dry research demonstrates a sufficiently large and cheap pool
+should ADR 0085 move from Proposed toward Accepted.
