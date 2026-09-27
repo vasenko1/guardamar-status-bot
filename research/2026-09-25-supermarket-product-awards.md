@@ -1963,3 +1963,22 @@ fail-closed behaviour.
 
 This is an HTTP compatibility fix, not a relaxation of retail identity or
 availability evidence.
+
+
+A second production-device preview exposed a DIA-specific parser trap after the
+HTTP 403 fix: the page header/cart contains `0,00 €` after a repeated document
+title, while the actual AROM'ARTE product card contains `3,80 €` immediately
+before its `Añadir` button. The original first-title parser therefore selected
+the cart total.
+
+Runtime follow-up:
+- scope price extraction to the exact-title occurrence nearest the matching
+  `Añadir` product-card boundary;
+- preserve the existing unavailable/out-of-stock guards so recommendation
+  prices cannot leak into the selected product;
+- reject zero prices fail-closed, since a zero value is not a publishable
+  current supermarket offer for this feature.
+
+The other four live preview prices were correct during the same validation:
+NALTROS 3.15 EUR, Realfooding 4.05 EUR, Oleoestepa 7.65 EUR and Anís Chinchón
+13.79 EUR.
