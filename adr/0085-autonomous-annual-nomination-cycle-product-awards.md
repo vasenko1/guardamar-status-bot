@@ -583,6 +583,177 @@ A future compact state needs only:
 No raw HTML, award-result archive, retailer catalogue dump, vector index or
 database is needed.
 
+## Retail search/index research outcome
+
+The 27 September 2026 read-only search/index investigation changes the proposed
+retail architecture in several useful ways.
+
+### Search capability is asymmetric
+
+Do not require all six retailers to expose the same capability.
+
+Current browser-free research supports this initial capability model:
+
+| Retailer | Candidate search/index | Exact product refresh | Initial autonomous role |
+| --- | --- | --- | --- |
+| Mercadona | yes, public storefront Algolia index tied to warehouse | yes, first-party product JSON | search + verify |
+| ALDI España | yes, public storefront Algolia index, regional | yes, first-party product/embedded app data | search + verify |
+| Consum | yes, first-party REST catalogue search | yes, first-party REST product with product id/EAN | search + verify |
+| DIA España | technically yes, first-party search/category JSON | yes, SSR exact product | retailer-first / cautious search + verify |
+| Lidl España | technically yes, first-party search JSON, incomplete grocery assortment | exact first-party product page | retailer-first / positive-only search + verify |
+| Carrefour España supermarket | generic browser-free search not accepted for v1 | yes, exact supermarket product page | validation-only |
+
+Carrefour must not force a browser, proxy, challenge solver or headless runtime
+into this feature. Five search-capable retailers plus Carrefour exact-product
+validation are sufficient for the first autonomous design.
+
+### Candidate search is positive evidence, not an absence oracle
+
+The default rule for every retailer adapter is:
+
+**search hit may establish a candidate; search miss does not prove that the
+product is not sold.**
+
+This is mandatory for incomplete/offer-driven surfaces such as Lidl and is also
+the safer general rule for undocumented storefront backends.
+
+Therefore an explicit source rank #1 must not be demoted to #2 merely because a
+retailer search did not find it. A lower-ranked fallback is allowed only when
+the source/retailer evidence positively establishes that the higher-ranked
+commercial product is not an eligible current match, or when the reviewed
+source contract itself permits a different fallback rule.
+
+Unknown remains unknown.
+
+### Add a pre-search commercial-identity gate
+
+Do not spend retailer requests on award results that cannot identify a retail
+product.
+
+Before candidate search, require enough award-side identity to distinguish a
+commercial SKU, for example brand + exact product/label plus category-critical
+variant fields.
+
+Reject or defer before retailer search when the result describes only:
+
+- a producer or mill;
+- a bulk lot with no tied commercial bottle/SKU;
+- an unnamed range;
+- a foreign retailer private label outside the six target chains;
+- a wine without required vintage/cuvée/DO identity when the award is vintage
+  specific.
+
+This is especially important for MAPA AOVE bulk-lot awards and for global wine
+competitions containing foreign supermarket private labels.
+
+### Refill sources in a static high-yield order
+
+Do not add a scoring model.
+
+The dry sample shows materially different supermarket-match yield by source
+family. The reviewed source manifest should therefore have a simple static
+refill order:
+
+1. supermarket-oriented comparative sources such as OCU;
+2. retailer-first awarded-product leads from Lidl/DIA, verified against the
+   independent award authority;
+3. Spanish specialist/national sources such as MAPA and GourmetQuesos;
+4. large international competitions such as IWC/CMB/World Beer Awards.
+
+A lower-priority source still contributes diversity, but the phone does not
+burn its request budget on thousands of global winners while the ready buffer
+can be filled cheaply from supermarket-oriented sources.
+
+### Use retailer hints before broad search
+
+A nomination event may carry a small ordered retailer-hint list derived only
+from explicit evidence.
+
+Examples:
+
+- OCU says ALDI -> check ALDI first;
+- DIA awarded-products page provides a numeric DIA SKU -> no generic retailer
+  search is required;
+- exact EAN -> use EAN-capable search/identity paths first.
+
+If no hint exists, try only the proven bounded adapters under the run budget.
+Stop after one exact supported-retailer match; finding every chain or the
+cheapest chain is not required.
+
+### Current contract notes
+
+Mercadona search uses the web storefront's public search-only Algolia
+configuration and a warehouse-specific index. The public search credentials can
+rotate, so the adapter must treat them as discoverable storefront
+configuration, not a permanent secret or constant. Exact Guardamar product
+validation remains bound to warehouse context.
+
+ALDI search is likewise backed by a regional public storefront Algolia index.
+The peninsula index is the relevant default for Guardamar. Search result fields
+already expose product identity, sales unit, current price and availability,
+but the exact first-party page remains the publication-time authority.
+
+Consum exposes the cleanest first-party REST search/detail pair found in the
+research. Search returns product ids and product data; exact detail can expose
+EAN. Consum should be among the first retailer adapters implemented.
+
+DIA exposes first-party search/category microservices and stable numeric product
+ids, but its robots/search policy makes aggressive generic search undesirable.
+Prefer DIA's own awarded/category surfaces and exact SKU paths; any generic
+search use must remain bounded and separately policy-reviewed.
+
+Lidl exposes a first-party JSON search contract, but the online result set is
+not a complete supermarket grocery catalogue. Treat positive matches as useful
+and misses as unknown. Its official awarded-products page is more valuable as a
+retailer-first lead surface.
+
+Carrefour's public site supports human product search and exact supermarket
+cards, but generic automated search is both bot-managed and explicitly
+restricted by current robots rules. Keep it validation-only in v1.
+
+## Dry-sample evidence
+
+A stratified research sample of 49 current award events was checked across the
+six target retailers using official indexed surfaces, exact known retailer
+contracts and strict commercial identity rules.
+
+The sample intentionally mixed high-yield supermarket-oriented sources with
+low-yield specialist/global competitions, so its aggregate percentage must not
+be extrapolated directly to the final feed.
+
+Observed current state:
+
+- 5/49 are already publishable under the strict selection semantics and are the
+  existing launch events;
+- one additional exact current retail product is already known but is blocked
+  by a higher-ranked unresolved candidate in the same source/category;
+- one additional exact award product is currently sold out;
+- one GourmetQuesos winner produced a strong Consum exact-commercial candidate
+  that still requires final detail/EAN proof;
+- most GourmetQuesos, MAPA wine/cheese/jamón and sampled IWC winners produced no
+  exact current first-party match in the six chains.
+
+The useful stratified signal is stronger than the aggregate:
+
+- OCU supermarket-oriented sample: high current match yield;
+- MAPA non-AOVE product winners: low but non-zero current match yield;
+- GourmetQuesos: very low current target-chain match yield despite excellent
+  award semantics;
+- sampled IWC champion/great-value winners: no current exact target-chain match
+  established.
+
+This supports high-yield-first refill rather than equal scanning of every award
+family.
+
+The dry sample also confirmed several false-positive traps that exact matching
+must reject:
+
+- same brand, wrong product/variant;
+- award producer appearing only in a Carrefour Marketplace third-party bundle;
+- product appearing in an event/editorial page but not as a supermarket shelf
+  item;
+- same product family with no exact winning commercial variant.
+
 ## Implementation gate
 
 Do not implement this ADR until research has proved:
