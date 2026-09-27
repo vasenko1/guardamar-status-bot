@@ -395,3 +395,28 @@ an independent seasonal root, while material AEMET, CAMS and Meteosalud
 changes reply to the morning anchor. The existing atomic JSON state stores
 only message identifiers and compact baselines; no database, daemon or extra
 cron is introduced.
+
+## Product-award one-shot
+
+Product awards are an independent low-frequency workflow, not part of the
+Morning Digest. One daily Termux invocation reads its small atomic state first.
+If the three-local-day cooldown is still active, or every reviewed event is
+already published, it exits before any award or retailer HTTP request.
+
+A due run walks a reviewed broad-category registry from the stored category
+cursor. Inside one category it preserves the configured source priority and
+source-native rank order; only after all eligible candidates from one source
+fail exact retail verification may it move to the next source. The runtime does
+not discover new competitions or crawl retailer catalogues.
+
+For the initial five-category set, each accepted candidate uses one bounded
+authority/product-page validation followed by one exact-product retailer
+refresh. Carrefour and DIA use their server-rendered official product pages.
+ALDI NALTROS uses the reviewed embedded Next.js product payload because that is
+the stable browser-free exact-product contract proved by the POC.
+
+Before Telegram send the event is stored as uncertain. Confirmed delivery
+records the event, local day and next category cursor; an explicit send failure
+clears the reservation, while an ambiguous result is never automatically
+resent. No discovery queue, database, resident process or AI service is added.
+
