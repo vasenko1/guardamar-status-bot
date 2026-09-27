@@ -137,7 +137,7 @@ def _allowed(hosts: frozenset[str]):
     return check
 
 
-def _fetch_visible_text(url: str, hosts: frozenset[str]) -> str:
+def _fetch_html(url: str, hosts: frozenset[str]) -> str:
     try:
         payload, _, _ = fetch_bounded(
             url,
@@ -156,12 +156,15 @@ def _fetch_visible_text(url: str, hosts: frozenset[str]) -> str:
             code=exc.code,
         ) from exc
     try:
-        source = payload.decode("utf-8")
+        return payload.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise ProductAwardError(
             "product-award source is not UTF-8",
             code="ENCODING",
         ) from exc
+
+
+def _visible_text(source: str) -> str:
     parser = _VisibleTextParser()
     try:
         parser.feed(source)
@@ -174,6 +177,10 @@ def _fetch_visible_text(url: str, hosts: frozenset[str]) -> str:
     if not text:
         raise ProductAwardError("product-award page is empty", code="PARSER")
     return text
+
+
+def _fetch_visible_text(url: str, hosts: frozenset[str]) -> str:
+    return _visible_text(_fetch_html(url, hosts))
 
 
 def _require_markers(text: str, markers: tuple[str, ...], *, code: str) -> None:
@@ -201,18 +208,105 @@ def _price_after_title(text: str, title: str) -> Optional[str]:
     return match.group(1).replace(".", ",") + " €"
 
 
-def _aldi_price(text: str, package_marker: str) -> Optional[str]:
-    folded = _fold(text)
-    package = re.escape(_fold(package_marker))
-    # ALDI's server-rendered card exposes price immediately before the package
-    # line and does not consistently include a euro symbol.
+def _walk_json_dicts(value) -> Iterator[dict]:
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from _walk_json_dicts(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _walk_json_dicts(child)
+
+
+def _aldi_next_data(source: str):
     match = re.search(
-        rf"(?<!\d)(\d{{1,3}}[.,]\d{{2}})\s+{package}(?:\s|$)",
-        folded,
+        r'<script[^>]*id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>',
+        source,
+        flags=re.IGNORECASE | re.DOTALL,
     )
     if match is None:
+        raise ProductAwardError("ALDI Next.js data missing", code="RETAIL-DRIFT")
+    try:
+        next_data = json.loads(match.group(1))
+    except json.JSONDecodeError as exc:
+        raise ProductAwardError("ALDI Next.js data invalid", code="RETAIL-DRIFT") from exc
+    try:
+        api_data = next_data["props"]["pageProps"]["apiData"]
+    except (KeyError, TypeError) as exc:
+        raise ProductAwardError("ALDI product payload missing", code="RETAIL-DRIFT") from exc
+    if not isinstance(api_data, str):
+        raise ProductAwardError("ALDI product payload changed", code="RETAIL-DRIFT")
+    try:
+        return json.loads(api_data)
+    except json.JSONDecodeError as exc:
+        raise ProductAwardError("ALDI product payload invalid", code="RETAIL-DRIFT") from exc
+
+
+def _decimal_price(value) -> Optional[str]:
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
         return None
-    return match.group(1).replace(".", ",") + " €"
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number < 0:
+        return None
+    return f"{number:.2f}".replace(".", ",") + " €"
+
+
+def _aldi_offer(candidate: ReviewedCandidate, source: str) -> Optional[RetailOffer]:
+    payload = _aldi_next_data(source)
+    matches: list[dict] = []
+    for item in _walk_json_dicts(payload):
+        if item.get("brandName") != "NALTROS ®":
+            continue
+        if item.get("salesUnit") != "0,75 l unidad":
+            continue
+        references = item.get("productReferences")
+        if not isinstance(references, list):
+            continue
+        if not any(
+            isinstance(reference, dict)
+            and reference.get("type") == "KVArticleNumber"
+            and str(reference.get("value")) == "1903"
+            for reference in references
+        ):
+            continue
+        matches.append(item)
+
+    if not matches:
+        return None
+
+    signatures = {
+        (
+            item.get("isAvailable"),
+            item.get("isComingSoon"),
+            item.get("isRecall"),
+            json.dumps(item.get("currentPrice"), sort_keys=True),
+        )
+        for item in matches
+    }
+    if len(signatures) != 1:
+        raise ProductAwardError("ALDI product data is ambiguous", code="RETAIL-DRIFT")
+
+    product = matches[0]
+    if product.get("isAvailable") is not True:
+        return None
+    if product.get("isComingSoon") is True or product.get("isRecall") is True:
+        return None
+
+    price_data = product.get("currentPrice")
+    if not isinstance(price_data, dict):
+        raise ProductAwardError("ALDI current price missing", code="RETAIL-DRIFT")
+    price = _decimal_price(price_data.get("priceValue"))
+    if price is None:
+        return None
+    return RetailOffer(
+        retailer=candidate.retailer,
+        package=candidate.package,
+        price=price,
+        product_url=candidate.retailer_url,
+    )
 
 
 def _verify_award(candidate: ReviewedCandidate) -> None:
@@ -221,15 +315,18 @@ def _verify_award(candidate: ReviewedCandidate) -> None:
 
 
 def _refresh_offer(candidate: ReviewedCandidate) -> Optional[RetailOffer]:
-    text = _fetch_visible_text(candidate.retailer_url, candidate.retailer_hosts)
+    source = _fetch_html(candidate.retailer_url, candidate.retailer_hosts)
+
+    if candidate.retailer_kind == "aldi":
+        return _aldi_offer(candidate, source)
+
+    text = _visible_text(source)
     try:
         _require_markers(text, candidate.retailer_markers, code="RETAIL-DRIFT")
     except ProductAwardError:
         return None
 
-    if candidate.retailer_kind == "aldi":
-        price = _aldi_price(text, candidate.package)
-    elif candidate.retailer_kind in {"carrefour", "dia"}:
+    if candidate.retailer_kind in {"carrefour", "dia"}:
         if _fold("Añadir") not in _fold(text):
             return None
         price = _price_after_title(text, candidate.retailer_title)
@@ -303,7 +400,7 @@ CATEGORIES: tuple[ReviewedCategory, ...] = (
                         retailer="ALDI",
                         retailer_kind="aldi",
                         retailer_url="https://www.aldi.es/p/cava-brut-190300.html",
-                        retailer_hosts=frozenset({"www.aldi.es"}),
+                        retailer_hosts=frozenset({"www.aldi.es", "aldi.es"}),
                         retailer_markers=("NALTROS", "Cava brut", "0,75 l"),
                         retailer_title="Cava brut",
                         package="0,75 l",
