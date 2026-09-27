@@ -395,7 +395,7 @@ Alert policy stays transition-based, not request-based:
 
 The admin message must identify the feature and exact failed stage, for example:
 
-`Product Awards / retailer search / Carrefour / SEARCH-SCHEMA`
+`Product Awards / retailer search / Masymas / SEARCH-SCHEMA`
 
 and include only safe operational context: diagnostic code, first/last failure,
 impact, source host and remaining ready-pool runway. Never include tokens,
