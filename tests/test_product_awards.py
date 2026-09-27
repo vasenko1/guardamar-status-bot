@@ -32,6 +32,7 @@ def candidate(
 ) -> ReviewedCandidate:
     return ReviewedCandidate(
         category_key=category,
+        selection_key=f"{category}:2026",
         event_id=event_id,
         source_name="Test Award",
         source_url="https://award.example/result",
@@ -141,7 +142,7 @@ class StateTests(unittest.TestCase):
             state = ProductAwardState(Path(directory) / "awards.json")
             start = date(2026, 9, 27)
             state.mark_uncertain("event")
-            state.confirm("event", 0, start)
+            state.confirm("event", "test:2026", 0, start)
             self.assertFalse(state.due(start + timedelta(days=1)))
             self.assertFalse(state.due(start + timedelta(days=2)))
             self.assertTrue(state.due(start + timedelta(days=3)))
@@ -156,7 +157,7 @@ class StateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             state = ProductAwardState(Path(directory) / "awards.json")
             state.mark_uncertain("event")
-            state.confirm("event", 1, date(2026, 9, 27))
+            state.confirm("event", "test:2026", 1, date(2026, 9, 27))
             self.assertIn("event", state.published_events())
             self.assertEqual(state.category_cursor(), 2)
 
@@ -194,6 +195,12 @@ class SelectionTests(unittest.TestCase):
                     "schema_version": 1,
                     "last_delivery_day": None,
                     "published_events": published,
+                    "published_selections": [
+                        item.selection_key
+                        for category in awards.CATEGORIES
+                        for source in category.sources
+                        for item in source.candidates
+                    ],
                     "category_cursor": 0,
                     "uncertain_event": None,
                 }),
@@ -260,6 +267,42 @@ class SelectionTests(unittest.TestCase):
                 ("retail", "second"),
             ],
         )
+
+    def test_published_category_edition_blocks_other_ranked_candidates(self):
+        first = candidate("first", rank=1)
+        second = candidate("second", rank=2)
+        categories = (
+            ReviewedCategory(
+                "test",
+                (ReviewedSource("primary", 1, (first, second)),),
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "awards.json"
+            path.write_text(
+                json.dumps({
+                    "schema_version": 1,
+                    "last_delivery_day": None,
+                    "published_events": ["first"],
+                    "published_selections": ["test:2026"],
+                    "category_cursor": 0,
+                    "uncertain_event": None,
+                }),
+                encoding="utf-8",
+            )
+            state = ProductAwardState(path)
+            with (
+                patch.object(awards, "CATEGORIES", categories),
+                patch.object(awards, "_verify_award") as verify,
+                patch.object(awards, "_refresh_offer") as refresh,
+            ):
+                selected = select_publication(
+                    datetime(2026, 9, 30, 14, 20, tzinfo=MADRID),
+                    state,
+                )
+        self.assertIsNone(selected)
+        verify.assert_not_called()
+        refresh.assert_not_called()
 
     def test_next_source_is_used_only_after_primary_is_exhausted(self):
         first = candidate("first", source_priority=1, rank=1)
