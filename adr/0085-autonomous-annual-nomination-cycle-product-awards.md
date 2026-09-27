@@ -970,6 +970,90 @@ without spending separate publication slots.
 This is optional enrichment, not an eligibility dependency. One exact valid
 offer is still sufficient for publication.
 
+## Source-side content-yield probe outcome
+
+A second read-only production-device probe on 27 September 2026 closed the
+remaining Masymas retail refresh gap and narrowed the remaining uncertainty to
+award-source discovery/yield.
+
+### Masymas exact current offer — GREEN
+
+Exact first-party product detail returned HTTP 200 for current Masymas products
+and exposed the same stable id/EAN identity plus current `priceData`.
+
+The tested product id 2034 / EAN 8411700011302 exposed:
+
+- regular price 1.95 EUR;
+- offer price 1.69 EUR;
+- unit-price metadata;
+- purchase bounds/price unit information.
+
+Therefore Masymas now has the full proven production chain:
+
+`search -> product id/EAN -> exact detail -> current price`.
+
+No retailer-side implementation sub-gate remains for Masymas.
+
+### OCU comparator discovery — not yet closed
+
+Eight representative OCU comparator entry pages returned HTTP 200 with bounded
+HTML responses of roughly 350-366 KiB. Raw comparator HTML exposed generic
+quality/score/laboratory markers but did not expose a clean
+`Mejor del Análisis` winner identity or a stable product-id field suitable for
+cheap autonomous winner enumeration.
+
+A bounded inspection of the first-party ProductSelectors JavaScript found
+generic product/quality/result/score code but no obvious stable endpoint
+literal that can yet be treated as a reviewed winner API.
+
+Known OCU product pages also returned HTTP 200 and exposed the laboratory marker,
+but their raw anonymous HTML did not contain the visible winner badge/score in
+the simple deterministic form required by the current probe.
+
+This does not mean OCU is unusable. Search-engine/indexed representations and
+OCU editorial/report pages clearly expose source-native scores and
+`Mejor del Análisis` semantics. It means only that the cheap first-party
+runtime winner-discovery contract still needs a more focused bounded probe.
+
+Do not solve this by browser automation.
+
+### Sabor del Año — official authority page remains image/data-heavy
+
+The official 2026 page returned HTTP 200 and about 680 KiB of HTML.
+
+The payload contains strong text hints such as many occurrences of `DIA` and a
+`BURRATA` token even though a simple HTML image-tag parse exposed only a small
+number of ordinary `img` tags. This strongly suggests winner information is
+partly present in serialized Wix/page payload rather than ordinary semantic
+HTML.
+
+However, the first bounded generic script inspection found only standard Wix
+runtime/API infrastructure and did not yet produce a reviewed direct winner
+data endpoint.
+
+The official methodology remains strong and deterministic: 80 habitual
+consumers, blind monadic tasting, five 0-10 sensory criteria, and recognition
+only when the product both exceeds 6/10 and has the highest score in its
+category.
+
+Do not add OCR. A focused Wix serialized-data/context probe is justified before
+abandoning autonomous first-party discovery.
+
+### Editorial implication of the OCU >=85 threshold
+
+The expanding OCU research confirms that source-native `Mejor del Análisis`
+often occurs below 85/100. Therefore the historical prototype threshold
+`overall score >=85` is not a neutral parser guard; it is an editorial
+restriction that removes legitimate category winners.
+
+ADR acceptance must explicitly choose one policy:
+
+- **nomination-first:** accept the source-native best result when it meets a
+  defined positive OCU quality band and always publish the exact score; or
+- **elite-only:** keep >=85 and accept substantially lower annual content yield.
+
+No runtime rule changes until that editorial decision is made.
+
 ## Implementation gate
 
 Do not implement this ADR until research has proved:
