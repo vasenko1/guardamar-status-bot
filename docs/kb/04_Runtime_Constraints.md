@@ -337,3 +337,23 @@ Before adding a dependency or recurring task, answer:
 5. Can it be removed or recovered without complex operations?
 
 Any exception to these constraints requires an accepted ADR.
+
+## Product-award runtime budget
+
+The product-award feature has one daily one-shot cron invocation. It must read
+`state/product_awards.json` before source access.
+
+- During the three-day cooldown: zero award/retailer HTTP requests.
+- After all reviewed events are published: zero award/retailer HTTP requests.
+- On a due run: request only the reviewed award page and exact retailer product
+  page needed for candidate verification; never scan a full catalogue.
+- Every request uses the shared bounded standard-library transport, exact HTTPS
+  hosts, a 15-second timeout and a 768 KiB HTML ceiling.
+- ALDI exact-product verification may parse the embedded Next.js JSON already
+  present in the bounded HTML; it must not execute JavaScript.
+- No browser/Playwright, OCR, LLM, search engine, database, daemon, discovery
+  queue, raw-response cache or retailer-specific recurring job is allowed.
+- State stores only cooldown/dedup/cursor/uncertain-delivery fields; raw award
+  and retailer pages are discarded when the process exits.
+- The product-award log rotates at 512 KiB with one previous file.
+

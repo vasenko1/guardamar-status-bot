@@ -669,3 +669,30 @@ timetables remain excluded.
 The 07:30 Morning Digest is not replaced later in the day. Material
 operational changes are short replies to it; beach status is a separate
 seasonal root with confirmed changes threaded beneath that root.
+
+## Supermarket product awards
+
+Every three local calendar days at most one independently recognised product may
+be published, provided the exact awarded product is currently represented by
+Mercadona, Carrefour España supermarket, ALDI España, Lidl España, DIA España
+or Consum and a fresh exact-product price can be read.
+
+Selection is category-first. For one broad consumer category the bot exhausts
+the explicitly ordered #1/#2/#3 of source #1 before moving to source #2. Ranks
+from different competitions are never mixed. A winner-only authority supplies
+only its winner. Unordered medals/finalists do not create synthetic ranks.
+
+The initial reviewed launch set is:
+
+- cava: NALTROS Brut / ALDI via the OCU fallback;
+- gazpacho: Realfooding / Carrefour via OCU;
+- AOVE: Oleoestepa DOP Estepa / Carrefour via the OCU fallback;
+- coffee capsules: AROM'ARTE Intenso / DIA via a physically laboratory-tested
+  OCU analysis;
+- spirits/anís: Anís Chinchón Dulce / Carrefour via MAPA 2026.
+
+The public post is deterministic and text-only: award/result context, exact
+current package/price, retailer link and authority link. A missing or ambiguous
+exact offer means silence, not a price-less post. Product photos are excluded
+unless separate reuse permission is documented.
+
