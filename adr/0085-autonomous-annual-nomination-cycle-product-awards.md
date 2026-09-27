@@ -1131,6 +1131,70 @@ The remaining source research should proceed in this order:
 3. decide whether either source needs a reviewed secondary text authority;
 4. only then run the large annual nomination-to-retailer yield study.
 
+## Deep OCU and Wix contract refinement
+
+A deeper read-only production probe on 27 September 2026 refined the remaining
+source-side contracts.
+
+### OCU: tested-product universe is already serialized in raw HTML
+
+Current comparator HTML exposes a
+`Psf-Search-ProductFamily-SerializedSearchUniverse` JSON block containing the
+full searchable tested-product universe for the comparator, including:
+
+- exact product label;
+- stable product-detail URL;
+- stable OCU product id;
+- old/non-tested/outdated flags.
+
+This means basic tested-product enumeration does **not** require
+`RefreshProductListing`, pagination scraping, browser automation or search
+queries.
+
+The listing HTML also exposes, per product:
+
+- stable `data-productid`;
+- a `PsfQualityBox` component;
+- stable `qualityboxGuid`;
+- laboratory-tested marker;
+- exact detail URL and compare title.
+
+Therefore the next OCU contract probe should focus on the smallest possible
+quality/winner endpoint, not on re-fetching the entire listing.
+
+### OCU ProductSelectors POST is an optimization, not a prerequisite
+
+The first-party JavaScript confirms that listing refresh/load-more calls are
+ordinary POST requests built through `getApiUrl` and
+`MapToPsfListingRenderRequest`.
+
+Because the initial raw page already contains the tested-product universe, the
+runtime architecture should prefer the simpler source surface unless the POST
+provides materially cheaper quality/rank evidence.
+
+Do not implement ProductSelectors POST merely because it exists.
+
+### Sabor del Año: use exact Wix page model, not generic gallery traversal
+
+The official 2026 page publishes a stable Wix page-map entry:
+
+- page id: `dfya4`;
+- title: `2026`;
+- page URI: `2026`;
+- page JSON file name:
+  `9fcf1c_8c74f66eaa969705860f7686ced42fc9_268`.
+
+A generic recursive search for `galleryData.items` in the current warmup
+payload returned zero galleries. That conflicts with the prior discovery of
+winner-related media filenames in first-party serialized data and therefore
+must not be interpreted as "no structured data exists".
+
+The next probe should use the Wix page JSON/static page-model topology directly
+and, independently, enumerate all media/fileName-like values from the current
+page payload regardless of component nesting.
+
+This is a contract-discovery task, not an OCR task.
+
 ## Implementation gate
 
 Do not implement this ADR until research has proved:
