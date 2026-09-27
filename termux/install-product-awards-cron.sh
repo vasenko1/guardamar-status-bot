@@ -7,6 +7,8 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PROJECT_DIR=$(dirname "$SCRIPT_DIR")
 RUNNER="$PROJECT_DIR/termux/run-product-awards.sh"
 SH_BIN=$(command -v sh)
+TERMUX_PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+SERVICE_DIR="${SVDIR:-$TERMUX_PREFIX/var/service}"
 BACKUP_DIR="$HOME/.cache/crontab"
 BACKUP="$BACKUP_DIR/crontab.before-product-awards"
 CURRENT=$(mktemp)
@@ -63,6 +65,11 @@ awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" -v job="$JOB" '
         "$END_MARKER"
 } | crontab -
 
-sv up crond
+if [ ! -d "$SERVICE_DIR/crond" ]; then
+    echo "ERROR: crond service directory not found: $SERVICE_DIR/crond" >&2
+    exit 1
+fi
+
+SVDIR="$SERVICE_DIR" sv up crond
 echo "Product awards installed: one daily check at 14:20 Europe/Madrid"
 crontab -l
