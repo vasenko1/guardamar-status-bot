@@ -51,6 +51,48 @@ def candidate(
     )
 
 
+class TransportHeaderTests(unittest.TestCase):
+    def test_award_fetch_keeps_lightweight_service_headers(self):
+        item = candidate("award")
+        with patch.object(
+            awards,
+            "fetch_bounded",
+            return_value=(
+                b"<html><body>winner</body></html>",
+                item.source_url,
+                "text/html",
+            ),
+        ) as fetch:
+            awards._verify_award(item)
+
+        headers = fetch.call_args.kwargs["headers"]
+        self.assertEqual(headers["User-Agent"], awards.USER_AGENT)
+        self.assertNotIn("Sec-Fetch-Mode", headers)
+
+    def test_retail_fetch_uses_proven_navigation_headers(self):
+        item = candidate("retail")
+        page = b"<html><body>Exact Product 2,50 â¬ AÃ±adir</body></html>"
+        with patch.object(
+            awards,
+            "fetch_bounded",
+            return_value=(
+                page,
+                item.retailer_url,
+                "text/html",
+            ),
+        ) as fetch:
+            offer = awards._refresh_offer(item)
+
+        self.assertIsNotNone(offer)
+        self.assertEqual(offer.price, "2,50 €")
+        headers = fetch.call_args.kwargs["headers"]
+        self.assertEqual(headers, awards.RETAIL_NAVIGATION_HEADERS)
+        self.assertEqual(headers["Sec-Fetch-Mode"], "navigate")
+        self.assertEqual(headers["Sec-Fetch-Dest"], "document")
+        self.assertEqual(headers["Sec-Fetch-Site"], "none")
+        self.assertEqual(headers["Sec-Fetch-User"], "?1")
+
+
 class PriceParserTests(unittest.TestCase):
     def test_aldi_offer_uses_exact_embedded_product_contract(self):
         item = candidate("aldi")
