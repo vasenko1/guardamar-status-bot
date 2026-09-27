@@ -70,7 +70,6 @@ class ReviewedCandidate:
     result_line: str
     detail_line: str
     source_link_label: str
-    source_priority: int = 1
     rank: int = 1
 
 
@@ -406,13 +405,12 @@ CATEGORIES: tuple[ReviewedCategory, ...] = (
                         retailer_markers=("NALTROS", "Cava brut", "0,75 l"),
                         retailer_title="Cava brut",
                         package="0,75 l",
-                        result_line="NALTROS Brut в ALDI — лучший Brut в тесте OCU",
+                        result_line="NALTROS Brut в ALDI — 94/100, один из лидеров OCU",
                         detail_line=(
                             "OCU сравнила 25 cava: NALTROS Brut получил 94/100 "
                             "и вошёл в тройку продуктов с максимальной оценкой."
                         ),
                         source_link_label="Исследование OCU",
-                        source_priority=2,
                         rank=1,
                     ),
                 ),
@@ -535,7 +533,7 @@ CATEGORIES: tuple[ReviewedCategory, ...] = (
                         ),
                         retailer_title="Cápsulas de café intenso Dia Arom'arte 20 unidades",
                         package="20 капсул",
-                        result_line="AROM’ARTE Intenso в DIA — лидер теста капсул OCU",
+                        result_line="AROM’ARTE Intenso в DIA — 85/100 в тесте OCU",
                         detail_line=(
                             "В исследовании OCU 2024 продукт получил 85/100; "
                             "точная карточка OCU подтверждает лабораторное тестирование."
