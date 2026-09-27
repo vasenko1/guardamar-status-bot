@@ -30,6 +30,23 @@ LOGGER = logging.getLogger(__name__)
 REQUEST_TIMEOUT_SECONDS = 15
 HTML_LIMIT_BYTES = 768_000
 USER_AGENT = "GuardamarMorningDigest/0.13"
+RETAIL_NAVIGATION_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Linux; Android 14; Mobile) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/140.0.0.0 Mobile Safari/537.36"
+    ),
+    "Accept": (
+        "text/html,application/xhtml+xml,application/xml;q=0.9,"
+        "image/avif,image/webp,*/*;q=0.8"
+    ),
+    "Accept-Language": "es-ES,es;q=0.9,en;q=0.5",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-User": "?1",
+    "Sec-Fetch-Dest": "document",
+}
 COOLDOWN_DAYS = 3
 STATE_SCHEMA_VERSION = 1
 MAX_HISTORY = 128
@@ -137,17 +154,23 @@ def _allowed(hosts: frozenset[str]):
     return check
 
 
-def _fetch_html(url: str, hosts: frozenset[str]) -> str:
+def _fetch_html(
+    url: str,
+    hosts: frozenset[str],
+    *,
+    headers: Optional[dict[str, str]] = None,
+) -> str:
+    request_headers = headers or {
+        "Accept": "text/html,application/xhtml+xml",
+        "User-Agent": USER_AGENT,
+    }
     try:
         payload, _, _ = fetch_bounded(
             url,
             is_allowed_url=_allowed(hosts),
             limit_bytes=HTML_LIMIT_BYTES,
             timeout_seconds=REQUEST_TIMEOUT_SECONDS,
-            headers={
-                "Accept": "text/html,application/xhtml+xml",
-                "User-Agent": USER_AGENT,
-            },
+            headers=request_headers,
             accepted_types=frozenset({"text/html", "application/xhtml+xml"}),
         )
     except BoundedFetchError as exc:
@@ -329,7 +352,15 @@ def _verify_award(candidate: ReviewedCandidate) -> None:
 
 
 def _refresh_offer(candidate: ReviewedCandidate) -> Optional[RetailOffer]:
-    source = _fetch_html(candidate.retailer_url, candidate.retailer_hosts)
+    # Carrefour and DIA reject the lightweight service UA but return the same
+    # public server-rendered product HTML for a normal top-level navigation.
+    # Use only the smallest browser-navigation header profile proven on the
+    # production Termux device; no cookies, JavaScript or challenge solving.
+    source = _fetch_html(
+        candidate.retailer_url,
+        candidate.retailer_hosts,
+        headers=RETAIL_NAVIGATION_HEADERS,
+    )
 
     if candidate.retailer_kind == "aldi":
         return _aldi_offer(candidate, source)
