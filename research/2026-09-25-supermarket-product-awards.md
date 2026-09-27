@@ -4206,3 +4206,42 @@ A corrected inventory must:
   advice/news.
 
 This corrected feed inventory is required before estimating OCU READY/year.
+
+
+#### Premio Cinco Estrellas: good methodology, insufficient SKU specificity
+
+A further high-yield-source search identified Premio Cinco Estrellas España
+2026.
+
+Its official methodology is consumer based and comparatively strong:
+
+- category study to define relevant purchase attributes;
+- satisfaction survey with 100 clients/users of the evaluated brand/product;
+- representative national market study for brand trust and innovation;
+- winner must have the highest overall result in the category and meet the
+  minimum required score of 7/10.
+
+The 2026 food/beverage categories include plant drinks, cured meats, coffee
+brand, beer, gazpacho, canned legumes, Moscatel wine and yoghurt.
+
+However, the official winner surface is primarily **brand/category**, for
+example:
+
+- Estrella Galicia — Cerveza;
+- Garcia Millán — Gazpacho;
+- Luengo — Legumbres en Conserva;
+- Pastoret — Yogures;
+- Alpro — Bebidas Vegetales.
+
+This is insufficient to transfer the award to an arbitrary current retail SKU
+when the brand has multiple products/variants.
+
+Architecture decision:
+
+- do not add a dedicated Premio Cinco Estrellas product adapter;
+- admit an event only if a future official category result identifies an exact
+  commercial product/range strongly enough to pass the normal identity gate;
+- brand-only category wins remain non-publishable for Product Awards.
+
+This exclusion is intentional and protects the system from award-to-SKU
+over-attribution.
