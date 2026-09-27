@@ -3145,3 +3145,282 @@ The probe records only safe operational facts: HTTP status, content type,
 bounded byte count, number of results and a few identity fields.
 
 It creates no state, changes no cron and sends no Telegram message.
+
+
+### Production-device retailer contract proof — 27 September 2026
+
+The final read-only retailer probe was executed on the actual Redmi/Termux
+production device at repository HEAD
+`6fb2bcdd6f29049f0c39e7d8ca5123482749276e`.
+
+Safety checks proved that the probe had no side effects:
+
+- repository HEAD before/after: unchanged;
+- `state/product_awards.json`: absent before and after;
+- crontab SHA-256 before/after:
+  `9aa0e04ae54495fe8c678f8821dc3741f5581a4cc7804fc015ac8e06e35462b2`;
+- no Telegram call;
+- no cron write;
+- no product-award state write.
+
+#### Mercadona production proof
+
+Warehouse-specific search index:
+
+`products_prod_alc1_es`
+
+returned:
+
+- HTTP 200;
+- `application/json`;
+- 19,112 bytes;
+- 8 bounded hits for `salmorejo hacendado`.
+
+Observed candidates included:
+
+- SKU 39901 — `Salmorejo fresco Hacendado` — 2.90 EUR;
+- SKU 39966 — `Salmorejo fresco Hacendado` — 1.25 EUR;
+- SKU 39902 — `Salmorejo al estilo cordobés Hacendado` — 2.20 EUR;
+- SKU 39903 — `Salmorejo al estilo cordobés Hacendado` — 2.65 EUR;
+- additional gazpacho variants.
+
+Exact `alc1` product JSON also returned HTTP 200.
+
+Identity examples:
+
+- 39901 -> EAN 8480000399014;
+- 39966 -> EAN 8480000399663;
+- 39902 -> EAN 8480000399021;
+- 39903 -> EAN 8480000399038.
+
+All four exact records were currently published and exposed current price plus
+reference price/unit.
+
+This is direct production proof that Mercadona candidate search and exact
+EAN-level verification both work without a browser.
+
+It also proves why the model must distinguish canonical product from retail
+offer SKU: two current SKUs share the visible name `Salmorejo fresco
+Hacendado` but have different EANs and package economics.
+
+The probe alone does **not** prove that those two SKUs have identical
+formulation. Package-equivalence enrichment still requires first-party
+composition/variant evidence.
+
+#### Masymas / Juan Fornés production proof
+
+Official storefront:
+
+- HTTP 200;
+- 23,361 bytes;
+- Fornés CDN marker present;
+- Aktios marker present;
+- TOL marker present.
+
+The exact hypothesised first-party endpoint worked immediately on the phone:
+
+`https://tienda.masymas.com/api/rest/V1.0/catalog/product?q=<term>`
+
+A broad `leche` query returned:
+
+- HTTP 200;
+- JSON;
+- 71,817 bytes;
+- 20 products.
+
+Candidate records exposed numeric product id, EAN and product name.
+
+Examples:
+
+- id 2034 / EAN 8411700011302 / `Bebida Láctea Omega3 Con Nueces`;
+- id 1843 / EAN 8411700010121;
+- id 1691 / EAN 8411700412321.
+
+This converts Masymas from a platform hypothesis into a proven browser-free
+first-party search contract on the actual production network.
+
+Additional award-related probes:
+
+**realfooding**
+- HTTP 200;
+- 1 result;
+- product id 9079 / EAN 8424465845242;
+- product name `Pan 100% Integral`.
+
+This is not the awarded Realfooding gazpacho and therefore is rejected.
+
+**oleoestepa**
+- HTTP 200;
+- zero products.
+
+This is `NO VERIFIED MATCH`, not proof that Oleoestepa is absent from all
+Masymas stores.
+
+**chinchon**
+- HTTP 200;
+- 15 results;
+- examples were `Queso Fresco Cincho...`, `Salchichón...` and other
+  substring/lexical matches.
+
+This is a valuable negative test: Masymas search is not an exact identity
+matcher. EAN/exact commercial identity filtering is mandatory after candidate
+retrieval.
+
+Masymas is now **GREEN for candidate search**. Search already exposes EAN, so an
+exact-detail endpoint is useful enrichment but not a blocker for discovery.
+
+#### ALDI production proof
+
+Peninsula index:
+
+`an_prd_es_es_pen_products2`
+
+Search `naltros` returned:
+
+- HTTP 200;
+- 6,072-byte JSON;
+- 3 exact brand variants.
+
+Observed current variants:
+
+- article/object 191000 — NALTROS cava brut nature — 0.75 L — available —
+  3.79 EUR;
+- 190300 — NALTROS cava brut — 0.75 L — available — 3.15 EUR;
+- 190000 — NALTROS cava semiseco — 0.75 L — available — 2.99 EUR.
+
+The exact NALTROS page returned HTTP 200, 71,538 bytes and retained expected
+brand/article/Next.js application markers.
+
+This is strong production proof for browser-free candidate search plus exact
+verification.
+
+#### Consum production proof
+
+Search for `chinchon` returned:
+
+- HTTP 200;
+- 1,886-byte JSON;
+- 1 product.
+
+Current candidate:
+
+- product id 19967;
+- EAN 8410023172240;
+- `Anís Dulce Botella`.
+
+Exact product detail for id 19967 returned:
+
+- HTTP 200;
+- 1,819-byte JSON;
+- the same EAN and product name.
+
+Consum therefore has the cleanest fully proven search -> id -> exact EAN
+pipeline in the active retailer set.
+
+#### DIA production proof
+
+Generic search:
+
+`/api/v1/search-back/search?q=arom%20arte%20intenso`
+
+returned:
+
+- HTTP 403;
+- HTML error response;
+- 410 bytes.
+
+Exact AROM'ARTE page returned:
+
+- HTTP 200;
+- 70,475 bytes;
+- correct product/SKU/add-to-cart markers.
+
+Therefore DIA generic search must be **excluded** from the production autonomous
+architecture.
+
+DIA remains useful through:
+
+- official awarded-product/category pages;
+- exact numeric SKU links obtained from those pages;
+- exact SSR product refresh before publication.
+
+This is simpler than trying to emulate or bypass DIA search protection.
+
+#### Lidl production proof
+
+Official search:
+
+`/q/api/search?q=queso&assortment=ES&locale=es_ES&version=2.0`
+
+returned:
+
+- HTTP 200;
+- content type `application/mindshift.search+json;version=2`;
+- 447,279 bytes;
+- 35 current results.
+
+Observed fields included item/code/ERP id, brand, full title, current price when
+present and canonical product URL.
+
+Examples included current ITALIAMO Parmigiano Reggiano D.O.P., MILBONA processed
+cheese, sheep cheese and Roncero products.
+
+The exact first returned product page also returned HTTP 200 and valid HTML.
+
+The 447 KiB response confirms that broad Lidl category-style queries are too
+expensive for normal refill. Runtime Lidl discovery must use exact award/product
+terms or retailer-first awarded-product pages and retain a strict response-size
+budget.
+
+Lidl search remains positive-only: a miss is not product absence.
+
+#### Final production-proven retail architecture
+
+The active six-retailer model after the device probe is:
+
+1. **Mercadona — GREEN**
+   - search: warehouse Algolia;
+   - identity: SKU + exact first-party JSON + EAN.
+
+2. **Masymas / Juan Fornés — GREEN**
+   - search: first-party Aktios/TOL REST;
+   - identity: numeric product id + EAN already present in search records.
+
+3. **ALDI España — GREEN**
+   - search: peninsula Algolia;
+   - identity: article/object id + brand + sales unit + exact first-party page.
+
+4. **Consum — GREEN**
+   - search: first-party REST;
+   - identity: product id + exact REST EAN.
+
+5. **DIA España — GREEN only in retailer-first mode**
+   - generic search: excluded after production HTTP 403;
+   - candidate discovery: official award/category pages/exact SKU;
+   - identity/refresh: exact SSR product page.
+
+6. **Lidl España — GREEN/POSITIVE-ONLY**
+   - search: first-party JSON;
+   - identity: stable product URL/id + exact page;
+   - broad queries avoided because of response size and incomplete web
+     assortment.
+
+No Carrefour contract and no browser runtime are required.
+
+#### Retail-side research gate status
+
+The production-device retailer-discovery gate is now **PASSED** for the
+potential ADR 0085 architecture.
+
+Remaining uncertainty is no longer "can the phone search the local retailers?"
+It is now primarily content-yield and source-discovery economics:
+
+- how many semantically unique award nominations produce exact local-retailer
+  matches per rolling year;
+- how much OCU/retailer-first material can replenish the pool;
+- how often package-equivalent SKUs can be safely grouped;
+- whether the measured ready-event runway can approach the desired three-day
+  cadence without lowering evidence standards.
+
+ADR 0085 should therefore remain Proposed until a broader automated read-only
+award-winner -> retailer dry-run demonstrates sustainable ready-pool yield.
