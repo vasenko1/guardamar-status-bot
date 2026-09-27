@@ -587,6 +587,169 @@ A future compact state needs only:
 No raw HTML, award-result archive, retailer catalogue dump, vector index or
 database is needed.
 
+## Production-device retailer contract proof
+
+A read-only probe on the actual Redmi/Termux production network on
+27 September 2026 materially strengthens the retailer side of this ADR.
+
+The probe:
+
+- kept repository HEAD unchanged;
+- kept product-awards state absent;
+- kept crontab byte-for-byte equivalent by hash;
+- sent no Telegram message;
+- used bounded anonymous HTTP only.
+
+Observed results:
+
+### Mercadona — GREEN
+
+Warehouse-specific Algolia search for `alc1` returned HTTP 200 and eight
+salmorejo/gazpacho candidates in a 19 KiB JSON response.
+
+Exact product JSON for several returned SKUs also returned HTTP 200 and exposed:
+
+- stable numeric product id;
+- EAN;
+- exact display name;
+- brand;
+- published flag;
+- current price;
+- reference price/unit.
+
+The probe directly demonstrated two separate current SKUs with the same visible
+commercial name `Salmorejo fresco Hacendado`:
+
+- SKU 39901 / EAN 8480000399014;
+- SKU 39966 / EAN 8480000399663.
+
+This confirms that candidate search may produce several package/format offers
+for one apparent commercial product and that exact identity must happen after
+search.
+
+Mercadona is accepted as **search + exact verify** for the prospective
+autonomous architecture.
+
+### Masymas / Juan Fornés — GREEN
+
+The official Guardamar-relevant storefront returned HTTP 200 and exposed the
+expected Fornés/Aktios/TOL markers.
+
+More importantly, the hypothesised first-party TOL catalogue endpoint was
+confirmed on the production phone:
+
+`/api/rest/V1.0/catalog/product?q=<term>`
+
+It returned HTTP 200 JSON with a `products` list. Current candidate records
+exposed:
+
+- stable numeric product id;
+- EAN;
+- product name.
+
+Examples from the probe include product id 2034 / EAN 8411700011302 and other
+normal catalogue entries.
+
+Search behaviour is not exact-token-only. A query for `chinchon` also matched
+products such as `salchichón`. Therefore Masymas search must be treated as a
+candidate generator only; strict product identity/EAN/variant verification is
+mandatory.
+
+The probe also checked two former Carrefour-backed winners:
+
+- `realfooding` returned one unrelated product (`Pan 100% Integral`);
+- `oleoestepa` returned zero products.
+
+These are **NO VERIFIED MATCH / unresolved** results, not proof of absence.
+
+Masymas is accepted as **search + identity verify** for the prospective
+architecture. A separate exact-detail endpoint is desirable enrichment but is
+not required for candidate generation because search already exposes EAN.
+
+### ALDI España — GREEN
+
+Peninsula Algolia search returned HTTP 200 with three NALTROS variants:
+
+- brut nature;
+- brut;
+- semiseco.
+
+Each candidate exposed article/object id, brand, product name, sales unit,
+availability and current price.
+
+The existing exact NALTROS page also returned HTTP 200 and retained the expected
+first-party application markers.
+
+ALDI is accepted as **search + exact verify**.
+
+### Consum — GREEN
+
+First-party REST search returned HTTP 200 and a current Chinchón candidate with:
+
+- stable product id 19967;
+- EAN 8410023172240;
+- exact product name.
+
+The exact REST detail endpoint for the returned id also returned HTTP 200 and
+the same EAN/name identity.
+
+Consum is accepted as **search + exact verify** and remains the cleanest
+search/detail contract in the target set.
+
+### DIA España — retailer-first + exact only
+
+The generic DIA search microservice returned HTTP 403 from the actual production
+phone.
+
+The exact AROM'ARTE product page returned HTTP 200 with the expected stable SKU,
+identity and add-to-cart markers.
+
+Therefore the autonomous design must not depend on DIA generic search. DIA is
+retained only through:
+
+- official retailer-first award/category pages that expose exact current SKUs;
+- already-known exact product URLs/SKUs;
+- publication-time exact SSR verification.
+
+This is simpler and better aligned with the lean architecture than adding
+special anti-bot behaviour for DIA search.
+
+### Lidl España — GREEN/POSITIVE-ONLY
+
+The first-party `/q/api/search` contract returned HTTP 200 JSON from the
+production phone and 35 cheese results.
+
+The response exposed:
+
+- item/code/ERP identifiers;
+- brand;
+- full product title;
+- current price when present;
+- canonical product URL.
+
+The first returned exact product page also returned HTTP 200.
+
+The broad `queso` query produced about 447 KiB of JSON, so runtime use must
+remain award-targeted and bounded; broad category queries are not appropriate
+for normal autonomous refill.
+
+Lidl remains **positive-only search + exact verify** because its web assortment
+is not a complete absence oracle.
+
+### Final retailer capability model after the phone probe
+
+| Retailer | Candidate discovery | Exact verification | Status |
+| --- | --- | --- | --- |
+| Mercadona | warehouse Algolia | first-party product JSON / EAN | GREEN |
+| Masymas / Juan Fornés | first-party TOL REST search with EAN | search identity + future detail enrichment | GREEN |
+| ALDI España | peninsula Algolia | exact first-party product/app data | GREEN |
+| Consum | first-party REST search | first-party REST detail / EAN | GREEN |
+| DIA España | retailer-first award/category leads only | exact SSR SKU page | GREEN for retailer-first; generic search excluded |
+| Lidl España | first-party JSON search | exact first-party page | GREEN/POSITIVE-ONLY |
+
+There is no remaining requirement for Carrefour or for any browser-based retail
+search.
+
 ## Retail search/index research outcome
 
 The 27 September 2026 read-only search/index investigation changes the proposed
@@ -813,10 +976,9 @@ Do not implement this ADR until research has proved:
 
 1. at least four Tier-A award source adapters can automatically enumerate
    nomination winners for a fresh edition;
-2. bounded browser-free candidate search is proven on the production device
-   for Mercadona, ALDI, Consum, DIA, Lidl and the target Juan Fornés Masymas
-   contract (Masymas may remain pending only if the other five already provide
-   sufficient measured runway);
+2. production-device retail discovery is proven for Mercadona, Masymas, ALDI,
+   Consum and Lidl, while DIA retailer-first lead surfaces plus exact SSR
+   verification are sufficient without generic search;
 3. exact-product refresh remains available for every retailer used publicly;
 4. a dry-run research pass can produce a materially larger nomination pool
    without fuzzy matching or manually supplied product URLs;
