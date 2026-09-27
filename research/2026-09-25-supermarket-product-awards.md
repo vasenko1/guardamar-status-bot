@@ -3427,3 +3427,143 @@ It is now primarily content-yield and source-discovery economics:
 
 ADR 0085 should therefore remain Proposed until a broader automated read-only
 award-winner -> retailer dry-run demonstrates sustainable ready-pool yield.
+
+
+### Content-yield expansion findings — 27 September 2026
+
+#### OCU: 69 food comparators, but the old >=85 gate is not neutral
+
+OCU's current public comparator index lists 69 Alimentación comparators:
+https://www.ocu.org/todas-las-informaciones/comparadores
+
+The list spans many supermarket-relevant categories, including gazpacho,
+salmorejo, canned tuna, milk, coffee capsules, ground coffee, ordinary beer,
+0.0 beer, AOVE, semi-cured cheese, Greek yoghurt, mussels, sardines, tortilla,
+pizza, turrón, dark chocolate, eggs, frozen hake and others.
+
+A broad current-result check shows that the source-native
+`Mejor del Análisis` title does **not** imply >=85/100.
+
+Current/recent examples visible in OCU's own indexed product/report surfaces:
+
+- Realfooding gazpacho: 90/100;
+- Hacendado fresh salmorejo: 70/100;
+- AOVE current comparator top quality: 93/100;
+- coffee capsules top: 85/100;
+- ordinary lager comparator top: 80/100;
+- 0.0 beer top products: 84/100;
+- whole UHT milk top products: 79/100;
+- ground coffee top products: around 81/100;
+- semi-cured cheese top: 70/100;
+- frozen hake top example: 74/100;
+- some current turrón subtypes: 64-86/100.
+
+OCU explicitly defines `Mejor del Análisis` as the best of the products
+compared. It also states that comparators are not static: depending on category
+they update every 15-30 days or one/more times per year.
+
+Architecture implication:
+
+The historical prototype rule `OCU overall score >=85` is an **editorial
+quality floor**, not part of OCU's nomination semantics.
+
+Before ADR 0085 is accepted, choose explicitly between:
+
+1. **nomination-first policy**: accept source-native Mejor del Análisis when the
+   result is at least OCU's positive quality band and publish the exact score;
+2. **elite-score policy**: retain >=85, knowingly discarding many valid
+   supermarket category winners.
+
+Do not silently keep >=85 while claiming the system selects the best product in
+each nomination.
+
+No runtime rule is changed by this research.
+
+#### OCU freshness needs a real source-cycle date
+
+OCU comparator page titles can look current while some underlying food studies
+originate from older testing cycles. Price data may also update independently
+from laboratory results.
+
+The autonomous adapter therefore needs two distinct notions:
+
+- **analysis/result cycle**: when the tested ranking/result was established;
+- **retail refresh time**: current product/price availability.
+
+A refreshed price must never make an old laboratory ranking look newly tested.
+
+The event source-cycle key should follow the ranking/result revision, not the
+page crawl date or current price date.
+
+A future freshness rule should be explicit rather than inferred from the URL
+title. Old results should not re-enter a new annual diversity round unless OCU
+actually publishes a new ranking/revision.
+
+#### Sabor del Año 2026 is a potentially high-yield supermarket source
+
+The official Sabor del Año methodology is especially aligned with the desired
+article format:
+
+- products are evaluated blind;
+- panel: 80 habitual consumers of the product category;
+- monadic tasting in individual booths;
+- five 0-10 criteria: taste, appearance, smell, texture and overall
+  satisfaction;
+- award requires both >6/10 and the highest score in the product category.
+
+Official methodology:
+https://www.saboresyconsumidores.com/metodologia
+
+The official 2026 winners surface exists at:
+https://www.saboresyconsumidores.com/2026
+
+The public rendered winner catalogue is image-heavy, so it is not yet proven as
+a no-OCR autonomous source.
+
+Independent current reporting identifies 89 recognised food products in the
+2026 edition, including highly supermarket-relevant brands/products such as:
+
+- Central Lechera Asturiana UHT milk range;
+- DIA natural yoghurt, burrata and cheesecake;
+- Lidl fresh salmon, entrecôte and sirloin;
+- Campofrío cooked ham/turkey products;
+- Navidul jamón/paleta de cebo ibérico;
+- Martiko premium smoked salmon;
+- Lipton flavours;
+- Pepsi Zero flavour variants;
+- Hellmann's Gran Mayonesa;
+- Quesos Cerrato Umami;
+- Princesa Amandine potatoes.
+
+This makes Sabor del Año potentially much higher-yield than global cheese/wine
+competitions if exact official product/category identity can be obtained without
+OCR.
+
+Next source-side probe must inspect the official 2026 page HTML/embedded data for
+product names, alt text, structured JSON, image metadata or first-party API
+literals. If exact winners/categories are only pixels, do not add OCR merely
+for this source; use retailer-first leads and explicit first-party/authority
+confirmation instead.
+
+#### World Beer Awards: Spanish country/style winners may be high-yield
+
+Current 2026 official World Beer Awards result pages expose explicit Spanish
+Country Winner titles in multiple consumer-meaningful styles.
+
+Examples found in official 2026 pages:
+
+- International Lager — Spain Country Winner: Ambar Especial;
+- Classic Pilsener — Spain Country Winner: Mahou Sin Filtrar;
+- Dortmunder — Spain Country Winner: Estrella Levante Reserva 60;
+- Dark Lager — Spain Country Winner: Maestra Dunkel;
+- Amber/Dark Kellerbier-Rotbier — Spain Country Winner: Santa Amber;
+- No/Low Alcohol IPA — Spain Country Winner: Arriaca IPA Sin;
+- No/Low Alcohol Speciality — Spain Country Winner: Tropical con limón.
+
+These are materially more supermarket-oriented than many IWC champion wines and
+therefore deserve a dedicated retail-yield pass.
+
+Do not create events from every Gold/Silver/Bronze beer. Use only explicit
+Country Winner / World's Best semantic nominations admitted by the source
+adapter.
+
