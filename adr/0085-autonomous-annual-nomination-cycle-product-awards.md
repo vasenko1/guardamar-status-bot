@@ -741,7 +741,7 @@ is not a complete absence oracle.
 | Retailer | Candidate discovery | Exact verification | Status |
 | --- | --- | --- | --- |
 | Mercadona | warehouse Algolia | first-party product JSON / EAN | GREEN |
-| Masymas / Juan Fornés | first-party TOL REST search with EAN | search identity + future detail enrichment | GREEN |
+| Masymas / Juan Fornés | first-party TOL REST search with EAN | exact publication-time price/availability refresh still needs one device proof | GREEN search / AMBER refresh |
 | ALDI España | peninsula Algolia | exact first-party product/app data | GREEN |
 | Consum | first-party REST search | first-party REST detail / EAN | GREEN |
 | DIA España | retailer-first award/category leads only | exact SSR SKU page | GREEN for retailer-first; generic search excluded |
