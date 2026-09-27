@@ -764,6 +764,66 @@ def _annotate_todo_source_sessions(
     return tuple(annotated)
 
 
+def _canonicalize_todo_programme_aliases(
+    programme_events: Tuple[SourceEvent, ...],
+    todo_events: Tuple[SourceEvent, ...],
+    rows: Tuple[Tuple[date, str, str], ...],
+) -> Tuple[SourceEvent, ...]:
+    """Use raw Todo evidence to bind one supplemental alias to one programme child.
+
+    This is intentionally stricter than general event deduplication.  The raw
+    Todo row must first identify exactly one Todo occurrence, then the same
+    date/time row must support exactly one already verified programme child.
+    Ambiguous or weak matches are left untouched.
+    """
+
+    if not programme_events or not todo_events or not rows:
+        return todo_events
+
+    rewritten = list(todo_events)
+    for (day, start_time, row), todo_index in _strict_session_row_matches(
+        rows, todo_events
+    ):
+        if todo_index is None:
+            continue
+        todo_event = todo_events[todo_index]
+        if todo_event.programme_title is not None:
+            continue
+
+        candidates = []
+        for candidate in programme_events:
+            if (
+                candidate.programme_title is None
+                or candidate.start_date != day
+                or candidate.end_date != day
+                or candidate.start_time != start_time
+            ):
+                continue
+            shared_claims = (
+                _claim_words(candidate.title_es)
+                & _claim_words(row)
+            ) - {"con"}
+            if (
+                len(shared_claims) >= 2
+                and _word_overlap(candidate.title_es, row) >= 0.5
+            ):
+                candidates.append(candidate)
+
+        if len(candidates) != 1:
+            continue
+
+        canonical = candidates[0]
+        rewritten[todo_index] = replace(
+            todo_event,
+            title_es=canonical.title_es,
+            programme_title=canonical.programme_title,
+            programme_order=canonical.programme_order,
+            image_url=todo_event.image_url or canonical.image_url,
+        )
+
+    return tuple(rewritten)
+
+
 def _session_source_plan(
     events: Tuple[SourceEvent, ...],
 ) -> Tuple[Tuple[str, Optional[str]], ...]:
@@ -4958,6 +5018,11 @@ async def refresh_municipal_catalog(
             ayuntamiento_programme_events,
         )
         events = merge_text_and_poster_events(events, programme_text_events)
+        todo_events = _canonicalize_todo_programme_aliases(
+            events,
+            todo_events,
+            todo_explicit_rows,
+        )
         events = merge_text_and_poster_events(events, todo_events)
         events = merge_text_and_poster_events(events, facebook_events)
         events = _normalize_exhibition_opening_times(events)
