@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from telegrambot.__main__ import _run_command
+from telegrambot.__main__ import _run_command, main
 from telegrambot.product_awards import (
     ProductAwardPublication,
     ProductAwardState,
@@ -42,6 +42,21 @@ def publication() -> ProductAwardPublication:
         ),
         message="message",
     )
+
+
+class ProductAwardCliTests(unittest.TestCase):
+    def test_public_cli_accepts_product_award_commands(self):
+        for command in ("product-awards-preview", "product-awards"):
+            with self.subTest(command=command):
+                with (
+                    patch("sys.argv", ["telegrambot", command]),
+                    patch("telegrambot.__main__._run_command", return_value=object()),
+                    patch("telegrambot.__main__.asyncio.run", return_value=0) as run,
+                ):
+                    with self.assertRaises(SystemExit) as raised:
+                        main()
+                self.assertEqual(raised.exception.code, 0)
+                run.assert_called_once()
 
 
 class ProductAwardCommandTests(unittest.IsolatedAsyncioTestCase):
