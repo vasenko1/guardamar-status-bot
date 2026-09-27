@@ -94,3 +94,15 @@ from their exact HTTPS API hosts, and expose stable status codes instead of
 provider response text. A missing secondary key preserves Gemini-only
 behavior. A double failure omits the affected optional result or preserves an
 already valid snapshot and reports both stages to the private diagnostics.
+
+## Product awards
+
+Product-award discovery, authority validation, product identity, retailer
+matching, price refresh, selection, rendering and delivery use no runtime AI.
+
+In particular, do not use Gemini/OpenRouter for product-name recovery, fuzzy
+SKU matching, ranking across competitions, retailer availability inference or
+editorial copy. OCU pages marked only with OCU's AI-derived evaluation path are
+not accepted as award evidence; the initial OCU launch candidates require
+physical comparative/laboratory evidence documented in ADR 0083.
+
