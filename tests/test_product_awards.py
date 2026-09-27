@@ -168,7 +168,7 @@ class SelectionTests(unittest.TestCase):
             state = ProductAwardState(Path(directory) / "awards.json")
             today = date(2026, 9, 27)
             state.mark_uncertain("already")
-            state.confirm("already", 0, today - timedelta(days=1))
+            state.confirm("already", "already:2026", 0, today - timedelta(days=1))
             with (
                 patch.object(awards, "_verify_award") as verify,
                 patch.object(awards, "_refresh_offer") as refresh,
