@@ -354,12 +354,17 @@ def _verify_award(candidate: ReviewedCandidate) -> None:
 def _refresh_offer(candidate: ReviewedCandidate) -> Optional[RetailOffer]:
     # Carrefour and DIA reject the lightweight service UA but return the same
     # public server-rendered product HTML for a normal top-level navigation.
-    # Use only the smallest browser-navigation header profile proven on the
-    # production Termux device; no cookies, JavaScript or challenge solving.
+    # Keep ALDI on the existing lightweight request because its exact Next.js
+    # contract already works there.
+    retail_headers = (
+        RETAIL_NAVIGATION_HEADERS
+        if candidate.retailer_kind in {"carrefour", "dia"}
+        else None
+    )
     source = _fetch_html(
         candidate.retailer_url,
         candidate.retailer_hosts,
-        headers=RETAIL_NAVIGATION_HEADERS,
+        headers=retail_headers,
     )
 
     if candidate.retailer_kind == "aldi":
