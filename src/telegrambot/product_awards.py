@@ -219,30 +219,41 @@ def _require_markers(text: str, markers: tuple[str, ...], *, code: str) -> None:
 def _price_after_title(text: str, title: str) -> Optional[str]:
     folded_text = _fold(text)
     folded_title = _fold(title)
-    index = folded_text.find(folded_title)
-    if index < 0:
+    folded_add = _fold("Añadir")
+
+    # Retail pages may repeat the exact product title in the document <title>
+    # before the site header/cart. DIA then exposes the cart total (0,00 €)
+    # before the real body product card. Evaluate every exact-title occurrence
+    # that reaches an Add button and prefer the nearest title -> Add segment,
+    # which corresponds to the body product card on the reviewed SSR pages.
+    candidates: list[tuple[int, str]] = []
+    start = 0
+    while True:
+        index = folded_text.find(folded_title, start)
+        if index < 0:
+            break
+        window = folded_text[index:index + 1500]
+        add_index = window.find(folded_add)
+        if add_index >= 0:
+            candidates.append((add_index, window[:add_index]))
+        start = index + len(folded_title)
+
+    if not candidates:
         return None
 
-    # Price must belong to the exact product card: accept it only before the
-    # first Add button after the exact title. This prevents a missing/out-of-
-    # stock main product from borrowing a price from later recommendations.
-    window = folded_text[index:index + 1500]
-    add_index = window.find(_fold("Añadir"))
-    if add_index < 0:
-        return None
-    product_card = window[:add_index]
     unavailable_markers = (
         "agotado",
         "no disponible",
         "sin stock",
         "temporalmente agotado",
     )
-    if any(_fold(marker) in product_card for marker in unavailable_markers):
-        return None
-    match = re.search(r"(?<!\d)(\d{1,3}[.,]\d{2})\s*€", product_card)
-    if match is None:
-        return None
-    return match.group(1).replace(".", ",") + " €"
+    for _, product_card in sorted(candidates, key=lambda item: item[0]):
+        if any(_fold(marker) in product_card for marker in unavailable_markers):
+            continue
+        match = re.search(r"(?<!\d)(\d{1,3}[.,]\d{2})\s*€", product_card)
+        if match is not None:
+            return match.group(1).replace(".", ",") + " €"
+    return None
 
 
 def _walk_json_dicts(value) -> Iterator[dict]:
