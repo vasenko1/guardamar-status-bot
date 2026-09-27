@@ -1200,12 +1200,25 @@ This is a contract-discovery task, not an OCR task.
 Further source research simplifies the OCU design and adds one promising
 high-yield annual source family.
 
-### OCU runtime should use public editorial feeds, not exclusive quality controls
+### OCU should prefer first-party API transport over fragile DOM parsing
 
-Current OCU comparator HTML marks the `Calidad` sorter as disabled
-`Contenido Exclusivo`. Even though the first-party frontend exposes internal
-ProductSelectors/quality-box plumbing, the autonomous bot should not depend on
-or attempt to reproduce member-only quality-result access.
+Current OCU comparator HTML marks some quality controls as
+`Contenido Exclusivo`, while the same public storefront also exposes
+ProductSelectors/quality-box transport used by its own frontend.
+
+For runtime durability, prefer the first-party API/JSON transport over DOM
+selectors **when the exact call is anonymously available to the public
+frontend without subscriber credentials, entitlement tokens or an access-control
+bypass**.
+
+The research gate is therefore not "avoid the hidden API". It is:
+
+1. reproduce the exact frontend request anonymously;
+2. record whether it returns public product/score/rank fields or only a
+   teaser/locked result;
+3. if public/anonymous, treat that API as the primary source contract;
+4. if authenticated/entitled, do not bypass it and fall back to public
+   first-party editorial/report surfaces.
 
 OCU also exposes public, date-ordered, paginated first-party content feeds:
 
@@ -1218,17 +1231,17 @@ Informes feed exposes `Los mejores salmorejos envasados de 2026`, while
 public food reports/press notes expose analysis methodology, standout products
 and sometimes exact scores.
 
-The preferred OCU discovery architecture is therefore:
+The preferred OCU architecture is therefore layered:
 
-1. poll only the first bounded page(s) of public report/news feeds;
-2. process only newly seen food-analysis/report URLs;
-3. extract source-native public winner/subtype claims, scores and methodology;
-4. use comparator raw HTML / `SerializedSearchUniverse` only to validate the
-   tested product universe and stable OCU product identity;
-5. never use member-only quality-box access as a runtime dependency.
+1. **primary transport:** anonymous first-party ProductSelectors/quality API,
+   if the exact frontend call is confirmed to return the required public fields;
+2. **identity fallback:** comparator `SerializedSearchUniverse` for the tested
+   product universe and stable OCU product ids;
+3. **editorial fallback/enrichment:** public report/news pages for methodology,
+   narrative winner claims and source-cycle dates.
 
-This is cheaper, clearer and more robust than reproducing internal quality
-requests.
+This minimizes dependence on HTML structure while keeping a safe fallback if the
+API schema drifts or becomes gated.
 
 ### Gran Premio a la Innovación / Producto del Año
 
