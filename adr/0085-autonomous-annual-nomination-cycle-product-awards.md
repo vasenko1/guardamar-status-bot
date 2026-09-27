@@ -27,14 +27,18 @@ other one-shot Guardamar services. The autonomous design must therefore avoid a
 browser, OCR, runtime LLMs, fuzzy product matching, full catalogue crawls and a
 server database.
 
-The active retailer scope remains exactly:
+The active retailer scope is now intentionally local-first and remains exactly:
 
 - Mercadona;
-- Carrefour España supermarket;
+- Masymas / Juan Fornés Fornés;
 - ALDI España;
 - Lidl España;
 - DIA España;
 - Consum.
+
+Carrefour is excluded completely from the autonomous scope. The reason is not
+technical incapacity alone: there is no Carrefour supermarket in Guardamar, so
+its weak local utility does not justify carrying the hardest retailer contract.
 
 ## Decision
 
@@ -597,15 +601,24 @@ Current browser-free research supports this initial capability model:
 | Retailer | Candidate search/index | Exact product refresh | Initial autonomous role |
 | --- | --- | --- | --- |
 | Mercadona | yes, public storefront Algolia index tied to warehouse | yes, first-party product JSON | search + verify |
+| Masymas / Juan Fornés | probable first-party Aktios TOL catalogue/search contract; production-device proof still required | official online store and current web price/availability are established; exact API contract pending device probe | pending -> search + verify if TOL contract is confirmed |
 | ALDI España | yes, public storefront Algolia index, regional | yes, first-party product/embedded app data | search + verify |
 | Consum | yes, first-party REST catalogue search | yes, first-party REST product with product id/EAN | search + verify |
 | DIA España | technically yes, first-party search/category JSON | yes, SSR exact product | retailer-first / cautious search + verify |
 | Lidl España | technically yes, first-party search JSON, incomplete grocery assortment | exact first-party product page | retailer-first / positive-only search + verify |
-| Carrefour España supermarket | generic browser-free search not accepted for v1 | yes, exact supermarket product page | validation-only |
 
-Carrefour must not force a browser, proxy, challenge solver or headless runtime
-into this feature. Five search-capable retailers plus Carrefour exact-product
-validation are sufficient for the first autonomous design.
+Masymas must not be treated as the unrelated Asturias "masymas" retailer.
+The target is Juan Fornés Fornés, S.A., whose official online store serves the
+Valencian/Murcian chain and whose public company terms state that towns with a
+Masymas supermarket are within the delivery scope. Guardamar has a Juan Fornés
+Masymas store.
+
+The current official online storefront loads Aktios-hosted assets, and Aktios
+lists both Consum and Masymas as users of its supermarket eCommerce platform.
+That makes a TOL-style first-party REST catalogue contract a strong hypothesis,
+but not yet a proven runtime contract. The final read-only Termux probe must
+confirm the exact Masymas search/product endpoints before ADR 0085 can be
+accepted.
 
 ### Candidate search is positive evidence, not an absence oracle
 
@@ -707,9 +720,11 @@ not a complete supermarket grocery catalogue. Treat positive matches as useful
 and misses as unknown. Its official awarded-products page is more valuable as a
 retailer-first lead surface.
 
-Carrefour's public site supports human product search and exact supermarket
-cards, but generic automated search is both bot-managed and explicitly
-restricted by current robots rules. Keep it validation-only in v1.
+Masymas / Juan Fornés has an official current online store with live web prices
+and stock-dependent ordering terms. The storefront uses Aktios eCommerce/TOL
+infrastructure, the same platform family used by Consum. Its concrete
+browser-free product/search API is intentionally not inferred from platform
+similarity alone; production-device proof is required before implementation.
 
 ## Dry-sample evidence
 
@@ -754,14 +769,50 @@ must reject:
   item;
 - same product family with no exact winning commercial variant.
 
+## Multiple package variants of one awarded product
+
+Retail search may return several SKUs that are genuinely the same awarded
+commercial product in different package sizes or pack counts. This is useful
+consumer information and should not be discarded merely because SKU/EAN differs.
+
+Keep two identities separate:
+
+- **canonical awarded product**: the commercial product/formulation that won;
+- **retail offer SKU**: one currently sold package/size of that product.
+
+Alternative package offers may be grouped into one article only when evidence
+shows that the award applies across them and that the SKUs differ only in
+package/quantity, not recipe, formulation, maturation, vintage, flavour,
+origin, quality tier or another award-critical attribute.
+
+Evidence may come from:
+
+- award authority explicitly treating package size as non-material;
+- first-party retailer detail proving same brand/name, responsible producer,
+  legal product identity and relevant composition/variant fields;
+- manufacturer/authority product-family evidence that ties the formats to the
+  same commercial product.
+
+Visible-name equality alone is not enough.
+
+When several equivalent package offers are proven, they share one canonical
+product key for diversity/deduplication. The renderer may show a compact set of
+current options, for example 0.33 L and 1 L with their prices/unit prices,
+without spending separate publication slots.
+
+This is optional enrichment, not an eligibility dependency. One exact valid
+offer is still sufficient for publication.
+
 ## Implementation gate
 
 Do not implement this ADR until research has proved:
 
 1. at least four Tier-A award source adapters can automatically enumerate
    nomination winners for a fresh edition;
-2. bounded browser-free candidate search is proven for enough of the six
-   retailers to make annual discovery useful;
+2. bounded browser-free candidate search is proven on the production device
+   for Mercadona, ALDI, Consum, DIA, Lidl and the target Juan Fornés Masymas
+   contract (Masymas may remain pending only if the other five already provide
+   sufficient measured runway);
 3. exact-product refresh remains available for every retailer used publicly;
 4. a dry-run research pass can produce a materially larger nomination pool
    without fuzzy matching or manually supplied product URLs;
