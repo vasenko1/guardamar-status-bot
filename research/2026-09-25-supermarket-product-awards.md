@@ -3266,8 +3266,9 @@ This is a valuable negative test: Masymas search is not an exact identity
 matcher. EAN/exact commercial identity filtering is mandatory after candidate
 retrieval.
 
-Masymas is now **GREEN for candidate search**. Search already exposes EAN, so an
-exact-detail endpoint is useful enrichment but not a blocker for discovery.
+Masymas is now **GREEN for candidate search**. Search already exposes EAN.
+However, publication-time exact current price/availability still needs one small
+device proof tying a returned product id/EAN to a first-party exact-offer surface.
 
 #### ALDI production proof
 
@@ -3382,9 +3383,10 @@ The active six-retailer model after the device probe is:
    - search: warehouse Algolia;
    - identity: SKU + exact first-party JSON + EAN.
 
-2. **Masymas / Juan Fornés — GREEN**
+2. **Masymas / Juan Fornés — GREEN search / AMBER refresh**
    - search: first-party Aktios/TOL REST;
-   - identity: numeric product id + EAN already present in search records.
+   - identity: numeric product id + EAN already present in search records;
+   - remaining: exact publication-time price/availability refresh proof.
 
 3. **ALDI España — GREEN**
    - search: peninsula Algolia;
@@ -3409,8 +3411,9 @@ No Carrefour contract and no browser runtime are required.
 
 #### Retail-side research gate status
 
-The production-device retailer-discovery gate is now **PASSED** for the
-potential ADR 0085 architecture.
+The production-device candidate-discovery gate is now **PASSED** for the
+potential ADR 0085 architecture. The remaining retailer-side sub-gate is only
+Masymas exact current offer refresh for publication time.
 
 Remaining uncertainty is no longer "can the phone search the local retailers?"
 It is now primarily content-yield and source-discovery economics:
