@@ -1054,6 +1054,83 @@ ADR acceptance must explicitly choose one policy:
 
 No runtime rule changes until that editorial decision is made.
 
+## Focused source-contract probe outcome
+
+A further read-only production-device probe on 27 September 2026 produced two
+important first-party source findings.
+
+### OCU ProductSelectors transport is real and browser-free
+
+Current OCU comparator pages expose the actual server-side listing component
+configuration in raw HTML, including:
+
+- `PsfProductListing`;
+- controller `PsfProductListing`;
+- actions `RefreshProductListing` and `LoadMoreProducts`;
+- stable main-page/component ids;
+- current page and number of pages;
+- stable product ids for rendered cards.
+
+The first-party ProductSelectors JavaScript also reveals the generic API URL
+builder:
+
+`/ProductSelectorsAPI/<controller>/<action>/<scID>`
+
+and its AJAX helpers use ordinary POST requests.
+
+Therefore OCU should not be classified as requiring browser automation. The
+remaining OCU source-side research question is narrower: reproduce one actual
+ProductSelectors POST with the exact component settings and determine whether
+rank/quality data can be obtained cheaply enough for autonomous nomination
+discovery.
+
+The same raw comparator HTML already renders deterministic product names and
+product-detail URLs for at least some current comparators. Examples from canned
+mussels/sardines include Eroski, ALDI Sal de Plata, Mercadona Hacendado, DIA
+Mari Marinera, Consum and Lidl Nixe.
+
+Editorial/report pages are also valuable authority surfaces. Current OCU
+reports explicitly name standout/best products and exact scores in readable
+HTML, for example current tuna and ground-coffee reports.
+
+### Sabor del Año first-party Wix payload exposes winner media metadata
+
+The official Sabor del Año 2026 page contains an ordinary Wix
+`wix-warmup-data` JSON block.
+
+That first-party serialized data exposes gallery items with stable item ids,
+media ids and uploaded filenames. Confirmed examples include:
+
+- `dia-yogur.jpg`;
+- `dia-burrata.jpg`;
+- `dia-tarta.jpg`;
+- `campofrio.jpg`;
+- `cantero-de-letur.jpg`.
+
+A parsed JSON walk recovered these values without OCR or browser automation.
+
+This proves that first-party winner discovery can at least obtain a bounded
+official media lead set. It does **not** yet prove that filenames alone carry
+enough exact commercial-product or nomination identity for autonomous READY
+status. The next probe must enumerate the full gallery item set and measure how
+many filenames are exact enough versus brand-only/ambiguous.
+
+Do not add OCR merely to extract text embedded inside award images unless every
+lighter first-party/secondary-authority path has been exhausted and separately
+approved.
+
+### Research discipline
+
+No implementation should infer an undocumented endpoint or product identity from
+platform similarity, filename similarity or search ranking.
+
+The remaining source research should proceed in this order:
+
+1. reproduce OCU ProductSelectors POST exactly;
+2. enumerate Sabor del Año official gallery metadata completely;
+3. decide whether either source needs a reviewed secondary text authority;
+4. only then run the large annual nomination-to-retailer yield study.
+
 ## Implementation gate
 
 Do not implement this ADR until research has proved:
