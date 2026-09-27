@@ -2490,3 +2490,451 @@ Still justified:
 
 Only after this dry research demonstrates a sufficiently large and cheap pool
 should ADR 0085 move from Proposed toward Accepted.
+
+
+### Full retailer search/index research — 27 September 2026
+
+#### Research question
+
+Can the autonomous nomination-cycle architecture resolve a newly discovered
+award winner into one exact current product in the six supported supermarket
+chains without a browser, OCR, runtime AI, fuzzy matching or a full catalogue
+crawl?
+
+The investigation used three evidence layers:
+
+1. official retailer/result surfaces and current robots/search behaviour;
+2. existing first-party exact-product contracts already proven in this project;
+3. a current independent browser-free supermarket client implementation
+   (jgalea/grocery-cli) as corroborating evidence for storefront search/index
+   contracts, never as award or retail truth.
+
+The independent client is useful because it implements current 2026 browser-free
+search against the same retailer storefront backends for Mercadona, ALDI,
+Consum, DIA and Lidl España. Its fuzzy multi-store comparison logic is not
+suitable for this project and must not be reused. Only raw candidate-search
+contracts and ids are relevant.
+
+#### Retailer capability matrix
+
+| Retailer | Search/index contract | Exact identity/refresh | Architecture result |
+| --- | --- | --- | --- |
+| Mercadona | storefront Algolia search, warehouse-specific index | first-party product JSON with id/EAN/price/supplier | GREEN with rotating-config risk |
+| ALDI España | storefront Algolia, peninsula/Canarias/Baleares indexes | exact first-party product/embedded app data | GREEN |
+| Consum | first-party REST catalog search | first-party REST detail, stable product code and often EAN | GREEN / strongest clean contract |
+| DIA España | first-party search/category JSON | exact SSR product with stable SKU | AMBER-GREEN; prefer retailer-first/limited search |
+| Lidl España | first-party /q/api/search JSON | exact first-party product page | AMBER-GREEN; positive-only, incomplete grocery assortment |
+| Carrefour España supermarket | human search exists but generic browser-free automation is bot-managed/restricted | exact supermarket product card works | AMBER; validation-only in v1 |
+
+No architecture benefit justifies adding a browser solely to make Carrefour
+generic search work.
+
+#### Mercadona search/index
+
+Existing project research had already proven Guardamar exact-product context:
+
+- postal code 03140 resolves to warehouse alc1;
+- exact first-party endpoint pattern:
+  https://tienda.mercadona.es/api/products/<id>/?lang=es&wh=alc1
+- exact product data can expose product id, EAN, display name, brand/supplier,
+  price and current publication/availability facts.
+
+Current independent storefront implementation confirms that search runs through
+Mercadona's web-app Algolia index using public search-only configuration shipped
+to the browser:
+
+- index pattern: products_prod_<warehouse>_<lang>;
+- POST one query with a bounded hitsPerPage;
+- returned candidates include numeric id, display name, slug/share URL and
+  current price data;
+- exact candidate detail is then read from Mercadona's first-party REST product
+  endpoint.
+
+Important durability caveat: the public Algolia application/key are storefront
+configuration and can rotate. They must not be hard-coded as durable secrets.
+A future adapter needs a small reviewed mechanism to obtain/refresh the current
+public search configuration and an admin health alert if that contract drifts.
+
+Important identity caveat: earlier project research proved that two Mercadona
+SKUs can share the same visible product name. Search therefore generates
+candidates only; exact detail/EAN/variant proof remains mandatory.
+
+Result: browser-free autonomous candidate search is technically realistic and
+high-value for Mercadona, with a moderate maintenance risk concentrated in the
+public search configuration.
+
+#### ALDI España search/index
+
+ALDI España's current storefront is backed by public search-only Algolia indexes.
+
+The reviewed current contract uses regional indexes:
+
+- peninsula: the relevant region for Guardamar;
+- Canarias;
+- Baleares.
+
+Search returns candidate records with:
+
+- object id / article identity;
+- name;
+- brand;
+- product slug;
+- sales unit;
+- current price/base price;
+- availability;
+- categories.
+
+The current storefront search behaviour also relaxes trailing query words when a
+strict query has no result. This matters because ALDI stores package size
+separately from product name; blindly searching an award string containing
+"750 ml" can otherwise create a false no-match.
+
+Existing production research already proved exact first-party ALDI detail for
+NALTROS through embedded application data, including article number, brand,
+sales unit, availability and current price.
+
+Result: ALDI is suitable for bounded browser-free search + exact validation.
+Keep the search index/configuration source-specific and health-monitored; do not
+generalise into a catalogue crawler.
+
+#### Consum search/index
+
+Consum currently exposes the cleanest direct first-party browser-free contract
+in the target set.
+
+Search pattern:
+
+https://tienda.consum.es/api/rest/V1.0/catalog/product?q=<term>
+
+Exact product pattern:
+
+https://tienda.consum.es/api/rest/V1.0/catalog/product/<product-id>
+
+Current product structures expose:
+
+- stable numeric product id / Código producto;
+- product name;
+- EAN on exact detail when present;
+- current price;
+- unit price/unit type.
+
+This is unusually well aligned with the autonomous identity gate because a
+search candidate can be promoted to exact EAN proof without scraping a rendered
+page.
+
+A current dry-run also found a strong GourmetQuesos candidate in Consum:
+Los Cameros Semicurado Mezcla, product code 7480085. The brand + semicurado +
+mezcla identity is much stronger than a family-name match, but this research
+still treats it as CANDIDATE until exact detail/EAN/maker proves the winning
+commercial product beyond doubt.
+
+Result: Consum should be one of the first autonomous retail adapters.
+
+#### DIA España search/index
+
+A current browser-free implementation confirms first-party search/category
+microservices on dia.es:
+
+Search:
+https://www.dia.es/api/v1/search-back/search?q=<term>
+
+Category listing:
+https://www.dia.es/api/v1/plp-back/products?navigation=<category>
+
+Search results can expose:
+
+- stable object/SKU id;
+- display name;
+- brand;
+- exact product URL;
+- current price and unit price.
+
+Exact product detail remains the server-rendered product page; production has
+already proven that DIA exact pages work with the reviewed navigation-header
+profile and strict product-card price scoping.
+
+However, current DIA robots rules explicitly restrict several search/query
+surfaces and ask to reduce Algolia hits. Therefore the architecture should not
+turn this into a broad daily generic search service.
+
+Preferred use:
+
+1. retailer-first DIA award/category pages when available;
+2. exact SKU from those pages;
+3. bounded generic search only after a deliberate policy/contract review.
+
+DIA's official awarded-products surface is particularly valuable because it
+already gives exact current retail products for Sabor del Año 2026 such as the
+DIA Selección Mundial burrata and Caprichoso cheesecake.
+
+Result: technically capable, but use retailer-first and narrowly bounded search
+rather than aggressive generic search.
+
+#### Lidl España search/index
+
+Lidl España exposes a first-party browser-free JSON search endpoint under:
+
+/q/api/search
+
+The reviewed query contract requires:
+
+- q=<term>;
+- assortment=ES;
+- locale=es_ES;
+- version=2.0.
+
+The response can expose:
+
+- item/code/ERP identifiers;
+- full title;
+- category;
+- brand;
+- canonical URL;
+- current price/base price.
+
+The edge behaviour is unusual: the reviewed implementation uses Accept: */*
+because a JSON-specific Accept header can produce HTTP 406.
+
+Important limitation: Lidl's online search surface reflects current online/
+weekly assortment and is not a complete grocery catalogue. Therefore:
+
+**positive Lidl search hit is useful evidence; Lidl search miss is never proof
+that a product is absent from Spanish stores.**
+
+Lidl's official Productos Premiados page is more valuable than generic search
+for this feature because it already supplies a bounded set of currently awarded
+products across cheeses, meat, fish, wine and other food. Those are retailer
+leads only: independent award-authority semantics still need verification.
+
+Result: Lidl is a strong retailer-first/positive-only adapter, not an absence
+oracle.
+
+#### Carrefour España supermarket search/index
+
+Carrefour is the only target retailer for which the research does not support a
+lean generic autonomous search adapter today.
+
+Positive evidence:
+
+- Carrefour's own FAQ explains that the site lets customers search by product
+  name or EAN;
+- exact supermarket product cards expose useful current name/package/price
+  evidence;
+- production already proved exact Carrefour product pages can be fetched
+  browser-free with the reviewed navigation request profile.
+
+Negative architectural evidence:
+
+- current robots rules restrict /buscador/, ajax search and query/filter
+  patterns;
+- current independent plain-HTTP supermarket tooling deliberately excludes
+  Carrefour because its bot-management layer is not reliably cleared without a
+  browser/stealth approach;
+- Carrefour Marketplace creates a permanent false-positive trap: a third-party
+  marketplace listing is not evidence of a Carrefour supermarket shelf item.
+
+Result: **Carrefour should be validation-only in autonomous v1.**
+
+If an award source, retailer-first source, exact EAN or another reviewed path
+already yields a Carrefour supermarket product URL, use the existing exact-card
+refresh. Do not add Playwright, proxy rotation, CAPTCHA solving or a stealth
+browser merely to obtain generic search.
+
+#### Search-miss semantics
+
+A critical architecture correction follows from the retailer study.
+
+Retail search is primarily a **positive-evidence generator**.
+
+A search hit can create an exact candidate. A miss must normally mean only:
+
+NO_VERIFIED_MATCH
+
+not:
+
+PRODUCT_NOT_SOLD
+
+This rule prevents a dangerous interaction with ranked award fallbacks.
+
+Example: if OCU says #1 is a specific ALDI private-label tuna and our search
+adapter fails to find its exact olive-oil SKU, that miss is not enough to
+publish OCU #2 from Mercadona. The #1 product may still exist under a search
+shape our adapter missed.
+
+A lower rank may replace #1 only after stronger evidence establishes that #1
+does not qualify in current target retail scope, or when a reviewed
+source-specific rule safely establishes fallback eligibility.
+
+This is stricter but avoids silent ranking corruption.
+
+#### Pre-search identity gate
+
+The dry-run showed that a cheap identity filter should happen before any store
+queries.
+
+Do not search retailers when the award source supplies only:
+
+- producer/mill identity without a tied commercial SKU;
+- a bulk lot;
+- generic product family;
+- incomplete wine identity missing required vintage/cuvée/DO;
+- foreign supermarket private label outside the six target chains.
+
+Concrete example: MAPA AOVE competition awards homogeneous bulk lots and
+producer/mill results. Without an explicit commercial retail bottle identity,
+retailer search would invite unsafe award transfer and should be skipped
+entirely.
+
+Likewise, an IWC winner that is explicitly a Tesco/Sainsbury/Asda private label
+can be rejected before querying any Spanish chain.
+
+This gate reduces both false matches and request volume.
+
+#### Practical 49-event dry sample
+
+A stratified dry sample was assembled from current real award events rather than
+retailer-friendly handpicked products.
+
+Sample composition:
+
+- 20 GourmetQuesos 2026 category winners;
+- 5 MAPA 2026 cheese modality winners;
+- 5 MAPA 2026 wine modality winners;
+- 2 MAPA jamón winners;
+- 1 MAPA spirits winner;
+- 8 IWC champion/great-value candidates with potentially transferable
+  commercial identity;
+- 8 OCU supermarket-oriented products/results.
+
+Strict results:
+
+- 5/49 are currently publishable under the existing strict selection semantics:
+  NALTROS Brut, Realfooding Gazpacho, Oleoestepa DOP Estepa,
+  AROM'ARTE Intenso and Anís Chinchón Dulce;
+- one additional exact current retail product (Hacendado tuna) is known but is
+  not publication-eligible while the higher-ranked Sal de Plata/ALDI winner
+  remains unresolved;
+- El Almendro Turrón Duro has a current exact Carrefour product identity but the
+  reviewed card is temporarily unavailable/sold out;
+- Los Cameros Semicurado Mezcla produced a strong current Consum candidate that
+  still requires final exact-detail/EAN proof;
+- the remaining sampled specialist/global winners did not produce exact current
+  first-party retail proof under the strict match rules.
+
+Aggregate current publishable yield in this deliberately mixed sample is about
+10%. That number is **not** a forecast for the autonomous feed because the
+sample intentionally over-represents low-yield specialty/global competitions.
+
+The stratified signal is more important:
+
+| Source family | Sample | Strict current signal |
+| --- | ---: | --- |
+| OCU supermarket-oriented | 8 | 4 currently publishable; additional exact/block/sold-out cases exist |
+| MAPA non-AOVE product winners | 13 | 1 exact publishable current winner |
+| GourmetQuesos | 20 | 0 confirmed READY; 1 strong Consum candidate |
+| IWC selected champions/value winners | 8 | 0 exact current target-chain matches established |
+
+The architecture implication is clear: do not give all source families equal
+refill priority.
+
+#### False positives observed during dry-run
+
+The strict matcher correctly needs to reject cases such as:
+
+- Carrefour currently carries Caprillice-branded products, but the observed
+  variants are not the GourmetQuesos-winning Semicurado al vino Caprillice;
+- Cremositos del Zújar appears in a Carrefour Marketplace third-party basket,
+  which is not Carrefour supermarket shelf evidence;
+- Savel can appear in Carrefour editorial/event context without being a
+  supermarket product;
+- producer/brand family equality without the exact winning variant.
+
+These are realistic failures that a fuzzy or AI matcher would be tempted to
+promote incorrectly.
+
+#### Source-yield-aware refill without a ranking engine
+
+The dry-run justifies one simple static source order.
+
+High-yield first:
+- OCU and other supermarket comparative sources;
+- Lidl/DIA retailer-award lead surfaces, followed by independent authority
+  verification.
+
+Then:
+- MAPA and Spanish specialist sources.
+
+Then:
+- global competitions such as IWC/CMB/World Beer Awards when the ready pool
+  still needs diversity.
+
+This is not a quality ranking of the award bodies. It is a phone-cost and
+supermarket-match optimisation.
+
+Global competitions remain editorially valuable; they simply have a lower
+probability that the exact winner is stocked in the six local chains.
+
+#### Sabor del Año: high potential, wrong award-first surface
+
+Sabor del Año is strategically interesting because its method is consumer
+sensory testing and 2026 reporting covers many retail products.
+
+The reviewed methodology uses 80 habitual consumers of the category, blind
+individual tasting and criteria including taste, appearance, smell, texture and
+overall satisfaction. A winner must exceed 6/10 and have the highest category
+score.
+
+However, the current official 2026 winner catalogue is largely image-based and
+does not expose a clean text/result index suitable for this project's no-OCR
+runtime.
+
+Do **not** add OCR merely to unlock this source.
+
+Instead use retailer-first current award pages such as DIA and Lidl to generate
+exact current product leads, then verify the Sabor del Año award semantics
+through whatever official structured evidence is available for that specific
+product/category. If that exact authority join cannot be proven cheaply, keep
+the lead out of autonomous READY state.
+
+#### Recommended autonomous retail architecture after search research
+
+The minimum useful v1 is now narrower than the earlier six-search-adapter idea:
+
+- Mercadona: search + exact verify;
+- ALDI: search + exact verify;
+- Consum: search + exact verify;
+- DIA: retailer-first + optional bounded search + exact verify;
+- Lidl: retailer-first + positive-only search + exact verify;
+- Carrefour: exact verify only.
+
+This already covers all six public retail destinations without introducing a
+browser.
+
+A nomination event may carry retailer hints from the award source or retailer
+lead. The engine checks hinted retailers first and stops after one exact current
+supported-retailer match.
+
+No price comparison across stores is necessary.
+
+#### Remaining evidence before runtime implementation
+
+The web/source research is now sufficient to choose the potential architecture,
+but implementation should still wait for one final read-only device-level
+contract probe.
+
+That probe should verify from the actual Termux production network:
+
+- Mercadona Algolia search against alc1 and exact product detail;
+- ALDI peninsula Algolia search and exact product detail;
+- Consum REST search and exact detail/EAN;
+- DIA narrowly bounded search/category call and exact product SSR;
+- Lidl /q/api/search with the exact required headers/parameters and one exact
+  page;
+- Carrefour remains exact-card-only.
+
+The probe should record only status code, content type, response bytes, result
+count and a few safe identity fields. It must not create state, write crontab or
+send Telegram messages.
+
+If those device probes reproduce the researched contracts, the retailer side of
+ADR 0085 is strong enough for a prototype autonomous dry-run.
