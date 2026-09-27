@@ -208,6 +208,14 @@ def _price_after_title(text: str, title: str) -> Optional[str]:
     if add_index < 0:
         return None
     product_card = window[:add_index]
+    unavailable_markers = (
+        "agotado",
+        "no disponible",
+        "sin stock",
+        "temporalmente agotado",
+    )
+    if any(_fold(marker) in product_card for marker in unavailable_markers):
+        return None
     match = re.search(r"(?<!\d)(\d{1,3}[.,]\d{2})\s*€", product_card)
     if match is None:
         return None
