@@ -71,7 +71,7 @@ class TransportHeaderTests(unittest.TestCase):
 
     def test_retail_fetch_uses_proven_navigation_headers(self):
         item = candidate("retail")
-        page = b"<html><body>Exact Product 2,50 â¬ AÃ±adir</body></html>"
+        page = "<html><body>Exact Product 2,50 € Añadir</body></html>".encode("utf-8")
         with patch.object(
             awards,
             "fetch_bounded",
@@ -91,6 +91,30 @@ class TransportHeaderTests(unittest.TestCase):
         self.assertEqual(headers["Sec-Fetch-Dest"], "document")
         self.assertEqual(headers["Sec-Fetch-Site"], "none")
         self.assertEqual(headers["Sec-Fetch-User"], "?1")
+
+
+    def test_aldi_retail_keeps_lightweight_request_profile(self):
+        item = candidate("aldi")
+        item = ReviewedCandidate(
+            **{
+                **item.__dict__,
+                "retailer": "ALDI",
+                "retailer_kind": "aldi",
+            }
+        )
+        offer = RetailOffer(
+            "ALDI",
+            "0,75 l",
+            "3,15 €",
+            item.retailer_url,
+        )
+        with (
+            patch.object(awards, "_fetch_html", return_value="<html></html>") as fetch,
+            patch.object(awards, "_aldi_offer", return_value=offer),
+        ):
+            self.assertEqual(awards._refresh_offer(item), offer)
+
+        self.assertIsNone(fetch.call_args.kwargs["headers"])
 
 
 class PriceParserTests(unittest.TestCase):
