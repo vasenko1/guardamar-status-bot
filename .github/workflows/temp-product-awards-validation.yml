@@ -1,0 +1,21 @@
+name: Temporary product awards validation
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e .
+      - name: Compile
+        run: python -m compileall -q src tests
+      - name: Product award tests
+        run: PYTHONPATH=src python -m unittest tests.test_product_awards tests.test_product_awards_main -v
+      - name: Full suite
+        run: PYTHONPATH=src python -m unittest discover -s tests -v
