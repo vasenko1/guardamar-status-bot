@@ -13,7 +13,7 @@ from telegrambot.product_awards import (
     ReviewedCandidate,
     ReviewedCategory,
     ReviewedSource,
-    _aldi_price,
+    _aldi_offer,
     _price_after_title,
     build_message,
     select_publication,
@@ -53,12 +53,73 @@ def candidate(
 
 
 class PriceParserTests(unittest.TestCase):
-    def test_aldi_price_is_tied_to_exact_package_line(self):
-        text = (
-            "NALTROS Cava brut 11,5% vol. tasting notes "
-            "3.15 0,75 l unidad l = 4.20"
+    def test_aldi_offer_uses_exact_embedded_product_contract(self):
+        item = candidate("aldi")
+        item = ReviewedCandidate(
+            **{
+                **item.__dict__,
+                "retailer": "ALDI",
+                "retailer_kind": "aldi",
+                "retailer_url": "https://www.aldi.es/p/cava-brut-190300.html",
+                "retailer_hosts": frozenset({"www.aldi.es", "aldi.es"}),
+                "package": "0,75 l",
+            }
         )
-        self.assertEqual(_aldi_price(text, "0,75 l"), "3,15 €")
+        payload = {
+            "props": {
+                "pageProps": {
+                    "apiData": json.dumps({
+                        "items": [{
+                            "brandName": "NALTROS ®",
+                            "salesUnit": "0,75 l unidad",
+                            "productReferences": [
+                                {"type": "KVArticleNumber", "value": "1903"}
+                            ],
+                            "isAvailable": True,
+                            "isComingSoon": False,
+                            "isRecall": False,
+                            "currentPrice": {"priceValue": 3.15},
+                        }]
+                    })
+                }
+            }
+        }
+        source = (
+            '<script id="__NEXT_DATA__" type="application/json">'
+            + json.dumps(payload)
+            + "</script>"
+        )
+        offer = _aldi_offer(item, source)
+        self.assertIsNotNone(offer)
+        self.assertEqual(offer.price, "3,15 €")
+
+    def test_aldi_offer_rejects_wrong_article_identity(self):
+        item = candidate("aldi")
+        payload = {
+            "props": {
+                "pageProps": {
+                    "apiData": json.dumps({
+                        "items": [{
+                            "brandName": "NALTROS ®",
+                            "salesUnit": "0,75 l unidad",
+                            "productReferences": [
+                                {"type": "KVArticleNumber", "value": "9999"}
+                            ],
+                            "isAvailable": True,
+                            "isComingSoon": False,
+                            "isRecall": False,
+                            "currentPrice": {"priceValue": 3.15},
+                        }]
+                    })
+                }
+            }
+        }
+        source = (
+            '<script id="__NEXT_DATA__" type="application/json">'
+            + json.dumps(payload)
+            + "</script>"
+        )
+        self.assertIsNone(_aldi_offer(item, source))
 
     def test_title_price_ignores_values_before_product(self):
         text = (
