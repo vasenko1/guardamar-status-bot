@@ -3709,3 +3709,118 @@ than many global wine champions.
 This source deserves a dedicated local-retailer dry-run before large IWC/CMB
 expansion.
 
+
+
+### Focused OCU/Wix source-contract probe — 27 September 2026
+
+A further read-only production-device probe clarified both OCU and Sabor del Año
+without browser automation or OCR.
+
+#### OCU current comparator pages render usable product lists in raw HTML
+
+Current OCU canned-mussels/sardines comparator pages returned HTTP 200 and
+server-rendered product cards.
+
+Observed raw headings included exact commercial names from multiple target
+retailers, for example:
+
+- `SAL DE PLATA (ALDI) MEJILLONES EN ESCABECHE`;
+- `MARI MARINERA (DIA) MEJILLONES EN ESCABECHE`;
+- `CONSUM MEJILLONES EN ESCABECHE`;
+- `HACENDADO (MERCADONA) MEJILLONES DE CHILE EN ESCABECHE`;
+- `HACENDADO (MERCADONA) Aceite de oliva` for sardines;
+- `NIXE (LIDL) Aceite de oliva`;
+- `SAL DE PLATA (ALDI) Aceite de oliva`;
+- `MARI MARINERA (DIA) Aceite de oliva`.
+
+The pages expose stable OCU product-detail URLs and product ids such as
+`124201_124211`, `124201_124223`, `124201_124206`,
+`124201_124221`, and sardine ids in the `571_...` family.
+
+This means the comparator source can deterministically enumerate the tested
+product universe without a browser.
+
+#### OCU editorial/report pages expose winner semantics and scores in text
+
+Current report/news pages are much richer than the anonymous product-detail
+HTML for source-native winner semantics.
+
+Examples observed directly in raw HTML:
+
+- canned tuna report explicitly says Sal de Plata (ALDI) and Hacendado
+  (Mercadona) stand out for the best quality/value and explicitly mentions
+  `Mejor del Análisis` / `Compra Maestra`;
+- ground-coffee report explicitly names Fortaleza blend at 79/100 and Lavazza
+  Crema e Gusto Classico natural coffee at 81/100 as the best products of their
+  respective coffee subtypes;
+- sardines report exposes current product-level scores including Hacendado
+  65/100 and other products;
+- mussels report explicitly names the standout Eroski Galicia product and
+  mentions Sal de Plata among the strongest value/quality products.
+
+This supports a possible low-complexity OCU architecture:
+comparator page -> tested product universe,
+editorial/report page -> source-native winner semantics/method facts,
+retailer -> current exact offer.
+
+Do not assume every comparator has a matching editorial report until measured.
+
+#### OCU frontend exposes a real ProductSelectorsAPI contract
+
+Raw comparator HTML exposes the listing component configuration:
+
+- component/controller: `PsfProductListing`;
+- action: `RefreshProductListing`;
+- load-more action: `LoadMoreProducts`;
+- main page id;
+- current page / total pages;
+- stable product ids;
+- search/filter/sorter component configuration.
+
+The first-party JavaScript reveals that ProductSelectors requests are built as:
+
+`/ProductSelectorsAPI/<controller>/<action>/<scID>`
+
+with ordinary AJAX POST helpers.
+
+This is strong evidence that OCU has a browser-free internal transport layer.
+The exact POST body still needs one focused read-only reproduction before it can
+be admitted as a runtime contract.
+
+#### Sabor del Año official Wix warmup data is machine-readable
+
+The official 2026 page contains a `wix-warmup-data` JSON script block.
+
+A parsed first-party JSON walk recovered real gallery metadata with no OCR.
+Examples:
+
+- `campofrio.jpg`;
+- `dia-yogur.jpg`;
+- `dia-burrata.jpg`;
+- `dia-tarta.jpg`;
+- `cantero-de-letur.jpg`.
+
+Each gallery item also carries a stable item id and media id.
+
+This disproves the earlier fear that first-party Sabor del Año discovery is
+necessarily image-pixel-only. The official source has at least a structured
+media lead layer.
+
+However, current inspected metadata often has empty title/alt fields and some
+filenames are brand-only or product-family-only. Therefore the full gallery must
+be enumerated and classified before deciding whether official metadata alone can
+establish exact commercial product + semantic nomination.
+
+If many items remain ambiguous, the preferred fallback is a reviewed textual
+secondary authority plus first-party official media confirmation, not OCR.
+
+#### Next factual gates
+
+1. OCU: reproduce one `ProductSelectorsAPI/PsfProductListing` POST and inspect
+   whether quality/ranking/card state is available cheaply.
+2. Sabor del Año: enumerate every 2026 gallery filename/item id/media id and
+   classify exact-product vs brand-only ambiguity.
+3. Measure how many OCU food comparators expose a usable editorial/report winner
+   page versus requiring ProductSelectors quality data.
+4. Only after these source contracts are known, perform the large annual
+   nomination -> retailer yield run.
