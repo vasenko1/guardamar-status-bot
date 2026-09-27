@@ -4129,3 +4129,80 @@ This is the decisive OCU API gate:
   contract;
 - teaser/login only -> do not attempt to bypass entitlement; retain public
   report/embedded-data fallback.
+
+
+#### OCU anonymous quality API result: stable transport, gated score
+
+The exact first-party OCU frontend call was reproduced from the production
+Redmi/Termux device:
+
+`POST /ProductSelectorsAPI/PsfQualityBoxes/RenderQualityBox/<scID>`
+
+The request used the exact frontend fields and deliberately sent:
+
+- no Cookie header;
+- no Authorization header;
+- no subscriber token.
+
+Five products from the canned-mussels comparator were tested, including ALDI
+Sal de Plata and several non-target brands.
+
+For every product the endpoint returned:
+
+- HTTP 200;
+- `application/json`;
+- `Valid = true`;
+- one deterministic HTML update for the requested quality-box id.
+
+The rendered anonymous content consistently exposed:
+
+- `Analizado en el laboratorio`;
+- `Calidad global OCU`;
+- the scale labels `Mala / Media / Buena / Muy Buena`;
+- evaluation dimensions such as labeling, nutrition, oil quality, heavy metals,
+  freshness, biotoxins, hygiene and tasting;
+- analysis date `marzo 2026`;
+- `Acceso exclusivo`, join CTA and existing-member login CTA.
+
+It did **not** expose:
+
+- numeric product score;
+- current quality band for the product;
+- `Mejor del Análisis`;
+- `Compra Maestra`.
+
+The response was effectively the same entitlement teaser for all five products.
+
+Conclusion:
+
+- OCU's anonymous quality-box API is a valid, stable first-party public
+  methodology/context source;
+- winner/score/rank data are server-side entitlement-gated;
+- do not attempt to derive or bypass those protected fields;
+- public OCU report/news/press pages remain the winner/score authority;
+- `SerializedSearchUniverse` remains the cheap deterministic tested-product
+  identity source.
+
+This result also clarifies the robustness strategy: API-first remains desirable
+for fields the API actually exposes anonymously, while protected result fields
+must come from separate public authority surfaces.
+
+#### OCU annual public-feed probe had a parser-quality issue
+
+The earlier annual-source inventory successfully fetched 11 OCU `Informes`
+pages and observed food-analysis material, but its link collector also captured
+social-share URLs (Twitter/Facebook/WhatsApp) as if they were report links.
+
+Therefore the reported `68 unique food report links` is **not a valid annual
+report count** and must not be used for yield forecasting.
+
+A corrected inventory must:
+
+- accept only canonical `https://www.ocu.org/alimentacion/...` links;
+- reject social/share hosts and query-wrapped OCU URLs;
+- canonicalize duplicates;
+- extract the article's own publication/update date;
+- classify actual comparative product analyses separately from generic food
+  advice/news.
+
+This corrected feed inventory is required before estimating OCU READY/year.
