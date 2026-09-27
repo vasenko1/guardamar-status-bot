@@ -738,8 +738,11 @@ be extrapolated directly to the final feed.
 
 Observed current state:
 
-- 5/49 are already publishable under the strict selection semantics and are the
-  existing launch events;
+- 3/49 remain directly publishable inside the revised local retailer scope:
+  NALTROS/ALDI, AROM'ARTE/DIA and Anís Chinchón via DIA/Consum;
+- 2 formerly READY events (Realfooding Gazpacho and Oleoestepa DOP Estepa) were
+  Carrefour-only proofs and are now UNRESOLVED until another active retailer,
+  especially Masymas, is proven;
 - one additional exact current retail product is already known but is blocked
   by a higher-ranked unresolved candidate in the same source/category;
 - one additional exact award product is currently sold out;
@@ -750,7 +753,8 @@ Observed current state:
 
 The useful stratified signal is stronger than the aggregate:
 
-- OCU supermarket-oriented sample: high current match yield;
+- OCU supermarket-oriented sample: still the highest match potential, but two
+  former Carrefour-backed matches must now be re-resolved in the local scope;
 - MAPA non-AOVE product winners: low but non-zero current match yield;
 - GourmetQuesos: very low current target-chain match yield despite excellent
   award semantics;
