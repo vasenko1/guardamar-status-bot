@@ -1357,6 +1357,106 @@ Do not build a dedicated PLMA adapter until a current winner from one of the six
 active retailers is observed. It can remain a low-cost opportunistic source
 checked through the general research process.
 
+## Quantitative retailer-yield pilot
+
+A production-device dry-run on 27 September 2026 tested 20 clean current award
+events against the proven retailer search contracts. The run was read-only and
+did not declare search hits to be matches automatically.
+
+### Measured lower-bound yield
+
+Manual/external identity verification of the first-pass candidates establishes
+at least six strong exact-retail events from the 20-event sample:
+
+1. Producto del Año 2026 — Celta +Proteína:
+   current Consum SKUs match awarded range members (coffee/cacao protein shakes)
+   by exact EAN.
+2. Producto del Año 2026 — Takis Blue Heat:
+   current Consum exact EAN match.
+3. Producto del Año 2026 — ELPOZO ExtraTiernos:
+   current Consum EAN identifies an ELPOZO ExtraTiernos escalopín that is
+   explicitly inside the awarded ExtraTiernos range.
+4. Producto del Año 2026 — Nescafé Latte Baileys:
+   current Masymas and Consum return the same exact EAN.
+5. World Beer Awards 2026 — Ambar Especial:
+   current Consum EAN is Ambar Especial.
+6. World Beer Awards 2026 — Mahou Sin Filtrar:
+   current Masymas EAN is Mahou Cinco Estrellas Sin Filtrar.
+
+This is a **30% measured lower bound**, not a final match rate. The pilot used a
+single long search phrase per event and intentionally did not run variant-query
+recovery, exact-detail confirmation for every hit or DIA generic discovery.
+
+### Search hit noise is material
+
+Examples from the same pilot prove that top search hits cannot be promoted by
+name similarity:
+
+- an `Arriaca IPA Sin` query returned EAN 8436571780034, which is TYRIS IPA,
+  not Arriaca;
+- a `Maestra Dunkel` query returned EAN 8411327002004, which is Mahou Maestra
+  Doble Lúpulo, not Maestra Dunkel;
+- `Estrella Levante Reserva 60` returned generic Estrella de Levante SKUs that
+  do not prove the Reserva 60 variant;
+- long queries frequently produced unrelated lexical/fuzzy results in Masymas,
+  Mercadona and Lidl.
+
+Exact EAN or exact commercial-variant identity remains mandatory.
+
+### Measured retailer request cost
+
+The 20-event pilot issued 21 search requests to each of five search-capable
+retailers (one event contained two query variants), for 105 total requests.
+
+Measured response payload:
+
+- Mercadona: 73,963 bytes;
+- Masymas: 1,027,345 bytes;
+- Consum: 12,530 bytes;
+- ALDI: 34,748 bytes;
+- Lidl: 9,684,382 bytes;
+- total: 10,832,968 bytes.
+
+Lidl therefore consumed roughly 89% of all retail-search payload in this pilot
+and produced no strong exact match.
+
+### Adaptive retailer routing replaces one global search order
+
+The measured results justify a simpler source/product-aware policy.
+
+For manufacturer-branded grocery awards such as Producto del Año:
+
+1. explicit retailer hint, if source provides one;
+2. Consum;
+3. Masymas;
+4. Mercadona;
+5. ALDI;
+6. Lidl generic search only when there is a strong product-specific reason.
+
+For retailer/private-label comparative sources such as OCU:
+
+- use the retailer named by the source first;
+- Mercadona / ALDI / Consum / DIA / Lidl own-brand identity should route directly
+  to the known retailer rather than be searched across all chains.
+
+For Lidl and DIA retailer-first award sources:
+
+- discover from the retailer/award source;
+- refresh the exact product page;
+- do not run generic cross-retailer search unless needed.
+
+This is not a universal ranking of retailers. It is request routing based on the
+source's identity information and the measured cost/yield of each transport.
+
+### Runtime implication
+
+A refill batch must stop retailer search as soon as one exact current eligible
+retailer match is established. The 105-request pilot is therefore deliberately
+a worst-case measurement and not the expected runtime cost.
+
+Lidl generic search should not be a default stage because a broad response is
+hundreds of KiB and a miss is not authoritative anyway.
+
 ## Implementation gate
 
 Do not implement this ADR until research has proved:
