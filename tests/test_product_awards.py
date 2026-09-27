@@ -211,6 +211,11 @@ class PriceParserTests(unittest.TestCase):
     def test_missing_price_fails_closed(self):
         self.assertIsNone(_price_after_title("Exact Product Añadir", "Exact Product"))
 
+    def test_zero_price_fails_closed(self):
+        self.assertIsNone(
+            _price_after_title("Exact Product 0,00 € Añadir", "Exact Product")
+        )
+
     def test_price_does_not_leak_from_recommended_product(self):
         text = (
             "Exact Product no disponible "
