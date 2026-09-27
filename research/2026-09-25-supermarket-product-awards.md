@@ -2806,11 +2806,16 @@ Sample composition:
   commercial identity;
 - 8 OCU supermarket-oriented products/results.
 
-Strict results:
+Strict results under the original six-retailer scope:
 
-- 5/49 are currently publishable under the existing strict selection semantics:
+- 5/49 were publishable at the time of the first dry-run:
   NALTROS Brut, Realfooding Gazpacho, Oleoestepa DOP Estepa,
   AROM'ARTE Intenso and Anís Chinchón Dulce;
+
+After the local-scope amendment that removes Carrefour, only 3/49 remain
+directly proven in-scope today: NALTROS Brut, AROM'ARTE Intenso and Anís
+Chinchón Dulce. Realfooding Gazpacho and Oleoestepa DOP Estepa become
+UNRESOLVED until another active retailer (especially Masymas) is proven.
 - one additional exact current retail product (Hacendado tuna) is known but is
   not publication-eligible while the higher-ranked Sal de Plata/ALDI winner
   remains unresolved;
@@ -2821,15 +2826,17 @@ Strict results:
 - the remaining sampled specialist/global winners did not produce exact current
   first-party retail proof under the strict match rules.
 
-Aggregate current publishable yield in this deliberately mixed sample is about
-10%. That number is **not** a forecast for the autonomous feed because the
-sample intentionally over-represents low-yield specialty/global competitions.
+The original aggregate publishable yield was about 10%. Under the revised
+local retailer scope the currently proven yield is about 6% before Masymas
+search is tested. Neither percentage is a forecast for the autonomous feed:
+the sample intentionally over-represents low-yield specialty/global
+competitions, and Masymas has not yet contributed any search results.
 
 The stratified signal is more important:
 
 | Source family | Sample | Strict current signal |
 | --- | ---: | --- |
-| OCU supermarket-oriented | 8 | 4 currently publishable; additional exact/block/sold-out cases exist |
+| OCU supermarket-oriented | 8 | 2 directly proven in revised scope today; 2 former Carrefour-backed matches now UNRESOLVED; additional exact/block/sold-out cases exist |
 | MAPA non-AOVE product winners | 13 | 1 exact publishable current winner |
 | GourmetQuesos | 20 | 0 confirmed READY; 1 strong Consum candidate |
 | IWC selected champions/value winners | 8 | 0 exact current target-chain matches established |
