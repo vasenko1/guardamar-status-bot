@@ -251,8 +251,12 @@ def _price_after_title(text: str, title: str) -> Optional[str]:
         if any(_fold(marker) in product_card for marker in unavailable_markers):
             continue
         match = re.search(r"(?<!\d)(\d{1,3}[.,]\d{2})\s*€", product_card)
-        if match is not None:
-            return match.group(1).replace(".", ",") + " €"
+        if match is None:
+            continue
+        raw_price = match.group(1).replace(",", ".")
+        if float(raw_price) <= 0:
+            continue
+        return match.group(1).replace(".", ",") + " €"
     return None
 
 
