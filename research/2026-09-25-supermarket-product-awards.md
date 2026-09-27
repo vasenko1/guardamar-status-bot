@@ -4245,3 +4245,175 @@ Architecture decision:
 
 This exclusion is intentional and protects the system from award-to-SKU
 over-attribution.
+
+
+### Quantitative 20-event retail-yield pilot — 27 September 2026
+
+A read-only production-device pilot tested 20 current award events:
+
+- 13 Producto del Año 2026 food/beverage manufacturer awards;
+- 7 World Beer Awards 2026 Spanish style winners.
+
+The probe deliberately printed candidates only and did not automatically call
+them exact matches.
+
+#### Corrected OCU inventory result
+
+The corrected OCU Informes crawl removed share-host noise.
+
+Across the 11 tested public Informes pages it found:
+
+- 17 canonical OCU food article URLs;
+- 11 canonical food articles with a 2026 publication date;
+- 6 heuristic likely comparative-analysis articles.
+
+The six heuristic analysis candidates included current salmorejo, milk,
+plant-based drinks, kefir, Greek yoghurt and kombucha material.
+
+This is an `Informes`-feed measurement, not proof that OCU published only six
+food comparisons in all public surfaces in 2026. Noticias/press/comparator
+updates can add additional source events.
+
+The old `68 unique food report links` number is retired.
+
+#### Strong exact-retail lower bound from the 20-event sample
+
+At least six events already have strong exact identity evidence:
+
+**Celta +Proteína / Producto del Año 2026**
+- Consum search returned EAN 8414044004122 (coffee) and
+  8414044004108 (cacao);
+- current Leche Celta product/logistics material identifies those EANs as
+  Celta +Proteína 250 ml variants;
+- Leche Celta explicitly states the awarded 2026 range includes the 1 L milk
+  plus coffee and cacao 250 ml shakes.
+
+**Takis Blue Heat / Producto del Año 2026**
+- Consum returned EAN 8412600047163;
+- current Consum exact page identifies that EAN as Takis Blue Heat 130 g.
+
+**ELPOZO ExtraTiernos / Producto del Año 2026**
+- Consum returned EAN 8410843064220 for `Escalopín Lomo Adob. Extratierno`;
+- current exact product sources identify the EAN as ELPOZO ExtraTiernos
+  escalopín de lomo;
+- ELPOZO's own 2026 award announcement states that the awarded ExtraTiernos
+  range specifically includes pork/beef escalopines and solomillos.
+
+**Nescafé Latte Baileys / Producto del Año 2026**
+- Masymas and Consum both returned EAN 8435257073224;
+- current product catalogues identify the EAN as Nescafé Latte/Shakissimo
+  Baileys;
+- current producer/award communications explicitly identify Nescafé Latte
+  Baileys as Producto del Año 2026.
+
+**Ambar Especial / World Beer Awards 2026**
+- Consum returned EAN 84107015;
+- current Consum and other retailer data identify EAN 84107015 as
+  `Ambar Cerveza Especial`.
+
+**Mahou Sin Filtrar / World Beer Awards 2026**
+- Masymas returned EAN 8411327010153;
+- current exact retailer data identifies it as Mahou 5 Estrellas Sin Filtrar.
+
+This yields a strict measured lower bound of **6/20 = 30%** before query-variant
+recovery or full exact-detail follow-up.
+
+#### Important false positives caught by exact identity
+
+The pilot also demonstrates why fuzzy/name-only acceptance is unsafe.
+
+**Arriaca IPA Sin**
+- Masymas returned EAN 8436571780034 as `Cerveza Artesana Ipa`;
+- current exact product data identifies EAN 8436571780034 as TYRIS IPA, not
+  Arriaca IPA Sin;
+- reject.
+
+**Maestra Dunkel**
+- Masymas returned EAN 8411327002004 as `Cerveza Maestra`;
+- current exact product sources identify EAN 8411327002004 as Mahou Maestra
+  Doble Lúpulo;
+- it is not Maestra Dunkel;
+- reject.
+
+**Estrella Levante Reserva 60**
+- Mercadona returned generic Estrella de Levante products;
+- the award is specifically for Reserva 60, a distinct 6.2% Dortmunder;
+- generic Estrella de Levante identity cannot inherit the award;
+- unresolved until an exact Reserva 60 retail SKU is found.
+
+The same fail-closed rule rejects generic/fuzzy candidates for Santa Amber,
+Tropical con Limón and other unresolved events.
+
+#### World Beer Awards 2026 source-truth refinement
+
+Current 2026 Spanish award evidence confirms the relevant award set but source
+semantics should be stored exactly:
+
+- Estrella de Levante Reserva 60 is stronger than a national title: it is
+  `World's Best Dortmunder`;
+- Arriaca IPA Sin is explicitly a 2026 Gold / Spain Country Winner for No & Low
+  Alcohol IPA;
+- Santa Amber is explicitly Gold / Spain Country Winner for
+  Amber/Dark Kellerbier & Rotbier;
+- current Foods & Wines from Spain reporting lists the 2026 Spanish gold set
+  including Mahou Sin Filtrar, Maestra Dunkel, Ambar Especial, Arriaca IPA Sin,
+  Tropical con Limón and Reserva 60.
+
+Do not infer `Country Winner` merely from an old WBA product history page; bind
+each event to its 2026 edition evidence.
+
+#### Retail cost measurement
+
+The pilot used 105 retail-search requests and 10,832,968 response bytes.
+
+Breakdown:
+
+| Retailer | Requests | Bytes | Strong exact events visible in pilot |
+| --- | ---: | ---: | ---: |
+| Mercadona | 21 | 73,963 | 0 |
+| Masymas | 21 | 1,027,345 | 2 |
+| Consum | 21 | 12,530 | 5 |
+| ALDI | 21 | 34,748 | 0 |
+| Lidl | 21 | 9,684,382 | 0 |
+
+The strong-event counts overlap: Nescafé appears in both Masymas and Consum.
+
+This sample is heavily manufacturer-brand oriented, so it is **not** evidence
+that Mercadona/ALDI are globally low-yield. Those two retailers remain important
+for OCU/private-label and retailer-specific awards.
+
+It is strong evidence that Lidl generic search is poor default economics for
+unhinted manufacturer award winners: about 89% of total payload, no exact event
+in this sample, and search misses are not authoritative.
+
+#### Search routing implication
+
+Use source/product-aware routing rather than a fixed local-retailer order.
+
+Manufacturer-brand awards:
+- explicit source hint first;
+- Consum then Masymas are high-priority based on this sample;
+- cheap Mercadona/ALDI searches may follow;
+- Lidl generic search is conditional/final, not default.
+
+Retailer/private-label awards:
+- route directly to the retailer named by the award source.
+
+Retailer-first Lidl/DIA awards:
+- use the retailer award lead and exact product page;
+- avoid generic discovery if it adds no identity value.
+
+#### Next quantitative gate
+
+The 30% figure is only a lower bound because the first pilot used long search
+phrases that visibly caused fuzzy/OR result drift.
+
+The next probe should:
+
+1. exact-detail confirm the six strong events on the active retailer itself;
+2. retry unresolved manufacturer awards using deterministic query variants:
+   exact brand, distinctive product token, then product family;
+3. search Consum and Masymas first;
+4. skip generic Lidl unless a product-specific reason exists;
+5. measure recovered exact matches and request bytes;
+6. then freeze the query strategy before scaling to larger source families.
