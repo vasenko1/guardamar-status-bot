@@ -496,7 +496,6 @@ CATEGORIES: tuple[ReviewedCategory, ...] = (
                             "возглавил Oleoestepa с DOP Estepa."
                         ),
                         source_link_label="Анализ OCU",
-                        source_priority=2,
                     ),
                 ),
             ),
