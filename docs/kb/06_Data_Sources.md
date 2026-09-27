@@ -778,3 +778,41 @@ For each evaluated source, record:
 - access or attribution constraints;
 - failure and stale-data behavior;
 - MVP decision and rationale.
+
+## Product-award sources and retailer evidence
+
+Product awards use a reviewed source catalogue rather than autonomous web
+discovery. Durable selection rules are in ADR 0083; dated score/retailer
+research is in `research/2026-09-25-supermarket-product-awards.md`.
+
+Initial award authority contracts:
+
+- **OCU cava 2025:** the official press note names Naltros Brut (ALDI) among
+  the three 94/100 leaders from 25 analysed D.O. Cava products.
+- **OCU gazpacho 2025:** the official report states 39 products, Real Fooding
+  as `Mejor del Análisis`, and 90/100.
+- **OCU AOVE:** the official report states 23 analysed products and explicitly
+  says the list is led by AOVE Oleoestepa, DOP Estepa.
+- **OCU coffee capsules 2024:** the exact AROM'ARTE (DIA) Intenso page must
+  still identify the product, 20-unit Nespresso-compatible format and
+  `Analizado en el laboratorio`. OCU products evaluated only through OCU's
+  newer AI-derived non-laboratory scoring are ineligible.
+- **MAPA spirits 2026:** the official award page must still name Anís Chinchón
+  de la Alcoholera Dulce, I.G. Chinchón, González Byass Distribución, as the
+  2026 awardee.
+
+Initial exact-retail contracts:
+
+- **ALDI NALTROS:** official ALDI product URL, embedded Next.js product payload,
+  brand `NALTROS ®`, sales unit `0,75 l unidad`, reviewed article reference
+  `KVArticleNumber=1903`, current availability and current price.
+- **Carrefour:** exact official supermarket product page must contain the
+  reviewed title plus identity markers, current price and `Añadir`.
+- **DIA:** exact official product page must contain the reviewed title plus
+  identity markers, current price and `Añadir`.
+
+Retailer product pages prove that the chain currently lists/sells the exact
+product; they are not a guarantee that every physical store has shelf stock at
+that moment. Marketplace listings, search-engine snippets and fuzzy brand-only
+matches are never accepted.
+
