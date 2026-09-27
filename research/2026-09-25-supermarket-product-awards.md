@@ -4090,3 +4090,42 @@ same source cycle/product identity.
 Do not create dual parsing complexity unless the fallback is materially simpler:
 the fallback exists for graceful degradation, not to maintain two full
 independent implementations forever.
+
+
+#### Exact OCU quality-box frontend request shape
+
+Inspection of OCU's current first-party frontend code identifies the exact
+anonymous quality-box transport used when a user clicks `Ver resultados`.
+
+Controller/action:
+
+- controller: `PsfQualityBoxes`;
+- action: `RenderQualityBox`.
+
+URL construction follows the common ProductSelectors rule:
+
+`<routingPrefix>/ProductSelectorsAPI/PsfQualityBoxes/RenderQualityBox/<scID>`
+
+The frontend submits ordinary POST form data with:
+
+- `productId`;
+- `productPhoenixId`;
+- `mainPageId`;
+- `isModel`;
+- `qualityboxGuid`;
+- `redirectUrl`.
+
+The comparator HTML already exposes all corresponding values except
+`redirectUrl`, which is simply the current page path.
+
+No authorization header, subscriber token or explicit session object appears in
+the JavaScript call itself. Whether the server returns full quality data or an
+anonymous login/teaser response must be proven with a cookie-free production
+probe.
+
+This is the decisive OCU API gate:
+
+- full score/badge anonymously -> use first-party API as primary runtime
+  contract;
+- teaser/login only -> do not attempt to bypass entitlement; retain public
+  report/embedded-data fallback.
