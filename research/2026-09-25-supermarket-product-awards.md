@@ -3851,3 +3851,84 @@ scenarios:
 
 The final policy should be chosen from measured content quality/runway tradeoff,
 not assumed in advance.
+
+
+### Deep OCU/Wix contract refinement — 27 September 2026
+
+A deeper read-only production-device probe produced two source-side
+simplifications.
+
+#### OCU raw HTML already contains the complete tested-product search universe
+
+The current canned-mussels comparator exposes an application/json script:
+
+`Psf-Search-ProductFamily-SerializedSearchUniverse_<id>`
+
+The JSON contains every searchable tested product with fields such as:
+
+- `label`;
+- product-detail relative URL;
+- old/non-tested/outdated flags.
+
+Observed examples include ALDI Sal de Plata, DIA Mari Marinera, Mercadona
+Hacendado, Consum and other products.
+
+This is better than expected: autonomous enumeration of the products tested in a
+comparison does not require a browser or even the listing AJAX endpoint.
+
+The listing cards additionally expose:
+
+- `data-psfListGridItemProductId`;
+- exact compare title and image;
+- per-product `PsfQualityBox`;
+- per-product `qualityboxGuid`;
+- laboratory-tested marker.
+
+The raw anonymous score area itself remains closed behind `Ver resultados`, so
+the smallest remaining OCU question is how the quality box/winner score is
+fetched.
+
+#### OCU listing POST is optional unless it improves evidence/cost
+
+First-party JavaScript confirms:
+
+- `RefreshComponent` builds a URL with `getApiUrl`;
+- the body is `MapToPsfListingRenderRequest()` serialized as JSON;
+- transport is an ordinary POST returning HTML;
+- `LoadMore` uses the same model.
+
+This means the internal transport is browser-free, but the runtime should not
+use it merely because it exists. The initial HTML already contains the product
+universe.
+
+A future probe should compare:
+
+1. direct initial comparator HTML + smallest quality-box call;
+2. ProductSelectors listing POST;
+
+and keep whichever is simpler and cheaper.
+
+#### Sabor del Año page-model identity is now exact
+
+The official 2026 Wix route exposes:
+
+- page id `dfya4`;
+- page URI `2026`;
+- page JSON file name
+  `9fcf1c_8c74f66eaa969705860f7686ced42fc9_268`.
+
+The current generic `galleryData.items` recursive walk returned zero gallery
+objects, so component nesting has changed or the relevant data is loaded through
+another Wix page-model structure.
+
+This zero result must not override the prior first-party evidence of
+winner-related media filenames such as DIA/Campofrío assets.
+
+The next read-only probe should:
+
+- extract Wix topology/base URL if published;
+- request the exact 2026 page JSON/static model using the published filename;
+- enumerate every file/media name from both page HTML and page-model JSON;
+- classify filename specificity;
+- avoid OCR.
+
