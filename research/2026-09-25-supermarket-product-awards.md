@@ -3932,3 +3932,129 @@ The next read-only probe should:
 - classify filename specificity;
 - avoid OCR.
 
+
+
+### Public OCU feed strategy and Producto del Año source — 27 September 2026
+
+#### Do not depend on OCU member-only quality controls
+
+The deep production probe exposed a critical policy/architecture fact:
+the OCU comparator's `Calidad` sort option is disabled and labelled
+`Contenido Exclusivo`.
+
+Therefore internal ProductSelectors/quality-box calls must not become a runtime
+dependency merely because their frontend wiring is technically visible.
+
+The useful public OCU surfaces are already sufficient for a safer architecture.
+
+#### OCU has public dated discovery feeds
+
+Official first-party feeds currently expose:
+
+- `https://www.ocu.org/todas-las-informaciones/informes`;
+- `https://www.ocu.org/todas-las-informaciones/noticias`;
+- public press-note listing under OCU's organization/press section.
+
+The Informes feed is date ordered and paginated. Current 2026 examples include:
+
+- 07 July 2026 — `Los mejores salmorejos envasados de 2026`;
+- 16 March 2026 — a current bebidas vegetales report;
+- other food/product analysis reports distributed through the same feed.
+
+The public salmorejo report and press note expose useful article-quality facts
+such as:
+
+- 30 products analysed;
+- tested supermarket/private-label products;
+- expert-cook sensory tasting;
+- price collection timing;
+- standout products/brands;
+- current report date/result cycle.
+
+A practical OCU source adapter can therefore be event-driven rather than
+comparator-driven:
+
+1. poll only the first one or two public feed pages on a slow cadence;
+2. remember the newest processed report URL/date;
+3. inspect only new Alimentación/product-analysis articles;
+4. extract explicit public winner/subtype/best-product statements and scores;
+5. open the related comparator only to validate product universe, stable OCU
+   product identity and laboratory/test context.
+
+This avoids rechecking all 69 comparators and avoids restricted quality data.
+
+The 69 Alimentación comparator index remains valuable as a category manifest and
+coverage map, not as a daily polling list.
+
+#### Gran Premio a la Innovación / Producto del Año is a strong new source
+
+Official source:
+`https://granpremioalainnovacion.com/productos-ganadores-pda/`
+
+The 2026 page is ordinary structured text: one winner/product range followed by
+one explicit category.
+
+Current human food/beverage examples include:
+
+- Celta + Proteína — Bebidas Lácteas;
+- Takis Blue Heat — Snacks;
+- Extratiernos / Croquetería ELPOZO — Cárnicos + Platos Preparados;
+- Lipton Ice Tea Mango Maracuyá — Refrescos de Té;
+- Dinamic Protein — Barritas Proteicas;
+- Salsas del Chef La Palma Coolinary — Salsas;
+- Serpis Nature — Aceitunas;
+- Maison Perrier Chic — Combinados sin alcohol;
+- Nescafé Latte Baileys — Cafés Refrigerados;
+- Kong Strong Hydration — Refrescos;
+- 1954 Premium Gourmet — Embutidos;
+- Charcutería Selecta Legado Ibérico — Charcutería Ibérica;
+- Blédina — Alimentación Infantil.
+
+The organizer's own FAQ/process pages say:
+
+- more than 10,000 representative consumers vote;
+- candidates are grouped into homogeneous categories;
+- each candidate also receives a product test with 100 people from its target;
+- the highest-scoring product in the category is elected Producto del Año.
+
+This is not a general quality medal. It is a consumer-selected **innovation**
+award. Preserve that semantic dimension explicitly.
+
+Because the page is clean text, edition-scoped and mass-market-oriented, this
+source is technically cheaper than Sabor del Año and likely higher retailer
+yield than specialist/global wine/cheese competitions.
+
+It should receive a high-priority retail-yield sample before adding more complex
+source adapters.
+
+#### Producto Marca Distribuidor
+
+The same organizer has a separate official private-label winner programme/page.
+The currently indexed page prominently exposes 2025 winners; historical pages
+show exact category/product pairs including retailer private labels.
+
+This programme may be especially valuable when a current edition contains
+Lidl/DIA or another active retailer's own-brand product, because retail identity
+is already strongly hinted.
+
+Do not infer a 2026 distributor edition before an official current-year page is
+actually published.
+
+#### PLMA: technically strong, low current local priority
+
+PLMA's 2026 International Salute to Excellence Awards are high-quality
+structured awards:
+
+- roughly 600 submitted products;
+- 67/69 retailers from 27 countries depending on the official summary version;
+- expert judging of concept, taste/aroma/texture, packaging/presentation and
+  value;
+- 106 winners from 46 retailers.
+
+However, the official 2026 retailer summary shows only a small Spanish presence,
+with EROSKI clearly represented and no strong evidence yet of our six active
+Spanish retailer chains among the Spanish winners.
+
+Therefore PLMA is worth monitoring opportunistically but does not justify a
+dedicated adapter before higher-yield Spanish sources are exhausted.
+
