@@ -3567,3 +3567,145 @@ Do not create events from every Gold/Silver/Bronze beer. Use only explicit
 Country Winner / World's Best semantic nominations admitted by the source
 adapter.
 
+
+
+### Source/content-yield production probe — 27 September 2026
+
+A second read-only probe was run on the actual Redmi/Termux production device.
+The repository HEAD remained unchanged, `state/product_awards.json` stayed
+absent and the crontab hash stayed identical.
+
+#### Masymas exact offer refresh is fully proven
+
+Exact Masymas product detail returned HTTP 200 JSON.
+
+For product id 2034 / EAN 8411700011302:
+
+- product name: `Bebida Láctea Omega3 Con Nueces`;
+- ordinary price: 1.95 EUR;
+- current offer price: 1.69 EUR;
+- unit price metadata: litre;
+- purchase bounds were also present.
+
+For product id 9079 / EAN 8424465845242:
+
+- product name: `Pan 100% Integral`;
+- current price: 1.90 EUR;
+- unit-price metadata: 9.74 EUR/kg.
+
+This closes the Masymas retailer chain:
+
+`search -> id/EAN -> exact detail -> current price`.
+
+Masymas is now fully GREEN for the future autonomous retailer architecture.
+
+#### OCU comparator/product HTML findings
+
+Eight representative OCU comparator pages were fetched anonymously:
+
+- milk;
+- ordinary beer;
+- alcohol-free beer;
+- coffee capsules;
+- AOVE;
+- canned tuna;
+- salmorejo;
+- semi-cured cheese.
+
+All returned HTTP 200. Typical HTML size was about 350-366 KiB.
+
+Observed raw-page characteristics were strikingly uniform:
+
+- zero literal `MEJOR DEL ANÁLISIS` occurrences in the raw comparator HTML;
+- repeated generic laboratory markers;
+- many generic `score`/`quality` strings;
+- no simple `productId` field;
+- many unrelated global navigation/comparator links.
+
+The first-party script set included ProductSelectors listing/filter/sorter
+managers. A bounded inspection found generic `api/`, `product`, `quality`,
+`result` and `score` markers but no reviewed stable endpoint literal that
+can yet be used as a direct comparator winner feed.
+
+Known OCU product pages for RAM milk, Mahou 0.0, L'OR Ristretto and Carbonell
+AOVE all returned HTTP 200 and contained the laboratory marker, but a simple
+anonymous raw-HTML parser did not see the visible winner badge/score.
+
+Important interpretation:
+
+- OCU's public/indexed content definitely contains source-native scores and
+  winner badges;
+- the obvious raw HTML path is not a cheap direct winner API;
+- a more focused inspection of listing component configuration/AJAX requests is
+  justified;
+- browser automation is not justified.
+
+#### OCU source-native score distribution challenges the old >=85 gate
+
+Current indexed OCU result surfaces confirm that many legitimate
+`Mejor del Análisis` winners score below 85.
+
+Examples already found in current/recent OCU content:
+
+- Hacendado fresh salmorejo: 70/100;
+- top semi-cured cheese: 70/100;
+- whole milk leaders: high-70s;
+- ordinary beer leaders: around 80/100;
+- ground coffee leaders: low-80s;
+- 0.0 beer leaders: 84/100;
+- some turrón subtype winners: 64/100;
+- other categories such as cava/gazpacho/AOVE can exceed 85.
+
+Therefore `>=85` should be documented as an editorial elite threshold, not a
+definition of "winner".
+
+This matters directly to annual content yield.
+
+#### Sabor del Año official 2026 page
+
+The official 2026 page returned:
+
+- HTTP 200;
+- about 680 KiB HTML.
+
+Simple token counts in the raw payload included:
+
+- `DIA`: 280 occurrences;
+- `CAMPOFR`: 1;
+- `BURRATA`: 1.
+
+But a normal `img` parser surfaced only ten ordinary image tags and their
+alt/title values did not enumerate the winners.
+
+The page is a Wix application. The first bounded generic bundle inspection
+found standard Wix runtime/public telemetry literals but no obvious direct
+winner endpoint.
+
+This is still promising: the mismatch between rich text tokens in the page
+payload and sparse normal image tags suggests winner information may exist in
+serialized Wix page/component data.
+
+A focused no-OCR probe should print bounded context around known winner tokens
+and enumerate JSON/application data blocks rather than scanning generic Wix
+runtime bundles.
+
+#### External corroboration for Sabor del Año 2026 content yield
+
+Current trade reporting lists 89 recognised food products in the 2026 edition,
+including highly supermarket-relevant products from DIA, Lidl, Central Lechera
+Asturiana, Campofrío, Navidul, Martiko, Hellmann's, Pepsi/Lipton and others.
+
+This is not sufficient as autonomous award authority by itself, but it confirms
+that Sabor del Año has potentially excellent local-supermarket yield if the
+official first-party page can be decoded deterministically without OCR.
+
+#### World Beer Awards Spain yield direction
+
+Current 2026 official World Beer Awards pages expose multiple Spanish Country
+Winner products in mass-market styles, including examples from Ambar, Mahou,
+Estrella Levante and other brands with materially higher supermarket presence
+than many global wine champions.
+
+This source deserves a dedicated local-retailer dry-run before large IWC/CMB
+expansion.
+
