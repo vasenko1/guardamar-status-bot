@@ -3824,3 +3824,30 @@ secondary authority plus first-party official media confirmation, not OCR.
    page versus requiring ProductSelectors quality data.
 4. Only after these source contracts are known, perform the large annual
    nomination -> retailer yield run.
+
+
+#### OCU score gate: source-native winner can be below 85
+
+Current indexed OCU food pages provide direct evidence that
+`Mejor del Análisis` is not synonymous with an >=85 numerical score.
+
+Examples:
+
+- Hacendado chocolate-crunch turrón: 64/100, `BUENA CALIDAD`,
+  `MEJOR DEL ANÁLISIS`, and `COMPRA MAESTRA`;
+- Carvel semicurado cheese: 70/100, `MUY BUENA CALIDAD`,
+  `MEJOR DEL ANÁLISIS`;
+- La Turronería Turrón de Alicante: 85/100, `MUY BUENA CALIDAD`,
+  `MEJOR DEL ANÁLISIS`.
+
+Therefore the historical >=85 rule is strictly a project editorial gate.
+
+Before implementation, the annual-yield study must calculate at least two
+scenarios:
+
+1. source-native nomination eligibility, requiring `Mejor del Análisis` and no
+   negative OCU quality band;
+2. elite-only eligibility, additionally requiring >=85.
+
+The final policy should be chosen from measured content quality/runway tradeoff,
+not assumed in advance.
