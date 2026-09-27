@@ -344,6 +344,245 @@ Costs/tradeoffs:
 - external website changes can still require adapter maintenance;
 - the generated pool is more stateful than the current five-item registry.
 
+## Operational health and admin alerts
+
+Autonomy must be observable without adding a monitoring daemon.
+
+Each source/retailer adapter keeps a tiny health record inside the product-award
+state:
+
+- component id and kind;
+- healthy/degraded/broken status;
+- failure stage;
+- stable diagnostic code;
+- first and last failure timestamps;
+- consecutive-failure count;
+- whether the current failure transition has already alerted the administrator.
+
+Expected content outcomes are not adapter failures. In particular:
+
+- no retailer match;
+- product sold out;
+- award winner not sold by the six chains;
+- no new source edition/revision;
+- quality score below the publication gate
+
+must not generate an operational alert.
+
+Operational failures include:
+
+- parser/schema drift;
+- formerly valid endpoint becoming 404/403 in a contract-breaking way;
+- invalid MIME/redirect/host contract;
+- repeated transport failure;
+- source result becoming structurally ambiguous;
+- retailer search/refresh adapter no longer being able to parse previously
+  supported first-party data.
+
+Alert policy stays transition-based, not request-based:
+
+- deterministic contract/schema failure: one immediate private admin alert;
+- transient timeout/network/429: alert only after a small consecutive-failure
+  threshold or sustained failure window;
+- same failure stays silent after the first alert;
+- one recovery message is sent when the component becomes healthy again;
+- Telegram uncertain delivery remains a critical immediate admin alert because
+  autonomous publication is intentionally blocked until reviewed.
+
+The admin message must identify the feature and exact failed stage, for example:
+
+`Product Awards / retailer search / Carrefour / SEARCH-SCHEMA`
+
+and include only safe operational context: diagnostic code, first/last failure,
+impact, source host and remaining ready-pool runway. Never include tokens,
+credentials, response bodies or arbitrary scraped text.
+
+A second transition alert protects content continuity: when the ready pool
+crosses a low-runway threshold, send one private warning such as
+`9 ready events ~= 27 days at current cadence`. Clear/recover that warning
+only after the pool is replenished above the recovery threshold.
+
+This reuses the existing Telegram bot/delivery primitives and needs no new
+notification framework or cron.
+
+## Source cycles, revisions and supersession
+
+Do not assume every source is annual.
+
+For annual competitions, source cycle identity can be the edition/year.
+
+For rolling sources such as OCU comparators, the adapter must derive a stable
+result revision from source evidence such as an explicit updated date/result
+revision and the winner/result identity. OCU documents that some comparators are
+updated every 15-30 days while others update one or more times per year.
+
+The generic field is therefore `source_cycle`, not `year`.
+
+A newer source cycle supersedes an older event only when both represent the
+same recurring semantic nomination. Publication history is retained.
+
+This avoids both yearly reset logic and stale OCU winners surviving after a
+newer comparison result exists.
+
+## Discovery direction is source-specific
+
+Do not force every source through one discovery strategy.
+
+Each reviewed source declares one of three simple modes:
+
+- award-first: enumerate a bounded winner set, then seek one exact retailer
+  match;
+- retailer-first: use a small official awarded-products surface from Lidl/DIA
+  as a lead, then verify the independent award authority;
+- hybrid: either direction may create the same semantic event, deduplicated by
+  event/product identity.
+
+Large global competitions should not cause thousands of retailer lookups merely
+because their full result database exists.
+
+## Rich evidence model for article-quality posts
+
+The autonomous pool must retain enough verified evidence to render a useful
+article, not merely a title and price.
+
+Keep a compact common record plus source-specific verified facts.
+
+Common award fields:
+
+- organizer;
+- programme/competition;
+- source cycle/edition;
+- category;
+- semantic nomination;
+- geographic scope;
+- exact official result/tier/rank;
+- score when source-defined;
+- result URL;
+- methodology URL when available;
+- result/publication date when available.
+
+Method/evaluation facts when explicitly supplied:
+
+- number of products/samples/entries;
+- number/type of judges or consumer testers;
+- blind testing flag;
+- number of judging stages;
+- laboratory testing flag;
+- sensory testing flag;
+- evaluation criteria;
+- threshold/finalist process;
+- other short adapter-approved methodology facts.
+
+Product facts when explicitly supplied:
+
+- exact commercial name;
+- brand;
+- producer/manufacturer;
+- origin;
+- designation/protected origin;
+- category-specific identity attributes such as vintage/grape, milk/maturation,
+  cultivar, ibérico percentage or beer style;
+- package/format where part of identity.
+
+Retail facts remain separately sourced:
+
+- retailer;
+- exact SKU/product ID;
+- EAN/GTIN when available;
+- current package;
+- current price/unit price;
+- current availability;
+- exact product URL;
+- retail check timestamp/context.
+
+Every fact must retain provenance: award authority, retailer or another reviewed
+first-party source. Retailer data must never silently become award evidence.
+
+Avoid a universal prose extractor or free-form AI field. A source adapter may
+emit a small list of reviewed structured facts that its deterministic renderer
+knows how to label.
+
+This is already supported by real source richness: OCU documents anonymous
+consumer-like product purchase and independent laboratory testing; MAPA cheese
+publishes sample eligibility, five-expert sensory panels, two-stage selection,
+80-point finalist threshold and laboratory checks; IWC publishes blind tasting,
+3-4 expert panel judging and senior re-tasting/confirmation.
+
+## Image policy and Telegram message shape
+
+Telegram can fetch a photo directly from an HTTP(S) URL for `sendPhoto`.
+That transport capability does not grant image-reuse rights.
+
+Image source priority:
+
+1. award authority/organizer press or media asset with explicit reuse rights;
+2. producer/manufacturer press asset with explicit reuse rights;
+3. retailer product image only when the retailer's terms/licence or direct
+   permission clearly allows this Telegram use;
+4. otherwise text-only.
+
+A public image URL, Open Graph image or technically downloadable retailer photo
+is not sufficient permission by itself.
+
+Store media only as optional reviewed metadata:
+
+- image URL;
+- source host;
+- exact-product identity tie;
+- reuse-right status/evidence;
+- MIME/size validation status.
+
+Do not download and cache a product-image archive merely for this feature.
+
+To avoid overengineering Telegram delivery, preserve a one-publication-message
+invariant initially:
+
+- when a legally reusable image exists and the complete deterministic article
+  fits the Telegram photo-caption limit, use one photo+caption publication;
+- otherwise publish the rich text-only article;
+- do not introduce a two-message photo/article transaction merely to force an
+  image, because partial two-message delivery would require new reservation and
+  recovery semantics.
+
+Telegram currently limits photo captions to 1024 characters and accepts remote
+photo URLs, with additional file-size/MIME requirements. A text-only article
+therefore remains the richer fallback.
+
+## Minimal future state/property set
+
+Do not introduce a relational schema or generic workflow engine.
+
+A future compact state needs only:
+
+**Source state**
+- source id;
+- source cycle/revision;
+- next eligible check time;
+- bounded discovery cursor/checkpoint;
+- health record.
+
+**Ready event**
+- event id;
+- semantic nomination key;
+- source cycle;
+- canonical product key;
+- common award facts;
+- small source-specific verified facts;
+- exact retailer identity;
+- optional approved image metadata;
+- created/last-verified timestamps.
+
+**Publication/diversity state**
+- confirmed published event ids;
+- product publication history;
+- recent categories;
+- current diversity-round product set;
+- last confirmed delivery day;
+- uncertain Telegram reservation.
+
+No raw HTML, award-result archive, retailer catalogue dump, vector index or
+database is needed.
+
 ## Implementation gate
 
 Do not implement this ADR until research has proved:
