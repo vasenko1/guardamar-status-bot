@@ -54,6 +54,7 @@ class RetailOffer:
 @dataclass(frozen=True)
 class ReviewedCandidate:
     category_key: str
+    selection_key: str
     event_id: str
     source_name: str
     source_url: str
@@ -388,6 +389,7 @@ CATEGORIES: tuple[ReviewedCategory, ...] = (
                 (
                     ReviewedCandidate(
                         category_key="sparkling_cava",
+                        selection_key="sparkling_cava:2025",
                         event_id="sparkling_cava:ocu-2025:naltros-brut",
                         source_name="OCU",
                         source_url="https://www.ocu.org/organizacion/prensa/notas-de-prensa/2025/cavas191225",
@@ -426,6 +428,7 @@ CATEGORIES: tuple[ReviewedCategory, ...] = (
                 (
                     ReviewedCandidate(
                         category_key="gazpacho",
+                        selection_key="gazpacho:2025",
                         event_id="gazpacho:ocu-2025:realfooding",
                         source_name="OCU",
                         source_url="https://www.ocu.org/alimentacion/platos-preparados/informe/gazpachos",
@@ -468,6 +471,7 @@ CATEGORIES: tuple[ReviewedCategory, ...] = (
                 (
                     ReviewedCandidate(
                         category_key="aove",
+                        selection_key="aove:2024",
                         event_id="aove:ocu-2024:oleoestepa-dop-estepa",
                         source_name="OCU",
                         source_url="https://www.ocu.org/alimentacion/aceite-oliva/informe/aceite-oliva-virgen-extra",
@@ -509,6 +513,7 @@ CATEGORIES: tuple[ReviewedCategory, ...] = (
                 (
                     ReviewedCandidate(
                         category_key="coffee_capsules",
+                        selection_key="coffee_capsules:2024",
                         event_id="coffee_capsules:ocu-2024:aromarte-intenso",
                         source_name="OCU",
                         source_url="https://www.ocu.org/alimentacion/cafe/comparador/arom-arte-dia-intenso/273/103038",
@@ -550,6 +555,7 @@ CATEGORIES: tuple[ReviewedCategory, ...] = (
                 (
                     ReviewedCandidate(
                         category_key="spirits_anis",
+                        selection_key="spirits_anis:2026",
                         event_id="spirits_anis:mapa-2026:chinchon-dulce",
                         source_name="MAPA",
                         source_url="https://www.mapa.gob.es/es/alimentacion/temas/promo-alimentos/premios-alimentos/galardonados-bebidas-espirituosas",
@@ -606,6 +612,7 @@ class ProductAwardState:
             "schema_version": STATE_SCHEMA_VERSION,
             "last_delivery_day": None,
             "published_events": [],
+            "published_selections": [],
             "category_cursor": 0,
             "uncertain_event": None,
         }
@@ -620,6 +627,7 @@ class ProductAwardState:
         if not isinstance(value, dict) or value.get("schema_version") != STATE_SCHEMA_VERSION:
             raise ProductAwardError("product-award state schema is invalid", code="STATE")
         published = value.get("published_events")
+        selections = value.get("published_selections")
         cursor = value.get("category_cursor")
         last_day = value.get("last_delivery_day")
         uncertain = value.get("uncertain_event")
@@ -627,6 +635,9 @@ class ProductAwardState:
             not isinstance(published, list)
             or len(published) > MAX_HISTORY
             or any(not isinstance(item, str) or not item for item in published)
+            or not isinstance(selections, list)
+            or len(selections) > MAX_HISTORY
+            or any(not isinstance(item, str) or not item for item in selections)
             or not isinstance(cursor, int)
             or isinstance(cursor, bool)
             or cursor < 0
@@ -665,12 +676,20 @@ class ProductAwardState:
     def published_events(self) -> frozenset[str]:
         return frozenset(self._read()["published_events"])
 
+    def published_selections(self) -> frozenset[str]:
+        return frozenset(self._read()["published_selections"])
+
     def category_cursor(self) -> int:
         return self._read()["category_cursor"]
 
     def has_unpublished(self) -> bool:
         published = self.published_events()
-        return any(candidate.event_id not in published for candidate in _all_candidates())
+        selections = self.published_selections()
+        return any(
+            candidate.event_id not in published
+            and candidate.selection_key not in selections
+            for candidate in _all_candidates()
+        )
 
     def mark_uncertain(self, event_id: str) -> None:
         value = self._read()
@@ -683,7 +702,13 @@ class ProductAwardState:
             value["uncertain_event"] = None
             self._write(value)
 
-    def confirm(self, event_id: str, category_index: int, local_day: date) -> None:
+    def confirm(
+        self,
+        event_id: str,
+        selection_key: str,
+        category_index: int,
+        local_day: date,
+    ) -> None:
         value = self._read()
         if value["uncertain_event"] != event_id:
             raise ProductAwardError("product-award delivery reservation is missing", code="STATE")
@@ -693,6 +718,12 @@ class ProductAwardState:
                 raise ProductAwardError("product-award history is full", code="STATE")
             published.append(event_id)
         value["published_events"] = published
+        selections = list(value["published_selections"])
+        if selection_key not in selections:
+            if len(selections) >= MAX_HISTORY:
+                raise ProductAwardError("product-award selection history is full", code="STATE")
+            selections.append(selection_key)
+        value["published_selections"] = selections
         value["last_delivery_day"] = local_day.isoformat()
         value["category_cursor"] = (category_index + 1) % len(CATEGORIES)
         value["uncertain_event"] = None
@@ -750,11 +781,15 @@ def select_publication(
         return None
 
     published = state.published_events()
+    published_selections = state.published_selections()
     for category_index in _category_order(state.category_cursor()):
         category = CATEGORIES[category_index]
         for source in sorted(category.sources, key=lambda item: item.priority):
             for candidate in sorted(source.candidates, key=lambda item: item.rank):
-                if candidate.event_id in published:
+                if (
+                    candidate.event_id in published
+                    or candidate.selection_key in published_selections
+                ):
                     continue
                 try:
                     _verify_award(candidate)
