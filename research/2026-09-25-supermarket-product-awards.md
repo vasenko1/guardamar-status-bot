@@ -1982,3 +1982,359 @@ Runtime follow-up:
 The other four live preview prices were correct during the same validation:
 NALTROS 3.15 EUR, Realfooding 4.05 EUR, Oleoestepa 7.65 EUR and Anís Chinchón
 13.79 EUR.
+
+---
+
+## Autonomous nomination-cycle research — 27 September 2026
+
+### Why the five-item launch pool is not the long-term content model
+
+The production launch gate of five broad categories was intentionally only a
+minimum proof that the feature had enough variety to justify implementation.
+It is not a statement that only five useful award categories exist.
+
+The durable content unit should be an official, consumer-meaningful nomination,
+not merely a broad product category and not merely a medal tier.
+
+A correct hierarchy is:
+
+1. organizer;
+2. award programme/competition;
+3. consumer product category;
+4. semantic nomination;
+5. geographic scope when material;
+6. source edition;
+7. exact winning product;
+8. exact current match in one of the six supported supermarkets.
+
+This permits two cheese posts when one is genuinely best goat cheese and the
+other best blue cheese, while preventing several near-identical posts merely
+because different products received the same Gold/Silver/Super Gold tier.
+
+### Annual publication capacity
+
+One publication at most every three local calendar days yields at most about
+122 publication opportunities in a 365-day year.
+
+Treat 122 as a ceiling, not a quota. The bot must stay silent rather than
+weaken award semantics, identity or current-retail evidence.
+
+The system does not need 122 ready items at the start of a year. A rolling
+buffer of roughly 20-30 publishable nomination events gives 60-90 days of
+runway and allows newer annual results to enter naturally during the year.
+
+### Source families and nomination potential
+
+#### OCU
+
+Current official OCU comparators expose 163 comparison tools overall, including
+69 in Alimentación:
+https://www.ocu.org/todas-las-informaciones/comparadores
+
+This makes OCU the broadest supermarket-oriented source family already found.
+Potential food consumer categories include prepared foods, gazpacho, salmorejo,
+tortilla, salads, canned tuna, sardines, mussels, frozen fish, milk, yoghurt,
+cheese, coffee, capsules, beer, no/low beer, wine/cava, plant drinks, water,
+snacks, cereals, biscuits, chocolate, turrón, oils and others.
+
+Useful OCU nomination semantics remain source-native:
+- Mejor del Análisis = best result in that comparison;
+- Compra Maestra = quality/value distinction;
+- Compra ECO = ecological/value distinction.
+
+The main quality stream should prefer Mejor del Análisis. Value/ECO may remain
+separate semantic dimensions only if the editorial product explicitly wants them.
+Physical-test evidence remains mandatory under the existing OCU guard.
+
+#### MAPA / Alimentos de España
+
+Official recurring family:
+https://www.mapa.gob.es/es/alimentacion/temas/promo-alimentos/premios-alimentos
+
+Wine nominations:
+- Mejor Vino Tinto;
+- Mejor Vino Blanco;
+- Mejor Vino Rosado;
+- Mejor Vino Espumoso;
+- Mejor Vino de Licor.
+
+2026 winners:
+https://www.mapa.gob.es/es/alimentacion/temas/promo-alimentos/premios-alimentos/galardonados_vino
+
+Cheese nominations:
+- Mejor Queso de Vaca;
+- Mejor Queso de Oveja;
+- Mejor Queso de Cabra;
+- Mejor Queso Mezcla;
+- Mejor Queso con Mohos o Queso Azul;
+- plus Premio Especial Mejor Queso.
+
+2026 results:
+https://www.mapa.gob.es/es/alimentacion/temas/promo-alimentos/premios-alimentos/galardonados_quesos
+
+AOVE nominations:
+- Frutado Verde Amargo;
+- Frutado Verde Dulce;
+- Frutado Maduro;
+- Ecológico;
+- plus Premio Especial overall.
+
+Recurring campaign page:
+https://www.mapa.gob.es/es/alimentacion/temas/promo-alimentos/premios-alimentos/ultima-campana-aceites
+
+Important identity guard: the AOVE competition admits bulk homogeneous lots.
+A winning mill/producer cannot be transferred to an arbitrary supermarket
+bottle without explicit retail commercial identity.
+
+Jamón nominations:
+- Mejor Jamón Serrano u otras Figuras de Calidad Reconocidas;
+- Mejor Jamón de Bellota Ibérico.
+
+Recurring page:
+https://www.mapa.gob.es/en/alimentacion/temas/promo-alimentos/premios-alimentos/ultima_edicion_jamones
+
+Spirits nomination:
+- Mejor Bebida Espirituosa con Indicación Geográfica.
+
+MAPA alone therefore represents many recurring semantic nomination slots, not
+one generic MAPA award slot.
+
+#### GourmetQuesos
+
+The reviewed 2026 championship provides 20 cheese categories with explicit
+category winners plus an absolute overall winner. It is a strong example of why
+consumer-meaningful nomination identity should be retained.
+
+Official 2026 context/results:
+https://www.gourmets.net/salon-gourmets/2026/catalogo-expositores/grupo-gourmets/16-gourmetquesos-campeonato-de-los-mejores-quesos-de-espana-2026
+
+The autonomous adapter should allow only reviewed consumer-relevant categories;
+it should not create extra events for every lower podium position.
+
+#### International Wine Challenge
+
+Official 2026 trophy page:
+https://www.internationalwinechallenge.com/trophy-results-2026.html
+
+High-value semantic nominations include Champion Sparkling, White, Red, Sweet
+and Fortified, plus Great Value Champion Sparkling, White, Rosé, Red, Sweet
+and Fortified.
+
+National/regional/varietal trophies can create excessive wine volume and should
+not be automatically admitted until a consumer-level allowlist is defined.
+
+#### Concours Mondial de Bruxelles
+
+Current Red & White session:
+https://concoursmondial.com/en/red-white-wine-session/
+
+Useful explicit nominations include International Red Wine Revelation,
+International White Wine Revelation, No-Low Wines Revelation and reviewed
+country/session Revelations. Use Revelation titles, not ordinary medal sets.
+
+#### World Beer Awards
+
+Official winner surface has a stable year selector and explicit World's Best
+result pages:
+https://www.worldbeerawards.com/winner-beer/beer/2026/
+
+Examples include World's Best International Lager, Classic Pilsener, Session
+IPA and No & Low Alcohol Speciality. The adapter needs a consumer-level style
+allowlist and must not create posts from ordinary medal lists.
+
+#### EVOOLEUM
+
+Official TOP100:
+https://www.evooleum.com/evooleum-top100/
+
+Use primarily for the broad global AOVE quality slot and selected reviewed
+distinctions, not as a reason to publish dozens of near-identical oils.
+
+### Nomination equivalence and duplicate policy
+
+A minimal semantic key is:
+- category;
+- subtype/style;
+- award dimension;
+- scope.
+
+Examples:
+- cheese / goat / quality / Spain;
+- cheese / blue / quality / Spain;
+- wine / sparkling / quality / Spain;
+- wine / red / quality / world;
+- tuna / olive-oil / laboratory-quality / Spain;
+- burrata / consumer-taste / Spain.
+
+Equivalent semantic slots from different organizers should compete by reviewed
+source priority instead of producing near-identical posts.
+
+Different dimensions can coexist when they are honestly different: OCU
+laboratory/comparative quality and a consumer sensory taste award are not the
+same claim.
+
+### Same-product diversity rule
+
+Canonical product identity should preferably be EAN/GTIN; otherwise use an
+exact reviewed commercial identity with category-critical variant fields.
+
+Selection should use simple passes rather than a weighted ranking:
+1. prefer unpublished events whose product has not appeared in the current
+   diversity round and whose category is not in the recent small category window;
+2. if none, allow another category even if recently used, still requiring a
+   new product identity;
+3. only after all currently eligible unique product identities have been used,
+   allow the same product again for a different unpublished nomination.
+
+When one product is already known to hold several nominations in the same
+source/edition, one stronger article should normally mention the additional
+titles rather than spending several three-day slots on that product.
+
+### Annual cycle should be source-driven, not January-1 driven
+
+Do not clear state at New Year. Each source publishes on its own calendar.
+Store the latest known edition per source. When a new edition appears:
+1. enumerate approved nominations;
+2. create new edition-scoped event IDs;
+3. supersede the older edition for the same source/nomination;
+4. preserve publication history;
+5. feed newly matched products into the rolling ready pool.
+
+This permits a smooth 2026 -> 2027 transition without an empty January period
+or a destructive reset.
+
+### Retailer-side autonomy: current status
+
+Exact-product verification is already much stronger than autonomous discovery.
+The missing piece for multi-year autonomy is a bounded official candidate-search
+or index contract for enough of the six chains.
+
+#### Mercadona
+
+Already proven: official exact product IDs, Guardamar warehouse context alc1,
+exact product JSON, EAN, supplier, published/availability fields and current
+price.
+
+Autonomy gap: prove a browser-free bounded official search/index contract that
+can resolve a newly discovered winner to candidate product IDs without a
+manually supplied SKU. Exact-name equality remains unsafe because multiple
+Mercadona SKUs can share the same visible name.
+
+#### Lidl España
+
+Strong retailer-first discovery surface:
+https://www.lidl.es/c/premiados/a10092875
+
+It exposes current awarded food products, often with availability and price.
+Use it as a lead generator, then independently verify award semantics.
+
+#### ALDI España
+
+Already strong for exact product validation through embedded first-party
+application data and stable identifiers.
+
+Autonomy gap: prove the bounded official search/category contract for resolving
+newly discovered winners to ALDI product IDs. Do not build a catalogue crawler.
+
+#### Consum
+
+Current exact pages are strong: stable Código producto, often EAN, package and
+current price.
+
+Autonomy gap: prove the official bounded search/index path that returns
+candidate product IDs/EAN for an award winner.
+
+#### Carrefour España supermarket
+
+Current server-rendered supermarket pages expose exact name, package, price and
+detailed product identity.
+
+Permanent guards: supermarket surface only; reject third-party marketplace;
+include package/variant; retain the proven browser-navigation request profile.
+
+Autonomy gap: prove a bounded first-party supermarket search/result contract.
+
+#### DIA España
+
+Strong current award/category pages with stable SKU IDs:
+https://www.dia.es/l/productos-premiados-dia
+https://www.dia.es/novedades-y-recomendados/productos-premiados/c/L2329
+
+They expose names, numeric SKUs, prices and Add/Agotado state and are useful
+retailer-first leads. Independent award semantics remain preferable.
+
+### Retail match algorithm without overengineering
+
+For one official award winner:
+1. use exact EAN from the award authority when available;
+2. otherwise query each proven official retailer search adapter with exact
+   commercial name/brand;
+3. inspect only a small top-N result set;
+4. open the exact first-party candidate page;
+5. require EAN/SKU or exact category-specific identity;
+6. stop after the first sufficiently strong supported-retailer proof;
+7. store only the stable retailer identity;
+8. refresh availability and price immediately before publication.
+
+There is no requirement to find every chain carrying the product. One exact
+current supported-retailer match is enough.
+
+### Why one generic supermarket crawler is rejected
+
+The six chains expose different contracts: Mercadona JSON/API identity, Lidl
+award/category pages, ALDI embedded application data, Consum product code/EAN
+pages, Carrefour supermarket HTML plus marketplace guard, and DIA SKU/category
+HTML.
+
+A generic crawler would need fuzzy matching and retailer-specific exceptions
+anyway. Six small adapters are simpler and safer.
+
+### Rolling discovery without another resident service
+
+Keep one one-shot runtime model. A future autonomous implementation can use
+the existing scheduled invocation with state gates:
+- normal day with healthy buffer: state-only / publication logic;
+- source check due or pool below low-water mark: bounded discovery/refill;
+- publication due: exact offer refresh and at most one Telegram send.
+
+No resident worker, browser or database is required.
+
+### Recommended ready-buffer policy
+
+Do not attempt to prove 122 retail matches at once.
+Suggested policy:
+- target buffer: 20-30 ready nomination events;
+- low-water mark: about 15;
+- refill in small bounded batches;
+- price is not frozen during refill;
+- unavailable candidates remain retryable or are superseded by newer editions;
+- retire an older equivalent edition when a newer edition is available.
+
+### Autonomy boundary
+
+A multi-year autonomous cycle is realistic while reviewed external contracts
+remain valid: new editions are detected, nominations enumerated, products
+matched through official retailer adapters, the pool replenished and publication
+scheduled automatically.
+
+It is not realistic to promise zero maintenance for arbitrary third-party HTML
+over several years. Contract drift in one source should isolate that source,
+continue with healthy sources and emit an actionable diagnostic.
+
+### Implementation research gates before code
+
+Do not implement the autonomous cycle yet.
+
+First prove read-only:
+1. at least four recurring award sources can enumerate latest-edition
+   nomination winners with bounded anonymous HTTP;
+2. official candidate-search/index contracts for the target retailers, or
+   enough of them to generate a useful pool;
+3. candidate search yields exact EAN/SKU joins rather than fuzzy-name joins;
+4. a 2026 dry run produces substantially more than the five launch events;
+5. the diversity selector fills a realistic sequence without adjacent duplicate
+   products/categories;
+6. source and retailer request budgets remain compatible with the Termux phone.
+
+ADR 0085 records the proposed architecture. ADR 0083 remains the active
+production architecture until these gates pass.
