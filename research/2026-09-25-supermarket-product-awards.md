@@ -4772,3 +4772,33 @@ This deliberately avoids per-SKU `product_kind_ru`, `product_kind_local` or
 translation-mode fields. The Termux runtime should remain small and derive
 wording from already fetched facts rather than carrying editorial metadata that
 does not improve identity or publication safety.
+
+
+### LLM provider production probe (2026-09-28)
+
+A read-only production probe isolated the final-preview failure to provider
+availability/configuration rather than Product Awards discovery, retail
+identity, media selection, Telegram, state, or cron.
+
+Observed on production HEAD `6fb2bcdd6f29049f0c39e7d8ca5123482749276e`:
+- Gemini `gemini-3.5-flash-lite` returned HTTP 503 / `UNAVAILABLE` on four
+  bounded attempts (1s, 2s, 4s backoff). Provider message said the model was
+  experiencing high demand.
+- OpenRouter key introspection returned HTTP 200 and showed
+  `is_free_tier=true`, `limit=0`, `limit_remaining=0`.
+- Both a trivial OpenRouter chat and the exact structured JSON-schema mode used
+  by the bot returned HTTP 403 with `Key limit exceeded (total limit)`.
+- Therefore the OpenRouter fallback key is valid but currently cannot spend any
+  amount; the 403 is not a schema-mode bug.
+- Repository HEAD, Product Awards state, and crontab hashes remained unchanged;
+  no Telegram call occurred.
+
+Minimal runtime implication:
+- retry transient Gemini 429/5xx failures only with a small bounded backoff;
+- keep OpenRouter as the existing fallback, but treat budget/limit 403 as a
+  provider-unavailable condition rather than an editorial or Product Awards
+  failure;
+- if both providers are unavailable, fail closed before Telegram delivery and
+  do not mark the award event as published. A later scheduled run may retry.
+- do not add another provider or a heavyweight local model merely to cover this
+  rare failure mode.
