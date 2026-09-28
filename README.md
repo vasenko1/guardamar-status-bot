@@ -73,7 +73,7 @@ export TELEGRAM_ALLOWED_USER_IDS="your-private-telegram-user-id"
 export PINNED_GUIDE_STATE_PATH="state/pinned_guide.json"
 export GUIDE_STATE_PATH="state/guide.json"
 export GEMINI_API_KEY="your-optional-gemini-key"
-export OPENROUTER_API_KEY="your-optional-fallback-key"
+export GROQ_API_KEY="your-optional-free-fallback-key"
 export CAMS_DATA_URL="https://raw.githubusercontent.com/vasenko1/guardamar-cams-data/main/data/latest.json"
 export CAMS_CACHE_PATH="state/cams.json"
 ```
@@ -419,12 +419,15 @@ complete two-step product request. If AEMET remains unavailable during a later
 update, the same-day prepared AEMET snapshot supplies the weather blocks. Raw
 SimplyBook responses are never stored.
 
-Gemini is used only for the bounded municipal AI tasks documented in ADRs
-0011, 0012, and 0028. If `OPENROUTER_API_KEY` is configured, one pinned
-non-Google model may receive the same public input and JSON schema after a
-Gemini failure. Known notices use deterministic rules and consume no model
-quota. Any double provider error or failed source-fact validation omits only
-the affected optional contribution or preserves its prior valid snapshot.
+Gemini remains primary for the bounded municipal AI tasks documented in the
+accepted ADRs. If `GROQ_API_KEY` is configured, direct Groq
+`openai/gpt-oss-120b` may follow only an eligible Gemini provider/protocol
+failure for event-title translation, event-teaser translation, traffic
+editorial composition, and exact-date market-status classification. Factual
+event extraction and image reading remain Gemini-only. When neither permitted
+provider can return a usable response, the AI layer reports
+`PROVIDERS-UNAVAILABLE`; existing deterministic fallbacks, caches, and
+snapshots remain authoritative.
 
 ADRs 0012 and 0028 implement two bounded normalized event catalogs. Official
 monthly HTML is primary; a changed linked MUPI is supplementary and accepted
