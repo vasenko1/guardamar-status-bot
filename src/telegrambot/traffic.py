@@ -669,6 +669,7 @@ def _location_data(location: TrafficLocation) -> dict:
         "latitude": location.latitude,
     }
 
+
 def _boundary_key(value: Optional[str]) -> Optional[str]:
     cleaned = _clean_text(value)
     return cleaned.casefold() if cleaned is not None else None
@@ -866,8 +867,6 @@ def _reconcile_provider_ids(
         )
 
     return suppressed_current_ids, frozen_missing_ids, changed
-
-
 
 
 def _serialize_incident(incident: TrafficIncident, location: TrafficLocation) -> dict:
