@@ -51,12 +51,13 @@ municipal pools, `Места → Centro Social Juvenil`, plus
 `Занятия и секции → Плавание` with direct cross-links between the activity and
 both pool cards.
 
-Most guide content is static. The existing 05:00 transport sync keeps its
-transport media current and also reconciles the shared message graph. A separate
-short 09:02 `sync-guide` invocation reads bounded recurring-activity and
-municipal-guide sources, reconciles the same graph, and publishes only the
-approved low-frequency guide notices when due. It does not infer registration
-availability from stale catalogue entries.
+Most guide content is static. The existing 05:00 transport sync owns the
+dynamic airport, Alicante, Elche, Orihuela and Zenia Boulevard cards and also
+reconciles the shared message graph. A separate short 09:02 `sync-guide`
+invocation reads bounded recurring-activity and municipal-guide sources and
+reconciles the same graph, but preserves existing transport-owned card content.
+It publishes only the approved low-frequency guide notices when due and does
+not infer registration availability from stale catalogue entries.
 
 ### Local earthquake notices
 
