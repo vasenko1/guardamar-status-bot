@@ -162,24 +162,36 @@ async def prepare_translations(
                 api_key, [title for _, title in title_missing]
             )
         except GeminiError as exc:
-            LOGGER.warning(
-                "Event title batch translation unavailable; "
-                "recovering individually: %s",
-                exc,
-            )
-            failed = 0
-            for item in title_missing[:MAX_INDIVIDUAL_TITLE_RECOVERY]:
-                try:
-                    translated = await translate_event_titles(
-                        api_key, [item[1]]
-                    )
-                except GeminiError:
-                    failed += 1
-                    continue
-                translated_by_item[item] = translated[0]
-            failed += max(
-                0,
-                len(title_missing) - MAX_INDIVIDUAL_TITLE_RECOVERY,
+            if exc.diagnostic_code == "PROVIDERS-UNAVAILABLE":
+                LOGGER.warning(
+                    "Event title providers unavailable; "
+                    "skipping individual recovery"
+                )
+            else:
+                LOGGER.warning(
+                    "Event title batch translation unavailable; "
+                    "recovering individually: %s",
+                    exc,
+                )
+                for item in title_missing[:MAX_INDIVIDUAL_TITLE_RECOVERY]:
+                    try:
+                        translated = await translate_event_titles(
+                            api_key, [item[1]]
+                        )
+                    except GeminiError as item_error:
+                        if (
+                            item_error.diagnostic_code
+                            == "PROVIDERS-UNAVAILABLE"
+                        ):
+                            LOGGER.warning(
+                                "Event title providers became unavailable; "
+                                "stopping individual recovery"
+                            )
+                            break
+                        continue
+                    translated_by_item[item] = translated[0]
+            failed = sum(
+                item not in translated_by_item for item in title_missing
             )
             if failed:
                 LOGGER.warning(

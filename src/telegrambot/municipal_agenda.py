@@ -5382,16 +5382,22 @@ async def fetch_today_municipal_events(
             titles = await translate_event_titles(api_key, unique_titles)
             translated_by_title.update(zip(unique_titles, titles))
         except GeminiError as batch_error:
-            for display_source_title in unique_titles[
-                :MAX_INDIVIDUAL_TRANSLATION_RECOVERY
-            ]:
-                try:
-                    title = (await translate_event_titles(
-                        api_key, [display_source_title]
-                    ))[0]
-                except GeminiError:
-                    continue
-                translated_by_title[display_source_title] = title
+            if batch_error.diagnostic_code != "PROVIDERS-UNAVAILABLE":
+                for display_source_title in unique_titles[
+                    :MAX_INDIVIDUAL_TRANSLATION_RECOVERY
+                ]:
+                    try:
+                        title = (await translate_event_titles(
+                            api_key, [display_source_title]
+                        ))[0]
+                    except GeminiError as item_error:
+                        if (
+                            item_error.diagnostic_code
+                            == "PROVIDERS-UNAVAILABLE"
+                        ):
+                            break
+                        continue
+                    translated_by_title[display_source_title] = title
             failed_translations = sum(
                 display_source_title not in translated_by_title
                 for display_source_title in display_source_titles

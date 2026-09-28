@@ -209,6 +209,31 @@ class EventTeaserTranslationTests(unittest.IsolatedAsyncioTestCase):
                 "Перевод Gamma",
             )
 
+    async def test_provider_outage_skips_individual_title_recovery(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "translations.json"
+            translator = AsyncMock(side_effect=GeminiError(
+                "providers unavailable",
+                code="PROVIDERS-UNAVAILABLE",
+            ))
+            with patch(
+                "telegrambot.event_translations.translate_event_titles",
+                new=translator,
+            ):
+                count = await prepare_translations(
+                    "key",
+                    (
+                        ("municipal_agenda", "Evento Alpha"),
+                        ("agenda_guardamar", "Evento Beta"),
+                        ("library_agenda", "Evento Gamma"),
+                    ),
+                    path,
+                    datetime(2026, 9, 24, 23, 55, tzinfo=TZ),
+                )
+
+            self.assertEqual(count, 0)
+            self.assertEqual(translator.await_count, 1)
+
     async def test_title_recovery_is_bounded_to_twelve_individual_calls(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "translations.json"

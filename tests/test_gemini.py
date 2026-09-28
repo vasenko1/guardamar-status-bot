@@ -12,6 +12,9 @@ from telegrambot.gemini import (
     _extract_agenda_text_events,
     _read_fiesta_programme_poster,
     _request_json,
+    _request_market_status,
+    _translate_event_teasers,
+    _translate_event_titles,
     _verify_agenda_poster_events,
     _compose_traffic_notice,
     compose_traffic_notice,
@@ -20,43 +23,105 @@ from telegrambot.gemini import (
 
 
 class GeminiRequestTests(unittest.TestCase):
-    def test_uses_openrouter_once_after_gemini_failure(self):
-        expected = {"publish": False, "measures": []}
+    def test_default_request_does_not_use_groq(self):
+        primary = GeminiError(
+            "unavailable",
+            code="HTTP-503",
+            status=503,
+        )
+        with patch(
+            "telegrambot.gemini._request_gemini_json",
+            side_effect=primary,
+        ), patch.dict(
+            "telegrambot.gemini.os.environ",
+            {"GROQ_API_KEY": "reserve-key"},
+            clear=False,
+        ), patch(
+            "telegrambot.gemini.request_groq_json",
+        ) as fallback:
+            with self.assertRaises(GeminiError) as raised:
+                _request_json(
+                    "gemini-key",
+                    [{"text": "test"}],
+                    {"type": "object"},
+                    100,
+                )
+
+        self.assertIs(raised.exception, primary)
+        fallback.assert_not_called()
+
+    def test_approved_request_uses_groq_once_after_eligible_failure(self):
+        expected = {"ok": True}
+        schema = {"type": "object"}
         with patch(
             "telegrambot.gemini._request_gemini_json",
             side_effect=GeminiError(
                 "unavailable",
                 code="HTTP-503",
+                status=503,
                 description="Gemini вернул HTTP 503",
             ),
         ), patch.dict(
             "telegrambot.gemini.os.environ",
-            {"OPENROUTER_API_KEY": "reserve-key"},
+            {"GROQ_API_KEY": "reserve-key"},
             clear=False,
         ), patch(
-            "telegrambot.gemini.request_openrouter_json",
+            "telegrambot.gemini.request_groq_json",
             return_value=expected,
         ) as fallback:
             result = _request_json(
                 "gemini-key",
                 [{"text": "test"}],
-                None,
+                schema,
                 100,
+                allow_groq_fallback=True,
             )
 
         self.assertEqual(result, expected)
         fallback.assert_called_once_with(
             "reserve-key",
             [{"text": "test"}],
-            None,
+            schema,
             100,
         )
 
-    def test_preserves_gemini_error_without_fallback_key(self):
-        primary = GeminiError("unavailable", code="HTTP-503")
+    def test_ineligible_gemini_failure_does_not_use_groq(self):
+        primary = GeminiError(
+            "bad request",
+            code="HTTP-400",
+            status=400,
+        )
         with patch(
             "telegrambot.gemini._request_gemini_json",
             side_effect=primary,
+        ), patch.dict(
+            "telegrambot.gemini.os.environ",
+            {"GROQ_API_KEY": "reserve-key"},
+            clear=False,
+        ), patch(
+            "telegrambot.gemini.request_groq_json",
+        ) as fallback:
+            with self.assertRaises(GeminiError) as raised:
+                _request_json(
+                    "gemini-key",
+                    [{"text": "test"}],
+                    {"type": "object"},
+                    100,
+                    allow_groq_fallback=True,
+                )
+
+        self.assertIs(raised.exception, primary)
+        fallback.assert_not_called()
+
+    def test_missing_groq_key_reports_providers_unavailable(self):
+        with patch(
+            "telegrambot.gemini._request_gemini_json",
+            side_effect=GeminiError(
+                "unavailable",
+                code="HTTP-503",
+                status=503,
+                description="Gemini вернул HTTP 503",
+            ),
         ), patch.dict(
             "telegrambot.gemini.os.environ",
             {},
@@ -66,48 +131,98 @@ class GeminiRequestTests(unittest.TestCase):
                 _request_json(
                     "gemini-key",
                     [{"text": "test"}],
-                    None,
+                    {"type": "object"},
                     100,
+                    allow_groq_fallback=True,
                 )
 
-        self.assertIs(raised.exception, primary)
+        self.assertEqual(
+            raised.exception.diagnostic_code,
+            "PROVIDERS-UNAVAILABLE",
+        )
+        self.assertIn("Gemini вернул HTTP 503", raised.exception.safe_description)
+        self.assertIn("Groq", raised.exception.safe_description)
 
-    def test_reports_both_provider_failures(self):
-        from telegrambot.openrouter import OpenRouterError
+    def test_groq_failure_reports_providers_unavailable(self):
+        from telegrambot.groq import GroqError
 
         with patch(
             "telegrambot.gemini._request_gemini_json",
             side_effect=GeminiError(
                 "unavailable",
-                code="HTTP-503",
-                description="Gemini вернул HTTP 503",
+                code="INVALID-RESPONSE",
+                description="Gemini вернул некорректный JSON-ответ",
             ),
         ), patch.dict(
             "telegrambot.gemini.os.environ",
-            {"OPENROUTER_API_KEY": "reserve-key"},
+            {"GROQ_API_KEY": "reserve-key"},
             clear=False,
         ), patch(
-            "telegrambot.gemini.request_openrouter_json",
-            side_effect=OpenRouterError(
+            "telegrambot.gemini.request_groq_json",
+            side_effect=GroqError(
                 "timeout",
                 code="TIMEOUT",
-                description="OpenRouter не ответил до тайм-аута",
+                description="Groq не ответил до тайм-аута",
             ),
         ):
             with self.assertRaises(GeminiError) as raised:
                 _request_json(
                     "gemini-key",
                     [{"text": "test"}],
-                    None,
+                    {"type": "object"},
                     100,
+                    allow_groq_fallback=True,
                 )
 
         self.assertEqual(
             raised.exception.diagnostic_code,
-            "FALLBACK-TIMEOUT",
+            "PROVIDERS-UNAVAILABLE",
         )
-        self.assertIn("Gemini вернул HTTP 503", raised.exception.safe_description)
-        self.assertIn("OpenRouter", raised.exception.safe_description)
+        self.assertIn(
+            "Gemini вернул некорректный JSON-ответ",
+            raised.exception.safe_description,
+        )
+        self.assertIn("Groq", raised.exception.safe_description)
+
+    def test_only_approved_operations_opt_in_to_groq(self):
+        checks = (
+            (
+                lambda: _translate_event_titles("key", ["Evento"]),
+                {"titles_ru": ["Событие"]},
+            ),
+            (
+                lambda: _translate_event_teasers("key", ["Descripción"]),
+                {"teasers_ru": ["Описание"]},
+            ),
+            (
+                lambda: _compose_traffic_notice(
+                    "key",
+                    {"mode": "new_present"},
+                ),
+                {"body_ru": "Перекрыто движение."},
+            ),
+            (
+                lambda: _request_market_status(
+                    "key",
+                    "Mercado cancelado el 30 de septiembre.",
+                    date(2026, 9, 30),
+                ),
+                {
+                    "cancelled": True,
+                    "evidence_es": "Mercado cancelado el 30 de septiembre.",
+                    "event_date": "2026-09-30",
+                },
+            ),
+        )
+        for invoke, result in checks:
+            with self.subTest(result=result), patch(
+                "telegrambot.gemini._request_json",
+                return_value=result,
+            ) as request_json:
+                invoke()
+                self.assertTrue(
+                    request_json.call_args.kwargs["allow_groq_fallback"]
+                )
 
     def test_event_translation_accepts_full_valid_event_length(self):
         translated = "Д" * 100
@@ -151,6 +266,9 @@ class GeminiRequestTests(unittest.TestCase):
             AGENDA_EXTRACTION_SCHEMA,
         )
         self.assertNotIn("inlineData", str(request_json.call_args.args[1]))
+        self.assertFalse(
+            request_json.call_args.kwargs.get("allow_groq_fallback", False)
+        )
 
     def test_agenda_text_recovery_prompt_keeps_expected_dates_across_months(self):
         with patch(

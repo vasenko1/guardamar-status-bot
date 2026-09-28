@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted on 2026-09-28. Implementation pending.
+Accepted on 2026-09-28. Implemented on 2026-09-28.
 
 Supersedes ADR 0030.
 

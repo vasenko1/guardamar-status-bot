@@ -10,7 +10,7 @@ from datetime import date
 from typing import Any, Dict, List, Optional, Sequence
 
 from ._transport import BoundedFetchError, fetch_bounded
-from .openrouter import OpenRouterError, request_json as request_openrouter_json
+from .groq import GroqError, request_json as request_groq_json
 
 LOGGER = logging.getLogger(__name__)
 MODEL = "gemini-3.5-flash-lite"
@@ -259,11 +259,33 @@ def _request_gemini_json(
     return result
 
 
+_GROQ_ELIGIBLE_CODES = frozenset({
+    "NETWORK",
+    "TIMEOUT",
+    "REDIRECT",
+    "CONTENT-TYPE",
+    "TOO-LARGE",
+    "INVALID-RESPONSE",
+    "INVALID-STRUCTURE",
+})
+
+
+def _groq_fallback_eligible(error: GeminiError) -> bool:
+    if error.server_status is not None:
+        return (
+            error.server_status in {401, 403, 404, 408, 429}
+            or error.server_status >= 500
+        )
+    return error.diagnostic_code in _GROQ_ELIGIBLE_CODES
+
+
 def _request_json(
     api_key: str,
     parts: List[Dict[str, Any]],
     schema: Optional[Dict[str, Any]],
     max_output_tokens: int,
+    *,
+    allow_groq_fallback: bool = False,
 ) -> Dict[str, Any]:
     try:
         return _request_gemini_json(
@@ -273,31 +295,49 @@ def _request_json(
             max_output_tokens,
         )
     except GeminiError as primary_error:
-        fallback_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
-        if not fallback_key:
+        if (
+            not allow_groq_fallback
+            or not _groq_fallback_eligible(primary_error)
+        ):
             raise
+
+        fallback_key = os.environ.get("GROQ_API_KEY", "").strip()
+        primary_description = (
+            primary_error.safe_description or "Gemini вернул ошибку"
+        )
+        if not fallback_key:
+            LOGGER.warning(
+                "Gemini failed [%s]; Groq fallback key is not configured",
+                primary_error.diagnostic_code,
+            )
+            raise GeminiError(
+                "Permitted structured LLM providers unavailable",
+                code="PROVIDERS-UNAVAILABLE",
+                status=primary_error.server_status,
+                description=(
+                    f"{primary_description}; резерв Groq недоступен: "
+                    "ключ не настроен"
+                ),
+            ) from primary_error
+
         LOGGER.warning(
-            "Gemini failed [%s]; using OpenRouter fallback",
+            "Gemini failed [%s]; using Groq fallback",
             primary_error.diagnostic_code,
         )
         try:
-            return request_openrouter_json(
+            return request_groq_json(
                 fallback_key,
                 parts,
                 schema,
                 max_output_tokens,
             )
-        except OpenRouterError as fallback_error:
-            primary_description = (
-                primary_error.safe_description or "Gemini вернул ошибку"
-            )
+        except GroqError as fallback_error:
             fallback_description = (
-                fallback_error.safe_description
-                or "OpenRouter вернул ошибку"
+                fallback_error.safe_description or "Groq вернул ошибку"
             )
             raise GeminiError(
-                "Both structured LLM providers failed",
-                code=f"FALLBACK-{fallback_error.diagnostic_code}",
+                "Permitted structured LLM providers unavailable",
+                code="PROVIDERS-UNAVAILABLE",
                 status=fallback_error.server_status,
                 description=(
                     f"{primary_description}; резерв: {fallback_description}"
@@ -660,6 +700,7 @@ def _translate_event_titles(
         [{"text": prompt}],
         EVENT_TRANSLATION_SCHEMA,
         300,
+        allow_groq_fallback=True,
     )
 
 
@@ -685,7 +726,7 @@ async def translate_event_titles(
             for title in translated
         )
     ):
-        raise GeminiError("Gemini returned invalid event translations")
+        raise GeminiError("Structured model returned invalid event translations")
     return [title.strip() for title in translated]
 
 
@@ -707,6 +748,7 @@ def _translate_event_teasers(
         [{"text": prompt}],
         EVENT_TEASER_TRANSLATION_SCHEMA,
         500,
+        allow_groq_fallback=True,
     )
 
 
@@ -732,7 +774,7 @@ async def translate_event_teasers(
             for teaser in translated
         )
     ):
-        raise GeminiError("Gemini returned invalid event teaser translations")
+        raise GeminiError("Structured model returned invalid event teaser translations")
     return [teaser.strip() for teaser in translated]
 
 
@@ -778,6 +820,7 @@ def _compose_traffic_notice(
         [{"text": prompt}],
         TRAFFIC_NOTICE_SCHEMA,
         500,
+        allow_groq_fallback=True,
     )
 
 
@@ -790,13 +833,13 @@ async def compose_traffic_notice(
     result = await asyncio.to_thread(_compose_traffic_notice, api_key, facts)
     body = result.get("body_ru")
     if not isinstance(body, str):
-        raise GeminiError("Gemini returned an invalid traffic notice")
+        raise GeminiError("Structured model returned an invalid traffic notice")
     body = " ".join(body.split()).strip()
     if not 1 <= len(body) <= 900:
-        raise GeminiError("Gemini returned an invalid traffic notice")
+        raise GeminiError("Structured model returned an invalid traffic notice")
     folded = body.casefold()
     if any(token in folded for token in ("null", "undefined")):
-        raise GeminiError("Gemini returned a null-like traffic notice")
+        raise GeminiError("Structured model returned a null-like traffic notice")
     if any(
         phrase in folded
         for phrase in (
@@ -808,7 +851,7 @@ async def compose_traffic_notice(
             "неизвестно",
         )
     ):
-        raise GeminiError("Gemini described intentionally omitted traffic facts")
+        raise GeminiError("Structured model described intentionally omitted traffic facts")
     return body
 
 
@@ -833,6 +876,7 @@ def _request_market_status(
         [{"text": prompt}],
         MARKET_STATUS_SCHEMA,
         300,
+        allow_groq_fallback=True,
     )
 
 
