@@ -44,7 +44,9 @@ bootstrapped as fallback so the graph remains complete; the next
 
 If an existing transport-owned Telegram message is deleted while its ID remains
 in state, run `sync-transport` to recreate it and repair links. Guide sync is
-the repair path for guide-owned cards, not for accepted live timetables.
+the repair path for guide-owned cards, not for accepted live timetables. If the
+transport navigator itself is recreated by guide reconciliation, the next
+`sync-transport` refreshes transport-card back-links to its current message ID.
 
 This boundary adds no extra source request, retry loop, cron row or state
 schema. See ADR 0086.
