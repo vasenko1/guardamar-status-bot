@@ -173,6 +173,7 @@ from .telegram import (
     send_photo,
     send_photo_url,
     send_poll,
+    send_rich_message,
 )
 from .transport_schedules import sync_transport_schedules
 
@@ -1385,7 +1386,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             event_id = publication.candidate.event_id
             product_state.mark_uncertain(event_id)
             try:
-                message_id = await send_message(
+                message_id = await send_rich_message(
                     bot_token,
                     chat_id,
                     publication.message,
