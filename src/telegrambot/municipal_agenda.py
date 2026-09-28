@@ -943,8 +943,8 @@ def _programme_source_metadata(
     )
 
 
-def _normalized_turismo_image_url(value: Any) -> Optional[str]:
-    """Accept only one official event-specific Turismo upload URL."""
+def _normalized_event_image_url(value: Any) -> Optional[str]:
+    """Accept only official Guardamar event-image upload URLs."""
 
     if not isinstance(value, str) or not value:
         return None
@@ -955,7 +955,7 @@ def _normalized_turismo_image_url(value: Any) -> Optional[str]:
         return None
     if (
         parsed.scheme != "https"
-        or parsed.hostname not in PAGE_HOSTS
+        or parsed.hostname not in (PAGE_HOSTS | POSTER_HOSTS)
         or port not in {None, 443}
         or parsed.username is not None
         or parsed.password is not None
@@ -4159,7 +4159,7 @@ def _load_snapshot(path: Path) -> Optional[Dict[str, Any]]:
                 raise ValueError
             raw_image = raw.get("image_url") if isinstance(raw, dict) else None
             if raw_image is not None:
-                image_url = _normalized_turismo_image_url(raw_image)
+                image_url = _normalized_event_image_url(raw_image)
                 if image_url is None:
                     raise ValueError
                 normalized = replace(normalized, image_url=image_url)
