@@ -941,7 +941,10 @@ CATEGORIES: tuple[ReviewedCategory, ...] = (
                             "https://tienda.masymas.com/api/rest/V1.0/"
                             "catalog/product/10067"
                         ),
-                        retailer_hosts=frozenset({"tienda.masymas.com"}),
+                        retailer_hosts=frozenset({
+                            "tienda.masymas.com",
+                            "cdn-fornes.aktiosdigitalservices.com",
+                        }),
                         retailer_markers=("Cerveza", "Sin Filtrar"),
                         product_name="Mahou Sin Filtrar",
                         award_year=2026,
