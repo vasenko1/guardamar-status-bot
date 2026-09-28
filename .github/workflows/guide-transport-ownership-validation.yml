@@ -1,0 +1,30 @@
+name: Guide transport ownership validation
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install -e .
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq poppler-utils
+      - name: Compile
+        run: python -m compileall -q src tests
+      - name: Ownership regression tests
+        run: |
+          python -m unittest             tests.test_pinned.PinnedPublicationTests.test_transport_managed_cards_are_not_overwritten             tests.test_pinned.PinnedPublicationTests.test_missing_transport_managed_card_can_bootstrap_as_fallback             tests.test_guide.GuideSyncTests.test_regular_guide_sync_preserves_transport_managed_cards             tests.test_main.GuideOwnershipCommandTests -v
+      - name: Full regression suite
+        run: python -m unittest discover -s tests -v
