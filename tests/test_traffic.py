@@ -840,6 +840,76 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("TTI-other", value["events"])
         self.assertEqual(value["events"]["TTI-old"]["missing_successes"], 1)
 
+    async def test_rotation_rejects_start_time_drift_over_two_minutes(self):
+        first = incident(provider_id="TTI-old")
+        later = incident(
+            provider_id="TTI-later",
+            starts_at=first.starts_at + timedelta(minutes=2, seconds=1),
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+
+            await self._run(state, NOW, (first,), sent)
+            delivered = await self._run(
+                state,
+                NOW + timedelta(hours=1),
+                (later,),
+                sent,
+            )
+            value = state.read()
+
+        self.assertEqual(delivered, 1)
+        self.assertEqual(len(sent), 2)
+        self.assertEqual(value["events"]["TTI-old"]["missing_successes"], 1)
+        self.assertIn("TTI-later", value["events"])
+
+    async def test_ambiguous_rotation_freezes_only_affected_closure(self):
+        first = incident(provider_id="TTI-old-a")
+        legacy = incident(provider_id="TTI-old-b")
+        replacement = incident(
+            provider_id="TTI-replacement",
+            starts_at=first.starts_at + timedelta(seconds=30),
+        )
+        independent = incident(
+            provider_id="TTI-independent",
+            starts_at=first.starts_at + timedelta(hours=1),
+            from_place="Calle Mayor",
+            to_place="Calle Norte",
+            coordinates=(
+                (-0.6500000, 38.0800000),
+                (-0.6503000, 38.0803000),
+                (-0.6506000, 38.0806000),
+            ),
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+
+            await self._run(state, NOW, (first,), sent)
+            value = state.read()
+            duplicate = dict(value["events"]["TTI-old-a"])
+            duplicate["provider_id"] = legacy.provider_id
+            value["events"][legacy.provider_id] = duplicate
+            state.write(value)
+
+            delivered = await self._run(
+                state,
+                NOW + timedelta(hours=1),
+                (replacement, independent),
+                sent,
+            )
+            value = state.read()
+
+        self.assertEqual(delivered, 1)
+        self.assertEqual(len(sent), 2)
+        self.assertNotIn("TTI-replacement", value["events"])
+        self.assertEqual(value["events"]["TTI-old-a"]["missing_successes"], 0)
+        self.assertEqual(value["events"]["TTI-old-b"]["missing_successes"], 0)
+        self.assertIn("TTI-independent", value["events"])
+
     async def test_rotation_accepts_reversed_segment_with_swapped_boundaries(self):
         first = incident(provider_id="TTI-old")
         replacement = incident(
