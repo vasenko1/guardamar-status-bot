@@ -29,6 +29,7 @@ from telegrambot.models import (
     PollenSummary,
 )
 from telegrambot.operational_updates import MonitorRun
+from telegrambot.pinned import PinnedGuideState, TRANSPORT_MANAGED_KEYS
 from telegrambot.state import PublicationState, StateError
 from telegrambot.telegram import TelegramError
 from telegrambot.tomorrow_events import (
@@ -1516,6 +1517,78 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
             "municipal": Path("state/municipal-test.json"),
             "agenda": Path("state/agenda-test.json"),
         })
+
+
+
+class GuideOwnershipCommandTests(unittest.IsolatedAsyncioTestCase):
+    async def test_pinned_publish_preserves_existing_transport_managed_cards(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "pinned.json"
+            PinnedGuideState(state_path).write(
+                "-100123",
+                {"root": 100, "zenia": 101},
+            )
+            publish = AsyncMock(return_value={"root": 100, "zenia": 101})
+
+            with (
+                patch.dict(os.environ, {
+                    "TELEGRAM_BOT_TOKEN": "token",
+                    "TELEGRAM_CHAT_ID": "-100123",
+                    "PINNED_GUIDE_STATE_PATH": str(state_path),
+                }),
+                patch(
+                    "telegrambot.__main__.publish_pinned_guide",
+                    new=publish,
+                ),
+            ):
+                self.assertEqual(await _run_command("pinned-publish"), 0)
+
+            self.assertEqual(
+                publish.await_args.kwargs["skip_keys"],
+                TRANSPORT_MANAGED_KEYS,
+            )
+
+    async def test_sync_transport_uses_same_transport_managed_keys(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "pinned.json"
+            PinnedGuideState(state_path).write("-100123", {"root": 100})
+            publish = AsyncMock(return_value={"root": 100})
+            sync_schedules = AsyncMock(return_value={"root": 100})
+
+            with (
+                patch.dict(os.environ, {
+                    "TELEGRAM_BOT_TOKEN": "token",
+                    "TELEGRAM_CHAT_ID": "-100123",
+                    "PINNED_GUIDE_STATE_PATH": str(state_path),
+                }),
+                patch(
+                    "telegrambot.__main__.publish_pinned_guide",
+                    new=publish,
+                ),
+                patch(
+                    "telegrambot.__main__.sync_airport_schedule",
+                    new=AsyncMock(),
+                ),
+                patch(
+                    "telegrambot.__main__.sync_alicante_schedule",
+                    new=AsyncMock(),
+                ),
+                patch(
+                    "telegrambot.__main__.sync_intercity_schedule",
+                    new=AsyncMock(),
+                ),
+                patch(
+                    "telegrambot.__main__.sync_transport_schedules",
+                    new=sync_schedules,
+                ),
+            ):
+                self.assertEqual(await _run_command("sync-transport"), 0)
+
+            self.assertEqual(
+                publish.await_args.kwargs["skip_keys"],
+                TRANSPORT_MANAGED_KEYS,
+            )
+            self.assertEqual(sync_schedules.await_count, 1)
 
 
 if __name__ == "__main__":

@@ -41,6 +41,13 @@ from .telegram import TelegramError, is_ambiguous_send_failure
 PINNED_CONTENT_VERSION = 2
 DEFAULT_PINNED_STATE_PATH = "state/pinned_guide.json"
 MAX_RECONCILIATION_PASSES = 3
+TRANSPORT_MANAGED_KEYS = (
+    "airport",
+    "alicante",
+    "elche",
+    "inland",
+    "zenia",
+)
 AQUALIDER_BOOKING_URL = "https://aqualidernatacion.simplybook.it/v2/"
 FISHING_GVA_LICENSE_URL = "https://sede.gva.es/es/detall-tramit?id_proc=G647"
 FISHING_PESCAREC_URL = (

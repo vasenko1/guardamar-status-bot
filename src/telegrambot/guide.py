@@ -59,6 +59,7 @@ from .music_school import (
 from .pinned import (
     DEFAULT_PINNED_STATE_PATH,
     PinnedGuideState,
+    TRANSPORT_MANAGED_KEYS,
     publish_pinned_guide,
     telegram_message_link,
 )
@@ -1392,6 +1393,7 @@ async def sync_guide(now: datetime) -> str:
                     message_id,
                     disable_notification=True,
                 ),
+                skip_keys=TRANSPORT_MANAGED_KEYS,
                 sporttia_catalog=state.get("sporttia_catalog"),
                 music_school_catalog=state.get("music_school_catalog"),
                 chess_school_snapshot=state.get("chess_school_snapshot"),

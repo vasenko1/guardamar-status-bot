@@ -12,6 +12,7 @@ from telegrambot.pinned import (
     LEAF_MESSAGES,
     PINNED_MESSAGE_KEYS,
     PinnedGuideState,
+    TRANSPORT_MANAGED_KEYS,
     build_activities,
     build_cameras,
     build_fishing,
@@ -357,6 +358,55 @@ class PinnedPublicationTests(unittest.IsolatedAsyncioTestCase):
             )
             edited_ids = {call.args[0] for call in edit.await_args_list}
             self.assertNotIn(messages["airport"], edited_ids)
+
+    async def test_transport_managed_cards_are_not_overwritten(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = PinnedGuideState(Path(directory) / "pinned.json")
+            messages = self._messages()
+            state.write("-100123", messages)
+            edit = AsyncMock()
+
+            await publish_pinned_guide(
+                "-100123",
+                state,
+                AsyncMock(),
+                edit,
+                AsyncMock(),
+                skip_keys=TRANSPORT_MANAGED_KEYS,
+            )
+
+            edited_ids = {call.args[0] for call in edit.await_args_list}
+            for key in TRANSPORT_MANAGED_KEYS:
+                with self.subTest(key=key):
+                    self.assertNotIn(messages[key], edited_ids)
+            self.assertIn(messages["transport"], edited_ids)
+
+    async def test_missing_transport_managed_card_can_bootstrap_as_fallback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = PinnedGuideState(Path(directory) / "pinned.json")
+            messages = self._messages()
+            messages.pop("zenia")
+            state.write("-100123", messages)
+            send = AsyncMock(return_value=99)
+            edit = AsyncMock()
+
+            result = await publish_pinned_guide(
+                "-100123",
+                state,
+                send,
+                edit,
+                AsyncMock(),
+                skip_keys=TRANSPORT_MANAGED_KEYS,
+            )
+
+            send.assert_awaited_once()
+            self.assertEqual(result["zenia"], 99)
+            transport_edits = [
+                call.args[1] for call in edit.await_args_list
+                if call.args[0] == result["transport"]
+            ]
+            self.assertTrue(transport_edits)
+            self.assertIn("https://t.me/c/123/99", transport_edits[-1])
 
     async def test_invalid_group_id_is_rejected_before_any_send(self):
         with tempfile.TemporaryDirectory() as directory:

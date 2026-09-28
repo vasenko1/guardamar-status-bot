@@ -37,6 +37,7 @@ from telegrambot.guide import (
     sync_bathing_water,
     sync_guide,
 )
+from telegrambot.pinned import TRANSPORT_MANAGED_KEYS
 from telegrambot.sporttia import SporttiaSourceError
 from telegrambot.state import StateError
 from telegrambot.telegram import TelegramError
@@ -804,6 +805,27 @@ class GuideSyncTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(
                 saved["last_successful_sync_day"],
                 moment.date().isoformat(),
+            )
+
+    async def test_regular_guide_sync_preserves_transport_managed_cards(self):
+        with tempfile.TemporaryDirectory() as directory:
+            moment = datetime(2026, 9, 28, 9, 2, tzinfo=MADRID)
+            current = snapshot(moment)
+            publish = AsyncMock(return_value=self._pinned_messages())
+
+            with (
+                patch.dict("os.environ", self._environment(directory), clear=False),
+                patch(
+                    "telegrambot.guide.fetch_aqualider_catalog",
+                    new=AsyncMock(return_value=current),
+                ),
+                patch("telegrambot.guide.publish_pinned_guide", new=publish),
+            ):
+                await sync_guide(moment)
+
+            self.assertEqual(
+                publish.await_args.kwargs["skip_keys"],
+                TRANSPORT_MANAGED_KEYS,
             )
 
     async def test_failed_card_reconciliation_does_not_leave_success_marker(self):
