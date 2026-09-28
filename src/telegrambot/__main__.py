@@ -120,6 +120,7 @@ from .operational_updates import (
 from .pinned import (
     DEFAULT_PINNED_STATE_PATH,
     PinnedGuideState,
+    TRANSPORT_MANAGED_KEYS,
     preview_messages as pinned_preview_messages,
     publish_pinned_guide,
 )
@@ -1667,6 +1668,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     message_id,
                     disable_notification=True,
                 ),
+                skip_keys=TRANSPORT_MANAGED_KEYS,
             )
         logging.info("Pinned guide published with %d linked messages", len(messages))
         return 0
@@ -1678,7 +1680,6 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             "PINNED_GUIDE_STATE_PATH", DEFAULT_PINNED_STATE_PATH
         )))
         with state.exclusive_run():
-            existing = await asyncio.to_thread(state.read_payload, chat_id)
             await publish_pinned_guide(
                 chat_id,
                 state,
@@ -1698,11 +1699,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     message_id,
                     disable_notification=True,
                 ),
-                skip_keys=tuple(
-                    key
-                    for key in ("airport", "alicante", "elche", "inland", "zenia")
-                    if key in existing["messages"]
-                ),
+                skip_keys=TRANSPORT_MANAGED_KEYS,
             )
             await sync_airport_schedule(
                 datetime.now(GUARDAMAR_TIMEZONE),
