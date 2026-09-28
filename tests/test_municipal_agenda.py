@@ -306,6 +306,47 @@ class MunicipalProgrammeDisplayTranslationTests(
         self.assertLess(rendered.index("17:00"), rendered.index("19:50"))
         self.assertLess(rendered.index("19:50"), rendered.index("20:00"))
 
+    async def test_provider_outage_skips_individual_preview_recovery(self):
+        day = date(2026, 9, 26)
+        source = SourceEvent(
+            "Evento municipal nuevo",
+            day,
+            day,
+            "18:00",
+            None,
+            "Casa de Cultura",
+            "event",
+            ("turismo_html",),
+        )
+        translator = AsyncMock(side_effect=GeminiError(
+            "providers unavailable",
+            code="PROVIDERS-UNAVAILABLE",
+        ))
+
+        with tempfile.TemporaryDirectory() as directory:
+            snapshot = Path(directory) / "agenda.json"
+            now = datetime(2026, 9, 26, 7, 30, tzinfo=TZ)
+            _write_snapshot(
+                snapshot,
+                _snapshot_data("", "", now, (source,)),
+            )
+            with patch(
+                "telegrambot.municipal_agenda.translate_event_titles",
+                new=translator,
+            ):
+                with self.assertRaises(MunicipalAgendaError) as raised:
+                    await fetch_today_municipal_events(
+                        now,
+                        "key",
+                        snapshot,
+                    )
+
+        self.assertEqual(
+            raised.exception.diagnostic_code,
+            "PROVIDERS-UNAVAILABLE",
+        )
+        self.assertEqual(translator.await_count, 1)
+
     async def test_programme_parent_falls_back_to_spanish_without_cache_entry(self):
         day = date(2026, 9, 26)
         parent = "FIESTAS EN HONOR A LA VIRGEN DEL ROSARIO 2026"
