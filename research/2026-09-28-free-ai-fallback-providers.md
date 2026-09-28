@@ -12,10 +12,14 @@ Access date: 2026-09-28.
 
 Provider documentation reviewed during the investigation:
 
-- Google Gemini API error behavior for the configured
+- Google Gemini API documentation for the configured
   `gemini-3.5-flash-lite` endpoint.
-- Groq model, Structured Outputs, API and Free Plan rate-limit documentation.
-- OpenRouter model/pricing/free-model documentation.
+- Groq model catalog: https://console.groq.com/docs/models
+- Groq Structured Outputs: https://console.groq.com/docs/structured-outputs
+- Groq rate limits: https://console.groq.com/docs/rate-limits
+- Groq API/reasoning parameters: https://console.groq.com/docs/api-reference
+- OpenRouter pricing/free-model documentation:
+  https://openrouter.ai/pricing
 - Current repository implementation in `src/telegrambot/gemini.py`,
   `src/telegrambot/openrouter.py`, event translation recovery, municipal
   agenda extraction, traffic, market, and AM Guardamar.
