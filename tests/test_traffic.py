@@ -38,7 +38,14 @@ def incident(
     from_place="Calle Miguel Hernández",
     to_place="Avenida del País Valenciano",
     descriptions=("Cerrado",),
+    coordinates=None,
 ):
+    if coordinates is None:
+        coordinates = (
+            (-0.6539507, 38.0837390),
+            (-0.6544255, 38.0838021),
+            (-0.6545838, 38.0838235),
+        )
     return TrafficIncident(
         provider_id=provider_id,
         category=category,
@@ -49,11 +56,7 @@ def incident(
         from_place=from_place,
         to_place=to_place,
         descriptions_es=tuple(descriptions),
-        coordinates=(
-            (-0.6539507, 38.0837390),
-            (-0.6544255, 38.0838021),
-            (-0.6545838, 38.0838235),
-        ),
+        coordinates=tuple(coordinates),
     )
 
 
@@ -630,6 +633,265 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(sent), 2)
         self.assertEqual(sent[1][1], sent[0][2])
         self.assertIn("Дорога снова открыта", sent[1][0])
+
+    async def test_provider_id_rotation_preserves_one_physical_lifecycle(self):
+        first = incident(
+            provider_id=(
+                "TTI-fd0cb5e0-307c-46df-9596-df50e5122d3e-"
+                "TTR45347245744012000"
+            ),
+            starts_at=datetime(2026, 9, 23, 16, 45, 30, tzinfo=MADRID),
+        )
+        second = incident(
+            provider_id=(
+                "TTI-51570b45-edd7-4046-b144-f8c5ead2cf16-"
+                "TTR45347245744012000"
+            ),
+            starts_at=datetime(2026, 9, 23, 16, 46, 0, tzinfo=MADRID),
+        )
+        third = incident(
+            provider_id=(
+                "TTI-b9e0c634-6369-4098-a899-0b703580a06a-"
+                "TTR45347245744012000"
+            ),
+            starts_at=datetime(2026, 9, 23, 16, 45, 30, tzinfo=MADRID),
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+
+            self.assertEqual(await self._run(state, NOW, (first,), sent), 1)
+            self.assertEqual(
+                await self._run(state, NOW + timedelta(hours=1), (second,), sent),
+                0,
+            )
+            self.assertEqual(
+                await self._run(state, NOW + timedelta(hours=2), (third,), sent),
+                0,
+            )
+            value = state.read()
+
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(set(value["events"]), {third.provider_id})
+        record = value["events"][third.provider_id]
+        self.assertEqual(record["missing_successes"], 0)
+        self.assertEqual(record["last_message_id"], sent[0][2])
+        self.assertNotIn("ended_at", record)
+
+    async def test_real_absence_after_provider_rotation_still_reopens(self):
+        first = incident(
+            provider_id="TTI-old",
+            starts_at=datetime(2026, 9, 23, 16, 45, 30, tzinfo=MADRID),
+        )
+        second = incident(
+            provider_id="TTI-new",
+            starts_at=datetime(2026, 9, 23, 16, 46, 0, tzinfo=MADRID),
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+
+            await self._run(state, NOW, (first,), sent)
+            await self._run(state, NOW + timedelta(hours=1), (second,), sent)
+            self.assertEqual(
+                await self._run(state, NOW + timedelta(hours=2), (), sent),
+                0,
+            )
+            self.assertEqual(
+                await self._run(state, NOW + timedelta(hours=3), (), sent),
+                1,
+            )
+
+        self.assertEqual(len(sent), 2)
+        self.assertEqual(sent[-1][1], sent[0][2])
+        self.assertIn("Дорога снова открыта", sent[-1][0])
+
+    async def test_equivalent_overlap_is_suppressed_until_clean_id_handoff(self):
+        first = incident(provider_id="TTI-old")
+        second = incident(
+            provider_id="TTI-new",
+            starts_at=first.starts_at + timedelta(seconds=30),
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+
+            await self._run(state, NOW, (first,), sent)
+            self.assertEqual(
+                await self._run(
+                    state,
+                    NOW + timedelta(hours=1),
+                    (first, second),
+                    sent,
+                ),
+                0,
+            )
+            self.assertEqual(
+                await self._run(
+                    state,
+                    NOW + timedelta(hours=2),
+                    (second,),
+                    sent,
+                ),
+                0,
+            )
+            value = state.read()
+
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(set(value["events"]), {"TTI-new"})
+        self.assertEqual(value["events"]["TTI-new"]["missing_successes"], 0)
+
+    async def test_provider_rotation_preserves_lane_to_road_transition(self):
+        lane = incident(provider_id="TTI-lane", category="laneClosed")
+        road = incident(
+            provider_id="TTI-road",
+            category="roadClosed",
+            starts_at=lane.starts_at + timedelta(seconds=30),
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+
+            await self._run(state, NOW, (lane,), sent)
+            delivered = await self._run(
+                state,
+                NOW + timedelta(hours=1),
+                (road,),
+                sent,
+            )
+
+        self.assertEqual(delivered, 1)
+        self.assertEqual(len(sent), 2)
+        self.assertEqual(sent[-1][1], sent[0][2])
+        self.assertIn("теперь полностью перекрыт", sent[-1][0])
+
+    async def test_unpublishable_replacement_does_not_fake_reopening(self):
+        first = incident(provider_id="TTI-old")
+        replacement = incident(
+            provider_id="TTI-new",
+            probability="risk_of",
+            starts_at=first.starts_at + timedelta(seconds=30),
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+
+            await self._run(state, NOW, (first,), sent)
+            self.assertEqual(
+                await self._run(
+                    state,
+                    NOW + timedelta(hours=1),
+                    (replacement,),
+                    sent,
+                ),
+                0,
+            )
+            self.assertEqual(
+                await self._run(
+                    state,
+                    NOW + timedelta(hours=2),
+                    (replacement,),
+                    sent,
+                ),
+                0,
+            )
+            value = state.read()
+
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(set(value["events"]), {"TTI-new"})
+        self.assertEqual(value["events"]["TTI-new"]["missing_successes"], 0)
+        self.assertNotIn("ended_at", value["events"]["TTI-new"])
+
+    async def test_rotation_rejects_different_segment(self):
+        first = incident(provider_id="TTI-old")
+        different = incident(
+            provider_id="TTI-other",
+            starts_at=first.starts_at + timedelta(seconds=30),
+            coordinates=(
+                (-0.6537000, 38.0837390),
+                (-0.6542000, 38.0838021),
+                (-0.6543000, 38.0838235),
+            ),
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+
+            await self._run(state, NOW, (first,), sent)
+            self.assertEqual(
+                await self._run(
+                    state,
+                    NOW + timedelta(hours=1),
+                    (different,),
+                    sent,
+                ),
+                1,
+            )
+            value = state.read()
+
+        self.assertEqual(len(sent), 2)
+        self.assertIn("TTI-old", value["events"])
+        self.assertIn("TTI-other", value["events"])
+        self.assertEqual(value["events"]["TTI-old"]["missing_successes"], 1)
+
+    async def test_rotation_accepts_reversed_segment_with_swapped_boundaries(self):
+        first = incident(provider_id="TTI-old")
+        replacement = incident(
+            provider_id="TTI-new",
+            starts_at=first.starts_at + timedelta(seconds=30),
+            from_place=first.to_place,
+            to_place=first.from_place,
+            coordinates=tuple(reversed(first.coordinates)),
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+
+            await self._run(state, NOW, (first,), sent)
+            delivered = await self._run(
+                state,
+                NOW + timedelta(hours=1),
+                (replacement,),
+                sent,
+            )
+            value = state.read()
+
+        self.assertEqual(delivered, 0)
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(set(value["events"]), {"TTI-new"})
+
+    async def test_rotation_reuses_previously_ended_target_id(self):
+        first = incident(provider_id="TTI-a")
+        second = incident(provider_id="TTI-b")
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+
+            await self._run(state, NOW, (first,), sent)
+            await self._run(state, NOW + timedelta(hours=1), (), sent)
+            await self._run(state, NOW + timedelta(hours=2), (), sent)
+            await self._run(state, NOW + timedelta(hours=3), (second,), sent)
+            delivered = await self._run(
+                state,
+                NOW + timedelta(hours=4),
+                (first,),
+                sent,
+            )
+            value = state.read()
+
+        self.assertEqual(delivered, 0)
+        self.assertEqual(len(sent), 3)
+        self.assertEqual(set(value["events"]), {"TTI-a"})
+        self.assertNotIn("ended_at", value["events"]["TTI-a"])
+        self.assertEqual(value["events"]["TTI-a"]["last_message_id"], sent[-1][2])
 
     async def test_lane_reopening_has_lane_specific_reply(self):
         lane = incident(category="laneClosed")
