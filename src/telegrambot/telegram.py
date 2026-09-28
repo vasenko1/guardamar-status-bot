@@ -460,6 +460,45 @@ def _edit_photo_caption(
     )
 
 
+
+def _post_rich_message(
+    bot_token: str,
+    chat_id: str,
+    rich_html: str,
+    disable_notification: bool = False,
+) -> int:
+    if not 1 <= len(rich_html) <= 32768:
+        raise TelegramError(
+            "Telegram rich message length is invalid",
+            retryable=False,
+            code="MESSAGE-LENGTH",
+            description="длина Rich Message выходит за пределы Telegram",
+        )
+    decoded = _call_api(
+        bot_token,
+        "sendRichMessage",
+        {
+            "chat_id": chat_id,
+            "rich_message": {
+                "html": rich_html,
+                "skip_entity_detection": True,
+            },
+            "disable_notification": disable_notification,
+        },
+        REQUEST_TIMEOUT_SECONDS,
+    )
+    result = decoded.get("result")
+    message_id = result.get("message_id") if isinstance(result, dict) else None
+    if not isinstance(message_id, int):
+        raise TelegramError(
+            "Telegram returned no rich-message identifier",
+            retryable=True,
+            code="NO-MESSAGE-ID",
+            description="Telegram не вернул идентификатор Rich Message",
+        )
+    return message_id
+
+
 def _post_message(
     bot_token: str,
     chat_id: str,
@@ -682,6 +721,56 @@ async def send_message(
             if reply_to_message_id is not None:
                 arguments += (reply_to_message_id,)
             return await asyncio.to_thread(_post_message, *arguments)
+        except TelegramError as exc:
+            if (
+                not exc.retryable
+                or attempt == max_attempts
+                or (retry_only_rate_limits and exc.server_status != 429)
+            ):
+                raise
+            backoff = 2 ** (attempt - 1)
+            requested_delay = exc.retry_after or 0
+            if (
+                retry_only_rate_limits
+                and requested_delay > MAX_IDEMPOTENT_RETRY_DELAY_SECONDS
+            ):
+                raise
+            delay = min(
+                max(backoff, requested_delay),
+                (
+                    MAX_IDEMPOTENT_RETRY_DELAY_SECONDS
+                    if retry_only_rate_limits
+                    else MAX_RETRY_DELAY_SECONDS
+                ),
+            )
+            await sleep(delay)
+    raise AssertionError("unreachable")
+
+
+
+async def send_rich_message(
+    bot_token: str,
+    chat_id: str,
+    rich_html: str,
+    *,
+    disable_notification: bool = False,
+    max_attempts: int = MAX_SEND_ATTEMPTS,
+    retry_only_rate_limits: bool = False,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+) -> int:
+    """Send one Rich Message with the normal ambiguous-send policy."""
+
+    if max_attempts < 1:
+        raise ValueError("max_attempts must be at least one")
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return await asyncio.to_thread(
+                _post_rich_message,
+                bot_token,
+                chat_id,
+                rich_html,
+                disable_notification,
+            )
         except TelegramError as exc:
             if (
                 not exc.retryable

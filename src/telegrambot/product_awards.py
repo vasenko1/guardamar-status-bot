@@ -1,8 +1,8 @@
-"""On-demand category-first supermarket product-award publications.
+"""Reviewed supermarket product-award publications.
 
-The runtime deliberately services a reviewed catalogue instead of discovering
-new competitions. A due run validates one immutable award fact, refreshes one
-exact retailer product, publishes at most one event, and exits.
+The runtime keeps a small reviewed catalogue. A due run validates one award
+fact, refreshes one exact retailer object, builds one rich Telegram article,
+publishes at most one event, and exits.
 """
 
 from __future__ import annotations
@@ -12,7 +12,6 @@ import html
 import json
 import logging
 import os
-import re
 import unicodedata
 import urllib.parse
 from contextlib import contextmanager
@@ -23,30 +22,15 @@ from pathlib import Path
 from typing import Iterator, Optional
 
 from ._transport import BoundedFetchError, fetch_bounded
-from .branding import with_footer
+from .branding import FOOTER
 
 LOGGER = logging.getLogger(__name__)
 
 REQUEST_TIMEOUT_SECONDS = 15
 HTML_LIMIT_BYTES = 768_000
-USER_AGENT = "GuardamarMorningDigest/0.13"
-RETAIL_NAVIGATION_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Linux; Android 14; Mobile) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/140.0.0.0 Mobile Safari/537.36"
-    ),
-    "Accept": (
-        "text/html,application/xhtml+xml,application/xml;q=0.9,"
-        "image/avif,image/webp,*/*;q=0.8"
-    ),
-    "Accept-Language": "es-ES,es;q=0.9,en;q=0.5",
-    "Upgrade-Insecure-Requests": "1",
-    "Sec-Fetch-Site": "none",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-User": "?1",
-    "Sec-Fetch-Dest": "document",
-}
+JSON_LIMIT_BYTES = 500_000
+IMAGE_LIMIT_BYTES = 700_000
+USER_AGENT = "GuardamarMorningDigest/0.14"
 COOLDOWN_DAYS = 3
 STATE_SCHEMA_VERSION = 1
 MAX_HISTORY = 128
@@ -63,9 +47,10 @@ class ProductAwardError(RuntimeError):
 @dataclass(frozen=True)
 class RetailOffer:
     retailer: str
-    package: str
     price: str
-    product_url: str
+    image_url: str
+    product_name: str
+    regular_price: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -74,6 +59,7 @@ class ReviewedCandidate:
     selection_key: str
     event_id: str
     source_name: str
+    source_kind: str
     source_url: str
     source_hosts: frozenset[str]
     source_markers: tuple[str, ...]
@@ -82,11 +68,14 @@ class ReviewedCandidate:
     retailer_url: str
     retailer_hosts: frozenset[str]
     retailer_markers: tuple[str, ...]
-    retailer_title: str
-    package: str
-    result_line: str
-    detail_line: str
-    source_link_label: str
+    product_name: str
+    award_year: int
+    source_category: str
+    award_scope: str
+    award_result: str
+    product_id: int
+    expected_ean: Optional[str]
+    sample_size: Optional[int] = None
     rank: int = 1
 
 
@@ -151,31 +140,27 @@ def _allowed(hosts: frozenset[str]):
             and parsed.username is None
             and parsed.password is None
         )
+
     return check
 
 
-def _fetch_html(
-    url: str,
-    hosts: frozenset[str],
-    *,
-    headers: Optional[dict[str, str]] = None,
-) -> str:
-    request_headers = headers or {
-        "Accept": "text/html,application/xhtml+xml",
-        "User-Agent": USER_AGENT,
-    }
+def _fetch_html(url: str, hosts: frozenset[str]) -> str:
     try:
         payload, _, _ = fetch_bounded(
             url,
             is_allowed_url=_allowed(hosts),
+            accepted_types=frozenset({"text/html", "application/xhtml+xml"}),
             limit_bytes=HTML_LIMIT_BYTES,
             timeout_seconds=REQUEST_TIMEOUT_SECONDS,
-            headers=request_headers,
-            accepted_types=frozenset({"text/html", "application/xhtml+xml"}),
+            headers={
+                "Accept": "text/html,application/xhtml+xml",
+                "Accept-Language": "es-ES,es;q=0.9,en;q=0.5",
+                "User-Agent": USER_AGENT,
+            },
         )
     except BoundedFetchError as exc:
         raise ProductAwardError(
-            "product-award source request failed",
+            "product-award HTML request failed",
             code=exc.code,
         ) from exc
     try:
@@ -185,6 +170,40 @@ def _fetch_html(
             "product-award source is not UTF-8",
             code="ENCODING",
         ) from exc
+
+
+def _fetch_json(url: str, hosts: frozenset[str]) -> dict:
+    try:
+        payload, _, _ = fetch_bounded(
+            url,
+            is_allowed_url=_allowed(hosts),
+            accepted_types=frozenset({"application/json"}),
+            limit_bytes=JSON_LIMIT_BYTES,
+            timeout_seconds=REQUEST_TIMEOUT_SECONDS,
+            headers={
+                "Accept": "application/json",
+                "Accept-Language": "es-ES,es;q=0.9",
+                "User-Agent": USER_AGENT,
+            },
+        )
+    except BoundedFetchError as exc:
+        raise ProductAwardError(
+            "product-award JSON request failed",
+            code=exc.code,
+        ) from exc
+    try:
+        value = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ProductAwardError(
+            "product-award JSON is invalid",
+            code="PARSER",
+        ) from exc
+    if not isinstance(value, dict):
+        raise ProductAwardError(
+            "product-award JSON structure is invalid",
+            code="PARSER",
+        )
+    return value
 
 
 def _visible_text(source: str) -> str:
@@ -198,12 +217,11 @@ def _visible_text(source: str) -> str:
         ) from exc
     text = parser.text()
     if not text:
-        raise ProductAwardError("product-award page is empty", code="PARSER")
+        raise ProductAwardError(
+            "product-award page is empty",
+            code="PARSER",
+        )
     return text
-
-
-def _fetch_visible_text(url: str, hosts: frozenset[str]) -> str:
-    return _visible_text(_fetch_html(url, hosts))
 
 
 def _require_markers(text: str, markers: tuple[str, ...], *, code: str) -> None:
@@ -216,50 +234,6 @@ def _require_markers(text: str, markers: tuple[str, ...], *, code: str) -> None:
         )
 
 
-def _price_after_title(text: str, title: str) -> Optional[str]:
-    folded_text = _fold(text)
-    folded_title = _fold(title)
-    folded_add = _fold("Añadir")
-
-    # Retail pages may repeat the exact product title in the document <title>
-    # before the site header/cart. DIA then exposes the cart total (0,00 €)
-    # before the real body product card. Evaluate every exact-title occurrence
-    # that reaches an Add button and prefer the nearest title -> Add segment,
-    # which corresponds to the body product card on the reviewed SSR pages.
-    candidates: list[tuple[int, str]] = []
-    start = 0
-    while True:
-        index = folded_text.find(folded_title, start)
-        if index < 0:
-            break
-        window = folded_text[index:index + 1500]
-        add_index = window.find(folded_add)
-        if add_index >= 0:
-            candidates.append((add_index, window[:add_index]))
-        start = index + len(folded_title)
-
-    if not candidates:
-        return None
-
-    unavailable_markers = (
-        "agotado",
-        "no disponible",
-        "sin stock",
-        "temporalmente agotado",
-    )
-    for _, product_card in sorted(candidates, key=lambda item: item[0]):
-        if any(_fold(marker) in product_card for marker in unavailable_markers):
-            continue
-        match = re.search(r"(?<!\d)(\d{1,3}[.,]\d{2})\s*€", product_card)
-        if match is None:
-            continue
-        raw_price = match.group(1).replace(",", ".")
-        if float(raw_price) <= 0:
-            continue
-        return match.group(1).replace(".", ",") + " €"
-    return None
-
-
 def _walk_json_dicts(value) -> Iterator[dict]:
     if isinstance(value, dict):
         yield value
@@ -270,30 +244,6 @@ def _walk_json_dicts(value) -> Iterator[dict]:
             yield from _walk_json_dicts(child)
 
 
-def _aldi_next_data(source: str):
-    match = re.search(
-        r'<script[^>]*id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>',
-        source,
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-    if match is None:
-        raise ProductAwardError("ALDI Next.js data missing", code="RETAIL-DRIFT")
-    try:
-        next_data = json.loads(match.group(1))
-    except json.JSONDecodeError as exc:
-        raise ProductAwardError("ALDI Next.js data invalid", code="RETAIL-DRIFT") from exc
-    try:
-        api_data = next_data["props"]["pageProps"]["apiData"]
-    except (KeyError, TypeError) as exc:
-        raise ProductAwardError("ALDI product payload missing", code="RETAIL-DRIFT") from exc
-    if not isinstance(api_data, str):
-        raise ProductAwardError("ALDI product payload changed", code="RETAIL-DRIFT")
-    try:
-        return json.loads(api_data)
-    except json.JSONDecodeError as exc:
-        raise ProductAwardError("ALDI product payload invalid", code="RETAIL-DRIFT") from exc
-
-
 def _decimal_price(value) -> Optional[str]:
     if isinstance(value, bool) or not isinstance(value, (int, float, str)):
         return None
@@ -301,33 +251,212 @@ def _decimal_price(value) -> Optional[str]:
         number = float(value)
     except (TypeError, ValueError):
         return None
-    if number < 0:
+    if number <= 0:
         return None
     return f"{number:.2f}".replace(".", ",") + " €"
 
 
-def _aldi_offer(candidate: ReviewedCandidate, source: str) -> Optional[RetailOffer]:
+def _remote_image(value: object) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = urllib.parse.urlsplit(value)
+    except ValueError:
+        return None
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.port not in {None, 443}
+    ):
+        return None
+    return value
+
+
+def _image_exists(url: str, hosts: frozenset[str]) -> bool:
+    try:
+        fetch_bounded(
+            url,
+            is_allowed_url=_allowed(hosts),
+            accepted_types=frozenset({"image/jpeg", "image/png", "image/webp"}),
+            limit_bytes=IMAGE_LIMIT_BYTES,
+            timeout_seconds=REQUEST_TIMEOUT_SECONDS,
+            headers={
+                "Accept": "image/avif,image/webp,image/png,image/jpeg,*/*;q=0.8",
+                "User-Agent": USER_AGENT,
+            },
+        )
+    except BoundedFetchError:
+        return False
+    return True
+
+
+def _upgrade_masymas_image(url: str, hosts: frozenset[str]) -> str:
+    if "/135x135/" not in url:
+        return url
+    candidate = url.replace("/135x135/", "/300x300/")
+    return candidate if _image_exists(candidate, hosts) else url
+
+
+def _price_data(payload: dict) -> tuple[str, Optional[str]]:
+    price_data = payload.get("priceData")
+    if not isinstance(price_data, dict):
+        raise ProductAwardError(
+            "retailer priceData missing",
+            code="RETAIL-DRIFT",
+        )
+    prices = price_data.get("prices")
+    if not isinstance(prices, list):
+        raise ProductAwardError(
+            "retailer prices missing",
+            code="RETAIL-DRIFT",
+        )
+
+    regular = None
+    offer = None
+    for item in prices:
+        if not isinstance(item, dict):
+            continue
+        value = item.get("value")
+        if not isinstance(value, dict):
+            continue
+        price = _decimal_price(value.get("centAmount"))
+        if price is None:
+            continue
+        if item.get("id") == "PRICE":
+            regular = price
+        elif item.get("id") == "OFFER_PRICE":
+            offer = price
+
+    if offer is not None:
+        return offer, regular
+    if regular is not None:
+        return regular, None
+    raise ProductAwardError(
+        "retailer current price missing",
+        code="RETAIL-DRIFT",
+    )
+
+
+def _first_product_image(payload: dict) -> Optional[str]:
+    product_data = payload.get("productData")
+    if isinstance(product_data, dict):
+        image = _remote_image(product_data.get("imageURL"))
+        if image is not None:
+            return image
+
+    media = payload.get("media")
+    if isinstance(media, list):
+        for item in media:
+            if not isinstance(item, dict):
+                continue
+            for key in ("url", "imageURL"):
+                image = _remote_image(item.get(key))
+                if image is not None:
+                    return image
+    return None
+
+
+def _tol_offer(candidate: ReviewedCandidate) -> RetailOffer:
+    payload = _fetch_json(candidate.retailer_url, candidate.retailer_hosts)
+    actual_ean = str(payload.get("ean") or "")
+    if candidate.expected_ean is None or actual_ean != candidate.expected_ean:
+        raise ProductAwardError(
+            "retailer EAN changed",
+            code="RETAIL-DRIFT",
+        )
+
+    product_data = payload.get("productData")
+    product_name = ""
+    if isinstance(product_data, dict) and isinstance(product_data.get("name"), str):
+        product_name = product_data["name"].strip()
+    if not product_name and isinstance(payload.get("name"), str):
+        product_name = payload["name"].strip()
+    if not product_name:
+        raise ProductAwardError(
+            "retailer product name missing",
+            code="RETAIL-DRIFT",
+        )
+
+    if candidate.retailer_markers:
+        _require_markers(
+            product_name,
+            candidate.retailer_markers,
+            code="RETAIL-DRIFT",
+        )
+
+    price, regular_price = _price_data(payload)
+    image_url = _first_product_image(payload)
+    if image_url is None:
+        raise ProductAwardError(
+            "retailer exact product image missing",
+            code="MEDIA",
+        )
+    if candidate.retailer_kind == "masymas":
+        image_url = _upgrade_masymas_image(image_url, candidate.retailer_hosts)
+
+    return RetailOffer(
+        retailer=candidate.retailer,
+        price=price,
+        regular_price=regular_price,
+        image_url=image_url,
+        product_name=product_name,
+    )
+
+
+def _aldi_next_data(source: str) -> dict:
+    import re
+
+    match = re.search(
+        r'<script[^>]*id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>',
+        source,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if match is None:
+        raise ProductAwardError(
+            "ALDI Next.js data missing",
+            code="RETAIL-DRIFT",
+        )
+    try:
+        next_data = json.loads(match.group(1))
+        api_data = next_data["props"]["pageProps"]["apiData"]
+        payload = json.loads(api_data)
+    except (json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise ProductAwardError(
+            "ALDI product payload invalid",
+            code="RETAIL-DRIFT",
+        ) from exc
+    if not isinstance(payload, dict):
+        raise ProductAwardError(
+            "ALDI product payload changed",
+            code="RETAIL-DRIFT",
+        )
+    return payload
+
+
+def _aldi_offer(candidate: ReviewedCandidate, source: str) -> RetailOffer:
     payload = _aldi_next_data(source)
     matches: list[dict] = []
     for item in _walk_json_dicts(payload):
-        if item.get("brandName") != "NALTROS ®":
+        if str(item.get("objectID") or "") != str(candidate.product_id):
             continue
-        if item.get("salesUnit") != "0,75 l unidad":
-            continue
-        references = item.get("productReferences")
-        if not isinstance(references, list):
-            continue
-        if not any(
-            isinstance(reference, dict)
-            and reference.get("type") == "KVArticleNumber"
-            and str(reference.get("value")) == "1903"
-            for reference in references
-        ):
+        identity_text = json.dumps(item, ensure_ascii=False, sort_keys=True)
+        try:
+            _require_markers(
+                identity_text,
+                candidate.retailer_markers,
+                code="RETAIL-DRIFT",
+            )
+        except ProductAwardError:
             continue
         matches.append(item)
 
     if not matches:
-        return None
+        raise ProductAwardError(
+            "ALDI exact product missing",
+            code="RETAIL-DRIFT",
+        )
 
     signatures = {
         (
@@ -339,122 +468,230 @@ def _aldi_offer(candidate: ReviewedCandidate, source: str) -> Optional[RetailOff
         for item in matches
     }
     if len(signatures) != 1:
-        raise ProductAwardError("ALDI product data is ambiguous", code="RETAIL-DRIFT")
+        raise ProductAwardError(
+            "ALDI product data is ambiguous",
+            code="RETAIL-DRIFT",
+        )
 
     product = matches[0]
     if product.get("isAvailable") is not True:
-        return None
+        raise ProductAwardError(
+            "ALDI exact product unavailable",
+            code="RETAIL-UNAVAILABLE",
+        )
     if product.get("isComingSoon") is True or product.get("isRecall") is True:
-        return None
+        raise ProductAwardError(
+            "ALDI exact product unavailable",
+            code="RETAIL-UNAVAILABLE",
+        )
 
     price_data = product.get("currentPrice")
     if not isinstance(price_data, dict):
-        raise ProductAwardError("ALDI current price missing", code="RETAIL-DRIFT")
+        raise ProductAwardError(
+            "ALDI current price missing",
+            code="RETAIL-DRIFT",
+        )
     price = _decimal_price(price_data.get("priceValue"))
     if price is None:
-        return None
+        raise ProductAwardError(
+            "ALDI current price invalid",
+            code="RETAIL-DRIFT",
+        )
+
+    image_url = None
+    assets = product.get("assets")
+    if isinstance(assets, list):
+        for asset in assets:
+            if not isinstance(asset, dict) or asset.get("type") != "primary":
+                continue
+            image_url = _remote_image(asset.get("url"))
+            if image_url is not None:
+                break
+    if image_url is None:
+        raise ProductAwardError(
+            "ALDI primary product image missing",
+            code="MEDIA",
+        )
+
+    name = product.get("name")
+    brand = product.get("brandName")
+    product_name = " ".join(
+        part.strip()
+        for part in (brand, name)
+        if isinstance(part, str) and part.strip()
+    )
+    if not product_name:
+        product_name = candidate.product_name
+
     return RetailOffer(
         retailer=candidate.retailer,
-        package=candidate.package,
         price=price,
-        product_url=candidate.retailer_url,
+        image_url=image_url,
+        product_name=product_name,
     )
 
 
 def _verify_award(candidate: ReviewedCandidate) -> None:
-    text = _fetch_visible_text(candidate.source_url, candidate.source_hosts)
+    text = _visible_text(_fetch_html(candidate.source_url, candidate.source_hosts))
     _require_markers(text, candidate.source_markers, code="AWARD-DRIFT")
 
 
-def _refresh_offer(candidate: ReviewedCandidate) -> Optional[RetailOffer]:
-    # Carrefour and DIA reject the lightweight service UA but return the same
-    # public server-rendered product HTML for a normal top-level navigation.
-    # Keep ALDI on the existing lightweight request because its exact Next.js
-    # contract already works there.
-    retail_headers = (
-        RETAIL_NAVIGATION_HEADERS
-        if candidate.retailer_kind in {"carrefour", "dia"}
-        else None
-    )
-    source = _fetch_html(
-        candidate.retailer_url,
-        candidate.retailer_hosts,
-        headers=retail_headers,
-    )
-
+def _refresh_offer(candidate: ReviewedCandidate) -> RetailOffer:
+    if candidate.retailer_kind in {"consum", "masymas"}:
+        return _tol_offer(candidate)
     if candidate.retailer_kind == "aldi":
+        source = _fetch_html(candidate.retailer_url, candidate.retailer_hosts)
         return _aldi_offer(candidate, source)
+    raise ProductAwardError(
+        "unknown retailer adapter",
+        code="CONFIG",
+    )
 
-    text = _visible_text(source)
-    try:
-        _require_markers(text, candidate.retailer_markers, code="RETAIL-DRIFT")
-    except ProductAwardError:
-        return None
 
-    if candidate.retailer_kind in {"carrefour", "dia"}:
-        price = _price_after_title(text, candidate.retailer_title)
-    else:
-        raise ProductAwardError("unknown retailer adapter", code="CONFIG")
+def _price_sentence(offer: RetailOffer, *, range_member: bool) -> str:
+    subject = "Этот вариант" if range_member else "Сейчас этот товар"
+    if offer.regular_price is not None and offer.regular_price != offer.price:
+        return (
+            f"{subject} в {html.escape(offer.retailer)} стоит "
+            f"<b>{html.escape(offer.price)}</b> вместо обычных "
+            f"{html.escape(offer.regular_price)}."
+        )
+    return (
+        f"{subject} в {html.escape(offer.retailer)} стоит "
+        f"<b>{html.escape(offer.price)}</b>."
+    )
 
-    if price is None:
-        return None
-    return RetailOffer(
-        retailer=candidate.retailer,
-        package=candidate.package,
-        price=price,
-        product_url=candidate.retailer_url,
+
+def _methodology(candidate: ReviewedCandidate) -> str:
+    if candidate.source_kind == "producto_del_ano":
+        return (
+            "<blockquote expandable>"
+            "🔬 <b>Как выбирают Producto del Año</b><br><br>"
+            "Это испанская потребительская премия за инновации. "
+            "По данным организатора, в голосовании участвуют более "
+            "10 000 потребителей, а каждый кандидат дополнительно "
+            "проходит тест продукта среди 100 представителей своей "
+            "целевой аудитории. Победителем становится продукт с "
+            "наибольшим результатом в своей категории."
+            "</blockquote>"
+        )
+    if candidate.source_kind == "world_beer_awards":
+        return (
+            "<blockquote expandable>"
+            "🔬 <b>Как проходит World Beer Awards</b><br><br>"
+            "Пиво оценивают вслепую международные экспертные панели. "
+            "На первых этапах продукты сравниваются внутри своих стилей "
+            "и стран, после чего победители могут проходить дальше в "
+            "конкурсе."
+            "</blockquote>"
+        )
+    if candidate.source_kind == "ocu":
+        return (
+            "<blockquote expandable>"
+            "🔬 <b>Как проходил тест OCU</b><br><br>"
+            "OCU проверяла состав и основные лабораторные показатели cava, "
+            "а также проводила отдельную дегустационную оценку. Итоговый "
+            "балл объединяет результаты этих проверок."
+            "</blockquote>"
+        )
+    raise ProductAwardError(
+        "unknown award methodology",
+        code="CONFIG",
     )
 
 
 def build_message(candidate: ReviewedCandidate, offer: RetailOffer) -> str:
-    source_url = html.escape(candidate.source_url, quote=True)
-    retail_url = html.escape(offer.product_url, quote=True)
-    message = (
-        "🏆 <b>"
-        + html.escape(candidate.result_line)
-        + "</b>\n\n"
-        + html.escape(candidate.detail_line)
-        + "\n\n"
-        + "🛒 <b>Сейчас в "
-        + html.escape(offer.retailer)
-        + "</b>\n"
-        + html.escape(offer.package)
-        + " — <b>"
-        + html.escape(offer.price)
-        + "</b>\n"
-        + f'🔗 <a href="{retail_url}">Карточка товара</a>\n\n'
-        + f'🏅 <a href="{source_url}">'
-        + html.escape(candidate.source_link_label)
-        + "</a>"
-    )
-    rendered = with_footer(message)
-    if len(rendered) > 4096:
+    name = html.escape(candidate.product_name)
+    category = html.escape(candidate.source_category)
+
+    if candidate.source_kind == "producto_del_ano":
+        title = f"Producto del Año {candidate.award_year}: {name}"
+        if candidate.award_scope == "range":
+            first = (
+                f"Награда относится к линейке <b>{name}</b> в категории "
+                f"{category}. В {html.escape(offer.retailer)} сейчас продается "
+                "один из продуктов этой линейки: "
+                f"<b>{html.escape(offer.product_name)}</b>."
+            )
+            price = _price_sentence(offer, range_member=True)
+        else:
+            first = (
+                f"<b>{name}</b> стал победителем Producto del Año "
+                f"{candidate.award_year} в категории {category}."
+            )
+            price = _price_sentence(offer, range_member=False)
+    elif candidate.source_kind == "world_beer_awards":
+        title = (
+            f"Пиво {name} получило золото World Beer Awards "
+            f"{candidate.award_year}"
+        )
+        first = (
+            f"На World Beer Awards {candidate.award_year} <b>{name}</b> "
+            f"получило золото и стало победителем Испании в стиле {category}."
+        )
+        price = _price_sentence(offer, range_member=False)
+    elif candidate.source_kind == "ocu":
+        title = f"{name} получил {html.escape(candidate.award_result)} в тесте OCU"
+        sample = (
+            f"{candidate.sample_size} cava"
+            if candidate.sample_size is not None
+            else "cava"
+        )
+        first = (
+            "<b>OCU - испанская Организация потребителей и пользователей</b> "
+            f"сравнила {sample}. <b>{name}</b> получил "
+            f"{html.escape(candidate.award_result)} и вошел в число лидеров "
+            "исследования."
+        )
+        price = _price_sentence(offer, range_member=False)
+    else:
         raise ProductAwardError(
-            "product-award message exceeds Telegram limit",
+            "unknown award renderer",
+            code="CONFIG",
+        )
+
+    image = html.escape(offer.image_url, quote=True)
+    rendered = "\n".join((
+        f'<img src="{image}"/>',
+        f"<p>🏆 <b>{title}</b></p>",
+        f"<p>{first}</p>",
+        f"<p>{price}</p>",
+        _methodology(candidate),
+        f"<p>{FOOTER}</p>",
+    ))
+    if not 1 <= len(rendered) <= 32768:
+        raise ProductAwardError(
+            "product-award rich message exceeds Telegram limit",
             code="MESSAGE-LENGTH",
         )
     return rendered
 
 
-# Empty higher-priority source groups mean that their authoritative podium was
-# reviewed and exhausted without a current exact match in the six retailer
-# chains. They preserve source precedence without making the phone re-search
-# the internet.
+PRODUCTO_DEL_ANO_URL = (
+    "https://granpremioalainnovacion.com/productos-ganadores-pda/"
+)
+PRODUCTO_DEL_ANO_HOSTS = frozenset({"granpremioalainnovacion.com"})
+WORLD_BEER_HOSTS = frozenset({"www.worldbeerawards.com", "worldbeerawards.com"})
+
+
 CATEGORIES: tuple[ReviewedCategory, ...] = (
     ReviewedCategory(
         "sparkling_cava",
         (
-            ReviewedSource("MAPA 2026 sparkling", 1, ()),
             ReviewedSource(
                 "OCU cava 2025",
-                2,
+                1,
                 (
                     ReviewedCandidate(
                         category_key="sparkling_cava",
                         selection_key="sparkling_cava:2025",
                         event_id="sparkling_cava:ocu-2025:naltros-brut",
                         source_name="OCU",
-                        source_url="https://www.ocu.org/organizacion/prensa/notas-de-prensa/2025/cavas191225",
+                        source_kind="ocu",
+                        source_url=(
+                            "https://www.ocu.org/organizacion/prensa/"
+                            "notas-de-prensa/2025/cavas191225"
+                        ),
                         source_hosts=frozenset({"www.ocu.org"}),
                         source_markers=(
                             "25 vinos espumosos",
@@ -466,184 +703,256 @@ CATEGORIES: tuple[ReviewedCategory, ...] = (
                         retailer_url="https://www.aldi.es/p/cava-brut-190300.html",
                         retailer_hosts=frozenset({"www.aldi.es", "aldi.es"}),
                         retailer_markers=("NALTROS", "Cava brut", "0,75 l"),
-                        retailer_title="Cava brut",
-                        package="0,75 l",
-                        result_line="NALTROS Brut в ALDI — 94/100, один из лидеров OCU",
-                        detail_line=(
-                            "OCU сравнила 25 cava: NALTROS Brut получил 94/100 "
-                            "и вошёл в тройку продуктов с максимальной оценкой."
-                        ),
-                        source_link_label="Исследование OCU",
-                        rank=1,
+                        product_name="NALTROS Brut",
+                        award_year=2025,
+                        source_category="cava",
+                        award_scope="exact_product",
+                        award_result="94/100",
+                        product_id=190300,
+                        expected_ean=None,
+                        sample_size=25,
                     ),
                 ),
             ),
         ),
     ),
     ReviewedCategory(
-        "gazpacho",
+        "dairy_drinks",
         (
             ReviewedSource(
-                "OCU gazpacho 2025",
+                "Producto del Año 2026",
                 1,
                 (
                     ReviewedCandidate(
-                        category_key="gazpacho",
-                        selection_key="gazpacho:2025",
-                        event_id="gazpacho:ocu-2025:realfooding",
-                        source_name="OCU",
-                        source_url="https://www.ocu.org/alimentacion/platos-preparados/informe/gazpachos",
-                        source_hosts=frozenset({"www.ocu.org"}),
-                        source_markers=(
-                            "39 gazpachos",
-                            "Mejor del Análisis",
-                            "Real Fooding",
-                            "90 sobre 100",
+                        category_key="dairy_drinks",
+                        selection_key="dairy_drinks:2026",
+                        event_id="dairy_drinks:pda-2026:celta-proteina",
+                        source_name="Producto del Año",
+                        source_kind="producto_del_ano",
+                        source_url=PRODUCTO_DEL_ANO_URL,
+                        source_hosts=PRODUCTO_DEL_ANO_HOSTS,
+                        source_markers=("CELTA + PROTEÍNA", "BEBIDAS LÁCTEAS"),
+                        retailer="Consum",
+                        retailer_kind="consum",
+                        retailer_url=(
+                            "https://tienda.consum.es/api/rest/V1.0/"
+                            "catalog/product/45721"
                         ),
-                        retailer="Carrefour",
-                        retailer_kind="carrefour",
-                        retailer_url="https://www.carrefour.es/supermercado/gazpacho-fresco-realfooding-sin-gluten-1-l/R-VC4AECOMM-339275/p",
-                        retailer_hosts=frozenset({"www.carrefour.es"}),
-                        retailer_markers=(
-                            "Gazpacho fresco Realfooding sin gluten 1 l",
-                            "CAÑA NATURE",
-                            "REALFOODING",
-                        ),
-                        retailer_title="Gazpacho fresco Realfooding sin gluten 1 l",
-                        package="1 l",
-                        result_line="Realfooding в Carrefour — лучший gazpacho по версии OCU",
-                        detail_line=(
-                            "В сравнении 39 gazpacho он получил 90/100, "
-                            "Mejor del Análisis и лучший результат дегустации."
-                        ),
-                        source_link_label="Исследование OCU",
+                        retailer_hosts=frozenset({"tienda.consum.es"}),
+                        retailer_markers=("Batido", "Proteina", "Café"),
+                        product_name="Celta +Proteína",
+                        award_year=2026,
+                        source_category="Bebidas Lácteas",
+                        award_scope="range",
+                        award_result="Producto del Año",
+                        product_id=45721,
+                        expected_ean="8414044004122",
                     ),
                 ),
             ),
         ),
     ),
     ReviewedCategory(
-        "aove",
-        (
-            ReviewedSource("EVOOLEUM 2026 overall", 1, ()),
-            ReviewedSource(
-                "OCU AOVE 2024",
-                2,
-                (
-                    ReviewedCandidate(
-                        category_key="aove",
-                        selection_key="aove:2024",
-                        event_id="aove:ocu-2024:oleoestepa-dop-estepa",
-                        source_name="OCU",
-                        source_url="https://www.ocu.org/alimentacion/aceite-oliva/informe/aceite-oliva-virgen-extra",
-                        source_hosts=frozenset({"www.ocu.org"}),
-                        source_markers=(
-                            "23 productos",
-                            "lista de los mejores",
-                            "AOVE Oleoestepa, DOP Estepa",
-                        ),
-                        retailer="Carrefour",
-                        retailer_kind="carrefour",
-                        retailer_url="https://www.carrefour.es/supermercado/aceite-de-oliva-virgen-extra-oleoestepa-1-l/R-589802552/p",
-                        retailer_hosts=frozenset({"www.carrefour.es"}),
-                        retailer_markers=(
-                            "Aceite de oliva virgen extra Oleoestepa 1 l",
-                            "D.O. Estepa",
-                            "Oleoestepa S.C.A.",
-                        ),
-                        retailer_title="Aceite de oliva virgen extra Oleoestepa 1 l",
-                        package="1 l",
-                        result_line="Oleoestepa DOP Estepa в Carrefour — №1 в анализе AOVE OCU",
-                        detail_line=(
-                            "OCU сравнила 23 массовых AOVE; рейтинг качества "
-                            "возглавил Oleoestepa с DOP Estepa."
-                        ),
-                        source_link_label="Анализ OCU",
-                    ),
-                ),
-            ),
-        ),
-    ),
-    ReviewedCategory(
-        "coffee_capsules",
+        "snacks",
         (
             ReviewedSource(
-                "OCU coffee capsules 2024",
+                "Producto del Año 2026",
                 1,
                 (
                     ReviewedCandidate(
-                        category_key="coffee_capsules",
-                        selection_key="coffee_capsules:2024",
-                        event_id="coffee_capsules:ocu-2024:aromarte-intenso",
-                        source_name="OCU",
-                        source_url="https://www.ocu.org/alimentacion/cafe/comparador/arom-arte-dia-intenso/273/103038",
-                        source_hosts=frozenset({"www.ocu.org"}),
-                        source_markers=(
-                            "AROM'ARTE (DIA) Intenso",
-                            "Analizado en el laboratorio",
-                            "20 unidades",
-                            "Nespresso original",
+                        category_key="snacks",
+                        selection_key="snacks:2026",
+                        event_id="snacks:pda-2026:takis-blue-heat",
+                        source_name="Producto del Año",
+                        source_kind="producto_del_ano",
+                        source_url=PRODUCTO_DEL_ANO_URL,
+                        source_hosts=PRODUCTO_DEL_ANO_HOSTS,
+                        source_markers=("TAKIS BLUE HEAT", "SNACKS"),
+                        retailer="Consum",
+                        retailer_kind="consum",
+                        retailer_url=(
+                            "https://tienda.consum.es/api/rest/V1.0/"
+                            "catalog/product/43051"
                         ),
-                        retailer="DIA",
-                        retailer_kind="dia",
-                        retailer_url="https://www.dia.es/cafe-cacao-e-infusiones/capsulas-compatibles-nespresso/p/273821",
-                        retailer_hosts=frozenset({"www.dia.es"}),
-                        retailer_markers=(
-                            "Cápsulas de café intenso Dia Arom'arte 20 unidades",
-                            "Toscaf",
-                            "Nespresso",
-                        ),
-                        retailer_title="Cápsulas de café intenso Dia Arom'arte 20 unidades",
-                        package="20 капсул",
-                        result_line="AROM’ARTE Intenso в DIA — 85/100 в тесте OCU",
-                        detail_line=(
-                            "В исследовании OCU 2024 продукт получил 85/100; "
-                            "точная карточка OCU подтверждает лабораторное тестирование."
-                        ),
-                        source_link_label="Карточка лабораторного анализа OCU",
+                        retailer_hosts=frozenset({"tienda.consum.es"}),
+                        retailer_markers=("Takis", "Blue Heat"),
+                        product_name="Takis Blue Heat",
+                        award_year=2026,
+                        source_category="Snacks",
+                        award_scope="exact_product",
+                        award_result="Producto del Año",
+                        product_id=43051,
+                        expected_ean="8412600047163",
                     ),
                 ),
             ),
         ),
     ),
     ReviewedCategory(
-        "spirits_anis",
+        "meat_prepared",
         (
             ReviewedSource(
-                "MAPA spirits 2026",
+                "Producto del Año 2026",
                 1,
                 (
                     ReviewedCandidate(
-                        category_key="spirits_anis",
-                        selection_key="spirits_anis:2026",
-                        event_id="spirits_anis:mapa-2026:chinchon-dulce",
-                        source_name="MAPA",
-                        source_url="https://www.mapa.gob.es/es/alimentacion/temas/promo-alimentos/premios-alimentos/galardonados-bebidas-espirituosas",
-                        source_hosts=frozenset({"www.mapa.gob.es"}),
+                        category_key="meat_prepared",
+                        selection_key="meat_prepared:2026",
+                        event_id="meat_prepared:pda-2026:elpozo-extratiernos",
+                        source_name="Producto del Año",
+                        source_kind="producto_del_ano",
+                        source_url=PRODUCTO_DEL_ANO_URL,
+                        source_hosts=PRODUCTO_DEL_ANO_HOSTS,
                         source_markers=(
-                            "Galardonado 2026",
-                            "Anís Chinchón de la Alcoholera Dulce",
-                            "GONZALEZ BYASS DISTRIBUCION",
+                            "EXTRATIERNOS",
+                            "ESCALOPINES",
+                            "SOLOMILLOS",
+                            "CÁRNICOS + PLATOS PREPARADOS",
                         ),
-                        retailer="Carrefour",
-                        retailer_kind="carrefour",
-                        retailer_url="https://www.carrefour.es/supermercado/anis-chinchon-dulce-1-l/R-538001406/p",
-                        retailer_hosts=frozenset({"www.carrefour.es"}),
-                        retailer_markers=(
-                            "Anís Chinchón dulce 1 l",
-                            "35",
-                            "I.G.P. Chinchón",
-                            "González Byass",
+                        retailer="Consum",
+                        retailer_kind="consum",
+                        retailer_url=(
+                            "https://tienda.consum.es/api/rest/V1.0/"
+                            "catalog/product/23530"
                         ),
-                        retailer_title="Anís Chinchón dulce 1 l",
-                        package="1 l",
-                        result_line="Anís Chinchón Dulce — лучший напиток своей категории MAPA 2026",
-                        detail_line=(
-                            "Министерство сельского хозяйства Испании присудило "
-                            "ему Premio Alimentos de España 2026 среди спиртных "
-                            "напитков с географическим указанием."
+                        retailer_hosts=frozenset({"tienda.consum.es"}),
+                        retailer_markers=("Escalopín", "Extratierno"),
+                        product_name="ELPOZO ExtraTiernos",
+                        award_year=2026,
+                        source_category="Cárnicos + Platos Preparados",
+                        award_scope="range",
+                        award_result="Producto del Año",
+                        product_id=23530,
+                        expected_ean="8410843064220",
+                    ),
+                ),
+            ),
+        ),
+    ),
+    ReviewedCategory(
+        "refrigerated_coffee",
+        (
+            ReviewedSource(
+                "Producto del Año 2026",
+                1,
+                (
+                    ReviewedCandidate(
+                        category_key="refrigerated_coffee",
+                        selection_key="refrigerated_coffee:2026",
+                        event_id="refrigerated_coffee:pda-2026:nescafe-latte-baileys",
+                        source_name="Producto del Año",
+                        source_kind="producto_del_ano",
+                        source_url=PRODUCTO_DEL_ANO_URL,
+                        source_hosts=PRODUCTO_DEL_ANO_HOSTS,
+                        source_markers=("NESCAFÉ LATTE BAILEYS", "CAFÉS REFRIGERADOS"),
+                        retailer="Consum",
+                        retailer_kind="consum",
+                        retailer_url=(
+                            "https://tienda.consum.es/api/rest/V1.0/"
+                            "catalog/product/44075"
                         ),
-                        source_link_label="Премия MAPA",
+                        retailer_hosts=frozenset({"tienda.consum.es"}),
+                        retailer_markers=("Nescafé", "Latte", "Baileys"),
+                        product_name="Nescafé Latte Baileys",
+                        award_year=2026,
+                        source_category="Cafés Refrigerados",
+                        award_scope="exact_product",
+                        award_result="Producto del Año",
+                        product_id=44075,
+                        expected_ean="8435257073224",
+                    ),
+                ),
+            ),
+        ),
+    ),
+    ReviewedCategory(
+        "international_lager",
+        (
+            ReviewedSource(
+                "World Beer Awards 2026",
+                1,
+                (
+                    ReviewedCandidate(
+                        category_key="international_lager",
+                        selection_key="international_lager:2026",
+                        event_id="international_lager:wba-2026:ambar-especial",
+                        source_name="World Beer Awards",
+                        source_kind="world_beer_awards",
+                        source_url=(
+                            "https://www.worldbeerawards.com/winner-beer/beer/2026/"
+                            "worlds-best-international-lager-68769-world-beer-awards-2026"
+                        ),
+                        source_hosts=WORLD_BEER_HOSTS,
+                        source_markers=(
+                            "Ambar",
+                            "Especial",
+                            "Spain",
+                            "GOLD",
+                            "Country Winner",
+                        ),
+                        retailer="Consum",
+                        retailer_kind="consum",
+                        retailer_url=(
+                            "https://tienda.consum.es/api/rest/V1.0/"
+                            "catalog/product/22554"
+                        ),
+                        retailer_hosts=frozenset({"tienda.consum.es"}),
+                        retailer_markers=("Cerveza", "Especial"),
+                        product_name="Ambar Especial",
+                        award_year=2026,
+                        source_category="International Lager",
+                        award_scope="exact_product",
+                        award_result="gold_country_winner",
+                        product_id=22554,
+                        expected_ean="84107015",
+                    ),
+                ),
+            ),
+        ),
+    ),
+    ReviewedCategory(
+        "classic_pilsener",
+        (
+            ReviewedSource(
+                "World Beer Awards 2026",
+                1,
+                (
+                    ReviewedCandidate(
+                        category_key="classic_pilsener",
+                        selection_key="classic_pilsener:2026",
+                        event_id="classic_pilsener:wba-2026:mahou-sin-filtrar",
+                        source_name="World Beer Awards",
+                        source_kind="world_beer_awards",
+                        source_url=(
+                            "https://www.worldbeerawards.com/winner-beer/beer/2026/"
+                            "worlds-best-classic-pilsener-68763-world-beer-awards-2026"
+                        ),
+                        source_hosts=WORLD_BEER_HOSTS,
+                        source_markers=(
+                            "Mahou",
+                            "Sin Filtrar",
+                            "Spain",
+                            "GOLD",
+                            "Country Winner",
+                        ),
+                        retailer="Masymas",
+                        retailer_kind="masymas",
+                        retailer_url=(
+                            "https://tienda.masymas.com/api/rest/V1.0/"
+                            "catalog/product/10067"
+                        ),
+                        retailer_hosts=frozenset({
+                            "tienda.masymas.com",
+                            "cdn-fornes.aktiosdigitalservices.com",
+                        }),
+                        retailer_markers=("Cerveza", "Sin Filtrar"),
+                        product_name="Mahou Sin Filtrar",
+                        award_year=2026,
+                        source_category="Classic Pilsener",
+                        award_scope="exact_product",
+                        award_result="gold_country_winner",
+                        product_id=10067,
+                        expected_ean="8411327010153",
                     ),
                 ),
             ),
