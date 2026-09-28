@@ -4497,3 +4497,207 @@ Keep Lidl strong for:
 - targeted fallback where a distinctive exact product term exists.
 
 Do not query Lidl generically for every nomination.
+
+
+## Production-verified retailer, media and publication contracts - 28 September 2026
+
+This section supersedes earlier speculative retailer and presentation assumptions
+where they conflict with the production probes below.
+
+### Retailer lookup contracts
+
+The production Redmi/Termux probes establish retailer-specific contracts rather
+than one universal search strategy.
+
+**Mercadona**
+- exact-name Algolia discovery can recover a stable product id;
+- EAN search returned no hit in the tested contract;
+- textual product-id search returned no hit;
+- direct `/api/products/<id>/` detail is cheap and returns exact product
+  identity, EAN, price data and photos;
+- runtime shape: exact-name discovery once -> save id -> direct REST refresh.
+
+**Consum**
+- exact-name search with `limit=1` can recover the internal product id;
+- EAN search returned no result in the tested contract;
+- textual internal-id search returned no result;
+- direct detail by saved id returns exact EAN, product data, price data and
+  media;
+- runtime shape: exact-name discovery once -> validate -> save id -> direct
+  detail refresh.
+
+**Masymas / Juan Fornes**
+- exact EAN search works for the validated Nescafe Latte Baileys control;
+- exact-name search also works;
+- textual internal-id search is unsafe: query `14523` returned an unrelated
+  noodle product;
+- direct detail by saved id works;
+- runtime shape when EAN is known: EAN discovery -> exact EAN validation ->
+  save id -> direct detail refresh.
+
+**ALDI Espana**
+- exact-name Algolia discovery works;
+- direct Algolia object refresh by saved objectID works and is very small;
+- tested search hits did not expose EAN, so EAN-search support remains
+  unproven and must not be assumed;
+- ALDI product objects expose availability, price and first-party media assets.
+
+**DIA Espana**
+- the first-party JSON search-back endpoint returned HTTP 403 from production
+  Termux with multiple normal user-agent profiles;
+- repeated WAF circumvention is intentionally out of scope;
+- runtime discovery through that endpoint is therefore unavailable today;
+- known exact first-party product pages may still be useful outside that
+  blocked discovery contract, but no automatic DIA publication should depend
+  on an unproven current-price refresh.
+
+**Lidl Espana**
+- generic `q/api/search` is not a trustworthy exact-discovery contract;
+- an exact positive query, the KONG query, and an impossible query all returned
+  superficially valid search responses, while the latter two surfaced
+  unrelated first products;
+- HTTP 200, `numFound` and first-result presence are therefore never identity
+  evidence;
+- generic Lidl search is too expensive to run for every award event;
+- source-provided Lidl hints and known exact Lidl pages remain useful.
+
+These contracts preserve the rule that a search hit is only a candidate and a
+search miss is not proof of retail absence.
+
+### First-party product-photo contracts
+
+Photo acquisition does not require a separate heavy image-search subsystem for
+the retailers already production-probed.
+
+**Mercadona**
+- the same exact REST detail used for identity and price exposes `photos[]`;
+- the tested product returned three photographs;
+- every photo exposed `zoom` 3600x3600, `regular` 600x600 and `thumbnail`
+  300x300 variants;
+- preferred publication image: the first exact-product `regular` image.
+
+**Consum**
+- direct product detail exposes both `productData.imageURL` and `media[]`;
+- five validated award products were tested and all five had exact first-party
+  product images: Celta +Proteina Cafe, Takis Blue Heat, ELPOZO ExtraTiernos,
+  Nescafe Latte Baileys and Ambar Especial;
+- all five exact-detail EANs matched the expected award-product EANs;
+- no extra search request is needed to obtain the image.
+
+**Masymas**
+- direct detail exposes a first-party product image;
+- the returned URL used a 135x135 path, but the same exact image was verified
+  at 300x300 with HTTP 200;
+- 600x600 and 800x800 variants returned HTTP 404;
+- preferred publication image: validated 300x300 first-party variant.
+
+**ALDI**
+- direct product objects expose `assets[]`;
+- product-pack media must be selected, preferably `type=primary`, instead of
+  badges or attribute icons;
+- the exact NALTROS Brut object was verified with objectID `190300`, current
+  product data and a first-party primary pack image;
+- the deleted NALTROS publication therefore lacked a photo because the old
+  runtime did not extract media, not because ALDI lacked a usable image.
+
+Photo fallback policy:
+1. exact first-party retailer product media;
+2. exact official manufacturer or award-organizer media;
+3. text-only publication.
+
+Automatic third-party image catalogues are excluded because stale packaging or
+a neighboring SKU can silently break identity.
+
+### Lidl exact-product and media evidence
+
+Current first-party Lidl pages close most of the previous KONG identity/media
+gap.
+
+The official exact product page for `KONG STRONG Hydration Blue Raspberry`
+identifies the brand and exact product and exposes multiple first-party images.
+Those images include the exact Blue Raspberry bottle and group images showing
+Tropical, Blue Raspberry and Ice Pop variants.
+
+A separate official Lidl range/weekly page labels `Kong Strong Hydration` as
+`Producto del Ano 2026`, exposes product imagery and a 500 ml package, and
+shows a 0.99 EUR regular / 0.79 EUR promotional price. However, that page
+explicitly scopes the offer to 26 January through 1 February and says store
+availability can vary. That old campaign price must not be reused as a current
+September price.
+
+The official Producto del Ano 2026 winner page independently lists
+`KONG STRONG HYDRATION` in the soft-drinks category.
+
+Therefore:
+- Lidl award identity: strong enough for a reviewed range event;
+- exact first-party product image: proven;
+- generic Lidl search: still unsuitable as primary discovery;
+- current September retailer price: still requires an exact current production
+  contract before automatic publication.
+
+### Editorial publication contract
+
+The final Product Awards output is an editorial mini-article, not a field card.
+
+Required presentation behavior:
+- use a natural headline with the actual award/result;
+- write coherent human-readable paragraphs that explain what the product is,
+  who evaluated or awarded it, what it achieved, why the result is notable,
+  and the current verified store price;
+- expand an unfamiliar organization on first mention, for example
+  `OCU - испанская Организация потребителей и пользователей
+  (Organizacion de Consumidores y Usuarios)`, then use the abbreviation;
+- do not include award-source links in the final publication;
+- do not include retailer product links in the final publication;
+- do not use links as a substitute for explaining the result;
+- keep unique product/result facts visible;
+- place repeated methodology and award-process boilerplate inside a Telegram
+  collapsed expandable quotation so readers can open it only if interested;
+- include an exact product photo whenever a verified first-party or official
+  image is available;
+- preserve the normal group footer.
+
+Methodology content must remain source-grounded. The renderer may omit a detail
+that is unavailable, but it must not invent tasting panels, laboratory checks,
+sample counts, nutrition labels or award semantics.
+
+### Telegram transport research
+
+Telegram Bot API 10.1 introduced Rich Messages and `sendRichMessage`.
+Bot API 10.2 added explicit rich-message media and media blocks. Bot API 10.3
+added expandable/collapsible block quotations.
+
+The current API contract supports:
+- up to 32768 UTF-8 characters in rich-message text;
+- separate HTTP/HTTPS image blocks;
+- HTML rich-message formatting;
+- `<blockquote expandable>...</blockquote>`;
+- silent delivery through `disable_notification`.
+
+This fits the required Product Awards UX much better than `sendPhoto`, whose
+caption path in the current bot is limited to 1024 characters.
+
+The existing repository Telegram client already has a generic JSON Bot API
+transport, so a future Product Awards implementation should need only a small
+`send_rich_message` wrapper rather than a new networking stack.
+
+A live client rendering test is still required before implementation acceptance
+because the API contract is proven but the exact visual appearance in the
+Guardamar group/client has not yet been operator-approved.
+
+### Remaining research gates
+
+Only two material gates remain before freezing implementation design:
+
+1. Lidl current-price contract:
+   test exact KONG member queries / exact current product data on the production
+   device and determine whether a current price and availability can be
+   refreshed without generic broad search.
+
+2. Telegram visual acceptance:
+   send one explicitly marked temporary Rich Message containing an exact
+   first-party product photo, several editorial paragraphs and a collapsed
+   methodology block, inspect it in the real Telegram client, then delete it.
+
+No additional broad retailer crawling is justified unless either of those gates
+reveals a new concrete problem.
