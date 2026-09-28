@@ -63,5 +63,11 @@ a second runtime owner. Recovery is explicit: use `sync-transport` to repair
 transport-owned cards, and use guide/pinned reconciliation for guide-owned
 cards.
 
+If generic guide reconciliation has to recreate the `transport` navigator
+itself, existing transport-owned cards may retain the old back-link until the
+next `sync-transport`. That bounded repair delay is preferred to adding a
+second transport refresh or source fetch to the guide workflow; every normal
+transport sync rebuilds the cards with the current navigator link.
+
 The fix adds no network calls and no additional runtime work on the Termux
 device.
