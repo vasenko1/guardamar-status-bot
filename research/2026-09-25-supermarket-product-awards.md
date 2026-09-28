@@ -4701,3 +4701,49 @@ Only two material gates remain before freezing implementation design:
 
 No additional broad retailer crawling is justified unless either of those gates
 reveals a new concrete problem.
+
+
+### Rich Message mobile visual validation and photo-quality gate
+
+A live private-chat Rich Message was rendered in Telegram on the operator's
+phone using the first-party Lidl KONG STRONG Hydration Blue Raspberry image.
+
+The Rich Message transport itself behaved as intended:
+- photo and long editorial text appeared in one message;
+- the expandable methodology block rendered as a collapsed block that can be
+  opened by the reader;
+- the message layout remained readable on mobile.
+
+The first Lidl product image did **not** meet the visual quality bar. On mobile,
+the bottle occupied only a very small fraction of the image area, the product
+label was unreadable, and the image looked like an indistinct blue bottle. This
+is a publication-quality failure even though the source and SKU identity were
+correct.
+
+The failure is mainly a framing/source-detail problem, not just Telegram
+compression. Upscaling a tiny bottle centered inside a large white canvas would
+not restore missing label detail.
+
+Photo-quality rule:
+- prefer the highest-resolution exact-SKU first-party image available;
+- reject an image when the product occupies too little of the frame or the
+  identifying label/packaging is not visually recognizable on a normal phone;
+- if the source has excessive empty margins, a deterministic crop may remove
+  empty/transparent background and preserve a modest margin around the product;
+- do not treat simple upscaling as quality recovery;
+- if the retailer exact-SKU image is inadequate, try exact official
+  manufacturer or award-organizer media;
+- if no sufficiently recognizable official image exists, publish text-only
+  rather than a misleading or illegible thumbnail.
+
+For Lidl KONG specifically, the exact page exposes three first-party images.
+The first is the weak isolated-bottle asset used in the test. The second shows
+three KONG STRONG variants and fills the frame better; it is suitable only when
+the publication subject is the awarded range, not when the story claims to be
+about one exact flavor. The third is another range/lifestyle composition and
+requires the same subject-scope check.
+
+Implementation implication:
+photo selection needs a small quality gate after identity validation. The gate
+should consider both source resolution and product occupancy/recognizability,
+not merely whether an image URL exists.
