@@ -3141,6 +3141,37 @@ class MunicipalAgendaTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("title_ru", path.read_text() if path.exists() else json.dumps(raw))
         self.assertEqual(raw["events"][0]["title_es"], "Concierto en el castillo")
 
+    def test_snapshot_round_trips_ayuntamiento_programme_image(self):
+        image_url = (
+            "https://www.guardamardelsegura.es/wp-content/uploads/"
+            "2026/09/programa-fiestas.jpg"
+        )
+        event = SourceEvent(
+            "Procesión",
+            date(2026, 10, 7),
+            date(2026, 10, 7),
+            "19:00",
+            None,
+            "Guardamar del Segura",
+            "event",
+            (AYUNTAMIENTO_PROGRAMME_SOURCE,),
+            image_url=image_url,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agenda.json"
+            _write_snapshot(
+                path,
+                _snapshot_data(
+                    "",
+                    "",
+                    datetime(2026, 9, 28, tzinfo=TZ),
+                    (event,),
+                ),
+            )
+            loaded = _load_snapshot(path)["_events"][0]
+
+        self.assertEqual(loaded.image_url, image_url)
+
     def test_snapshot_round_trips_participation_details(self):
         event = SourceEvent(
             "Taller de baterías", date(2026, 8, 8), date(2026, 8, 8),
