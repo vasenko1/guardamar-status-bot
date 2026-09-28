@@ -143,7 +143,10 @@ class SourceContractTests(unittest.TestCase):
                 **candidate("masymas").__dict__,
                 "retailer_kind": "masymas",
                 "retailer_url": "https://tienda.masymas.com/api/product/7",
-                "retailer_hosts": frozenset({"tienda.masymas.com"}),
+                "retailer_hosts": frozenset({
+                    "tienda.masymas.com",
+                    "cdn-fornes.aktiosdigitalservices.com",
+                }),
             }
         )
         payload = {
@@ -151,7 +154,8 @@ class SourceContractTests(unittest.TestCase):
             "productData": {
                 "name": "Exact Product",
                 "imageURL": (
-                    "https://tienda.masymas.com/media/135x135/product.jpg"
+                    "https://cdn-fornes.aktiosdigitalservices.com/"
+                    "media/135x135/product.jpg"
                 ),
             },
             "priceData": {
@@ -168,7 +172,8 @@ class SourceContractTests(unittest.TestCase):
 
         self.assertEqual(
             result.image_url,
-            "https://tienda.masymas.com/media/300x300/product.jpg",
+            "https://cdn-fornes.aktiosdigitalservices.com/"
+            "media/300x300/product.jpg",
         )
         image.assert_called_once()
 
