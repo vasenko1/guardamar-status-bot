@@ -1,5 +1,9 @@
 # ADR 0030: One secondary structured LLM
 
+## Status
+
+Superseded by ADR 0085 on 2026-09-28.
+
 ## Context
 
 The bounded municipal AI tasks use Gemini for translation, extraction, and a

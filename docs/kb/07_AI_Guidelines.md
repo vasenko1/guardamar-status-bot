@@ -82,26 +82,39 @@ calls; an individually invalid title alone is omitted. This recovery never
 repeats OCR or source collection. A provider outage preserves already cached
 translations and never removes the verified source event.
 
-Gemini remains the primary model for every approved task. ADR 0030 permits one
-secondary request through OpenRouter with pinned non-Google model
-`openai/gpt-4.1-mini` after a Gemini failure. It receives only the same bounded
-public input and the same strict JSON schema; every existing deterministic
-validator remains authoritative. There is no third model and no provider
-retry inside this layer.
+ADR 0085 is the approved target architecture; its code migration may still be
+pending on a checkout that contains the superseded ADR 0030 OpenRouter path.
+Gemini remains the primary model for every approved task. ADR 0085 permits one
+direct Groq request with pinned `openai/gpt-oss-120b` only for
+`translate_event_titles`, `translate_event_teasers`,
+`compose_traffic_notice`, and `extract_market_status`. Factual event
+extraction and image reading remain Gemini-only, including Turismo, Todo
+Cultura, Facebook/Cultura, AM Guardamar, MUPI, and fiesta-programme paths.
+Every existing deterministic validator remains authoritative.
 
-Both clients send their keys only in API headers, accept bounded JSON only
-from their exact HTTPS API hosts, and expose stable status codes instead of
-provider response text. A missing secondary key preserves Gemini-only
-behavior. A double failure omits the affected optional result or preserves an
-already valid snapshot and reports both stages to the private diagnostics.
+Groq fallback is opt-in and may follow only eligible Gemini provider/protocol
+failures. It is not a second opinion and is never called after a valid Gemini
+result merely to compare semantics. Missing/invalid local Gemini configuration,
+source-size/input failures, unsupported media, local URL-policy failures, and
+ordinary request-validation errors do not route to Groq.
+
+Both clients send their keys only in API headers, accept bounded JSON only from
+their exact HTTPS API hosts, and expose stable status codes instead of raw
+provider response text. If an eligible Gemini failure cannot be recovered by
+Groq, expose `PROVIDERS-UNAVAILABLE`; bounded individual title recovery must
+stop on that code so provider outages cannot multiply into twelve extra
+network attempts. Keep ordinary individual recovery for batch/application
+validation failures. Do not add provider retries, sleeps, a circuit breaker,
+quota state, a retry queue, provider registry, dynamic model discovery, or a
+third provider.
 
 ## Product awards
 
 Product-award discovery, authority validation, product identity, retailer
 matching, price refresh, selection, rendering and delivery use no runtime AI.
 
-In particular, do not use Gemini/OpenRouter for product-name recovery, fuzzy
-SKU matching, ranking across competitions, retailer availability inference or
+In particular, do not use Gemini/Groq for product-name recovery, fuzzy SKU
+matching, ranking across competitions, retailer availability inference or
 editorial copy. OCU pages marked only with OCU's AI-derived evaluation path are
 not accepted as award evidence; the initial OCU launch candidates require
 physical comparative/laboratory evidence documented in ADR 0083.

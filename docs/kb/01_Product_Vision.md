@@ -52,11 +52,12 @@ The MVP proves that a small deterministic system can collect, filter, and
 format useful official information reliably on the target device.
 
 Weather, warnings, beach status, formatting, and delivery do not depend on AI.
-Gemini and its single bounded non-Google fallback are restricted to reviewed
-municipal/event tasks: exact-date market cancellation extraction,
-changed-poster reading, and bounded translation/enrichment of already selected
-official event material. The retired Policía Local traffic source has no AI
-fallback.
+Gemini remains primary for the approved municipal/event tasks. ADR 0085
+approves one direct Groq GPT-OSS 120B fallback only for bounded title
+translation, teaser translation, traffic editorial composition, and exact-date
+market-status classification. Factual event extraction and image reading remain
+Gemini-only and preserve prior verified state on provider failure. The retired
+Policía Local traffic source has no AI fallback.
 Deterministic validation or a valid snapshot must protect every result;
 otherwise only that optional contribution is omitted.
 

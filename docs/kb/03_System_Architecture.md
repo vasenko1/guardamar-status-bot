@@ -286,10 +286,11 @@ are omitted.
 
 Mayor and municipal-agenda transports accept only their exact official HTTPS
 hosts, expected content types, and bounded responses. Gemini uses the same
-fail-closed protocol checks. One OpenRouter request with a
-pinned non-Google model may follow a Gemini failure, using the identical
-bounded public input and JSON schema. Both return structured diagnostics;
-provider response text is never exposed. A corrupt event catalog is ignored.
+fail-closed protocol checks. ADR 0085 permits one direct Groq GPT-OSS 120B
+request only after an eligible Gemini provider failure and only for the four
+approved bounded text operations. Factual event extraction and image reading
+never route to Groq. Both clients return structured diagnostics; provider
+response text is never exposed. A corrupt event catalog is ignored.
 The official municipal HTML text is primary; a changed MUPI is supplementary.
 Its second structured reading receives only the image, never the first result,
 and deterministic intersection keeps agreeing facts. A MUPI failure cannot
@@ -380,9 +381,11 @@ the message ID is stored remains an unavoidable duplicate edge.
   is merged with still-relevant prior-poster events for a seven-day transition
   window; expired facts are not retained.
 - Add abstractions only for current, demonstrated needs.
-- Keep Gemini and its single OpenRouter fallback isolated to accepted bounded
-  municipal extraction and title-only translation; do not add general AI,
-  provider chains, microservices, webhooks, or heavy background infrastructure.
+- Keep Gemini primary for approved municipal/event AI work. Permit direct Groq
+  GPT-OSS 120B fallback only for the four bounded text operations in ADR 0085;
+  factual extraction and image reading remain Gemini-only. Do not add general
+  AI, provider chains, microservices, webhooks, or heavy background
+  infrastructure.
 ### Morning lifecycle
 
 The morning publication is an immutable anchor. SUMA runs only as a best-effort
