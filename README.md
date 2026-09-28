@@ -165,7 +165,8 @@ The validated Android deployment uses the scripts in `termux/`:
   `termux/prepare-aemet.sh` at 07:15 to store one
   normalized same-day weather snapshot;
 - `termux/sync-guide.sh` at 09:02 to read the bounded places/activities
-  sources and reconcile the same pinned graph. A separate
+  sources and reconcile guide-owned cards in the same pinned graph while
+  preserving existing live transport-owned cards. A separate
   `termux/sync-bathing-water.sh` one-shot runs at 19:35 from 1 June through
   15 September, reads only the official bathing-zone programme, and downloads a
   PDF only for a new weekly report identity; a fresh report may produce one
@@ -378,11 +379,15 @@ reply is silent, is never sent to the configured group, and does not change
 publication state. The listener does not fetch any source until an authorized
 command arrives.
 
-After reviewing the private guide, publish or update it manually:
+After reviewing the private guide, publish or update guide-owned cards
+manually:
 
 ```sh
 PYTHONPATH=src python -m telegrambot pinned-publish
 ```
+
+Existing live airport/Alicante/Elche/Orihuela/Zenia cards are preserved by this
+command. Use `sync-transport` when those cards themselves need repair.
 
 Install Poppler and the Termux OpenSSL command once, then publish or
 automatically repair the transport messages with the same linked guide state:
@@ -405,10 +410,11 @@ The configured group must be public and addressed by `@username`, or a private
 supergroup addressed by its numeric `-100...` identifier. State stores the
 bot-authored message graph and bounded metadata for the two urban timetable
 images. Later runs edit that graph and pin the compact root without a
-notification. Detail messages link back to their navigator. If one or several
-managed messages were deleted, run `sync-transport` or `telegrambot.guide sync`:
-it reconciles the shared graph and rewrites affected links before reporting
-success.
+notification. Detail messages link back to their navigator. If a dynamic
+airport/Alicante/Elche/Orihuela/Zenia message was deleted or needs repair, run
+`sync-transport`; if a guide-owned card was deleted, run
+`telegrambot.guide sync`. Each workflow repairs the cards it owns and rewrites
+affected links before reporting success.
 
 State contains only compact publication state: current-day delivery markers,
 Telegram message IDs, the pinned-guide graph with bounded timetable metadata,
