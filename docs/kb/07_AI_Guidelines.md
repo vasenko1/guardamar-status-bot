@@ -82,6 +82,8 @@ calls; an individually invalid title alone is omitted. This recovery never
 repeats OCR or source collection. A provider outage preserves already cached
 translations and never removes the verified source event.
 
+ADR 0085 is the approved target architecture; its code migration may still be
+pending on a checkout that contains the superseded ADR 0030 OpenRouter path.
 Gemini remains the primary model for every approved task. ADR 0085 permits one
 direct Groq request with pinned `openai/gpt-oss-120b` only for
 `translate_event_titles`, `translate_event_teasers`,
