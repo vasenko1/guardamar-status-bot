@@ -196,22 +196,31 @@ class SourceContractTests(unittest.TestCase):
         payload = {
             "props": {
                 "pageProps": {
-                    "apiData": json.dumps({
-                        "items": [{
-                            "objectID": "190300",
-                            "brandName": "NALTROS ®",
-                            "name": "Cava brut",
-                            "salesUnit": "0,75 l unidad",
-                            "isAvailable": True,
-                            "isComingSoon": False,
-                            "isRecall": False,
-                            "currentPrice": {"priceValue": 3.15},
-                            "assets": [{
-                                "type": "primary",
-                                "url": "https://s7g10.scene7.com/is/image/aldinord/cava",
-                            }],
-                        }]
-                    })
+                    "apiData": json.dumps([
+                        {},
+                        {
+                            "res": {
+                                "products": [{
+                                    "objectID": "190300",
+                                    "brandName": "NALTROS ®",
+                                    "name": "Cava brut",
+                                    "salesUnit": "0,75 l unidad",
+                                    "productReferences": [{
+                                        "type": "KVArticleNumber",
+                                        "value": "1903",
+                                    }],
+                                    "isAvailable": True,
+                                    "isComingSoon": False,
+                                    "isRecall": False,
+                                    "currentPrice": {"priceValue": 3.15},
+                                    "assets": [{
+                                        "type": "primary",
+                                        "url": "https://s7g10.scene7.com/is/image/aldinord/cava",
+                                    }],
+                                }]
+                            }
+                        },
+                    ])
                 }
             }
         }
