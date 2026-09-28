@@ -29,6 +29,26 @@ has no idempotency key, so each item becomes `uncertain` before
 blocks automatic resend while already-sent sibling messages remain committed
 inside the batch.
 
+## Managed-card ownership
+
+The shared pinned-guide graph contains both static guide cards and dynamic
+transport cards. Existing `airport`, `alicante`, `elche`, `inland`
+(Orihuela) and `zenia` messages are content-owned by the 05:00
+`sync-transport` workflow.
+
+Generic `sync-guide` and manual `pinned-publish` reconciliation preserve
+those existing cards instead of replacing them with static fallback text. A
+transport-managed key that is completely absent from pinned state may still be
+bootstrapped as fallback so the graph remains complete; the next
+`sync-transport` converts it to live content.
+
+If an existing transport-owned Telegram message is deleted while its ID remains
+in state, run `sync-transport` to recreate it and repair links. Guide sync is
+the repair path for guide-owned cards, not for accepted live timetables.
+
+This boundary adds no extra source request, retry loop, cron row or state
+schema. See ADR 0086.
+
 ## Current coverage
 
 ### Urban lines 1 and 2
@@ -148,5 +168,6 @@ A missing source row or card never proves cancellation. Temporary diversions
 and event closures belong to the existing mobility/emergency path.
 
 See `adr/0065-transport-change-notifications.md`,
-`adr/0081-alicante-date-specific-timetable.md` and
-`adr/0082-elche-orihuela-date-specific-timetables.md`.
+`adr/0081-alicante-date-specific-timetable.md`,
+`adr/0082-elche-orihuela-date-specific-timetables.md` and
+`adr/0086-transport-owned-guide-cards.md`.
