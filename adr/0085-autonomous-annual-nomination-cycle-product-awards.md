@@ -1357,6 +1357,46 @@ Do not build a dedicated PLMA adapter until a current winner from one of the six
 active retailers is observed. It can remain a low-cost opportunistic source
 checked through the general research process.
 
+## Exact-product versus source-defined-range awards
+
+Award subjects are not always single retail SKUs.
+
+The autonomous model must distinguish:
+
+- **exact-product award**: the authority names one commercial product/variant;
+- **source-defined-range award**: the authority explicitly awards a product
+  family/range and identifies its included members.
+
+A range award creates **one semantic publication event**, not one event per
+member SKU.
+
+Retail discovery may search the explicitly included members and stop after the
+first exact current member match. Additional matched members are optional
+article enrichment.
+
+Do not infer range membership from brand similarity.
+
+Current 2026 examples prove the need for this model:
+
+- Celta +Proteína is one Producto del Año 2026 award and the producer explicitly
+  identifies the range as 1 L UHT protein milk plus 250 ml coffee and cacao
+  protein shakes;
+- ELPOZO's Producto del Año 2026 communication explicitly identifies member
+  products for its awarded ranges:
+  - ExtraTiernos: pork/beef escalopines and solomillos;
+  - La Croquetería: jamón ibérico and chicken croquettes;
+  - 1954 Premium Gourmet Natural Sin Aditivos: cooked ham, turkey breast and
+    chicken breast;
+  - Charcutería Selecta Legado Ibérico: Delicias Ibéricas and Mortadela
+    Ibérica.
+
+For scheduling/diversity, the range event has one canonical award-event id.
+A matched member has its own canonical retail-product identity, but does not
+create an additional award slot unless the authority issued a separate
+nomination/title for it.
+
+This both improves retail-match yield and prevents artificial slot inflation.
+
 ## Quantitative retailer-yield pilot
 
 A production-device dry-run on 27 September 2026 tested 20 clean current award
@@ -1439,11 +1479,21 @@ For retailer/private-label comparative sources such as OCU:
 - Mercadona / ALDI / Consum / DIA / Lidl own-brand identity should route directly
   to the known retailer rather than be searched across all chains.
 
-For Lidl and DIA retailer-first award sources:
+For Lidl retailer-first award sources:
 
 - discover from the retailer/award source;
 - refresh the exact product page;
 - do not run generic cross-retailer search unless needed.
+
+For DIA:
+
+- generic search is excluded after production HTTP 403;
+- the `Productos Premiados` retailer-first page also returned HTTP 403 in the
+  quantitative production-device probe;
+- therefore DIA should be treated as **exact-validation only at runtime** unless
+  a separate first-party anonymous discovery surface is later proven;
+- award-authority or other reviewed first-party source must provide the exact
+  DIA product/SKU lead.
 
 This is not a universal ranking of retailers. It is request routing based on the
 source's identity information and the measured cost/yield of each transport.
