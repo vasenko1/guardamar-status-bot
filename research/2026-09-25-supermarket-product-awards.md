@@ -4747,3 +4747,28 @@ Implementation implication:
 photo selection needs a small quality gate after identity validation. The gate
 should consider both source resolution and product occupancy/recognizability,
 not merely whether an image URL exists.
+
+
+### Editorial simplification: no per-product taxonomy
+
+Do not introduce a separate persistent taxonomy for product kinds or local-name
+translation modes merely to improve headlines.
+
+The renderer should use product/category wording that is already present in
+validated source facts when it is clear and useful. If the source does not
+provide a simple trustworthy type, use the product name without inventing or
+maintaining another classification layer.
+
+Examples:
+- a source that clearly identifies Ambar Especial as beer may render
+  "пиво Ambar Especial";
+- a source that clearly identifies NALTROS Brut as cava/sparkling wine may use
+  that wording naturally, but preserving the local word `cava` is optional
+  editorial polish, not a new data-model requirement;
+- names such as gazpacho or salmorejo do not require a separate translation
+  taxonomy.
+
+This deliberately avoids per-SKU `product_kind_ru`, `product_kind_local` or
+translation-mode fields. The Termux runtime should remain small and derive
+wording from already fetched facts rather than carrying editorial metadata that
+does not improve identity or publication safety.
