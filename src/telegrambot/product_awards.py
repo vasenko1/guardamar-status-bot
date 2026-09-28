@@ -427,7 +427,7 @@ def _aldi_next_data(source: str) -> dict:
             "ALDI product payload invalid",
             code="RETAIL-DRIFT",
         ) from exc
-    if not isinstance(payload, dict):
+    if not isinstance(payload, (dict, list)):
         raise ProductAwardError(
             "ALDI product payload changed",
             code="RETAIL-DRIFT",
