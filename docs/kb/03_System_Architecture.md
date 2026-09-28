@@ -67,6 +67,7 @@ no message.
 | CCE / Previfoc emergency risks | Hourly at `:19` | CCE/Segura hydrological transitions remain immediate. Previfoc is still observed hourly, but changes seen before 07:00 are kept silent and only the still-current delta may publish on the first run after 07:00; fresh active hydrology may also appear in the next Morning Digest. |
 | IGN earthquakes | Hourly at `:55` | Standalone/series notice for new events at M1.8+ within 20 km. |
 | Hidraqua network incidents | Every 30 minutes | Standalone notice for a new confirmed water-network event ID. |
+| TomTom road/lane closures | Hourly at `:37` | One bounded Guardamar snapshot; strict provider-ID reconciliation preserves the physical closure lifecycle before two-snapshot end confirmation, so source ID churn cannot create false reopen/new-close messages. |
 | Transport | 05:00 sync, 08:42 notification | Reconciles pinned transport cards and publishes accepted schedule/service/fare changes. |
 | Linked guide + courses | 09:02 sync; course notices 09:42/11:42; two seasonal 19:45 checks | Reconciles public guide cards, may send pool/Zona Azul seasonal notices, and publishes accepted course/programme changes, including grouped fresh-source registration boundaries for tomorrow. |
 | Electricity | 20:30/20:35/20:45/21:00/21:20 attempts | One next-day PVPC table reply after the first complete official dataset. |

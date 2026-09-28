@@ -97,6 +97,14 @@ extracted text remain process-local and are discarded before exit; raw source
 responses are never archived. The process shares the project runtime lock and
 its log rotates at 1 MiB with one previous file.
 
+The TomTom traffic feature remains one short-lived hourly process at minute 37.
+It makes one bounded Guardamar incident-details request and no continuity lookup
+request. Provider-ID churn is reconciled only from the current normalized
+snapshot and the existing small `state/traffic.json`: no alias database, raw
+response history, background watcher, or additional dependency is permitted.
+Ambiguous continuity freezes only the affected lifecycle for that invocation;
+it must not become an all-clear claim.
+
 The CCE bulletin text extraction uses the already approved Termux `poppler`
 package and `pdftotext`. The adapter validates the bulletin's own `FECHA` and
 `HORA` before accepting its state. No OCR, browser, image rendering, or

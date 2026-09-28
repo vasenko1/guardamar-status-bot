@@ -5,6 +5,7 @@ import fcntl
 import html
 import json
 import logging
+import math
 import os
 import re
 import urllib.parse
@@ -36,6 +37,9 @@ STATE_VERSION = 1
 STATE_RETENTION = timedelta(days=14)
 MISSING_CONFIRMATIONS = 2
 DAILY_REPEAT_HOUR = 8
+CONTINUITY_START_TOLERANCE = timedelta(minutes=2)
+CONTINUITY_ENDPOINT_TOLERANCE_METERS = 5.0
+_EARTH_RADIUS_METERS = 6_371_000.0
 
 _STATE_REQUIRED_FIELDS = frozenset({
     "provider_id", "category", "validity", "probability",
@@ -666,6 +670,205 @@ def _location_data(location: TrafficLocation) -> dict:
     }
 
 
+def _boundary_key(value: Optional[str]) -> Optional[str]:
+    cleaned = _clean_text(value)
+    return cleaned.casefold() if cleaned is not None else None
+
+
+def _point_distance_meters(
+    first: tuple[float, float],
+    second: tuple[float, float],
+) -> float:
+    """Keep continuity geometry tolerant only to tiny endpoint corrections."""
+
+    longitude_1, latitude_1 = first
+    longitude_2, latitude_2 = second
+    phi_1 = math.radians(latitude_1)
+    phi_2 = math.radians(latitude_2)
+    delta_phi = math.radians(latitude_2 - latitude_1)
+    delta_lambda = math.radians(longitude_2 - longitude_1)
+    haversine = (
+        math.sin(delta_phi / 2.0) ** 2
+        + math.cos(phi_1)
+        * math.cos(phi_2)
+        * math.sin(delta_lambda / 2.0) ** 2
+    )
+    haversine = min(1.0, max(0.0, haversine))
+    return 2.0 * _EARTH_RADIUS_METERS * math.asin(math.sqrt(haversine))
+
+
+def _same_physical_closure(
+    previous: TrafficIncident,
+    current: TrafficIncident,
+) -> bool:
+    """Recognize only a strict same-segment continuation across provider IDs."""
+
+    if previous.category not in CATEGORIES or current.category not in CATEGORIES:
+        return False
+    if previous.starts_at is None or current.starts_at is None:
+        return False
+    if abs(previous.starts_at - current.starts_at) > CONTINUITY_START_TOLERANCE:
+        return False
+
+    previous_from = _boundary_key(previous.from_place)
+    previous_to = _boundary_key(previous.to_place)
+    current_from = _boundary_key(current.from_place)
+    current_to = _boundary_key(current.to_place)
+    if None in (previous_from, previous_to, current_from, current_to):
+        return False
+
+    previous_start = previous.coordinates[0]
+    previous_end = previous.coordinates[-1]
+    current_start = current.coordinates[0]
+    current_end = current.coordinates[-1]
+
+    direct_boundaries = (
+        previous_from == current_from
+        and previous_to == current_to
+    )
+    direct_geometry = (
+        _point_distance_meters(previous_start, current_start)
+        <= CONTINUITY_ENDPOINT_TOLERANCE_METERS
+        and _point_distance_meters(previous_end, current_end)
+        <= CONTINUITY_ENDPOINT_TOLERANCE_METERS
+    )
+    if direct_boundaries and direct_geometry:
+        return True
+
+    reverse_boundaries = (
+        previous_from == current_to
+        and previous_to == current_from
+    )
+    reverse_geometry = (
+        _point_distance_meters(previous_start, current_end)
+        <= CONTINUITY_ENDPOINT_TOLERANCE_METERS
+        and _point_distance_meters(previous_end, current_start)
+        <= CONTINUITY_ENDPOINT_TOLERANCE_METERS
+    )
+    return reverse_boundaries and reverse_geometry
+
+
+def _reconcile_provider_ids(
+    events: dict,
+    incidents: tuple[TrafficIncident, ...],
+) -> tuple[set[str], set[str], bool]:
+    """Preserve one lifecycle when TomTom rotates an equivalent provider ID."""
+
+    current_by_id = {incident.provider_id: incident for incident in incidents}
+    active_by_id = {
+        provider_id: _record_incident(record)
+        for provider_id, record in events.items()
+        if not record.get("ended_at")
+    }
+    exact_active_ids = set(active_by_id) & set(current_by_id)
+    missing_active_ids = set(active_by_id) - set(current_by_id)
+    nonexact_current_ids = set(current_by_id) - exact_active_ids
+
+    matches_by_current: dict[str, list[str]] = {}
+    for current_id in sorted(nonexact_current_ids):
+        current = current_by_id[current_id]
+        matches_by_current[current_id] = [
+            active_id
+            for active_id, previous in active_by_id.items()
+            if _same_physical_closure(previous, current)
+        ]
+
+    suppressed_current_ids: set[str] = set()
+    frozen_missing_ids: set[str] = set()
+
+    # When the old provider ID is still present, a second equivalent current ID
+    # is an overlap, not a new resident-facing closure.
+    rotation_current_ids: set[str] = set()
+    for current_id, matches in matches_by_current.items():
+        present_matches = [item for item in matches if item in exact_active_ids]
+        missing_matches = [item for item in matches if item in missing_active_ids]
+        if present_matches:
+            suppressed_current_ids.add(current_id)
+            frozen_missing_ids.update(missing_matches)
+            if len(matches) == 1:
+                logging.info(
+                    "Equivalent overlapping traffic ID suppressed: %s -> %s",
+                    current_id,
+                    present_matches[0],
+                )
+            else:
+                logging.warning(
+                    "Traffic continuity ambiguous for overlapping current ID %s: %s",
+                    current_id,
+                    ",".join(sorted(matches)),
+                )
+            continue
+        rotation_current_ids.add(current_id)
+
+    new_to_old = {
+        current_id: [
+            active_id
+            for active_id in matches_by_current[current_id]
+            if active_id in missing_active_ids
+        ]
+        for current_id in rotation_current_ids
+    }
+    old_to_new: dict[str, list[str]] = {active_id: [] for active_id in missing_active_ids}
+    for current_id, matches in new_to_old.items():
+        for active_id in matches:
+            old_to_new[active_id].append(current_id)
+
+    rotations: list[tuple[str, str]] = []
+    accepted_current_ids: set[str] = set()
+    accepted_old_ids: set[str] = set()
+    for current_id, matches in new_to_old.items():
+        if len(matches) != 1:
+            continue
+        old_id = matches[0]
+        if len(old_to_new.get(old_id, ())) != 1:
+            continue
+        rotations.append((old_id, current_id))
+        accepted_current_ids.add(current_id)
+        accepted_old_ids.add(old_id)
+
+    ambiguous_current_ids = {
+        current_id
+        for current_id, matches in new_to_old.items()
+        if matches and current_id not in accepted_current_ids
+    }
+    ambiguous_old_ids = {
+        old_id
+        for old_id, matches in old_to_new.items()
+        if matches and old_id not in accepted_old_ids
+    }
+    if ambiguous_current_ids or ambiguous_old_ids:
+        suppressed_current_ids.update(ambiguous_current_ids)
+        frozen_missing_ids.update(ambiguous_old_ids)
+        logging.warning(
+            "Traffic continuity ambiguous; frozen old IDs=%s suppressed current IDs=%s",
+            ",".join(sorted(ambiguous_old_ids)) or "-",
+            ",".join(sorted(ambiguous_current_ids)) or "-",
+        )
+
+    changed = False
+    for old_id, current_id in sorted(rotations):
+        record = events.pop(old_id)
+        target = events.get(current_id)
+        if target is not None:
+            if not target.get("ended_at"):
+                raise TrafficError(
+                    "traffic continuity target unexpectedly active",
+                    code="STATE",
+                )
+            events.pop(current_id)
+        record["provider_id"] = current_id
+        record["missing_successes"] = 0
+        events[current_id] = record
+        changed = True
+        logging.info(
+            "Traffic provider ID rotation reconciled: %s -> %s",
+            old_id,
+            current_id,
+        )
+
+    return suppressed_current_ids, frozen_missing_ids, changed
+
+
 def _serialize_incident(incident: TrafficIncident, location: TrafficLocation) -> dict:
     return {
         "provider_id": incident.provider_id,
@@ -965,11 +1168,19 @@ async def monitor_traffic(
         value = state.read()
         events = _prune(value["events"], local_now)
         value["events"] = events
+        suppressed_current_ids, frozen_missing_ids, continuity_changed = (
+            _reconcile_provider_ids(events, incidents)
+        )
+        if continuity_changed:
+            state.write(value)
 
-        # Absence is meaningful only after a fully successful TomTom snapshot.
+        # Absence is meaningful only after reconciliation and a fully
+        # successful TomTom snapshot.
         for provider_id, record in list(events.items()):
             if provider_id in raw_ids:
                 record["missing_successes"] = 0
+                continue
+            if provider_id in frozen_missing_ids:
                 continue
             missing = record.get("missing_successes", 0)
             if not isinstance(missing, int) or isinstance(missing, bool) or missing < 0:
@@ -1045,6 +1256,8 @@ async def monitor_traffic(
             state.write(value)
 
         for incident in incidents:
+            if incident.provider_id in suppressed_current_ids:
+                continue
             existing = events.get(incident.provider_id)
             reactivated = (
                 existing is not None
