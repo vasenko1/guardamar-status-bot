@@ -4417,3 +4417,83 @@ The next probe should:
 4. skip generic Lidl unless a product-specific reason exists;
 5. measure recovered exact matches and request bytes;
 6. then freeze the query strategy before scaling to larger source families.
+
+
+#### Source-defined award ranges improve yield without adding slots
+
+The quantitative pilot reveals a useful award-subject distinction.
+
+Some current Producto del Año 2026 awards are explicitly awarded to a producer
+range rather than one package SKU.
+
+**Celta +Proteína**
+The producer explicitly states that the awarded 2026 range consists of:
+
+- UHT skimmed lactose-free +Proteína milk, 1 L;
+- +Proteína coffee shake, 250 ml;
+- +Proteína cacao shake, 250 ml.
+
+Current Consum exact retail pages expose the two shake members by exact EAN:
+
+- coffee: 8414044004122;
+- cacao: 8414044004108.
+
+The award therefore creates one `Bebidas Lácteas / innovation` event, while
+either exact member can establish current retail eligibility.
+
+**ELPOZO ranges**
+ELPOZO's own 2026 award announcement explicitly identifies included references:
+
+- ExtraTiernos: pork/beef escalopines and solomillos;
+- La Croquetería: jamón ibérico and chicken croquettes;
+- 1954 Premium Gourmet Natural Sin Aditivos: cooked ham, turkey breast and
+  chicken breast;
+- Charcutería Selecta Legado Ibérico: Delicias Ibéricas and Mortadela Ibérica.
+
+The first pilot found an exact ExtraTiernos current candidate, but its long
+range-name queries did not properly search the source-certified 1954/Legado
+members. The next recovery probe must search the explicit member names rather
+than treating the range title as one literal retail product.
+
+Rule:
+
+- one source-defined range = one award event/publication slot;
+- search only authority-listed members;
+- one exact member is enough to make the event retail-eligible;
+- additional current members may be shown in the article;
+- never multiply annual slot count by the number of range members.
+
+#### DIA production role is narrower than previously proposed
+
+The quantitative Redmi probe attempted the official DIA
+`/l/productos-premiados-dia` page and received HTTP 403.
+
+Combined with the earlier HTTP 403 from generic DIA search, while exact product
+pages still return HTTP 200, the current production-device capability is:
+
+- discovery/search: NOT proven anonymously;
+- exact known SKU/page validation: proven.
+
+Therefore DIA should be treated as **exact-validation-only** in the prospective
+runtime unless another anonymous first-party discovery contract is later
+demonstrated.
+
+External/web research may still use DIA's award page to understand source
+content, but the Termux architecture cannot depend on that surface today.
+
+#### Lidl generic search should be conditional, not default
+
+In the 20-event manufacturer-brand pilot, Lidl search used 9,684,382 bytes from
+10,832,968 total retail bytes (~89%) and yielded no strict exact event.
+
+This does not make Lidl an unimportant retailer. It means its generic search is
+bad default economics for unhinted manufacturer awards.
+
+Keep Lidl strong for:
+
+- Lidl/private-label award leads;
+- exact known Lidl products;
+- source-provided Lidl hints;
+- targeted fallback where a distinctive exact product term exists.
+
+Do not query Lidl generically for every nomination.
