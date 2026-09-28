@@ -64,9 +64,23 @@ to affect normal local movement.
 - A known future `endTime` is only an estimate. If the incident remains
   `present` after that time, present validity wins and the expired estimate is
   omitted from later copy.
-- One successful snapshot without a previously active incident is not enough to
-  announce reopening. Two consecutive successful snapshots without it confirm
-  the local monitor transition.
+- TomTom `properties.id` is treated as a provider identifier, not as the
+  durable identity of a physical closure. Before any missing counter advances,
+  the monitor reconciles a disappeared active ID with a newly observed ID only
+  when the mapping is one-to-one and the source facts identify the same road
+  segment: both boundaries are present and equal (or reversed together with
+  the geometry), start times differ by no more than two minutes, and both
+  geometry endpoints are within five metres.
+- A clean provider-ID rotation preserves the existing publication lifecycle and
+  Telegram anchor without a new alert. Equivalent IDs that overlap in one
+  snapshot are suppressed until a clean handoff; an ambiguous match freezes
+  only the affected missing lifecycle for that invocation and publishes
+  nothing from the ambiguous replacement set.
+- The undocumented `TTR...` suffix observed inside TomTom IDs is diagnostic
+  evidence only and is not used as a runtime identity contract.
+- One successful snapshot without a previously active physical closure is not
+  enough to announce reopening. Two consecutive successful snapshots without
+  an exact ID or a reconciled equivalent confirm the local monitor transition.
 - A confirmed end of `roadClosed` or `laneClosed` publishes a reply to the
   latest stored alert when possible; if the Telegram anchor no longer exists,
   use the existing standalone fallback.
@@ -102,9 +116,11 @@ closed because of those works.
 
 Use one small atomic `state/traffic.json` protected by a file lock. Store only
 the current/recent incident facts, consecutive-missing count, last daily
-publication dates and latest Telegram message ID. Retain recent records for a
-bounded period; no database, raw-response archive, generic notification
-framework or event history is introduced.
+publication dates and latest Telegram message ID. A provider-ID handoff rekeys
+the existing record in place; it adds no alias table, logical-ID field, raw
+history or schema migration. Retain recent records for a bounded period; no
+database, raw-response archive, generic notification framework or event history
+is introduced.
 
 On TomTom transport/schema failure, invalid nested state, or malformed relevant
 closure, publish nothing and never advance the missing counter. Reverse-geocode
