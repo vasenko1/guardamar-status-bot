@@ -62,14 +62,15 @@ The bot must not claim to replace official emergency communication.
 
 ## 7. AI is optional and fail-closed
 
-The core digest policy remains deterministic. Gemini, with one bounded
-OpenRouter fallback, is limited to the accepted Policía Local traffic
-fallback, the exact-date Mayor-channel market exception, municipal-poster
-OCR/title translation, and title-only translation of already structured
-Agenda Guardamar events. Structured results, source evidence where applicable,
-deterministic validation, and snapshot rules decide publication. Do not add
-local models, embeddings, general generation, or AI dependencies to weather,
-warnings, beach status, formatting, or delivery.
+The core digest policy remains deterministic. Gemini is primary for approved
+municipal/event AI tasks. One direct Groq GPT-OSS 120B fallback is allowed only
+for bounded title translation, teaser translation, traffic editorial
+composition, and exact-date Mayor-channel market classification. Factual event
+extraction and image reading remain Gemini-only. Structured results, source
+evidence where applicable, deterministic validation, and snapshot rules decide
+publication. Do not add local models, embeddings, general generation, provider
+chains, or AI dependencies to weather, warnings, beach status, formatting, or
+delivery.
 
 ## 8. Design for partial failure
 
