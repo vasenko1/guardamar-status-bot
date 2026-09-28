@@ -6,81 +6,16 @@ on:
       - fix/naltros-aldi-contract
 
 jobs:
-  probe:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Probe current ALDI page
-        run: |
-          python - <<'PY'
-          import json
-          import re
-          import urllib.request
-
-          url = "https://www.aldi.es/p/cava-brut-190300.html"
-          request = urllib.request.Request(
-              url,
-              headers={
-                  "User-Agent": "GuardamarMorningDigest/0.14",
-                  "Accept": "text/html,application/xhtml+xml",
-                  "Accept-Language": "es-ES,es;q=0.9,en;q=0.5",
-              },
-          )
-          with urllib.request.urlopen(request, timeout=15) as response:
-              body = response.read(1_000_000)
-              print("STATUS", response.status)
-              print("TYPE", response.headers.get_content_type())
-              print("BYTES", len(body))
-          source = body.decode("utf-8")
-          match = re.search(
-              r'<script[^>]*id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>',
-              source,
-              flags=re.I | re.S,
-          )
-          print("NEXT_DATA", bool(match))
-          if not match:
-              raise SystemExit(2)
-          next_data = json.loads(match.group(1))
-          page_props = next_data.get("props", {}).get("pageProps", {})
-          api_data = page_props.get("apiData")
-          print("APIDATA_TYPE", type(api_data).__name__)
-          if isinstance(api_data, str):
-              payload = json.loads(api_data)
-          else:
-              payload = api_data
-          print("PAYLOAD_TYPE", type(payload).__name__)
-
-          def walk(value, path="$"):
-              if isinstance(value, dict):
-                  text = json.dumps(value, ensure_ascii=False)
-                  if any(
-                      needle.casefold() in text.casefold()
-                      for needle in ("NALTROS", "Cava brut", "1903", "190300")
-                  ):
-                      summary = {
-                          "path": path,
-                          "objectID": value.get("objectID"),
-                          "name": value.get("name"),
-                          "brandName": value.get("brandName"),
-                          "salesUnit": value.get("salesUnit"),
-                          "productReferences": value.get("productReferences"),
-                          "isAvailable": value.get("isAvailable"),
-                          "isComingSoon": value.get("isComingSoon"),
-                          "isRecall": value.get("isRecall"),
-                          "currentPrice": value.get("currentPrice"),
-                          "assets": value.get("assets"),
-                      }
-                      if any(v is not None for k, v in summary.items() if k != "path"):
-                          print("MATCH", json.dumps(summary, ensure_ascii=False, sort_keys=True))
-                  for key, child in value.items():
-                      walk(child, f"{path}.{key}")
-              elif isinstance(value, list):
-                  for index, child in enumerate(value):
-                      walk(child, f"{path}[{index}]")
-
-          walk(payload)
-          PY
+      - run: python -m pip install -e .
+      - name: Product Awards tests
+        run: python -m unittest discover -s tests -p 'test_product_awards*.py' -v
+      - name: Live read-only Product Awards preview
+        run: python -m telegrambot product-awards-preview
