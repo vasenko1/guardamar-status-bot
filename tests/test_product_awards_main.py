@@ -19,29 +19,32 @@ def publication() -> ProductAwardPublication:
         selection_key="test:2026",
         event_id="test:event",
         source_name="Test",
+        source_kind="producto_del_ano",
         source_url="https://award.example/result",
         source_hosts=frozenset({"award.example"}),
         source_markers=("winner",),
         retailer="Test Market",
-        retailer_kind="carrefour",
-        retailer_url="https://shop.example/product",
+        retailer_kind="consum",
+        retailer_url="https://shop.example/api/product/7",
         retailer_hosts=frozenset({"shop.example"}),
         retailer_markers=("Exact Product",),
-        retailer_title="Exact Product",
-        package="1 l",
-        result_line="Exact Product — победитель",
-        detail_line="Проверенный результат.",
-        source_link_label="Источник",
+        product_name="Exact Product",
+        award_year=2026,
+        source_category="Snacks",
+        award_scope="exact_product",
+        award_result="Producto del Año",
+        product_id=7,
+        expected_ean="8410000000000",
     )
     return ProductAwardPublication(
         candidate=candidate,
         offer=RetailOffer(
             retailer="Test Market",
-            package="1 l",
             price="2,50 €",
-            product_url="https://shop.example/product",
+            image_url="https://cdn.example/product.jpg",
+            product_name="Exact Product",
         ),
-        message="message",
+        message="<p>message</p>",
     )
 
 
@@ -94,7 +97,7 @@ class ProductAwardCommandTests(unittest.IsolatedAsyncioTestCase):
                     return_value=(0, item),
                 ),
                 patch(
-                    "telegrambot.__main__.send_message",
+                    "telegrambot.__main__.send_rich_message",
                     new=AsyncMock(return_value=123),
                 ) as send,
             ):
@@ -130,7 +133,7 @@ class ProductAwardCommandTests(unittest.IsolatedAsyncioTestCase):
                     return_value=(0, item),
                 ),
                 patch(
-                    "telegrambot.__main__.send_message",
+                    "telegrambot.__main__.send_rich_message",
                     new=AsyncMock(side_effect=error),
                 ),
             ):
@@ -171,7 +174,7 @@ class ProductAwardCommandTests(unittest.IsolatedAsyncioTestCase):
                     return_value=(0, item),
                 ),
                 patch(
-                    "telegrambot.__main__.send_message",
+                    "telegrambot.__main__.send_rich_message",
                     new=AsyncMock(side_effect=error),
                 ),
             ):
