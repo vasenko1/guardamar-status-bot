@@ -1588,22 +1588,6 @@ class GuideOwnershipCommandTests(unittest.IsolatedAsyncioTestCase):
                 publish.await_args.kwargs["skip_keys"],
                 TRANSPORT_MANAGED_KEYS,
             )
-            self.assertEqual(
-                publish.await_args.kwargs["skip_keys"],
-                TRANSPORT_MANAGED_KEYS,
-            )
-            self.assertEqual(
-                publish.await_args.kwargs["skip_keys"],
-                TRANSPORT_MANAGED_KEYS,
-            )
-            self.assertEqual(
-                publish.await_args.kwargs["skip_keys"],
-                TRANSPORT_MANAGED_KEYS,
-            )
-            self.assertEqual(
-                publish.await_args.kwargs["skip_keys"],
-                TRANSPORT_MANAGED_KEYS,
-            )
             self.assertEqual(sync_schedules.await_count, 1)
 
 
