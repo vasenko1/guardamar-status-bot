@@ -57,7 +57,8 @@ class WeekendTermuxTests(unittest.TestCase):
         self.assertIn("15 19 * * 5", installed)
         self.assertIn("15 20 * * 5", installed)
         self.assertIn("25 19 * * 0-4", installed)
-        self.assertIn("run-tomorrow-events.sh", installed)
+        self.assertIn("55 19 * * 0-4", installed)
+        self.assertEqual(installed.count("run-tomorrow-events.sh"), 2)
 
     def test_installer_is_idempotent_and_preserves_other_jobs(self):
         unrelated = "12 3 * * * /other/bot.sh\n"
@@ -71,6 +72,7 @@ class WeekendTermuxTests(unittest.TestCase):
         self.assertIn("run-weekend.sh --fresh", installed)
         self.assertEqual(installed.count("15 20 * * 5"), 1)
         self.assertEqual(installed.count("25 19 * * 0-4"), 1)
-        self.assertEqual(installed.count("run-tomorrow-events.sh"), 1)
+        self.assertEqual(installed.count("55 19 * * 0-4"), 1)
+        self.assertEqual(installed.count("run-tomorrow-events.sh"), 2)
         self.assertNotIn("0,20 18 * * 5", installed)
         self.assertIn("# BEGIN guardamar-status weekend digest", installed)
