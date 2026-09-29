@@ -1032,12 +1032,15 @@ class ProductAwardState:
         except OSError as exc:
             raise ProductAwardError("product-award state could not be saved", code="STATE") from exc
 
+    def last_delivery_day(self) -> Optional[date]:
+        raw = self._read()["last_delivery_day"]
+        return date.fromisoformat(raw) if raw is not None else None
+
     def due(self, local_day: date) -> bool:
-        value = self._read()
-        raw = value["last_delivery_day"]
-        if raw is None:
+        last_day = self.last_delivery_day()
+        if last_day is None:
             return True
-        return (local_day - date.fromisoformat(raw)).days >= COOLDOWN_DAYS
+        return (local_day - last_day).days >= COOLDOWN_DAYS
 
     def uncertain_event(self) -> Optional[str]:
         return self._read()["uncertain_event"]
@@ -1142,7 +1145,12 @@ def select_publication(
     if state.uncertain_event() is not None:
         LOGGER.warning("Product-award delivery remains uncertain; automatic resend disabled")
         return None
-    if not ignore_cooldown and not state.due(local_day):
+    last_delivery_day = state.last_delivery_day()
+    if ignore_cooldown:
+        if last_delivery_day == local_day:
+            LOGGER.info("SKIP: product-award already delivered today")
+            return None
+    elif not state.due(local_day):
         LOGGER.info("SKIP: product-award three-day cooldown is active")
         return None
     if not state.has_unpublished():
