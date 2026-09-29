@@ -234,6 +234,71 @@ class TomorrowEventPublicationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Шествие музыкальных оркестров", publication.message)
         self.assertIn("Красочный парад", publication.message)
 
+    async def test_repeated_programme_schedule_shows_explicit_target_date(self):
+        parent = "FIESTAS EN HONOR A LA VIRGEN DEL ROSARIO 2026"
+        events = []
+        for event_day in (date(2026, 9, 29), date(2026, 9, 30)):
+            events.extend([
+                SourceEvent(
+                    "Disparo de cohetes y volteo de campanas",
+                    event_day,
+                    event_day,
+                    "13:00",
+                    None,
+                    None,
+                    "event",
+                    ("ayuntamiento_programme",),
+                    programme_title=parent,
+                    programme_order=10,
+                ),
+                SourceEvent(
+                    "Rezo del Santo Rosario",
+                    event_day,
+                    event_day,
+                    "19:30",
+                    None,
+                    None,
+                    "event",
+                    ("ayuntamiento_programme",),
+                    programme_title=parent,
+                    programme_order=20,
+                ),
+                SourceEvent(
+                    "Santa Misa con Homilía",
+                    event_day,
+                    event_day,
+                    "20:00",
+                    None,
+                    "Iglesia parroquial San Jaime Apóstol",
+                    "event",
+                    ("ayuntamiento_programme",),
+                    programme_title=parent,
+                    programme_order=30,
+                ),
+            ])
+
+        now = datetime(2026, 9, 29, 19, 25, tzinfo=TZ)
+        with tempfile.TemporaryDirectory() as directory:
+            paths = _paths(directory)
+            _write_municipal(
+                paths["municipal_agenda_state_path"],
+                datetime(2026, 9, 29, 5, 10, tzinfo=TZ),
+                events,
+            )
+            publication = await produce_tomorrow_event_publication(
+                now, **paths
+            )
+
+        self.assertIsNotNone(publication)
+        self.assertEqual(publication.target_date, date(2026, 9, 30))
+        self.assertIn(
+            "Завтра в Гуардамаре — 30 сентября",
+            publication.message,
+        )
+        self.assertEqual(publication.message.count("13:00"), 1)
+        self.assertEqual(publication.message.count("19:30"), 1)
+        self.assertEqual(publication.message.count("20:00"), 1)
+
     async def test_multiple_units_use_one_compact_text_post_without_image(self):
         events = [
             SourceEvent(
