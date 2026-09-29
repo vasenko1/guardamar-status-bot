@@ -364,3 +364,77 @@ if it represented all Guardamar-Alicante service.
 
 No runtime change follows yet. The next decision depends on the exact timetable
 content of the CE-704 technical project.
+
+
+## CV-214 technical project assessment
+
+The official technical package `PSP CV-214_CV-301.zip` was obtained and the
+CV-214 PDF was inspected directly. The document is a 105-page service project
+for `CV-214 Torrevieja-Alacant`. It contains:
+
+- a three-day-type calendar;
+- winter/summer definitions;
+- daily expedition counts by line;
+- `Anejo 4. HORARIOS` with exact terminal-departure tables;
+- `Anejo 5. PARADAS` with initial and final stop layouts.
+
+The general calendar defines:
+
+- winter: 22 September through 20 June;
+- summer: 21 June through 21 September;
+- Monday-Friday working days;
+- working Saturdays;
+- Sundays and public holidays.
+
+Relevant proposed routes include:
+
+- L1A Alacant-Guardamar-Torrevieja-Pilar;
+- L1B the same corridor via CC La Zenia;
+- L2 Alacant-Torrevieja, semi-direct via Guardamar;
+- L4B Elx-Torrevieja via Catral/Dolores and Guardamar;
+- L4C Elx-Guardamar-Torrevieja direct;
+- L5 Torrevieja-Guardamar-Universitat d'Alacant;
+- L6 Guardamar-Hospital-Pilar.
+
+### Why this PDF is not the current timetable source
+
+The May 2026 procurement `CMAYOR/2024/14Y07/0101` is still shown by current
+public procurement trackers as published/in evaluation, with no award or
+formalisation recorded. Its bid deadline was 3 July 2026. Therefore the PDF is
+a tender service project, not proof that its timetable is already the operating
+September 2026 schedule.
+
+The timetable itself also materially disagrees with the last accepted live
+Avanza snapshot from 28 September 2026:
+
+- Alicante: the proposed weekday L1 + L2 terminal schedule provides 9 + 12 =
+  21 departures per direction before intermediate-stop timing is considered,
+  while the live accepted Guardamar-Alicante snapshot had 26 departures per
+  direction.
+- Elche: proposed L4B + L4C supply differs from the accepted 8/8 live snapshot;
+  L4C alone is 4 one way and 3 the other on weekdays.
+- CC La Zenia: L1B departures are marked only for Saturdays/Sundays/holidays
+  in Anejo 4, whereas the live planner accepted 13/13 Guardamar-Zenia trips on
+  Monday 28 September 2026. This is a decisive mismatch.
+
+In addition, Anejo 4 gives departure times at route terminals (for example
+Alacant/Pilar, Alacant/Torrevieja, Elx/Torrevieja). It does **not** provide the
+exact intermediate Guardamar pass/departure time for those trips. The stop
+annex proves that Guardamar is served, but cannot by itself generate an exact
+Guardamar departure card without another authoritative timing source.
+
+### Source decision
+
+Do not use the CV-214 tender PDF to replace the current Avanza planner or to
+overwrite accepted September 2026 timetable state.
+
+Keep it as a future reference for the planned concession structure and as a
+high-value validation source for route topology, seasonal definitions and line
+design. Re-evaluate it only after the CV-214 concession is awarded/formalised
+and there is evidence that the project schedule has entered service.
+
+Even after that point, exact Guardamar departure cards will still require an
+authoritative stop-level timetable or machine-readable source unless the final
+operating documents publish intermediate times.
+
+No runtime change follows from this PDF assessment.
