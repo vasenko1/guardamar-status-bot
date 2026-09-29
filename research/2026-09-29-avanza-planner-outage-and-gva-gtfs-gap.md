@@ -127,3 +127,53 @@ Interpretation:
   before implementation.
 
 No production timetable code should change until this comparison is observed.
+
+## Dual-host production comparison
+
+A production probe then repeated the same bounded Guardamar -> Alicante POST
+for 28, 29 and 30 September against both official planner hosts,
+`regular.autobusing.com` and `regular.autobusing.es`, using independent cookie
+jars and otherwise identical form data.
+
+The result was identical on all six requests:
+
+- initial planner HTML: 6,919 bytes;
+- form action: `/info/horarios` on the same host;
+- POST result: 7,183 bytes;
+- `ESTACION CERRADA TEMPORALMENTE`: present;
+- requested origin, destination and exact date: absent;
+- schedule table rows: zero;
+- strict parser: rejected as route/date mismatch.
+
+Therefore the `.es` hostname is **not** a working replacement for `.com`.
+Do not change `PLANNER_HOST` or add a second-host fallback. Both public planner
+front doors currently expose the same unavailable backend state.
+
+The temporary-closure wording is also historically known to appear on the
+Autobusing family when the online sales/planner backend is unavailable even
+while services continue. That evidence is contextual only; the current
+production conclusion remains based on the six direct probes above.
+
+## Official app backend candidate
+
+Costa Azul's current official Android/iOS app is a separate candidate source.
+The current Android package is `com.embarcadero.costazul`; the public store
+listing says it contains urban and interurban lines, stop maps and real-time
+arrival predictions. Version 3.2.0 was updated in October 2025.
+
+Official/first-party references:
+
+- https://costazul.net/app-ios-android/
+- https://play.google.com/store/apps/details?id=com.embarcadero.costazul
+- https://apps.apple.com/es/app/costa-azul/id1156441547
+
+This is useful evidence that Costa Azul/Avanza operates another machine-readable
+transport backend independently of the broken Autobusing timetable form.
+However, no app endpoint has yet been accepted for runtime. The next research
+step is to identify the app's public backend host and request contract, then
+probe it read-only for Guardamar interurban data before any architecture or code
+change.
+
+The app binary itself must not become a runtime dependency. APK inspection, if
+used, is research-only to discover public host/URL strings that the official app
+already calls.
