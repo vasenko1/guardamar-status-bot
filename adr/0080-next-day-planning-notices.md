@@ -27,7 +27,7 @@ notification framework.
 ### Next-day events
 
 - Add one primary tomorrow-events one-shot at 19:25 Europe/Madrid and one
-  recovery invocation at 19:55 on Sunday through Thursday. Both run the same
+  recovery invocation at 20:25 on Sunday through Thursday. Both run the same
   command and share the same delivery state.
 - Friday and Saturday are excluded because Friday's "Афиша выходных" already
   covers Saturday and Sunday.
@@ -117,7 +117,7 @@ This ADR amends ADR 0072's exact-day-only registration policy.
 - Before the non-idempotent send, persist uncertain. Confirmed success becomes
   sent. An ambiguous failure remains uncertain and blocks automatic resend.
   A deterministic rejection clears the marker before a safe alternative send.
-- The 19:55 recovery is delivery-safe: `sent` and `uncertain` both stop before
+- The 20:25 recovery is delivery-safe: `sent` and `uncertain` both stop before
   another Telegram send. A 19:25 run that had no eligible publication writes no
   delivery marker, so the same local snapshots can be re-evaluated once after a
   transient local snapshot/read problem is repaired.
