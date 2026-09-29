@@ -303,3 +303,64 @@ change.
 
 No runtime source, retry, dependency or scheduler change follows from APK static
 analysis alone.
+
+
+## Informedia backend liveness probe
+
+A direct internet probe from macOS resolved `informedia.com.es` to
+`82.223.26.19`.
+
+The two interurban-stop requests:
+
+- `http://informedia.com.es/costazul/json_paradasinter2.php`;
+- the same endpoint with `?search=GUARDAMAR`;
+
+both returned HTTP 200 with `text/html`, exactly 1,384 bytes, and an
+Avanza-branded server-error page whose visible message is:
+
+`ERROR 502 SERVICIO TEMPORALMENTE NO DISPONIBLE`.
+
+By contrast, `json_noticias.php` still returned JSON successfully, but the
+visible records were archival notices from 2020 and 2019, including the March
+2020 COVID state-of-alarm notice and a December 2019 maintenance notice.
+
+Conclusion: the host itself is alive, but the interurban transport API required
+by the app is unavailable and the remaining live content is legacy/stale.
+Reject the Informedia/app backend as a current Guardamar timetable source. Do
+not add it as primary, fallback, health-check or retry target.
+
+This also closes further APK reverse-engineering for runtime purposes unless a
+future official Costa Azul app release embeds a materially different backend.
+
+## Next official timetable candidates
+
+Current public evidence points to two separate official layers that are more
+promising than the failed planner/app backends.
+
+1. The official Costa Azul interurban page still publishes the current route
+   structure. Its June 2026 PDFs include updated route thermometers for L02,
+   L39 and L139. L02 contains Guardamar, Alicante and Zenia Boulevard stops;
+   L39 contains the direct coastal Guardamar/Elche corridor stops. These files
+   prove current route topology, not departure times.
+
+2. Generalitat's emergency CE-704 contract
+   `CMAYOR/2025/24Y07/0012`, awarded to Avanza Movilidad Levante in March
+   2026, includes an official technical document named
+   `20260108_PROYECTO SIMPLIFICADO.pdf`. Generalitat's public summary confirms
+   the corridor is operating and enumerates the new lines/frequencies,
+   including Alacant-Guardamar, the weekend CC La Zenia variant and
+   Elx-Guardamar-Torrevieja direct service.
+
+The contract technical project is therefore the next source to inspect for
+exact departure tables and seasonal/calendar rules. If it contains deterministic
+schedules, a stable architecture may be possible without a fragile daily web
+planner: keep reviewed timetable tables locally and use a lightweight official
+change/version check, rather than parsing a booking frontend every morning.
+
+A separate current official Bus BAM VAC-228/250 HTML timetable also includes
+Guardamar <-> Alicante departures. It is a real additional operator/service,
+but it is not a complete replacement for CE-704/Avanza and must not be used as
+if it represented all Guardamar-Alicante service.
+
+No runtime change follows yet. The next decision depends on the exact timetable
+content of the CE-704 technical project.
