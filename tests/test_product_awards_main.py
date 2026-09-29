@@ -50,7 +50,7 @@ def publication() -> ProductAwardPublication:
 
 class ProductAwardCliTests(unittest.TestCase):
     def test_public_cli_accepts_product_award_commands(self):
-        for command in ("product-awards-preview", "product-awards"):
+        for command in ("product-awards-preview", "product-awards", "product-awards-force"):
             with self.subTest(command=command):
                 with (
                     patch("sys.argv", ["telegrambot", command]),
@@ -95,7 +95,7 @@ class ProductAwardCommandTests(unittest.IsolatedAsyncioTestCase):
                 patch(
                     "telegrambot.__main__.select_product_award_publication",
                     return_value=(0, item),
-                ),
+                ) as select,
                 patch(
                     "telegrambot.__main__.send_rich_message",
                     new=AsyncMock(return_value=123),
@@ -104,6 +104,41 @@ class ProductAwardCommandTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(await _run_command("product-awards"), 0)
 
             send.assert_awaited_once()
+            select.assert_called_once()
+            self.assertFalse(select.call_args.kwargs["ignore_cooldown"])
+            state = ProductAwardState(state_path)
+            self.assertIn(item.candidate.event_id, state.published_events())
+            self.assertIsNone(state.uncertain_event())
+            self.assertIsNotNone(state._read()["last_delivery_day"])
+
+    async def test_force_send_bypasses_only_cooldown_and_confirms_today(self):
+        item = publication()
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "awards.json"
+            with (
+                patch.dict(
+                    "os.environ",
+                    {
+                        "TELEGRAM_BOT_TOKEN": "token",
+                        "TELEGRAM_CHAT_ID": "@group",
+                        "PRODUCT_AWARDS_STATE_PATH": str(state_path),
+                    },
+                    clear=False,
+                ),
+                patch(
+                    "telegrambot.__main__.select_product_award_publication",
+                    return_value=(0, item),
+                ) as select,
+                patch(
+                    "telegrambot.__main__.send_rich_message",
+                    new=AsyncMock(return_value=456),
+                ) as send,
+            ):
+                self.assertEqual(await _run_command("product-awards-force"), 0)
+
+            send.assert_awaited_once()
+            select.assert_called_once()
+            self.assertTrue(select.call_args.kwargs["ignore_cooldown"])
             state = ProductAwardState(state_path)
             self.assertIn(item.candidate.event_id, state.published_events())
             self.assertIsNone(state.uncertain_event())
