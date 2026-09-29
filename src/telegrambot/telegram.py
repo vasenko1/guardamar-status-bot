@@ -105,6 +105,8 @@ def _response_error(payload: Any, status: int) -> TelegramError:
         "wrong file identifier/http url specified",
         "invalid file http url specified",
         "wrong http url specified",
+        "rich_message_photo_no_media_found",
+        "rich_message_photo_url_invalid",
     )
     if status == 400 and any(
         marker in api_description for marker in remote_media_markers
