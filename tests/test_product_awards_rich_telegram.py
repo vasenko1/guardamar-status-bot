@@ -4,6 +4,7 @@ from unittest.mock import patch
 from telegrambot.telegram import (
     TelegramError,
     _post_rich_message,
+    _response_error,
     send_rich_message,
 )
 
@@ -33,6 +34,16 @@ class ProductAwardRichTelegramTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(body["disable_notification"])
         self.assertIn("<p>🏆", body["rich_message"]["html"])
         self.assertTrue(body["rich_message"]["skip_entity_detection"])
+
+    def test_remote_media_fetch_error_has_specific_diagnostic(self):
+        error = _response_error(
+            {"description": "Bad Request: failed to get HTTP URL content"},
+            400,
+        )
+
+        self.assertEqual(error.diagnostic_code, "REMOTE-MEDIA")
+        self.assertFalse(error.retryable)
+        self.assertEqual(error.server_status, 400)
 
     async def test_send_rich_message_does_not_retry_ambiguous_failure(self):
         transient = TelegramError(
