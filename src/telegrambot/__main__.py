@@ -1380,47 +1380,58 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
         chat_id = _required_environment("TELEGRAM_CHAT_ID")
         with product_state.exclusive_run():
-            selected = select_product_award_publication(
-                now,
-                product_state,
-                ignore_cooldown=(command == "product-awards-force"),
-            )
-            if selected is None:
-                return 0
-            category_index, publication = selected
-            event_id = publication.candidate.event_id
-            product_state.mark_uncertain(event_id)
-            try:
-                message_id = await send_rich_message(
-                    bot_token,
-                    chat_id,
-                    publication.message,
-                    disable_notification=False,
-                    max_attempts=1,
-                    retry_only_rate_limits=True,
+            excluded_event_ids: set[str] = set()
+            while True:
+                selected = select_product_award_publication(
+                    now,
+                    product_state,
+                    ignore_cooldown=(command == "product-awards-force"),
+                    excluded_event_ids=frozenset(excluded_event_ids),
                 )
-            except TelegramError as exc:
-                if is_ambiguous_send_failure(exc):
-                    logging.warning(
-                        "Product-award delivery uncertain [TELEGRAM-%s]; "
-                        "automatic resend disabled",
-                        exc.diagnostic_code,
-                    )
+                if selected is None:
                     return 0
-                product_state.clear_uncertain(event_id)
-                raise
-            product_state.confirm(
-                event_id,
-                publication.candidate.selection_key,
-                category_index,
-                now.date(),
-            )
-            logging.info(
-                "SUCCESS: product award delivered: %s message_id=%d",
-                event_id,
-                message_id,
-            )
-            return 0
+                category_index, publication = selected
+                event_id = publication.candidate.event_id
+                product_state.mark_uncertain(event_id)
+                try:
+                    message_id = await send_rich_message(
+                        bot_token,
+                        chat_id,
+                        publication.message,
+                        disable_notification=False,
+                        max_attempts=1,
+                        retry_only_rate_limits=True,
+                    )
+                except TelegramError as exc:
+                    if is_ambiguous_send_failure(exc):
+                        logging.warning(
+                            "Product-award delivery uncertain [TELEGRAM-%s]; "
+                            "automatic resend disabled",
+                            exc.diagnostic_code,
+                        )
+                        return 0
+                    product_state.clear_uncertain(event_id)
+                    if exc.diagnostic_code == "REMOTE-MEDIA":
+                        logging.warning(
+                            "Product-award candidate %s omitted: Telegram "
+                            "could not fetch retailer media",
+                            event_id,
+                        )
+                        excluded_event_ids.add(event_id)
+                        continue
+                    raise
+                product_state.confirm(
+                    event_id,
+                    publication.candidate.selection_key,
+                    category_index,
+                    now.date(),
+                )
+                logging.info(
+                    "SUCCESS: product award delivered: %s message_id=%d",
+                    event_id,
+                    message_id,
+                )
+                return 0
 
     if command in {"weekend", "weekend-preview"}:
         saturday, sunday = weekend_dates(now)

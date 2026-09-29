@@ -144,6 +144,81 @@ class ProductAwardCommandTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(state.uncertain_event())
             self.assertIsNotNone(state._read()["last_delivery_day"])
 
+    async def test_remote_media_rejection_skips_candidate_and_sends_next(self):
+        first = publication()
+        second_candidate = ReviewedCandidate(
+            category_key="next",
+            selection_key="next:2026",
+            event_id="next:event",
+            source_name="Test",
+            source_kind="producto_del_ano",
+            source_url="https://award.example/result",
+            source_hosts=frozenset({"award.example"}),
+            source_markers=("winner",),
+            retailer="Test Market",
+            retailer_kind="consum",
+            retailer_url="https://shop.example/api/product/8",
+            retailer_hosts=frozenset({"shop.example"}),
+            retailer_markers=("Next Product",),
+            product_name="Next Product",
+            award_year=2026,
+            source_category="Snacks",
+            award_scope="exact_product",
+            award_result="Producto del Año",
+            product_id=8,
+            expected_ean="8410000000001",
+        )
+        second = ProductAwardPublication(
+            candidate=second_candidate,
+            offer=RetailOffer(
+                retailer="Test Market",
+                price="3,00 €",
+                image_url="https://cdn.example/next.jpg",
+                product_name="Next Product",
+            ),
+            message="<p>next</p>",
+        )
+        media_error = TelegramError(
+            "bad request",
+            retryable=False,
+            code="REMOTE-MEDIA",
+            status=400,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "awards.json"
+            with (
+                patch.dict(
+                    "os.environ",
+                    {
+                        "TELEGRAM_BOT_TOKEN": "token",
+                        "TELEGRAM_CHAT_ID": "@group",
+                        "PRODUCT_AWARDS_STATE_PATH": str(state_path),
+                    },
+                    clear=False,
+                ),
+                patch(
+                    "telegrambot.__main__.select_product_award_publication",
+                    side_effect=((0, first), (1, second)),
+                ) as select,
+                patch(
+                    "telegrambot.__main__.send_rich_message",
+                    new=AsyncMock(side_effect=(media_error, 789)),
+                ) as send,
+            ):
+                self.assertEqual(await _run_command("product-awards-force"), 0)
+
+            self.assertEqual(send.await_count, 2)
+            self.assertEqual(select.call_count, 2)
+            self.assertEqual(
+                select.call_args_list[1].kwargs["excluded_event_ids"],
+                frozenset({first.candidate.event_id}),
+            )
+            state = ProductAwardState(state_path)
+            self.assertNotIn(first.candidate.event_id, state.published_events())
+            self.assertIn(second.candidate.event_id, state.published_events())
+            self.assertIsNone(state.uncertain_event())
+
     async def test_ambiguous_send_remains_uncertain(self):
         item = publication()
         with tempfile.TemporaryDirectory() as directory:

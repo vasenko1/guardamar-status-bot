@@ -389,6 +389,38 @@ class SelectionTests(unittest.TestCase):
         verify.assert_called_once_with(second)
         refresh.assert_called_once_with(second)
 
+    def test_selection_can_exclude_one_transport_rejected_event(self):
+        first = candidate("first", "first")
+        second = candidate("second", "second")
+        categories = (
+            ReviewedCategory(
+                key="first",
+                sources=(ReviewedSource("A", 1, (first,)),),
+            ),
+            ReviewedCategory(
+                key="second",
+                sources=(ReviewedSource("B", 1, (second,)),),
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state = ProductAwardState(Path(directory) / "awards.json")
+            with (
+                patch.object(awards, "CATEGORIES", categories),
+                patch.object(awards, "_verify_award") as verify,
+                patch.object(awards, "_refresh_offer", return_value=offer()) as refresh,
+            ):
+                selected = select_publication(
+                    datetime(2026, 9, 29, 10, 45, tzinfo=MADRID),
+                    state,
+                    ignore_cooldown=True,
+                    excluded_event_ids=frozenset({first.event_id}),
+                )
+
+        self.assertIsNotNone(selected)
+        self.assertEqual(selected[1].candidate.event_id, second.event_id)
+        verify.assert_called_once_with(second)
+        refresh.assert_called_once_with(second)
+
     def test_cooldown_bypass_cannot_publish_twice_on_same_day(self):
         with tempfile.TemporaryDirectory() as directory:
             state = ProductAwardState(Path(directory) / "awards.json")

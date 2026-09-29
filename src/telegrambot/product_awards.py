@@ -1140,6 +1140,7 @@ def select_publication(
     state: ProductAwardState,
     *,
     ignore_cooldown: bool = False,
+    excluded_event_ids: frozenset[str] = frozenset(),
 ) -> Optional[tuple[int, ProductAwardPublication]]:
     local_day = now.date()
     if state.uncertain_event() is not None:
@@ -1165,6 +1166,7 @@ def select_publication(
             for candidate in sorted(source.candidates, key=lambda item: item.rank):
                 if (
                     candidate.event_id in published
+                    or candidate.event_id in excluded_event_ids
                     or candidate.selection_key in published_selections
                 ):
                     continue
