@@ -45,6 +45,12 @@ class ProductAwardRichTelegramTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(error.retryable)
         self.assertEqual(error.server_status, 400)
 
+        content_type_error = _response_error(
+            {"description": "Bad Request: wrong type of the web page content"},
+            400,
+        )
+        self.assertEqual(content_type_error.diagnostic_code, "REMOTE-MEDIA")
+
     async def test_send_rich_message_does_not_retry_ambiguous_failure(self):
         transient = TelegramError(
             "timeout",
