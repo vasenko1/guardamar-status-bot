@@ -1363,7 +1363,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             )
             return 0
 
-    if command in {"product-awards", "product-awards-preview"}:
+    if command in {"product-awards", "product-awards-force", "product-awards-preview"}:
         if command == "product-awards-preview":
             publications = preview_product_awards(now)
             if not publications:
@@ -1380,7 +1380,11 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
         chat_id = _required_environment("TELEGRAM_CHAT_ID")
         with product_state.exclusive_run():
-            selected = select_product_award_publication(now, product_state)
+            selected = select_product_award_publication(
+                now,
+                product_state,
+                ignore_cooldown=(command == "product-awards-force"),
+            )
             if selected is None:
                 return 0
             category_index, publication = selected
@@ -2056,7 +2060,7 @@ def main() -> None:
             "celebration-alert", "celebration-alert-preview",
             "weekend", "weekend-preview",
             "tomorrow-events", "tomorrow-events-preview",
-            "product-awards", "product-awards-preview",
+            "product-awards", "product-awards-force", "product-awards-preview",
             "poll",
         ),
         default="run",
