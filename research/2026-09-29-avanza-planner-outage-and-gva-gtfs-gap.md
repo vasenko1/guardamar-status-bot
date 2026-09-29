@@ -438,3 +438,86 @@ authoritative stop-level timetable or machine-readable source unless the final
 operating documents publish intermediate times.
 
 No runtime change follows from this PDF assessment.
+
+
+## Current CE-704 source discovery after CV-214 review
+
+Further public-source research changes one part of the earlier CV-214 comparison:
+the Generalitat's 29 June 2026 Vega Baja service summary describes CE-704
+frequencies as **minimum service levels**, not as the complete operating
+timetable. Therefore comparing those minimum counts directly with the
+Autobusing row count was too strong.
+
+Official current evidence:
+
+- Generalitat states that the emergency CE-704, CE-710 and CE-714 corridors
+  are operating for a two-year transitional period pending definitive
+  concessions.
+- CE-704 L1A has a minimum 9 trips per direction on working weekdays.
+- CE-704 L2 has a minimum 12 trips per direction on working weekdays.
+- CE-704 L4B and L4C provide the Guardamar/Elche corridor.
+- The current Costa Azul interurban page still lists L02
+  Pilar-Torrevieja-Alicante and L39 Torrevieja-Elche.
+- Costa Azul's June 2026 L02 stop PDF still includes both
+  `C/ Jade, 2 (Zenia Boulevard)` and the Guardamar bus station.
+- Costa Azul's June 2026 L39 stop PDF still routes Torrevieja-Elche through
+  Guardamar, San Fulgencio, Dolores, Catral and Crevillent.
+
+Current third-party stop-level datasets provide an important independent
+cross-check of the last accepted planner snapshot. Moovit currently exposes
+26 working-weekday L2 passages through Guardamar in each direction on the
+Torrevieja-Alicante corridor. That count exactly matches the bot's last
+accepted 2026-09-28 Alicante snapshot (26/26). This strongly suggests that
+the accepted snapshot remains representative of the current operating L2
+schedule even though the Autobusing frontend later failed.
+
+Moovit and other aggregators are **not** accepted as production sources from
+this finding alone. Their value here is to prove that structured current
+stop-level data still exist somewhere outside the broken booking planner.
+
+A second official source also independently exposes live/current Avanza
+movements: the Alicante bus-station website shows Avanza departures and
+arrivals with intermediate Guardamar times. It is useful corroboration for
+Alicante but does not provide a common solution for Elche and Zenia.
+
+### Modern source candidates
+
+Two source paths now have higher priority than further work on old Informedia:
+
+1. **Costa Azul WordPress media archive.**
+   Historical Costa Azul uploads include complete stop-by-stop timetable PDFs,
+   not only route thermometers. The current site has many 2026 timetable PDFs
+   in `wp-content/uploads/2026/`, while the public interurban page links only
+   the June 2026 stop-layout files. The standard WordPress media REST endpoint,
+   if publicly readable, can enumerate unlinked 2026 attachments and prove
+   whether current L02/L39 timetable PDFs exist.
+
+2. **Current Avanza stop/GeoActio stack.**
+   Avanza operates a public stop-arrival frontend at
+   `consultas.avanzagrupo.com/qr/`. Other Avanza systems use tenant/stop QR
+   paths such as `/qr/benidorm-222`. Current Vega Baja transport products
+   also use GeoActio/ActioSAE-style real-time infrastructure; GeoActio publicly
+   documents GTFS/GTFS-RT integrations, including Moovit integration.
+   The unresolved step is identifying the Vega Baja tenant/stop identifiers
+   and the public request contract.
+
+An unofficial service, AliBus, is useful only as a discovery oracle: its
+Guardamar stop page currently identifies stop code `0020` and current
+interurban lines, and its own disclosures say it obtains arrivals from the
+underlying line systems. Do not make AliBus a runtime dependency unless all
+official paths fail and a separate architecture decision justifies it.
+
+### Current source priority
+
+Before changing runtime code:
+
+1. enumerate Costa Azul 2026 WordPress media for hidden interurban timetable
+   attachments;
+2. inspect the Avanza QR search/tenant contract for Vega Baja and Guardamar;
+3. if neither exposes the source, inspect a current GeoActio-based Avanza app
+   or AliBus only to discover the official upstream;
+4. keep Moovit/Alicante-station data as independent validation, not as the
+   primary source.
+
+The current fail-closed accepted snapshots remain the safest production state
+until one of these paths yields a directly validated source contract.
