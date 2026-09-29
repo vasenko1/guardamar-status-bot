@@ -271,6 +271,10 @@ class ProductAwardCommandTests(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(send.await_count, 2)
             self.assertEqual(select.call_count, 2)
+            self.assertEqual(
+                select.call_args_list[1].kwargs["excluded_event_ids"],
+                frozenset({first.candidate.event_id}),
+            )
             state = ProductAwardState(state_path)
             self.assertNotIn(first.candidate.event_id, state.published_events())
             self.assertIn(second.candidate.event_id, state.published_events())
