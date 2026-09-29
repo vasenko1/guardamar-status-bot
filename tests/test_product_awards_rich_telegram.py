@@ -44,6 +44,10 @@ class ProductAwardRichTelegramTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(error.diagnostic_code, "REMOTE-MEDIA")
         self.assertFalse(error.retryable)
         self.assertEqual(error.server_status, 400)
+        self.assertEqual(
+            error.server_description,
+            "Bad Request: failed to get HTTP URL content",
+        )
 
         content_type_error = _response_error(
             {"description": "Bad Request: wrong type of the web page content"},

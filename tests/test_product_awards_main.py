@@ -268,6 +268,7 @@ class ProductAwardCommandTests(unittest.IsolatedAsyncioTestCase):
                 retryable=False,
                 code="HTTP-400",
                 status=400,
+                server_description="Bad Request: exact diagnostic",
             )
             with (
                 patch.dict(

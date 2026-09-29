@@ -34,6 +34,7 @@ class TelegramError(RuntimeError):
         code: str = "INVALID",
         status: Optional[int] = None,
         description: Optional[str] = None,
+        server_description: Optional[str] = None,
     ) -> None:
         super().__init__(message)
         self.retryable = retryable
@@ -41,6 +42,7 @@ class TelegramError(RuntimeError):
         self.diagnostic_code = code
         self.server_status = status
         self.safe_description = description
+        self.server_description = server_description
 
 
 def is_ambiguous_send_failure(exc: TelegramError) -> bool:
@@ -83,10 +85,12 @@ def _decode_response(payload: bytes) -> Dict[str, Any]:
 def _response_error(payload: Any, status: int) -> TelegramError:
     retry_after = None
     api_description = ""
+    server_description = None
     if isinstance(payload, dict):
         raw_description = payload.get("description")
         if isinstance(raw_description, str):
-            api_description = raw_description.casefold()
+            server_description = " ".join(raw_description.split())[:500]
+            api_description = server_description.casefold()
         parameters = payload.get("parameters")
         if isinstance(parameters, dict):
             raw_retry_after = parameters.get("retry_after")
@@ -126,6 +130,7 @@ def _response_error(payload: Any, status: int) -> TelegramError:
         code=code,
         status=status,
         description=description,
+        server_description=server_description,
     )
 
 
