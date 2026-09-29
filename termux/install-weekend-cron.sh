@@ -48,7 +48,7 @@ printf '%s\n' \
     "15 19 * * 5 $WEEKEND --fresh" \
     "15 20 * * 5 $WEEKEND" \
     "25 19 * * 0-4 $SH_BIN $TOMORROW" \
-    "55 19 * * 0-4 $SH_BIN $TOMORROW" \
+    "25 20 * * 0-4 $SH_BIN $TOMORROW" \
     >"$JOBS"
 
 if ! awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" -v weekend="$WEEKEND" -v tomorrow="$TOMORROW" -v shbin="$SH_BIN" '
