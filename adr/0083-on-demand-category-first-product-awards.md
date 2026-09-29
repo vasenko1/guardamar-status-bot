@@ -41,7 +41,10 @@ published-event/selection history, current authority and retailer verification,
 the exclusive lock, uncertain-delivery protection and one-product limit all
 remain active. Confirmed delivery records the operator run's local day as the
 new last delivery day and advances the normal category cursor, so the regular
-three-day cadence continues from that date.
+three-day cadence continues from that date. Even the operator bypass remains
+one-confirmed-publication-per-local-day: when `last_delivery_day` already equals
+the current local day, the force run exits before award or retailer network
+access.
 
 ### 2. Keep a reviewed category registry
 
