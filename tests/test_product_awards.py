@@ -389,6 +389,26 @@ class SelectionTests(unittest.TestCase):
         verify.assert_called_once_with(second)
         refresh.assert_called_once_with(second)
 
+    def test_cooldown_bypass_cannot_publish_twice_on_same_day(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = ProductAwardState(Path(directory) / "awards.json")
+            today = date(2026, 9, 29)
+            state.mark_uncertain("already")
+            state.confirm("already", "already:2026", 0, today)
+            with (
+                patch.object(awards, "_verify_award") as verify,
+                patch.object(awards, "_refresh_offer") as refresh,
+            ):
+                selected = select_publication(
+                    datetime(2026, 9, 29, 18, 0, tzinfo=MADRID),
+                    state,
+                    ignore_cooldown=True,
+                )
+
+        self.assertIsNone(selected)
+        verify.assert_not_called()
+        refresh.assert_not_called()
+
     def test_cooldown_bypass_does_not_override_uncertain_delivery(self):
         with tempfile.TemporaryDirectory() as directory:
             state = ProductAwardState(Path(directory) / "awards.json")
