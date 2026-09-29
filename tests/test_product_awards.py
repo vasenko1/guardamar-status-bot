@@ -346,6 +346,67 @@ class SelectionTests(unittest.TestCase):
             verify.assert_not_called()
             refresh.assert_not_called()
 
+    def test_cooldown_bypass_selects_next_unpublished_category(self):
+        first = candidate("first", "first")
+        second = candidate("second", "second")
+        categories = (
+            ReviewedCategory(
+                key="first",
+                sources=(ReviewedSource("A", 1, (first,)),),
+            ),
+            ReviewedCategory(
+                key="second",
+                sources=(ReviewedSource("B", 1, (second,)),),
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "awards.json"
+            path.write_text(
+                json.dumps({
+                    "schema_version": 1,
+                    "last_delivery_day": "2026-09-28",
+                    "published_events": [first.event_id],
+                    "published_selections": [first.selection_key],
+                    "category_cursor": 1,
+                    "uncertain_event": None,
+                }),
+                encoding="utf-8",
+            )
+            with (
+                patch.object(awards, "CATEGORIES", categories),
+                patch.object(awards, "_verify_award") as verify,
+                patch.object(awards, "_refresh_offer", return_value=offer()) as refresh,
+            ):
+                selected = select_publication(
+                    datetime(2026, 9, 29, 10, 45, tzinfo=MADRID),
+                    ProductAwardState(path),
+                    ignore_cooldown=True,
+                )
+
+        self.assertIsNotNone(selected)
+        self.assertEqual(selected[0], 1)
+        self.assertEqual(selected[1].candidate.event_id, second.event_id)
+        verify.assert_called_once_with(second)
+        refresh.assert_called_once_with(second)
+
+    def test_cooldown_bypass_does_not_override_uncertain_delivery(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = ProductAwardState(Path(directory) / "awards.json")
+            state.mark_uncertain("ambiguous")
+            with (
+                patch.object(awards, "_verify_award") as verify,
+                patch.object(awards, "_refresh_offer") as refresh,
+            ):
+                selected = select_publication(
+                    datetime(2026, 9, 29, 10, 45, tzinfo=MADRID),
+                    state,
+                    ignore_cooldown=True,
+                )
+
+        self.assertIsNone(selected)
+        verify.assert_not_called()
+        refresh.assert_not_called()
+
     def test_exhausted_registry_causes_zero_network_requests(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "awards.json"
