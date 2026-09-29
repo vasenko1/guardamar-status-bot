@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from telegrambot.__main__ import _run_command, main
 from telegrambot.product_awards import (
+    ProductAwardError,
     ProductAwardPublication,
     ProductAwardState,
     RetailOffer,
@@ -197,6 +198,9 @@ class ProductAwardCommandTests(unittest.IsolatedAsyncioTestCase):
             state = ProductAwardState(state_path)
             self.assertIn(item.candidate.event_id, state.published_events())
             self.assertIsNone(state.uncertain_event())
+            self.assertFalse(
+                list(Path(directory).glob(".product-award-media-*"))
+            )
 
     async def test_failed_local_media_recovery_skips_candidate_and_sends_next(self):
         first = publication()
