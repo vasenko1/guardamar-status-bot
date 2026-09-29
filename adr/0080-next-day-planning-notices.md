@@ -26,8 +26,9 @@ notification framework.
 
 ### Next-day events
 
-- Add one tomorrow-events one-shot scheduled at 19:25 Europe/Madrid on
-  Sunday through Thursday.
+- Add one primary tomorrow-events one-shot at 19:25 Europe/Madrid and one
+  recovery invocation at 20:25 on Sunday through Thursday. Both run the same
+  command and share the same delivery state.
 - Friday and Saturday are excluded because Friday's "Афиша выходных" already
   covers Saturday and Sunday.
 - The one-shot performs no source-network requests and no AI calls. It reads
@@ -116,13 +117,19 @@ This ADR amends ADR 0072's exact-day-only registration policy.
 - Before the non-idempotent send, persist uncertain. Confirmed success becomes
   sent. An ambiguous failure remains uncertain and blocks automatic resend.
   A deterministic rejection clears the marker before a safe alternative send.
+- The 20:25 recovery is delivery-safe: `sent` and `uncertain` both stop before
+  another Telegram send. A 19:25 run that had no eligible publication writes no
+  delivery marker, so the same local snapshots can be re-evaluated once after a
+  transient local snapshot/read problem is repaired.
 - No generic notification bus, database, queue, resident worker or internal
   scheduler is introduced.
 
 ## Consequences
 
-The phone's normal next-day event run is local JSON reads, deterministic merge
-and at most one Telegram request. It adds no evening source traffic, no browser,
+The phone's normal next-day event lifecycle is at most two short local-only
+invocations, each doing JSON reads and a deterministic merge. Across both
+invocations there is still at most one Telegram publication because the same
+crash-safe state gates delivery. It adds no evening source traffic, no browser,
 no PDF work, no image decoding and no AI workload.
 
 A single high-value event or festival can receive richer presentation while a
