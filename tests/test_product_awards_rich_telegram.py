@@ -1,9 +1,13 @@
+import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from telegrambot.telegram import (
     TelegramError,
     _post_rich_message,
+    _post_rich_message_with_photo_upload,
     _response_error,
     send_rich_message,
 )
@@ -54,6 +58,41 @@ class ProductAwardRichTelegramTests(unittest.IsolatedAsyncioTestCase):
             400,
         )
         self.assertEqual(content_type_error.diagnostic_code, "REMOTE-MEDIA")
+
+        rich_media_error = _response_error(
+            {"description": "Bad Request: RICH_MESSAGE_PHOTO_NO_MEDIA_FOUND"},
+            400,
+        )
+        self.assertEqual(rich_media_error.diagnostic_code, "REMOTE-MEDIA")
+
+    def test_uploaded_rich_photo_uses_explicit_media_attachment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "product.jpg"
+            path.write_bytes(b"jpeg")
+            with patch(
+                "telegrambot.telegram._call_api_multipart",
+                return_value={"ok": True, "result": {"message_id": 92}},
+            ) as call:
+                message_id = _post_rich_message_with_photo_upload(
+                    "dummy",
+                    "chat",
+                    '<img src="tg://photo?id=product_photo"/><p>text</p>',
+                    path,
+                    "image/jpeg",
+                    True,
+                )
+
+        self.assertEqual(message_id, 92)
+        args = call.call_args.args
+        self.assertEqual(args[1], "sendRichMessage")
+        fields = args[2]
+        rich_message = json.loads(fields["rich_message"])
+        self.assertEqual(
+            rich_message["media"][0]["media"]["media"],
+            "attach://product_photo",
+        )
+        self.assertEqual(args[3], "product_photo")
+        self.assertEqual(args[5], "image/jpeg")
 
     async def test_send_rich_message_does_not_retry_ambiguous_failure(self):
         transient = TelegramError(
