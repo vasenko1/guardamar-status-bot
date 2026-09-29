@@ -41,6 +41,14 @@ Publish through Telegram Rich Messages:
 
 Do not include award or retailer links in the public article.
 
+If Telegram deterministically rejects a retailer image because its servers
+cannot fetch the remote HTTP(S) media, clear the delivery reservation, omit
+that candidate for the current invocation, and continue through the same
+bounded reviewed registry. Do not persist the transport rejection: a retailer
+CDN may recover before a later cycle. Ambiguous delivery still blocks automatic
+resend, and any other deterministic Rich Message rejection still fails closed
+rather than being misclassified as a media problem.
+
 Keep editorial generation deterministic. Do not require Gemini, OpenRouter or
 another LLM for Product Awards publication. The runtime may use only facts
 already validated by the award and retailer adapters.
