@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from telegrambot.__main__ import _run_command, main
 from telegrambot.product_awards import (
+    ProductAwardError,
     ProductAwardPublication,
     ProductAwardState,
     RetailOffer,
@@ -144,7 +145,64 @@ class ProductAwardCommandTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(state.uncertain_event())
             self.assertIsNotNone(state._read()["last_delivery_day"])
 
-    async def test_remote_media_rejection_skips_candidate_and_sends_next(self):
+    async def test_remote_media_rejection_uploads_same_candidate_and_confirms(self):
+        item = publication()
+        media_error = TelegramError(
+            "bad request",
+            retryable=False,
+            code="REMOTE-MEDIA",
+            status=400,
+            server_description="Bad Request: RICH_MESSAGE_PHOTO_NO_MEDIA_FOUND",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "awards.json"
+            with (
+                patch.dict(
+                    "os.environ",
+                    {
+                        "TELEGRAM_BOT_TOKEN": "token",
+                        "TELEGRAM_CHAT_ID": "@group",
+                        "PRODUCT_AWARDS_STATE_PATH": str(state_path),
+                    },
+                    clear=False,
+                ),
+                patch(
+                    "telegrambot.__main__.select_product_award_publication",
+                    return_value=(0, item),
+                ) as select,
+                patch(
+                    "telegrambot.__main__.send_rich_message",
+                    new=AsyncMock(side_effect=media_error),
+                ),
+                patch(
+                    "telegrambot.__main__.fetch_product_award_image",
+                    return_value=(b"jpeg", "image/jpeg"),
+                ) as fetch_image,
+                patch(
+                    "telegrambot.__main__.send_rich_message_with_photo_upload",
+                    new=AsyncMock(return_value=789),
+                ) as upload,
+            ):
+                self.assertEqual(await _run_command("product-awards-force"), 0)
+
+            select.assert_called_once()
+            fetch_image.assert_called_once_with(
+                item.candidate,
+                item.offer.image_url,
+            )
+            upload.assert_awaited_once()
+            self.assertIn(
+                "tg://photo?id=product_photo",
+                upload.call_args.args[2],
+            )
+            state = ProductAwardState(state_path)
+            self.assertIn(item.candidate.event_id, state.published_events())
+            self.assertIsNone(state.uncertain_event())
+            self.assertFalse(
+                list(Path(directory).glob(".product-award-media-*"))
+            )
+
+    async def test_failed_local_media_recovery_skips_candidate_and_sends_next(self):
         first = publication()
         second_candidate = ReviewedCandidate(
             category_key="next",
@@ -184,7 +242,6 @@ class ProductAwardCommandTests(unittest.IsolatedAsyncioTestCase):
             code="REMOTE-MEDIA",
             status=400,
         )
-
         with tempfile.TemporaryDirectory() as directory:
             state_path = Path(directory) / "awards.json"
             with (
@@ -205,6 +262,10 @@ class ProductAwardCommandTests(unittest.IsolatedAsyncioTestCase):
                     "telegrambot.__main__.send_rich_message",
                     new=AsyncMock(side_effect=(media_error, 789)),
                 ) as send,
+                patch(
+                    "telegrambot.__main__.fetch_product_award_image",
+                    side_effect=ProductAwardError("media", code="MEDIA-NETWORK"),
+                ),
             ):
                 self.assertEqual(await _run_command("product-awards-force"), 0)
 

@@ -34,6 +34,8 @@ USER_AGENT = "GuardamarMorningDigest/0.14"
 COOLDOWN_DAYS = 3
 STATE_SCHEMA_VERSION = 1
 MAX_HISTORY = 128
+CONSUM_MEDIA_HOSTS = frozenset({"cdn-consum.aktiosdigitalservices.com"})
+MASYMAS_MEDIA_HOSTS = frozenset({"cdn-fornes.aktiosdigitalservices.com"})
 
 
 class ProductAwardError(RuntimeError):
@@ -272,6 +274,35 @@ def _remote_image(value: object) -> Optional[str]:
     ):
         return None
     return value
+
+
+def fetch_product_image(
+    candidate: ReviewedCandidate,
+    url: str,
+) -> tuple[bytes, str]:
+    media_hosts = {
+        "consum": CONSUM_MEDIA_HOSTS,
+        "masymas": MASYMAS_MEDIA_HOSTS,
+    }.get(candidate.retailer_kind, frozenset())
+    allowed_hosts = candidate.retailer_hosts | media_hosts
+    try:
+        payload, _, content_type = fetch_bounded(
+            url,
+            is_allowed_url=_allowed(allowed_hosts),
+            accepted_types=frozenset({"image/jpeg", "image/png", "image/webp"}),
+            limit_bytes=IMAGE_LIMIT_BYTES,
+            timeout_seconds=REQUEST_TIMEOUT_SECONDS,
+            headers={
+                "Accept": "image/webp,image/png,image/jpeg,*/*;q=0.8",
+                "User-Agent": USER_AGENT,
+            },
+        )
+    except BoundedFetchError as exc:
+        raise ProductAwardError(
+            "retailer product image could not be downloaded",
+            code=f"MEDIA-{exc.code}",
+        ) from exc
+    return payload, content_type
 
 
 def _image_exists(url: str, hosts: frozenset[str]) -> bool:
@@ -600,7 +631,12 @@ def _methodology(candidate: ReviewedCandidate) -> str:
     )
 
 
-def build_message(candidate: ReviewedCandidate, offer: RetailOffer) -> str:
+def build_message(
+    candidate: ReviewedCandidate,
+    offer: RetailOffer,
+    *,
+    image_src: Optional[str] = None,
+) -> str:
     name = html.escape(candidate.product_name)
     category = html.escape(candidate.source_category)
 
@@ -650,7 +686,7 @@ def build_message(candidate: ReviewedCandidate, offer: RetailOffer) -> str:
             code="CONFIG",
         )
 
-    image = html.escape(offer.image_url, quote=True)
+    image = html.escape(image_src or offer.image_url, quote=True)
     rendered = "\n".join((
         f'<img src="{image}"/>',
         f"<p>🏆 <b>{title}</b></p>",

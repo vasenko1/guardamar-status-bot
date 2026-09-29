@@ -89,6 +89,26 @@ class SourceContractTests(unittest.TestCase):
         self.assertEqual(headers["User-Agent"], awards.USER_AGENT)
         self.assertNotIn("Sec-Fetch-Mode", headers)
 
+    def test_consum_product_image_download_uses_pinned_cdn(self):
+        item = candidate("media")
+        url = (
+            "https://cdn-consum.aktiosdigitalservices.com/"
+            "tol/consum/media/product/img/300x300/product.jpg"
+        )
+        with patch.object(
+            awards,
+            "fetch_bounded",
+            return_value=(b"jpeg", url, "image/jpeg"),
+        ) as fetch:
+            payload, content_type = awards.fetch_product_image(item, url)
+
+        self.assertEqual(payload, b"jpeg")
+        self.assertEqual(content_type, "image/jpeg")
+        allow = fetch.call_args.kwargs["is_allowed_url"]
+        self.assertTrue(allow(url))
+        self.assertFalse(allow("https://example.com/product.jpg"))
+        self.assertEqual(fetch.call_args.kwargs["limit_bytes"], awards.IMAGE_LIMIT_BYTES)
+
     def test_consum_detail_requires_exact_ean_and_returns_media(self):
         item = candidate("retail")
         payload = {

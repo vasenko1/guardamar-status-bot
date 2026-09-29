@@ -105,6 +105,8 @@ def _response_error(payload: Any, status: int) -> TelegramError:
         "wrong file identifier/http url specified",
         "invalid file http url specified",
         "wrong http url specified",
+        "rich_message_photo_no_media_found",
+        "rich_message_photo_url_invalid",
     )
     if status == 400 and any(
         marker in api_description for marker in remote_media_markers
@@ -220,7 +222,10 @@ def _call_api(
 
 
 def _multipart_body(
-    fields: Dict[str, str], file_field: str, path: Path
+    fields: Dict[str, str],
+    file_field: str,
+    path: Path,
+    file_content_type: str = "image/png",
 ) -> tuple[bytes, str]:
     """Build one bounded multipart request without another dependency."""
 
@@ -242,7 +247,7 @@ def _multipart_body(
             f'Content-Disposition: form-data; name="{file_field}"; '
             f'filename="{filename}"\r\n'
         ).encode("utf-8"),
-        b"Content-Type: image/png\r\n\r\n",
+        f"Content-Type: {file_content_type}\r\n\r\n".encode("ascii"),
         path.read_bytes(),
         b"\r\n",
         f"--{boundary}--\r\n".encode("ascii"),
@@ -256,8 +261,14 @@ def _call_api_multipart(
     fields: Dict[str, str],
     file_field: str,
     path: Path,
+    file_content_type: str = "image/png",
 ) -> Dict[str, Any]:
-    body, content_type = _multipart_body(fields, file_field, path)
+    body, content_type = _multipart_body(
+        fields,
+        file_field,
+        path,
+        file_content_type,
+    )
     try:
         payload, _, _ = fetch_bounded(
             _api_url(bot_token, method),
@@ -503,6 +514,65 @@ def _post_rich_message(
             "disable_notification": disable_notification,
         },
         REQUEST_TIMEOUT_SECONDS,
+    )
+    result = decoded.get("result")
+    message_id = result.get("message_id") if isinstance(result, dict) else None
+    if not isinstance(message_id, int):
+        raise TelegramError(
+            "Telegram returned no rich-message identifier",
+            retryable=True,
+            code="NO-MESSAGE-ID",
+            description="Telegram не вернул идентификатор Rich Message",
+        )
+    return message_id
+
+
+def _post_rich_message_with_photo_upload(
+    bot_token: str,
+    chat_id: str,
+    rich_html: str,
+    path: Path,
+    photo_content_type: str,
+    disable_notification: bool = False,
+) -> int:
+    if not 1 <= len(rich_html) <= 32768:
+        raise TelegramError(
+            "Telegram rich message length is invalid",
+            retryable=False,
+            code="MESSAGE-LENGTH",
+            description="длина Rich Message выходит за пределы Telegram",
+        )
+    if photo_content_type not in {"image/jpeg", "image/png", "image/webp"}:
+        raise TelegramError(
+            "Telegram rich photo content type is invalid",
+            retryable=False,
+            code="PHOTO",
+            description="тип изображения для Rich Message не поддерживается",
+        )
+    rich_message = {
+        "html": rich_html,
+        "media": [
+            {
+                "id": "product_photo",
+                "media": {
+                    "type": "photo",
+                    "media": "attach://product_photo",
+                },
+            },
+        ],
+        "skip_entity_detection": True,
+    }
+    decoded = _call_api_multipart(
+        bot_token,
+        "sendRichMessage",
+        {
+            "chat_id": chat_id,
+            "rich_message": json.dumps(rich_message, ensure_ascii=False),
+            "disable_notification": json.dumps(disable_notification),
+        },
+        "product_photo",
+        path,
+        photo_content_type,
     )
     result = decoded.get("result")
     message_id = result.get("message_id") if isinstance(result, dict) else None
@@ -812,6 +882,28 @@ async def send_rich_message(
             )
             await sleep(delay)
     raise AssertionError("unreachable")
+
+
+async def send_rich_message_with_photo_upload(
+    bot_token: str,
+    chat_id: str,
+    rich_html: str,
+    path: Path,
+    photo_content_type: str,
+    *,
+    disable_notification: bool = False,
+) -> int:
+    """Send one Rich Message with one locally uploaded product photo."""
+
+    return await asyncio.to_thread(
+        _post_rich_message_with_photo_upload,
+        bot_token,
+        chat_id,
+        rich_html,
+        path,
+        photo_content_type,
+        disable_notification,
+    )
 
 
 async def send_poll(
