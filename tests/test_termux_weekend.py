@@ -60,6 +60,25 @@ class WeekendTermuxTests(unittest.TestCase):
         self.assertIn("25 20 * * 0-4", installed)
         self.assertEqual(installed.count("run-tomorrow-events.sh"), 2)
 
+    def test_installer_upgrades_existing_managed_tomorrow_job(self):
+        weekend = ROOT / "termux" / "run-weekend.sh"
+        tomorrow = ROOT / "termux" / "run-tomorrow-events.sh"
+        initial = (
+            "# BEGIN guardamar-status weekend digest\n"
+            "CRON_TZ=Europe/Madrid\n"
+            f"15 19 * * 5 {weekend} --fresh\n"
+            f"15 20 * * 5 {weekend}\n"
+            f"25 19 * * 0-4 /bin/sh {tomorrow}\n"
+            "# END guardamar-status weekend digest\n"
+        )
+
+        result, installed = self._install(initial)
+
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(installed.count("25 19 * * 0-4"), 1)
+        self.assertEqual(installed.count("25 20 * * 0-4"), 1)
+        self.assertEqual(installed.count("run-tomorrow-events.sh"), 2)
+
     def test_installer_is_idempotent_and_preserves_other_jobs(self):
         unrelated = "12 3 * * * /other/bot.sh\n"
         first, installed = self._install(unrelated)
