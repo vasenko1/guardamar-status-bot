@@ -177,3 +177,51 @@ change.
 The app binary itself must not become a runtime dependency. APK inspection, if
 used, is research-only to discover public host/URL strings that the official app
 already calls.
+
+
+## Costa Azul APK first static-analysis probe
+
+The exact Android 3.2.0 arm64 XAPK was downloaded and verified before
+inspection:
+
+- file: `Costa+Azul_3.2.0_APKPure.xapk`;
+- size: 58,602,125 bytes;
+- SHA-256:
+  `0bf5a10d8dfdb73b732e407bab5571753f2609c23f1fa862706f2872d2e3414f`;
+- split set: base APK plus `config.arm64_v8a.apk` and
+  `config.xxhdpi.apk`.
+
+A first broad ASCII `strings` pass did **not** reveal an application-specific
+HTTP(S) backend. The explicit URL list contained Android/Google/AdMob/Firebase
+SDK endpoints and placeholders only.
+
+The same binary scan did reveal application-specific Delphi/FireMonkey-era
+transport/database strings:
+
+- `nombreparada`;
+- `lineainterurbana`;
+- `Database=C:\\proyectos\\costazul2\\datos.s3db`.
+
+These strings strongly suggest that the app contains or was built against a
+local SQLite-style transport data model. They do not yet prove whether
+`datos.s3db` is shipped inside the APK, generated locally, or only survives as
+a design-time connection string in the native binary.
+
+The first probe is therefore insufficient to reject the app-backend candidate:
+Delphi native code commonly stores Unicode strings outside the simple ASCII
+surface, and the probe also truncated its broad relevant-string output after
+700 sorted lines.
+
+Next static-analysis step:
+
+1. inspect the actual XAPK/APK entries for SQLite/database/config assets;
+2. detect embedded `SQLite format 3` payloads and inspect schema read-only;
+3. extract UTF-16LE as well as ASCII strings from native libraries;
+4. search the complete, untruncated string set for host/URL/request fragments
+   around transport-specific identifiers;
+5. only after a concrete host/request contract is found, perform a bounded
+   read-only network probe.
+
+No APK-derived source should enter runtime until the remote endpoint is shown
+to be public, stable enough, and able to prove current Guardamar interurban
+data.
