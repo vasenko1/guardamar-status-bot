@@ -202,10 +202,10 @@ transport/database strings:
 - `lineainterurbana`;
 - `Database=C:\\proyectos\\costazul2\\datos.s3db`.
 
-These strings strongly suggest that the app contains or was built against a
-local SQLite-style transport data model. They do not yet prove whether
-`datos.s3db` is shipped inside the APK, generated locally, or only survives as
-a design-time connection string in the native binary.
+This first-pass interpretation was tentative. Deeper inspection below proved
+that `datos.s3db` is shipped inside the APK but is **not** the transport data
+model; it is unrelated legacy/demo data. The useful transport contract lives in
+the native library's UTF-16LE strings.
 
 The first probe is therefore insufficient to reject the app-backend candidate:
 Delphi native code commonly stores Unicode strings outside the simple ASCII
@@ -225,3 +225,81 @@ Next static-analysis step:
 No APK-derived source should enter runtime until the remote endpoint is shown
 to be public, stable enough, and able to prove current Guardamar interurban
 data.
+
+
+## Costa Azul APK deep static-analysis result
+
+The uploaded XAPK was unpacked directly. Its base APK contains
+`assets/internal/datos.s3db` (73,728 bytes), and the arm64 split contains one
+53.5 MB native library, `lib/arm64-v8a/libcostazul.so`.
+
+### Embedded SQLite asset is unrelated
+
+The shipped `datos.s3db` is a valid SQLite database, but its schema is not
+transport-related. Its tables are `Emocion`, `Enfermedad`, `Paciente`,
+`Sintomas` and `Usuario`, with old sample/legacy records. Treat the
+`Database=C:\\proyectos\\costazul2\\datos.s3db` string as a leftover
+development asset/connection, not as evidence of a usable timetable database.
+
+### Native library exposes the actual transport HTTP contract
+
+A complete native-string pass found only 19 full HTTP(S) URLs in
+`libcostazul.so`. Apart from framework/site links, **all application transport
+endpoints use the same clear-text host**:
+
+`http://informedia.com.es/costazul/`
+
+No second/new transport API host, Avanza API host, Azure endpoint, Firebase
+transport endpoint or HTTPS replacement is embedded in the current 3.2.0
+native library.
+
+The interurban endpoints and nearby request/response strings are:
+
+- `json_interurbanas2.php?origen=`
+  + `&destino=` + `&fecha=`; response keys nearby:
+  `hora`, `hora_llegada`, `numero`.
+- `json_paradasinterurbanas2.php?servicio=`
+  + `&origen=` + `&destino=`; response keys:
+  `codigo`, `hora`.
+- `json_proximointer.php?parada=`; response keys:
+  `Linea`, `Minutos`, `LineaDescripcion`.
+- `json_paradasinter2.php` and
+  `json_paradasinter2_v.php?origen=`; nearby stop-record keys:
+  `abreviado`, `nombre`, `codigo`, `latitud`, `longitud`, `maquina`.
+- `json_paradasinter_prox.php?latitud=`
+  + `&longitud=` + `&pos=`; nearby keys:
+  `abrev`, `parada`.
+
+The same binary also contains urban-route endpoints such as
+`json_proximo.php`, `json_paradas.php`,
+`json_correspondencias.php` and `json_comollegar.php`, confirming that this
+host was the application's general transport backend rather than an incidental
+URL.
+
+### Current-source assessment
+
+The official Google Play listing still describes the app as providing urban
+and interurban lines plus real-time stop predictions, and its October 2025
+release note says the update added support for newer Android devices. The
+official Costa Azul app page makes the same route/stop/arrival claim.
+
+However, the current 3.2.0 binary still hardcodes only the legacy
+`informedia.com.es` HTTP backend. Public search does not expose a replacement
+endpoint, while recent App Store user reports from late 2025 say that lines fail
+to load. Those reviews are corroborative only, not authoritative source status.
+
+Direct current probing of the exact Informedia endpoints could not be completed
+from the research environment because the web tool does not expose these raw
+HTTP JSON URLs and the local analysis container has no external DNS. Therefore
+the app backend is **not accepted** as a runtime source yet.
+
+The next and only useful probe is a tiny direct network check from a normal
+internet connection (Mac or production device) against the discovered
+`json_paradasinter2.php` and, if alive, one exact
+`json_interurbanas2.php` request. If the host is dead or responses are stale,
+reject the app backend and stop this branch of research. If it returns current
+Guardamar interurban data, then inspect freshness/date semantics before any code
+change.
+
+No runtime source, retry, dependency or scheduler change follows from APK static
+analysis alone.
