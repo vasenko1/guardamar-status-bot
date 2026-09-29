@@ -34,6 +34,15 @@ without making award or retailer network requests.
 When publication is due, the same invocation selects, verifies, renders and
 delivers at most one product.
 
+A deliberate operator recovery may invoke the same workflow once with a
+cooldown bypass after a confirmed bad publication has been removed from
+Telegram. This bypass is never scheduled and changes only the cooldown gate:
+published-event/selection history, current authority and retailer verification,
+the exclusive lock, uncertain-delivery protection and one-product limit all
+remain active. Confirmed delivery records the operator run's local day as the
+new last delivery day and advances the normal category cursor, so the regular
+three-day cadence continues from that date.
+
 ### 2. Keep a reviewed category registry
 
 Production contains a small explicit registry of broad consumer categories.
