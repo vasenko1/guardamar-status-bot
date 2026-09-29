@@ -17,4 +17,22 @@ cd "$PROJECT_DIR"
 . ./.env
 export PYTHONPATH="$PROJECT_DIR/src"
 
-exec ./.venv/bin/python -m telegrambot product-awards
+if [ "$#" -gt 1 ]; then
+    echo "Usage: $0 [--force]" >&2
+    exit 2
+fi
+
+COMMAND=product-awards
+case "${1-}" in
+    "")
+        ;;
+    --force)
+        COMMAND=product-awards-force
+        ;;
+    *)
+        echo "Usage: $0 [--force]" >&2
+        exit 2
+        ;;
+esac
+
+exec ./.venv/bin/python -m telegrambot "$COMMAND"
