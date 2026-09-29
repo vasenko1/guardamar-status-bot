@@ -1419,6 +1419,13 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                         )
                         excluded_event_ids.add(event_id)
                         continue
+                    logging.warning(
+                        "Product-award Telegram rejection for %s "
+                        "[TELEGRAM-%s]: %s",
+                        event_id,
+                        exc.diagnostic_code,
+                        exc.server_description or exc.safe_description or "no description",
+                    )
                     raise
                 product_state.confirm(
                     event_id,
