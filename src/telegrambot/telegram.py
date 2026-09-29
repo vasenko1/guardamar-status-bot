@@ -95,7 +95,10 @@ def _response_error(payload: Any, status: int) -> TelegramError:
     retryable = status == 429 or 500 <= status <= 599
     code = f"HTTP-{status}"
     description = f"Telegram API вернул HTTP {status}"
-    if status == 400 and "message is not modified" in api_description:
+    if status == 400 and "failed to get http url content" in api_description:
+        code = "REMOTE-MEDIA"
+        description = "Telegram не смог загрузить удалённое медиа"
+    elif status == 400 and "message is not modified" in api_description:
         code = "MESSAGE-NOT-MODIFIED"
         description = "сообщение Telegram уже содержит актуальный текст"
     elif status == 400 and (
