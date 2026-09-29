@@ -65,6 +65,12 @@ class ProductAwardRichTelegramTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(rich_media_error.diagnostic_code, "REMOTE-MEDIA")
 
+        invalid_url_error = _response_error(
+            {"description": "Bad Request: RICH_MESSAGE_PHOTO_URL_INVALID"},
+            400,
+        )
+        self.assertEqual(invalid_url_error.diagnostic_code, "REMOTE-MEDIA")
+
     def test_uploaded_rich_photo_uses_explicit_media_attachment(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "product.jpg"
