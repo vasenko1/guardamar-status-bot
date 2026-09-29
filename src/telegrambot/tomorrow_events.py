@@ -18,7 +18,7 @@ from zoneinfo import ZoneInfo
 from .agenda import AgendaError, fetch_today_events
 from .am_guardamar import AmGuardamarError, fetch_today_am_guardamar_events
 from .branding import with_footer
-from .digest import build_event_section
+from .digest import MONTHS_GENITIVE, build_event_section
 from .facv import FacvSourceError, fetch_today_facv_events
 from .library_agenda import LibraryAgendaError, fetch_today_library_events
 from .models import Event
@@ -303,7 +303,11 @@ def _unit_image_url(unit: Sequence[Event]) -> Optional[str]:
     return next(iter(values)) if len(values) == 1 else None
 
 
-def _render_message(events: Sequence[Event], unit_count: int) -> str:
+def _render_message(
+    events: Sequence[Event],
+    unit_count: int,
+    target_day: date,
+) -> str:
     render_events = tuple(events)
     if unit_count > 1:
         # A multi-event planning post is scan-first; full prose stays for a
@@ -314,7 +318,10 @@ def _render_message(events: Sequence[Event], unit_count: int) -> str:
         )
     section = build_event_section(
         render_events,
-        "📅 <b>Завтра в Гуардамаре</b>",
+        (
+            "📅 <b>Завтра в Гуардамаре — "
+            f"{target_day.day} {MONTHS_GENITIVE[target_day.month]}</b>"
+        ),
     )
     if not section:
         raise ValueError("tomorrow event section is empty")
@@ -439,7 +446,7 @@ async def produce_tomorrow_event_publication(
     image_url = _unit_image_url(units[0]) if len(units) == 1 else None
     return TomorrowEventPublication(
         target_date=target_day,
-        message=_render_message(eligible, len(units)),
+        message=_render_message(eligible, len(units), target_day),
         events=eligible,
         unit_count=len(units),
         image_url=image_url,
