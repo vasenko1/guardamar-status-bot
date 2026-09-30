@@ -257,8 +257,10 @@ allowed for the guide.
   makes at most one final AI composition call and sends at most one public post.
   A transient source failure records only a tiny bounded attempt marker and
   rotates behind never-tried candidates; eligible items expire after 48 hours.
-  The first valid feed seeds silently. State is capped at 128 compact records;
-  raw pages are never stored.
+  After downtime, unseen RSS entries already older than 48 hours are recorded
+  stale before classification so they consume no AI budget. The first valid
+  feed seeds silently. State is capped at 128 compact records; raw pages are
+  never stored.
 - Explicit Mayor-channel events reuse the existing bounded morning page read;
   they add no request, model call, raw-response cache or background process.
 - Do not make digest delivery depend on every source succeeding.
