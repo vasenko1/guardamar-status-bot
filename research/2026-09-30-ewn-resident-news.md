@@ -48,6 +48,56 @@ that alter what a resident can do, must do, pay, or expect.
 This is enough signal to justify a narrow classifier, but not enough to publish
 the feed directly.
 
+## Production-like probe on 2026-09-30
+
+The first bounded production probe ran on the validated merged code before cron
+installation. It used the latest eight RSS items and made one real
+classification request.
+
+Observed decisions:
+
+- housing/rent package: relevant / high;
+- October fuel support: relevant / high;
+- Renfe ticket-sales change: relevant / normal;
+- Ibiza tourist death: rejected;
+- Guardia Civil cash/crime story: rejected;
+- pending housing vote: relevant / high;
+- Valencia torrential-rain story: incorrectly accepted / high;
+- pet emergency-card lifestyle story: rejected.
+
+The classifier therefore separated the intended practical-news group from
+crime/accident/lifestyle noise reasonably well, but the weather item exposed an
+important overlap with existing bot responsibilities. Current weather, storms,
+floods, wildfire, earthquake, beach/sea, local emergency and road-closure
+status are now explicitly excluded from resident-news discovery because those
+domains already have dedicated official-source workflows. RSS items carrying a
+`Spain Weather`/weather category are also discarded deterministically before
+AI.
+
+The same probe exposed a parser assumption: the live EWN story page did not
+wrap the visible story in an HTML `<article>` element. The original parser
+therefore failed with `EWN article body was not found` before it could inspect
+the links. The production cron remained disabled and no Telegram message was
+sent.
+
+Live inspection also showed that not every approved-host link is useful. The
+housing article linked to general landing/index pages for La Moncloa, Congreso
+and BOE, while the Renfe article linked directly to Renfe's specific
+announcement. The corrected parser therefore:
+
+- starts the story region after the first visible `h1`;
+- stops before Comments/Continue Reading or the footer;
+- does not require an `<article>` wrapper;
+- rejects generic official landing/index URLs;
+- selects the first **specific** approved first-party URL in story order;
+- still relies on the final composition call to confirm that the selected
+  first-party text actually supports the discovered topic.
+
+This correction keeps the original no-search boundary. A useful story with only
+generic official landing links is intentionally omitted rather than triggering
+a web search or extra AI research.
+
+
 ## First-party-link finding
 
 The important simplification is that relevant EWN articles often already link
@@ -99,10 +149,12 @@ Initial accepted host families are deliberately narrow:
 The list is code-reviewed and may grow only from observed missed candidates.
 There is no generic trust of arbitrary external domains.
 
-For an EWN article containing several accepted links, use the earliest accepted
-first-party link in the article body. This naturally keeps DGT for a DGT
-explanation when it precedes the BOE legal link, and Renfe for Renfe service
-changes.
+For an EWN article containing several accepted links, inspect only the visible
+story region (after the first `h1`, before comments/continue-reading/footer)
+and use the earliest **specific** accepted first-party link. Generic home/index
+pages are not sufficient evidence. This naturally keeps a direct DGT
+explanation or Renfe announcement when present, while avoiding an unrelated
+government landing page.
 
 ## AI contract
 
@@ -122,9 +174,12 @@ The classifier asks one narrow question: does this item report a concrete
 change, pending decision, first-party announcement, or material disruption
 relevant to residents of Guardamar? Spain-wide changes and changes applying to
 Comunitat Valenciana/Alicante/Guardamar qualify; locality-specific stories
-elsewhere require a clear nationwide consequence. It must reject ordinary crime,
-celebrity, sport, entertainment, human-interest, opinion, routine political
-statements, and geographically remote local stories without wider relevance.
+elsewhere require a clear nationwide consequence. It must reject ordinary
+crime, celebrity, sport, entertainment, human-interest, opinion, routine
+political statements, and geographically remote local stories without wider
+relevance. Current weather/storm/flood/wildfire/earthquake/beach/local-emergency
+and road-closure status are excluded because existing official-source workflows
+already own those operational domains.
 
 A pending vote/proposal can be relevant; the model must not require that a
 measure already be in force.
