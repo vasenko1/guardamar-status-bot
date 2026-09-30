@@ -17,6 +17,11 @@ or commercial aggregators as factual inputs.
 
 If no suitable official source exists, leave the information out of the MVP.
 
+ADR 0087 permits one narrow exception for **discovery only**: EWN may identify
+a candidate topic, but no EWN claim may be published as fact. A public
+resident-news post requires a direct approved first-party source already linked
+by the discovery article.
+
 ## 3. Silence is better than noise
 
 Do not publish an item merely because data exists. Omit information that is:
