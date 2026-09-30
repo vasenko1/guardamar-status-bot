@@ -881,7 +881,7 @@ def _classify_resident_news(
         api_key,
         [{"text": prompt}],
         RESIDENT_NEWS_CLASSIFICATION_SCHEMA,
-        700,
+        500,
         allow_groq_fallback=True,
     )
 
@@ -918,7 +918,7 @@ def _compose_resident_news(
         raise ValueError("resident-news discovery title is invalid")
     if not 1 <= len(source_name) <= 80:
         raise ValueError("resident-news source name is invalid")
-    if not 80 <= len(source_text) <= 12_000:
+    if not 80 <= len(source_text) <= 8_000:
         raise GeminiError(
             "Resident-news primary text has an invalid size",
             code="SOURCE-SIZE",
@@ -959,7 +959,7 @@ def _compose_resident_news(
         api_key,
         [{"text": prompt}],
         RESIDENT_NEWS_COMPOSITION_SCHEMA,
-        900,
+        700,
         allow_groq_fallback=True,
     )
 
