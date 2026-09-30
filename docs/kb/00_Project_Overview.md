@@ -66,14 +66,23 @@ publishes only a newly observed event of magnitude 1.8 or greater whose
 epicenter is no farther than 20 km from Guardamar. The monitor is a quiet
 informational feature, not an emergency-warning service.
 
+### Resident-impact news
+
+Three short daily one-shots may use Euro Weekly News `News from Spain` only
+as a discovery feed for practical Spain-wide changes. EWN is never a factual
+publication source. A candidate is publishable only when the EWN article itself
+links to an approved first-party authority/operator source; the public Russian
+editorial note is generated from that first-party text and links to it.
+
 ## Out of scope
 
-- General news aggregation
+- General news aggregation beyond the narrow first-party-grounded discovery
+  workflow in ADR 0087
 - Continuous or real-time emergency monitoring
 - Replacing official emergency or municipal channels
 - Conversational AI or generated advice
 - General AI summarization, classification, or ranking outside the approved
-  market-exception, municipal-poster, and bounded event-translation workflows
+  municipal/event workflows and the narrow resident-news operations in ADR 0087
 - User-generated or unverified information
 - Web dashboards, webhooks, microservices, or server infrastructure
 - Continuous OCR, image analysis, or other heavy on-device processing
