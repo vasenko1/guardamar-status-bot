@@ -48,10 +48,12 @@ never the factual source of a public post. The first valid read seeds silently;
 later runs consider at most eight unseen items using title and at most 500
 description characters.
 
-For one eligible item, fetch only its EWN article and inspect links inside the
-article body. The first link matching the reviewed first-party host policy is
-selected. If no approved first-party link exists, omit the candidate; do not
-search elsewhere.
+For one eligible item, fetch only its EWN article and inspect links in the
+visible story region after the first `h1` and before comments/continue-reading/
+footer. Do not depend on an HTML `<article>` wrapper. The first **specific**
+link matching the reviewed first-party host policy is selected; generic
+root/home/index pages are rejected. If no suitable specific first-party link
+exists, omit the candidate; do not search elsewhere.
 
 The initial primary host policy covers Spanish government/public-law hosts,
 Congreso/Senado, Generalitat Valenciana, DGT, Renfe, SEPE, Seguridad Social,
