@@ -583,6 +583,13 @@ async def run_resident_news(
             source_name=source_label(primary_url),
             source_text=source_text,
         )
+        if composed.get("supported") is not True:
+            state.mark_source_missing(item_id)
+            LOGGER.info(
+                "Resident-news candidate omitted: first-party source did not "
+                "support the discovered topic"
+            )
+            return "source_unsupported"
         post = ResidentNewsPost(
             headline_ru=composed["headline_ru"],
             paragraphs_ru=tuple(composed["paragraphs_ru"]),
