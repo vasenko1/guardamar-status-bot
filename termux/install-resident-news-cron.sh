@@ -16,6 +16,7 @@ UPDATED=$(mktemp)
 ERRORS=$(mktemp)
 BEGIN_MARKER='# BEGIN guardamar-status resident news'
 END_MARKER='# END guardamar-status resident news'
+JOB="11 11,15,18 * * * $SH_BIN $RUNNER"
 
 cleanup() {
     rm -f "$CURRENT" "$UPDATED" "$ERRORS"
@@ -48,11 +49,11 @@ if [ ! -f "$BACKUP" ]; then
     cp "$CURRENT" "$BACKUP"
 fi
 
-awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" '
+awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" -v job="$JOB" '
     $0 == begin { managed = 1; next }
     $0 == end { managed = 0; next }
     managed { next }
-    { print }
+    $0 != job { print }
 ' "$CURRENT" >"$UPDATED"
 
 {
@@ -60,7 +61,7 @@ awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" '
     printf '%s\n' \
         "$BEGIN_MARKER" \
         'CRON_TZ=Europe/Madrid' \
-        "11 11,15,18 * * * $SH_BIN $RUNNER" \
+        "$JOB" \
         "$END_MARKER"
 } | crontab -
 
