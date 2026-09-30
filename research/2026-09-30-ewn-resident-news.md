@@ -297,7 +297,8 @@ across scheduled runs, but exposed four throughput/safety issues:
 
 The minimal correction keeps the same three cron slots and AI budget: inspect
 at most three candidates, rotate transient failures behind never-tried items,
-deduplicate exact final first-party URLs, and validate `crond` before changing
+deduplicate exact final first-party URLs, mark unseen items older than 48 hours
+stale before AI after device downtime, and validate `crond` before changing
 crontab. No database, worker, retry daemon, search engine, or additional model
 call is introduced.
 
