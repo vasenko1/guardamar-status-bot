@@ -230,6 +230,31 @@ class ResidentNewsStateTests(unittest.TestCase):
             self.assertTrue(state.is_seeded())
             self.assertEqual(state.unseen(current), ())
 
+    def test_stale_unseen_items_are_skipped_before_ai_and_recorded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = ResidentNewsState(Path(directory) / "news.json")
+            state.seed((item("ewn:baseline"),))
+            stale = item(
+                "ewn:stale-unseen",
+                published_at=datetime(2026, 9, 27, 8, 0, tzinfo=timezone.utc),
+            )
+            recent = item(
+                "ewn:recent-unseen",
+                published_at=datetime(2026, 9, 30, 9, 0, tzinfo=timezone.utc),
+            )
+            now = datetime(2026, 9, 30, 12, 0, tzinfo=timezone.utc)
+
+            selected = state.unseen((stale, recent), now=now)
+
+            self.assertEqual(
+                [candidate.item_id for candidate in selected],
+                ["ewn:recent-unseen"],
+            )
+            self.assertEqual(
+                state.unseen((stale, recent), now=now),
+                (recent,),
+            )
+
     def test_classifications_keep_relevant_candidate_for_later_run(self):
         with tempfile.TemporaryDirectory() as directory:
             state = ResidentNewsState(Path(directory) / "news.json")
