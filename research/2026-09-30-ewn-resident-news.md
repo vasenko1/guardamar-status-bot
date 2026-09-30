@@ -118,8 +118,10 @@ At each scheduled run:
 - no article HTML is fetched for rejected items.
 
 The classifier asks one narrow question: does this item report a concrete
-change, pending decision, first-party announcement, or material disruption that
-can practically affect people living in Spain? It must reject ordinary crime,
+change, pending decision, first-party announcement, or material disruption
+relevant to residents of Guardamar? Spain-wide changes and changes applying to
+Comunitat Valenciana/Alicante/Guardamar qualify; locality-specific stories
+elsewhere require a clear nationwide consequence. It must reject ordinary crime,
 celebrity, sport, entertainment, human-interest, opinion, routine political
 statements, and geographically remote local stories without wider relevance.
 
