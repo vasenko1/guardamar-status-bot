@@ -1,0 +1,74 @@
+#!/data/data/com.termux/files/usr/bin/sh
+
+# Three bounded daily discovery checks; each process exits after one run.
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+PROJECT_DIR=$(dirname "$SCRIPT_DIR")
+RUNNER="$PROJECT_DIR/termux/run-resident-news.sh"
+SH_BIN=$(command -v sh)
+TERMUX_PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+SERVICE_DIR="${SVDIR:-$TERMUX_PREFIX/var/service}"
+BACKUP_DIR="$HOME/.cache/crontab"
+BACKUP="$BACKUP_DIR/crontab.before-resident-news"
+CURRENT=$(mktemp)
+UPDATED=$(mktemp)
+ERRORS=$(mktemp)
+BEGIN_MARKER='# BEGIN guardamar-status resident news'
+END_MARKER='# END guardamar-status resident news'
+
+cleanup() {
+    rm -f "$CURRENT" "$UPDATED" "$ERRORS"
+}
+trap cleanup EXIT HUP INT TERM
+
+if [ ! -f "$RUNNER" ]; then
+    echo "ERROR: run-resident-news.sh not found" >&2
+    exit 1
+fi
+
+mkdir -p "$PROJECT_DIR/state" "$BACKUP_DIR"
+if ! crontab -l >"$CURRENT" 2>"$ERRORS"; then
+    if ! grep -qi 'no crontab for' "$ERRORS"; then
+        echo "ERROR: could not safely read current crontab" >&2
+        exit 1
+    fi
+fi
+
+if ! awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" '
+    $0 == begin { if (active || begins > 0) exit 2; active = 1; begins++; next }
+    $0 == end { if (!active || ends > 0) exit 2; active = 0; ends++; next }
+    END { if (active || begins != ends) exit 2 }
+' "$CURRENT"; then
+    echo "ERROR: resident-news cron block is malformed" >&2
+    exit 1
+fi
+
+if [ ! -f "$BACKUP" ]; then
+    cp "$CURRENT" "$BACKUP"
+fi
+
+awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" '
+    $0 == begin { managed = 1; next }
+    $0 == end { managed = 0; next }
+    managed { next }
+    { print }
+' "$CURRENT" >"$UPDATED"
+
+{
+    cat "$UPDATED"
+    printf '%s\n' \
+        "$BEGIN_MARKER" \
+        'CRON_TZ=Europe/Madrid' \
+        "11 11,15,18 * * * $SH_BIN $RUNNER" \
+        "$END_MARKER"
+} | crontab -
+
+if [ ! -d "$SERVICE_DIR/crond" ]; then
+    echo "ERROR: crond service directory not found: $SERVICE_DIR/crond" >&2
+    exit 1
+fi
+
+SVDIR="$SERVICE_DIR" sv up crond
+echo "Resident news installed: 11:11, 15:11, 18:11 Europe/Madrid"
+crontab -l
