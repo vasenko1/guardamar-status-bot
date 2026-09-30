@@ -171,7 +171,7 @@ Production-like budget:
 - therefore max 6 primary AI calls/day before rare provider fallback;
 - max 8 RSS items/classification batch;
 - max 500 description characters/item;
-- max 12,000 normalized first-party source characters for composition;
+- max 8,000 normalized first-party source characters for composition;
 - max one public article/run.
 
 The phone performs only XML/HTML parsing and bounded HTTPS. No inference runs on
