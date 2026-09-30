@@ -212,6 +212,7 @@ class ResidentNewsLifecycleTests(unittest.IsolatedAsyncioTestCase):
                 patch(
                     "telegrambot.resident_news.compose_resident_news",
                     new=AsyncMock(return_value={
+                        "supported": True,
                         "headline_ru": "Renfe меняет систему покупки билетов",
                         "paragraphs_ru": [
                             "С 28 октября Renfe начинает поэтапно внедрять новую систему продаж.",
