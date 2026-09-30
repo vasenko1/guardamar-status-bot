@@ -162,6 +162,12 @@ from .product_awards import (
     preview_publications as preview_product_awards,
     select_publication as select_product_award_publication,
 )
+from .resident_news import (
+    ResidentNewsDeliveryUncertain,
+    ResidentNewsError,
+    ResidentNewsState,
+    run_resident_news,
+)
 from .models import ColdHealthRisk, HeatHealthRisk
 from .state import PublicationState, StateError
 from .telegram import (
@@ -197,6 +203,7 @@ DEFAULT_OPERATIONAL_UPDATE_STATE_PATH = "state/operational_updates.json"
 DEFAULT_WEEKEND_STATE_PATH = "state/weekend.json"
 DEFAULT_TOMORROW_EVENTS_STATE_PATH = "state/tomorrow_events.json"
 DEFAULT_PRODUCT_AWARDS_STATE_PATH = "state/product_awards.json"
+DEFAULT_RESIDENT_NEWS_STATE_PATH = "state/resident_news.json"
 DEFAULT_PHARMACY_STATE_PATH = "state/pharmacy.json"
 DEFAULT_EARTHQUAKE_STATE_PATH = "state/earthquakes.json"
 DEFAULT_EMERGENCY_RISK_STATE_PATH = "state/emergency_risks.json"
@@ -1366,6 +1373,38 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             )
             return 0
 
+    if command == "resident-news":
+        resident_state = ResidentNewsState(Path(os.environ.get(
+            "RESIDENT_NEWS_STATE_PATH", DEFAULT_RESIDENT_NEWS_STATE_PATH
+        )))
+        bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
+        chat_id = _required_environment("TELEGRAM_CHAT_ID")
+        gemini_key = _required_environment("GEMINI_API_KEY")
+
+        async def publish_resident_news(message: str) -> int:
+            try:
+                return await send_message(
+                    bot_token,
+                    chat_id,
+                    message,
+                    disable_notification=False,
+                    max_attempts=2,
+                    retry_only_rate_limits=True,
+                )
+            except TelegramError as exc:
+                if is_ambiguous_send_failure(exc):
+                    raise ResidentNewsDeliveryUncertain() from exc
+                raise
+
+        result = await run_resident_news(
+            now,
+            resident_state,
+            gemini_key,
+            publish_resident_news,
+        )
+        logging.info("Resident-news run complete: %s", result)
+        return 0
+
     if command in {"product-awards", "product-awards-force", "product-awards-preview"}:
         if command == "product-awards-preview":
             publications = preview_product_awards(now)
@@ -2163,6 +2202,7 @@ def main() -> None:
             "weekend", "weekend-preview",
             "tomorrow-events", "tomorrow-events-preview",
             "product-awards", "product-awards-force", "product-awards-preview",
+            "resident-news",
             "poll",
         ),
         default="run",
@@ -2217,6 +2257,7 @@ def main() -> None:
         OperationalUpdateStateError,
         TomorrowEventStateError,
         ProductAwardError,
+        ResidentNewsError,
         ValueError,
     ) as exc:
         print(f"Command failed: {exc}", file=sys.stderr)
