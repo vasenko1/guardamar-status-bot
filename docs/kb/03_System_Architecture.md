@@ -71,6 +71,7 @@ no message.
 | Transport | 05:00 sync, 08:42 notification | Owns and repairs the dynamic airport, Alicante, Elche, Orihuela and Zenia Boulevard cards; reconciles transport state and publishes accepted schedule/service/fare changes. |
 | Linked guide + courses | 09:02 sync; course notices 09:42/11:42; two seasonal 19:45 checks | Reconciles guide-owned cards while preserving existing transport-owned cards in the shared Telegram graph; may send pool/Zona Azul seasonal notices and publishes accepted course/programme changes, including grouped fresh-source registration boundaries for tomorrow. |
 | Electricity | 20:30/20:35/20:45/21:00/21:20 attempts | One next-day PVPC table reply after the first complete official dataset. |
+| Resident-impact news | 11:11/15:11/18:11 daily | One bounded EWN discovery read; one batch AI classification; at most one first-party-grounded Russian Telegram note. |
 | Next-day events | Sunday–Thursday 19:25, recovery 20:25 | Reads only fresh same-day local event catalogs; one editorial unit may be rich with one official image URL, while multiple units stay in one text planning post. The recovery reuses the same state, so a confirmed or uncertain first delivery cannot duplicate. No evening source fetch or AI. |
 | Weekend digest | Friday 19:15, retry 20:15 | One weekend-events digest when verified events exist. |
 | Pharmacy catalogue | Sunday 05:50 | Source refresh only; consumed by Morning Digest. |
@@ -89,9 +90,13 @@ normalization.
 
 ### Source adapters
 
-Each adapter represents one approved official source. It is responsible for
-accessing and interpreting that source, including its freshness indicators.
-A failed adapter must not block unrelated adapters.
+Each factual adapter represents one approved official or first-party source. It
+is responsible for accessing and interpreting that source, including its
+freshness indicators. A failed adapter must not block unrelated adapters.
+
+ADR 0087 adds one discovery-only adapter for EWN `News from Spain`. It may
+surface candidates and extract links, but factual publication still requires a
+separate approved first-party source adapter path.
 
 ### Digest policy
 
@@ -219,7 +224,7 @@ text remain process-local and are discarded on exit.
   semantic replies or refresh the separate beach root, never a second digest
 - No webhook or public server
 - No resident scheduler, source polling, or watcher; only bounded one-shot
-  event refresh, digest, guide, electricity and operational-change commands
+  event refresh, digest, guide, electricity, resident-news and operational-change commands
 - Small local state
 - No required database server, message broker, or worker service
 
