@@ -315,6 +315,41 @@ class ResidentNewsStateTests(unittest.TestCase):
             self.assertIsNotNone(next_day)
             self.assertEqual(next_day[0], "ewn:4")
 
+    def test_never_tried_normal_candidate_precedes_failed_high_retry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = ResidentNewsState(Path(directory) / "news.json")
+            state.seed((item("ewn:baseline"),))
+            failed_high = item(
+                "ewn:failed-high",
+                published_at=datetime(2026, 9, 30, 10, 0, tzinfo=timezone.utc),
+            )
+            fresh_normal = item(
+                "ewn:fresh-normal",
+                published_at=datetime(2026, 9, 30, 11, 0, tzinfo=timezone.utc),
+            )
+            state.record_classifications(
+                (failed_high, fresh_normal),
+                (
+                    {
+                        "id": "ewn:failed-high",
+                        "relevant": True,
+                        "topic": "tax",
+                        "priority": "high",
+                    },
+                    {
+                        "id": "ewn:fresh-normal",
+                        "relevant": True,
+                        "topic": "rail",
+                        "priority": "normal",
+                    },
+                ),
+            )
+            state.record_source_failure("ewn:failed-high", "TIMEOUT")
+            selected = state.next_eligible(
+                datetime(2026, 9, 30, 12, 0, tzinfo=timezone.utc)
+            )
+            self.assertEqual(selected[0], "ewn:fresh-normal")
+
     def test_candidate_older_than_48_hours_becomes_stale(self):
         with tempfile.TemporaryDirectory() as directory:
             state = ResidentNewsState(Path(directory) / "news.json")
@@ -663,6 +698,60 @@ class ResidentNewsLifecycleTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result, "published")
             compose.assert_awaited_once()
             publish.assert_awaited_once()
+
+    async def test_unsupported_source_consumes_only_one_composition_budget(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = ResidentNewsState(Path(directory) / "news.json")
+            state.seed((item("ewn:old"),))
+            first = item("ewn:first")
+            second = item(
+                "ewn:second",
+                published_at=datetime(2026, 9, 30, 12, 1, tzinfo=timezone.utc),
+            )
+            publish = AsyncMock()
+            with (
+                patch(
+                    "telegrambot.resident_news.fetch_feed",
+                    new=AsyncMock(return_value=(item("ewn:old"), first, second)),
+                ),
+                patch(
+                    "telegrambot.resident_news.classify_resident_news",
+                    new=AsyncMock(return_value=[
+                        {"id": "ewn:first", "relevant": True, "topic": "tax", "priority": "high"},
+                        {"id": "ewn:second", "relevant": True, "topic": "rail", "priority": "high"},
+                    ]),
+                ),
+                patch(
+                    "telegrambot.resident_news.fetch_primary_link",
+                    new=AsyncMock(return_value="https://www.boe.es/diario_boe/txt.php?id=FIRST"),
+                ) as source_link,
+                patch(
+                    "telegrambot.resident_news.fetch_primary_text",
+                    new=AsyncMock(return_value=(
+                        "Este texto oficial no confirma el cambio descrito por "
+                        "el articulo editorial y trata de otra materia distinta.",
+                        "https://www.boe.es/diario_boe/txt.php?id=FIRST",
+                    )),
+                ),
+                patch(
+                    "telegrambot.resident_news.compose_resident_news",
+                    new=AsyncMock(return_value={"supported": False}),
+                ) as compose,
+            ):
+                result = await run_resident_news(
+                    datetime(2026, 9, 30, 13, 0, tzinfo=timezone.utc),
+                    state,
+                    "key",
+                    publish,
+                )
+            self.assertEqual(result, "source_unsupported")
+            source_link.assert_awaited_once()
+            compose.assert_awaited_once()
+            publish.assert_not_awaited()
+            remaining = state.next_eligible(
+                datetime(2026, 9, 30, 14, 0, tzinfo=timezone.utc)
+            )
+            self.assertEqual(remaining[0], "ewn:second")
 
     async def test_unrelated_primary_source_is_not_published(self):
         with tempfile.TemporaryDirectory() as directory:
