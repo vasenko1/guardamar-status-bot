@@ -28,7 +28,7 @@ MAX_ARTICLE_BYTES = 768 * 1024
 MAX_PRIMARY_BYTES = 768 * 1024
 MAX_BATCH_ITEMS = 8
 MAX_DESCRIPTION_CHARS = 500
-MAX_PRIMARY_TEXT_CHARS = 12_000
+MAX_PRIMARY_TEXT_CHARS = 8_000
 MAX_STATE_ITEMS = 128
 MAX_PENDING_AGE = timedelta(hours=48)
 REQUEST_TIMEOUT_SECONDS = 15
@@ -553,7 +553,7 @@ def build_message(post: ResidentNewsPost, primary_url: str) -> str:
         f'🔗 <b>Источник: <a href="{html.escape(primary_url, quote=True)}">'
         f'{html.escape(label)}</a></b>'
     )
-    return f"{post.emoji} <b>{headline}</b>\n\n{paragraphs}\n\n{source}"
+    return f"{html.escape(post.emoji)} <b>{headline}</b>\n\n{paragraphs}\n\n{source}"
 
 
 async def run_resident_news(
