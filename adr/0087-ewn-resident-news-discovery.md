@@ -80,9 +80,9 @@ No raw RSS, article HTML, first-party HTML, or AI payload is persisted.
 ### Source allowlist
 
 The initial first-party host policy is explicit and conservative. It accepts
-Spanish government/public-law host families, Generalitat Valenciana, DGT,
-Renfe, SEPE, Seguridad Social, AEMET, and the reviewed national union host
-families needed for first-party strike announcements.
+Spanish government/public-law host families, Congreso/Senado, Generalitat
+Valenciana, DGT, Renfe, SEPE, Seguridad Social, AEMET, and the reviewed
+national union host families needed for first-party strike announcements.
 
 Unknown domains remain ineligible until reviewed.
 
