@@ -99,9 +99,12 @@ ADR 0085.
 The classifier sees only bounded RSS metadata, not article bodies.
 
 The composer sees bounded first-party text plus bounded discovery context. It
-must treat first-party text as the factual authority, preserve whether a
-measure is proposed/pending/approved/effective or whether a disruption is only
-announced, remain politically neutral, and make no unsupported recommendation.
+must first confirm that the selected first-party text actually supports the
+discovered practical topic; an unrelated/background official link fails
+closed. When supported, it must treat first-party text as the factual
+authority, preserve whether a measure is proposed/pending/approved/effective or
+whether a disruption is only announced, remain politically neutral, and make
+no unsupported recommendation.
 
 The output is a natural Russian editorial Telegram note rather than a literal
 translation: one concise heading, 2-4 short narrative paragraphs, and moderate
