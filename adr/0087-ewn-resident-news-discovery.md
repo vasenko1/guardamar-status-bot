@@ -43,7 +43,9 @@ access, and significant announced strikes.
 
 Ordinary crime, celebrity, sport, entertainment, human-interest, routine
 party-political statements, and remote local incidents without wider relevance
-are out of scope.
+are out of scope. Current weather/storm/flood/wildfire/earthquake/beach/local-
+emergency and road-closure status are also out of scope because existing
+official-source workflows already own those operational domains.
 
 A proposal or pending vote may be publishable if its non-final status is
 preserved. Publication does not require that a measure already be effective.
@@ -70,10 +72,13 @@ Each scheduled invocation:
 4. stores only compact classification/lifecycle state;
 5. attempts at most one eligible candidate;
 6. fetches that candidate's EWN HTML only to locate first-party links;
-7. selects the earliest approved first-party link in article-body order;
-8. performs one bounded first-party HTML read;
-9. makes at most one final AI composition call;
-10. sends at most one Telegram post and exits.
+7. scans the visible story region after the first `h1` and before
+   comments/continue-reading/footer, without assuming an `<article>` wrapper;
+8. selects the earliest **specific** approved first-party link in story order,
+   rejecting generic home/index landing pages;
+9. performs one bounded first-party HTML read;
+10. makes at most one final AI composition call;
+11. sends at most one Telegram post and exits.
 
 No raw RSS, article HTML, first-party HTML, or AI payload is persisted.
 
@@ -84,7 +89,9 @@ Spanish government/public-law host families, Congreso/Senado, Generalitat
 Valenciana, DGT, Renfe, SEPE, Seguridad Social, AEMET, and the reviewed
 national union host families needed for first-party strike announcements.
 
-Unknown domains remain ineligible until reviewed.
+Unknown domains remain ineligible until reviewed. An approved host is not
+enough by itself: generic root/home/index pages are rejected because they do not
+identify the concrete first-party publication behind the discovered story.
 
 ### AI scope
 
