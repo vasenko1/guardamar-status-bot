@@ -175,6 +175,8 @@ def _approved_primary_host(host: Optional[str]) -> bool:
         "sepe.es",
         "seg-social.es",
         "aemet.es",
+        "congreso.es",
+        "senado.es",
         "ccoo.es",
         "ugt.es",
         "cgt.es",
@@ -205,6 +207,10 @@ def source_label(url: str) -> str:
         return "Seguridad Social"
     if host == "aemet.es" or host.endswith(".aemet.es"):
         return "AEMET"
+    if host == "congreso.es" or host.endswith(".congreso.es"):
+        return "Congreso de los Diputados"
+    if host == "senado.es" or host.endswith(".senado.es"):
+        return "Senado"
     if host == "ccoo.es" or host.endswith(".ccoo.es"):
         return "CCOO"
     if host == "ugt.es" or host.endswith(".ugt.es"):
