@@ -233,6 +233,8 @@ Production-like budget:
 - max 8 RSS items/classification batch;
 - max 500 description characters/item;
 - max 8,000 normalized first-party source characters for composition;
+- inspect at most 3 queued candidates/run;
+- max one final composition AI call/run;
 - max one public article/run.
 
 The phone performs only XML/HTML parsing and bounded HTTPS. No inference runs on
@@ -244,14 +246,26 @@ daemon, or worker is required.
 Use one small atomic JSON file. On the first valid RSS read, seed current items
 silently so deployment cannot replay old news.
 
-Keep a bounded recent item set (maximum 128 records, with old terminal records
-pruned). Item states are small lifecycle markers such as `eligible`,
-`dropped`, `source_missing`, `uncertain`, and `published`; no raw RSS,
-article HTML, official HTML, or generated history is stored.
+Keep a bounded recent item set (maximum 128 records). Item states are small
+lifecycle markers such as `eligible`, `dropped`, `source_missing`,
+`source_unsupported`, `duplicate`, `uncertain`, and `published`; no raw
+RSS, article HTML, official HTML, or generated history is stored.
 
-At most one eligible item is attempted per run. Unsent eligible items may remain
-for a later normal invocation, but stale candidates are dropped rather than
-forming an unbounded queue.
+Eligible items persist for up to 48 hours from their EWN publication time.
+Normal selection is high priority before normal priority and oldest first.
+Because there are three publication slots/day and at most one public post per
+slot, a fourth useful story can roll into the next morning. The 48-hour bound
+means the feature intentionally cannot build an unlimited backlog: under a
+sustained burst, stale lower-priority stories may expire.
+
+One code-review issue was that a source-less or temporarily broken candidate
+could consume a whole scheduled run and repeatedly block the queue. The revised
+runtime may inspect at most three candidates per run while retaining the
+original expensive budget of one final composition call and one publication.
+No-source, unsupported, and exact-primary-source duplicates become terminal.
+Transient EWN/first-party fetch failures remain eligible but record only a small
+`source_attempts` marker; never-tried candidates are ordered before retries so
+a broken source cannot monopolize all future runs.
 
 Ambiguous Telegram delivery is marked uncertain and never automatically resent.
 
@@ -266,6 +280,26 @@ Use three quiet one-shot slots in `Europe/Madrid`:
 These avoid the known hourly :19 CCE watcher, :30 Hidraqua check, :37 traffic
 watcher, :55 earthquake watcher, 14:20 product-award slot, and the principal
 morning/evening publication windows.
+
+## Queue/code-review findings on 2026-09-30
+
+A full pre-cron review confirmed that relevant candidates were already retained
+across scheduled runs, but exposed four throughput/safety issues:
+
+1. a candidate with no acceptable first-party link consumed the whole run even
+   though the next candidate might be publishable;
+2. a transient EWN/first-party fetch failure remained the queue head and could
+   be retried before untouched candidates on every later run;
+3. two different EWN articles pointing to the same already-published exact
+   first-party URL could create a duplicate editorial post;
+4. the cron installer modified crontab before verifying that the Termux
+   `crond` service directory existed, allowing a partial install on failure.
+
+The minimal correction keeps the same three cron slots and AI budget: inspect
+at most three candidates, rotate transient failures behind never-tried items,
+deduplicate exact final first-party URLs, and validate `crond` before changing
+crontab. No database, worker, retry daemon, search engine, or additional model
+call is introduced.
 
 ## Decision
 
