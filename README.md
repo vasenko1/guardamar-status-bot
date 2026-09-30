@@ -17,7 +17,10 @@ deduplicated Guardamar events occurring today. Sunrise and sunset are computed
 locally from Guardamar coordinates and do not require another network source.
 
 The linked pinned city guide uses one recoverable Telegram graph for cameras,
-transport, durable places, and recurring activities. Its first places/activity
+transport, durable places, and recurring activities. A separate narrow
+resident-impact workflow uses Euro Weekly News only as a discovery feed and
+publishes nothing unless the article itself links to an approved first-party
+source that confirms the practical topic. Its first places/activity
 slice covers `Polideportivo Municipal`, the indoor and outdoor municipal pools,
 and swimming. One bounded 09:02 guide sync refreshes the accepted recurring
 activity/program sources and reconciles their linked cards. Source adapters
@@ -74,6 +77,7 @@ export PINNED_GUIDE_STATE_PATH="state/pinned_guide.json"
 export GUIDE_STATE_PATH="state/guide.json"
 export GEMINI_API_KEY="your-optional-gemini-key"
 export GROQ_API_KEY="your-optional-free-fallback-key"
+export RESIDENT_NEWS_STATE_PATH="state/resident_news.json"
 export CAMS_DATA_URL="https://raw.githubusercontent.com/vasenko1/guardamar-cams-data/main/data/latest.json"
 export CAMS_CACHE_PATH="state/cams.json"
 ```
@@ -135,6 +139,7 @@ CRON_TZ=Europe/Madrid
 19 * * * * /path/to/TelegramBot/termux/check-112.sh
 */30 * * * * /path/to/TelegramBot/termux/monitor-hidraqua.sh
 55 * * * * /path/to/TelegramBot/termux/monitor-earthquakes.sh
+11 11,15,18 * * * /path/to/TelegramBot/termux/run-resident-news.sh
 ```
 
 Keep the Android device timezone set to `Europe/Madrid` as an additional
@@ -181,6 +186,9 @@ The validated Android deployment uses the scripts in `termux/`:
   validated official event image by URL;
 - `termux/monitor-earthquakes.sh` at minute 55 of every hour to check the
   official IGN GeoRSS feed for a new qualifying local event;
+- `termux/run-resident-news.sh` at 11:11, 15:11 and 18:11 to perform one
+  bounded EWN discovery read, one batch relevance classification, and at most
+  one first-party-grounded public post;
 - `termux/start-services` copied to `~/.termux/boot/start-services` for the
   F-Droid Termux:Boot add-on.
 
@@ -251,6 +259,7 @@ CRON_TZ=Europe/Madrid
 19 * * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/check-112.sh
 */30 * * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-hidraqua.sh
 55 * * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-earthquakes.sh
+11 11,15,18 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-resident-news.sh
 ```
 
 After deployment, install only the operational-monitor entries without
@@ -302,6 +311,18 @@ jobs:
 cd ~/bots/guardamar-status
 ./termux/install-earthquake-cron.sh
 ```
+
+Install the resident-impact discovery checks in their own idempotent managed
+block:
+
+```sh
+cd ~/bots/guardamar-status
+./termux/install-resident-news-cron.sh
+```
+
+The first successful resident-news run seeds the current RSS entries silently,
+so deployment does not replay old articles.
+
 
 Install the linked places/activities guide row in the same idempotent way:
 
@@ -425,12 +446,13 @@ complete two-step product request. If AEMET remains unavailable during a later
 update, the same-day prepared AEMET snapshot supplies the weather blocks. Raw
 SimplyBook responses are never stored.
 
-Gemini remains primary for the bounded municipal AI tasks documented in the
-accepted ADRs. If `GROQ_API_KEY` is configured, direct Groq
+Gemini remains primary for the bounded AI tasks documented in the accepted
+ADRs. If `GROQ_API_KEY` is configured, direct Groq
 `openai/gpt-oss-120b` may follow only an eligible Gemini provider/protocol
 failure for event-title translation, event-teaser translation, traffic
-editorial composition, and exact-date market-status classification. Factual
-event extraction and image reading remain Gemini-only. When neither permitted
+editorial composition, exact-date market-status classification, resident-news
+RSS classification, and first-party-grounded resident-news composition.
+Factual event extraction and image reading remain Gemini-only. When neither permitted
 provider can return a usable response, the AI layer reports
 `PROVIDERS-UNAVAILABLE`; existing deterministic fallbacks, caches, and
 snapshots remain authoritative.
