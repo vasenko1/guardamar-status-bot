@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 from telegrambot.resident_news import (
     DiscoveryItem,
+    ResidentNewsError,
     ResidentNewsPost,
     ResidentNewsState,
     build_message,
@@ -38,13 +39,19 @@ RSS = b"""<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
-def item(item_id="ewn:new", title="Useful change") -> DiscoveryItem:
+def item(
+    item_id="ewn:new",
+    title="Useful change",
+    published_at=None,
+) -> DiscoveryItem:
     return DiscoveryItem(
         item_id=item_id,
         title=title,
         description="Residents will see a practical change.",
         url=f"https://euroweeklynews.com/2026/09/30/{item_id.replace(':', '-')}/",
-        published_at=datetime(2026, 9, 30, 12, 0, tzinfo=timezone.utc),
+        published_at=published_at or datetime(
+            2026, 9, 30, 12, 0, tzinfo=timezone.utc
+        ),
     )
 
 
@@ -241,6 +248,98 @@ class ResidentNewsStateTests(unittest.TestCase):
             self.assertIsNotNone(selected)
             self.assertEqual(selected[0], "ewn:good")
 
+    def test_high_priority_precedes_older_normal_candidate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = ResidentNewsState(Path(directory) / "news.json")
+            state.seed((item("ewn:baseline"),))
+            normal = item(
+                "ewn:normal",
+                published_at=datetime(2026, 9, 30, 8, 0, tzinfo=timezone.utc),
+            )
+            high = item(
+                "ewn:high",
+                published_at=datetime(2026, 9, 30, 12, 0, tzinfo=timezone.utc),
+            )
+            state.record_classifications(
+                (normal, high),
+                (
+                    {"id": "ewn:normal", "relevant": True, "topic": "rail", "priority": "normal"},
+                    {"id": "ewn:high", "relevant": True, "topic": "tax", "priority": "high"},
+                ),
+            )
+            selected = state.next_eligible(
+                datetime(2026, 9, 30, 13, 0, tzinfo=timezone.utc)
+            )
+            self.assertEqual(selected[0], "ewn:high")
+
+    def test_fourth_candidate_remains_for_next_day_after_three_publications(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = ResidentNewsState(Path(directory) / "news.json")
+            state.seed((item("ewn:baseline"),))
+            candidates = tuple(
+                item(
+                    f"ewn:{index}",
+                    published_at=datetime(
+                        2026, 9, 30, 9 + index, 0, tzinfo=timezone.utc
+                    ),
+                )
+                for index in range(1, 5)
+            )
+            state.record_classifications(
+                candidates,
+                tuple(
+                    {
+                        "id": candidate.item_id,
+                        "relevant": True,
+                        "topic": "practical",
+                        "priority": "high",
+                    }
+                    for candidate in candidates
+                ),
+            )
+
+            for message_id in range(1, 4):
+                selected = state.next_eligible(
+                    datetime(2026, 9, 30, 18, 0, tzinfo=timezone.utc)
+                )
+                state.mark_uncertain(selected[0])
+                state.mark_published(
+                    selected[0],
+                    message_id,
+                    f"https://www.boe.es/test?id={message_id}",
+                )
+
+            next_day = state.next_eligible(
+                datetime(2026, 10, 1, 11, 11, tzinfo=timezone.utc)
+            )
+            self.assertIsNotNone(next_day)
+            self.assertEqual(next_day[0], "ewn:4")
+
+    def test_candidate_older_than_48_hours_becomes_stale(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = ResidentNewsState(Path(directory) / "news.json")
+            state.seed((item("ewn:baseline"),))
+            old = item(
+                "ewn:old-news",
+                published_at=datetime(2026, 9, 28, 10, 0, tzinfo=timezone.utc),
+            )
+            state.record_classifications(
+                (old,),
+                (
+                    {
+                        "id": "ewn:old-news",
+                        "relevant": True,
+                        "topic": "tax",
+                        "priority": "high",
+                    },
+                ),
+            )
+            self.assertIsNone(
+                state.next_eligible(
+                    datetime(2026, 9, 30, 11, 0, tzinfo=timezone.utc)
+                )
+            )
+
 
 class ResidentNewsLifecycleTests(unittest.IsolatedAsyncioTestCase):
     async def test_first_valid_feed_is_silent_baseline(self):
@@ -287,8 +386,283 @@ class ResidentNewsLifecycleTests(unittest.IsolatedAsyncioTestCase):
                     "key",
                     publish,
                 )
-            self.assertEqual(result, "source_missing")
+            self.assertEqual(result, "no_publishable_candidate")
             publish.assert_not_awaited()
+
+    async def test_missing_source_falls_through_to_next_candidate_same_run(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = ResidentNewsState(Path(directory) / "news.json")
+            state.seed((item("ewn:old"),))
+            first = item(
+                "ewn:first",
+                published_at=datetime(2026, 9, 30, 12, 0, tzinfo=timezone.utc),
+            )
+            second = item(
+                "ewn:second",
+                published_at=datetime(2026, 9, 30, 12, 1, tzinfo=timezone.utc),
+            )
+            publish = AsyncMock(return_value=500)
+            with (
+                patch(
+                    "telegrambot.resident_news.fetch_feed",
+                    new=AsyncMock(return_value=(item("ewn:old"), first, second)),
+                ),
+                patch(
+                    "telegrambot.resident_news.classify_resident_news",
+                    new=AsyncMock(return_value=[
+                        {"id": "ewn:first", "relevant": True, "topic": "fuel", "priority": "high"},
+                        {"id": "ewn:second", "relevant": True, "topic": "rail", "priority": "high"},
+                    ]),
+                ),
+                patch(
+                    "telegrambot.resident_news.fetch_primary_link",
+                    new=AsyncMock(side_effect=[
+                        None,
+                        "https://grupo.renfe.com/es/noticia",
+                    ]),
+                ) as source_link,
+                patch(
+                    "telegrambot.resident_news.fetch_primary_text",
+                    new=AsyncMock(return_value=(
+                        "Renfe pondra en marcha un nuevo sistema de venta. "
+                        "Comenzara el 28 de octubre y se implantara de forma gradual.",
+                        "https://grupo.renfe.com/es/noticia",
+                    )),
+                ),
+                patch(
+                    "telegrambot.resident_news.compose_resident_news",
+                    new=AsyncMock(return_value={
+                        "supported": True,
+                        "headline_ru": "Renfe cambia la venta",
+                        "paragraphs_ru": [
+                            "Renfe cambia su sistema de venta de billetes a partir de octubre.",
+                            "La implantacion sera gradual para los viajeros.",
+                        ],
+                        "emoji": "🚆",
+                        "status": "announced",
+                    }),
+                ) as compose,
+            ):
+                result = await run_resident_news(
+                    datetime(2026, 9, 30, 13, 0, tzinfo=timezone.utc),
+                    state,
+                    "key",
+                    publish,
+                )
+            self.assertEqual(result, "published")
+            self.assertEqual(source_link.await_count, 2)
+            compose.assert_awaited_once()
+            publish.assert_awaited_once()
+
+    async def test_transient_primary_failure_does_not_block_next_candidate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = ResidentNewsState(Path(directory) / "news.json")
+            state.seed((item("ewn:old"),))
+            first = item("ewn:first")
+            second = item(
+                "ewn:second",
+                published_at=datetime(2026, 9, 30, 12, 1, tzinfo=timezone.utc),
+            )
+            publish = AsyncMock(return_value=501)
+            with (
+                patch(
+                    "telegrambot.resident_news.fetch_feed",
+                    new=AsyncMock(return_value=(item("ewn:old"), first, second)),
+                ),
+                patch(
+                    "telegrambot.resident_news.classify_resident_news",
+                    new=AsyncMock(return_value=[
+                        {"id": "ewn:first", "relevant": True, "topic": "tax", "priority": "high"},
+                        {"id": "ewn:second", "relevant": True, "topic": "rail", "priority": "high"},
+                    ]),
+                ),
+                patch(
+                    "telegrambot.resident_news.fetch_primary_link",
+                    new=AsyncMock(side_effect=[
+                        "https://www.boe.es/diario_boe/txt.php?id=FIRST",
+                        "https://grupo.renfe.com/es/noticia",
+                    ]),
+                ),
+                patch(
+                    "telegrambot.resident_news.fetch_primary_text",
+                    new=AsyncMock(side_effect=[
+                        ResidentNewsError("timeout", code="TIMEOUT"),
+                        (
+                            "Renfe pondra en marcha un nuevo sistema de venta. "
+                            "La implantacion sera gradual para los viajeros.",
+                            "https://grupo.renfe.com/es/noticia",
+                        ),
+                    ]),
+                ) as primary_text,
+                patch(
+                    "telegrambot.resident_news.compose_resident_news",
+                    new=AsyncMock(return_value={
+                        "supported": True,
+                        "headline_ru": "Renfe cambia la venta",
+                        "paragraphs_ru": [
+                            "Renfe cambia su sistema de venta de billetes a partir de octubre.",
+                            "La implantacion sera gradual para los viajeros.",
+                        ],
+                        "emoji": "🚆",
+                        "status": "announced",
+                    }),
+                ),
+            ):
+                result = await run_resident_news(
+                    datetime(2026, 9, 30, 13, 0, tzinfo=timezone.utc),
+                    state,
+                    "key",
+                    publish,
+                )
+            self.assertEqual(result, "published")
+            self.assertEqual(primary_text.await_count, 2)
+            self.assertEqual(
+                state.next_eligible(
+                    datetime(2026, 9, 30, 14, 0, tzinfo=timezone.utc)
+                )[0],
+                "ewn:first",
+            )
+
+    async def test_run_inspects_at_most_three_source_less_candidates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = ResidentNewsState(Path(directory) / "news.json")
+            state.seed((item("ewn:old"),))
+            fresh = tuple(
+                item(
+                    f"ewn:{index}",
+                    published_at=datetime(
+                        2026, 9, 30, 12, index, tzinfo=timezone.utc
+                    ),
+                )
+                for index in range(1, 5)
+            )
+            publish = AsyncMock()
+            decisions = [
+                {
+                    "id": candidate.item_id,
+                    "relevant": True,
+                    "topic": "practical",
+                    "priority": "high",
+                }
+                for candidate in fresh
+            ]
+            with (
+                patch(
+                    "telegrambot.resident_news.fetch_feed",
+                    new=AsyncMock(return_value=(item("ewn:old"), *fresh)),
+                ),
+                patch(
+                    "telegrambot.resident_news.classify_resident_news",
+                    new=AsyncMock(return_value=decisions),
+                ),
+                patch(
+                    "telegrambot.resident_news.fetch_primary_link",
+                    new=AsyncMock(return_value=None),
+                ) as source_link,
+            ):
+                result = await run_resident_news(
+                    datetime(2026, 9, 30, 13, 0, tzinfo=timezone.utc),
+                    state,
+                    "key",
+                    publish,
+                )
+            self.assertEqual(result, "no_publishable_candidate")
+            self.assertEqual(source_link.await_count, 3)
+            remaining = state.next_eligible(
+                datetime(2026, 9, 30, 14, 0, tzinfo=timezone.utc)
+            )
+            self.assertEqual(remaining[0], "ewn:4")
+            publish.assert_not_awaited()
+
+    async def test_duplicate_primary_source_falls_through_without_ai(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = ResidentNewsState(Path(directory) / "news.json")
+            state.seed((item("ewn:baseline"),))
+            already = item(
+                "ewn:already",
+                published_at=datetime(2026, 9, 30, 10, 0, tzinfo=timezone.utc),
+            )
+            state.record_classifications(
+                (already,),
+                (
+                    {
+                        "id": "ewn:already",
+                        "relevant": True,
+                        "topic": "rail",
+                        "priority": "high",
+                    },
+                ),
+            )
+            state.mark_uncertain("ewn:already")
+            state.mark_published(
+                "ewn:already",
+                1,
+                "https://grupo.renfe.com/es/same-source",
+            )
+
+            duplicate = item(
+                "ewn:duplicate",
+                published_at=datetime(2026, 9, 30, 12, 0, tzinfo=timezone.utc),
+            )
+            next_item = item(
+                "ewn:next",
+                published_at=datetime(2026, 9, 30, 12, 1, tzinfo=timezone.utc),
+            )
+            publish = AsyncMock(return_value=502)
+            with (
+                patch(
+                    "telegrambot.resident_news.fetch_feed",
+                    new=AsyncMock(return_value=(
+                        item("ewn:baseline"),
+                        duplicate,
+                        next_item,
+                    )),
+                ),
+                patch(
+                    "telegrambot.resident_news.classify_resident_news",
+                    new=AsyncMock(return_value=[
+                        {"id": "ewn:duplicate", "relevant": True, "topic": "rail", "priority": "high"},
+                        {"id": "ewn:next", "relevant": True, "topic": "tax", "priority": "high"},
+                    ]),
+                ),
+                patch(
+                    "telegrambot.resident_news.fetch_primary_link",
+                    new=AsyncMock(side_effect=[
+                        "https://grupo.renfe.com/es/same-source",
+                        "https://www.boe.es/diario_boe/txt.php?id=NEXT",
+                    ]),
+                ),
+                patch(
+                    "telegrambot.resident_news.fetch_primary_text",
+                    new=AsyncMock(return_value=(
+                        "El BOE publica una medida nueva de alcance nacional "
+                        "que afecta a residentes y entra en vigor proximamente.",
+                        "https://www.boe.es/diario_boe/txt.php?id=NEXT",
+                    )),
+                ),
+                patch(
+                    "telegrambot.resident_news.compose_resident_news",
+                    new=AsyncMock(return_value={
+                        "supported": True,
+                        "headline_ru": "Новое правило",
+                        "paragraphs_ru": [
+                            "Опубликовано новое правило общенационального действия.",
+                            "Оно начнет применяться в указанную официальным источником дату.",
+                        ],
+                        "emoji": "📄",
+                        "status": "approved",
+                    }),
+                ) as compose,
+            ):
+                result = await run_resident_news(
+                    datetime(2026, 9, 30, 13, 0, tzinfo=timezone.utc),
+                    state,
+                    "key",
+                    publish,
+                )
+            self.assertEqual(result, "published")
+            compose.assert_awaited_once()
+            publish.assert_awaited_once()
 
     async def test_unrelated_primary_source_is_not_published(self):
         with tempfile.TemporaryDirectory() as directory:
