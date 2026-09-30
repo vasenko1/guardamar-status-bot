@@ -251,11 +251,16 @@ allowed for the guide.
   operations in ADR 0087. Factual event extraction and image reading remain
   Gemini-only. Neither provider retries inside this layer.
 - Resident news runs only at 11:11, 15:11 and 18:11 Europe/Madrid. Each run
-  performs one RSS read, classifies at most eight unseen title/description
-  records in one AI call, and attempts at most one candidate. Only that
-  candidate may fetch one EWN article and one approved first-party HTML page
-  before one final AI composition call. The first valid feed seeds silently.
-  State is capped at 128 compact records; raw pages are never stored.
+  performs one RSS read and classifies at most eight unseen title/description
+  records in one AI call. It may inspect at most three queued candidates to
+  bypass missing, duplicate, or temporarily unreachable sources, but still
+  makes at most one final AI composition call and sends at most one public post.
+  A transient source failure records only a tiny bounded attempt marker and
+  rotates behind never-tried candidates; eligible items expire after 48 hours.
+  After downtime, unseen RSS entries already older than 48 hours are recorded
+  stale before classification so they consume no AI budget. The first valid
+  feed seeds silently. State is capped at 128 compact records; raw pages are
+  never stored.
 - Explicit Mayor-channel events reuse the existing bounded morning page read;
   they add no request, model call, raw-response cache or background process.
 - Do not make digest delivery depend on every source succeeding.

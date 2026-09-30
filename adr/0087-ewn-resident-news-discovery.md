@@ -67,18 +67,25 @@ Each scheduled invocation:
 
 1. performs one bounded RSS read;
 2. silently seeds current entries on the first valid run;
-3. classifies at most eight unseen items using title plus at most 500
-   description characters in one structured AI request;
+3. marks unseen RSS items older than 48 hours stale before AI, then classifies
+   at most eight remaining unseen items using title plus at most 500 description
+   characters in one structured AI request;
 4. stores only compact classification/lifecycle state;
-5. attempts at most one eligible candidate;
-6. fetches that candidate's EWN HTML only to locate first-party links;
+5. inspects at most three eligible candidates in queue order, so a candidate
+   with no usable source cannot consume the whole publication slot;
+6. for each inspected candidate, fetches its EWN HTML only to locate a
+   first-party link;
 7. scans the visible story region after the first `h1` and before
    comments/continue-reading/footer, without assuming an `<article>` wrapper;
 8. selects the earliest **specific** approved first-party link in story order,
    rejecting generic home/index landing pages;
-9. performs one bounded first-party HTML read;
-10. makes at most one final AI composition call;
-11. sends at most one Telegram post and exits.
+9. performs a bounded first-party HTML read only when a candidate has such a
+   link; transient source failures stay eligible but rotate behind never-tried
+   candidates;
+10. skips a candidate deterministically when its exact final first-party URL
+    was already published by this feature;
+11. makes at most one final AI composition call per scheduled run;
+12. sends at most one Telegram post and exits.
 
 No raw RSS, article HTML, first-party HTML, or AI payload is persisted.
 
@@ -129,10 +136,18 @@ state file. Add no runtime dependency.
 The intended schedule is 11:11, 15:11, and 18:11 Europe/Madrid. Each invocation
 is one short-lived process.
 
-Keep at most 128 compact item records. Terminal stale records are pruned.
-Unsent eligible candidates remain bounded and expire rather than forming an
-unbounded work queue. Ambiguous Telegram delivery is stored as uncertain and is
-not resent automatically.
+Keep at most 128 compact item records. Eligible candidates remain available
+for later scheduled invocations until 48 hours after the EWN publication time.
+Queue order is high priority before normal priority and oldest first among
+otherwise equal candidates. A transient source failure records only a bounded
+attempt counter/error code so never-tried candidates can proceed before retries.
+Terminal missing/unsupported/duplicate candidates leave the queue. Ambiguous
+Telegram delivery is stored as uncertain and is not resent automatically.
+
+Because the schedule has three slots and public delivery remains capped at one
+post per slot, normal publication capacity is three posts/day. A fourth useful
+candidate may therefore roll into the next morning; the 48-hour freshness bound
+intentionally prevents an unbounded stale-news backlog.
 
 ### Failure policy
 

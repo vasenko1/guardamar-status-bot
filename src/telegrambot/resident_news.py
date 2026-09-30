@@ -28,6 +28,7 @@ MAX_FEED_BYTES = 256 * 1024
 MAX_ARTICLE_BYTES = 768 * 1024
 MAX_PRIMARY_BYTES = 768 * 1024
 MAX_BATCH_ITEMS = 8
+MAX_CANDIDATE_INSPECTIONS = 3
 MAX_DESCRIPTION_CHARS = 500
 MAX_PRIMARY_TEXT_CHARS = 8_000
 MAX_STATE_ITEMS = 128
@@ -499,9 +500,36 @@ class ResidentNewsState:
             }
         self._write(value)
 
-    def unseen(self, items: Sequence[DiscoveryItem]) -> tuple[DiscoveryItem, ...]:
-        known = self._read()["items"]
-        return tuple(item for item in items if item.item_id not in known)[:MAX_BATCH_ITEMS]
+    def unseen(
+        self,
+        items: Sequence[DiscoveryItem],
+        *,
+        now: Optional[datetime] = None,
+    ) -> tuple[DiscoveryItem, ...]:
+        value = self._read()
+        known = value["items"]
+        now_utc = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        recent: list[DiscoveryItem] = []
+        changed = False
+        observed_at = now_utc.isoformat()
+        for item in items:
+            if item.item_id in known:
+                continue
+            if now_utc - item.published_at.astimezone(timezone.utc) > MAX_PENDING_AGE:
+                known[item.item_id] = {
+                    "url": item.url,
+                    "title": item.title,
+                    "published_at": item.published_at.isoformat(),
+                    "status": "stale",
+                    "observed_at": observed_at,
+                }
+                changed = True
+                continue
+            recent.append(item)
+        if changed:
+            self._prune(value)
+            self._write(value)
+        return tuple(recent[:MAX_BATCH_ITEMS])
 
     def record_classifications(self, items: Sequence[DiscoveryItem], decisions: Sequence[dict]) -> None:
         if len(items) != len(decisions):
@@ -546,12 +574,21 @@ class ResidentNewsState:
         items.clear()
         items.update(kept)
 
-    def next_eligible(self, now: datetime) -> Optional[tuple[str, dict]]:
+    def eligible_candidates(
+        self,
+        now: datetime,
+        *,
+        excluded_ids: frozenset[str] = frozenset(),
+        limit: int = MAX_CANDIDATE_INSPECTIONS,
+    ) -> tuple[tuple[str, dict], ...]:
+        if limit < 1:
+            raise ValueError("resident-news candidate limit must be positive")
         value = self._read()
         eligible: list[tuple[str, dict, datetime]] = []
         changed = False
+        now_utc = now.astimezone(timezone.utc)
         for item_id, record in value["items"].items():
-            if record.get("status") != "eligible":
+            if item_id in excluded_ids or record.get("status") != "eligible":
                 continue
             try:
                 published = datetime.fromisoformat(record["published_at"])
@@ -559,21 +596,66 @@ class ResidentNewsState:
                 continue
             if published.tzinfo is None:
                 published = published.replace(tzinfo=timezone.utc)
-            if now.astimezone(timezone.utc) - published.astimezone(timezone.utc) > MAX_PENDING_AGE:
+            published_utc = published.astimezone(timezone.utc)
+            if now_utc - published_utc > MAX_PENDING_AGE:
                 record["status"] = "stale"
                 changed = True
                 continue
-            eligible.append((item_id, record, published))
+            eligible.append((item_id, record, published_utc))
         if changed:
             self._write(value)
-        if not eligible:
-            return None
-        eligible.sort(key=lambda row: (row[1].get("priority") != "high", row[2]))
-        item_id, record, _ = eligible[0]
-        return item_id, dict(record)
+        eligible.sort(
+            key=lambda row: (
+                int(row[1].get("source_attempts", 0)) > 0,
+                row[1].get("priority") != "high",
+                int(row[1].get("source_attempts", 0)),
+                row[2],
+            )
+        )
+        return tuple(
+            (item_id, dict(record))
+            for item_id, record, _ in eligible[:limit]
+        )
+
+    def next_eligible(self, now: datetime) -> Optional[tuple[str, dict]]:
+        """Compatibility helper for callers/tests that need only the queue head."""
+
+        candidates = self.eligible_candidates(now, limit=1)
+        return candidates[0] if candidates else None
 
     def mark_source_missing(self, item_id: str) -> None:
         self._set_status(item_id, "source_missing")
+
+    def mark_source_unsupported(self, item_id: str) -> None:
+        self._set_status(item_id, "source_unsupported")
+
+    def record_source_failure(self, item_id: str, code: str) -> None:
+        value = self._read()
+        record = value["items"].get(item_id)
+        if not isinstance(record, dict) or record.get("status") != "eligible":
+            raise ResidentNewsError(
+                "resident-news source failure target is invalid",
+                code="STATE",
+            )
+        attempts = record.get("source_attempts", 0)
+        if not isinstance(attempts, int) or attempts < 0:
+            attempts = 0
+        record["source_attempts"] = min(attempts + 1, 99)
+        record["last_source_error"] = str(code)[:40]
+        record["last_source_attempt_at"] = datetime.now(timezone.utc).isoformat()
+        self._write(value)
+
+    def mark_duplicate(self, item_id: str) -> None:
+        self._set_status(item_id, "duplicate")
+
+    def has_published_source_url(self, source_url: str) -> bool:
+        value = self._read()
+        return any(
+            isinstance(record, dict)
+            and record.get("status") == "published"
+            and record.get("source_url") == source_url
+            for record in value["items"].values()
+        )
 
     def mark_uncertain(self, item_id: str) -> None:
         self._set_status(item_id, "uncertain")
@@ -655,7 +737,7 @@ async def run_resident_news(
             LOGGER.info("Resident-news RSS baseline seeded silently")
             return "seeded"
 
-        unseen = state.unseen(feed)
+        unseen = state.unseen(feed, now=now)
         if unseen:
             decisions = await classify_resident_news(
                 gemini_api_key,
@@ -670,45 +752,99 @@ async def run_resident_news(
             )
             state.record_classifications(unseen, decisions)
 
-        selected = state.next_eligible(now)
-        if selected is None:
+        candidates = state.eligible_candidates(now)
+        if not candidates:
             return "no_candidate"
-        item_id, record = selected
-        primary_url = await fetch_primary_link(record["url"])
-        if primary_url is None:
-            state.mark_source_missing(item_id)
-            LOGGER.info("Resident-news candidate omitted: no approved first-party link")
-            return "source_missing"
 
-        source_text, primary_url = await fetch_primary_text(primary_url)
-        composed = await compose_resident_news(
-            gemini_api_key,
-            discovery_title=record["title"],
-            source_name=source_label(primary_url),
-            source_text=source_text,
-        )
-        if composed.get("supported") is not True:
-            state.mark_source_missing(item_id)
-            LOGGER.info(
-                "Resident-news candidate omitted: first-party source did not "
-                "support the discovered topic"
+        for item_id, record in candidates:
+            try:
+                primary_url = await fetch_primary_link(record["url"])
+            except ResidentNewsError as exc:
+                state.record_source_failure(item_id, exc.diagnostic_code)
+                LOGGER.warning(
+                    "Resident-news candidate %s deferred after EWN source-link "
+                    "failure [%s]",
+                    item_id,
+                    exc.diagnostic_code,
+                )
+                continue
+
+            if primary_url is None:
+                state.mark_source_missing(item_id)
+                LOGGER.info(
+                    "Resident-news candidate %s omitted: no approved "
+                    "first-party link",
+                    item_id,
+                )
+                continue
+
+            if state.has_published_source_url(primary_url):
+                state.mark_duplicate(item_id)
+                LOGGER.info(
+                    "Resident-news candidate %s omitted: primary source was "
+                    "already published",
+                    item_id,
+                )
+                continue
+
+            try:
+                source_text, primary_url = await fetch_primary_text(primary_url)
+            except ResidentNewsError as exc:
+                state.record_source_failure(item_id, exc.diagnostic_code)
+                LOGGER.warning(
+                    "Resident-news candidate %s deferred after primary-source "
+                    "failure [%s]",
+                    item_id,
+                    exc.diagnostic_code,
+                )
+                continue
+
+            if state.has_published_source_url(primary_url):
+                state.mark_duplicate(item_id)
+                LOGGER.info(
+                    "Resident-news candidate %s omitted after redirect: primary "
+                    "source was already published",
+                    item_id,
+                )
+                continue
+
+            # Keep the expensive editorial budget at one composition call per
+            # scheduled run. Deterministic/source failures above may fall
+            # through to another candidate, but once source-backed text reaches
+            # the model this invocation owns only that candidate.
+            composed = await compose_resident_news(
+                gemini_api_key,
+                discovery_title=record["title"],
+                source_name=source_label(primary_url),
+                source_text=source_text,
             )
-            return "source_unsupported"
-        post = ResidentNewsPost(
-            headline_ru=composed["headline_ru"],
-            paragraphs_ru=tuple(composed["paragraphs_ru"]),
-            emoji=composed["emoji"],
-            status=composed["status"],
-        )
-        message = build_message(post, primary_url)
-        state.mark_uncertain(item_id)
-        try:
-            message_id = await publish(message)
-        except ResidentNewsDeliveryUncertain:
-            LOGGER.warning("Resident-news delivery uncertain; automatic resend disabled")
-            return "uncertain"
-        except Exception:
-            state.clear_uncertain(item_id)
-            raise
-        state.mark_published(item_id, message_id, primary_url)
-        return "published"
+            if composed.get("supported") is not True:
+                state.mark_source_unsupported(item_id)
+                LOGGER.info(
+                    "Resident-news candidate omitted: first-party source did not "
+                    "support the discovered topic"
+                )
+                return "source_unsupported"
+
+            post = ResidentNewsPost(
+                headline_ru=composed["headline_ru"],
+                paragraphs_ru=tuple(composed["paragraphs_ru"]),
+                emoji=composed["emoji"],
+                status=composed["status"],
+            )
+            message = build_message(post, primary_url)
+            state.mark_uncertain(item_id)
+            try:
+                message_id = await publish(message)
+            except ResidentNewsDeliveryUncertain:
+                LOGGER.warning(
+                    "Resident-news delivery uncertain; automatic resend disabled"
+                )
+                return "uncertain"
+            except Exception:
+                state.clear_uncertain(item_id)
+                raise
+            state.mark_published(item_id, message_id, primary_url)
+            return "published"
+
+        return "no_publishable_candidate"

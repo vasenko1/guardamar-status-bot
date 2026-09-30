@@ -28,6 +28,11 @@ if [ ! -f "$RUNNER" ]; then
     exit 1
 fi
 
+if [ ! -d "$SERVICE_DIR/crond" ]; then
+    echo "ERROR: crond service directory not found: $SERVICE_DIR/crond" >&2
+    exit 1
+fi
+
 mkdir -p "$PROJECT_DIR/state" "$BACKUP_DIR"
 if ! crontab -l >"$CURRENT" 2>"$ERRORS"; then
     if ! grep -qi 'no crontab for' "$ERRORS"; then
@@ -64,11 +69,6 @@ awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" -v job="$JOB" '
         "$JOB" \
         "$END_MARKER"
 } | crontab -
-
-if [ ! -d "$SERVICE_DIR/crond" ]; then
-    echo "ERROR: crond service directory not found: $SERVICE_DIR/crond" >&2
-    exit 1
-fi
 
 SVDIR="$SERVICE_DIR" sv up crond
 echo "Resident news installed: 11:11, 15:11, 18:11 Europe/Madrid"
