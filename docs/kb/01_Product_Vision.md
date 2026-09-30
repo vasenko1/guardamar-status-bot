@@ -61,6 +61,11 @@ Policía Local traffic source has no AI fallback.
 Deterministic validation or a valid snapshot must protect every result;
 otherwise only that optional contribution is omitted.
 
+ADR 0087 adds one narrow editorial discovery exception: EWN may surface a
+resident-impact topic, but it never supplies public factual claims. Publication
+requires an approved first-party link already present in the EWN article, and
+the final Russian note is grounded in the fetched first-party source.
+
 ## Long-term direction
 
 Keep the product deliberately narrow:
