@@ -23,8 +23,10 @@ not shown as the factual source.
 
 Ordinary crime, celebrity, sport, entertainment, human-interest, routine
 political statements without a practical consequence, and remote local stories
-without wider relevance are excluded. Political/policy material must remain
-neutral and factual.
+without wider relevance are excluded. Current weather/storm/flood/wildfire/
+earthquake/beach/local-emergency and road-closure status are also excluded
+because existing official-source features already cover those domains.
+Political/policy material must remain neutral and factual.
 
 
 ## Local earthquake notices

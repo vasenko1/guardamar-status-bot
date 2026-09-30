@@ -97,25 +97,53 @@ class _TextOnlyParser(HTMLParser):
 
 
 class _ArticleLinksParser(HTMLParser):
+    """Collect links from the visible story area without relying on <article>."""
+
+    _STOP_HEADINGS = {"comments", "continue reading"}
+
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
-        self.article_depth = 0
-        self.saw_article = False
+        self.in_title = False
+        self.saw_title = False
+        self.capture_links = False
+        self.heading_tag: Optional[str] = None
+        self.heading_parts: list[str] = []
         self.links: list[str] = []
 
     def handle_starttag(self, tag: str, attrs) -> None:
         tag = tag.lower()
-        if tag == "article":
-            self.article_depth += 1
-            self.saw_article = True
-        if tag == "a" and self.article_depth:
+        if tag == "h1" and not self.saw_title:
+            self.in_title = True
+            return
+        if self.capture_links and tag in {"h2", "h3", "h4"}:
+            self.heading_tag = tag
+            self.heading_parts = []
+        if tag == "footer" and self.capture_links:
+            self.capture_links = False
+        if tag == "a" and self.capture_links:
             href = dict(attrs).get("href")
             if isinstance(href, str) and href.strip():
                 self.links.append(href.strip())
 
+    def handle_data(self, data: str) -> None:
+        if self.heading_tag is not None:
+            value = " ".join(data.split())
+            if value:
+                self.heading_parts.append(value)
+
     def handle_endtag(self, tag: str) -> None:
-        if tag.lower() == "article" and self.article_depth:
-            self.article_depth -= 1
+        tag = tag.lower()
+        if tag == "h1" and self.in_title:
+            self.in_title = False
+            self.saw_title = True
+            self.capture_links = True
+            return
+        if self.heading_tag == tag:
+            heading = " ".join(self.heading_parts).strip().casefold()
+            if heading in self._STOP_HEADINGS:
+                self.capture_links = False
+            self.heading_tag = None
+            self.heading_parts = []
 
 
 class _AllTextParser(HTMLParser):
@@ -192,6 +220,32 @@ def is_approved_primary_url(url: str) -> bool:
     return parsed.scheme == "https" and _approved_primary_host(parsed.hostname)
 
 
+def is_specific_primary_url(url: str) -> bool:
+    """Reject approved hosts when the URL is only a generic landing page."""
+
+    if not is_approved_primary_url(url):
+        return False
+    parsed = urllib.parse.urlparse(url)
+    path = urllib.parse.unquote(parsed.path or "/").strip().casefold()
+    normalized = "/" + path.strip("/") if path.strip("/") else "/"
+    if normalized in {
+        "/",
+        "/es",
+        "/home",
+        "/inicio",
+        "/portada",
+        "/index",
+        "/index.htm",
+        "/index.html",
+        "/index.php",
+        "/index.aspx",
+    }:
+        return False
+    if normalized.endswith("/paginas/index.aspx"):
+        return False
+    return True
+
+
 def source_label(url: str) -> str:
     host = (urllib.parse.urlparse(url).hostname or "").lower()
     if host == "boe.es" or host.endswith(".boe.es"):
@@ -242,6 +296,13 @@ def parse_feed(payload: bytes) -> tuple[DiscoveryItem, ...]:
         guid = (element.findtext("guid") or "").strip()
         published = (element.findtext("pubDate") or "").strip()
         description_raw = element.findtext("description") or ""
+        categories = {
+            " ".join((category.text or "").split()).casefold()
+            for category in element.findall("category")
+            if category.text
+        }
+        if categories.intersection({"spain weather", "weather"}):
+            continue
         if not title or not _is_ewn_url(url) or not published:
             continue
         try:
@@ -319,11 +380,11 @@ def first_primary_link(article_url: str, payload: bytes) -> Optional[str]:
         parser.close()
     except Exception as exc:
         raise ResidentNewsError("EWN article HTML is invalid", code="ARTICLE") from exc
-    if not parser.saw_article:
-        raise ResidentNewsError("EWN article body was not found", code="ARTICLE")
+    if not parser.saw_title:
+        raise ResidentNewsError("EWN article title was not found", code="ARTICLE")
     for href in parser.links:
         candidate = urllib.parse.urljoin(article_url, href)
-        if is_approved_primary_url(candidate):
+        if is_specific_primary_url(candidate):
             return candidate
     return None
 
@@ -351,6 +412,11 @@ def _fetch_primary_text(url: str) -> tuple[str, str]:
         )
     except BoundedFetchError as exc:
         raise ResidentNewsError("primary source fetch failed", code=exc.code) from exc
+    if not is_specific_primary_url(final_url):
+        raise ResidentNewsError(
+            "primary source redirected to a generic landing page",
+            code="SOURCE",
+        )
     try:
         decoded = payload.decode("utf-8")
     except UnicodeDecodeError as exc:

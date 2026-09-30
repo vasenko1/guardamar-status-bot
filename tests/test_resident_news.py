@@ -11,6 +11,7 @@ from telegrambot.resident_news import (
     build_message,
     first_primary_link,
     is_approved_primary_url,
+    is_specific_primary_url,
     parse_feed,
     run_resident_news,
     source_label,
@@ -66,25 +67,76 @@ class ResidentNewsParsingTests(unittest.TestCase):
         parsed = parse_feed(payload)
         self.assertEqual(parsed[0].description, "Plain useful description without HTML.")
 
-    def test_primary_link_uses_first_approved_article_link(self):
-        article = b"""
-        <html><body><article>
-          <a href="https://example.com/opinion">other</a>
-          <a href="https://www.dgt.es/muevete-con-seguridad/">DGT</a>
-          <a href="https://www.boe.es/diario_boe/txt.php?id=TEST">BOE</a>
-        </article></body></html>
+    def test_feed_parser_skips_weather_category_owned_by_aemet(self):
+        payload = b"""<?xml version="1.0"?>
+        <rss version="2.0"><channel>
+        <item>
+          <title>Valencia braces for torrential rain</title>
+          <link>https://euroweeklynews.com/2026/09/30/valencia-rain/</link>
+          <guid>ewn:weather</guid>
+          <pubDate>Wed, 30 Sep 2026 16:56:00 +0200</pubDate>
+          <description>Storms threaten flash flooding.</description>
+          <category><![CDATA[News from Spain]]></category>
+          <category><![CDATA[Spain Weather]]></category>
+        </item>
+        <item>
+          <title>Renfe changes ticket sales</title>
+          <link>https://euroweeklynews.com/2026/09/30/renfe/</link>
+          <guid>ewn:renfe2</guid>
+          <pubDate>Wed, 30 Sep 2026 17:00:00 +0200</pubDate>
+          <description>New ticket sales system.</description>
+          <category><![CDATA[News from Spain]]></category>
+        </item>
+        </channel></rss>"""
+        parsed = parse_feed(payload)
+        self.assertEqual([value.item_id for value in parsed], ["ewn:renfe2"])
+
+    def test_primary_link_uses_story_area_without_article_tag(self):
+        page = b"""
+        <html><body>
+          <header>
+            <a href="https://www.boe.es/diario_boe/txt.php?id=NAV">nav</a>
+          </header>
+          <h1>Renfe changes ticket sales</h1>
+          <p>
+            <a href="https://www.lamoncloa.gob.es/consejodeministros/Paginas/index.aspx">
+              generic government index
+            </a>
+          </p>
+          <p>
+            <a href="https://grupo.renfe.com/es/es/sala-de-prensa/noticias/2026/09/renfe-transforma-sistema-de-venta">
+              Renfe
+            </a>
+          </p>
+          <h2>Comments</h2>
+          <a href="https://www.boe.es/diario_boe/txt.php?id=FOOTER">footer</a>
+        </body></html>
         """
         self.assertEqual(
-            first_primary_link("https://euroweeklynews.com/story/", article),
-            "https://www.dgt.es/muevete-con-seguridad/",
+            first_primary_link("https://euroweeklynews.com/story/", page),
+            "https://grupo.renfe.com/es/es/sala-de-prensa/noticias/2026/09/renfe-transforma-sistema-de-venta",
         )
 
-    def test_primary_link_requires_article_body(self):
+    def test_primary_link_requires_story_title(self):
         with self.assertRaises(Exception):
             first_primary_link(
                 "https://euroweeklynews.com/story/",
                 b'<html><a href="https://www.boe.es/test">BOE</a></html>',
             )
+
+    def test_primary_link_skips_generic_official_landing_pages(self):
+        page = b"""
+        <html><body>
+          <h1>Housing update</h1>
+          <p><a href="https://www.lamoncloa.gob.es/consejodeministros/Paginas/index.aspx">Moncloa</a></p>
+          <p><a href="https://www.congreso.es/es/">Congress</a></p>
+          <p><a href="https://www.boe.es/">BOE</a></p>
+          <h2>Comments</h2>
+        </body></html>
+        """
+        self.assertIsNone(
+            first_primary_link("https://euroweeklynews.com/story/", page)
+        )
 
     def test_primary_allowlist_is_conservative(self):
         self.assertTrue(is_approved_primary_url("https://www.boe.es/test"))
@@ -93,6 +145,25 @@ class ResidentNewsParsingTests(unittest.TestCase):
         self.assertTrue(is_approved_primary_url("https://prensa.mites.gob.es/test"))
         self.assertFalse(is_approved_primary_url("https://elpais.com/test"))
         self.assertFalse(is_approved_primary_url("http://www.boe.es/test"))
+
+    def test_specific_primary_url_rejects_generic_landing_pages(self):
+        self.assertFalse(is_specific_primary_url("https://www.boe.es/"))
+        self.assertFalse(is_specific_primary_url("https://www.congreso.es/es/"))
+        self.assertFalse(
+            is_specific_primary_url(
+                "https://www.lamoncloa.gob.es/consejodeministros/Paginas/index.aspx"
+            )
+        )
+        self.assertTrue(
+            is_specific_primary_url(
+                "https://grupo.renfe.com/es/es/sala-de-prensa/noticias/2026/09/renfe-transforma-sistema-de-venta"
+            )
+        )
+        self.assertTrue(
+            is_specific_primary_url(
+                "https://www.boe.es/diario_boe/txt.php?id=BOE-A-2026-20266"
+            )
+        )
 
     def test_source_labels(self):
         self.assertEqual(source_label("https://www.dgt.es/test"), "DGT")
