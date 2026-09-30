@@ -135,10 +135,18 @@ state file. Add no runtime dependency.
 The intended schedule is 11:11, 15:11, and 18:11 Europe/Madrid. Each invocation
 is one short-lived process.
 
-Keep at most 128 compact item records. Terminal stale records are pruned.
-Unsent eligible candidates remain bounded and expire rather than forming an
-unbounded work queue. Ambiguous Telegram delivery is stored as uncertain and is
-not resent automatically.
+Keep at most 128 compact item records. Eligible candidates remain available
+for later scheduled invocations until 48 hours after the EWN publication time.
+Queue order is high priority before normal priority and oldest first among
+otherwise equal candidates. A transient source failure records only a bounded
+attempt counter/error code so never-tried candidates can proceed before retries.
+Terminal missing/unsupported/duplicate candidates leave the queue. Ambiguous
+Telegram delivery is stored as uncertain and is not resent automatically.
+
+Because the schedule has three slots and public delivery remains capped at one
+post per slot, normal publication capacity is three posts/day. A fourth useful
+candidate may therefore roll into the next morning; the 48-hour freshness bound
+intentionally prevents an unbounded stale-news backlog.
 
 ### Failure policy
 
