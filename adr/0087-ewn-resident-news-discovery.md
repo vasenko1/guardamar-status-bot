@@ -33,10 +33,13 @@ routing.
 Add one narrow standalone feature: **resident-impact news**.
 
 It is not a general news feed. Eligible topics must report a concrete practical
-change, pending decision, first-party announcement, or material disruption that
-can affect people living in Spain. Examples include rules/obligations, public
-transport, housing, taxes, benefits, tariffs, motoring, residency
-administration, public health access, and significant announced strikes.
+change, pending decision, first-party announcement, or material disruption
+relevant to residents of Guardamar. Spain-wide measures and measures applying
+to Comunitat Valenciana, Alicante, or Guardamar are eligible. Local stories
+limited to other autonomous communities or provinces require a clear nationwide
+consequence. Examples include rules/obligations, public transport, housing,
+taxes, benefits, tariffs, motoring, residency administration, public health
+access, and significant announced strikes.
 
 Ordinary crime, celebrity, sport, entertainment, human-interest, routine
 party-political statements, and remote local incidents without wider relevance
