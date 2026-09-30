@@ -138,6 +138,9 @@ For one eligible candidate per invocation:
 - fetch that source with strict host/content/size limits;
 - send the first-party text plus a short EWN discovery context to one
   structured AI call;
+- the same call first verifies that the selected first-party text actually
+  supports the discovered topic and comes from an appropriate responsible
+  first-party source rather than merely commenting on someone else's decision;
 - the first-party text is the factual authority; EWN context may explain why
   the topic matters but may not supply unsupported facts.
 
@@ -146,8 +149,8 @@ Telegram editorial note:
 
 - one concise headline;
 - 2-4 narrative paragraphs;
-- moderate thematic emoji (normally 1 in the heading and no more than 3-4
-  different emoji overall);
+- moderate thematic emoji: one heading emoji and at most two additional
+  thematic emoji inside the prose when they improve scanning;
 - explain what changed/is proposed, practical effect, timing and meaningful
   caveats naturally rather than as a questionnaire;
 - preserve proposal/approval/effective/strike/disruption status;
