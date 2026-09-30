@@ -86,6 +86,7 @@ A public post may be generated only from a fetched first-party source.
 Initial accepted host families are deliberately narrow:
 
 - Spanish government/public law: `.gob.es`, `boe.es`;
+- national legislature: `congreso.es`, `senado.es`;
 - Generalitat Valenciana: `gva.es` and subdomains;
 - DGT: `dgt.es`;
 - Renfe: `renfe.com` and `grupo.renfe.com`;
