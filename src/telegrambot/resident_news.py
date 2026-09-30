@@ -500,9 +500,36 @@ class ResidentNewsState:
             }
         self._write(value)
 
-    def unseen(self, items: Sequence[DiscoveryItem]) -> tuple[DiscoveryItem, ...]:
-        known = self._read()["items"]
-        return tuple(item for item in items if item.item_id not in known)[:MAX_BATCH_ITEMS]
+    def unseen(
+        self,
+        items: Sequence[DiscoveryItem],
+        *,
+        now: Optional[datetime] = None,
+    ) -> tuple[DiscoveryItem, ...]:
+        value = self._read()
+        known = value["items"]
+        now_utc = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        recent: list[DiscoveryItem] = []
+        changed = False
+        observed_at = now_utc.isoformat()
+        for item in items:
+            if item.item_id in known:
+                continue
+            if now_utc - item.published_at.astimezone(timezone.utc) > MAX_PENDING_AGE:
+                known[item.item_id] = {
+                    "url": item.url,
+                    "title": item.title,
+                    "published_at": item.published_at.isoformat(),
+                    "status": "stale",
+                    "observed_at": observed_at,
+                }
+                changed = True
+                continue
+            recent.append(item)
+        if changed:
+            self._prune(value)
+            self._write(value)
+        return tuple(recent[:MAX_BATCH_ITEMS])
 
     def record_classifications(self, items: Sequence[DiscoveryItem], decisions: Sequence[dict]) -> None:
         if len(items) != len(decisions):
@@ -710,7 +737,7 @@ async def run_resident_news(
             LOGGER.info("Resident-news RSS baseline seeded silently")
             return "seeded"
 
-        unseen = state.unseen(feed)
+        unseen = state.unseen(feed, now=now)
         if unseen:
             decisions = await classify_resident_news(
                 gemini_api_key,
