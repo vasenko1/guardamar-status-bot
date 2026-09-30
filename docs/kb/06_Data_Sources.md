@@ -54,8 +54,9 @@ selected. If no approved first-party link exists, omit the candidate; do not
 search elsewhere.
 
 The initial primary host policy covers Spanish government/public-law hosts,
-Generalitat Valenciana, DGT, Renfe, SEPE, Seguridad Social, AEMET, and the
-reviewed national union domains used for first-party strike announcements.
+Congreso/Senado, Generalitat Valenciana, DGT, Renfe, SEPE, Seguridad Social,
+AEMET, and the reviewed national union domains used for first-party strike
+announcements.
 Unknown domains remain ineligible until reviewed. Only bounded HTML is accepted
 for the final factual source in the MVP.
 
