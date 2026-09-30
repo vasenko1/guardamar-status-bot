@@ -54,6 +54,18 @@ class ResidentNewsParsingTests(unittest.TestCase):
         self.assertEqual(parsed[0].description, "A new sales system rolls out in phases.")
         self.assertEqual(parsed[0].published_at.tzinfo, timezone.utc)
 
+    def test_feed_parser_accepts_plain_text_description(self):
+        payload = b"""<?xml version="1.0"?>
+        <rss version="2.0"><channel><item>
+          <title>Plain description</title>
+          <link>https://euroweeklynews.com/2026/09/30/plain/</link>
+          <guid>ewn:plain</guid>
+          <pubDate>Wed, 30 Sep 2026 12:00:00 +0200</pubDate>
+          <description>Plain useful description without HTML.</description>
+        </item></channel></rss>"""
+        parsed = parse_feed(payload)
+        self.assertEqual(parsed[0].description, "Plain useful description without HTML.")
+
     def test_primary_link_uses_first_approved_article_link(self):
         article = b"""
         <html><body><article>
@@ -102,6 +114,20 @@ class ResidentNewsParsingTests(unittest.TestCase):
         self.assertIn("Источник:", message)
         self.assertIn(">Renfe</a>", message)
         self.assertNotIn("Кого касается:", message)
+
+    def test_message_escapes_model_emoji_markup(self):
+        post = ResidentNewsPost(
+            headline_ru="Заголовок",
+            paragraphs_ru=(
+                "Первый достаточно длинный абзац о подтвержденном изменении.",
+                "Второй достаточно длинный абзац с практическим смыслом.",
+            ),
+            emoji="<b>",
+            status="effective",
+        )
+        message = build_message(post, "https://www.boe.es/test")
+        self.assertTrue(message.startswith("&lt;b&gt; <b>Заголовок</b>"))
+        self.assertNotIn("<b> <b>", message)
 
 
 class ResidentNewsStateTests(unittest.TestCase):
@@ -178,6 +204,48 @@ class ResidentNewsLifecycleTests(unittest.IsolatedAsyncioTestCase):
                     publish,
                 )
             self.assertEqual(result, "source_missing")
+            publish.assert_not_awaited()
+
+    async def test_unrelated_primary_source_is_not_published(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = ResidentNewsState(Path(directory) / "news.json")
+            state.seed((item("ewn:old"),))
+            publish = AsyncMock()
+            with (
+                patch(
+                    "telegrambot.resident_news.fetch_feed",
+                    new=AsyncMock(return_value=(item("ewn:old"), item("ewn:new"))),
+                ),
+                patch(
+                    "telegrambot.resident_news.classify_resident_news",
+                    new=AsyncMock(return_value=[
+                        {"id": "ewn:new", "relevant": True, "topic": "rail", "priority": "high"}
+                    ]),
+                ),
+                patch(
+                    "telegrambot.resident_news.fetch_primary_link",
+                    new=AsyncMock(return_value="https://grupo.renfe.com/es/other"),
+                ),
+                patch(
+                    "telegrambot.resident_news.fetch_primary_text",
+                    new=AsyncMock(return_value=(
+                        "Este texto oficial trata de otro asunto distinto y no confirma "
+                        "el cambio descubierto por el articulo editorial.",
+                        "https://grupo.renfe.com/es/other",
+                    )),
+                ),
+                patch(
+                    "telegrambot.resident_news.compose_resident_news",
+                    new=AsyncMock(return_value={"supported": False}),
+                ),
+            ):
+                result = await run_resident_news(
+                    datetime(2026, 9, 30, 13, 0, tzinfo=timezone.utc),
+                    state,
+                    "key",
+                    publish,
+                )
+            self.assertEqual(result, "source_unsupported")
             publish.assert_not_awaited()
 
     async def test_complete_lifecycle_publishes_one_primary_grounded_post(self):
