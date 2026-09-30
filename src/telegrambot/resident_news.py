@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Awaitable, Callable, Iterator, Optional, Sequence
 
 from ._transport import BoundedFetchError, fetch_bounded
+from .branding import with_footer
 from .gemini import classify_resident_news, compose_resident_news
 
 
@@ -559,7 +560,9 @@ def build_message(post: ResidentNewsPost, primary_url: str) -> str:
         f'🔗 <b>Источник: <a href="{html.escape(primary_url, quote=True)}">'
         f'{html.escape(label)}</a></b>'
     )
-    return f"{html.escape(post.emoji)} <b>{headline}</b>\n\n{paragraphs}\n\n{source}"
+    return with_footer(
+        f"{html.escape(post.emoji)} <b>{headline}</b>\n\n{paragraphs}\n\n{source}"
+    )
 
 
 async def run_resident_news(
