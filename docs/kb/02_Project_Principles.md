@@ -68,14 +68,15 @@ The bot must not claim to replace official emergency communication.
 ## 7. AI is optional and fail-closed
 
 The core digest policy remains deterministic. Gemini is primary for approved
-municipal/event AI tasks. One direct Groq GPT-OSS 120B fallback is allowed only
-for bounded title translation, teaser translation, traffic editorial
-composition, and exact-date Mayor-channel market classification. Factual event
-extraction and image reading remain Gemini-only. Structured results, source
-evidence where applicable, deterministic validation, and snapshot rules decide
-publication. Do not add local models, embeddings, general generation, provider
-chains, or AI dependencies to weather, warnings, beach status, formatting, or
-delivery.
+AI tasks. One direct Groq GPT-OSS 120B fallback is allowed only for the bounded
+operations approved in ADR 0085 and ADR 0087: event title/teaser translation,
+traffic editorial composition, exact-date Mayor-channel market classification,
+resident-news RSS batch classification, and first-party-grounded resident-news
+composition. Factual event extraction and image reading remain Gemini-only.
+Structured results, source evidence where applicable, deterministic validation,
+and snapshot rules decide publication. Do not add local models, embeddings,
+general generation, provider chains, or AI dependencies to weather, warnings,
+beach status, formatting, or delivery.
 
 ## 8. Design for partial failure
 
