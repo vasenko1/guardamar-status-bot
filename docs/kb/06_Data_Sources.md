@@ -38,7 +38,27 @@ official endpoints and lightweight access methods are validated.
 | `@AlcaldeGuardamar` public channel | Explicit market exceptions, bathing-status transitions, Fiestas de Barrio, and complete invited same-day municipal announcements | Operational municipal channel; text must be mechanically grounded | One bounded morning event check, market check when relevant, or one check after SafeBeach retries | Yes, narrow role |
 | Colegio Oficial de Farmacéuticos de Alicante | Legally authoritative on-call pharmacy rota | High; the provincial college responsible for the service | One weekly bounded fetch of the linked annual XLSX with compressed and uncompressed size bounds; normalized 45-day catalog for Guardamar's complete published service zone `61`, including duties assigned in San Fulgencio; no morning request | Yes, ADR 0038 |
 | Campo de Guardamar market website | Sunday market at Camino del Raso, 15 | Operator-published schedule; no authoritative cancellation feed found | Local Sunday rule, `07:00–16:00` | Yes, explicit product exception |
+| Euro Weekly News / News from Spain RSS | Discovery only for resident-impact candidates; never factual evidence | Editorial discovery only; every public claim requires a linked approved first-party page | One bounded RSS read at 11:11/15:11/18:11; selected EWN HTML is read only to extract direct first-party links | Yes, discovery-only (ADR 0087) |
 | Community or commercial sources | Gap filling only | Variable | Varies | No by default |
+
+## Approved resident-news discovery source
+
+Use only `https://euroweeklynews.com/news/spain/feed/` for discovery. EWN is
+never the factual source of a public post. The first valid read seeds silently;
+later runs consider at most eight unseen items using title and at most 500
+description characters.
+
+For one eligible item, fetch only its EWN article and inspect links inside the
+article body. The first link matching the reviewed first-party host policy is
+selected. If no approved first-party link exists, omit the candidate; do not
+search elsewhere.
+
+The initial primary host policy covers Spanish government/public-law hosts,
+Congreso/Senado, Generalitat Valenciana, DGT, Renfe, SEPE, Seguridad Social,
+AEMET, and the reviewed national union domains used for first-party strike
+announcements.
+Unknown domains remain ineligible until reviewed. Only bounded HTML is accepted
+for the final factual source in the MVP.
 
 ## Approved SUMA tax-period source
 

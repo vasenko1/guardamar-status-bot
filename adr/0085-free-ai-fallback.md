@@ -4,7 +4,9 @@
 
 Accepted on 2026-09-28. Implemented on 2026-09-28.
 
-Supersedes ADR 0030.
+Supersedes ADR 0030. The capability list is extended by ADR 0087 with two
+additional bounded resident-news text operations; the provider and failure
+policy in this ADR remains unchanged.
 
 ## Context
 

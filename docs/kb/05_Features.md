@@ -1,5 +1,32 @@
 # Features
 
+## Resident-impact news
+
+Three daily one-shot checks use Euro Weekly News `News from Spain` only to
+discover potentially useful Spain-wide practical changes. The first successful
+RSS read is a silent baseline. Later runs classify at most eight unseen RSS
+items in one bounded AI request and attempt at most one eligible article.
+
+A public post is allowed only when the EWN article itself contains a direct
+link to an approved first-party authority/operator source. The bot does not
+search for a missing source. It fetches that first-party HTML, discards the raw
+page after the run, and asks the bounded AI composer for a short natural Russian
+editorial note grounded in that first-party text.
+
+The note is intentionally not a literal translation or a field-by-field
+questionnaire. It uses one concise headline, 2-4 short narrative paragraphs,
+and moderate thematic emoji. It should naturally explain the practical change,
+timing, affected people and important caveats while preserving whether a
+measure is only proposed/pending, approved, effective, an announced strike, or
+an active disruption. Code appends one visible first-party source link; EWN is
+not shown as the factual source.
+
+Ordinary crime, celebrity, sport, entertainment, human-interest, routine
+political statements without a practical consequence, and remote local stories
+without wider relevance are excluded. Political/policy material must remain
+neutral and factual.
+
+
 ## Local earthquake notices
 
 Once per hour the bot reads the official IGN GeoRSS feed and looks only within
