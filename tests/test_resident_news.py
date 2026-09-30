@@ -98,6 +98,18 @@ class ResidentNewsParsingTests(unittest.TestCase):
         self.assertEqual(source_label("https://www.dgt.es/test"), "DGT")
         self.assertEqual(source_label("https://grupo.renfe.com/test"), "Renfe")
         self.assertEqual(source_label("https://www.boe.es/test"), "BOE")
+        self.assertEqual(
+            source_label("https://www.lamoncloa.gob.es/test"),
+            "La Moncloa",
+        )
+        self.assertEqual(
+            source_label("https://sede.agenciatributaria.gob.es/test"),
+            "Agencia Tributaria",
+        )
+        self.assertEqual(
+            source_label("https://www.mites.gob.es/test"),
+            "Gobierno de España",
+        )
 
     def test_message_is_narrative_and_links_primary_source(self):
         post = ResidentNewsPost(
