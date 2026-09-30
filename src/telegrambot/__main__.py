@@ -2258,6 +2258,7 @@ def main() -> None:
         TomorrowEventStateError,
         ProductAwardError,
         ResidentNewsError,
+        GeminiError,
         ValueError,
     ) as exc:
         print(f"Command failed: {exc}", file=sys.stderr)
