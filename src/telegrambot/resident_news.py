@@ -208,6 +208,13 @@ def source_label(url: str) -> str:
         return "Seguridad Social"
     if host == "aemet.es" or host.endswith(".aemet.es"):
         return "AEMET"
+    if host == "lamoncloa.gob.es" or host.endswith(".lamoncloa.gob.es"):
+        return "La Moncloa"
+    if (
+        host == "agenciatributaria.gob.es"
+        or host.endswith(".agenciatributaria.gob.es")
+    ):
+        return "Agencia Tributaria"
     if host == "congreso.es" or host.endswith(".congreso.es"):
         return "Congreso de los Diputados"
     if host == "senado.es" or host.endswith(".senado.es"):
@@ -219,7 +226,7 @@ def source_label(url: str) -> str:
     if host == "cgt.es" or host.endswith(".cgt.es"):
         return "CGT"
     if host.endswith(".gob.es"):
-        return host
+        return "Gobierno de España"
     raise ResidentNewsError("primary source label is unknown", code="SOURCE")
 
 
