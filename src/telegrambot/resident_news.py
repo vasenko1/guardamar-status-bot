@@ -117,14 +117,36 @@ class _ArticleLinksParser(HTMLParser):
             self.article_depth -= 1
 
 
+class _AllTextParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.skip_depth = 0
+        self.parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        if tag.lower() in {"script", "style"}:
+            self.skip_depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() in {"script", "style"}:
+            self.skip_depth = max(0, self.skip_depth - 1)
+
+    def handle_data(self, data: str) -> None:
+        if self.skip_depth:
+            return
+        value = " ".join(data.split())
+        if value:
+            self.parts.append(value)
+
+
 def _strip_html(value: str) -> str:
-    parser = _TextOnlyParser()
+    parser = _AllTextParser()
     try:
         parser.feed(value)
         parser.close()
     except Exception as exc:
         raise ResidentNewsError("RSS description HTML is invalid", code="RSS") from exc
-    return " ".join("".join(parser.parts).split())
+    return " ".join(parser.parts)
 
 
 def _is_ewn_url(url: str) -> bool:
