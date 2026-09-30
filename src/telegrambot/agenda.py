@@ -3,6 +3,7 @@
 import asyncio
 import html
 import json
+import logging
 import os
 import re
 import tempfile
@@ -21,6 +22,8 @@ from .holidays import is_market_day
 from .models import Event
 from .event_places import event_place_is_map_safe
 from .event_facts import route_difficulty_detail
+
+LOGGER = logging.getLogger(__name__)
 
 AGENDA_URL = (
     "https://www.agendaguardamar.com/"
@@ -766,7 +769,12 @@ async def _collect_agenda_catalog(now: datetime) -> Tuple[Event, ...]:
         async with semaphore:
             try:
                 return await asyncio.to_thread(_read_page, link)
-            except AgendaError:
+            except AgendaError as exc:
+                LOGGER.warning(
+                    "Agenda Guardamar detail unavailable [%s]: %s",
+                    exc.diagnostic_code,
+                    link,
+                )
                 return None
 
     payloads = await asyncio.gather(

@@ -753,6 +753,40 @@ class AgendaCollectionTests(unittest.IsolatedAsyncioTestCase):
             "DETAILS-UNAVAILABLE",
         )
 
+    async def test_partial_detail_failure_is_logged_and_other_events_survive(self):
+        index = (
+            b'<a href="/espectaculo/1/a.html">A</a>'
+            b'<a href="/espectaculo/2/b.html">B</a>'
+        )
+
+        def read_page(url):
+            if url.endswith("PROGRAMACION-ESPECTACULOS.html"):
+                return index
+            if "/espectaculo/1/" in url:
+                return b"""
+                <script type="application/ld+json">
+                {"@type":"Event","name":"EVENT A",
+                 "startDate":"2026-08-05T19:00"}
+                </script>
+                """
+            raise AgendaError("unavailable", code="TIMEOUT")
+
+        with patch(
+            "telegrambot.agenda._read_page",
+            side_effect=read_page,
+        ):
+            with self.assertLogs("telegrambot.agenda", level="WARNING") as logs:
+                events = await fetch_today_events(
+                    datetime(2026, 8, 5, 7, tzinfo=TZ)
+                )
+
+        self.assertEqual([event.title for event in events], ["EVENT A"])
+        self.assertTrue(any(
+            "Agenda Guardamar detail unavailable [TIMEOUT]" in message
+            and "/espectaculo/2/b.html" in message
+            for message in logs.output
+        ))
+
     async def test_reports_when_event_pages_have_no_valid_events(self):
         index = b'<a href="/espectaculo/1/a.html">A</a>'
 
