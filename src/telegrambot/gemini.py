@@ -97,10 +97,10 @@ RESIDENT_NEWS_COMPOSITION_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
     "properties": {
+        "supported": {"type": "boolean"},
         "headline_ru": {"type": "string", "maxLength": 140},
         "paragraphs_ru": {
             "type": "array",
-            "minItems": 2,
             "maxItems": 4,
             "items": {"type": "string", "maxLength": 420},
         },
@@ -119,7 +119,7 @@ RESIDENT_NEWS_COMPOSITION_SCHEMA = {
             ],
         },
     },
-    "required": ["headline_ru", "paragraphs_ru", "emoji", "status"],
+    "required": ["supported", "headline_ru", "paragraphs_ru", "emoji", "status"],
 }
 AGENDA_EXTRACTION_SCHEMA = {
     "type": "object",
@@ -975,6 +975,7 @@ async def compose_resident_news(
         source_name,
         source_text,
     )
+    supported = result.get("supported")
     headline = result.get("headline_ru")
     paragraphs = result.get("paragraphs_ru")
     emoji = result.get("emoji")
@@ -989,6 +990,10 @@ async def compose_resident_news(
         "active_disruption",
         "other",
     }
+    if supported is False:
+        return {"supported": False}
+    if supported is not True:
+        raise GeminiError("Structured model returned invalid resident-news support")
     if (
         not isinstance(headline, str)
         or not 1 <= len(headline.strip()) <= 140
@@ -1011,6 +1016,7 @@ async def compose_resident_news(
     ):
         raise GeminiError("Structured model returned unsafe resident-news copy")
     return {
+        "supported": True,
         "headline_ru": headline.strip(),
         "paragraphs_ru": [value.strip() for value in paragraphs],
         "emoji": emoji.strip(),
