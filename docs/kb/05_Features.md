@@ -5,7 +5,9 @@
 Three daily one-shot checks use Euro Weekly News `News from Spain` only to
 discover potentially useful Spain-wide practical changes. The first successful
 RSS read is a silent baseline. Later runs classify at most eight unseen RSS
-items in one bounded AI request. Relevant items form a tiny 48-hour queue:
+items in one bounded AI request. Unseen RSS entries already older than 48
+hours are marked stale before AI, so recovery after device downtime does not
+spend model quota on obsolete news. Relevant items form a tiny 48-hour queue:
 high-priority items precede normal items, otherwise older items go first. A run
 may inspect at most three candidates to bypass missing/duplicate/temporarily
 unreachable sources, but it still composes and publishes at most one post.
