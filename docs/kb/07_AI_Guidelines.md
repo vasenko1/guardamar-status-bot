@@ -97,6 +97,16 @@ result merely to compare semantics. Missing/invalid local Gemini configuration,
 source-size/input failures, unsupported media, local URL-policy failures, and
 ordinary request-validation errors do not route to Groq.
 
+ADR 0087 additionally permits `classify_resident_news` and
+`compose_resident_news`. Classification sees at most eight EWN RSS titles and
+bounded descriptions in one request. Composition sees bounded first-party text
+plus a discovery title and must treat the first-party text as the only factual
+authority. The result is a short natural Russian editorial note with preserved
+proposal/approval/effective/disruption status and moderate thematic emoji.
+Pure political commentary is not eligible; policy material must remain neutral
+and factual. Groq is only the same provider-failure fallback, never a second
+opinion.
+
 Both clients send their keys only in API headers, accept bounded JSON only from
 their exact HTTPS API hosts, and expose stable status codes instead of raw
 provider response text. If an eligible Gemini failure cannot be recovered by
