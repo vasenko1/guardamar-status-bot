@@ -114,6 +114,7 @@ class ResidentNewsParsingTests(unittest.TestCase):
         self.assertIn("Источник:", message)
         self.assertIn(">Renfe</a>", message)
         self.assertNotIn("Кого касается:", message)
+        self.assertIn("обЪявления Гуардамар", message)
 
     def test_message_escapes_model_emoji_markup(self):
         post = ResidentNewsPost(
