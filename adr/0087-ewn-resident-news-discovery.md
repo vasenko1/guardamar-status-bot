@@ -70,15 +70,21 @@ Each scheduled invocation:
 3. classifies at most eight unseen items using title plus at most 500
    description characters in one structured AI request;
 4. stores only compact classification/lifecycle state;
-5. attempts at most one eligible candidate;
-6. fetches that candidate's EWN HTML only to locate first-party links;
+5. inspects at most three eligible candidates in queue order, so a candidate
+   with no usable source cannot consume the whole publication slot;
+6. for each inspected candidate, fetches its EWN HTML only to locate a
+   first-party link;
 7. scans the visible story region after the first `h1` and before
    comments/continue-reading/footer, without assuming an `<article>` wrapper;
 8. selects the earliest **specific** approved first-party link in story order,
    rejecting generic home/index landing pages;
-9. performs one bounded first-party HTML read;
-10. makes at most one final AI composition call;
-11. sends at most one Telegram post and exits.
+9. performs a bounded first-party HTML read only when a candidate has such a
+   link; transient source failures stay eligible but rotate behind never-tried
+   candidates;
+10. skips a candidate deterministically when its exact final first-party URL
+    was already published by this feature;
+11. makes at most one final AI composition call per scheduled run;
+12. sends at most one Telegram post and exits.
 
 No raw RSS, article HTML, first-party HTML, or AI payload is persisted.
 
