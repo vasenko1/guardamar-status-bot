@@ -577,7 +577,14 @@ class ResidentNewsState:
             eligible.append((item_id, record, published_utc))
         if changed:
             self._write(value)
-        eligible.sort(key=lambda row: (row[1].get("priority") != "high", row[2]))
+        eligible.sort(
+            key=lambda row: (
+                int(row[1].get("source_attempts", 0)) > 0,
+                row[1].get("priority") != "high",
+                int(row[1].get("source_attempts", 0)),
+                row[2],
+            )
+        )
         return tuple(
             (item_id, dict(record))
             for item_id, record, _ in eligible[:limit]
@@ -594,6 +601,22 @@ class ResidentNewsState:
 
     def mark_source_unsupported(self, item_id: str) -> None:
         self._set_status(item_id, "source_unsupported")
+
+    def record_source_failure(self, item_id: str, code: str) -> None:
+        value = self._read()
+        record = value["items"].get(item_id)
+        if not isinstance(record, dict) or record.get("status") != "eligible":
+            raise ResidentNewsError(
+                "resident-news source failure target is invalid",
+                code="STATE",
+            )
+        attempts = record.get("source_attempts", 0)
+        if not isinstance(attempts, int) or attempts < 0:
+            attempts = 0
+        record["source_attempts"] = min(attempts + 1, 99)
+        record["last_source_error"] = str(code)[:40]
+        record["last_source_attempt_at"] = datetime.now(timezone.utc).isoformat()
+        self._write(value)
 
     def mark_duplicate(self, item_id: str) -> None:
         self._set_status(item_id, "duplicate")
@@ -710,6 +733,7 @@ async def run_resident_news(
             try:
                 primary_url = await fetch_primary_link(record["url"])
             except ResidentNewsError as exc:
+                state.record_source_failure(item_id, exc.diagnostic_code)
                 LOGGER.warning(
                     "Resident-news candidate %s deferred after EWN source-link "
                     "failure [%s]",
@@ -739,6 +763,7 @@ async def run_resident_news(
             try:
                 source_text, primary_url = await fetch_primary_text(primary_url)
             except ResidentNewsError as exc:
+                state.record_source_failure(item_id, exc.diagnostic_code)
                 LOGGER.warning(
                     "Resident-news candidate %s deferred after primary-source "
                     "failure [%s]",
