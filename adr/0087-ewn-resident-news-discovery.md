@@ -67,8 +67,9 @@ Each scheduled invocation:
 
 1. performs one bounded RSS read;
 2. silently seeds current entries on the first valid run;
-3. classifies at most eight unseen items using title plus at most 500
-   description characters in one structured AI request;
+3. marks unseen RSS items older than 48 hours stale before AI, then classifies
+   at most eight remaining unseen items using title plus at most 500 description
+   characters in one structured AI request;
 4. stores only compact classification/lifecycle state;
 5. inspects at most three eligible candidates in queue order, so a candidate
    with no usable source cannot consume the whole publication slot;
