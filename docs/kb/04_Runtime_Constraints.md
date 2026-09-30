@@ -244,11 +244,18 @@ allowed for the guide.
   API request. Preview and publication share one non-blocking local lock. No
   raw response or token is stored. The publication marker also retains one
   Telegram message ID for the persistent PVPC explanation anchor.
-- Mayor, municipal-agenda, Gemini, and the direct Groq fallback enforce exact
-  HTTPS hosts, expected MIME types, and bounded responses. Groq may follow only
-  an eligible Gemini provider failure for the four bounded text operations in
-  ADR 0085. Factual extraction and image reading remain Gemini-only. Neither
-  provider retries inside this layer.
+- Mayor, municipal-agenda, resident-news, Gemini, and the direct Groq fallback
+  enforce exact/allowlisted HTTPS hosts, expected MIME types, and bounded
+  responses. Groq may follow only an eligible Gemini provider failure for the
+  four bounded text operations in ADR 0085 plus the two resident-news text
+  operations in ADR 0087. Factual event extraction and image reading remain
+  Gemini-only. Neither provider retries inside this layer.
+- Resident news runs only at 11:11, 15:11 and 18:11 Europe/Madrid. Each run
+  performs one RSS read, classifies at most eight unseen title/description
+  records in one AI call, and attempts at most one candidate. Only that
+  candidate may fetch one EWN article and one approved first-party HTML page
+  before one final AI composition call. The first valid feed seeds silently.
+  State is capped at 128 compact records; raw pages are never stored.
 - Explicit Mayor-channel events reuse the existing bounded morning page read;
   they add no request, model call, raw-response cache or background process.
 - Do not make digest delivery depend on every source succeeding.
@@ -317,8 +324,8 @@ need is demonstrated.
   when one account-level guide sync can serve the catalogue
 - Continuous OCR, computer vision, or media processing
 - Local AI models, embeddings, vector databases, general cloud generation, or
-  cloud AI outside the bounded municipal tasks and the single direct Groq
-  secondary provider accepted in ADR 0085
+  cloud AI outside the bounded municipal tasks, ADR 0087 resident-news tasks,
+  and the single direct Groq secondary provider accepted in ADR 0085
 - Unbounded retries, caches, queues, concurrency, logs, or data retention
 - Dependencies that duplicate a clear standard-library solution without
   material benefit
