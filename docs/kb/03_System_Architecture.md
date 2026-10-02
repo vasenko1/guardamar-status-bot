@@ -70,6 +70,7 @@ no message.
 | TomTom road/lane closures | Hourly at `:37` | One bounded Guardamar snapshot; strict provider-ID reconciliation preserves the physical closure lifecycle before two-snapshot end confirmation, so source ID churn cannot create false reopen/new-close messages. |
 | Transport | 05:00 sync, 08:42 notification | Owns and repairs the dynamic airport, Alicante, Elche, Orihuela and Zenia Boulevard cards; reconciles transport state and publishes accepted schedule/service/fare changes. |
 | Linked guide + courses | 09:02 sync; course notices 09:42/11:42; two seasonal 19:45 checks | Reconciles guide-owned cards while preserving existing transport-owned cards in the shared Telegram graph; may send pool/Zona Azul seasonal notices and publishes accepted course/programme changes, including grouped fresh-source registration boundaries for tomorrow. |
+| One-off event registration | 12:47 daily, recovery 13:47 | Refreshes the lightweight CONVEGA source only when today's snapshot is absent, then evaluates a separate one-message registration lifecycle. Same source records also feed the existing Event pipeline; ambiguous Telegram delivery blocks resend. |
 | Electricity | 20:30/20:35/20:45/21:00/21:20 attempts | One next-day PVPC table reply after the first complete official dataset. |
 | Resident-impact news | 11:11/15:11/18:11 daily | One bounded EWN discovery read; one batch AI classification; at most one first-party-grounded Russian Telegram note. |
 | Next-day events | Sunday–Thursday 19:25, recovery 20:25 | Reads only fresh same-day local event catalogs; one editorial unit may be rich with one official image URL, while multiple units stay in one text planning post. The recovery reuses the same state, so a confirmed or uncertain first delivery cannot duplicate. No evening source fetch or AI. |
@@ -427,3 +428,18 @@ records the event, local day and next category cursor; an explicit send failure
 clears the reservation, while an ambiguous result is never automatically
 resent. No discovery queue, database, resident process or AI service is added.
 
+
+### One-off event registration
+
+ADR 0089 adds a narrow registration lifecycle for official one-off events. A
+source-specific adapter owns collection, stable occurrence identity and current
+registration evidence. One local source snapshot projects both ordinary
+`Event` rows and minimal registration records, avoiding a second general event
+model.
+
+Registration delivery has its own small atomic baseline/trigger state and one
+uncertain reservation for ambiguous Telegram sends. It is not a generic
+notification service and does not reuse recurring-course state. Same-day source
+freshness is required for registration claims; Morning may still consume
+last-good Event data. The project runtime lock, when needed, protects only the
+bounded source-refresh phase and is released before Telegram delivery.
