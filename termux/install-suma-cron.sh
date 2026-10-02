@@ -76,7 +76,5 @@ awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" -v runner="$RUNNER" -v shbin="
         "$END_MARKER"
 } | crontab -
 
-sv up crond
-
 echo "SUMA installed: one daily check at 08:05 Europe/Madrid"
 crontab -l

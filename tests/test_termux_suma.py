@@ -24,7 +24,7 @@ class SumaTermuxTests(unittest.TestCase):
         self.assertIn("# END guardamar-status suma", script)
         self.assertIn('crontab -l >"$CURRENT"', script)
         self.assertIn('crontab.before-suma', script)
-        self.assertIn('sv up crond', script)
+        self.assertNotIn("sv up crond", script)
         self.assertNotIn("runtime-lock", script)
 
     def test_morning_lifecycle_no_longer_runs_suma(self):
