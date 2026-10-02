@@ -86,6 +86,7 @@ from .municipal_agenda import (
 from .event_translations import prepare_translations
 from .facv import FacvSourceError, facv_translation_items
 from .pesca_cv import PescaCvSourceError, pesca_cv_translation_items
+from .convega import ConvegaSourceError, convega_translation_items
 from .hidraqua import (
     HidraquaDeliveryUncertain,
     HidraquaError,
@@ -195,6 +196,7 @@ DEFAULT_LIBRARY_AGENDA_STATE_PATH = "state/library_agenda.json"
 DEFAULT_AM_GUARDAMAR_STATE_PATH = "state/am_guardamar.json"
 DEFAULT_FACV_EVENTS_STATE_PATH = "state/facv_events.json"
 DEFAULT_PESCA_CV_EVENTS_STATE_PATH = "state/pesca_cv_events.json"
+DEFAULT_CONVEGA_STATE_PATH = "state/convega_events.json"
 DEFAULT_ELECTRICITY_STATE_PATH = "state/electricity.json"
 DEFAULT_ELECTRICITY_SNAPSHOT_PATH = "state/electricity_prices.json"
 DEFAULT_EVENT_TRANSLATIONS_PATH = "state/event_translations.json"
@@ -383,6 +385,9 @@ async def _produce_message(api_key: str, now: datetime) -> str:
             pesca_cv_state_path=Path(os.environ.get(
                 "PESCA_CV_EVENTS_STATE_PATH", DEFAULT_PESCA_CV_EVENTS_STATE_PATH
             )),
+            convega_state_path=Path(os.environ.get(
+                "CONVEGA_STATE_PATH", DEFAULT_CONVEGA_STATE_PATH
+            )),
             blood_donation_state_path=Path(os.environ.get(
                 "BLOOD_DONATION_STATE_PATH", DEFAULT_BLOOD_DONATION_STATE_PATH
             )),
@@ -473,6 +478,9 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
     ))
     pesca_cv_path = Path(os.environ.get(
         "PESCA_CV_EVENTS_STATE_PATH", DEFAULT_PESCA_CV_EVENTS_STATE_PATH
+    ))
+    convega_path = Path(os.environ.get(
+        "CONVEGA_STATE_PATH", DEFAULT_CONVEGA_STATE_PATH
     ))
     blood_donation_path = Path(os.environ.get(
         "BLOOD_DONATION_STATE_PATH", DEFAULT_BLOOD_DONATION_STATE_PATH
@@ -1270,6 +1278,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             am_guardamar_state_path=am_guardamar_path,
             facv_state_path=facv_path,
             pesca_cv_state_path=pesca_cv_path,
+            convega_state_path=convega_path,
             translation_cache_path=translations_path,
         )
         if command == "tomorrow-events-preview":
@@ -1585,6 +1594,10 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     items.extend(await pesca_cv_translation_items(moment, pesca_cv_path))
                 except PescaCvSourceError as exc:
                     logging.warning("Pesca CV weekend translations skipped: %s", exc)
+                try:
+                    items.extend(await convega_translation_items(moment, convega_path))
+                except ConvegaSourceError as exc:
+                    logging.warning("CONVEGA weekend translations skipped: %s", exc)
             try:
                 await prepare_translations(gemini_key, items, translations_path, now)
             except (AgendaError, GeminiError, MunicipalAgendaError, ValueError) as exc:
@@ -1690,6 +1703,10 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             items.extend(await pesca_cv_translation_items(now, pesca_cv_path))
         except PescaCvSourceError as exc:
             logging.warning("Pesca CV translations skipped: %s", exc)
+        try:
+            items.extend(await convega_translation_items(now, convega_path))
+        except ConvegaSourceError as exc:
+            logging.warning("CONVEGA translations skipped: %s", exc)
         translated = await prepare_translations(
             gemini_key, items, translations_path, now
         )
@@ -2074,6 +2091,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     am_guardamar_state_path=am_guardamar_path,
                     facv_state_path=facv_path,
                     pesca_cv_state_path=pesca_cv_path,
+                    convega_state_path=convega_path,
                     blood_donation_state_path=blood_donation_path,
                     translation_cache_path=translations_path,
                     aemet_digest=prepared,
