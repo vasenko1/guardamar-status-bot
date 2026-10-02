@@ -122,6 +122,7 @@ class ConvegaParsingTests(unittest.TestCase):
         snapshot = snapshot_with(
             "<p>Inscripción</p>"
             "<form><input type='text' name='name'>"
+            "<input type='email' name='email'>"
             "<input type='submit' value='Enviar'></form>"
         )
         stage21 = next(item for item in snapshot["records"] if item["stage"] == 21)
@@ -148,6 +149,28 @@ class ConvegaParsingTests(unittest.TestCase):
 
         self.assertEqual(stage21["observed_status"], "unknown")
         self.assertIsNone(stage21["registration_url"])
+
+    def test_search_form_does_not_prove_open(self):
+        snapshot = snapshot_with(
+            "<p>Inscripción</p>"
+            "<form><input type='search' name='s'>"
+            "<button type='submit'>Buscar</button></form>"
+        )
+        stage21 = next(item for item in snapshot["records"] if item["stage"] == 21)
+
+        self.assertEqual(stage21["observed_status"], "unknown")
+
+    def test_relative_explicit_registration_cta_is_normalized_to_https_landing_host(self):
+        snapshot = snapshot_with(
+            "<a href='/inscripcion-ruta/'>Inscripción</a>"
+        )
+        stage21 = next(item for item in snapshot["records"] if item["stage"] == 21)
+
+        self.assertEqual(stage21["observed_status"], "open")
+        self.assertEqual(
+            stage21["registration_url"],
+            "https://convega.com/inscripcion-ruta/",
+        )
 
     def test_explicit_https_registration_cta_can_prove_open(self):
         snapshot = snapshot_with(
@@ -234,7 +257,9 @@ class ConvegaProjectionTests(unittest.TestCase):
     def test_open_event_projection_keeps_validated_action(self):
         snapshot = snapshot_with(
             "<p>Inscripción</p>"
-            "<form><button type='submit'>Enviar</button></form>"
+            "<form><input type='text' name='name'>"
+            "<input type='email' name='email'>"
+            "<button type='submit'>Enviar</button></form>"
         )
         with tempfile.TemporaryDirectory() as directory:
             state = Path(directory) / "convega.json"
