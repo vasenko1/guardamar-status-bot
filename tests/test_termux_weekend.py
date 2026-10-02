@@ -59,6 +59,9 @@ class WeekendTermuxTests(unittest.TestCase):
         self.assertIn("25 19 * * 0-4", installed)
         self.assertIn("25 20 * * 0-4", installed)
         self.assertEqual(installed.count("run-tomorrow-events.sh"), 2)
+        self.assertEqual(installed.count("run-event-registration.sh"), 2)
+        self.assertIn("47 12 * * *", installed)
+        self.assertIn("47 13 * * *", installed)
 
     def test_installer_upgrades_existing_managed_tomorrow_job(self):
         weekend = ROOT / "termux" / "run-weekend.sh"
@@ -78,6 +81,9 @@ class WeekendTermuxTests(unittest.TestCase):
         self.assertEqual(installed.count("25 19 * * 0-4"), 1)
         self.assertEqual(installed.count("25 20 * * 0-4"), 1)
         self.assertEqual(installed.count("run-tomorrow-events.sh"), 2)
+        self.assertEqual(installed.count("run-event-registration.sh"), 2)
+        self.assertIn("47 12 * * *", installed)
+        self.assertIn("47 13 * * *", installed)
 
     def test_installer_is_idempotent_and_preserves_other_jobs(self):
         unrelated = "12 3 * * * /other/bot.sh\n"
@@ -93,5 +99,32 @@ class WeekendTermuxTests(unittest.TestCase):
         self.assertEqual(installed.count("25 19 * * 0-4"), 1)
         self.assertEqual(installed.count("25 20 * * 0-4"), 1)
         self.assertEqual(installed.count("run-tomorrow-events.sh"), 2)
+        self.assertEqual(installed.count("run-event-registration.sh"), 2)
+        self.assertIn("47 12 * * *", installed)
+        self.assertIn("47 13 * * *", installed)
         self.assertNotIn("0,20 18 * * 5", installed)
         self.assertIn("# BEGIN guardamar-status weekend digest", installed)
+
+    def test_fresh_weekend_refreshes_convega_source(self):
+        content = (ROOT / "termux" / "run-weekend.sh").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('sh "$SCRIPT_DIR/sync-convega.sh"', content)
+        self.assertIn("WARNING CONVEGA refresh failed", content)
+
+    def test_registration_wrapper_checks_freshness_before_source_sync(self):
+        content = (ROOT / "termux" / "run-event-registration.sh").read_text(
+            encoding="utf-8"
+        )
+
+        freshness = content.index(
+            "python -m telegrambot.convega fresh-today"
+        )
+        source_sync = content.index('sh "$SCRIPT_DIR/sync-convega.sh"')
+        lifecycle = content.index(
+            "python -m telegrambot.event_registration_notifications"
+        )
+        self.assertLess(freshness, source_sync)
+        self.assertLess(source_sync, lifecycle)
+
