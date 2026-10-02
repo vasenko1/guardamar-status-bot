@@ -2003,7 +2003,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         return 0
 
     if command in {"run", "morning"}:
-        try:
+        async def run_morning_once() -> int:
             morning_aemet = []
             morning_environment_detail = []
             prepared = load_snapshot(
@@ -2098,8 +2098,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             )
             return 0 if result in {"success", "duplicate"} else 1
 
-        finally:
-            await run_suma(best_effort=True)
+        return await run_morning_once()
 
     existing = state.morning_record(now.date())
     if existing is None:

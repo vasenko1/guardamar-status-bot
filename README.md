@@ -45,7 +45,7 @@ with [docs/kb/00_Project_Overview.md](docs/kb/00_Project_Overview.md).
 
 - Python with `asyncio`
 - standard-library HTTP for sources and outbound Telegram delivery
-- one short-lived 07:30 process and bounded seasonal update checks
+- one short-lived 07:30 Morning Digest process, one independent 08:05 SUMA one-shot, and bounded seasonal update checks
 - independent short 05:00 transport and 09:02 guide synchronizations
 - optional isolated listener for allowlisted private `/preview`
 - small local atomic JSON state per independent workflow
@@ -119,6 +119,7 @@ CRON_TZ=Europe/Madrid
 0 7 * * * /path/to/TelegramBot/termux/prepare-events.sh
 15 7 * * * /path/to/TelegramBot/termux/prepare-aemet.sh
 30 7 * * * /path/to/TelegramBot/termux/run-daily.sh
+5 8 * * * /path/to/TelegramBot/termux/run-suma.sh
 10-40/5 10 * * * /path/to/TelegramBot/termux/update-daily.sh
 0,5,10 11,13,15,17,19 * 7,8 * /path/to/TelegramBot/termux/monitor-updates.sh
 0,5,10 12,14,16,18 * 6,9 * /path/to/TelegramBot/termux/monitor-updates.sh
@@ -154,7 +155,9 @@ The validated Android deployment uses the scripts in `termux/`:
   reconcile the shared linked guide; `publish-transport-notifications.sh` runs
   at 08:42 and reads only accepted local state;
 - `termux/run-daily.sh` at 07:30 publishes a Morning Digest with no
-  SafeBeach dependency. `termux/update-daily.sh` runs every five minutes
+  SafeBeach dependency. `termux/run-suma.sh` is an independent 08:05 one-shot
+  for exact-date SUMA tax reminders, deliberately staggered from the Morning
+  Digest and neighboring device jobs. `termux/update-daily.sh` runs every five minutes
   from 10:10 through 10:40; from 1 June through 30 September its first valid
   SafeBeach response creates the separate beach root immediately and later
   responses edit that root in place. CAMS uses only the 10:40 invocation for
@@ -239,6 +242,7 @@ CRON_TZ=Europe/Madrid
 0 7 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/prepare-events.sh
 15 7 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/prepare-aemet.sh
 30 7 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-daily.sh
+5 8 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-suma.sh
 10-40/5 10 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/update-daily.sh
 0,5,10 11,13,15,17,19 * 7,8 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
 0,5,10 12,14,16,18 * 6,9 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
@@ -303,6 +307,17 @@ cd ~/bots/guardamar-status
 The 112/Previfoc watcher runs hourly at minute `:19`; Hidraqua runs every 30
 minutes. Both remain short-lived one-shot processes and preserve unrelated cron
 entries.
+
+Install the independent SUMA one-shot without replacing existing cron jobs:
+
+```sh
+cd ~/bots/guardamar-status
+./termux/install-suma-cron.sh
+```
+
+The installer owns only its marked SUMA block, preserves unrelated crontab
+entries, and schedules one strict `telegrambot suma` run at 08:05
+`Europe/Madrid`.
 
 Install the independent hourly earthquake row without replacing existing cron
 jobs:
