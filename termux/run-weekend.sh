@@ -30,6 +30,9 @@ if [ "$MODE" = "--fresh" ]; then
     if ! "$SCRIPT_DIR/sync-agenda-events.sh"; then
         echo "$(date '+%Y-%m-%d %H:%M:%S') WARNING Agenda Guardamar refresh failed; using last-good state"
     fi
+    if ! "$SCRIPT_DIR/sync-convega.sh"; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') WARNING CONVEGA refresh failed; using last-good state"
+    fi
 fi
 
 exec ./.venv/bin/python -m telegrambot weekend
