@@ -38,6 +38,7 @@ from .blood_donation import (
     BloodDonationError, fetch_today_blood_donation_events,
 )
 from .facv import FacvSourceError, fetch_today_facv_events
+from .convega import ConvegaSourceError, fetch_today_convega_events
 from .pesca_cv import PescaCvSourceError, fetch_today_pesca_cv_events
 from .pharmacy import duty_pharmacies_on
 from .sun import sun_times
@@ -606,6 +607,7 @@ async def produce_message(
     am_guardamar_state_path: Path = Path("state/am_guardamar.json"),
     facv_state_path: Path = Path("state/facv_events.json"),
     pesca_cv_state_path: Path = Path("state/pesca_cv_events.json"),
+    convega_state_path: Path = Path("state/convega_events.json"),
     blood_donation_state_path: Path = Path("state/blood_donation.json"),
     diagnostics: Optional[List[SourceDiagnostic]] = None,
     translation_cache_path: Optional[Path] = None,
@@ -683,6 +685,13 @@ async def produce_message(
         fetch_today_pesca_cv_events(
             now,
             pesca_cv_state_path,
+            translation_path,
+        )
+    )
+    convega_task = asyncio.create_task(
+        fetch_today_convega_events(
+            now,
+            convega_state_path,
             translation_path,
         )
     )
@@ -884,6 +893,13 @@ async def produce_message(
             ))
         pesca_cv_events = ()
     try:
+        convega_events = await convega_task
+    except ConvegaSourceError as exc:
+        LOGGER.warning("CONVEGA local catalog unavailable; omitting events: %s", exc)
+        if diagnostics is not None:
+            diagnostics.append(source_error("CONVEGA", "CONVEGA", exc))
+        convega_events = ()
+    try:
         blood_donation_events = await blood_donation_task
     except BloodDonationError as exc:
         LOGGER.warning(
@@ -980,6 +996,7 @@ async def produce_message(
                 am_guardamar_events,
                 facv_events,
                 pesca_cv_events,
+                convega_events,
                 blood_donation_events,
             ),
             heat_health_risk=heat_health_risk,
