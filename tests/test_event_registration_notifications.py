@@ -287,6 +287,29 @@ class RegistrationPlanningTests(unittest.TestCase):
         self.assertIn("Изменилась дата мероприятия", plan.publication.message)
         self.assertEqual(changed.record_id, "official:event-1")
 
+    def test_open_before_explicit_start_is_rejected(self):
+        impossible = record(
+            status="open",
+            registration_start_date=date(2026, 10, 3),
+        )
+
+        plan = plan_registration_run((impossible,), empty_state(), NOW)
+
+        self.assertIsNone(plan.publication)
+        self.assertNotIn("official:event-1", plan.candidate_baseline)
+
+    def test_open_after_exact_deadline_is_rejected(self):
+        impossible = record(
+            status="open",
+            registration_end_date=date(2026, 10, 2),
+            registration_end_time=time(12, 0),
+        )
+
+        plan = plan_registration_run((impossible,), empty_state(), NOW)
+
+        self.assertIsNone(plan.publication)
+        self.assertNotIn("official:event-1", plan.candidate_baseline)
+
     def test_past_event_does_not_create_new_notice(self):
         past = record(
             event_start_date=date(2026, 10, 1),
