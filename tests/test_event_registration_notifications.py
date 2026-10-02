@@ -151,6 +151,31 @@ class RegistrationPlanningTests(unittest.TestCase):
 
         self.assertIn("Регистрация снова открыта", reopened.publication.message)
 
+    def test_first_seen_open_with_deadline_tomorrow_prefers_deadline_notice(self):
+        active = record(
+            status="open",
+            registration_end_date=date(2026, 10, 3),
+        )
+
+        plan = plan_registration_run((active,), empty_state(), NOW)
+
+        self.assertIn("Завтра заканчивается запись", plan.publication.message)
+        self.assertNotIn("<b>Идёт запись</b>", plan.publication.message)
+
+    def test_contact_only_open_registration_renders_contact(self):
+        active = record(
+            status="open",
+            registration_url=None,
+            registration_contact="inscripciones@official.example",
+        )
+
+        plan = plan_registration_run((active,), empty_state(), NOW)
+
+        self.assertIn(
+            "регистрация: inscripciones@official.example",
+            plan.publication.message,
+        )
+
     def test_full_transition_beats_deadline_reminder(self):
         state = empty_state()
         opened = plan_registration_run(
@@ -221,6 +246,29 @@ class RegistrationPlanningTests(unittest.TestCase):
         self.assertIn("Регистрация только завтра", plan.publication.message)
         self.assertNotIn("заканчивается запись", plan.publication.message)
         self.assertEqual(len(plan.publication.trigger_ids), 1)
+
+    def test_one_day_advance_suppresses_expected_closed_followup(self):
+        one_day = record(
+            registration_start_date=date(2026, 10, 3),
+            registration_end_date=date(2026, 10, 3),
+            status="unknown",
+        )
+        advance = plan_registration_run((one_day,), empty_state(), NOW)
+        state = {
+            "version": 1,
+            "baseline": dict(advance.candidate_baseline),
+            "announced_record_ids": list(advance.candidate_announced_record_ids),
+            "sent_triggers": list(advance.candidate_sent_triggers),
+            "uncertain": None,
+        }
+
+        closed = plan_registration_run(
+            (replace(one_day, status="closed"),),
+            state,
+            datetime(2026, 10, 3, 18, 0, tzinfo=TZ),
+        )
+
+        self.assertIsNone(closed.publication)
 
     def test_exact_time_retry_recomputes_after_boundary(self):
         timed = record(
