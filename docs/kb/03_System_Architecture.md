@@ -314,11 +314,10 @@ time and explicit place. It uses no AI, cache or additional request; ordinary
 news and retrospective reports remain ineligible.
 
 Termux runs the transport sync at 05:00, refreshes municipal and Agenda Guardamar
-catalogs at 05:10 and 05:30, and invokes the single morning process at 07:30.
-That process attempts SUMA as a best-effort final step without adding another
-shell command, process or cron row; SUMA failures are logged without changing
-or masking the Morning Digest result. The update command runs every five minutes
-from 10:10 through 10:40 in `Europe/Madrid`.
+catalogs at 05:10 and 05:30, and invokes the Morning Digest process at 07:30.
+SUMA is a separate one-shot at 08:05 so its rare tax reminder and bounded source
+reads do not cluster with the briefing or neighboring scheduled work. The update
+command runs every five minutes from 10:10 through 10:40 in `Europe/Madrid`.
 The first update invocation that acquires the daily state lock attempts each
 event catalog once, independently of whether SafeBeach succeeds. These facts
 are retained for later publications and do not alone trigger replacement. The
@@ -393,17 +392,16 @@ the message ID is stored remains an unavoidable duplicate edge.
   infrastructure.
 ### Morning lifecycle
 
-The morning publication is an immutable anchor. SUMA runs only as a best-effort
-final step inside the same 07:30 Python process. It has its own source adapter
-and atomic state, never contributes to or edits the Morning Digest, and SUMA
-failures cannot change or mask the Morning Digest result.
-Its two HTML reads are sequential and bounded, and no raw page is retained.
+The morning publication is an immutable anchor. SUMA is independent of that
+lifecycle and runs once at 08:05 through its own external one-shot. It keeps its
+own source adapter and atomic state, never contributes to or edits the Morning
+Digest, and failures in either workflow cannot mask the other. Its two HTML reads
+are sequential and bounded, and no raw page is retained.
 
-Operational beach status has
-an independent seasonal root, while material AEMET, CAMS and Meteosalud
-changes reply to the morning anchor. The existing atomic JSON state stores
-only message identifiers and compact baselines; no database, daemon or extra
-cron is introduced.
+Operational beach status has an independent seasonal root, while material AEMET,
+CAMS and Meteosalud changes reply to the morning anchor. The existing atomic JSON
+state stores only message identifiers and compact baselines; no database, daemon
+or resident scheduler is introduced.
 
 ## Product-award one-shot
 
