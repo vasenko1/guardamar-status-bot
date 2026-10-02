@@ -600,6 +600,11 @@ def _status_notice(
                 _trigger("closing-tomorrow", record, closing),
                 _trigger("closing-today", record, closing),
             }
+            if record.registration_start_date == closing:
+                expected_keys.update({
+                    _trigger("one-day-tomorrow", record, closing),
+                    _trigger("one-day-today", record, closing),
+                })
             if expected_keys & sent_triggers:
                 return None
         return _Notice("closed", record)
@@ -680,13 +685,19 @@ def _select_notices(
         announced = record.record_id in announced_ids
 
         status = _status_notice(record, previous, announced, sent_triggers)
-        if status is not None:
+        changes = _change_notices(record, previous, announced)
+        boundaries = (
+            ()
+            if status is not None and status.kind in {"full", "closed"}
+            else _boundary_notices(record, now, sent_triggers)
+        )
+
+        if status is not None and not (
+            status.kind == "active" and boundaries
+        ):
             notices.append(status)
-
-        notices.extend(_change_notices(record, previous, announced))
-
-        if status is None or status.kind not in {"full", "closed"}:
-            notices.extend(_boundary_notices(record, now, sent_triggers))
+        notices.extend(changes)
+        notices.extend(boundaries)
 
     # One semantic kind per record when multiple rules collapse to the same
     # resident meaning.  Preserve independent correction + terminal sections.
@@ -715,12 +726,14 @@ def _format_date(value: date) -> str:
 def _record_line(record: RegistrationRecord, *, include_action: bool = False) -> str:
     title = html.escape(record.title)
     line = f"• <b>{title}</b> — {_format_date(record.event_start_date)}"
-    if include_action and record.registration_url and record.status == "open":
+    if include_action and record.registration_url:
         line += (
             ' · <a href="'
             + html.escape(record.registration_url, quote=True)
             + '">Записаться</a>'
         )
+    elif include_action and record.registration_contact:
+        line += " · регистрация: " + html.escape(record.registration_contact)
     return line
 
 
