@@ -448,9 +448,6 @@ def _parse_post(raw: Any, now: datetime) -> Tuple[Dict[str, Any], ...]:
         relevant = occurrence["guardamar_relevant"]
         sentence = occurrence["sentence"]
         route = None
-        folded = _fold(sentence)
-        if relevant and "torrevieja" in folded:
-            route = "Guardamar del Segura → Torrevieja"
         records.append({
             "record_id": f"convega:post-{identifier}:stage-{stage}",
             "source": "convega",
