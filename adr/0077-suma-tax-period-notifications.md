@@ -1,7 +1,7 @@
 # ADR 0077 — Minimal SUMA tax-period notifications
 
 Date: 2026-09-24
-Status: Accepted
+Status: Accepted (scheduling superseded by ADR 0088)
 
 ## Context
 
@@ -63,21 +63,12 @@ copy also states the remaining voluntary-payment deadline.
 
 ## Scheduling
 
-Do not add a SUMA cron row.
+The original scheduling decision embedded SUMA as a best-effort `finally`
+step inside the 07:30 Morning Digest process.
 
-Keep `termux/run-daily.sh` as the existing simple one-shot launcher:
-`exec ./.venv/bin/python -m telegrambot morning`.
-
-Inside that same short-lived Python lifecycle, SUMA runs in a best-effort
-`finally` step with its own source adapter and state. This preserves one 07:30
-process and guarantees that an attempted Morning Digest publication is followed
-by a SUMA check even when the morning path raises. In the embedded best-effort
-path, any SUMA failure is logged without changing or masking the Morning Digest
-result; the explicit `telegrambot suma` command remains strict so unexpected
-errors still fail loudly for operator verification and same-day retry.
-
-No daemon, queue, database, provider registry, browser, OCR, PDF parser, AI
-provider or raw-source cache is added.
+**Superseded by ADR 0088:** SUMA now runs as one independent external one-shot
+at 08:05 Europe/Madrid. This change affects scheduling only; the source,
+trigger, state and delivery semantics defined in this ADR remain authoritative.
 
 ## Current 2026 baseline
 
