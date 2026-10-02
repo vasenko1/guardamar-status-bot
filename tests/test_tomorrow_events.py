@@ -33,6 +33,7 @@ def _paths(root):
         "am_guardamar_state_path": root / "am.json",
         "facv_state_path": root / "facv.json",
         "pesca_cv_state_path": root / "pesca.json",
+        "convega_state_path": root / "convega.json",
         "translation_cache_path": root / "translations.json",
     }
 
@@ -86,6 +87,90 @@ class TomorrowEventStateTests(unittest.TestCase):
 
 
 class TomorrowEventPublicationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_fresh_convega_catalog_contributes_to_tomorrow(self):
+        now = datetime(2026, 10, 3, 19, 25, tzinfo=TZ)
+        with tempfile.TemporaryDirectory() as directory:
+            paths = _paths(directory)
+            paths["convega_state_path"].write_text(
+                __import__("json").dumps({
+                    "version": 1,
+                    "observed_at": now.isoformat(),
+                    "records": [{
+                        "record_id": "convega:post-42197:stage-21",
+                        "source": "convega",
+                        "source_post_id": 42197,
+                        "source_url": "https://convega.com/post/",
+                        "landing_url": "https://convega.com/rutasguiadas-senderodelmediterraneo/",
+                        "title": "Ruta guiada GR-92 · Etapa 21",
+                        "stage": 21,
+                        "event_start_date": "2026-10-04",
+                        "event_end_date": None,
+                        "place": "Guardamar del Segura",
+                        "route": None,
+                        "guardamar_relevant": True,
+                        "registration_start_date": None,
+                        "registration_start_time": None,
+                        "registration_end_date": None,
+                        "registration_end_time": None,
+                        "observed_status": "full",
+                        "until_full": True,
+                        "registration_url": None,
+                        "registration_contact": None,
+                    }],
+                }),
+                encoding="utf-8",
+            )
+
+            publication = await produce_tomorrow_event_publication(
+                now, **paths
+            )
+
+        self.assertIsNotNone(publication)
+        self.assertIn("Ruta guiada GR-92", publication.message)
+        self.assertIn("места закончились", publication.message)
+
+    async def test_stale_convega_catalog_cannot_make_tomorrow_claim(self):
+        now = datetime(2026, 10, 3, 19, 25, tzinfo=TZ)
+        with tempfile.TemporaryDirectory() as directory:
+            paths = _paths(directory)
+            paths["convega_state_path"].write_text(
+                __import__("json").dumps({
+                    "version": 1,
+                    "observed_at": datetime(
+                        2026, 10, 2, 12, 47, tzinfo=TZ
+                    ).isoformat(),
+                    "records": [{
+                        "record_id": "convega:post-42197:stage-21",
+                        "source": "convega",
+                        "source_post_id": 42197,
+                        "source_url": "https://convega.com/post/",
+                        "landing_url": None,
+                        "title": "Ruta guiada GR-92 · Etapa 21",
+                        "stage": 21,
+                        "event_start_date": "2026-10-04",
+                        "event_end_date": None,
+                        "place": "Guardamar del Segura",
+                        "route": None,
+                        "guardamar_relevant": True,
+                        "registration_start_date": None,
+                        "registration_start_time": None,
+                        "registration_end_date": None,
+                        "registration_end_time": None,
+                        "observed_status": "unknown",
+                        "until_full": False,
+                        "registration_url": None,
+                        "registration_contact": None,
+                    }],
+                }),
+                encoding="utf-8",
+            )
+
+            publication = await produce_tomorrow_event_publication(
+                now, **paths
+            )
+
+        self.assertIsNone(publication)
+
     async def test_stale_catalog_cannot_make_tomorrow_claim(self):
         with tempfile.TemporaryDirectory() as directory:
             paths = _paths(directory)
