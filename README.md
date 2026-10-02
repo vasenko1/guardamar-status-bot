@@ -312,7 +312,7 @@ Install the independent SUMA one-shot without replacing existing cron jobs:
 
 ```sh
 cd ~/bots/guardamar-status
-./termux/install-suma-cron.sh
+sh ./termux/install-suma-cron.sh
 ```
 
 The installer owns only its marked SUMA block, preserves unrelated crontab
