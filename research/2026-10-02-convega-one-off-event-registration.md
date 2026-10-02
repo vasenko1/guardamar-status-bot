@@ -1,338 +1,477 @@
 # CONVEGA and one-off event registration lifecycle
 
+## Status
+
+Final research/design review after two read-only production probes on
+2026-10-02.
+
+This document records the current evidence and the implementation shape that
+should be converted into an ADR before runtime code is written. It supersedes
+the provisional choices from the first version of this research where they
+conflict with the conclusions below.
+
+No runtime code, cron, state or Telegram publication was changed by this
+research work.
+
 ## Question
 
 How should the bot discover and publish registration lifecycle information for
 one-off public-interest events such as CONVEGA guided routes, tournaments,
-runs, hikes and excursions without turning the project into a generic
-notification framework or adding material load to the Termux phone?
+runs, hikes and excursions without:
 
-This investigation also asks whether CONVEGA can be integrated through cheap
-deterministic HTTP/REST reads, how registration identity and delivery state
-should work, and when the source/publication jobs should run so they do not
-compete with the existing Android workload.
+- adding a generic notification framework;
+- overloading the existing recurring-course lifecycle;
+- creating false registration claims;
+- depending on browser automation or AI extraction;
+- materially increasing CPU, memory or network load on the Termux phone?
 
-The design in this note is **research output**, not yet a durable ADR. Runtime
-code has not been changed by this investigation.
+The first concrete source is CONVEGA's guided GR-92 campaign.
 
 ## Repository context reviewed
 
-Before recording this research, the repository instructions and current
-architecture were reviewed at main commit
-`527665b5657862d713d003ddfcb36e8f81bd9b5d`.
+The final review was performed against repository main commit
+`8d1b8a3b9cf78764c52a020686387a83bd29204c`.
 
-Relevant project rules and existing decisions:
+Before making this research update the required repository instructions were
+reviewed:
 
-- `AGENTS.md`
-- `docs/kb/00_Project_Overview.md`
-- `docs/kb/01_Product_Vision.md`
-- `docs/kb/02_Project_Principles.md`
-- `docs/kb/03_System_Architecture.md`
-- `docs/kb/04_Runtime_Constraints.md`
-- `docs/kb/06_Data_Sources.md`
-- `adr/0035-weekend-events-digest.md`
-- `adr/0072-unified-course-notifications.md`
-- `adr/0080-next-day-planning-notices.md`
-- `research/2026-09-17-sports-source-production-probe.md`
-- `research/2026-09-26-virgen-rosario-event-gap.md`
+- `AGENTS.md`;
+- `docs/kb/00_Project_Overview.md`;
+- `docs/kb/01_Product_Vision.md`;
+- `docs/kb/02_Project_Principles.md`;
+- `docs/kb/03_System_Architecture.md`;
+- `docs/kb/04_Runtime_Constraints.md`.
 
-The relevant inherited constraints are:
+Relevant durable decisions and patterns were also re-read:
+
+- `adr/0035-weekend-events-digest.md`;
+- `adr/0072-unified-course-notifications.md`;
+- `adr/0080-next-day-planning-notices.md`;
+- existing event merge/rendering code;
+- recurring-course delivery state;
+- FACV/Pesca local-catalog patterns;
+- the shared bounded HTTPS transport;
+- current Termux runtime-lock owners and event-planning launchers.
+
+The following inherited constraints remain decisive:
 
 - weak Android / Termux is a product constraint;
-- use official or first-party sources;
 - one-shot processes only;
-- no database, message broker, generic scheduler, daemon or resident worker;
-- source failure must remain unknown rather than fabricating a state change;
-- deterministic validation must guard factual publication;
-- small atomic JSON state is preferred;
-- public Telegram sends must protect against ambiguous delivery;
-- registration/date notices should read local normalized state, not perform
-  arbitrary source work during rendering;
-- silence is preferable to a weak or misleading claim.
+- official/first-party sources only;
+- deterministic validation for factual publication;
+- source failure remains unknown;
+- last-good source state must survive transient failure;
+- small atomic JSON state;
+- no database, queue, daemon, resident scheduler or browser;
+- ambiguous Telegram delivery must not be automatically resent;
+- normal event display continues to use the existing `Event` model.
+
+## Executive conclusion
+
+The feature is technically justified and can be implemented without
+overengineering.
+
+The final shape is:
+
+1. one small source-specific `convega.py` adapter using WordPress REST;
+2. one normalized CONVEGA snapshot with a single `records[]` collection;
+3. two in-memory projections:
+   - ordinary `Event[]` for Morning / Tomorrow / Weekend;
+   - minimal `RegistrationRecord[]` for one-off registration lifecycle;
+4. one small source-independent
+   `event_registration_notifications.py` lifecycle/delivery module;
+5. one normal invocation at 12:47 and one recovery invocation at 13:47;
+6. a project runtime lock only around the bounded source-refresh phase, never
+   around Telegram delivery;
+7. at most one registration Telegram message per run;
+8. no browser, JavaScript runtime, OCR or factual AI extraction;
+9. no generic event bus or notification framework.
+
+The remaining empirical unknown is only the exact future markup used when
+stage 22 becomes registrable. That is not a blocker because the parser can
+fail closed to `unknown` until a positively validated registration action is
+visible.
 
 ## Product problem
 
-Some public-interest events become useful to residents **before** the event
-day because participation requires registration.
+Some official/public-interest events are most useful before their event date
+because participation requires registration.
 
-Examples discussed during the design review include:
+Examples include:
 
-- CONVEGA GR-92 guided routes;
-- a Guardamar table-tennis tournament with a limited number of participants;
-- a half-marathon / 10K event with separate distances and a registration
-  deadline;
-- a tennis open with an exact registration deadline time;
-- football tournaments, where a team or category may need to register;
-- guided excursions with a limited number of places;
-- events with separate sessions or independently registered variants.
+- guided routes and excursions;
+- public races;
+- tournaments;
+- municipal or club competitions;
+- one-off workshops with a participation deadline.
 
-The existing event pipeline answers primarily "what happens today/tomorrow/this
-weekend". It is not sufficient when registration opens or closes one or more
-weeks before the event.
+The existing Morning / Tomorrow / Weekend event pipeline answers primarily
+"what is happening today/tomorrow/this weekend". It does not own a long-lived
+registration lifecycle.
 
-Recurring municipal courses and sections are already covered by
-`course_notifications.py`, but that module is deliberately coupled to guide
-cards, recurring-course identity and course-specific rules. One-off event
-registration must not turn it into a generic framework.
+Recurring courses already have a separate lifecycle in
+`course_notifications.py`. That module is deliberately coupled to pinned
+guide cards, recurring-course identity, course-specific registration intervals
+and multi-message semantic buckets. One-off event registration should not be
+forced into that model.
 
-## Product policy established by the investigation
+## Scope
 
 ### In scope
 
-One-off public or public-interest events for which an official/first-party
-source exposes an actionable registration lifecycle.
-
-The first intended source is CONVEGA. Future examples may include municipal
-or club tournaments, runs, hikes and guided excursions.
+- one-off official/public-interest events with source-backed registration
+  state or registration boundaries;
+- the first source: CONVEGA guided GR-92 routes;
+- first discovery of an actually active registration;
+- explicit full/closed transitions;
+- explicit reopening;
+- exact source-backed opening/closing date boundaries;
+- source-backed registration deadline changes;
+- source-backed event-date correction after a registration was announced.
 
 ### Out of scope
 
-- recurring course / school / season enrollment already owned by the course
-  lifecycle;
-- private promotional events that are otherwise outside the event policy;
+- recurring course/season enrollment already owned by course notifications;
+- private promotional events that do not qualify for the normal event policy;
 - generic availability polling;
-- price-change alerts;
-- capacity-count alerts;
-- participant-count alerts;
-- venue-change alerts;
-- registration-link-change alerts;
-- route/description/contact-change alerts;
+- participant counts and capacity counters;
+- price-change notifications;
+- venue/description/route/contact-only changes;
+- registration-link-change notifications;
 - a general event cancellation framework;
-- a generic cross-source registration merger;
-- browser automation, Playwright, Selenium or a JavaScript runtime.
+- cross-source registration merging;
+- generic plugin/form-provider support outside source adapters;
+- continuous monitoring;
+- browser automation;
+- AI extraction of source facts.
 
-### Resident value
+## Confirmed CONVEGA authority model
 
-The useful lifecycle moments are intentionally narrow:
+CONVEGA is the official organizer/source for the researched GR-92 guided
+routes.
 
-1. registration is currently active when first discovered;
-2. a verified registration opening boundary is today or tomorrow;
-3. a verified registration closing boundary is tomorrow, with a same-day
-   fallback only if the advance notice was not delivered;
-4. a previously announced registration becomes explicitly full/closed;
-5. a previously announced full/closed registration is explicitly open again;
-6. a previously announced registration deadline changes materially;
-7. the event date itself changes after the bot previously announced the
-   registration.
+Three public source surfaces were confirmed:
 
-The event day remains owned by Morning / Tomorrow / Weekend. Registration must
-not create a second event-day publication channel.
-
-## CONVEGA authority and source surfaces
-
-CONVEGA is a first-party public-interest organizer for the researched GR-92
-guided routes.
-
-The source investigation identified three useful WordPress surfaces:
-
-1. Registration/detail landing page:
-   `https://convega.com/rutasguiadas-senderodelmediterraneo/`
-2. Senderismo category:
+1. Senderismo category:
    `https://convega.com/category/senderismo/`
-3. Announcement article:
+2. current guided-route landing:
+   `https://convega.com/rutasguiadas-senderodelmediterraneo/`
+3. announcement article:
    `https://convega.com/convega-organiza-dos-rutas-guiadas-por-el-gr-92-mejor-sendero-homologado-2025-de-la-comunitat-valenciana/`
 
-The landing page is a **mutable campaign/registration surface**, not a complete
-long-lived event catalogue. The announcement article can describe more future
-routes than the current landing page is showing.
+The surfaces have different responsibilities:
 
-For the current campaign, the announcement article names two outings:
+- the Senderismo category is a discovery/index surface;
+- the announcement article is an event-catalogue surface;
+- the landing is the current registration/status surface.
 
-- 4 October 2026, GR-92 stage 21;
-- 8 November 2026, GR-92 stage 22.
+The current landing must not be treated as the full future event catalogue.
+The announcement currently describes two guided routes while the landing
+currently describes only one.
 
-During the production probe on 2 October, the registration landing page
-showed only stage 21 / 4 October and explicit `¡¡PLAZAS AGOTADAS!!`.
-It did not expose stage 22 or 8 November in the current rendered content.
+## Production probe 1: WordPress REST contract
 
-This difference is important: discovery and current registration status should
-not be assumed to come from the same document.
+A read-only production probe was run from the Termux device on
+2026-10-02 at approximately 22:22 Europe/Madrid.
 
-## Production probe
+Production context at the start of that probe:
 
-### Device context
-
-Read-only probe performed from the production Termux environment:
-
-- local date/time: 2026-10-02 19:20 +0200;
 - branch: `main`;
-- HEAD: `527665b5657862d713d003ddfcb36e8f81bd9b5d`;
+- deployed code HEAD:
+  `527665b5657862d713d003ddfcb36e8f81bd9b5d`;
 - clean working tree;
 - curl 8.18.0;
 - Python 3.12.12.
 
-The probe changed no project or state files and sent nothing to Telegram.
+The later repository Research-only commit does not affect any of these source
+observations.
 
-### Landing page transport
+### Senderismo category
 
-`https://convega.com/rutasguiadas-senderodelmediterraneo/`
+Confirmed WordPress category:
 
-Observed:
+- ID: `338`;
+- slug: `senderismo`;
+- current post count: `12`.
 
-- HTTP 200;
-- no redirect;
-- HTTP/2;
-- TLS verification successful;
-- `text/html; charset=UTF-8`;
-- compressed transfer approximately 41 KB;
-- expanded local HTML approximately 276 KB;
-- total request time approximately 1.53 s.
+Slug lookup returned exactly one category and the same ID.
 
-Visible evidence included:
+Measured metadata calls:
 
-- `Ruta por la Etapa 21 del Sendero del Mediterráneo`;
-- `¡¡PLAZAS AGOTADAS!!`;
-- Guardamar;
-- 4 October 2026 / `04/10/2026`.
+- `per_page=3`: 1,424 bytes, about 0.95 s;
+- `per_page=10`: 4,780 bytes, about 1.12 s;
+- `per_page=100`: 5,710 bytes, about 1.82 s.
 
-It did **not** contain:
+`per_page=100` returned all 12 current category posts in one response.
 
-- stage 22;
-- 8 November 2026;
-- `forms.gle`;
-- `google.com/forms`;
-- WPForms / Gravity Forms / Forminator / Contact Form 7 markers;
-- a visible registration form.
+Conclusion:
 
-The only HTML form was the site search form.
+- `per_page=3` is an unnecessary and brittle optimization;
+- the entire current category metadata costs only about 5.7 KB;
+- runtime discovery should use one bounded complete metadata list, currently
+  `per_page=100`.
 
-The page exposed stable WordPress metadata:
+The current GR-92 announcement is post `42197`, published
+2026-09-21.
 
-- page ID: `41588`;
-- canonical landing URL;
-- shortlink `?p=41588`;
-- REST endpoint:
-  `https://convega.com/wp-json/wp/v2/pages/41588`.
+### Announcement post 42197
 
-The production probe fetched that REST endpoint successfully:
+Measured REST detail:
 
-- JSON size in the unrestricted probe: about 78.7 KB;
+- response size: 9,776 bytes;
+- request time: about 2.66 s;
+- content text contains:
+  - stage 21;
+  - stage 22;
+  - 4 October;
+  - 8 November;
+  - registration/form wording;
+- it does not contain current `PLAZAS AGOTADAS`;
+- it does not expose an embedded registration form.
+
+This confirms that the article supplies event facts but is not the current
+availability source.
+
+### Guided-route landing
+
+WordPress page:
+
 - ID: `41588`;
-- WordPress date: `2026-09-16T09:35:54`;
-- modified: `2026-09-23T08:42:33`;
 - slug: `rutasguiadas-senderodelmediterraneo`;
-- published page;
-- `content.rendered` about 60.5 KB.
+- title: `Rutas guiadas Sendero del Mediterráneo`;
+- modified: `2026-09-23T08:42:33`.
 
-The REST body itself contained:
+Slug lookup returned exactly one page and matched fixed-ID lookup.
 
-- `plazas agotadas`;
+Measured full REST response with content:
+
+- response size: 68,940 bytes;
+- request time: about 1.49 s;
+- `content.rendered`: about 60.5 KB;
+- visible text: about 2.5 KB.
+
+Current content positively contains:
+
 - stage 21;
-- 4 October 2026.
+- 4 October 2026;
+- exact terminal phrase `PLAZAS AGOTADAS`.
 
-It did not contain:
+Current content does not contain:
 
 - stage 22;
 - 8 November;
-- a Google Forms registration URL.
+- registration wording;
+- a registration form;
+- form inputs;
+- a submit button;
+- a registration CTA.
 
-This proves that a browser/JavaScript execution is not needed to observe the
-current terminal registration state.
+The only iframe is a Google Maps embed.
 
-### Senderismo category transport
+Therefore the current accepted registration states are:
 
-`https://convega.com/category/senderismo/`
+- stage 21 -> `full`;
+- stage 22 -> `unknown`.
 
-Observed:
+Stage 22 exists as an event in the announcement, but the current registration
+surface does not prove that it is open.
 
-- HTTP 200;
-- no redirect;
-- HTTP/2;
-- TLS verification successful;
-- approximately 32.8 KB compressed transfer;
-- request time approximately 0.99 s.
+### WordPress search
 
-The page exposed:
+Site search for "sendero mediterraneo" found both page `41588` and post
+`42197`, plus unrelated pages/posts.
 
-- WordPress category ID `338`;
-- REST endpoint
-  `https://convega.com/wp-json/wp/v2/categories/338`;
-- the current article
-  `Convega organiza dos rutas guiadas por el GR-92...` as the first heading.
+Search endpoints are useful for research/recovery but are unnecessary in the
+normal source contract. Category + stable landing slug are narrower and easier
+to validate.
 
-The category HTML did not itself expose the stage/date details. It is therefore
-best viewed as a cheap discovery/index surface, not the factual event-detail
-record.
+### `modified_after`
 
-### Announcement article transport
+The WordPress collection filter works correctly in the measured case:
 
-The current GR-92 announcement article observed:
+- cutoff one second before the page's modified timestamp returned the page;
+- cutoff one second after returned an empty list.
 
-- HTTP 200;
-- no redirect;
-- HTTP/2;
-- TLS verification successful;
-- approximately 36.3 KB compressed transfer;
-- request time approximately 0.93 s.
+This is useful diagnostic evidence but should not be required for normal
+runtime. Daily full landing content is cheap enough that correctness is simpler
+than metadata-first optimization.
 
-Visible text contained:
+### HTTP cache validators
 
-- `inscripción`;
-- stage 21;
-- stage 22;
-- Guardamar;
-- 4 October;
-- 8 November.
+The page REST response did not provide:
 
-The article exposed:
+- `ETag`;
+- HTTP `Last-Modified`.
 
-- WordPress post ID `42197`;
-- REST endpoint
-  `https://convega.com/wp-json/wp/v2/posts/42197`.
+Therefore runtime should not depend on `If-None-Match` or
+`If-Modified-Since`.
 
-No dedicated registration form was present in the article HTML.
+### WordPress revisions
 
-### Probe conclusion
+The public page advertises 531 revisions through `_links.version-history`,
+but fetching revisions anonymously returns:
 
-The phone can read everything required for this source through ordinary HTTPS.
-There is no reason to use a browser.
+- HTTP 401;
+- `rest_cannot_read`.
 
-The current best source model is:
+Revisions are not a usable runtime or research dependency.
 
-- **category/index or bounded posts REST list** for cheap discovery;
-- **specific announcement post REST content** for event identities/dates when
-  a new/changed candidate appears;
-- **registration landing REST page** for the current campaign state.
+### Wayback
 
-The current landing page is not sufficient by itself as a future-event
-catalogue.
+A research-only CDX lookup for the landing found no usable archived snapshots
+and took about 22 seconds.
 
-## Recommended lightweight REST strategy
+Wayback is rejected completely for runtime and does not justify further
+research effort here.
 
-The normal runtime should avoid downloading the three full HTML pages used by
-the diagnostic probe.
+## Production probe 2: form/action technology
 
-The intended steady-state flow is:
+A second read-only production probe inspected public CONVEGA pages selected by
+registration/form-related terms.
 
-1. one tiny WordPress REST discovery request, for example:
-   `/wp-json/wp/v2/posts?categories=338&per_page=3&_fields=id,date,modified,slug,link,title`;
-2. one tiny registration-page metadata request, for example:
-   `/wp-json/wp/v2/pages/41588?_fields=id,modified`;
-3. fetch full `content` for a post/page only if the ID is new or its
-   `modified` timestamp changed.
+The goal was to determine whether CONVEGA uses one stable registration plugin
+whose markup could define `open`.
 
-Candidate detail calls should also use `_fields` so the adapter receives only
-the fields it actually validates.
+The answer is no.
 
-The intended ordinary day is therefore approximately:
+### No universal registration plugin
 
-- two small REST GETs;
-- zero browser;
-- zero JavaScript execution;
-- zero image/OCR work;
-- zero AI for factual extraction;
-- no full HTML parser;
-- no continuous polling.
+Observed public mechanisms include:
 
-A change day may add one bounded detail REST GET.
+1. Contact Form 7:
+   - `cita-previa`;
+   - `orienta-plus`;
+   - rendered REST content contains an HTML `<form>`, required inputs and a
+     submit control.
+2. Forminator:
+   - `formulario-inscripcion-concurso-escolar`;
+   - rendered REST content contains a Forminator `<form>`, fields and submit
+     button.
+3. explicit external CTA:
+   - `personas-emprendedoras2026`;
+   - `Ir a inscripción` links to
+     `https://convega.empleactiva.com/emprendedores/registro`.
+4. ordinary information links with no form:
+   - `convegaprueba` links to the GR-92 landing using
+     `MÁS INFORMACIÓN`.
 
-The exact REST response sizes with `_fields` are still to be measured in a
-small follow-up probe before implementation. The architecture does not depend
-on a particular byte count.
+This proves that the GR-92 parser must not be tied to Contact Form 7,
+Forminator, Elementor Form, Google Forms or any other specific provider.
+
+### REST content is sufficient to see rendered forms
+
+Both Contact Form 7 and Forminator forms were visible inside WordPress
+`content.rendered` returned by REST.
+
+Therefore a lightweight stdlib `html.parser.HTMLParser` is sufficient for
+structural action detection. No browser or JavaScript execution is required.
+
+### Embedded form action is not a public registration URL
+
+Contact Form 7 content fetched through REST produced an action resembling the
+REST URL plus a form fragment.
+
+Forminator may render with an empty action and submit by JavaScript/Ajax.
+
+Therefore:
+
+- the presence of a validated embedded form may prove an actionable
+  registration state;
+- its raw `form action` must not be published to residents;
+- for embedded forms, `registration_url` should be the canonical public
+  landing page.
+
+### Explicit external CTA can be the registration URL
+
+A source-backed explicit CTA such as:
+
+`Ir a inscripción -> https://convega.empleactiva.com/...`
+
+can supply a direct `registration_url` only after strict source-specific URL
+validation.
+
+The shared global `normalize_registration_url()` must not be broadened to all
+observed CONVEGA-related hosts.
+
+### HTTPS remains mandatory
+
+Another public CONVEGA page contained several `inscripción` buttons pointing
+to plain `http://convega.com`.
+
+Those are not acceptable normalized registration URLs.
+
+Source-specific URL policy remains HTTPS-only, with:
+
+- no credentials;
+- no custom ports;
+- exact allowed hosts;
+- source-backed explicit action semantics.
+
+### False-positive lesson from the research parser
+
+The diagnostic script initially classified `MÁS INFORMACIÓN` as
+registration-like because the broad substring `form` appears inside the word
+`información`.
+
+Production code must not use broad substring matching such as:
+
+- `"form" in text`;
+- arbitrary loose keyword fragments.
+
+Registration semantics must use reviewed normalized words/phrases and
+structural controls.
+
+## Final lightweight REST strategy
+
+The final design intentionally optimizes for correctness and simplicity rather
+than minimum bytes.
+
+### Normal daily source refresh
+
+1. Fetch full Senderismo metadata:
+   `/wp-json/wp/v2/posts?categories=338&per_page=100&order=desc&orderby=date&_fields=id,date,modified,slug,link,title`
+2. deterministically identify a small bounded set of guided-GR-92 announcement
+   candidates from metadata;
+3. fetch detail for the relevant current candidate(s) using bounded
+   `_fields=id,date,modified,slug,link,title,content`;
+4. fetch the guided-route landing by its stable slug with content, validating
+   that the slug lookup resolves uniquely.
+
+The current measured cost with one announcement candidate is approximately:
+
+- category metadata: 5.7 KB;
+- announcement: 9.8 KB;
+- landing: 68.9 KB;
+- total: about 84–85 KB/day.
+
+That is roughly only a few megabytes per month and is preferable to adding
+metadata cache branches or relying on a modified timestamp for current
+registration state.
+
+### No metadata-first landing optimization
+
+Do not use:
+
+`metadata GET -> modified changed? -> detail GET`
+
+for the registration landing.
+
+The full content request is already cheap and directly observes the status
+surface.
+
+### Announcement caching
+
+Do not introduce a persisted modified-cache solely to save approximately
+10 KB/day for the current announcement.
+
+Always refetch the small bounded relevant announcement detail on the normal
+daily source refresh. This makes source behavior simpler and avoids depending
+on WordPress edit metadata for material event-date corrections.
 
 ### HTTP implementation
 
-Use the project's existing standard-library `fetch_bounded()` transport.
+Use the existing `fetch_bounded()` stdlib transport with a CONVEGA-specific
+URL policy, response size bound and timeout.
 
 Do not add:
 
@@ -343,44 +482,237 @@ Do not add:
 - Chromium;
 - a browser driver.
 
-The CONVEGA adapter should have its own exact HTTPS URL policy, bounded JSON
-size and timeout, while reusing only the shared transport mechanics.
+Use only stdlib JSON + `HTMLParser` for source parsing.
+
+## Source adapter scope
+
+The first adapter should remain intentionally narrow:
+
+- official CONVEGA;
+- Senderismo category;
+- guided GR-92 campaign announcements;
+- the known guided-route landing contract.
+
+It should not try to turn every CONVEGA page into a generic event or
+registration source.
+
+Other CONVEGA programmes can receive explicit adapters/rules later if product
+scope requires them.
 
 ## Source identity
 
-Stable registration identity is the most important correctness property.
+Registration/event occurrence identity must not depend on mutable event dates
+or translated titles.
 
-### Rule
-
-`record_id` must be assigned by the source adapter and must not depend on
-mutable title/date presentation.
-
-Bad identity:
-
-`title + event date`
-
-because a reschedule would look like one event disappearing and another being
-created.
-
-Preferred source-local shape:
+The previously proposed key:
 
 `convega:gr92:stage-21:2026`
 
-`convega:gr92:stage-22:2026`
+is no longer preferred because the same stage could theoretically appear more
+than once in a calendar year.
 
-The date is not the identity.
+For the current source, the stronger source-backed identity is:
 
-If a future source provides an immutable organizer/event ID, that ID should be
-preferred. A canonical article ID can support provenance but is not sufficient
-when one article contains multiple independently registered occurrences.
+- `convega:post-42197:stage-21`;
+- `convega:post-42197:stage-22`.
 
-If stable identity cannot be proven for a source, semantic status transitions
-and reschedule notifications must fail closed rather than guess.
+The WordPress post ID identifies the campaign announcement and the stage
+identifier discriminates independent occurrences inside that announcement.
 
-## Minimal normalized registration contract
+Consequences:
 
-The current proposed v1 contract is intentionally smaller than the recurring
-course model:
+- rescheduling does not change identity;
+- a later campaign with a new post ID does not collide;
+- stage 21 and stage 22 remain distinct;
+- if the source ever contains two indistinguishable occurrences with the same
+  stage discriminator, lifecycle semantics fail closed until another stable
+  discriminator is proven.
+
+Future adapters should use their own immutable organizer/event IDs when
+available.
+
+## Occurrence association
+
+Current registration status from the landing may only be applied to an
+announcement occurrence when association is unambiguous.
+
+For the current campaign:
+
+- landing: stage 21 + 4 October;
+- announcement: stage 21 + 4 October, stage 22 + 8 November.
+
+This yields exactly one match for stage 21.
+
+The adapter should prefer strong source facts such as:
+
+- explicit stage/occurrence identifier;
+- explicit event date.
+
+Do not use fuzzy translated-title matching for registration status.
+
+If the landing produces:
+
+- zero occurrence matches; or
+- more than one possible occurrence match,
+
+registration status is `unknown` for that association. Ordinary Event facts
+from the announcement remain usable.
+
+### Multi-occurrence landing rule
+
+Do not pre-build a complex DOM-proximity status mapper.
+
+If a future landing shows multiple occurrences and status/action controls
+cannot be deterministically associated with each occurrence, fail closed for
+registration state and record the source shape for a future source-specific
+parser update.
+
+## Final open/full/closed contract
+
+For one uniquely associated occurrence, evaluate current landing state in this
+order.
+
+### 1. Explicit terminal status
+
+Reviewed exact source phrases such as normalized
+`PLAZAS AGOTADAS` produce `full`.
+
+A future `closed` phrase must be separately observed/reviewed before being
+accepted as `closed`.
+
+Terminal state has priority over any stale action control remaining on the
+page.
+
+### 2. Positively validated registration action
+
+Only when no accepted terminal marker applies may an occurrence become
+`open`.
+
+Valid positive evidence may be:
+
+#### Embedded actionable form
+
+A real HTML form with a submit control, on the dedicated event/campaign
+landing, together with reviewed registration semantics for the occurrence/page.
+
+Do not classify an arbitrary contact/search form as event registration.
+
+Do not depend on plugin-specific class names.
+
+For an embedded form:
+
+- status may become `open`;
+- resident `registration_url` is the canonical public landing URL;
+- never expose the REST-rendered form action.
+
+#### Explicit registration CTA
+
+An anchor whose reviewed normalized visible text has explicit registration
+meaning, for example:
+
+- `Inscripción`;
+- `Ir a inscripción`;
+- `Inscríbete`;
+- `Reservar plaza`;
+- `Formulario de inscripción`.
+
+The link must pass source-specific strict HTTPS validation.
+
+A generic `MÁS INFORMACIÓN` link is not an opening signal.
+
+### 3. Unknown
+
+Everything else is `unknown`.
+
+In particular:
+
+- absence of `PLAZAS AGOTADAS` is not `open`;
+- absence of a form is not `closed`;
+- announcement text saying registration exists is not proof that it remains
+  open now;
+- disappearance of an action does not prove closure;
+- disappearance of a record does not prove cancellation.
+
+## Current accepted registration state
+
+At the end of the 2026-10-02 probes:
+
+### Stage 21
+
+`convega:post-42197:stage-21`
+
+- event date: 2026-10-04;
+- current landing matches stage/date;
+- exact `PLAZAS AGOTADAS` is present;
+- no active form/action remains.
+
+Accepted state: `full`.
+
+### Stage 22
+
+`convega:post-42197:stage-22`
+
+- event date: 2026-11-08;
+- event exists in the official announcement;
+- current landing does not describe stage 22;
+- no source-backed current registration action for stage 22 has been observed.
+
+Accepted state: `unknown`.
+
+No "registration open" message for stage 22 is currently justified.
+
+## Normalized source snapshot
+
+Do not store duplicated `events[]` and `registrations[]` copies of the same
+source facts.
+
+Prefer one source-specific snapshot:
+
+```text
+version
+observed_at
+records[]
+```
+
+Each source record stores the source facts necessary to project both domains,
+for example:
+
+```text
+record_id
+source
+source_post_id
+source_url
+landing_url?
+
+title
+occurrence_label?
+event_start_date
+event_start_time?
+event_end_date?
+place?
+route?
+
+registration_start_date?
+registration_start_time?
+registration_end_date?
+registration_end_time?
+observed_status
+until_full
+registration_url?
+registration_contact?
+```
+
+Exact final source-record fields should remain limited to facts actually
+required by Event projection or the registration lifecycle.
+
+From this one snapshot:
+
+- `convega_events(...)` projects normal `Event[]`;
+- `convega_registration_records(...)` projects minimal lifecycle records.
+
+## Minimal lifecycle RegistrationRecord
+
+The source-independent lifecycle contract remains small:
 
 ```text
 record_id
@@ -403,444 +735,506 @@ registration_url?
 registration_contact?
 ```
 
-Snapshot-level fields:
+Status enum:
 
-```text
-version
-observed_at
-events[]
-registrations[]
-```
+- `unknown`;
+- `open`;
+- `full`;
+- `closed`.
 
-`observed_at` belongs to the source snapshot and should not be duplicated in
-every record.
+Unknown dates remain null. Date-only deadlines are never changed to an invented
+23:59.
 
-### Status
+Do not add in v1:
 
-Minimal explicit status enum:
-
-- `unknown`
-- `open`
-- `full`
-- `closed`
-
-The status is an accepted source claim, not a conclusion from disappearance.
-
-Examples:
-
-- explicit `PLAZAS AGOTADAS` -> `full`;
-- a known date boundary passing does not fabricate `closed`;
-- disappearance of `PLAZAS AGOTADAS` produces `unknown`, not `open`;
-- `full -> open` is publishable only when the new source evidence positively
-  proves `open`.
-
-### Optional bounds
-
-Unknown dates remain null.
-
-Examples:
-
-- "registration until 10 October" -> unknown start, known end;
-- "registration starts 5 October" -> known start, unknown end;
-- "while places remain" with no dates -> no fabricated deadline.
-
-Exact time is stored only when the source explicitly publishes it. A date-only
-deadline is not converted to 23:59.
-
-### Deliberately excluded from v1
-
-Do not add until a real source requires them:
-
-- registration window arrays;
-- `event_key` / `group_key`;
-- variant-label state;
-- participant-kind state;
+- window arrays;
+- generic event/group keys;
 - capacity counts;
-- capacity unit;
-- price periods;
 - waitlist state;
+- participant counts;
+- price periods;
 - suspension state;
-- general event cancellation state.
+- generic cancellation state.
 
-A future multi-distance run or multi-category tournament can initially expose
-one stable `record_id` per independently registered variant. An optional
-grouping key can be added later without changing the lifecycle engine.
+A future multi-distance/multi-category event can initially emit one stable
+record per independently registered occurrence.
 
 ## Relationship to the existing Event model
 
-A source may project the same source observation into two independent
-representations:
+The existing `Event` model remains the only general event-display model.
+
+Do not add one-off lifecycle state fields globally to `Event`.
+
+One CONVEGA source observation may project to:
 
 1. ordinary `Event[]` for Morning / Tomorrow / Weekend;
-2. minimal `RegistrationRecord[]` for registration lifecycle notices.
+2. lifecycle `RegistrationRecord[]`.
 
-RegistrationRecord must **not** enter `_merge_events()`.
+The registration records never enter `_merge_events()`.
 
-The existing Event pipeline remains the single model for normal resident event
-display. The registration lifecycle should not expand `Event` with a generic
-state machine.
+This preserves ADR 0080's single normal event pipeline.
 
-This preserves the architecture established by ADR 0080: one existing Event
-model for planning/digest publications rather than a second general event
-model.
+## Existing merge/rendering contradiction
 
-## Source ownership and deduplication
-
-Registration lifecycle has one authoritative owner per registration.
-
-For a CONVEGA-organized guided route, CONVEGA owns the RegistrationRecord even
-if Ayuntamiento or Todo Cultura also mention the event.
-
-Do not build a generic cross-source registration merger.
-
-Ordinary Event facts may still be merged by the existing event pipeline.
-
-This source-ownership boundary avoids ambiguous status/link conflicts and
-keeps identity source-specific.
-
-## Existing Event merge risk discovered
-
-The current `_merge_events()` combines optional fields additively, including:
+Current event merging independently preserves:
 
 - `registration_url`;
 - `registration_contact`;
 - `access_note`.
 
-A possible conflict is:
+The shared renderer then emits the access note and registration action
+separately.
 
-- current authoritative source: `места закончились`, no active form;
-- older duplicate source: still carries a registration URL.
-
-A merged Event could otherwise render a contradictory line equivalent to:
+Therefore a terminal source fact can otherwise combine with a stale action from
+another duplicate and render a contradiction such as:
 
 `места закончились · Регистрация`.
 
-The implementation must add a narrow presentation/merge regression so a
-terminal normalized access fact suppresses stale registration action in
-resident display.
+The minimal fix should remain presentation-oriented:
 
-Do not solve this by adding a full registration lifecycle to the global Event
-model.
+- CONVEGA terminal state projects one reviewed exact internal access note;
+- the event renderer suppresses registration URL/contact when the access note
+  is one of the exact internal terminal-registration notes.
+
+Do not use fuzzy substring logic such as "contains закрыт".
+Do not introduce a global registration state machine into `Event`.
+
+Lifecycle source ownership remains independent: CONVEGA owns the registration
+state even if another municipal source contributes normal Event enrichment.
 
 ## Lifecycle semantics
 
 ### First discovery
 
-Unlike recurring course catalogues, first successful source observation is not
-always silent.
+First observation is not universally silent.
 
-If a one-off future registration is first discovered while it is currently
-active, this is useful resident information.
+- first-seen explicit `open` / positively actionable registration:
+  publish `Идёт запись...`;
+- first-seen `full`: baseline only;
+- first-seen `closed`: baseline only;
+- first-seen `unknown`: baseline only.
 
-Wording:
+This avoids missing the only useful registration notice for a one-off event
+while avoiding pointless "already full" launch noise.
 
-- known opening occurred earlier -> `Идёт запись...`;
-- source-backed opening is exactly today -> a same-day opening wording may be
-  used;
-- first-seen `full` / `closed` -> silent baseline because the audience was
-  never previously invited to register.
+### Observed vs announced
 
-This differs intentionally from course catalogue launch behavior.
+The state must distinguish source knowledge from audience knowledge.
 
-### Announced vs observed
+Only a confirmed successful registration publication places a record in
+`announced_record_ids`.
 
-The system must distinguish:
+Examples:
 
-- bot has observed the record;
-- audience has been told about the record.
+- first-seen full -> later explicit open, never announced before:
+  `Идёт запись`;
+- announced open -> full:
+  `Места закончились`;
+- announced full -> explicit open:
+  reopening notice.
 
-Only successfully published registrations enter `announced_record_ids`.
+### Unknown must not erase explicit evidence history
 
-Consequences:
+A current `unknown` observation is not an explicit state transition.
 
-- first-seen full -> baseline only;
-- first-seen full later becomes explicit open -> `Идёт запись`, not
-  `снова открыта`;
-- previously announced open becomes full -> `Места закончились`;
-- previously announced full becomes explicit open -> reopening notice.
-
-### Opening boundaries
-
-A known tomorrow opening may create one advance notice.
-
-If the advance notice was not delivered, same-day evaluation may produce a
-fallback.
-
-Do not publish both by default.
-
-If the source provides only a date:
-
-- before that day -> `завтра открывается...`;
-- on that day -> `сегодня открывается...` or current-active wording according
-  to evidence;
-- do not invent an hour.
-
-If the source provides an exact time, wording may distinguish before/after the
-time.
-
-### Closing boundaries
-
-For an explicit end date:
-
-- preferred reminder: day before;
-- same-day notice only when the day-before reminder was not delivered.
-
-No end date -> no closing reminder.
-
-Past deadlines are never replayed after device downtime.
-
-### `until_full`
-
-For one-off events, `until_full` means that places may run out before the
-published deadline.
-
-It must not reuse course-specific wording that implies registration can
-continue after the main period.
-
-Suitable meaning:
-
-`до 10 октября, если места не закончатся раньше`.
-
-### Status precedence
-
-Current explicit terminal status beats a future boundary.
+The lifecycle baseline should retain a separate
+`last_explicit_status` evidence value.
 
 Example:
 
-- status = full;
-- nominal deadline = tomorrow.
+```text
+full -> unknown -> explicit open
+```
 
-Result: publish only the full/places-ended semantic outcome, not "registration
-ends tomorrow".
+must still be understood as reopening for a record previously announced.
 
-### Disappearance
+Do not overload current observed status with this historical evidence. Keep the
+concepts separate:
 
-Record/source disappearance proves nothing.
+- current source record has `status=unknown`;
+- state may retain `last_explicit_status=full`.
 
-On source error, partial parsing, empty/unexpected response or record
-disappearance:
+This prevents stale full from being presented as a current fact while
+preserving the evidence needed for later transition semantics.
 
-- no closed/full/cancelled claim;
-- keep the last accepted semantic baseline;
-- no automatic all-clear/reopening.
+### Opening boundaries
+
+If the source explicitly provides a future registration opening:
+
+- tomorrow -> one advance notice;
+- same-day fallback only when the advance notice was not confirmed delivered;
+- exact time wording only when exact time is source-backed.
+
+A date-only opening never invents a clock time.
+
+A past opening discovered later becomes current-active wording only if current
+source evidence positively proves `open`. Do not replay an old "opened"
+trigger.
+
+### Closing boundaries
+
+If the source explicitly provides an end date:
+
+- preferred reminder: day before;
+- same-day fallback only if the day-before reminder was not delivered.
+
+No explicit deadline -> no deadline reminder.
+
+`until_full=true` means capacity may terminate registration earlier. Copy
+must preserve that qualifier.
+
+An explicit `closed` transition that merely confirms an already communicated
+deadline can normally remain silent. A source-backed early/unexpected close, or
+a close for which no closing reminder was delivered, may notify.
+
+### Terminal precedence
+
+Current explicit `full` / `closed` beats opening/closing boundary messages.
+
+Do not send "registration ends tomorrow" when the same fresh source already
+proves that places are gone.
 
 ### Deadline changes
 
-For a registration previously announced to residents, a meaningful source-backed
-deadline extension/shortening can produce one corrective notice.
+A meaningful source-backed deadline extension/shortening may notify only when:
 
-Do not notify on every metadata change.
+- the registration was previously announced;
+- the record is still relevant;
+- current evidence does not prove a terminal state.
 
-### Event date changes
+Do not turn an `unknown` current availability observation into an affirmative
+"registration remains open" claim.
 
-If a previously announced registration retains the same stable record identity
-but its event date changes, one narrow corrective notice is useful because the
-previous registration message is now materially stale.
+### Event date correction
 
-Use factual wording such as:
+If a previously announced registration retains the same stable identity but
+its event date changes, one factual correction is useful:
 
 `Изменилась дата мероприятия — теперь ...`
 
-Do not infer the reason ("organizers postponed") unless the source explicitly
-states it.
+Do not infer the reason unless the source states it.
 
-### Cancellation/postponement
+### Past events
 
-A general event cancellation lifecycle remains out of scope for this feature.
+Do not create new registration lifecycle messages after an occurrence's event
+date has passed.
 
-A registration notifier must not infer cancellation from disappearance.
+Same-day registration remains possible only when current source evidence
+explicitly supports it.
 
-If a source explicitly shows an event as cancelled, its adapter must not expose
-the registration as active, but a broader cancellation notification system is
-a separate design problem.
+### Disappearance
 
-## Temporal validation and impossible states
+Source/record disappearance is silent.
 
-The adapter/lifecycle must fail closed on contradictory normalized facts.
+Never infer:
 
-Examples requiring suppression/diagnostic handling:
+- closed;
+- full;
+- cancelled;
+- reopened.
 
-- event end before event start;
-- registration start after registration end;
-- explicit `open` while the same accepted record also gives an already passed
-  absolute registration deadline;
-- other mutually inconsistent status/boundary facts.
+### Cancellation
 
-A registration-metadata conflict should suppress registration lifecycle output
-for that record without necessarily deleting an otherwise valid ordinary Event.
+A general event cancellation lifecycle remains outside this feature.
 
-## Freshness
+## Final lifecycle state
 
-Registration notices require a source snapshot observed on the same
-Europe/Madrid calendar date.
+The earlier persisted retryable `pending + valid_until` design is rejected as
+unnecessary for a one-message-per-run lifecycle.
 
-Stale snapshot:
-
-- no new registration notice;
-- no date-boundary reminder;
-- no baseline erasure;
-- no inferred closure/full/cancellation.
-
-Known future boundaries should still require a fresh same-day source snapshot
-on the trigger day. This matches the project's fail-closed course/tomorrow
-patterns.
-
-A separate immediate control GET before publication is not recommended for v1.
-Registration is not a safety-critical real-time feed, and the source refresh
-should remain independently bounded. If production later proves that a few
-hours of same-day staleness causes false availability messages, a
-candidate-only confirmation can be added from evidence rather than
-pre-emptively.
-
-## Notification state
-
-A separate small file is preferred, conceptually:
-
-`state/event_registration_notifications.json`
-
-Minimal state:
+Use a smaller state conceptually:
 
 ```text
 version
 baseline
 announced_record_ids
 sent_triggers
-pending
+uncertain
 ```
-
-Do not overload the global Morning publication state.
 
 ### Baseline
 
-Stores last accepted normalized registration records.
+Per record, keep:
 
-A source failure/disappearance must not replace the baseline with an
-authoritative empty catalogue unless the source contract proves completeness.
+- latest accepted semantic facts needed for diffing;
+- `last_explicit_status` separately from current `unknown`.
 
-### `announced_record_ids`
+The source snapshot itself remains the source of current observed status.
 
-Bounded set of records for which a public registration message was confirmed
-sent.
+### announced_record_ids
 
-Used to gate:
+Bounded set/list of registrations the audience has actually been told about.
 
-- full/closed notices;
-- reopening wording;
-- corrective deadline/event-date changes.
+### sent_triggers
 
-### `sent_triggers`
+Bounded exact date-trigger keys, for example:
 
-Bounded exact date/event trigger keys for at-most-once boundary notices.
+- opening-tomorrow;
+- opening-today;
+- closing-tomorrow;
+- closing-today.
 
-Example keys:
+Keep only a bounded recent history such as 512 keys.
 
-- `opening-tomorrow:<record>:<date>`
-- `opening-today:<record>:<date>`
-- `closing-tomorrow:<record>:<date>`
-- `closing-today:<record>:<date>`
+Past date triggers are never replayed after downtime.
 
-A bounded limit such as the most recent 512 trigger keys is sufficient.
+### uncertain
 
-Past boundary triggers are never replayed.
+At most one message exists per run, so no multi-message pending queue is
+needed.
 
-### Pending delivery
-
-At most one Telegram message should be produced by a registration-notification
-run, so the pending state can be much simpler than course notifications.
-
-Conceptual pending fields:
+Immediately before Telegram send, atomically persist one uncertainty
+reservation containing enough information to resolve an ambiguous send, for
+example:
 
 ```text
 created_at
-valid_until?
 message
+record_ids
+trigger_ids
 candidate_baseline
 candidate_announced_record_ids
 candidate_sent_triggers
-status
 ```
 
-Delivery status:
+The persisted candidate commit state is necessary for operator recovery after
+an ambiguous send. Without it, an operator who verifies that the message did
+arrive could not safely commit the exact state without risking a later
+duplicate.
 
-- `pending`
-- `uncertain`
+There is no retryable persisted message.
 
-A separate per-message `sent` sub-state is unnecessary because a run sends
-at most one Telegram message.
+### Delivery algorithm
 
-## Time-sensitive pending expiry
+1. acquire the lifecycle state lock;
+2. read today's accepted source snapshot;
+3. compute current records and candidate next semantic state;
+4. if no message is needed:
+   - commit accepted baseline changes;
+   - exit;
+5. render one current message;
+6. atomically persist `uncertain` with candidate commit state;
+7. call Telegram;
+8. confirmed success:
+   - commit candidate state;
+   - clear `uncertain`;
+9. deterministic failure:
+   - clear `uncertain`;
+   - leave the old semantic baseline;
+   - next invocation recomputes from current facts;
+10. ambiguous failure:
+   - retain `uncertain`;
+   - block automatic resend until operator resolution.
 
-A new bug class was identified during design review: an exact-time message may
-become false before the scheduled retry.
+### Why `valid_until` is no longer needed
 
-Example:
+A deterministic Telegram failure does not retain old rendered text.
 
-- 09:47 builds "registration opens today at 10:30";
-- Telegram definitively rejects the send;
-- retry runs at 11:47.
+The next invocation recomputes the message from:
 
-The old text must not be sent after 10:30.
+- current local time;
+- current same-day source state.
 
-Therefore pending delivery may carry `valid_until`.
+Therefore a message like "opens today at 10:30" cannot be blindly retried after
+10:30; it will be rebuilt with current semantics.
 
-Before a safe retry:
+An ambiguous delivery is never retried automatically, regardless of age.
 
-- if still valid -> retry;
-- if expired -> discard/recompute from the current fresh snapshot;
-- if the new semantic state is now "registration is active", render the current
-  wording instead.
+This removes the need for a separate `valid_until` field and retryable
+pending state.
 
-An `uncertain` delivery is different: it may already exist in Telegram and
-must **not** be auto-cleared merely because `valid_until` passed. Operator
-inspection remains required.
+## Freshness
 
-## Telegram delivery safety
+Registration lifecycle notices require a source snapshot observed on the same
+Europe/Madrid local date.
 
-Copy the project's existing invariants rather than building a generic engine:
+Stale/missing/future snapshots:
 
-1. exclusive file lock;
-2. build one candidate;
-3. atomically persist the delivery reservation as `uncertain` immediately
-   before the non-idempotent Telegram send;
-4. confirmed success commits baseline/announced/triggers and clears pending;
-5. explicit deterministic rejection / rate limit may restore safe retryable
-   pending where applicable;
-6. ambiguous timeout/failure remains `uncertain`;
-7. automatic resend is blocked while uncertain.
+- create no new registration notice;
+- create no date-boundary reminder;
+- do not erase baseline evidence.
 
-A corrupt lifecycle state must fail closed. Never silently reset state and
-risk replaying old registrations.
+This requirement is intentionally stricter than Morning event display.
 
-No common `AtomicJsonStore` or generic lifecycle framework is needed now.
-Specialized small state classes are already an accepted project pattern.
+### Morning
+
+Existing FACV/Pesca precedent confirms that Morning can read a last-good local
+event catalogue without requiring same-day observation.
+
+Therefore no extra early-morning CONVEGA fetch is needed solely for Morning.
+
+### Tomorrow / Weekend
+
+Proactive next-day/weekend publication should use the same freshness rules
+already established by ADR 0080/ADR 0035.
+
+The 12:47 CONVEGA refresh is naturally fresh for normal same-evening planning.
+
+## Scheduling and resource isolation
+
+### Current recurring minute-level work
+
+The reviewed cron landscape includes:
+
+- Hidraqua: :00 / :30;
+- capacity backstop: :12 / :27 / :42 / :57;
+- CCE/Previfoc: :19;
+- traffic: :37;
+- earthquakes: :55;
+- Morning/event/guide/course work concentrated earlier in the day;
+- Product Awards at 14:20;
+- resident news later in the afternoon/evening;
+- Tomorrow/Weekend event planning in the evening.
+
+The interval after :42 and before :55 remains the widest stable recurring gap.
+
+### Final normal schedule
+
+Use two invocations of the same wrapper:
+
+- **12:47** normal run;
+- **13:47** recovery run.
+
+Do not use four separate 12:47/12:50/13:47/13:50 cron rows.
+
+Conceptual wrapper:
+
+```text
+if no successful CONVEGA snapshot observed today:
+    bounded source refresh
+
+run local registration lifecycle evaluation
+```
+
+Normal recovery behavior:
+
+- today's snapshot already exists -> zero CONVEGA HTTP;
+- no pending semantic change -> zero Telegram;
+- already sent -> no-op;
+- uncertain -> no resend.
+
+### Runtime lock scope
+
+The project-wide `state/code-runtime.lock` is currently shared by higher
+priority short tasks including 112, earthquakes, traffic and the capacity
+backstop.
+
+Do not hold that global lock during registration Telegram delivery.
+
+Otherwise a slow Telegram request could cause an hourly higher-priority monitor
+to skip its invocation.
+
+If used for CONVEGA, the global runtime lock should cover only the short
+bounded source-refresh phase:
+
+1. acquire global runtime lock;
+2. fetch/validate/write CONVEGA snapshot;
+3. release global runtime lock;
+4. run registration publication under its own lifecycle state lock.
+
+If the 12:47 source phase cannot acquire the global lock, it exits source
+refresh cleanly. Publication then finds no fresh same-day snapshot and remains
+silent. The 13:47 recovery gets one bounded second opportunity.
+
+No sleeping retry process is introduced.
+
+## Friday Weekend freshness
+
+Once CONVEGA contributes ordinary `Event` records to Weekend, the existing
+Friday `run-weekend.sh --fresh` path should best-effort refresh CONVEGA along
+with the other event sources before rendering.
+
+This:
+
+- adds no new cron row;
+- keeps ADR 0035's late-Friday freshness behavior consistent across sources;
+- costs only one extra small Friday source refresh;
+- must remain source-only and must not trigger a second registration
+  notification cadence.
+
+A failed Friday CONVEGA refresh should fall back to last-good state exactly as
+the existing Weekend refresh path does for other sources.
+
+## Translation
+
+The registration notifier performs no AI calls.
+
+Extend the existing translation preparation to include a bounded set of
+current/future CONVEGA titles from the local snapshot.
+
+Because the source normally refreshes at 12:47, an announcement first
+discovered that day may not have a Russian cache entry until the next normal
+translation preparation.
+
+That is acceptable:
+
+- use cached Russian when available;
+- otherwise use safe normalized Spanish;
+- never block a factual registration notice waiting for AI;
+- do not add a separate translation cron.
+
+Friday Weekend may continue using its existing bounded inline translation
+behavior.
+
+## URL and provenance rules
+
+Keep these concepts separate:
+
+- `source_url`: official context/announcement page;
+- `landing_url`: official current campaign/registration page;
+- `registration_url`: resident action URL, only when validated.
+
+### Embedded form
+
+If a dedicated current landing contains a validated event-registration form:
+
+- `registration_url = canonical landing_url`.
+
+Do not publish the REST-rendered `form action`.
+
+### External CTA
+
+If the official CONVEGA page exposes an explicit registration CTA to another
+host, accept it only under a narrow CONVEGA-specific HTTPS allowlist.
+
+`convega.empleactiva.com` is an observed valid action host on another
+CONVEGA programme, but it should be allowed only when an explicit source-backed
+registration action actually points there.
+
+Do not pre-approve every host observed elsewhere on the website.
+
+Do not expand the shared global Google-Forms registration allowlist merely for
+CONVEGA.
 
 ## Message design
 
-Messages should be short, factual and action-first.
+Public messages remain short and action-first.
 
-### Already active when discovered
+### First-seen active
 
 ```text
 📝 Идёт запись на маршрут GR-92
 
 📅 4 октября
-Маршрут по этапу 21: Guardamar del Segura → Torrevieja
+Маршрут по этапу 21: ...
 🔗 Записаться
 
 📣 обЪявления Гуардамар
 ```
 
-Do not say "opened" when the bot only knows that registration is active now.
+Do not say "Открылась" when the bot only knows registration is active now.
 
-### Deadline reminder
+### Deadline
 
 ```text
 ⏳ Завтра заканчивается запись
 
 • Турнир ...
   📅 мероприятие — 12 октября
-  Запись до 10 октября, 19:30 · Записаться
+  Запись до 10 октября, 19:30
 ```
+
+Only show an action link when it is currently validated.
 
 ### Full
 
@@ -850,428 +1244,274 @@ Do not say "opened" when the bot only knows that registration is active now.
 • Маршрут GR-92 — 4 октября
 ```
 
-### Event date correction
+### Date correction
 
 ```text
 🗓 Изменилась дата мероприятия
 
-• Турнир ... — теперь 19 октября
+• ... — теперь 19 октября
 ```
 
-### Grouping
+One run sends at most one Telegram message. If several records qualify, group
+them into compact semantic sections.
 
-A run sends at most one Telegram message.
+Do not introduce multi-message transaction complexity in v1.
 
-If several semantic changes qualify, group them into compact sections such as:
-
-- registration opened/active;
-- deadline tomorrow;
-- places ended;
-- corrected date/deadline.
-
-Do not create one Telegram push per event.
-
-If the generated message unexpectedly exceeds Telegram limits, v1 should fail
-closed rather than introduce multi-message transaction complexity.
-
-## Links and provenance
-
-`source_url` and `registration_url` are separate facts.
-
-- `source_url`: official event/campaign page that supplies context and
-  provenance;
-- `registration_url`: direct actionable form/booking link, when verified.
-
-A registration form may disappear or move after places fill, while the
-official source page remains useful.
-
-Registration URLs must follow strict HTTPS/source-specific validation. Do not
-turn the shared registration-host allowlist into a broad list of arbitrary
-third-party domains.
-
-The exact source/action URL policy for future CONVEGA active registration
-still needs to be verified when a live open-registration state is available,
-because the current production page was already full and exposed no active
-form.
-
-## Translation
-
-The normal `prepare-event-translations` flow prepares municipal/Agenda/etc.
-titles for today and tomorrow, while one-off registration can be useful weeks
-before the event.
-
-The registration notifier must not call AI.
-
-Recommended extension:
-
-- existing translation preparation also reads a bounded set of current/future
-  CONVEGA registration/event titles;
-- only cache misses go to the existing approved title translation path;
-- cap the number of CONVEGA future registration titles;
-- if translation is unavailable, safe normalized Spanish is preferable to
-  blocking a factual registration notice.
-
-No new translation cron or AI workflow is required.
-
-## Runtime scheduling and phone-load analysis
-
-The requested product goal is not only freshness but also avoiding CPU/RAM/
-network overlap on the weak Android device.
-
-Current recurring minute-level background/one-shot work includes:
-
-- Hidraqua: `:00` and `:30`;
-- capacity backstop: `:12`, `:27`, `:42`, `:57`;
-- CCE/Previfoc: `:19`;
-- TomTom traffic: `:37`;
-- earthquakes: `:55`.
-
-Therefore no hour is completely empty.
-
-The widest stable gap in the recurring minute schedule is the interval after
-`:42` and before `:55`.
-
-The main morning load also includes:
-
-- 05:00 transport sync;
-- 05:10 municipal event refresh;
-- 05:30 Agenda refresh;
-- 06:00 / 06:30 / 07:00 event translation preparation;
-- 07:15 AEMET preparation;
-- 07:30 Morning Digest;
-- 08:05 SUMA;
-- 08:42 transport notifications;
-- 09:02 guide sync;
-- 09:42 and 11:42 course notifications;
-- 10:10–10:40 SafeBeach/update window;
-- 11:11 resident news.
-
-Afternoon/evening work includes:
-
-- Product Awards at 14:20;
-- resident news at 15:11 and 18:11;
-- weekend/tomorrow event planning around 19:15–20:25;
-- seasonal bathing/guide work;
-- electricity attempts starting 20:30.
-
-### Recommended registration schedule
-
-Current preferred schedule:
-
-- **12:47** — CONVEGA REST sync;
-- **12:50** — local registration lifecycle evaluation/publication;
-- **13:47** — conditional recovery sync;
-- **13:50** — conditional recovery publication.
-
-This is preferable to the earlier 09:47/11:47 idea because the main morning
-cycle and SafeBeach work have completed.
-
-At 12:47 the prior recurring process begins at 12:42 and the next scheduled
-recurring process is 12:55. The CONVEGA source call is expected to be a tiny
-REST one-shot rather than the much heavier diagnostic HTML reads.
-
-### Recovery must be cheap
-
-13:47 is not a second unconditional source fetch.
-
-If today's valid CONVEGA snapshot already exists:
-
-- recovery sync exits before HTTP.
-
-Likewise the recovery publication should exit immediately when:
-
-- no eligible semantic change exists;
-- the change was already sent;
-- delivery is uncertain.
-
-This yields one real source refresh on normal days.
-
-### Shared runtime lock
-
-New launchers should participate in the existing
-`state/code-runtime.lock` convention where appropriate.
-
-This protects the device from real overlap even if a preceding :42 job takes
-longer than expected.
-
-If 12:47 cannot acquire the lock, it exits cleanly and 13:47 supplies a bounded
-recovery opportunity.
-
-The combination is:
-
-- cron staggering;
-- shared runtime lock;
-- one-shot process;
-- conditional recovery.
-
-Do not solve overlap with a sleeping process or internal retry loop.
-
-## Event catalogue timing
-
-The earlier design considered putting CONVEGA into the 05:10
-`sync-municipal-events.sh` wrapper. After full cron/load review, a dedicated
-small CONVEGA source one-shot around 12:47 is preferred so it does not enlarge
-the already busy pre-morning workload.
-
-The normalized CONVEGA Event facts should still be consumable by existing
-Morning / Tomorrow / Weekend pipelines.
-
-The 12:47 snapshot is naturally fresh for same-evening event planning.
-
-Friday's existing `--fresh` weekend workflow should eventually be reviewed so
-CONVEGA is not uniquely stale compared with sources deliberately refreshed
-before the Friday digest. If CONVEGA is added to the Friday late refresh, that
-refresh must remain source-only; it must not create an additional registration
-notification cadence.
-
-This exact Friday integration remains an implementation detail to settle
-against the final source adapter.
-
-## Cron ownership
-
-Registration is an event-planning concern, not a guide/course concern.
-
-If the final cron entries are installed through an existing managed block,
-`termux/install-weekend-cron.sh` is the better ownership boundary because it
-already describes itself as event-planning notices and owns Weekend/Tomorrow.
-
-Do not rename its historical marker merely for naming purity if that creates
-production crontab migration risk.
-
-No separate resident scheduler or daemon is needed.
+If one grouped message exceeds Telegram's limit, fail closed and treat that as
+a design/test failure rather than silently splitting the transaction.
 
 ## Expected runtime cost
 
-Steady state target:
+Normal 12:47 source refresh with the current campaign:
 
-- one short CONVEGA source one-shot/day;
-- about two tiny REST requests on an unchanged day;
-- detail REST only when a source ID/modified value changes;
-- one local JSON lifecycle check;
-- recovery commands normally exit before network/send;
-- no browser;
-- no OCR;
-- no model for extraction;
-- no new Python dependency;
-- no database;
-- no queue;
-- no background worker.
+- category metadata: ~5.7 KB;
+- one announcement detail: ~9.8 KB;
+- landing content: ~68.9 KB;
+- total: ~84–85 KB;
+- each measured CONVEGA request completed in roughly 1–3 seconds.
 
-The production diagnostic full-HTML requests completed in approximately
-0.9–1.5 seconds, so the intended `_fields` REST reads should be materially
-lighter. Exact timing/bytes still need measurement.
+Processing cost:
 
-## Cleanup
+- small JSON parsing;
+- ~60 KB stdlib HTML parsing;
+- deterministic string/date checks.
 
-Lifecycle state should remain bounded.
+Normal 13:47 recovery:
 
-Candidate cleanup rule:
+- zero HTTP when today's successful snapshot exists;
+- normally zero Telegram.
 
-- once `event_end_date or event_start_date < today - 30 days`, old inactive
-  baseline/announced entries may be pruned;
-- do not prune a record referenced by unresolved pending/uncertain delivery;
-- `sent_triggers` remains fixed-size rather than an unbounded history.
+No:
 
-No raw source archive is needed.
+- browser;
+- JavaScript engine;
+- OCR;
+- factual AI extraction;
+- new Python dependency;
+- database;
+- queue;
+- resident worker.
 
 ## Failure behavior
 
-### Source unavailable
+### Source transport failure
 
-Preserve the last-good snapshot/baseline and publish no new source-state claim.
+Preserve last-good source snapshot. No new registration-state claim.
 
-### Source malformed or unexpectedly empty
+### Landing missing or ambiguous
 
-Fail closed. Do not treat parser failure as authoritative deletion.
+Keep announcement Event facts.
+Registration status becomes `unknown`.
 
-### Registration metadata conflict
+### Announcement malformed
 
-Suppress registration lifecycle for that record. Preserve an independently
-valid Event if possible.
+Do not replace valid last-good catalogue facts with a fabricated empty state.
 
-### State JSON invalid
+### Contradictory normalized dates
 
-Fail closed and require operator repair. Never silently recreate empty state
-and replay the catalogue.
+Fail closed for that registration lifecycle record.
 
-### Telegram ambiguous
+Examples:
 
-Leave uncertain and stop automatic resend.
+- event end before start;
+- registration start after registration end;
+- explicit open combined with an already-passed absolute accepted deadline.
+
+A bad registration record should not necessarily destroy an independently
+valid ordinary Event contribution.
+
+### State corruption
+
+Fail closed. Do not silently initialize empty state and replay registrations.
+
+### Telegram ambiguous delivery
+
+Retain `uncertain`; block automatic resend.
 
 ### Translation unavailable
 
-Use safe source-language title if the source/event facts are otherwise valid.
+Use safe source-language title.
 
-## Test matrix before production
+## Cleanup
 
-### Source / REST
+Keep lifecycle state bounded.
 
-- exact host/path allowlist;
-- HTTP status/content-type/size/timeouts;
-- malformed JSON;
-- missing required WordPress fields;
-- bounded `_fields` responses;
-- category/post/page ID validation;
-- unchanged `modified` skips detail fetch;
-- changed/new ID fetches detail once;
-- current `PLAZAS AGOTADAS` fixture -> full;
-- broken/unexpected content does not erase last-good snapshot;
-- stage 21 and stage 22 remain distinct identities.
+Candidate rule:
 
-### Normalization
+- prune inactive records about 30 days after event end/start;
+- never prune evidence referenced by unresolved `uncertain`;
+- bound `sent_triggers` to a small recent history such as 512 entries.
 
-- reversed event interval rejected;
-- reversed registration interval rejected;
-- unknown bounds preserved as null;
-- no invented 23:59;
-- explicit open + already-passed accepted deadline conflict fails closed;
-- title/date change does not mutate stable record identity.
+No raw HTTP archive or image archive is required.
+
+## Final test matrix
+
+### CONVEGA REST/source
+
+- exact HTTPS host/path policy;
+- category slug/ID validation;
+- current category count/pagination behavior;
+- `per_page=100` single-response fixture;
+- malformed/oversized JSON;
+- timeout/HTTP/content-type failures;
+- landing slug resolves exactly once;
+- current stage-21 full fixture;
+- stage-22 announcement exists but landing does not -> unknown;
+- announcement includes stage 21 + stage 22 as separate records;
+- source failure preserves last-good;
+- no dependency on revisions/Wayback/cache validators.
+
+### HTML/action parsing
+
+- exact terminal phrase -> full;
+- terminal phrase + stale form -> terminal wins;
+- dedicated registration form + reviewed registration semantics -> open;
+- Contact Form 7 form recognized structurally, not by plugin name;
+- Forminator form recognized structurally, not by plugin name;
+- generic search/contact form is not registration;
+- map iframe is not registration;
+- generic `MÁS INFORMACIÓN` is not registration;
+- substring `form` inside `información` does not match;
+- explicit HTTPS `Ir a inscripción` CTA may be action;
+- plain HTTP action is rejected;
+- embedded form action is never exposed as resident URL;
+- embedded form uses canonical landing URL;
+- ambiguous multi-occurrence landing -> unknown.
+
+### Identity / association
+
+- post+stage identity stable through date change;
+- stage 21 / stage 22 distinct;
+- a later post with stage 21 does not collide;
+- zero/multiple landing occurrence matches fail closed;
+- title translation never affects identity.
 
 ### Lifecycle
 
-- first-seen active -> `Идёт запись`;
-- first-seen full -> silent;
-- observed-but-never-announced full -> explicit open renders current active,
-  not "reopened";
+- first-seen open -> current-active notice;
+- first-seen full/closed/unknown -> silent;
 - announced open -> full;
-- full -> unknown silent;
-- announced full -> explicit open;
-- record disappearance silent;
+- first-seen full -> open -> current-active, not reopening;
+- announced full -> unknown -> explicit open -> reopening;
+- unknown does not erase last explicit evidence;
+- disappearance silent;
 - stale snapshot silent;
-- missed past opening/deadline not replayed;
-- deadline extension/shortening for announced record;
-- event date correction for announced record;
-- full + deadline tomorrow -> only full.
+- past trigger not replayed;
+- opening tomorrow vs same-day fallback deduplicated;
+- closing tomorrow vs same-day fallback deduplicated;
+- full beats deadline;
+- already-communicated deadline can suppress redundant expected close;
+- early explicit close may notify;
+- date correction preserves identity;
+- past event suppresses new registration lifecycle.
 
-### Exact time and retry
+### Delivery
 
-- opening later today renders future time;
-- retry after opening time does not send stale future wording;
-- deadline already passed at current time does not send a same-day reminder;
-- retry after `valid_until` recomputes;
-- ambiguous send remains uncertain even after `valid_until`.
+- exclusive lifecycle state lock;
+- atomic state writes;
+- no retryable persisted pending message;
+- deterministic Telegram failure clears uncertainty and leaves old baseline;
+- retry recomputes message from current facts/time;
+- ambiguous failure retains uncertainty;
+- persisted uncertain contains candidate commit state for operator resolution;
+- confirmed success commits candidate state exactly once;
+- corrupt state fails closed.
 
 ### Event integration
 
-- CONVEGA Event can appear in Morning when relevant;
-- Tomorrow can read the same normalized source;
-- Weekend can read it;
-- cross-source duplicate does not create two resident events;
-- terminal access state cannot render together with stale registration action.
-
-### Delivery/state
-
-- exclusive lock;
-- atomic write;
-- deterministic Telegram rejection returns to safe retryable state;
-- HTTP 429 safe retry;
-- ambiguous send blocks auto-resend;
-- confirmed success commits baseline/announced/triggers exactly once;
-- corrupt state fails closed;
-- cleanup never removes unresolved delivery evidence.
+- one source record projects to Event and RegistrationRecord;
+- Morning can read last-good CONVEGA Event data;
+- Tomorrow requires fresh same-day source contribution;
+- Weekend sees CONVEGA events;
+- Friday `--fresh` best-effort refreshes CONVEGA;
+- cross-source normal Event dedup remains existing behavior;
+- terminal access note cannot render together with stale registration action;
+- no lifecycle fields are added globally to `Event`.
 
 ### Termux/cron
 
-- installer remains idempotent;
-- unrelated crontab rows preserved;
-- historical managed block upgrades safely;
-- runtime lock busy at 12:47 -> no overlap and no error storm;
-- 13:47 recovery performs HTTP only when today's accepted snapshot is absent.
+- one 12:47 wrapper invocation;
+- one 13:47 recovery invocation;
+- recovery makes zero source HTTP when today's snapshot is already valid;
+- global runtime lock protects only source refresh;
+- Telegram delivery does not hold global runtime lock;
+- busy 12:47 source lock causes quiet defer to 13:47;
+- no daemon/sleeping retry;
+- installer remains idempotent and preserves unrelated rows.
 
-## Rejected alternatives
+## Overengineering audit
 
-### Browser / Playwright / Selenium
+The final design explicitly rejects:
 
-Rejected. Production proves plain HTTPS and WordPress REST expose the needed
-current content.
+- browser / Playwright / Selenium / Chromium;
+- OCR;
+- source-side AI extraction;
+- generic notification/event bus;
+- database;
+- queue;
+- daemon;
+- resident scheduler;
+- cross-source registration merge;
+- plugin-specific form engine;
+- persisted retry queue;
+- `valid_until` retry state;
+- four separate registration cron rows;
+- global runtime lock during Telegram delivery;
+- metadata-first landing fetch;
+- persisted announcement modified-cache solely to save ~10 KB/day;
+- extra morning CONVEGA fetch;
+- separate translation cron;
+- generic cancellation lifecycle;
+- generic participant/capacity tracking;
+- broad substring matching for registration semantics.
 
-### Full HTML pages every day
+## Remaining empirical question
 
-Rejected as default. Diagnostic HTML works but is much heavier than the
-available REST projections.
+One natural source observation remains unavailable today:
 
-### One landing-page GET as the whole catalogue
+> What exact markup/action will CONVEGA use when stage 22 becomes currently
+> registrable?
 
-Rejected. Current landing content contains only stage 21 while the official
-announcement contains stages 21 and 22.
+This is not an implementation blocker.
 
-### Generic registration framework
+The source adapter should:
 
-Rejected. One small source-independent lifecycle module plus source-specific
-adapters is enough.
+- classify only positively understood structures;
+- return `unknown` for an unseen structure;
+- record diagnostics;
+- be updated from evidence if stage 22 uses a new pattern.
 
-### Generalize `course_notifications.py`
+Do not predict or fabricate that future markup.
 
-Rejected. It is correctly coupled to recurring guide/course semantics and
-different registration wording.
+## Final recommendation
 
-### Expand global Event with lifecycle fields
+The research phase is complete enough to proceed to a durable ADR and then
+implementation.
 
-Rejected for v1. Event remains the existing presentation model; registration
-state is a parallel narrow concern.
+Before runtime code:
 
-### Database / queue / resident worker
+1. convert the accepted durable architecture from this research into an ADR;
+2. recheck the current latest ADR number rather than assuming it;
+3. update relevant KB/Decision Log with the accepted architecture;
+4. implement source layer first:
+   - CONVEGA REST fetch/validation;
+   - source snapshot;
+   - stage 21/22 fixtures;
+   - Event projection;
+   - translation-item projection;
+   - Friday Weekend refresh integration;
+   - terminal-access rendering guard;
+5. then implement lifecycle/delivery:
+   - RegistrationRecord projection;
+   - baseline + last-explicit evidence;
+   - announced IDs;
+   - bounded triggers;
+   - uncertain reservation with candidate commit state;
+   - one-message renderer;
+   - 12:47/13:47 launcher/cron;
+6. run code review and production preview/probe before enabling public sends.
 
-Rejected under runtime constraints and unnecessary for the scale.
+This preserves the project's central tradeoff:
 
-### Frequent polling / confirmation GET before every publication
-
-Rejected initially. Same-day source freshness is sufficient unless production
-proves a meaningful false-availability problem.
-
-### Source disappearance means closed
-
-Rejected. Missing data is unknown.
-
-### First source run is always silent
-
-Rejected for one-off active registrations because that can suppress the only
-useful registration notice. First-seen full remains silent.
-
-### Price/capacity/link/contact change notifications
-
-Rejected to prevent scope creep into a general event watcher.
-
-## Remaining empirical questions
-
-Before source-specific parser implementation is finalized:
-
-1. Measure real response sizes/timing of the proposed REST `_fields` URLs.
-2. Verify the exact JSON shape/order of the Senderismo posts list.
-3. Observe a future CONVEGA campaign while registration is actually open:
-   - where the actionable registration link appears;
-   - whether the landing page carries an explicit open marker or only a form;
-   - whether one page is reused for successive stages;
-   - whether `modified` reliably changes when the registration state changes.
-4. Determine the most stable source-backed stage identity available in
-   announcement/landing content.
-5. Confirm whether stage 22 eventually replaces stage 21 on page 41588 or
-   appears through another page/record.
-6. Decide the exact Friday late-refresh integration once the source adapter
-   contract is known.
-7. Measure actual process duration under the intended REST-only source adapter
-   to validate that 12:47/12:50 remains comfortably inside the quiet interval.
-
-## Recommendation
-
-Proceed with a **REST-only, browser-free CONVEGA proof of implementation**.
-
-The architecture should remain:
-
-- source-specific lightweight CONVEGA adapter;
-- one small normalized snapshot with Event and RegistrationRecord projections;
-- stable source-local registration identity;
-- separate event-registration lifecycle state;
-- same-day freshness;
-- explicit status transitions only;
-- one Telegram message maximum per run;
-- ambiguous-delivery protection;
-- 12:47 source refresh + 12:50 publication;
-- conditional 13:47/13:50 recovery;
-- existing runtime lock;
-- existing Event pipeline for normal event-day display.
-
-Before runtime implementation, run one final small REST probe using only the
-candidate `_fields` endpoints and record its byte/timing results. Then convert
-the durable choices into an ADR when the source contract and schedule are
-accepted for production.
+**prefer a small deterministic source-backed system that sometimes says
+nothing over a more general system that can confidently say something false.**
