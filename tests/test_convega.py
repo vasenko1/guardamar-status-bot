@@ -108,10 +108,7 @@ class ConvegaParsingTests(unittest.TestCase):
             by_stage[21]["record_id"],
             "convega:post-42197:stage-21",
         )
-        self.assertEqual(
-            by_stage[21]["route"],
-            "Guardamar del Segura → Torrevieja",
-        )
+        self.assertIsNone(by_stage[21]["route"])
 
         self.assertFalse(by_stage[22]["guardamar_relevant"])
         self.assertEqual(by_stage[22]["event_start_date"], "2026-11-08")
@@ -194,6 +191,32 @@ class ConvegaParsingTests(unittest.TestCase):
         self.assertEqual(stage21["observed_status"], "unknown")
         self.assertIsNone(stage21["registration_url"])
 
+    def test_spanish_text_date_can_identify_landing_occurrence(self):
+        value = [{
+            "id": 41588,
+            "date": "2026-09-16T09:35:54",
+            "modified": "2026-09-23T08:42:33",
+            "slug": "rutasguiadas-senderodelmediterraneo",
+            "link": LANDING_LINK,
+            "title": {"rendered": "Rutas guiadas Sendero del Mediterráneo"},
+            "content": {
+                "rendered": (
+                    "<h1>Ruta por la Etapa 21 del Sendero del Mediterráneo</h1>"
+                    "<p>4 de octubre de 2026</p>"
+                    "<h3>PLAZAS AGOTADAS</h3>"
+                )
+            },
+        }]
+        snapshot = parse_convega_payloads(
+            category(),
+            {POST_ID: announcement()},
+            value,
+            NOW,
+        )
+        stage21 = next(item for item in snapshot["records"] if item["stage"] == 21)
+
+        self.assertEqual(stage21["observed_status"], "full")
+
     def test_ambiguous_landing_identity_does_not_apply_status(self):
         value = landing(
             "<h3>PLAZAS AGOTADAS</h3>"
@@ -247,7 +270,7 @@ class ConvegaProjectionTests(unittest.TestCase):
         self.assertEqual(events[0].title, "Ruta guiada GR-92 · Etapa 21")
         self.assertEqual(events[0].access_note, REGISTRATION_FULL_ACCESS_NOTE)
         self.assertIsNone(events[0].registration_url)
-        self.assertEqual(events[0].route, "Guardamar del Segura → Torrevieja")
+        self.assertIsNone(events[0].route)
         self.assertEqual(stage22_day, ())
         self.assertEqual(
             items,
