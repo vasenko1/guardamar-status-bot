@@ -9,7 +9,6 @@ registration lifecycle records.
 from __future__ import annotations
 
 import asyncio
-import fcntl
 import json
 import logging
 import os
@@ -17,11 +16,10 @@ import re
 import tempfile
 import unicodedata
 import urllib.parse
-from dataclasses import replace
 from datetime import date, datetime, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
 from ._transport import BoundedFetchError, fetch_bounded
@@ -94,6 +92,9 @@ _OPEN_PHRASES = (
     "reserva tu plaza",
     "reservar plaza",
     "formulario de inscripcion",
+    "inscripcion aqui",
+    "inscripciones aqui",
+    "inscribete aqui",
 )
 _CTA_PATTERNS = tuple(
     re.compile(rf"^(?:{pattern})$", re.IGNORECASE)
@@ -103,6 +104,8 @@ _CTA_PATTERNS = tuple(
         r"inscr[ií]bete",
         r"reserva(?:r)?\s+(?:tu\s+)?plaza",
         r"formulario\s+de\s+inscripci[oó]n",
+        r"inscripciones?\s+aqu[ií]",
+        r"inscr[ií]bete\s+aqu[ií]",
     )
 )
 
@@ -140,11 +143,16 @@ class _RenderedContentParser(HTMLParser):
             }
             self.links.append(self._link)
         elif tag == "form":
-            self._form = {"has_submit": False}
+            self._form = {"has_submit": False, "user_fields": 0}
             self.forms.append(self._form)
         elif tag == "input" and self._form is not None:
-            if values.get("type", "").casefold() == "submit":
+            input_type = values.get("type", "text").casefold()
+            if input_type == "submit":
                 self._form["has_submit"] = True
+            elif input_type not in {"hidden", "button", "reset"}:
+                self._form["user_fields"] += 1
+        elif tag in {"select", "textarea"} and self._form is not None:
+            self._form["user_fields"] += 1
         elif tag == "button" and self._form is not None:
             button_type = values.get("type", "").casefold()
             if button_type in {"", "submit"}:
@@ -424,8 +432,11 @@ def _parse_post(raw: Any, now: datetime) -> Tuple[Dict[str, Any], ...]:
         raise ConvegaSourceError("CONVEGA announcement date is invalid") from exc
     parser = _parse_rendered(content.get("rendered"))
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
+    occurrences = _sentence_occurrences(parser.text, published)
+    if not occurrences:
+        raise ConvegaSourceError("CONVEGA announcement has no usable GR-92 occurrences")
     records = []
-    for occurrence in _sentence_occurrences(parser.text, published):
+    for occurrence in occurrences:
         event_day = occurrence["event_start_date"]
         if not (
             local_day - timedelta(days=30)
@@ -462,8 +473,6 @@ def _parse_post(raw: Any, now: datetime) -> Tuple[Dict[str, Any], ...]:
             "registration_url": None,
             "registration_contact": None,
         })
-    if not records:
-        raise ConvegaSourceError("CONVEGA announcement has no usable GR-92 occurrences")
     return tuple(records)
 
 
@@ -488,6 +497,7 @@ def _safe_date(year: int, month: int, day: int) -> Optional[date]:
 
 def _explicit_registration_cta(
     parser: _RenderedContentParser,
+    canonical_url: str,
 ) -> Optional[str]:
     for link in parser.links:
         label = " ".join(link.get("text", "").split())
@@ -495,7 +505,12 @@ def _explicit_registration_cta(
             continue
         if not any(pattern.fullmatch(label) for pattern in _CTA_PATTERNS):
             continue
-        action = _valid_registration_action_url(link.get("href"))
+        href = link.get("href")
+        if not isinstance(href, str):
+            continue
+        action = _valid_registration_action_url(
+            urllib.parse.urljoin(canonical_url, href)
+        )
         if action is not None:
             return action
     return None
@@ -514,13 +529,17 @@ def _landing_state(
     if re.search(r"\bplazas\s+agotadas\b", folded):
         return "full", None, True
 
-    cta = _explicit_registration_cta(parser)
+    cta = _explicit_registration_cta(parser, canonical_url)
     if cta is not None:
         return "open", cta, False
 
     if (
         _has_registration_semantics(parser.text)
-        and any(bool(form.get("has_submit")) for form in parser.forms)
+        and any(
+            bool(form.get("has_submit"))
+            and int(form.get("user_fields", 0)) >= 2
+            for form in parser.forms
+        )
     ):
         return "open", canonical_url, False
 
@@ -586,7 +605,7 @@ def parse_convega_payloads(
         if detail is None:
             raise ConvegaSourceError("CONVEGA guided announcement detail is missing")
         records.extend(_parse_post(detail, now))
-    if not records or len(records) > MAX_RECORDS:
+    if len(records) > MAX_RECORDS:
         raise ConvegaSourceError("CONVEGA produced an invalid occurrence count")
 
     unique = {}
