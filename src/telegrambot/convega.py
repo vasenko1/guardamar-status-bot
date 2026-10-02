@@ -83,6 +83,10 @@ _GUIDED_TITLE = re.compile(r"\brutas?\s+guiadas?\b", re.IGNORECASE)
 _GR92 = re.compile(r"\bgr\s*[-–]?\s*92\b", re.IGNORECASE)
 _STAGE = re.compile(r"\betapa\s+(\d{1,3})\b", re.IGNORECASE)
 _NUMERIC_DATE = re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b")
+_SPANISH_FULL_DATE = re.compile(
+    r"\b(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+de\s+(\d{4})\b",
+    re.IGNORECASE,
+)
 
 _OPEN_PHRASES = (
     "inscripcion",
@@ -476,10 +480,17 @@ def _parse_post(raw: Any, now: datetime) -> Tuple[Dict[str, Any], ...]:
 def _landing_identity(parser: _RenderedContentParser) -> Optional[Tuple[int, date]]:
     stages = {int(value) for value in _STAGE.findall(parser.text)}
     dates = {
-        date(int(year), int(month), int(day))
+        candidate
         for day, month, year in _NUMERIC_DATE.findall(parser.text)
-        if _safe_date(int(year), int(month), int(day)) is not None
+        if (candidate := _safe_date(int(year), int(month), int(day))) is not None
     }
+    for day, month_name, year in _SPANISH_FULL_DATE.findall(parser.text):
+        month = _MONTHS.get(_fold(month_name))
+        if month is None:
+            continue
+        candidate = _safe_date(int(year), month, int(day))
+        if candidate is not None:
+            dates.add(candidate)
     if len(stages) != 1 or len(dates) != 1:
         return None
     return next(iter(stages)), next(iter(dates))
