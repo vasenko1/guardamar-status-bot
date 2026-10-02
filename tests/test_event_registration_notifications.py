@@ -31,6 +31,12 @@ def record(**changes):
         "status": "unknown",
     }
     values.update(changes)
+    if (
+        values["status"] == "open"
+        and "registration_url" not in changes
+        and "registration_contact" not in changes
+    ):
+        values["registration_url"] = "https://official.example/register"
     return RegistrationRecord(**values)
 
 
