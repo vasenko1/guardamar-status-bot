@@ -60,7 +60,7 @@ no message.
 | Lifecycle | Trigger | Resident-facing effect |
 | --- | --- | --- |
 | Morning Digest | 07:30 daily | One immutable daily message; pharmacy, events, holidays/markets, AEMET weather/sea/UV, locally computed sunrise/sunset, CAMS/Meteosalud baseline and fresh CCE hydrology contribute here without becoming separate morning processes. |
-| SUMA tax reminders | Inside the existing 07:30 daily one-shot | Best-effort final step cross-checks two official HTML pages and may publish at most one exact-date tax/debit reminder; separate state, no new cron/process/daemon. |
+| SUMA tax reminders | 08:05 daily one-shot | Independent one-shot cross-checks two official HTML pages and may publish at most one exact-date tax/debit reminder; separate state, no daemon or resident scheduler. |
 | SafeBeach + Mayor bathing status | 10:10–10:40 in season, then bounded operational checks | Separate daily beach root, live early edits, later confirmed replies; explicit Mayor bathing restrictions remain an independent safety signal. |
 | AEMET operational warnings | Existing `monitor-updates` windows | Material warning changes reply to the Morning Digest. |
 | CAMS / Meteosalud late environment | 10:40 CAMS early check plus existing operational recovery; Meteosalud on operational checkpoints | Material air-quality, pollen, heat or cold changes reply to the Morning Digest. |
