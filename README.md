@@ -306,6 +306,17 @@ The 112/Previfoc watcher runs hourly at minute `:19`; Hidraqua runs every 30
 minutes. Both remain short-lived one-shot processes and preserve unrelated cron
 entries.
 
+Install the independent SUMA one-shot without replacing existing cron jobs:
+
+```sh
+cd ~/bots/guardamar-status
+./termux/install-suma-cron.sh
+```
+
+The installer owns only its marked SUMA block, preserves unrelated crontab
+entries, and schedules one strict `telegrambot suma` run at 08:05
+`Europe/Madrid`.
+
 Install the independent hourly earthquake row without replacing existing cron
 jobs:
 
