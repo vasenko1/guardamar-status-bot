@@ -654,12 +654,30 @@ Accepted state: `full`.
 
 - event date: 2026-11-08;
 - event exists in the official announcement;
+- the official announcement places this route through Torrevieja, Orihuela
+  Costa and Pilar de la Horadada, not Guardamar;
 - current landing does not describe stage 22;
 - no source-backed current registration action for stage 22 has been observed.
 
-Accepted state: `unknown`.
+Accepted registration state: `unknown`.
+Publication relevance: outside the Guardamar Event/RegistrationRecord
+projection under the current official facts.
 
-No "registration open" message for stage 22 is currently justified.
+No stage-22 event or registration message is currently justified for the
+Guardamar group.
+
+## Locality filter
+
+CONVEGA is a comarca-level organizer, so not every discovered campaign
+occurrence is relevant to Guardamar. The official 2026 announcement provides a
+concrete counterexample: stage 21 runs between Guardamar and Torrevieja, while
+stage 22 runs through Torrevieja, Orihuela Costa and Pilar de la Horadada.
+
+The source layer may parse out-of-area occurrences for campaign consistency,
+but user-facing Event and RegistrationRecord projections require explicit
+source-backed Guardamar relevance (route/place/start/finish involving Guardamar).
+Do not infer locality merely because two stages share one announcement or one
+registration landing.
 
 ## Normalized source snapshot
 
