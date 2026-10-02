@@ -1267,9 +1267,9 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result, 0)
         self.assertIs(write.call_args.args[1], observed_digest)
-        suma.assert_awaited_once()
+        suma.assert_not_awaited()
 
-    async def test_morning_failure_still_attempts_suma_without_masking_failure(self):
+    async def test_morning_failure_does_not_attempt_suma(self):
         morning_failure = RuntimeError("morning failed")
         suma = AsyncMock(side_effect=RuntimeError("suma failed"))
 
@@ -1294,9 +1294,9 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaisesRegex(RuntimeError, "morning failed"):
                     await _run_command("morning")
 
-        suma.assert_awaited_once()
+        suma.assert_not_awaited()
 
-    async def test_unexpected_suma_failure_does_not_break_successful_morning(self):
+    async def test_separate_suma_failure_cannot_break_successful_morning(self):
         with tempfile.TemporaryDirectory() as directory:
             with (
                 patch.dict(os.environ, {
@@ -1323,7 +1323,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 result = await _run_command("morning")
 
         self.assertEqual(result, 0)
-        suma.assert_awaited_once()
+        suma.assert_not_awaited()
 
     async def test_appends_diagnostics_only_in_preview_wrapper(self):
         async def produce(*args, diagnostics=None, **kwargs):
