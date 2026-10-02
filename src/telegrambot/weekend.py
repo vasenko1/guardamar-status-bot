@@ -18,6 +18,7 @@ from .municipal_agenda import (
 from .library_agenda import LibraryAgendaError, fetch_today_library_events
 from .am_guardamar import AmGuardamarError, fetch_today_am_guardamar_events
 from .facv import FacvSourceError, fetch_today_facv_events
+from .convega import ConvegaSourceError, fetch_today_convega_events
 from .pesca_cv import PescaCvSourceError, fetch_today_pesca_cv_events
 
 LOGGER = logging.getLogger(__name__)
@@ -43,6 +44,7 @@ async def _day_events(
     am_guardamar_state_path: Path,
     facv_state_path: Path,
     pesca_cv_state_path: Path,
+    convega_state_path: Path,
     translation_cache_path: Path,
     diagnostics: Optional[List[SourceDiagnostic]] = None,
 ):
@@ -129,6 +131,17 @@ async def _day_events(
         if diagnostics is not None:
             diagnostics.append(source_error("PESCA-CV", "Federación Pesca CV", exc))
         pesca_cv_events = ()
+    try:
+        convega_events = await fetch_today_convega_events(
+            day,
+            convega_state_path,
+            translation_cache_path,
+        )
+    except ConvegaSourceError as exc:
+        LOGGER.warning("CONVEGA catalog unavailable for %s; omitting: %s", day.date(), exc)
+        if diagnostics is not None:
+            diagnostics.append(source_error("CONVEGA", "CONVEGA", exc))
+        convega_events = ()
     municipal_events = _prefer_agenda_guardamar_venues(
         municipal_events,
         agenda_events,
@@ -141,6 +154,7 @@ async def _day_events(
         am_guardamar_events,
         facv_events,
         pesca_cv_events,
+        convega_events,
     )
 
 
@@ -154,6 +168,7 @@ async def produce_weekend_message(
     am_guardamar_state_path: Path = Path("state/am_guardamar.json"),
     facv_state_path: Path = Path("state/facv_events.json"),
     pesca_cv_state_path: Path = Path("state/pesca_cv_events.json"),
+    convega_state_path: Path = Path("state/convega_events.json"),
     translation_cache_path: Path = Path("state/event_translations.json"),
     diagnostics: Optional[List[SourceDiagnostic]] = None,
 ) -> Optional[str]:
@@ -173,6 +188,7 @@ async def produce_weekend_message(
             am_guardamar_state_path,
             facv_state_path,
             pesca_cv_state_path,
+            convega_state_path,
             translation_cache_path,
             diagnostics,
         )
