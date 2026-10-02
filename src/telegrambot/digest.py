@@ -1472,6 +1472,12 @@ def _render_event_context(event, indent: str) -> List[str]:
     return rows
 
 
+_TERMINAL_REGISTRATION_ACCESS_NOTES = frozenset({
+    "места закончились",
+    "регистрация закрыта",
+})
+
+
 def _event_access_parts(event, *, include_capacity: bool = True) -> List[str]:
     access = []
     if event.ticket_price_cents == 0:
@@ -1498,12 +1504,15 @@ def _event_access_parts(event, *, include_capacity: bool = True) -> List[str]:
         )
     if event.access_note:
         access.append(html.escape(event.access_note))
-    if event.registration_url:
+    terminal_registration = (
+        event.access_note in _TERMINAL_REGISTRATION_ACCESS_NOTES
+    )
+    if event.registration_url and not terminal_registration:
         access.append(
             '<a href="' + html.escape(event.registration_url, quote=True)
             + '">Регистрация</a>'
         )
-    if event.registration_contact:
+    if event.registration_contact and not terminal_registration:
         label = (
             "контакт: "
             if event.registration_url
