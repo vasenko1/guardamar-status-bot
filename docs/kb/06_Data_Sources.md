@@ -849,6 +849,9 @@ stage/date facts; the stable guided-route landing slug supplies current
 registration evidence.
 
 The landing status is associated only with one uniquely identified occurrence.
+CONVEGA is comarca-wide, so Event/RegistrationRecord projection additionally
+requires explicit official Guardamar relevance; another stage in the same
+campaign is not local merely because it shares the announcement.
 Exact terminal text such as `PLAZAS AGOTADAS` is authoritative for `full`.
 `open` requires a positively validated registration form/action on the current
 dedicated landing. Missing controls or disappearing records are `unknown`, not
