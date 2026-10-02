@@ -124,15 +124,22 @@ not the form action returned inside REST-rendered HTML.
 Do not broaden the shared global Google-Forms registration URL allowlist for
 CONVEGA.
 
-### Current accepted campaign state
+### Locality and current accepted campaign state
+
+User-facing projection remains Guardamar-local. The official announcement says
+stage 21 runs between Guardamar del Segura and Torrevieja, while stage 22 runs
+through Torrevieja, Orihuela Costa and Pilar de la Horadada. Therefore stage 22
+may be parsed as campaign context but is not eligible for Guardamar Event or
+RegistrationRecord publication unless a future official source explicitly
+changes its local relevance.
 
 At acceptance time:
 
-- stage 21 is `full`;
-- stage 22 is `unknown`.
+- stage 21 is Guardamar-relevant and `full`;
+- stage 22 is current registration `unknown` and outside the Guardamar
+  publication projection.
 
-No stage-22 opening notice is allowed until a current source positively proves
-an actionable registration state.
+No stage-22 registration notice is allowed from the current source facts.
 
 ### Lifecycle semantics
 
