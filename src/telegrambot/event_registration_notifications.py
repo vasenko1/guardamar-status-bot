@@ -173,6 +173,9 @@ def valid_registration_record(record: RegistrationRecord) -> bool:
         and record.registration_start_date is None
         or record.registration_end_time is not None
         and record.registration_end_date is None
+        or record.status == "open"
+        and record.registration_url is None
+        and record.registration_contact is None
     ):
         return False
     for value in (
