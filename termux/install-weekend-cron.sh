@@ -7,6 +7,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PROJECT_DIR=$(dirname "$SCRIPT_DIR")
 WEEKEND="$PROJECT_DIR/termux/run-weekend.sh"
 TOMORROW="$PROJECT_DIR/termux/run-tomorrow-events.sh"
+REGISTRATION="$PROJECT_DIR/termux/run-event-registration.sh"
 SH_BIN=$(command -v sh)
 BACKUP_DIR="$HOME/.cache/crontab"
 CURRENT=$(mktemp)
@@ -28,6 +29,10 @@ if [ ! -f "$TOMORROW" ]; then
     echo "ОШИБКА: run-tomorrow-events.sh не найден" >&2
     exit 1
 fi
+if [ ! -f "$REGISTRATION" ]; then
+    echo "ОШИБКА: run-event-registration.sh не найден" >&2
+    exit 1
+fi
 
 mkdir -p "$BACKUP_DIR"
 crontab -l >"$CURRENT" 2>/dev/null || true
@@ -47,11 +52,13 @@ fi
 printf '%s\n' \
     "15 19 * * 5 $WEEKEND --fresh" \
     "15 20 * * 5 $WEEKEND" \
+    "47 12 * * * $SH_BIN $REGISTRATION" \
+    "47 13 * * * $SH_BIN $REGISTRATION" \
     "25 19 * * 0-4 $SH_BIN $TOMORROW" \
     "25 20 * * 0-4 $SH_BIN $TOMORROW" \
     >"$JOBS"
 
-if ! awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" -v weekend="$WEEKEND" -v tomorrow="$TOMORROW" -v shbin="$SH_BIN" '
+if ! awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" -v weekend="$WEEKEND" -v tomorrow="$TOMORROW" -v registration="$REGISTRATION" -v shbin="$SH_BIN" '
     NR == FNR { jobs[$0] = 1; next }
     $0 == begin { managed = 1; next }
     $0 == end { managed = 0; next }
