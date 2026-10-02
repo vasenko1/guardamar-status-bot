@@ -8,6 +8,7 @@ registration lifecycle records.
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import logging
@@ -903,13 +904,42 @@ async def convega_translation_items(
     return tuple(result)
 
 
+def convega_snapshot_is_fresh_today(
+    now: datetime,
+    state_path: Path = Path(DEFAULT_STATE_PATH),
+) -> bool:
+    try:
+        snapshot = _load_snapshot(state_path)
+    except ConvegaSourceError:
+        return False
+    if snapshot is None:
+        return False
+    observed = datetime.fromisoformat(snapshot["observed_at"])
+    return (
+        observed.astimezone(GUARDAMAR_TIMEZONE).date()
+        == now.astimezone(GUARDAMAR_TIMEZONE).date()
+    )
+
+
 def main() -> None:
+    parser = argparse.ArgumentParser(description="CONVEGA GR-92 source sync")
+    parser.add_argument(
+        "command",
+        nargs="?",
+        choices=("sync", "fresh-today"),
+        default="sync",
+    )
+    args = parser.parse_args()
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
     )
     state_path = Path(os.environ.get("CONVEGA_STATE_PATH", DEFAULT_STATE_PATH))
     now = datetime.now(GUARDAMAR_TIMEZONE)
+    if args.command == "fresh-today":
+        raise SystemExit(
+            0 if convega_snapshot_is_fresh_today(now, state_path) else 1
+        )
     try:
         records = asyncio.run(refresh_convega_catalog(now, state_path))
     except ConvegaSourceError as exc:
