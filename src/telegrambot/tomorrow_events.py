@@ -20,6 +20,7 @@ from .am_guardamar import AmGuardamarError, fetch_today_am_guardamar_events
 from .branding import with_footer
 from .digest import MONTHS_GENITIVE, build_event_section
 from .facv import FacvSourceError, fetch_today_facv_events
+from .convega import ConvegaSourceError, fetch_today_convega_events
 from .library_agenda import LibraryAgendaError, fetch_today_library_events
 from .models import Event
 from .morning import _merge_events, _prefer_agenda_guardamar_venues
@@ -340,6 +341,7 @@ async def produce_tomorrow_event_publication(
     am_guardamar_state_path: Path,
     facv_state_path: Path,
     pesca_cv_state_path: Path,
+    convega_state_path: Path = Path("state/convega_events.json"),
     translation_cache_path: Path,
 ) -> Optional[TomorrowEventPublication]:
     """Build tomorrow's proactive announcement with no source network I/O."""
@@ -423,6 +425,19 @@ async def produce_tomorrow_event_publication(
         errors=(PescaCvSourceError,),
     )
 
+    convega = await _load_if_fresh(
+        name="CONVEGA",
+        path=convega_state_path,
+        timestamp_field="observed_at",
+        local_day=local_day,
+        load=lambda: fetch_today_convega_events(
+            target,
+            convega_state_path,
+            translation_cache_path,
+        ),
+        errors=(ConvegaSourceError,),
+    )
+
     municipal = _prefer_agenda_guardamar_venues(municipal, agenda)
     merged = _merge_events(
         municipal,
@@ -431,6 +446,7 @@ async def produce_tomorrow_event_publication(
         music,
         chess,
         fishing,
+        convega,
     )
     eligible = tuple(
         event
