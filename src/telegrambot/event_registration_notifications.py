@@ -169,6 +169,10 @@ def valid_registration_record(record: RegistrationRecord) -> bool:
         or record.registration_start_date is not None
         and record.registration_end_date is not None
         and record.registration_end_date < record.registration_start_date
+        or record.registration_start_time is not None
+        and record.registration_start_date is None
+        or record.registration_end_time is not None
+        and record.registration_end_date is None
     ):
         return False
     for value in (
@@ -176,6 +180,36 @@ def valid_registration_record(record: RegistrationRecord) -> bool:
         record.registration_contact,
     ):
         if value is not None and (not isinstance(value, str) or not value.strip()):
+            return False
+    return True
+
+
+def _temporally_consistent(record: RegistrationRecord, now: datetime) -> bool:
+    """Reject only source states that make an explicit open claim impossible."""
+
+    if record.status != "open":
+        return True
+    local = now.astimezone(GUARDAMAR_TIMEZONE)
+    today = local.date()
+    if record.registration_start_date is not None:
+        if record.registration_start_date > today:
+            return False
+        if (
+            record.registration_start_date == today
+            and record.registration_start_time is not None
+            and local.time().replace(tzinfo=None)
+            < record.registration_start_time
+        ):
+            return False
+    if record.registration_end_date is not None:
+        if record.registration_end_date < today:
+            return False
+        if (
+            record.registration_end_date == today
+            and record.registration_end_time is not None
+            and local.time().replace(tzinfo=None)
+            >= record.registration_end_time
+        ):
             return False
     return True
 
@@ -830,7 +864,10 @@ def plan_registration_run(
     _validate_state(dict(state_value))
     unique: Dict[str, RegistrationRecord] = {}
     for record in records:
-        if not valid_registration_record(record):
+        if (
+            not valid_registration_record(record)
+            or not _temporally_consistent(record, now)
+        ):
             continue
         existing = unique.get(record.record_id)
         if existing is not None and existing != record:
