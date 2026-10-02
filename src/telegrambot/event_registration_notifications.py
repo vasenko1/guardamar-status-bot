@@ -490,6 +490,26 @@ def _boundary_notices(
     notices = []
 
     opening = record.registration_start_date
+    closing = record.registration_end_date
+    if opening is not None and opening == closing:
+        tomorrow_key = _trigger("one-day-tomorrow", record, opening)
+        today_key = _trigger("one-day-today", record, opening)
+        if opening == tomorrow and tomorrow_key not in sent_triggers:
+            return (_Notice("one-day-tomorrow", record, tomorrow_key),)
+        if (
+            opening == today
+            and tomorrow_key not in sent_triggers
+            and today_key not in sent_triggers
+        ):
+            if record.registration_start_time is None:
+                return (_Notice("one-day-today", record, today_key),)
+            boundary = _local_datetime(opening, record.registration_start_time)
+            if local < boundary:
+                return (_Notice("one-day-today", record, today_key),)
+            if record.status == "open":
+                return (_Notice("active", record, today_key),)
+        return ()
+
     if opening is not None:
         tomorrow_key = _trigger("opening-tomorrow", record, opening)
         today_key = _trigger("opening-today", record, opening)
@@ -505,7 +525,6 @@ def _boundary_notices(
                 elif record.status == "open":
                     notices.append(_Notice("active", record, today_key))
 
-    closing = record.registration_end_date
     if closing is not None:
         tomorrow_key = _trigger("closing-tomorrow", record, closing)
         today_key = _trigger("closing-today", record, closing)
@@ -603,6 +622,8 @@ _NOTICE_PRIORITY = {
     "active": 80,
     "closing-tomorrow": 90,
     "closing-today": 100,
+    "one-day-tomorrow": 65,
+    "one-day-today": 75,
 }
 
 
@@ -685,6 +706,10 @@ def _section_title(kind: str, record: RegistrationRecord) -> str:
                 "откроется регистрация</b>"
             )
         return "📝 <b>Сегодня открывается регистрация</b>"
+    if kind == "one-day-tomorrow":
+        return "📝 <b>Регистрация только завтра</b>"
+    if kind == "one-day-today":
+        return "📝 <b>Регистрация только сегодня</b>"
     if kind == "closing-tomorrow":
         return "⏳ <b>Завтра заканчивается запись</b>"
     if kind == "closing-today":
@@ -721,7 +746,8 @@ def _notice_line(notice: _Notice) -> str:
         return _record_line(record) + f" · теперь до {deadline}{suffix}"
     include_action = notice.kind in {
         "active", "reopened", "opening-today", "opening-tomorrow",
-        "closing-today", "closing-tomorrow",
+        "closing-today", "closing-tomorrow", "one-day-today",
+        "one-day-tomorrow",
     }
     line = _record_line(record, include_action=include_action)
     if notice.kind in {"closing-today", "closing-tomorrow"}:
@@ -760,16 +786,6 @@ def _render_notices(notices: Sequence[_Notice], translation_path: Path) -> str:
             groups[notice.kind] = []
         groups[notice.kind].append(notice)
 
-    blocks = []
-    for kind in order:
-        group = groups[kind]
-        blocks.append(_section_title(kind, group[0].record))
-        blocks.extend(_notice_line(notice) for notice in group)
-
-    message = with_footer("\n\n".join(
-        "\n".join([block] + []) if False else block
-        for block in []
-    ))
     # Keep section heading and lines compact without special renderer state.
     lines = []
     for kind in order:
@@ -823,7 +839,8 @@ def plan_registration_run(
 
     previous_baseline = state_value["baseline"]
     announced = set(state_value["announced_record_ids"])
-    sent = set(state_value["sent_triggers"])
+    sent_order = list(state_value["sent_triggers"])
+    sent = set(sent_order)
     notices = _select_notices(
         tuple(unique[key] for key in sorted(unique)),
         previous_baseline,
@@ -844,8 +861,9 @@ def plan_registration_run(
 
     for notice in notices:
         announced.add(notice.record.record_id)
-        if notice.trigger_id is not None:
+        if notice.trigger_id is not None and notice.trigger_id not in sent:
             sent.add(notice.trigger_id)
+            sent_order.append(notice.trigger_id)
 
     today = now.astimezone(GUARDAMAR_TIMEZONE).date()
     candidate_baseline, announced = _prune_baseline(
@@ -854,7 +872,7 @@ def plan_registration_run(
         today,
     )
     ordered_announced = tuple(sorted(announced))[-MAX_ANNOUNCED_RECORDS:]
-    ordered_triggers = tuple(sorted(sent))[-MAX_SENT_TRIGGERS:]
+    ordered_triggers = tuple(sent_order[-MAX_SENT_TRIGGERS:])
 
     if not notices:
         return RegistrationPlan(
