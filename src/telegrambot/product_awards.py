@@ -904,18 +904,51 @@ def _refresh_offer(candidate: ReviewedCandidate) -> RetailOffer:
     )
 
 
-def _price_sentence(offer: RetailOffer, *, range_member: bool) -> str:
-    subject = "Этот вариант" if range_member else "Сейчас этот товар"
-    if offer.regular_price is not None and offer.regular_price != offer.price:
-        return (
-            f"{subject} в {html.escape(offer.retailer)} стоит "
-            f"<b>{html.escape(offer.price)}</b> вместо обычных "
-            f"{html.escape(offer.regular_price)}."
-        )
-    return (
-        f"{subject} в {html.escape(offer.retailer)} стоит "
-        f"<b>{html.escape(offer.price)}</b>."
+def _ru_product_count(value: int) -> str:
+    tail = value % 100
+    if 11 <= tail <= 14:
+        noun = "продуктов"
+    else:
+        last = value % 10
+        if last == 1:
+            noun = "продукт"
+        elif 2 <= last <= 4:
+            noun = "продукта"
+        else:
+            noun = "продуктов"
+    return f"{value} {noun}"
+
+
+def _price_sentence(
+    candidate: ReviewedCandidate,
+    offer: RetailOffer,
+    *,
+    range_member: bool,
+) -> str:
+    retailer = html.escape(offer.retailer)
+    current = html.escape(offer.price)
+    regular = (
+        html.escape(offer.regular_price)
+        if offer.regular_price is not None
+        else None
     )
+
+    if candidate.retailer_kind == "carrefour":
+        subject = "Для этого варианта на сайте Carrefour" if range_member else "На сайте Carrefour"
+        if regular is not None and regular != current:
+            return (
+                f"{subject} сейчас указана цена <b>{current}</b> "
+                f"вместо обычных {regular}."
+            )
+        return f"{subject} сейчас указана цена <b>{current}</b>."
+
+    subject = "Этот вариант" if range_member else "Сейчас этот товар"
+    if regular is not None and regular != current:
+        return (
+            f"{subject} в {retailer} стоит <b>{current}</b> "
+            f"вместо обычных {regular}."
+        )
+    return f"{subject} в {retailer} стоит <b>{current}</b>."
 
 
 def _methodology(candidate: ReviewedCandidate) -> str:
@@ -964,22 +997,26 @@ def build_message(
 ) -> str:
     name = html.escape(candidate.product_name)
     category = html.escape(candidate.source_category)
+    retailer = html.escape(candidate.retailer)
+    headline_award = html.escape(
+        candidate.headline_award
+        or (
+            f"World Beer Awards {candidate.award_year}"
+            if candidate.source_kind == "world_beer_awards"
+            else candidate.award_result
+        )
+    )
+    title = f"{name} — {headline_award} · {retailer}"
 
     if candidate.source_kind == "world_beer_awards":
-        title = (
-            f"Пиво {name} получило золото World Beer Awards "
-            f"{candidate.award_year}"
-        )
         first = (
             f"На World Beer Awards {candidate.award_year} <b>{name}</b> "
             f"получило золото и стало победителем Испании в стиле {category}."
         )
-        price = _price_sentence(offer, range_member=False)
     elif candidate.source_kind == "ocu":
         result = html.escape(candidate.award_result)
-        title = f"{name}: {result} в сравнении OCU"
         sample = (
-            f"{candidate.sample_size} продуктов"
+            _ru_product_count(candidate.sample_size)
             if candidate.sample_size is not None
             else "продукты"
         )
@@ -988,19 +1025,24 @@ def build_message(
             f"сравнила {sample} в категории {category}. "
             f"Результат <b>{name}</b> — <b>{result}</b>."
         )
-        price = _price_sentence(offer, range_member=False)
     elif candidate.source_kind == "mapa":
-        title = f"{name} — победитель Premio Alimentos de España {candidate.award_year}"
         first = (
             "Министерство сельского хозяйства Испании назвало "
             f"<b>{name}</b> победителем в категории {category}."
         )
-        price = _price_sentence(offer, range_member=False)
     else:
         raise ProductAwardError(
             "unknown award renderer",
             code="CONFIG",
         )
+
+    facts = []
+    if candidate.package_label:
+        facts.append(f"📦 {html.escape(candidate.package_label)}")
+    if candidate.country_label:
+        facts.append(f"🌍 {html.escape(candidate.country_label)}")
+    if candidate.producer_label:
+        facts.append(f"🏭 {html.escape(candidate.producer_label)}")
 
     parts = []
     image_value = (
@@ -1011,7 +1053,16 @@ def build_message(
     parts.extend((
         f"<p>🏆 <b>{title}</b></p>",
         f"<p>{first}</p>",
-        f"<p>{price}</p>",
+    ))
+    if candidate.highlight:
+        parts.append(
+            "<p>⭐ <b>Почему выделился:</b> "
+            f"{html.escape(candidate.highlight)}</p>"
+        )
+    if facts:
+        parts.append(f"<p>{'<br>'.join(facts)}</p>")
+    parts.extend((
+        f"<p>{_price_sentence(candidate, offer, range_member=False)}</p>",
         _methodology(candidate),
         f"<p>{FOOTER}</p>",
     ))
@@ -1022,7 +1073,6 @@ def build_message(
             code="MESSAGE-LENGTH",
         )
     return rendered
-
 
 WORLD_BEER_HOSTS = frozenset({"www.worldbeerawards.com", "worldbeerawards.com"})
 
