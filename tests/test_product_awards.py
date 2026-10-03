@@ -90,6 +90,106 @@ class SourceContractTests(unittest.TestCase):
         self.assertEqual(headers["User-Agent"], awards.USER_AGENT)
         self.assertNotIn("Sec-Fetch-Mode", headers)
 
+    def test_registry_is_quality_first_and_has_expected_retailers(self):
+        items = [
+            item
+            for category in awards.CATEGORIES
+            for source in category.sources
+            for item in source.candidates
+        ]
+
+        self.assertEqual(len(awards.CATEGORIES), 7)
+        self.assertFalse(any(item.source_kind == "producto_del_ano" for item in items))
+        self.assertEqual(
+            {item.category_key for item in items},
+            {
+                "sparkling_cava",
+                "gazpacho",
+                "aove",
+                "coffee_capsules",
+                "spirits_anis",
+                "international_lager",
+                "classic_pilsener",
+            },
+        )
+        self.assertEqual(
+            {item.retailer_kind for item in items},
+            {"aldi", "carrefour", "dia", "consum", "masymas"},
+        )
+
+    def test_html_retail_offer_uses_navigation_headers_and_exact_card_price(self):
+        item = ReviewedCandidate(
+            **{
+                **candidate("carrefour").__dict__,
+                "retailer": "Carrefour",
+                "retailer_kind": "carrefour",
+                "retailer_url": "https://www.carrefour.es/supermercado/product/p",
+                "retailer_hosts": frozenset({"www.carrefour.es"}),
+                "retailer_markers": ("Exact Product 1 l", "Maker"),
+                "retailer_title": "Exact Product 1 l",
+                "expected_ean": None,
+            }
+        )
+        html_source = (
+            "<html><body>"
+            "<header>Exact Product 1 l 0,00 €</header>"
+            "<main>Exact Product 1 l Maker 4,05 € Añadir</main>"
+            "</body></html>"
+        )
+        with patch.object(awards, "_fetch_html", return_value=html_source) as fetch:
+            result = awards._html_retail_offer(item)
+
+        self.assertEqual(result.price, "4,05 €")
+        self.assertIsNone(result.image_url)
+        self.assertEqual(result.product_name, "Exact Product 1 l")
+        self.assertEqual(fetch.call_args.kwargs["headers"], awards.RETAIL_NAVIGATION_HEADERS)
+
+    def test_html_retail_offer_fails_closed_when_exact_card_is_unavailable(self):
+        item = ReviewedCandidate(
+            **{
+                **candidate("dia").__dict__,
+                "retailer": "DIA",
+                "retailer_kind": "dia",
+                "retailer_url": "https://www.dia.es/category/p/1",
+                "retailer_hosts": frozenset({"www.dia.es"}),
+                "retailer_markers": ("Exact Product", "Maker"),
+                "retailer_title": "Exact Product",
+                "expected_ean": None,
+            }
+        )
+        html_source = (
+            "<html><body>Exact Product Maker temporalmente agotado "
+            "3,80 € Añadir</body></html>"
+        )
+        with patch.object(awards, "_fetch_html", return_value=html_source):
+            with self.assertRaises(awards.ProductAwardError) as caught:
+                awards._html_retail_offer(item)
+
+        self.assertEqual(caught.exception.diagnostic_code, "RETAIL-UNAVAILABLE")
+
+    def test_html_retail_offer_requires_all_exact_markers(self):
+        item = ReviewedCandidate(
+            **{
+                **candidate("markers").__dict__,
+                "retailer": "Carrefour",
+                "retailer_kind": "carrefour",
+                "retailer_url": "https://www.carrefour.es/supermercado/product/p",
+                "retailer_hosts": frozenset({"www.carrefour.es"}),
+                "retailer_markers": ("Exact Product", "Required Maker"),
+                "retailer_title": "Exact Product",
+                "expected_ean": None,
+            }
+        )
+        with patch.object(
+            awards,
+            "_fetch_html",
+            return_value="<html><body>Exact Product 4,05 € Añadir</body></html>",
+        ):
+            with self.assertRaises(awards.ProductAwardError) as caught:
+                awards._html_retail_offer(item)
+
+        self.assertEqual(caught.exception.diagnostic_code, "RETAIL-DRIFT")
+
     def test_consum_product_image_download_uses_pinned_cdn(self):
         item = candidate("media")
         url = (
@@ -470,6 +570,43 @@ class RenderingTests(unittest.TestCase):
         self.assertIn("один из продуктов этой линейки", message)
         self.assertIn("Exact Product Café", message)
 
+    def test_generic_ocu_renderer_uses_category_sample_and_result(self):
+        item = ReviewedCandidate(
+            **{
+                **candidate("gazpacho").__dict__,
+                "source_kind": "ocu",
+                "product_name": "Realfooding Gazpacho",
+                "source_category": "gazpachos",
+                "award_result": "Mejor del Análisis, 90/100",
+                "sample_size": 39,
+            }
+        )
+        message = build_message(item, offer(price="4,05 €"))
+
+        self.assertIn("39 продуктов", message)
+        self.assertIn("gazpachos", message)
+        self.assertIn("Mejor del Análisis, 90/100", message)
+        self.assertIn("физически тестировала", message)
+        self.assertNotIn("25 cava", message)
+
+    def test_mapa_renderer_names_official_winner_without_score(self):
+        item = ReviewedCandidate(
+            **{
+                **candidate("mapa").__dict__,
+                "source_kind": "mapa",
+                "product_name": "Anís Chinchón Dulce",
+                "source_category": "Mejor Bebida Espirituosa con Indicación Geográfica",
+                "award_result": "Galardonado 2026",
+                "award_year": 2026,
+            }
+        )
+        message = build_message(item, offer(price="13,79 €"))
+
+        self.assertIn("победитель Premio Alimentos de España 2026", message)
+        self.assertIn("Министерство сельского хозяйства Испании", message)
+        self.assertIn("Mejor Bebida Espirituosa", message)
+        self.assertNotIn("/100", message)
+
     def test_world_beer_renderer_uses_natural_medal_grammar(self):
         item = ReviewedCandidate(
             **{
@@ -505,7 +642,8 @@ class RenderingTests(unittest.TestCase):
         message = build_message(item, offer(price="3,15 €"))
 
         self.assertIn("94/100", message)
-        self.assertIn("25 cava", message)
+        self.assertIn("25 продуктов", message)
+        self.assertIn("cava", message)
         self.assertNotIn("94 баллов", message)
         self.assertNotIn("Amarillo pajizo", message)
 
@@ -535,6 +673,35 @@ class StateTests(unittest.TestCase):
             self.assertIn("event", state.published_events())
             self.assertEqual(state.category_cursor(), 2)
 
+
+    def test_current_production_state_shape_is_valid_after_registry_rebuild(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "awards.json"
+            path.write_text(
+                json.dumps({
+                    "schema_version": 1,
+                    "last_delivery_day": "2026-09-29",
+                    "published_events": [
+                        "classic_pilsener:wba-2026:mahou-sin-filtrar",
+                    ],
+                    "published_selections": ["classic_pilsener:2026"],
+                    "category_cursor": 0,
+                    "uncertain_event": None,
+                }),
+                encoding="utf-8",
+            )
+            state = ProductAwardState(path)
+
+            self.assertEqual(state.category_cursor(), 0)
+            self.assertEqual(
+                state.last_published_event_id(),
+                "classic_pilsener:wba-2026:mahou-sin-filtrar",
+            )
+            self.assertTrue(state.has_unpublished())
+            self.assertEqual(
+                awards._retailer_for_event(state.last_published_event_id()),
+                "masymas",
+            )
 
     def test_last_published_event_preserves_confirmation_order(self):
         with tempfile.TemporaryDirectory() as directory:
