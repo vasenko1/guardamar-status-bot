@@ -270,8 +270,13 @@ into a common registration-preparation command.
 
 ### Agenda Guardamar
 
-Treat ticket/admission semantics separately from one-off registration.
-Do not include it merely because it has purchase/invitation URLs.
+This recommendation is superseded by ADR 0091. Agenda Guardamar is now a
+candidate event-access source for paid tickets and free invitation claims.
+
+Still do not infer current sale/claim state merely from generic ticket metadata:
+the production probe must verify whether its occurrence-specific ticket URL is
+itself reliable evidence of current availability and how not-yet-open /
+sold-out states are represented.
 
 ### Ayuntamiento News
 

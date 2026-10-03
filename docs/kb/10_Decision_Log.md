@@ -1,4 +1,5 @@
 # Decision Log
+| 2026-10-03 | Generalize the pending threaded one-off lifecycle to event access with source-proven options | Registration, reservation and ticket/invitation availability share one bounded source-owned lifecycle. One event keeps one rich Telegram root; source-proven sessions become child options, while later option/full/closed changes reply to that root. | `adr/0091-one-off-event-access-options.md`, `research/2026-10-03-event-access-options-ticketing-review.md` |
 | 2026-10-03 | Thread one-off registration updates under one event root | The first useful registration publication becomes a per-event rich Telegram root; later lifecycle changes reply to that stored root instead of batching unrelated events. | `adr/0090-threaded-one-off-registration-updates.md` |
 
 This is the concise index of important product and architecture decisions.

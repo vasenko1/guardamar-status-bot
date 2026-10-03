@@ -65,8 +65,11 @@ Do not duplicate these records into ADR 0089 one-off lifecycle.
 Agenda Guardamar and municipal agenda already retain occurrence-specific ticket
 URLs/prices for eligible events.
 
-Ticket purchase is not one-off registration. A future ticket-sale/sold-out
-feature would require separate product semantics and evidence.
+This section is superseded by ADR 0091. Ticket purchase, free invitation claim
+and reservation now belong to the pending **event-access lifecycle** together
+with registration, while keeping source-specific evidence and user-facing
+wording distinct. They do not become "registration" semantically and do not
+justify a separate parallel engine.
 
 ## Source reconnaissance
 
@@ -360,8 +363,9 @@ Needed:
 4. Library reservation enrichment if first-party detail evidence is confirmed.
 5. Dale Vida as a separate course-notification source, not one-off lifecycle.
 
-Ticket-sale lifecycle and municipal contest participation remain separate
-future product decisions.
+Municipal contest participation remains a separate future product decision.
+Ticket/reservation/invitation availability is now covered by ADR 0091's pending
+event-access lifecycle.
 
 ## Required production probes before code
 
