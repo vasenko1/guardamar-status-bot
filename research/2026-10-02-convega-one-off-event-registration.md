@@ -1678,3 +1678,40 @@ jobs.
 Production remained on
 `24f0f8c8aa99dfcc6a93e774f4465968a86e7635` with a clean tree during this
 validation.
+
+
+## Full post-deployment code review — 2026-10-03
+
+A complete review of the merged CONVEGA chain and Termux scheduling found four
+correctness issues plus one test-entrypoint issue before final closure:
+
+1. Embedded-form `open` evidence was too page-global: registration wording
+   anywhere on the landing plus any two-field form could misclassify an
+   unrelated contact/newsletter form as registration. The parser now requires
+   reviewed registration semantics inside the same actionable form.
+2. The event-planning cron installer previously treated every
+   `crontab -l` failure as an empty crontab. A real read/permission failure
+   could therefore replace unrelated jobs. It now distinguishes only the
+   expected "no crontab for" case and fails closed otherwise.
+3. `pgrep -f '[c]rond'` could match `runsv crond` or
+   `svlogd .../crond` when the actual daemon was absent. Runtime detection now
+   uses exact process-name matching with `pgrep -x crond`.
+4. Future-opening notices could render a "Записаться" action when the source had
+   a known URL but had not yet explicitly reached `status=open`. Registration
+   URL/contact rendering now requires explicit current `open`.
+5. Two new merge-regression tests had been placed after the direct
+   `unittest.main()` entrypoint. Discovery executed them, but direct file
+   execution would not. The entrypoint is now last.
+
+The cron installer was also made transactionally safer: when `crond` is not
+already running, service startup and exact daemon verification occur before the
+new crontab is written. Service-start failure therefore leaves the previous
+crontab unchanged.
+
+These changes remain within ADR 0089 and the documented Termux runtime
+constraints. New regression tests cover unrelated embedded forms, future
+action suppression, true crontab-read failure, exact daemon detection, and
+service-start failure before cron mutation.
+
+Review branch/PR #261 requires a final device focused test and full regression
+before merge.
