@@ -2,69 +2,70 @@
 
 - Status: Accepted
 - Date: 2026-10-03
-- Implementation: Production-state probe passed; runtime rollout pending
+- Implementation: Final pre-implementation review complete; runtime rollout pending
+- Refined by: `research/2026-10-03-event-access-final-preimplementation-review.md`
 
 ## Context
 
-ADR 0089 deployed a narrow CONVEGA-only registration lifecycle. Its state was
-correct for that first version:
+ADR 0089 deployed a narrow CONVEGA-only registration lifecycle with four
+parallel global collections:
 
-- one global semantic baseline;
-- one global announced-record list;
-- one global sent-trigger list;
-- one global uncertain publication reservation.
+- semantic baseline;
+- announced-record IDs;
+- sent-trigger IDs;
+- one uncertain publication reservation.
 
-ADR 0090 then changed the publication identity to one Telegram root per real
-event, and ADR 0091 generalized the semantic domain from registration to
-registration/reservation/ticket access with source-proven child options.
+ADR 0090 introduced one Telegram root per real event. ADR 0091 generalized the
+semantic domain from one registration action to registration/reservation/ticket
+access with source-proven child options.
 
-A full clean-sheet review showed that extending the ADR 0089 parallel global
-collections into the multi-source/multi-option revision would preserve an
-accidental v1 storage shape. It would be valid, but harder to reason about,
-prune and recover because one event's semantic baseline, audience knowledge,
-root metadata and trigger history would live in several separate structures.
+The clean-sheet reviews showed that carrying the ADR 0089 global layout into
+the new lifecycle would preserve an accidental batching-oriented state shape.
 
-The product invariant is now stronger and simpler:
+The stronger invariant is:
 
 **one source-owned event record owns one access lifecycle and at most one
 Telegram root.**
 
-State should mirror that invariant.
+State should mirror that invariant while remaining one small atomic JSON file.
 
 ## Decision
 
-### Event-centric persistent state
+### State version 2 is event-centric and flat per record
 
-The next event-access schema stores lifecycle data under one bounded per-event
-entry.
+Use one exact bounded entry per lifecycle record.
 
 Conceptually:
 
 ```text
-version
+version = 2
+
 records {
   <record_id> {
-    semantic {
-      access_kind
-      event identity/correction facts
-      options {
-        <option_id> {
-          status
-          last_explicit_status
-          opens_at?
-          closes_at?
-          until_full
-          action identity needed for lifecycle semantics
-        }
+    source
+    access_kind
+
+    event_start_date
+    event_end_date?
+
+    options {
+      <option_id> {
+        status
+        last_explicit_status
+
+        opens_on?
+        opens_time?
+        closes_on?
+        closes_time?
+
+        until_full
+        action_url?
+        action_text?
       }
     }
 
     audience_known
-    root? {
-      message_id
-      published_at
-      media_kind
-    }
+    root_message_id?
     sent_triggers[]
   }
 }
@@ -72,237 +73,401 @@ records {
 uncertain?
 ```
 
-This is a small JSON state, not a database schema or permission to add generic
-persistence infrastructure.
+Do not add an extra `semantic { ... }` nesting layer or a nested root object in
+the first rollout. The event entry is already the unit of semantic and delivery
+state.
 
-Presentation-only facts such as poster URL, translated teaser, decorative
-details and current rich-card prose remain in the current projected
-`EventAccessRecord`; they are not duplicated into semantic persistence.
+Persist only facts needed for lifecycle comparison, root identity, pruning and
+deduplication.
 
-### No parallel global announced/root/trigger collections
+Do **not** persist normal presentation facts such as:
 
-Do not carry the v1 layout forward as separate global:
+- title or translated title;
+- teaser/description;
+- poster/image URL;
+- place/route;
+- rendered rich-card prose;
+- root publication time;
+- media kind.
+
+Current presentation remains on the current projected `EventAccessRecord`.
+
+### State invariants
+
+The validator must fail closed when any invariant is violated.
+
+At minimum:
+
+- each map key is a non-empty lifecycle `record_id`;
+- `source` and `access_kind` are valid;
+- for an existing record, `source` and `access_kind` are immutable;
+- `event_end_date >= event_start_date`;
+- option IDs are non-empty and unique;
+- option status is one of `unknown/open/full/closed`;
+- `last_explicit_status` is null or `open/full/closed`;
+- an `open` option has current source-backed action evidence;
+- an option time cannot exist without its corresponding date;
+- `root_message_id`, when present, is a positive integer;
+- `root_message_id != null` implies `audience_known=true`;
+- sent trigger keys are unique;
+- uncertain state refers to exactly one record and its exact candidate state.
+
+`audience_known=true` with `root_message_id=null` remains valid because a
+migrated ADR 0089 publication may be known to residents without an individual
+recoverable root.
+
+### Structural bounds
+
+The first rollout uses conservative safety bounds, not product limits:
+
+- at most 64 retained lifecycle records;
+- at most 16 options per event;
+- at most 128 trigger keys per event;
+- exactly one uncertain outbound operation.
+
+Do not silently evict active trigger history to satisfy a cap. If a valid future
+source exceeds a bound, fail closed and review that source contract before
+raising the bound.
+
+The current production probe measured one retained lifecycle record, zero
+triggers, no municipal source-proven session family and a maximum of four
+repeated Agenda occurrences under one ticket path. The chosen bounds therefore
+retain substantial headroom without permitting unbounded state growth.
+
+### Preserve unknown time
+
+Store source-known boundary dates and optional times separately:
 
 ```text
-baseline
-announced_record_ids
-root_messages
-sent_triggers
+opens_on + opens_time?
+closes_on + closes_time?
 ```
 
-For the new schema:
+Do not convert a date-only source fact into midnight.
 
-- audience knowledge lives beside that event as `audience_known`;
-- the Telegram root lives beside that event as `root`;
-- trigger history lives beside that event as `sent_triggers`;
-- semantic option state lives beside that event as `semantic`.
+For event retention and "past event" decisions use
+`event_end_date or event_start_date`, so an active multi-day event is not
+discarded after its first day.
 
-This makes one lifecycle record the unit of validation, pruning, testing and
-operator recovery.
+### Missing facts are not explicit clears
+
+A current source observation may omit a previously known boundary/action.
+
+In the first rollout, omission means "no current evidence", not an explicit
+semantic clear.
+
+Preserve prior last-known semantic values for comparison history, but:
+
+- reminders use only boundaries present in the **current observation**;
+- rendering uses only current source-backed action facts;
+- current `unknown` does not erase `last_explicit_status`.
+
+No generic explicit-clear sentinel is introduced until an actual source
+contract requires it.
+
+### Missing options remain unresolved
+
+A previously known option absent from the current successful observation:
+
+- remains in semantic history;
+- does not count as currently open;
+- does not count as full/closed;
+- blocks an aggregate claim that all options are unavailable.
+
+The planner derives missing options from previous option IDs minus current
+option IDs. No persisted `missing` status is added.
+
+### Trigger history is record-local
+
+Do not carry ADR 0089's global trigger list forward.
+
+New trigger IDs are already stored inside one event record, so they do not
+repeat `record_id`.
+
+Conceptually:
+
+```text
+<kind>:<option_id>:<boundary>
+```
+
+The boundary component includes the source-known date and, when known, time.
+
+Runtime treats new trigger IDs as opaque equality keys; it does not parse them
+for semantic decisions.
 
 ### One-record planner
 
-The semantic planner operates on exactly one observed event record and its
-previous per-event state.
-
-Conceptually:
+The planner operates on one observed event and one previous event state:
 
 ```text
 plan_record(observed_record, previous_record_state, now)
-    -> silent semantic update
-     | root publication
-     | strict reply publication
+    -> silent candidate
+     | root publication candidate
+     | strict reply publication candidate
 ```
 
-The orchestrator may process several independent records in deterministic order,
-but it never computes a candidate commit for unrelated records before their
-publication succeeds.
+The orchestrator processes records in deterministic order.
 
-### One-record crash-safe reservation
+For every record:
 
-Before one root or reply send, persist one `uncertain` reservation containing
-only the affected record operation and that record's exact candidate state.
+1. a silent semantic update may commit immediately;
+2. a publication is reserved;
+3. Telegram send is attempted;
+4. only confirmed success commits that record;
+5. only then may the next record be processed.
 
-Conceptually:
+No candidate commit for unrelated records is prepared/committed as part of one
+publication transaction.
+
+### Uncertain state is one exact record transaction
+
+Use one global uncertain slot:
 
 ```text
 uncertain {
-  record_id
-  operation
-  rendered_payload
-  candidate_record_state
   created_at
-  root_message_id?   # required only when operator resolves an ambiguous root as sent
+  record_id
+  operation        # root | reply
+  message
+  candidate_record
 }
 ```
 
-Confirmed success commits only that event entry and clears uncertainty.
+No separate trigger arrays, root object, publication queue or batch candidate
+belong in uncertain state.
 
-A deterministic failure that proves no Telegram side effect clears uncertainty
-and leaves the prior event state unchanged.
+The exact rendered text is retained only while uncertain so operator resolution
+commits the reserved operation, not a recomputed variant.
 
-An ambiguous send keeps the reservation and blocks automatic continuation, as
-in ADRs 0089-0090.
+#### Confirmed root
 
-This is the same lightweight single-slot transactional-outbox pattern, but the
-transaction boundary now matches the product identity.
+Reserve a candidate with:
+
+- `audience_known=true`;
+- `root_message_id=null`.
+
+After Telegram returns a positive message ID, commit the candidate with that
+ID and clear uncertainty.
+
+#### Ambiguous root
+
+Keep uncertainty.
+
+`resolve-sent` must require the operator-supplied positive Telegram root
+message ID and commit it into the candidate.
+
+#### Confirmed/ambiguous reply
+
+A reply candidate already contains its existing root message ID.
+
+Confirmed success commits normally.
+
+An ambiguous reply keeps uncertainty; operator `resolve-sent` needs no reply
+message ID because reply IDs are not stored.
+
+#### State-write failure after Telegram success
+
+After Telegram has returned confirmed success, never attempt a compensating
+resend in the same process.
+
+If the final atomic state write fails, terminate. The next invocation reads the
+actual state file:
+
+- if the commit landed, the publication is acknowledged;
+- if the prior uncertain reservation remains, automatic publication stays
+  blocked.
+
+This preserves safety across the unavoidable post-send persistence edge.
 
 ### Pruning is event-local
 
-When an expired event leaves the reviewed retention window, remove one
-`records[record_id]` entry. Its semantic option history, audience flag, root
-metadata and trigger history disappear together.
+When an event is older than the reviewed retention window, remove its one
+`records[record_id]` entry.
 
-Do not maintain an unrelated global trigger FIFO whose eviction can be caused
-by other events.
+Its:
 
-Bounds remain explicit:
+- option history;
+- audience flag;
+- root ID;
+- trigger history
 
-- bounded number of active/retained event records;
-- bounded options per record from source contracts;
-- bounded triggers per record;
-- exactly one uncertain outbound operation.
+are pruned together.
 
-The production probe observed one retained lifecycle record, zero triggers,
-no municipal session family and at most four repeated Agenda occurrences under
-one ticket path. These values confirm that one bounded JSON state remains
-appropriate, but one day's maximum is not a permanent product cap.
-
-Final numeric bounds should therefore come from accepted source-parser limits
-during implementation, with conservative per-record option/trigger caps. Do
-not copy ADR 0089's global `512` trigger cap into the new schema.
+Do not maintain independent global FIFOs that can leave orphan delivery state.
 
 ### Source collection remains outside lifecycle state
 
-The event-access runner consumes existing local normalized snapshots through
-small pure source-specific projections.
-
-It must not grow into a second source-refresh subsystem.
+Event-access publication consumes normalized local source snapshots through
+small source-specific projections.
 
 Target boundary:
 
 ```text
-existing bounded source refreshes
-        ↓
-normalized local snapshots
-        ↓
-pure source-specific project_access()
-        ↓
-AccessSourceBatch(source, observed_at, records)
-        ↓
+bounded source refresh
+      ↓
+normalized local snapshot
+      ↓
+pure source-specific access projection
+      ↓
 per-source freshness
-        ↓
-deterministic access ownership
-        ↓
+      ↓
 plan one record
-        ↓
+      ↓
 reserve -> send -> commit
 ```
 
-A stale source batch is omitted independently. It must not suppress fresh
-records from other sources.
+Do not build a second general source-refresh subsystem.
 
-The existing CONVEGA wrapper may remain as a deployment-compatible backstop in
-the first rollout, but new sources must not copy its "refresh from the
-notification runner" pattern without measured timing evidence.
+The first runtime rollout has only one enabled source (CONVEGA), so no generic
+cross-source ownership resolver is implemented yet. Explicit ownership
+suppression is added only with the first source pair that actually overlaps.
 
-### V1 migration
+### V1 migration is explicit, not a cron side effect
 
-The 2026-10-03 read-only production probe measured the deployed v1 state as:
+The 2026-10-03 production probe measured:
 
+- state version 1;
 - one baseline record;
 - zero announced records;
 - zero sent triggers;
-- no uncertain outbound reservation.
+- `uncertain=null`.
 
-This confirms the migration shape is small and the measured production state
-currently satisfies the deployment gate. Runtime must still re-check the gate
-at the actual migration moment because state may change after the probe.
+The state may still change before deployment, so runtime must revalidate the
+actual file.
 
-Perform one deterministic migration from the deployed ADR 0089 state.
+Normal `run` must not silently migrate v1.
 
-Deployment precondition:
+Provide an explicit operator command:
 
 ```text
-legacy uncertain == null
+python -m telegrambot.event_registration_notifications migrate-state
 ```
 
-If not, stop deployment until the operator resolves that delivery.
+Under the same lifecycle lock:
 
-For each valid v1 baseline record:
+1. read and strictly validate v1;
+2. require `uncertain == null`;
+3. create one private v1 backup without overwriting a conflicting backup;
+4. construct v2 entirely in memory;
+5. validate v2;
+6. atomically replace the production state.
 
-- create one event-centric `records[record_id]`;
+If state is already valid v2, the migration command exits successfully without
+rewriting it.
+
+No source request or Telegram operation occurs during migration.
+
+### V1 mapping
+
+For every valid v1 baseline record:
+
+- create `records[record_id]`;
+- preserve the source;
 - set `access_kind="registration"`;
-- migrate it as one deterministic default option;
-- preserve current and last explicit status evidence;
-- set `audience_known=true` when the ID was in legacy
+- preserve event start/end dates;
+- create one deterministic default option;
+- preserve current status and last explicit status;
+- map registration start/end date+time to option opening/closing boundaries;
+- preserve `until_full`;
+- map current URL/contact action into option action fields;
+- set `audience_known=true` only when present in legacy
   `announced_record_ids`;
-- move that record's legacy trigger IDs into its local `sent_triggers`;
-- set `root=null` because v1 did not own per-event roots.
+- set `root_message_id=null`.
 
-Do not invent Telegram message IDs.
+Do not invent a Telegram root ID.
 
-If a migrated audience-known event later needs publication while `root=null`,
-create one complete replacement/current-state root and store its ID; do not send
-an orphan reply and do not pretend the event was never announced.
+A migrated audience-known/rootless event creates one complete current-state root
+on its next material publication instead of sending an orphan reply.
 
-After a successful atomic migration, normal runtime supports only the new state
-version. Do not keep a permanent dual-schema compatibility path.
+### Legacy trigger migration
 
-### External names need not change during functional rollout
+V1 trigger IDs contain record IDs, and record IDs themselves may contain
+colons. Never parse them with a naive `split(":")`.
 
-Internal new types should use event-access terminology.
+For every legacy trigger:
 
-Do not couple the functional migration to cosmetic production renames of:
+1. test the finite accepted v1 trigger kinds;
+2. test every known baseline record ID as the exact middle component;
+3. require a valid ISO boundary suffix;
+4. require exactly one matching record;
+5. rewrite it to that record's deterministic default-option v2 trigger key.
+
+Zero or multiple matches abort migration.
+
+The measured production state currently has zero legacy triggers, but the code
+must remain correct if state changes before rollout.
+
+### Backup and rollback boundary
+
+The migration backup exists to recover the deployment only before v2 has
+created new resident-facing history.
+
+Before any confirmed v2 root/reply publication, the operator may restore:
+
+- the previous production commit;
+- the exact v1 backup.
+
+After the first confirmed v2 publication, restoring v1 is unsafe because v1
+cannot represent the new root/trigger history and may create duplicates.
+
+After that boundary, use a forward fix or explicit manual reconciliation.
+
+### External production names stay stable
+
+Do not combine functional rollout with cosmetic renames of:
 
 - `termux/run-event-registration.sh`;
 - `EVENT_REGISTRATION_STATE_PATH`;
 - `state/event_registration_notifications.json`;
-- existing log paths.
+- current log paths.
 
-A later isolated cleanup may rename them after rollout.
+Internal types may use `EventAccess*` terminology.
 
 ## Consequences
 
 ### Benefits
 
-- persistent shape matches one-event/one-root product identity;
-- no drift between separate baseline/announced/root/trigger maps;
-- record-at-a-time crash safety becomes explicit;
-- pruning cannot leave orphan audience/root/trigger metadata;
-- active events do not compete for one global trigger FIFO;
-- simpler unit tests and operator inspection;
-- still one tiny atomic JSON file and one uncertain slot.
+- one event is one state/recovery unit;
+- migration is operator-visible and reversible before publication;
+- root identity and semantic history cannot drift across separate global maps;
+- trigger history cannot be evicted by unrelated events;
+- record-at-a-time crash safety is direct;
+- state remains one tiny local JSON file;
+- future multi-option sources do not require another persistent-schema redesign.
 
 ### Costs
 
-- the first multi-source rollout needs one state migration rather than a small
-  additive v1 extension;
-- trigger migration must associate legacy keys with their record ID;
-- state validation becomes nested, though still bounded and deterministic.
+- one explicit migration command is required during rollout;
+- validation is stricter than ADR 0089;
+- legacy trigger mapping needs a small migration-only parser;
+- after first v2 publication, rollback must be forward rather than restoring v1.
 
 ## Alternatives rejected
 
-### Extend the ADR 0089 parallel global collections
+### Extend ADR 0089's parallel global collections
 
-Functionally workable, but it preserves a v1 batching-oriented storage shape
-after batching is no longer the lifecycle identity.
+Rejected because those collections encode the old batch-publication shape.
+
+### Automatically migrate inside normal cron execution
+
+Rejected because schema migration should not be hidden inside a resident-facing
+publication path.
+
+### Store root publication time/media kind now
+
+Rejected. The first rollout is text-only and neither field participates in
+current lifecycle decisions.
 
 ### Separate state file per event
 
-Rejected. It increases file churn, locking and cleanup complexity for no
-benefit at the expected scale.
+Rejected. It adds filesystem/locking/cleanup work without useful scale benefit.
 
-### Database / SQLite / Redis
+### SQLite / Redis / message broker
 
-Rejected. The data volume and transaction model remain tiny; one atomic JSON
-file is easier to recover on Termux.
+Rejected. Current volume and transaction semantics remain trivial for one
+atomic JSON file.
 
-### Persist presentation state with semantic state
+### Persist full presentation state
 
-Rejected. Poster/translation/prose changes are not access lifecycle changes.
-
-### Let the notification runner refresh every source
-
-Rejected. Collection and lifecycle publication remain separate bounded
-responsibilities.
+Rejected. Current presentation comes from current projections/cache and is not
+lifecycle truth.
