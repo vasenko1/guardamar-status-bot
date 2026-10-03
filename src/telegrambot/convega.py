@@ -915,9 +915,11 @@ def convega_snapshot_is_fresh_today(
     if snapshot is None:
         return False
     observed = datetime.fromisoformat(snapshot["observed_at"])
+    local_now = now.astimezone(GUARDAMAR_TIMEZONE)
+    local_observed = observed.astimezone(GUARDAMAR_TIMEZONE)
     return (
-        observed.astimezone(GUARDAMAR_TIMEZONE).date()
-        == now.astimezone(GUARDAMAR_TIMEZONE).date()
+        local_observed.date() == local_now.date()
+        and local_observed <= local_now
     )
 
 
