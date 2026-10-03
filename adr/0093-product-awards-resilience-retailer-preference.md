@@ -1,6 +1,6 @@
 # ADR 0093: Product Awards resilience and retailer preference
 
-- Status: Implemented in main; production deployment validation pending
+- Status: Implemented and production-validated
 - Date: 2026-10-03
 - Refines: ADR 0083, ADR 0084
 
