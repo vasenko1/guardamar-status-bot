@@ -522,3 +522,108 @@ The next probe must measure/verify, for each accepted source:
 - simultaneous eligible root count.
 
 Do not write multi-source runtime code until those facts are collected.
+
+
+## Final consistency findings
+
+### 13. Cross-source duplicate roots need explicit ownership
+
+The same real event may appear through Municipal/Turismo, Agenda Guardamar and,
+for music events, AM Guardamar.
+
+A naive multi-source orchestrator would create duplicate Telegram roots even
+though each individual source record is valid.
+
+Do not add a generic cross-source entity-resolution layer.
+
+Instead, every accepted source projection must define an access-ownership rule.
+When a municipal source delegates ticket purchase to Agenda Guardamar, the
+Agenda occurrence should own that ticket lifecycle once the exact delegated
+action/occurrence relationship is proven. Municipal data may enrich the card
+only through a deterministic exact join.
+
+Registration/reservation actions owned directly by Municipal, FACV, Library or
+CONVEGA remain with those adapters.
+
+The production probe must count overlaps and delegated URLs so those ownership
+rules are evidence-backed.
+
+### 14. Multi-option triggers must include option identity
+
+The deployed trigger key is record-level. That will collide when two slots of
+one event share a registration deadline.
+
+The access implementation needs option-scoped trigger IDs for option-specific
+opening/closing/deadline facts, e.g.
+
+`kind:record_id:option_id:boundary`.
+
+No additional trigger store is required; the existing bounded trigger list can
+keep these keys.
+
+### 15. Migration must not reinterpret a legacy uncertain send
+
+A v1 state migration is simple only when `uncertain == null`.
+
+The deployment gate should require the operator to resolve any legacy uncertain
+registration delivery before switching schemas. This is safer and much smaller
+than writing compatibility logic for an in-flight combined v1 publication.
+
+Valid v1 records then migrate to one registration-kind access record with one
+deterministic default option. Existing `announced_record_ids` remain audience
+knowledge even though no root ID exists.
+
+If a migrated announced record later needs a publication before a root exists,
+create one self-contained replacement/current-state root and store its message
+ID. Do not emit an orphan reply and do not mark it unannounced.
+
+### 16. Avoid cosmetic runtime renames in the first rollout
+
+The external cron/wrapper/state names currently contain "registration".
+
+Renaming shell wrappers, environment variables and production state paths at
+the same time as the state/schema/source expansion adds deployment churn with no
+resident value.
+
+Keep the existing cron/wrapper/state path names for the first event-access
+rollout unless a rename is required for correctness. Internal new types and
+documentation may use EventAccess terminology.
+
+A later cleanup rename is optional and should not be coupled to the functional
+migration.
+
+### 17. Action-link corrections are useful but not a v1 root-edit system
+
+If an already-open option's validated URL/contact changes, a concise threaded
+reply with the corrected action is useful.
+
+Do not introduce automatic root-message editing in v1 merely to keep old links
+perfectly current. Root edits create another delivery/edit state path and are
+not required for lifecycle correctness.
+
+If real source probes show frequent action-link churn, revisit idempotent
+known-root edits using the already existing Telegram edit transport.
+
+## Final implementation recommendation
+
+After production probes, implement one narrow access module evolution rather
+than a framework:
+
+```text
+explicit accepted source loaders
+        ↓
+AccessSourceBatch(source, observed_at, records)
+        ↓
+per-source freshness filter
+        ↓
+deterministic access-owner suppression
+        ↓
+record-at-a-time planner
+        ↓
+single-slot uncertain outbox
+        ↓
+one rich root or one strict threaded reply
+```
+
+No dynamic plugin registry is needed. A small explicit list/call sequence is
+clearer and safer for the current source count.
