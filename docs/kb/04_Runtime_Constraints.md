@@ -81,6 +81,14 @@ without merging to `main`. Deployment must not add a GitHub promotion branch,
 scheduled self-update, resident deployment agent, self-hosted CI runner, or
 public inbound port.
 
+Termux cron installers must not assume that `SVDIR` is inherited.
+Non-interactive SSH shells may not source the `termux-services` login-shell
+startup that normally exports `SVDIR=$PREFIX/var/service`. An installer should
+first accept an already-running `crond`; if startup is required, it must
+preflight the expected Termux service directory, invoke `sv` with an explicit
+service root, and verify the daemon after startup. It must not start a second
+`crond` merely because service-manager environment is absent.
+
 The CONVEGA one-off registration slice runs only as short-lived one-shots at
 12:47 and 13:47 Europe/Madrid. The first wrapper invocation performs at most one
 bounded WordPress REST refresh when a valid same-day snapshot is absent. The
