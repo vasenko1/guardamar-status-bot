@@ -393,12 +393,13 @@ The product-award feature has one daily one-shot cron invocation. It must read
 - After all reviewed events are published: zero award/retailer HTTP requests.
 - On a due run: inspect only the finite reviewed registry; never scan a full
   retailer catalogue or discover products dynamically.
-- Consecutive-retailer exclusion is evaluated from configured candidate
-  identity and the last confirmed retailer. A rotation-blocked candidate is not
-  fetched, and its category is deferred rather than falling through to a lower
+- Retailer diversity is evaluated from configured candidate identity and the
+  last confirmed retailer. The first bounded pass prefers a different retailer
+  and defers a same-retailer category rather than falling through to a lower
   rank solely for variety.
-- If every remaining category would repeat the last retailer, the run stays
-  silent without changing cooldown or cursor state.
+- If that pass finds no publishable different-retailer candidate, one fallback
+  pass may select the same retailer under ordinary category/source/rank rules.
+  Retailer diversity alone never causes a silent due run.
 - A candidate already evaluated unsuccessfully in the current process is not
   fetched again after another candidate's deterministic delivery/media failure.
   This suppression is process-local and is never persisted.
