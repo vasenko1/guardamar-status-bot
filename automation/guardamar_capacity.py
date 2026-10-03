@@ -239,6 +239,7 @@ def launch_manifest(profile: LaunchProfile = A1_PROFILE) -> dict[str, Any]:
         }
     return manifest
 
+
 def _is_target(instance: InstanceRecord) -> bool:
     return (
         instance.display_name == DISPLAY_NAME
@@ -333,6 +334,7 @@ def evaluate_audit(
         launch_safe=not blockers,
         blockers=tuple(blockers),
     )
+
 
 def _profile_for_instance(instance: InstanceDetails) -> Optional[LaunchProfile]:
     for profile in PROFILES.values():
@@ -621,6 +623,7 @@ class OciGateway:
         )
         return response.data.id
 
+
 def audit(
     gateway: Any,
     profile: LaunchProfile = A1_PROFILE,
@@ -791,6 +794,7 @@ def _observe_instance(
         profile=expected_profile.key if expected_profile is not None else None,
     )
 
+
 def _discover_after_ambiguous(
     gateway: Any,
     sleep: Callable[[float], None],
@@ -822,6 +826,7 @@ def _discover_after_ambiguous(
             )
     return None
 
+
 def run_launch(
     gateway: Any,
     env: Mapping[str, str],
@@ -831,20 +836,24 @@ def run_launch(
     """Run at most one logical and one physical LaunchInstance request."""
 
     selected_profile = profile or _select_profile(env)
-    report = audit(gateway, selected_profile)
-    if report.target_instances:
-        if len(report.target_instances) > 1:
-            return CapacityResult(
-                "BLOCKED",
-                "multiple non-terminated target instances exist",
-                disable_schedule=True,
-                report=report,
-                profile=selected_profile.key,
-            )
-        result = _observe_instance(
-            gateway, report.target_instances[0], sleep
+
+    # An already accepted target is authoritative across both profiles.
+    # Verify it before candidate-specific image/limit reads so a late queued
+    # run cannot depend on permissions for the other profile.
+    targets = _target_records(gateway)
+    if len(targets) > 1:
+        return CapacityResult(
+            "BLOCKED",
+            "multiple non-terminated target instances exist",
+            disable_schedule=True,
+            profile=selected_profile.key,
         )
-        return CapacityResult(**{**asdict(result), "report": report})
+    if targets:
+        return _observe_instance(
+            gateway, targets[0].identifier, sleep
+        )
+
+    report = audit(gateway, selected_profile)
     if not report.launch_safe:
         return CapacityResult(
             "BLOCKED",
@@ -914,6 +923,7 @@ def run_launch(
         gateway, identifier, sleep, selected_profile
     )
     return CapacityResult(**{**asdict(result), "report": final_report})
+
 
 def _emit_result(result: CapacityResult, env: Mapping[str, str]) -> None:
     print(json.dumps(asdict(result), sort_keys=True))
