@@ -90,6 +90,7 @@ class ResolvedProductImage:
     url: str
     hosts: frozenset[str]
     source_name: str
+    referer: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -486,6 +487,11 @@ def _resolve_reviewed_image_source(
                 url=image_url,
                 hosts=source.image_hosts,
                 source_name=source.name,
+                referer=(
+                    source.page_url
+                    if source.use_navigation_headers
+                    else None
+                ),
             )
     else:
         for raw_url in parser.meta_images:
@@ -495,6 +501,11 @@ def _resolve_reviewed_image_source(
                     url=image_url,
                     hosts=source.image_hosts,
                     source_name=source.name,
+                    referer=(
+                        source.page_url
+                        if source.use_navigation_headers
+                        else None
+                    ),
                 )
 
         for _, raw_url, _ in parser.images:
@@ -504,6 +515,11 @@ def _resolve_reviewed_image_source(
                     url=image_url,
                     hosts=source.image_hosts,
                     source_name=source.name,
+                    referer=(
+                        source.page_url
+                        if source.use_navigation_headers
+                        else None
+                    ),
                 )
 
     raise ProductAwardError(
@@ -570,6 +586,18 @@ def first_product_image(
 def fetch_product_image(
     image: ResolvedProductImage,
 ) -> tuple[bytes, str]:
+    headers = {
+        "Accept": "image/webp,image/png,image/jpeg,*/*;q=0.8",
+        "User-Agent": USER_AGENT,
+    }
+    if image.referer is not None:
+        headers = {
+            "Accept": "image/avif,image/webp,image/png,image/jpeg,*/*;q=0.8",
+            "Accept-Language": "es-ES,es;q=0.9,en;q=0.5",
+            "User-Agent": RETAIL_NAVIGATION_HEADERS["User-Agent"],
+            "Referer": image.referer,
+        }
+
     try:
         payload, _, content_type = fetch_bounded(
             image.url,
@@ -577,10 +605,7 @@ def fetch_product_image(
             accepted_types=frozenset({"image/jpeg", "image/png", "image/webp"}),
             limit_bytes=IMAGE_LIMIT_BYTES,
             timeout_seconds=REQUEST_TIMEOUT_SECONDS,
-            headers={
-                "Accept": "image/webp,image/png,image/jpeg,*/*;q=0.8",
-                "User-Agent": USER_AGENT,
-            },
+            headers=headers,
         )
     except BoundedFetchError as exc:
         raise ProductAwardError(

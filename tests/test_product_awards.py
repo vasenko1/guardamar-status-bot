@@ -244,6 +244,37 @@ class SourceContractTests(unittest.TestCase):
         self.assertTrue(allow(url))
         self.assertFalse(allow("https://example.com/product.jpg"))
         self.assertEqual(fetch.call_args.kwargs["limit_bytes"], awards.IMAGE_LIMIT_BYTES)
+        headers = fetch.call_args.kwargs["headers"]
+        self.assertEqual(headers["User-Agent"], awards.USER_AGENT)
+        self.assertNotIn("Referer", headers)
+
+    def test_product_image_download_uses_reviewed_page_referer_profile(self):
+        url = "https://www.dia.es/product_images/273821/exact.jpg"
+        referer = "https://www.dia.es/product/p/273821"
+        image = ResolvedProductImage(
+            url=url,
+            hosts=frozenset({"www.dia.es"}),
+            source_name="DIA exact product",
+            referer=referer,
+        )
+        with patch.object(
+            awards,
+            "fetch_bounded",
+            return_value=(b"webp", url, "image/webp"),
+        ) as fetch:
+            payload, content_type = awards.fetch_product_image(image)
+
+        self.assertEqual(payload, b"webp")
+        self.assertEqual(content_type, "image/webp")
+        self.assertEqual(
+            fetch.call_args.kwargs["headers"],
+            {
+                "Accept": "image/avif,image/webp,image/png,image/jpeg,*/*;q=0.8",
+                "Accept-Language": "es-ES,es;q=0.9,en;q=0.5",
+                "User-Agent": awards.RETAIL_NAVIGATION_HEADERS["User-Agent"],
+                "Referer": referer,
+            },
+        )
 
     def test_reviewed_image_source_prefers_exact_alt_match(self):
         source = ReviewedImageSource(
@@ -265,6 +296,31 @@ class SourceContractTests(unittest.TestCase):
 
         self.assertEqual(image.url, "https://brand.example/exact.jpg")
         self.assertEqual(image.source_name, "Brand product")
+        self.assertIsNone(image.referer)
+
+    def test_reviewed_navigation_image_preserves_exact_page_referer(self):
+        source = ReviewedImageSource(
+            name="DIA exact product",
+            page_url="https://www.dia.es/product/p/273821",
+            page_hosts=frozenset({"www.dia.es"}),
+            image_hosts=frozenset({"www.dia.es"}),
+            page_markers=("Exact Product",),
+            image_alt_markers=("Exact Product",),
+            use_navigation_headers=True,
+        )
+        html_source = (
+            '<html><body><h1>Exact Product</h1>'
+            '<img alt="Exact Product" src="/product_images/273821/exact.jpg">'
+            '</body></html>'
+        )
+        with patch.object(awards, "_fetch_html", return_value=html_source):
+            image = awards._resolve_reviewed_image_source(source)
+
+        self.assertEqual(
+            image.url,
+            "https://www.dia.es/product_images/273821/exact.jpg",
+        )
+        self.assertEqual(image.referer, source.page_url)
 
     def test_exact_alt_contract_prefers_larger_explicit_variant(self):
         source = ReviewedImageSource(

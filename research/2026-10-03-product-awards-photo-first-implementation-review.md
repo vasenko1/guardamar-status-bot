@@ -186,6 +186,29 @@ product media in `data-src`, `data-lazy-src` or `srcset`.
 The parser now records the small standard set rather than stopping at the first
 attribute. Host and exact-alt validation still applies.
 
+### 6. DIA exact-image download requires the exact product-page Referer
+
+A read-only Termux production probe on 2026-10-04 confirmed that DIA SKU 273821
+still exposes the exact AROM'ARTE product page and exact image URL. Direct image
+GETs with either the normal bot user agent or a browser user agent alone returned
+HTTP 403.
+
+The smallest proven successful request profile was:
+
+- the existing reviewed browser user agent;
+- the exact DIA product page as `Referer`.
+
+That stateless request returned HTTP 200 for both the `?imwidth=392` variant
+and the original image. The response MIME was `image/webp`. Cookies were not
+required: the same browser-UA-plus-Referer request worked without a session.
+`Origin` and `Sec-Fetch-*` headers were therefore unnecessary.
+
+The runtime fix keeps the existing host/type/size bounds and stores the exact
+reviewed page URL only on resolved images whose reviewed source already opts
+into the browser-navigation profile. Other product images keep their existing
+download headers. No cookie jar, browser session, JavaScript execution or new
+request is added.
+
 ## Registry hardening
 
 A new unit test enforces uniqueness of:
