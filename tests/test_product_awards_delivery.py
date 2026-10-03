@@ -138,6 +138,44 @@ class ProductAwardDeliveryTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn("<img", send.await_args_list[1].args[2])
             self.assertIsNone(state.uncertain_event())
 
+    async def test_ambiguous_uploaded_media_delivery_never_falls_through(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = ProductAwardState(Path(directory) / "awards.json")
+            item = publication()
+            ambiguous = TelegramError(
+                "timeout",
+                retryable=True,
+                code="TIMEOUT",
+            )
+            with (
+                patch(
+                    "telegrambot.__main__.send_rich_message",
+                    side_effect=remote_media_error(),
+                ) as send,
+                patch(
+                    "telegrambot.__main__.fetch_product_award_image",
+                    return_value=(b"jpeg", "image/jpeg"),
+                ),
+                patch(
+                    "telegrambot.__main__.send_rich_message_with_photo_upload",
+                    side_effect=ambiguous,
+                ) as upload,
+            ):
+                message_id = await _deliver_product_award(
+                    state,
+                    0,
+                    item,
+                    "token",
+                    "chat",
+                    date(2026, 10, 3),
+                )
+
+            self.assertIsNone(message_id)
+            send.assert_awaited_once()
+            upload.assert_awaited_once()
+            self.assertEqual(state.uncertain_event(), item.candidate.event_id)
+            self.assertNotIn(item.candidate.event_id, state.published_events())
+
     async def test_ambiguous_remote_delivery_never_falls_through(self):
         with tempfile.TemporaryDirectory() as directory:
             state = ProductAwardState(Path(directory) / "awards.json")
