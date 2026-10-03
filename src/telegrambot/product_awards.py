@@ -414,20 +414,139 @@ def _remote_image(
     return value
 
 
-def fetch_product_image(
+def _resolve_reviewed_image_source(
+    source: ReviewedImageSource,
+) -> ResolvedProductImage:
+    html_source = _fetch_html(
+        source.page_url,
+        source.page_hosts,
+        headers=(
+            RETAIL_NAVIGATION_HEADERS
+            if source.use_navigation_headers
+            else None
+        ),
+    )
+    visible = _visible_text(html_source)
+    _require_markers(
+        visible,
+        source.page_markers,
+        code="MEDIA-DRIFT",
+    )
+
+    parser = _ProductImageParser()
+    try:
+        parser.feed(html_source)
+    except Exception as exc:
+        raise ProductAwardError(
+            "reviewed product image page could not be parsed",
+            code="MEDIA-PARSER",
+        ) from exc
+
+    def resolve(raw_url: str) -> Optional[str]:
+        absolute = urllib.parse.urljoin(source.page_url, html.unescape(raw_url))
+        return _remote_image(absolute, source.image_hosts)
+
+    if source.image_alt_markers:
+        wanted = tuple(_fold(value) for value in source.image_alt_markers)
+        for alt, raw_url in parser.images:
+            folded_alt = _fold(alt)
+            if not all(marker in folded_alt for marker in wanted):
+                continue
+            image_url = resolve(raw_url)
+            if image_url is not None:
+                return ResolvedProductImage(
+                    url=image_url,
+                    hosts=source.image_hosts,
+                    source_name=source.name,
+                )
+
+    for raw_url in parser.meta_images:
+        image_url = resolve(raw_url)
+        if image_url is not None:
+            return ResolvedProductImage(
+                url=image_url,
+                hosts=source.image_hosts,
+                source_name=source.name,
+            )
+
+    if not source.image_alt_markers:
+        for _, raw_url in parser.images:
+            image_url = resolve(raw_url)
+            if image_url is not None:
+                return ResolvedProductImage(
+                    url=image_url,
+                    hosts=source.image_hosts,
+                    source_name=source.name,
+                )
+
+    raise ProductAwardError(
+        "reviewed exact product image missing",
+        code="MEDIA-DRIFT",
+    )
+
+
+def _retailer_image(
     candidate: ReviewedCandidate,
-    url: str,
-) -> tuple[bytes, str]:
+    offer: RetailOffer,
+) -> Optional[ResolvedProductImage]:
+    if offer.image_url is None:
+        return None
     media_hosts = {
         "consum": CONSUM_MEDIA_HOSTS,
         "masymas": MASYMAS_MEDIA_HOSTS,
         "aldi": ALDI_MEDIA_HOSTS,
     }.get(candidate.retailer_kind, frozenset())
-    allowed_hosts = candidate.retailer_hosts | media_hosts
+    hosts = candidate.retailer_hosts | media_hosts
+    image_url = _remote_image(offer.image_url, hosts)
+    if image_url is None:
+        return None
+    return ResolvedProductImage(
+        url=image_url,
+        hosts=hosts,
+        source_name=f"{candidate.retailer} exact product",
+    )
+
+
+def iter_product_images(
+    candidate: ReviewedCandidate,
+    offer: RetailOffer,
+) -> Iterator[ResolvedProductImage]:
+    seen: set[str] = set()
+    for source in candidate.image_sources:
+        try:
+            image = _resolve_reviewed_image_source(source)
+        except ProductAwardError as exc:
+            LOGGER.warning(
+                "Product-award image source %s unavailable for %s [%s]",
+                source.name,
+                candidate.event_id,
+                exc.diagnostic_code,
+            )
+            continue
+        if image.url in seen:
+            continue
+        seen.add(image.url)
+        yield image
+
+    retailer_image = _retailer_image(candidate, offer)
+    if retailer_image is not None and retailer_image.url not in seen:
+        yield retailer_image
+
+
+def first_product_image(
+    candidate: ReviewedCandidate,
+    offer: RetailOffer,
+) -> Optional[ResolvedProductImage]:
+    return next(iter_product_images(candidate, offer), None)
+
+
+def fetch_product_image(
+    image: ResolvedProductImage,
+) -> tuple[bytes, str]:
     try:
         payload, _, content_type = fetch_bounded(
-            url,
-            is_allowed_url=_allowed(allowed_hosts),
+            image.url,
+            is_allowed_url=_allowed(image.hosts),
             accepted_types=frozenset({"image/jpeg", "image/png", "image/webp"}),
             limit_bytes=IMAGE_LIMIT_BYTES,
             timeout_seconds=REQUEST_TIMEOUT_SECONDS,
@@ -438,7 +557,7 @@ def fetch_product_image(
         )
     except BoundedFetchError as exc:
         raise ProductAwardError(
-            "retailer product image could not be downloaded",
+            "product image could not be downloaded",
             code=f"MEDIA-{exc.code}",
         ) from exc
     return payload, content_type
