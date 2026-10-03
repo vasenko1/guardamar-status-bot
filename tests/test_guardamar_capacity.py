@@ -5,18 +5,29 @@ from pathlib import Path
 from automation import guardamar_capacity as capacity
 
 
-def availability(cores=0, memory=0, storage=0):
+def availability(cores=0, memory=0, storage=0, e2=0):
     return {
         "a1_ocpus": capacity.ResourceAvailability(cores, 16 - cores),
         "a1_memory_gb": capacity.ResourceAvailability(memory, 96 - memory),
+        "e2_micro_count": capacity.ResourceAvailability(e2, 2 - e2),
         "free_storage_gb": capacity.ResourceAvailability(
             storage, 200 - storage
         ),
     }
 
 
-def image(identifier=capacity.IMAGE_OCID, state="AVAILABLE", os_name="Oracle Linux"):
-    return capacity.ImageRecord(identifier, state, os_name, "Oracle-Linux-9.8")
+def image(
+    identifier=None,
+    state="AVAILABLE",
+    os_name="Oracle Linux",
+    profile=capacity.A1_PROFILE,
+):
+    return capacity.ImageRecord(
+        identifier or profile.image_ocid,
+        state,
+        os_name,
+        "Oracle-Linux-9.8",
+    )
 
 
 def subnet(identifier=capacity.SUBNET_OCID, state="AVAILABLE", prohibit=False):
@@ -32,15 +43,20 @@ def record(
     return capacity.InstanceRecord(identifier, name, state, tags or {})
 
 
-def details(identifier="instance-id", state="RUNNING", **changes):
+def details(
+    identifier="instance-id",
+    state="RUNNING",
+    profile=capacity.A1_PROFILE,
+    **changes,
+):
     values = {
         "identifier": identifier,
         "display_name": capacity.DISPLAY_NAME,
         "lifecycle_state": state,
-        "shape": capacity.SHAPE,
-        "ocpus": capacity.OCPUS,
-        "memory_in_gbs": capacity.MEMORY_GBS,
-        "image_id": capacity.IMAGE_OCID,
+        "shape": profile.shape,
+        "ocpus": profile.ocpus,
+        "memory_in_gbs": profile.memory_gbs,
+        "image_id": profile.image_ocid,
         "availability_domain": capacity.AVAILABILITY_DOMAIN,
         "freeform_tags": {},
     }
@@ -71,16 +87,16 @@ class FakeGateway:
             return self.instance_snapshots.pop(0)
         return self.instance_snapshots[0]
 
-    def get_image(self):
-        return image()
+    def get_image(self, profile=capacity.A1_PROFILE):
+        return image(profile=profile)
 
     def get_subnet(self):
         return subnet()
 
-    def list_shapes(self):
-        return [capacity.SHAPE]
+    def list_shapes(self, profile=capacity.A1_PROFILE):
+        return [profile.shape]
 
-    def get_resource_availability(self):
+    def get_resource_availability(self, profile=capacity.A1_PROFILE):
         return availability()
 
     def get_instance(self, _identifier):
@@ -97,8 +113,8 @@ class FakeGateway:
             raise value
         return value
 
-    def launch_instance(self, token):
-        self.launch_calls.append(token)
+    def launch_instance(self, token, profile=capacity.A1_PROFILE):
+        self.launch_calls.append((token, profile.key))
         if self.launch_error:
             raise self.launch_error
         return "instance-id"
@@ -198,6 +214,59 @@ class CapacityAuditTests(unittest.TestCase):
         self.assertFalse(manifest["create_vnic_details"]["assign_ipv6_ip"])
         self.assertEqual(manifest["freeform_tags"][capacity.MANAGED_TAG], "true")
 
+    def test_e2_audit_uses_separate_instance_limit_and_shared_storage(self):
+        report = capacity.evaluate_audit(
+            [],
+            image(profile=capacity.E2_PROFILE),
+            subnet(),
+            [capacity.E2_SHAPE],
+            availability(e2=1, storage=150),
+            capacity.E2_PROFILE,
+        )
+        self.assertTrue(report.launch_safe)
+        self.assertEqual(report.profile, "e2")
+        self.assertEqual(report.e2_micro_used, 1)
+
+        full = capacity.evaluate_audit(
+            [],
+            image(profile=capacity.E2_PROFILE),
+            subnet(),
+            [capacity.E2_SHAPE],
+            availability(e2=2),
+            capacity.E2_PROFILE,
+        )
+        no_storage = capacity.evaluate_audit(
+            [],
+            image(profile=capacity.E2_PROFILE),
+            subnet(),
+            [capacity.E2_SHAPE],
+            availability(storage=151),
+            capacity.E2_PROFILE,
+        )
+        self.assertFalse(full.launch_safe)
+        self.assertFalse(no_storage.launch_safe)
+
+    def test_e2_manifest_is_fixed_shape_without_a1_shape_config(self):
+        manifest = capacity.launch_manifest(capacity.E2_PROFILE)
+        self.assertEqual(manifest["shape"], capacity.E2_SHAPE)
+        self.assertEqual(
+            manifest["source_details"]["image_id"], capacity.E2_IMAGE_OCID
+        )
+        self.assertNotIn("shape_config", manifest)
+        self.assertEqual(manifest["source_details"]["boot_volume_size_in_gbs"], 50)
+
+    def test_auto_profile_selection_alternates_by_workflow_run_number(self):
+        self.assertEqual(
+            capacity._select_profile({"GITHUB_RUN_NUMBER": "10"}).key,
+            "e2",
+        )
+        self.assertEqual(
+            capacity._select_profile({"GITHUB_RUN_NUMBER": "11"}).key,
+            "a1",
+        )
+        with self.assertRaises(capacity.SafetyError):
+            capacity._select_profile({"GITHUB_RUN_NUMBER": "invalid"})
+
     def test_launch_still_requires_cli_and_workflow_switch(self):
         factory_called = False
 
@@ -250,6 +319,38 @@ class CapacityAuditTests(unittest.TestCase):
         self.assertEqual(result.outcome, "CAPACITY_MISS")
         self.assertFalse(result.disable_schedule)
         self.assertEqual(len(gateway.launch_calls), 1)
+
+    def test_e2_capacity_miss_still_makes_exactly_one_request(self):
+        gateway = FakeGateway()
+        gateway.launch_error = FakeError(
+            "Out of host capacity.", status=500, code="InternalError"
+        )
+
+        result = capacity.run_launch(
+            gateway,
+            {"GITHUB_RUN_ID": "123", "GITHUB_RUN_NUMBER": "2"},
+            lambda _: None,
+        )
+
+        self.assertEqual(result.outcome, "CAPACITY_MISS")
+        self.assertEqual(result.profile, "e2")
+        self.assertEqual(len(gateway.launch_calls), 1)
+        self.assertEqual(gateway.launch_calls[0][1], "e2")
+
+    def test_existing_e2_target_stops_a1_run_without_new_launch(self):
+        gateway = FakeGateway()
+        gateway.instance_snapshots = [[record()]]
+        gateway.instance_reads = [details(profile=capacity.E2_PROFILE)]
+
+        result = capacity.run_launch(
+            gateway,
+            {"GITHUB_RUN_NUMBER": "3"},
+            lambda _: None,
+        )
+
+        self.assertEqual(result.outcome, "READY")
+        self.assertEqual(result.profile, "e2")
+        self.assertEqual(gateway.launch_calls, [])
 
     def test_rate_limit_makes_exactly_one_request_and_no_retry(self):
         gateway = FakeGateway()
@@ -352,13 +453,22 @@ class CapacityAuditTests(unittest.TestCase):
             capacity._retry_token(first),
             capacity._retry_token({"GITHUB_RUN_ID": "124"}),
         )
+        self.assertNotEqual(
+            capacity._retry_token(first, capacity.A1_PROFILE),
+            capacity._retry_token(first, capacity.E2_PROFILE),
+        )
 
     def test_result_writes_safe_github_outputs_and_ready_summary(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "output"
             summary = Path(directory) / "summary"
             result = capacity.CapacityResult(
-                "READY", "verified", True, "ocid1.instance.example", "203.0.113.7"
+                "READY",
+                "verified",
+                True,
+                "ocid1.instance.example",
+                "203.0.113.7",
+                profile="a1",
             )
             capacity._emit_result(
                 result,
@@ -381,6 +491,7 @@ class CapacityAuditTests(unittest.TestCase):
         self.assertIn('cron: "7,22,37,52 * * * *"', workflow)
         self.assertIn("cancel-in-progress: false", workflow)
         self.assertIn("GUARDAMAR_LAUNCH_SWITCH", workflow)
+        self.assertIn("profile:", workflow)
         self.assertNotIn("pull_request:", workflow)
 
 
