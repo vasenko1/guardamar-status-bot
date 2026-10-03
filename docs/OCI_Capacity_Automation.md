@@ -12,12 +12,16 @@ Always Free ceilings. Phase 2 was explicitly approved on 2026-09-11.
 - GitHub secret names: `OCI_TENANCY_OCID`, `OCI_USER_OCID`, `OCI_FINGERPRINT`,
   and `OCI_PRIVATE_KEY`
 
-The exact active policy is:
+The policy required for the dual-profile hunter is below. The second
+`read instance-images` line (the x86_64 image) is the only OCI Console change
+that must be applied before this branch is merged and allowed to run scheduled
+E2 attempts:
 
 ```text
 Allow group Default/guardamar-capacity-automation to read instances in tenancy where request.region = 'eu-madrid-3'
 Allow group Default/guardamar-capacity-automation to {INSTANCE_CREATE} in tenancy where all {request.region = 'eu-madrid-3', request.ad = 'OhIQ:EU-MADRID-3-AD-1'}
 Allow group Default/guardamar-capacity-automation to read instance-images in tenancy where all {request.region = 'eu-madrid-3', target.image.id = 'ocid1.image.oc1.eu-madrid-3.aaaaaaaaurntbnbuaaicth3wbgs77lkqcb6giko55bl6tfkqjk472gvvl6yq'}
+Allow group Default/guardamar-capacity-automation to read instance-images in tenancy where all {request.region = 'eu-madrid-3', target.image.id = 'ocid1.image.oc1.eu-madrid-3.aaaaaaaa2nsuyzwg7zpslg3xvd4xbt2jlrbsicyie7uipj2pbhrcryudgjga'}
 Allow group Default/guardamar-capacity-automation to {VNIC_CREATE, VNIC_ATTACH} in tenancy where request.region = 'eu-madrid-3'
 Allow group Default/guardamar-capacity-automation to {SUBNET_ATTACH} in tenancy where request.region = 'eu-madrid-3'
 Allow group Default/guardamar-capacity-automation to inspect vnic-attachments in tenancy where request.region = 'eu-madrid-3'
@@ -69,29 +73,48 @@ authorization.
 
 ## Execution gates
 
-Scheduled runs and an explicitly selected manual `launch` execute:
+Scheduled runs and an explicitly selected manual `launch` execute one bounded
+command:
 
 ```text
-python -m automation.guardamar_capacity launch --allow-launch
+python -m automation.guardamar_capacity launch --allow-launch --profile <auto|a1|e2>
 ```
 
 The command still requires the compiled Phase 2 gate and the exact workflow
-switch. Before its single SDK request it performs two complete OCI-state audits.
-It identifies a target by display name or either of two freeform tags, and any
-non-terminated target causes zero launch calls. OCI SDK automatic retries are
-disabled at both client and request level.
+switch. `auto` alternates by immutable GitHub workflow run number: odd runs use
+the original A1 profile and even runs use E2 Micro. A manual launch may force
+either profile. A manual audit may also select A1 or E2; the workflow maps its
+`auto` audit default to A1 for backward-compatible read-only checks.
+
+Before profile-specific image or limit reads, the automation checks for the
+shared target by display name or either of two freeform tags. Any
+non-terminated A1 or E2 target therefore causes zero launch calls and is
+verified against the exact allowed profile. Only an empty target set proceeds
+to two complete profile-specific preflights and at most one SDK
+`LaunchInstance` request. OCI SDK automatic retries are disabled at both
+client and request level.
+
+The A1 profile remains `VM.Standard.A1.Flex`, 1 OCPU / 6 GB RAM and the
+existing Oracle Linux 9.8 aarch64 image. The E2 profile is fixed
+`VM.Standard.E2.1.Micro` with Oracle Linux 9.8 x86_64 image
+`ocid1.image.oc1.eu-madrid-3.aaaaaaaa2nsuyzwg7zpslg3xvd4xbt2jlrbsicyie7uipj2pbhrcryudgjga`;
+because E2 is fixed, no A1 `shape_config` is sent. A1 retains its 2 OCPU /
+12 GB Always Free gates. E2 checks the availability-domain-scoped
+`standard-e2-micro-core-count` service limit. Both use the same conservative
+50 GB boot volume and shared 200 GB Always Free block-storage gate.
 
 `Out of host capacity` and HTTP 429 end the current run without retry. An
 ambiguous response starts only bounded read-after-write discovery; it never
 repeats `LaunchInstance`. A permanent rejection or unresolved ambiguous result
 requests workflow disablement. An accepted or previously discovered instance
-is polled conservatively and must match image, shape, OCPU, RAM, AD, subnet, and
+is polled conservatively and must match its exact profile, AD, subnet and
 public IPv4 before the result becomes `READY`.
 
 Manual dispatch defaults to `audit`; `launch` must be deliberately selected.
 The workflow has one concurrency group and runs at minutes 7, 22, 37, and 52.
 After `READY` it asks GitHub to disable this workflow. If that request fails,
-future runs still find the OCI instance and make zero launch calls.
+future runs still find the OCI instance before profile-specific reads and make
+zero launch calls.
 
 ## Optional Termux schedule backstop
 
