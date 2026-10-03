@@ -877,6 +877,45 @@ class StateTests(unittest.TestCase):
 
 
 class SelectionTests(unittest.TestCase):
+    def test_selector_does_not_resolve_product_images(self):
+        item = ReviewedCandidate(
+            **{
+                **candidate("media-neutral", "media-neutral").__dict__,
+                "image_sources": (
+                    ReviewedImageSource(
+                        name="Brand product",
+                        page_url="https://brand.example/product",
+                        page_hosts=frozenset({"brand.example"}),
+                        image_hosts=frozenset({"brand.example"}),
+                        page_markers=("Exact Product",),
+                        image_alt_markers=("Exact Product",),
+                    ),
+                ),
+            }
+        )
+        categories = (
+            ReviewedCategory(
+                "media-neutral",
+                (ReviewedSource("source", 1, (item,)),),
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "awards.json"
+            with (
+                patch.object(awards, "CATEGORIES", categories),
+                patch.object(awards, "_verify_award"),
+                patch.object(awards, "_refresh_offer", return_value=offer()),
+                patch.object(awards, "_resolve_reviewed_image_source") as media,
+            ):
+                selected = select_publication(
+                    datetime(2026, 10, 3, 14, 20, tzinfo=MADRID),
+                    ProductAwardState(path),
+                )
+
+        self.assertEqual(selected[1].candidate.event_id, item.event_id)
+        self.assertNotIn("<img", selected[1].message)
+        media.assert_not_called()
+
     def test_unknown_previous_event_does_not_block_ordinary_selection(self):
         current = candidate("current", "current")
         categories = (
