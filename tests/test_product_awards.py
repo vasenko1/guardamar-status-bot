@@ -61,7 +61,7 @@ def offer(
     price: str = "2,50 €",
     regular_price=None,
     product_name: str = "Exact Product",
-    image_url: str | None = "https://cdn.example/product.jpg",
+    image_url="https://cdn.example/product.jpg",
 ) -> RetailOffer:
     return RetailOffer(
         retailer="Test Market",
