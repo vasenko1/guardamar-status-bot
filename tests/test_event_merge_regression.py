@@ -938,5 +938,6 @@ class RegistrationAccessMergeRegressionTests(unittest.TestCase):
         self.assertIn("участие бесплатное", rendered)
         self.assertIn("Регистрация</a>", rendered)
 
+
 if __name__ == "__main__":
     unittest.main()
