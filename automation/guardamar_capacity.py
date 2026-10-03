@@ -708,20 +708,32 @@ def _observe_instance(
     gateway: Any,
     identifier: str,
     sleep: Callable[[float], None],
+    profile: Optional[LaunchProfile] = None,
 ) -> CapacityResult:
     last_state = "UNKNOWN"
+    expected_profile = profile
     for delay in POLL_DELAYS_SECONDS:
         if delay:
             sleep(delay)
         instance = gateway.get_instance(identifier)
         last_state = instance.lifecycle_state
-        blockers = _instance_blockers(instance)
+        if expected_profile is None:
+            expected_profile = _profile_for_instance(instance)
+            if expected_profile is None:
+                return CapacityResult(
+                    "BLOCKED",
+                    "existing target does not match an allowed launch profile",
+                    disable_schedule=True,
+                    instance_id=identifier,
+                )
+        blockers = _instance_blockers(instance, expected_profile)
         if blockers:
             return CapacityResult(
                 "BLOCKED",
                 "existing target configuration mismatch: " + ", ".join(blockers),
                 disable_schedule=True,
                 instance_id=identifier,
+                profile=expected_profile.key,
             )
         if instance.lifecycle_state == "RUNNING":
             try:
@@ -733,9 +745,10 @@ def _observe_instance(
                         "READY verification failed: " + _safe_error(exc),
                         disable_schedule=True,
                         instance_id=identifier,
+                        profile=expected_profile.key,
                     )
                 continue
-            blockers = _ready_blockers(instance, vnic)
+            blockers = _ready_blockers(instance, vnic, expected_profile)
             permanent_blockers = [
                 blocker for blocker in blockers if blocker != "public IPv4 is missing"
             ]
@@ -747,6 +760,7 @@ def _observe_instance(
                     disable_schedule=True,
                     instance_id=identifier,
                     public_ip=vnic.public_ip,
+                    profile=expected_profile.key,
                 )
             if vnic.public_ip:
                 return CapacityResult(
@@ -755,6 +769,7 @@ def _observe_instance(
                     disable_schedule=True,
                     instance_id=identifier,
                     public_ip=vnic.public_ip,
+                    profile=expected_profile.key,
                 )
         if instance.lifecycle_state in {
             "STOPPED",
@@ -767,17 +782,19 @@ def _observe_instance(
                 f"target entered unexpected state {instance.lifecycle_state}",
                 disable_schedule=True,
                 instance_id=identifier,
+                profile=expected_profile.key,
             )
     return CapacityResult(
         "PENDING",
         f"target remains in {last_state}; next run will verify it without launch",
         instance_id=identifier,
+        profile=expected_profile.key if expected_profile is not None else None,
     )
-
 
 def _discover_after_ambiguous(
     gateway: Any,
     sleep: Callable[[float], None],
+    profile: LaunchProfile,
 ) -> Optional[CapacityResult]:
     for delay in AMBIGUOUS_DISCOVERY_DELAYS_SECONDS:
         if delay:
@@ -790,26 +807,31 @@ def _discover_after_ambiguous(
                 "instance discovery failed after ambiguous launch response: "
                 + _safe_error(exc),
                 disable_schedule=True,
+                profile=profile.key,
             )
         if len(targets) > 1:
             return CapacityResult(
                 "BLOCKED",
                 "multiple target instances appeared after an ambiguous response",
                 disable_schedule=True,
+                profile=profile.key,
             )
         if targets:
-            return _observe_instance(gateway, targets[0].identifier, sleep)
+            return _observe_instance(
+                gateway, targets[0].identifier, sleep, profile
+            )
     return None
-
 
 def run_launch(
     gateway: Any,
     env: Mapping[str, str],
     sleep: Callable[[float], None] = time.sleep,
+    profile: Optional[LaunchProfile] = None,
 ) -> CapacityResult:
     """Run at most one logical and one physical LaunchInstance request."""
 
-    report = audit(gateway)
+    selected_profile = profile or _select_profile(env)
+    report = audit(gateway, selected_profile)
     if report.target_instances:
         if len(report.target_instances) > 1:
             return CapacityResult(
@@ -817,8 +839,11 @@ def run_launch(
                 "multiple non-terminated target instances exist",
                 disable_schedule=True,
                 report=report,
+                profile=selected_profile.key,
             )
-        result = _observe_instance(gateway, report.target_instances[0], sleep)
+        result = _observe_instance(
+            gateway, report.target_instances[0], sleep
+        )
         return CapacityResult(**{**asdict(result), "report": report})
     if not report.launch_safe:
         return CapacityResult(
@@ -826,32 +851,40 @@ def run_launch(
             "launch preflight failed: " + "; ".join(report.blockers),
             disable_schedule=True,
             report=report,
+            profile=selected_profile.key,
         )
 
-    final_report = audit(gateway)
+    final_report = audit(gateway, selected_profile)
     if not final_report.launch_safe:
         return CapacityResult(
             "BLOCKED",
             "final launch preflight failed: " + "; ".join(final_report.blockers),
             disable_schedule=True,
             report=final_report,
+            profile=selected_profile.key,
         )
 
     try:
-        identifier = gateway.launch_instance(_retry_token(env))
+        identifier = gateway.launch_instance(
+            _retry_token(env, selected_profile),
+            selected_profile,
+        )
     except Exception as exc:
         kind = _error_kind(exc)
         if kind == "capacity":
             return CapacityResult(
                 "CAPACITY_MISS",
-                "OCI reported Out of host capacity; no retry in this run",
+                f"OCI reported Out of host capacity for {selected_profile.key}; "
+                "no retry in this run",
                 report=final_report,
+                profile=selected_profile.key,
             )
         if kind == "rate_limit":
             return CapacityResult(
                 "RATE_LIMITED",
                 "OCI rate-limited the single request; no retry in this run",
                 report=final_report,
+                profile=selected_profile.key,
             )
         if kind == "fatal":
             return CapacityResult(
@@ -859,21 +892,28 @@ def run_launch(
                 "LaunchInstance rejected: " + _safe_error(exc),
                 disable_schedule=True,
                 report=final_report,
+                profile=selected_profile.key,
             )
-        discovered = _discover_after_ambiguous(gateway, sleep)
+        discovered = _discover_after_ambiguous(
+            gateway, sleep, selected_profile
+        )
         if discovered is not None:
-            return CapacityResult(**{**asdict(discovered), "report": final_report})
+            return CapacityResult(
+                **{**asdict(discovered), "report": final_report}
+            )
         return CapacityResult(
             "AMBIGUOUS",
             "launch response was ambiguous and no target became visible; "
             "manual review required",
             disable_schedule=True,
             report=final_report,
+            profile=selected_profile.key,
         )
 
-    result = _observe_instance(gateway, identifier, sleep)
+    result = _observe_instance(
+        gateway, identifier, sleep, selected_profile
+    )
     return CapacityResult(**{**asdict(result), "report": final_report})
-
 
 def _emit_result(result: CapacityResult, env: Mapping[str, str]) -> None:
     print(json.dumps(asdict(result), sort_keys=True))
@@ -890,6 +930,8 @@ def _emit_result(result: CapacityResult, env: Mapping[str, str]) -> None:
                 output.write(f"instance_id={result.instance_id}\n")
             if result.public_ip:
                 output.write(f"public_ip={result.public_ip}\n")
+            if result.profile:
+                output.write(f"profile={result.profile}\n")
 
     summary_path = env.get("GITHUB_STEP_SUMMARY")
     if summary_path:
@@ -898,14 +940,22 @@ def _emit_result(result: CapacityResult, env: Mapping[str, str]) -> None:
             summary.write("## Guardamar capacity result\n\n")
             summary.write(f"- Outcome: **{result.outcome}**\n")
             summary.write(f"- Detail: {result.message}\n")
+            if result.profile:
+                summary.write(f"- Profile: `{result.profile}`\n")
             if result.outcome == "READY":
                 summary.write(f"- Public IPv4: `{result.public_ip}`\n")
                 summary.write(
                     f"- Region / AD: `{REGION}` / `{AVAILABILITY_DOMAIN}`\n"
                 )
-                summary.write(
-                    f"- Shape: `{SHAPE}` ({OCPUS:g} OCPU / {MEMORY_GBS:g} GB)\n"
-                )
+                profile = PROFILES.get(result.profile or "")
+                if profile is not None:
+                    if profile.ocpus is not None and profile.memory_gbs is not None:
+                        summary.write(
+                            f"- Shape: `{profile.shape}` "
+                            f"({profile.ocpus:g} OCPU / {profile.memory_gbs:g} GB)\n"
+                        )
+                    else:
+                        summary.write(f"- Shape: `{profile.shape}`\n")
                 summary.write(f"- Instance OCID suffix: `…{short_id}`\n")
                 summary.write(
                     "- Capacity search: complete; schedule disable requested\n"
@@ -920,9 +970,23 @@ def main(
 ) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser("audit", help="perform read-only safety checks")
-    launch_parser = subparsers.add_parser("launch", help="run one bounded attempt")
+    audit_parser = subparsers.add_parser(
+        "audit", help="perform read-only safety checks"
+    )
+    audit_parser.add_argument(
+        "--profile",
+        choices=tuple(PROFILES),
+        default="a1",
+    )
+    launch_parser = subparsers.add_parser(
+        "launch", help="run one bounded attempt"
+    )
     launch_parser.add_argument("--allow-launch", action="store_true")
+    launch_parser.add_argument(
+        "--profile",
+        choices=("auto", *tuple(PROFILES)),
+        default="auto",
+    )
     args = parser.parse_args(argv)
     current_env = os.environ if env is None else env
 
@@ -941,12 +1005,23 @@ def main(
             return result.exit_code
 
     try:
+        selected_profile = _resolve_profile(args.profile, current_env)
         gateway = gateway_factory(current_env)
         if args.command == "audit":
-            report = audit(gateway)
-            result = CapacityResult("AUDIT", "read-only audit completed", report=report)
+            report = audit(gateway, selected_profile)
+            result = CapacityResult(
+                "AUDIT",
+                "read-only audit completed",
+                report=report,
+                profile=selected_profile.key,
+            )
         else:
-            result = run_launch(gateway, current_env, sleep)
+            result = run_launch(
+                gateway,
+                current_env,
+                sleep,
+                selected_profile,
+            )
     except Exception as exc:
         kind = _error_kind(exc)
         result = CapacityResult(
