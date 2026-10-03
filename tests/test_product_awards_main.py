@@ -33,7 +33,7 @@ def publication() -> ProductAwardPublication:
         award_year=2026,
         source_category="Snacks",
         award_scope="exact_product",
-        award_result="Producto del Año",
+        award_result="90/100",
         product_id=7,
         expected_ean="8410000000000",
     )
