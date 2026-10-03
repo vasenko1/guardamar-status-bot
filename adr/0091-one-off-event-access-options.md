@@ -77,7 +77,7 @@ AccessOption
   label / occurrence time facts
   status
   action_url
-  action_contact
+  action_text
   opens_at / closes_at (optional source facts)
   price facts (optional presentation)
   capacity_limited
@@ -163,14 +163,23 @@ A single tournament registration may offer:
 
 - web form;
 - WhatsApp;
-- email.
+- email;
+- an in-person box office or municipal desk.
 
 Those are several ways to perform the same action, not separate access
 options.
 
-Keep one option and render one primary validated action URL plus reviewed
-contact/instructions. Do not create artificial lifecycle records for each
-contact channel.
+Keep one option and render one primary validated `action_url` plus a compact
+reviewed `action_text` when useful. `action_text` is deliberately broader
+than the deployed registration-only `registration_contact`: it may contain
+phone/email/WhatsApp instructions or a source-backed offline action such as
+"Casa de Cultura, 09:00–14:00".
+
+Do not create artificial lifecycle records for each contact channel.
+
+An `open` option may therefore be actionable through either a validated URL
+or reviewed action text. A physical ticket office/reservation desk must not be
+forced into a misleading "contact" field merely to satisfy the model.
 
 ### Root card templates
 
@@ -359,6 +368,14 @@ The production probes must therefore inventory not only IDs/options but also
 cross-source overlap and delegated action URLs before source ownership is
 coded.
 
+Ownership must also remain stable once a Telegram root exists. A later
+secondary-source discovery must not silently move the lifecycle to a new
+`record_id` and create a duplicate root. After root creation, another source
+may enrich or confirm the same access only through the already reviewed
+deterministic join. If ownership cannot be reconciled safely, keep the existing
+root owner and fail closed on the competing projection rather than migrate it
+implicitly.
+
 ### Current source implications
 
 #### Municipal/Turismo
@@ -485,6 +502,13 @@ ADR 0089 / the publication-sync research remain controlling initially:
 - 12:47 normal + 13:47 recovery initially;
 - add no second refresh until production timing probes prove morning snapshots
   materially miss same-day access announcements.
+
+Recurring office/box-office opening hours are presentation instructions, not
+daily lifecycle transitions. For example, a ticket campaign available from
+1–10 October at Casa de Cultura 09:00–14:00 is one open campaign across that
+source-backed sale window; do not emit daily "opened/closed" transitions merely
+because the physical desk closes overnight. Exact one-time campaign boundaries
+may still drive the normal day-before/current-open lifecycle.
 
 ## Consequences
 
