@@ -269,3 +269,38 @@ above.
 
 The remaining mandatory evidence is runtime validation of the exact first-party
 image pages on Termux.
+
+
+## Pre-deployment live public image probe
+
+A final public-source probe after PR #289 but before production rollout found
+that all six current non-NALTROS primary photo pages still expose the expected
+exact-product identity:
+
+- Realfooding: `Gazpacho Fresco`, 1 L, exact product images;
+- Oleoestepa: exact 1 L product, EAN `8422975000069`, exact product image;
+- DIA: exact SKU 273821 and exact AROM'ARTE product image;
+- González Byass: exact `Botella Chinchón Anís Dulce` image;
+- Ambar: exact `especial nueva` image on the Ambar Especial page;
+- Mahou: exact `Mahou Cinco Estrellas Sin Filtrar` images.
+
+The probe exposed one presentation-quality gap in the first implementation:
+Mahou exposes several exact-product image variants, including 106 px thumbnails
+and larger 420/720 px variants. The resolver would have accepted the first exact
+image, which was semantically correct but visually weak.
+
+The narrow correction is:
+
+- continue requiring the same exact-alt and host allowlist;
+- collect only already eligible exact-product URLs;
+- when those URLs expose an explicit numeric size in standard query parameters
+  (`width`, `sw`, `imwidth`, etc.), prefer the largest;
+- otherwise preserve source order;
+- parse every bounded `srcset` candidate rather than only its first entry.
+
+This does not add image processing, a quality model, CV, probing, transformations
+or another request. It merely chooses the better URL among exact images already
+present in the fetched official page.
+
+The deployment target must include this correction; PR #289 alone is therefore
+not the final production SHA.
