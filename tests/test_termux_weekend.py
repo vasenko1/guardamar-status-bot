@@ -9,13 +9,24 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class WeekendTermuxTests(unittest.TestCase):
-    def _install(self, initial):
+    def _install(self, initial, *, crond_running=True, service_available=True):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             commands = root / "bin"
             commands.mkdir()
             crontab_state = root / "crontab"
             crontab_state.write_text(initial, encoding="utf-8")
+            crond_state = root / "crond-running"
+            crond_state.write_text(
+                "1" if crond_running else "0",
+                encoding="utf-8",
+            )
+            prefix = root / "prefix"
+            if service_available:
+                (prefix / "var" / "service" / "crond").mkdir(
+                    parents=True,
+                    exist_ok=True,
+                )
             (commands / "crontab").write_text(
                 "#!/bin/sh\n"
                 "if [ \"${1-}\" = -l ]; then\n"
@@ -27,7 +38,18 @@ class WeekendTermuxTests(unittest.TestCase):
                 "fi\n",
                 encoding="utf-8",
             )
-            (commands / "sv").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            (commands / "pgrep").write_text(
+                "#!/bin/sh\n"
+                "[ \"$(cat \"$FAKE_CROND_STATE\")\" = 1 ]\n",
+                encoding="utf-8",
+            )
+            (commands / "sv").write_text(
+                "#!/bin/sh\n"
+                "echo 1 >\"$FAKE_CROND_STATE\"\n"
+                "printf '%s\\n' \"SVDIR=$SVDIR $*\" >>\"$FAKE_SV_LOG\"\n"
+                "exit 0\n",
+                encoding="utf-8",
+            )
             for command in commands.iterdir():
                 command.chmod(0o755)
             environment = dict(os.environ)
@@ -35,12 +57,20 @@ class WeekendTermuxTests(unittest.TestCase):
                 "HOME": str(root / "home"),
                 "PATH": f"{commands}:/usr/bin:/bin",
                 "FAKE_CRONTAB": str(crontab_state),
+                "FAKE_CROND_STATE": str(crond_state),
+                "FAKE_SV_LOG": str(root / "sv.log"),
+                "PREFIX": str(prefix),
             })
             result = subprocess.run(
                 ["sh", str(ROOT / "termux" / "install-weekend-cron.sh")],
                 text=True, capture_output=True, env=environment, check=False,
             )
-            return result, crontab_state.read_text(encoding="utf-8")
+            sv_log = root / "sv.log"
+            return (
+                result,
+                crontab_state.read_text(encoding="utf-8"),
+                sv_log.read_text(encoding="utf-8") if sv_log.exists() else "",
+            )
 
     def test_installer_removes_legacy_unmanaged_weekend_jobs(self):
         weekend = ROOT / "termux" / "run-weekend.sh"
@@ -49,7 +79,7 @@ class WeekendTermuxTests(unittest.TestCase):
             f"0 19 * * 5 {weekend}\n"
         )
 
-        result, installed = self._install(legacy)
+        result, installed, _ = self._install(legacy)
 
         self.assertEqual(result.returncode, 0)
         self.assertNotIn("0,20 18 * * 5", installed)
@@ -75,7 +105,7 @@ class WeekendTermuxTests(unittest.TestCase):
             "# END guardamar-status weekend digest\n"
         )
 
-        result, installed = self._install(initial)
+        result, installed, _ = self._install(initial)
 
         self.assertEqual(result.returncode, 0)
         self.assertEqual(installed.count("25 19 * * 0-4"), 1)
@@ -87,8 +117,8 @@ class WeekendTermuxTests(unittest.TestCase):
 
     def test_installer_is_idempotent_and_preserves_other_jobs(self):
         unrelated = "12 3 * * * /other/bot.sh\n"
-        first, installed = self._install(unrelated)
-        second, reinstalled = self._install(installed)
+        first, installed, _ = self._install(unrelated)
+        second, reinstalled, _ = self._install(installed)
 
         self.assertEqual((first.returncode, second.returncode), (0, 0))
         self.assertEqual(installed, reinstalled)
@@ -104,6 +134,31 @@ class WeekendTermuxTests(unittest.TestCase):
         self.assertIn("47 13 * * *", installed)
         self.assertNotIn("0,20 18 * * 5", installed)
         self.assertIn("# BEGIN guardamar-status weekend digest", installed)
+
+    def test_installer_sets_explicit_svdir_in_noninteractive_shell(self):
+        result, installed, sv_log = self._install(
+            "",
+            crond_running=False,
+            service_available=True,
+        )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("47 12 * * *", installed)
+        self.assertIn("sv up crond", sv_log)
+        self.assertIn("/var/service", sv_log)
+
+    def test_installer_fails_before_crontab_change_when_crond_is_unavailable(self):
+        initial = "12 3 * * * /other/bot.sh\n"
+        result, installed, sv_log = self._install(
+            initial,
+            crond_running=False,
+            service_available=False,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(installed, initial)
+        self.assertEqual(sv_log, "")
+        self.assertIn("service directory", result.stderr)
 
     def test_fresh_weekend_refreshes_convega_source(self):
         content = (ROOT / "termux" / "run-weekend.sh").read_text(
