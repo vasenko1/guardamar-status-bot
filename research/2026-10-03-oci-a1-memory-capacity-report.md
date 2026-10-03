@@ -71,5 +71,5 @@ The selector does not add a second `LaunchInstance` request. Its retry token
 also includes the selected memory so a GitHub rerun that changes profile cannot
 reuse an idempotency key for a different payload.
 
-The implementation passed compile validation and 42 focused
+The implementation passed compile validation and 43 focused
 capacity/backstop tests in GitHub Actions run `37154248312` before activation.
