@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-03
-- Implementation: Pending source/presentation probes
+- Implementation: Final pre-implementation review complete; first rollout text-root only
 - State layout: refined by ADR 0092
 
 ## Context
@@ -186,21 +186,45 @@ If an explicit future registration boundary is the first proactive notice, the
 rich card becomes the root even though registration is not open yet.
 
 When the source later positively reaches current `open`, a concise reply is
-eligible when it adds actionable information that was intentionally suppressed
-before the start boundary, such as the now-active registration form/contact.
+**required** when the original root intentionally suppressed the not-yet-usable
+action. This includes one-day access windows.
+
+An already-sent advance reminder trigger must not suppress this positive
+`open` reply.
+
+If an exact opening time has passed but the current source remains `unknown`,
+do not infer that access is open.
 
 This avoids a future-opening card that never tells residents when the action
 actually became usable.
+
+### First rollout presentation boundary
+
+The first state-v2 rollout is intentionally **text-root only**.
+
+CONVEGA is the only source currently ready for publication and does not justify
+adding another ambiguous-delivery path for remote media during the state
+migration.
+
+The implementation therefore sends:
+
+- one self-contained HTML text root;
+- strict HTML text replies.
+
+Photo roots, caption branching and deterministic photo-to-text fallback remain
+accepted future presentation behavior below, but are implemented only when a
+ready source with a uniquely attributable poster actually needs them.
 
 ### Media and caption policy
 
 The threaded lifecycle reuses existing event image and Telegram media
 infrastructure. It does not introduce a browser or general media downloader.
 
-A root photo caption must remain within Telegram's caption limit. The first
-implementation prefers one compact self-contained photo card over a
-multi-message compound transaction. Low-value prose is omitted before material
-registration conditions.
+When photo roots are introduced in a later source rollout, a photo caption
+must remain within Telegram's caption limit. That future media implementation
+should prefer one compact self-contained photo card over a multi-message
+compound transaction. Low-value prose is omitted before material access
+conditions.
 
 If the critical card cannot fit safely as a photo caption, prefer one
 self-contained **text root** over a two-message photo-plus-overflow transaction.
