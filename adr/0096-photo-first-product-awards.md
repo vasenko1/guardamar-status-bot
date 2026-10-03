@@ -193,3 +193,19 @@ it does not add a new subsystem.
 
 The previous fourth-pass recommendation to make the current registry text-only
 is superseded by this ADR.
+
+## Implementation shape
+
+The reviewed implementation keeps selection media-neutral. After one candidate
+wins normal award/retail selection, delivery lazily resolves its reviewed image
+sources in order. Exact-alt contracts fail closed and cannot fall back to a
+generic same-host OG banner. The existing current retailer image is appended as
+a fallback only when the retail adapter already exposes one.
+
+The same change restores the deterministic article contract: retailer in the
+headline, exact package, verified country when available, producer, one
+source-backed product highlight, precise Carrefour website-price wording and
+correct Russian sample-count declension.
+
+See
+`research/2026-10-03-product-awards-photo-first-implementation-review.md`.
