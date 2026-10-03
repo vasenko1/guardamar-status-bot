@@ -406,28 +406,44 @@ or resident scheduler is introduced.
 
 ## Product-award one-shot
 
-Product awards are an independent low-frequency workflow, not part of the
-Morning Digest. One daily Termux invocation reads its small atomic state first.
-If the three-local-day cooldown is still active, or every reviewed event is
-already published, it exits before any award or retailer HTTP request.
+Product awards are an independent low-frequency workflow. One daily Termux
+invocation reads the existing small atomic state first and exits before network
+access while cooldown is active or the reviewed registry is exhausted.
 
-A due run walks a reviewed broad-category registry from the stored category
-cursor. Inside one category it preserves the configured source priority and
-source-native rank order; only after all eligible candidates from one source
-fail exact retail verification may it move to the next source. The runtime does
-not discover new competitions or crawl retailer catalogues.
+A due run walks categories from the stored cursor and preserves authority
+priority plus source-native rank. The retailer of the last confirmed
+`published_events` entry is derived from the current registry when possible;
+no retailer field is added to state.
 
-For the initial five-category set, each accepted candidate uses one bounded
-authority/product-page validation followed by one exact-product retailer
-refresh. Carrefour and DIA use their server-rendered official product pages.
-ALDI NALTROS uses the reviewed embedded Next.js product payload because that is
-the stable browser-free exact-product contract proved by the POC.
+Selection uses one bounded scan. The first valid category winner from the same
+retailer as the previous post is held only as an in-memory fallback while later
+categories are checked. The first valid category winner from a different
+retailer is preferred. If none exists, the stored same-retailer fallback
+publishes. A valid candidate always ends ranking inside its own category, so
+retailer preference never demotes to a lower-ranked product.
 
-Before Telegram send the event is stored as uncertain. Confirmed delivery
-records the event, local day and next category cursor; an explicit send failure
-clears the reservation, while an ambiguous result is never automatically
-resent. No discovery queue, database, resident process or AI service is added.
+Exact award evidence, exact current retailer identity and current price remain
+publication requirements. Product media is optional enrichment. Consum uses
+allowlisted official `media[]` URLs before its stale base
+`productData.imageURL`; ALDI distinguishes an explicit product-page error from
+a healthy page whose embedded product contract has drifted.
 
+Delivery remains Rich Message first. When exact media exists, Telegram remote
+media is attempted, followed only after explicit remote-media rejection by the
+existing bounded local upload recovery. Deterministic media-path failure then
+degrades to the same Rich Message without an image. Ambiguous delivery never
+falls through to another send.
+
+Confirmed delivery alone advances the existing event/selection history,
+delivery day and category cursor. No retailer ledger, state migration, second
+selector pass, persistent candidate cache, browser, AI service, queue or new
+scheduler is introduced. A due run that publishes nothing records one concise
+final log reason.
+
+The reviewed registry itself is maintained separately. Retailer diversity in
+runtime cannot compensate for a catalogue concentrated in one chain; the
+3 October balance audit therefore prioritizes revalidation of Mercadona and
+research of Lidl, DIA and Carrefour without introducing retailer quotas.
 
 ### One-off event access
 
