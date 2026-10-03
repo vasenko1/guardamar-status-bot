@@ -1,6 +1,6 @@
 # ADR 0096: Photo-first Product Awards delivery contract
 
-- Status: Accepted, implementation pending
+- Status: Implemented in main; production validation pending
 - Date: 2026-10-03
 - Refines: ADR 0083, ADR 0084, ADR 0093, ADR 0095
 
