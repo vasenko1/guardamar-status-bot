@@ -24,6 +24,7 @@ Allow group Default/guardamar-capacity-automation to inspect vnic-attachments in
 Allow group Default/guardamar-capacity-automation to inspect vnics in tenancy where request.region = 'eu-madrid-3'
 Allow group Default/guardamar-capacity-automation to inspect subnets in tenancy where request.region = 'eu-madrid-3'
 Allow group Default/guardamar-capacity-automation to read resource-availability in tenancy
+Allow group Default/guardamar-capacity-automation to manage compute-capacity-reports in tenancy
 Allow group Default/guardamar-capacity-automation to read app-catalog-listing in tenancy where request.region = 'eu-madrid-3'
 ```
 
@@ -153,3 +154,36 @@ Allow group Default/guardamar-capacity-automation to read instance-images in ten
 It is no longer needed. Remove that one temporary line in OCI Console to restore
 the least-privilege policy shown above. No E2 instance was created and no E2
 launch request was made.
+
+
+## A1 memory-profile capacity report investigation (2026-10-03)
+
+The dedicated automation identity now also has the narrow
+`manage compute-capacity-reports` grant. For this OCI resource type,
+`manage` maps only to `COMPUTE_CAPACITY_REPORT_CREATE`; it does not add
+instance, network, storage, reservation or IAM mutation rights.
+
+Two one-shot GitHub probes used `CreateComputeCapacityReport` with SDK retries
+disabled and did not call `LaunchInstance`.
+
+Run `37153659434` requested the existing A1 target and a smaller fallback in
+one report:
+
+- `VM.Standard.A1.Flex`, 1 OCPU / 6 GB: `OUT_OF_HOST_CAPACITY`;
+- `VM.Standard.A1.Flex`, 1 OCPU / 2 GB: `OUT_OF_HOST_CAPACITY`.
+
+Run `37153752550` added the minimum-memory experiment:
+
+- 1 OCPU / 6 GB: `OUT_OF_HOST_CAPACITY`;
+- 1 OCPU / 2 GB: `OUT_OF_HOST_CAPACITY`;
+- 1 OCPU / 1 GB: `OUT_OF_HOST_CAPACITY`.
+
+Oracle Linux 9 requires at least 2 GB RAM on aarch64, so 1 GB is not a valid
+production target for the pinned ARM image even if host capacity were later
+reported. The smallest acceptable fallback remains 1 OCPU / 2 GB.
+
+These results show that, at the sampled times, reducing A1 memory did not expose
+a separate capacity pool in Madrid 3. The production hunter therefore remains
+unchanged at 1 OCPU / 6 GB while the capacity-report result is retained for
+future selector design. The temporary probe workflow was removed after the
+measurement.
