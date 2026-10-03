@@ -126,7 +126,8 @@ CRON_TZ=Europe/Madrid
 5 8 * * * /usr/bin/sh /path/to/TelegramBot/termux/run-suma.sh
 10-40/5 10 * * * /path/to/TelegramBot/termux/update-daily.sh
 0,5,10 11,13,15,17,19 * 7,8 * /path/to/TelegramBot/termux/monitor-updates.sh
-0,5,10 12,14,16,18 * 6,9,10 * /path/to/TelegramBot/termux/monitor-updates.sh
+0,5,10 12,14,16,18 * 6,9 * /path/to/TelegramBot/termux/monitor-updates.sh
+0,5,10 12,14,16,18 1-15 10 * /path/to/TelegramBot/termux/monitor-updates.sh
 0 20 * 6,9 * /path/to/TelegramBot/termux/monitor-updates.sh
 0 11,15,19 * 1-5,10-12 * /path/to/TelegramBot/termux/monitor-updates.sh
 2 9 * * * /path/to/TelegramBot/termux/sync-guide.sh
@@ -260,7 +261,8 @@ CRON_TZ=Europe/Madrid
 5 8 * * * /data/data/com.termux/files/usr/bin/sh /data/data/com.termux/files/home/bots/guardamar-status/termux/run-suma.sh
 10-40/5 10 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/update-daily.sh
 0,5,10 11,13,15,17,19 * 7,8 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
-0,5,10 12,14,16,18 * 6,9,10 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
+0,5,10 12,14,16,18 * 6,9 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
+0,5,10 12,14,16,18 1-15 10 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
 0 20 * 6,9 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
 0 11,15,19 * 1-5,10-12 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
 2 9 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-guide.sh
