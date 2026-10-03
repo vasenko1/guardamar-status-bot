@@ -184,6 +184,29 @@ actionable post proves:
 - access action semantics;
 - ownership relative to Municipal/Agenda Guardamar.
 
+## First-party references checked
+
+- CONVEGA current landing:
+  `https://convega.com/rutasguiadas-senderodelmediterraneo/`
+- CONVEGA announcement:
+  `https://convega.com/convega-organiza-dos-rutas-guiadas-por-el-gr-92-mejor-sendero-homologado-2025-de-la-comunitat-valenciana/`
+- Turismo Guardamar cultural agenda:
+  `https://guardamarturismo.com/agenda-cultural/`
+- Biblioteca Pública Municipal de Guardamar agenda:
+  `https://www.bibliotecaspublicas.es/guardamardelsegura/actividades-programas/Agenda-de-actividades.html`
+- FACV Guardamar IRT Sub2400:
+  `https://www.facv.org/iv-festival-internacional-esphouses-irt-sub2400`
+- FACV Guardamar IRT Sub1800:
+  `https://www.facv.org/iv-festival-internacional-esphouses-irt-sub1800`
+- Federación de Pesca CV 2026 convocatorias:
+  `https://federacionpescacv.com/convocatorias-clasificaciones-2026/`
+- Pesca CV 17 October 2026 Guardamar convocatoria:
+  `https://federacionpescacv.com/wp-content/uploads/2026/09/bases-prov-mar-costa-captura-y-suelta-2026.pdf`
+
+All source checks were read-only. Agenda Guardamar generic homepage access
+returned HTTP 403 from the external probe environment; no conclusion about its
+ticket-state lifecycle was drawn from that failure.
+
 ## Cross-source ownership implications
 
 The live sources reinforce the existing no-fuzzy-merge rule.
