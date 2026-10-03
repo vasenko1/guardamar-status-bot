@@ -176,6 +176,28 @@ class SourceContractTests(unittest.TestCase):
 
         self.assertTrue(result.image_url.endswith("/7_001.jpg"))
 
+    def test_consum_ignores_unreviewed_media_hosts(self):
+        item = candidate("retail-host")
+        payload = {
+            "ean": item.expected_ean,
+            "productData": {
+                "name": "Exact Product",
+                "imageURL": "https://untrusted.example/base.jpg",
+            },
+            "media": [
+                {"url": "https://untrusted.example/product_001.jpg"},
+            ],
+            "priceData": {
+                "prices": [
+                    {"id": "PRICE", "value": {"centAmount": 2.50}},
+                ],
+            },
+        }
+        with patch.object(awards, "_fetch_json", return_value=payload):
+            result = _tol_offer(item)
+
+        self.assertIsNone(result.image_url)
+
     def test_consum_missing_media_keeps_exact_offer_publishable(self):
         item = candidate("retail-no-media")
         payload = {
@@ -313,6 +335,47 @@ class SourceContractTests(unittest.TestCase):
         )
         self.assertIn("NALTROS", result.product_name)
 
+
+    def test_aldi_missing_primary_media_keeps_offer_publishable(self):
+        item = ReviewedCandidate(
+            **{
+                **candidate("aldi-no-media").__dict__,
+                "retailer": "ALDI",
+                "retailer_kind": "aldi",
+                "retailer_url": "https://www.aldi.es/p/cava-brut-190300.html",
+                "retailer_hosts": frozenset({"www.aldi.es", "aldi.es"}),
+                "retailer_markers": ("NALTROS", "Cava brut", "0,75 l"),
+                "product_id": 190300,
+                "expected_ean": None,
+            }
+        )
+        payload = {
+            "props": {
+                "pageProps": {
+                    "apiData": json.dumps([{
+                        "objectID": "190300",
+                        "brandName": "NALTROS",
+                        "name": "Cava brut",
+                        "salesUnit": "0,75 l unidad",
+                        "isAvailable": True,
+                        "isComingSoon": False,
+                        "isRecall": False,
+                        "currentPrice": {"priceValue": 3.15},
+                        "assets": [],
+                    }])
+                }
+            }
+        }
+        source = (
+            '<script id="__NEXT_DATA__" type="application/json">'
+            + json.dumps(payload)
+            + "</script>"
+        )
+
+        result = _aldi_offer(item, source)
+
+        self.assertEqual(result.price, "3,15 €")
+        self.assertIsNone(result.image_url)
 
     def test_aldi_explicit_page_error_is_not_generic_drift(self):
         item = ReviewedCandidate(
@@ -485,6 +548,39 @@ class StateTests(unittest.TestCase):
 
 
 class SelectionTests(unittest.TestCase):
+    def test_unknown_previous_event_does_not_block_ordinary_selection(self):
+        current = candidate("current", "current")
+        categories = (
+            ReviewedCategory(
+                "current",
+                (ReviewedSource("current", 1, (current,)),),
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "awards.json"
+            path.write_text(
+                json.dumps({
+                    "schema_version": 1,
+                    "last_delivery_day": "2026-09-27",
+                    "published_events": ["removed:event"],
+                    "published_selections": ["removed:2026"],
+                    "category_cursor": 0,
+                    "uncertain_event": None,
+                }),
+                encoding="utf-8",
+            )
+            with (
+                patch.object(awards, "CATEGORIES", categories),
+                patch.object(awards, "_verify_award"),
+                patch.object(awards, "_refresh_offer", return_value=offer()),
+            ):
+                selected = select_publication(
+                    datetime(2026, 9, 30, 14, 20, tzinfo=MADRID),
+                    ProductAwardState(path),
+                )
+
+        self.assertEqual(selected[1].candidate.event_id, current.event_id)
+
     def test_prefers_later_different_retailer_over_same_retailer_fallback(self):
         previous = candidate("previous", "previous")
         same = candidate("same", "same")
