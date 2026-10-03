@@ -81,6 +81,23 @@ without merging to `main`. Deployment must not add a GitHub promotion branch,
 scheduled self-update, resident deployment agent, self-hosted CI runner, or
 public inbound port.
 
+The CONVEGA one-off registration slice runs only as short-lived one-shots at
+12:47 and 13:47 Europe/Madrid. The first wrapper invocation performs at most one
+bounded WordPress REST refresh when a valid same-day snapshot is absent. The
+13:47 recovery reuses today's accepted local snapshot and therefore performs no
+normal source HTTP. The source phase alone may hold `state/code-runtime.lock`;
+the lock is released before Telegram delivery. Source responses are parsed
+in-memory and only one compact last-good normalized JSON is persisted.
+
+Registration lifecycle state is a separate bounded atomic JSON containing
+baseline evidence, announced IDs, trigger keys, and at most one ambiguous
+delivery reservation. Same-day snapshots with timestamps later than the local
+invocation are rejected as future. No retryable message queue, database,
+browser, OCR, JavaScript runtime, AI fact extraction, resident worker, or
+continuous polling is allowed. A deterministic Telegram failure is recomputed
+on the next invocation; an ambiguous failure blocks automatic resend until an
+operator resolves it as sent or unsent. See ADR 0089.
+
 The local earthquake feature may make one bounded official IGN GeoRSS request
 at minute 55 of every hour. It has no internal retry, browser, screenshot,
 resident worker, or raw-response cache. The process exits after parsing and
