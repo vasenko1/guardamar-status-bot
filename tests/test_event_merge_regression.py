@@ -903,10 +903,6 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
         self.assertEqual(corrected[0].place, "Casa de Cultura")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class RegistrationAccessMergeRegressionTests(unittest.TestCase):
     def test_terminal_registration_note_suppresses_stale_registration_action(self):
         event = Event(
@@ -941,3 +937,7 @@ class RegistrationAccessMergeRegressionTests(unittest.TestCase):
 
         self.assertIn("участие бесплатное", rendered)
         self.assertIn("Регистрация</a>", rendered)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1581,6 +1581,47 @@ The branch is therefore empirically ready for final PR review/merge. Production
 deployment and cron installation remain a separate controlled step.
 
 
+## Production rollout checkpoint — 2026-10-03
+
+Production was fast-forwarded from
+`527665b5657862d713d003ddfcb36e8f81bd9b5d` to merged main
+`24f0f8c8aa99dfcc6a93e774f4465968a86e7635`.
+
+The merged-main focused suites passed again on the actual device:
+
+- CONVEGA: 18/18;
+- registration lifecycle: 22/22;
+- event merge regression: 30/30;
+- Tomorrow: 13/13;
+- Weekend: 8/8;
+- Termux/cron: 5/5.
+
+The production source sync succeeded and confirmed the same two-record contract:
+stage 21 local/full and stage 22 non-local/unknown. Production registration
+preview produced no Telegram message and the lifecycle state was empty.
+
+The rollout then stopped inside `termux/install-weekend-cron.sh` after the new
+crontab had already been written. Bare `sv up crond` failed with:
+
+`fail: crond: unable to change to service directory: file does not exist`
+
+The deployment was run through a non-interactive SSH shell. Official
+`termux-services` startup config exports `SVDIR=$PREFIX/var/service` in a
+login shell, so bare `sv` must not be assumed to have that environment during
+remote installer execution.
+
+A dedicated hotfix branch `fix/termux-crond-noninteractive` changes the event
+cron installer to:
+
+1. detect an already-running `crond` and avoid starting another daemon;
+2. preflight the Termux `crond` service directory before mutating crontab when
+   no daemon is running;
+3. invoke `sv` with an explicit Termux service root when startup is needed;
+4. verify that `crond` is actually running after installation.
+
+The hotfix must be device-validated before merge. No registration Telegram
+message was emitted by the failed rollout.
+
 ## Final recommendation
 
 The research phase is complete enough to proceed to a durable ADR and then
@@ -1613,3 +1654,110 @@ This preserves the project's central tradeoff:
 
 **prefer a small deterministic source-backed system that sometimes says
 nothing over a more general system that can confidently say something false.**
+
+
+### crond hotfix device validation — 2026-10-03
+
+A follow-up production-device probe confirmed the rollout failure was caused by
+the non-interactive SSH environment, not by the CONVEGA feature or cron data:
+
+- `SVDIR` was unset;
+- `$PREFIX/var/service/crond` existed;
+- `runsv crond`, `svlogd`, and `crond -n -s` were already running;
+- explicit `SVDIR=$PREFIX/var/service sv status crond` reported a healthy
+  service;
+- the managed event-planning block already contained exactly the two new
+  registration rows at 12:47 and 13:47.
+
+The hotfix branch was validated in a detached worktree on the same device:
+shell syntax passed and `test_termux_weekend.py` passed **8/8** tests,
+including the already-running daemon path, explicit-SVDIR startup path,
+fail-before-crontab-change path, idempotency, and preservation of unrelated
+jobs.
+
+Production remained on
+`24f0f8c8aa99dfcc6a93e774f4465968a86e7635` with a clean tree during this
+validation.
+
+
+## Full post-deployment code review — 2026-10-03
+
+A complete review of the merged CONVEGA chain and Termux scheduling found four
+correctness issues plus one test-entrypoint issue before final closure:
+
+1. Embedded-form `open` evidence was too page-global: registration wording
+   anywhere on the landing plus any two-field form could misclassify an
+   unrelated contact/newsletter form as registration. The parser now requires
+   reviewed registration semantics inside the same actionable form.
+2. The event-planning cron installer previously treated every
+   `crontab -l` failure as an empty crontab. A real read/permission failure
+   could therefore replace unrelated jobs. It now distinguishes only the
+   expected "no crontab for" case and fails closed otherwise.
+3. `pgrep -f '[c]rond'` could match `runsv crond` or
+   `svlogd .../crond` when the actual daemon was absent. Runtime detection now
+   uses exact process-name matching with `pgrep -x crond`.
+4. Future-opening notices could render a "Записаться" action when the source had
+   a known URL but had not yet explicitly reached `status=open`. Registration
+   URL/contact rendering now requires explicit current `open`.
+5. Two new merge-regression tests had been placed after the direct
+   `unittest.main()` entrypoint. Discovery executed them, but direct file
+   execution would not. The entrypoint is now last.
+
+The cron installer was also made transactionally safer: when `crond` is not
+already running, service startup and exact daemon verification occur before the
+new crontab is written. Service-start failure therefore leaves the previous
+crontab unchanged.
+
+These changes remain within ADR 0089 and the documented Termux runtime
+constraints. New regression tests cover unrelated embedded forms, future
+action suppression, true crontab-read failure, exact daemon detection, and
+service-start failure before cron mutation.
+
+Review branch/PR #261 requires a final device focused test and full regression
+before merge.
+
+
+### Final review device validation — first attempt
+
+The first device run of PR #261 passed syntax checks and 18 of 19 focused
+CONVEGA tests before stopping on
+`test_open_event_projection_keeps_validated_action`.
+
+The failure was a stale positive test fixture, not a runtime defect. After the
+full review tightened embedded-form evidence to require registration semantics
+inside the same form, this projection fixture still placed `Inscripción`
+outside the form. The runtime correctly classified that shape as `unknown`
+and omitted the registration URL.
+
+The fixture was updated so the reviewed registration phrase is inside the same
+actionable form. A scan of the remaining CONVEGA form fixtures confirmed the
+other page-global `Inscripción` cases are intentionally negative/terminal
+tests. No production parser or lifecycle logic was weakened.
+
+A fresh device run against the new exact PR head is required before merge.
+
+
+### Final review device validation — completed code gate
+
+The repeat device run after the fixture correction passed all focused review
+suites and the full repository regression:
+
+- CONVEGA source/projection: 19/19;
+- one-off registration lifecycle: 23/23;
+- event merge regression: 30/30;
+- Termux/cron review suite: 10/10;
+- Tomorrow integration: 13/13;
+- Weekend integration: 8/8;
+- **full repository regression: 1,501/1,501 passed**.
+
+The run then stopped only at the isolated live CONVEGA smoke with
+`CONVEGA-NETWORK`. This occurred after all code/tests had passed and did not
+produce a parser/state assertion failure. The same official landing remained
+publicly reachable externally during review and still showed stage 21 for
+2026-10-04 with explicit `PLAZAS AGOTADAS`, so no source-contract change was
+observed.
+
+The code-review gate is therefore accepted as passed. The device live-source
+probe failure is recorded as a transient network/source-availability event and
+does not justify weakening fail-closed runtime behavior or repeating the full
+1,501-test suite.

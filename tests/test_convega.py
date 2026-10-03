@@ -118,8 +118,8 @@ class ConvegaParsingTests(unittest.TestCase):
 
     def test_embedded_registration_form_can_prove_open_without_plugin_name(self):
         snapshot = snapshot_with(
-            "<p>Inscripción</p>"
-            "<form><input type='text' name='name'>"
+            "<form><p>Inscripción</p>"
+            "<input type='text' name='name'>"
             "<input type='email' name='email'>"
             "<input type='submit' value='Enviar'></form>"
         )
@@ -127,6 +127,19 @@ class ConvegaParsingTests(unittest.TestCase):
 
         self.assertEqual(stage21["observed_status"], "open")
         self.assertEqual(stage21["registration_url"], LANDING_LINK)
+
+    def test_page_registration_text_plus_generic_contact_form_does_not_prove_open(self):
+        snapshot = snapshot_with(
+            "<p>Inscripción</p>"
+            "<form><p>Contacto</p>"
+            "<input type='text' name='name'>"
+            "<input type='email' name='email'>"
+            "<button type='submit'>Enviar</button></form>"
+        )
+        stage21 = next(item for item in snapshot["records"] if item["stage"] == 21)
+
+        self.assertEqual(stage21["observed_status"], "unknown")
+        self.assertIsNone(stage21["registration_url"])
 
     def test_terminal_marker_wins_over_stale_form(self):
         snapshot = snapshot_with(
@@ -308,8 +321,8 @@ class ConvegaProjectionTests(unittest.TestCase):
 
     def test_open_event_projection_keeps_validated_action(self):
         snapshot = snapshot_with(
-            "<p>Inscripción</p>"
-            "<form><input type='text' name='name'>"
+            "<form><p>Inscripción</p>"
+            "<input type='text' name='name'>"
             "<input type='email' name='email'>"
             "<button type='submit'>Enviar</button></form>"
         )

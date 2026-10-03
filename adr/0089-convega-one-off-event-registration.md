@@ -114,6 +114,12 @@ A positive registration action may be either:
 - an explicit registration CTA with reviewed normalized visible text and a
   strict source-specific HTTPS URL.
 
+For the unobserved future embedded-form shape, v1 requires the reviewed
+registration phrase to be inside that same form. Page-global registration
+wording plus an unrelated contact/newsletter/search form is insufficient and
+must remain `unknown`. This deliberately prefers a missed opening notice over
+a false "registration open" claim until a new source shape is observed.
+
 Plugin names are not part of the contract. Generic information links,
 arbitrary contact/search forms, missing terminal markers and disappearing
 actions never imply `open` or `closed`.

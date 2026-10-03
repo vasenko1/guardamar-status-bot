@@ -729,13 +729,13 @@ def _format_date(value: date) -> str:
 def _record_line(record: RegistrationRecord, *, include_action: bool = False) -> str:
     title = html.escape(record.title)
     line = f"• <b>{title}</b> — {_format_date(record.event_start_date)}"
-    if include_action and record.registration_url:
+    if include_action and record.status == "open" and record.registration_url:
         line += (
             ' · <a href="'
             + html.escape(record.registration_url, quote=True)
             + '">Записаться</a>'
         )
-    elif include_action and record.registration_contact:
+    elif include_action and record.status == "open" and record.registration_contact:
         line += " · регистрация: " + html.escape(record.registration_contact)
     return line
 

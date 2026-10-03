@@ -9,15 +9,19 @@ WEEKEND="$PROJECT_DIR/termux/run-weekend.sh"
 TOMORROW="$PROJECT_DIR/termux/run-tomorrow-events.sh"
 REGISTRATION="$PROJECT_DIR/termux/run-event-registration.sh"
 SH_BIN=$(command -v sh)
+TERMUX_PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+CROND_SVDIR="${SVDIR:-$TERMUX_PREFIX/var/service}"
+CROND_SERVICE="$CROND_SVDIR/crond"
 BACKUP_DIR="$HOME/.cache/crontab"
 CURRENT=$(mktemp)
 JOBS=$(mktemp)
 NEXT=$(mktemp)
+ERRORS=$(mktemp)
 BEGIN_MARKER='# BEGIN guardamar-status weekend digest'
 END_MARKER='# END guardamar-status weekend digest'
 
 cleanup() {
-    rm -f "$CURRENT" "$JOBS" "$NEXT"
+    rm -f "$CURRENT" "$JOBS" "$NEXT" "$ERRORS"
 }
 trap cleanup EXIT HUP INT TERM
 
@@ -34,8 +38,23 @@ if [ ! -f "$REGISTRATION" ]; then
     exit 1
 fi
 
+crond_running() {
+    pgrep -x crond >/dev/null 2>&1
+}
+
+if ! crond_running && [ ! -d "$CROND_SERVICE" ]; then
+    echo "ОШИБКА: crond не запущен и service directory отсутствует: $CROND_SERVICE" >&2
+    echo "Установите/настройте termux-services или запустите crond до изменения crontab." >&2
+    exit 1
+fi
+
 mkdir -p "$BACKUP_DIR"
-crontab -l >"$CURRENT" 2>/dev/null || true
+if ! crontab -l >"$CURRENT" 2>"$ERRORS"; then
+    if ! grep -qi 'no crontab for' "$ERRORS"; then
+        echo "ОШИБКА: не удалось безопасно прочитать текущий crontab; ничего не изменено" >&2
+        exit 1
+    fi
+fi
 if [ ! -f "$BACKUP_DIR/crontab.before-weekend" ]; then
     cp "$CURRENT" "$BACKUP_DIR/crontab.before-weekend"
 fi
@@ -78,5 +97,17 @@ printf '%s\n' \
     "$END_MARKER" \
     >>"$NEXT"
 
+if ! crond_running; then
+    if ! SVDIR="$CROND_SVDIR" sv up crond; then
+        echo "ОШИБКА: не удалось запустить crond; crontab не изменён" >&2
+        exit 1
+    fi
+fi
+
+if ! crond_running; then
+    echo "ОШИБКА: crond не запущен после service startup; crontab не изменён" >&2
+    exit 1
+fi
+
 crontab "$NEXT"
-sv up crond
+echo "crond: running"
