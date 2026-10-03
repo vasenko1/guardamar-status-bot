@@ -28,9 +28,10 @@ The 29 September diagnosis therefore localized the Consum failure at the wrong
 layer. The reachable `_001.jpg` observed during that investigation was not the
 URL actually selected by production.
 
-A new editorial requirement also applies: two consecutive Product Awards posts
-must not feature the same supermarket. Retailer diversity is part of the public
-product experience, not merely a tie-breaker.
+A new editorial requirement also applies: consecutive Product Awards posts
+should prefer different supermarkets when a valid alternative exists. This is
+secondary to publication itself; retailer diversity must never suppress the
+only valid candidate.
 
 The target runtime remains a weak Android phone under Termux. The solution must
 stay bounded, deterministic and browser-free.
@@ -183,6 +184,35 @@ Registry enrichment for Mercadona, Lidl, DIA, Carrefour or another approved
 local retailer is a separate evidence task. A retailer may be added only with
 the existing award-authority and exact-current-retail proof; rotation must never
 manufacture a weaker product merely to fill a slot.
+
+## Registry rebalance is a separate required workstream
+
+The selector preference solves presentation order but cannot repair a reviewed
+registry that is itself concentrated in one supermarket.
+
+The 3 October retailer-balance audit found that five of seven current entries
+use Consum even though earlier project research had already proved exact
+Mercadona award-to-SKU joins and current first-party award surfaces are
+available for Lidl, DIA and Carrefour. The imbalance is therefore not evidence
+that those chains lack strong products.
+
+Before treating the current registry as the long-run catalogue:
+
+- revalidate the already-proven Mercadona/WCCC joins;
+- investigate Lidl, DIA and Carrefour candidates next;
+- add another healthy ALDI candidate independent of NALTROS when evidence
+  supports one;
+- keep Masymas locally relevant;
+- retain valid Consum candidates but do not expand Consum first merely because
+  its API is easier;
+- re-review the four Producto del Año 2026 entries against ADR 0083's
+  source-admission rule because technical retailer convenience cannot substitute
+  for award-quality semantics.
+
+This is editorial maintenance priority, not a runtime quota. If evidence still
+leaves only one retailer publishable, the bot continues publishing it.
+
+See `research/2026-10-03-product-awards-retailer-balance-audit.md`.
 
 ## Validation required before implementation is complete
 
