@@ -22,6 +22,10 @@ DISPLAY_NAME = "guardamar-bot"
 SHAPE = "VM.Standard.A1.Flex"
 OCPUS = 1.0
 MEMORY_GBS = 6.0
+FALLBACK_MEMORY_GBS = 2.0
+ALLOWED_MEMORY_GBS = (MEMORY_GBS, FALLBACK_MEMORY_GBS)
+CAPACITY_STATUS_AVAILABLE = "AVAILABLE"
+CAPACITY_STATUS_OUT_OF_HOST_CAPACITY = "OUT_OF_HOST_CAPACITY"
 IMAGE_OCID = (
     "ocid1.image.oc1.eu-madrid-3.aaaaaaaaurntbnbuaaicth3wbgs77lkqcb6giko"
     "55bl6tfkqjk472gvvl6yq"
@@ -152,6 +156,7 @@ class CapacityResult:
     instance_id: Optional[str] = None
     public_ip: Optional[str] = None
     report: Optional[AuditReport] = None
+    memory_in_gbs: Optional[float] = None
 
     @property
     def exit_code(self) -> int:
@@ -164,15 +169,18 @@ class CapacityResult:
         } else 2
 
 
-def launch_manifest() -> dict[str, Any]:
-    """Return the exact, immutable launch intent recovered from the ORM Stack."""
+def launch_manifest(memory_in_gbs: float = MEMORY_GBS) -> dict[str, Any]:
+    """Return one of the two exact owner-approved A1 launch intents."""
+
+    if memory_in_gbs not in ALLOWED_MEMORY_GBS:
+        raise SafetyError("launch memory is outside the approved A1 profiles")
 
     return {
         "availability_domain": AVAILABILITY_DOMAIN,
         "compartment_id": COMPARTMENT_OCID,
         "display_name": DISPLAY_NAME,
         "shape": SHAPE,
-        "shape_config": {"ocpus": OCPUS, "memory_in_gbs": MEMORY_GBS},
+        "shape_config": {"ocpus": OCPUS, "memory_in_gbs": memory_in_gbs},
         "source_details": {
             "source_type": "image",
             "image_id": IMAGE_OCID,
@@ -289,7 +297,7 @@ def _instance_blockers(instance: InstanceDetails) -> list[str]:
         blockers.append("shape mismatch")
     if instance.ocpus != OCPUS:
         blockers.append("OCPU mismatch")
-    if instance.memory_in_gbs != MEMORY_GBS:
+    if instance.memory_in_gbs not in ALLOWED_MEMORY_GBS:
         blockers.append("RAM mismatch")
     if instance.image_id != IMAGE_OCID:
         blockers.append("image mismatch")
@@ -446,6 +454,53 @@ class OciGateway:
             )
         return result
 
+    def get_a1_capacity_report(
+        self,
+    ) -> dict[float, tuple[str, Optional[int]]]:
+        """Return one fresh host-capacity snapshot for the approved A1 profiles."""
+
+        oci = self._oci
+        requested = [
+            oci.core.models.CreateCapacityReportShapeAvailabilityDetails(
+                instance_shape=SHAPE,
+                instance_shape_config=oci.core.models.CapacityReportInstanceShapeConfig(
+                    ocpus=OCPUS,
+                    memory_in_gbs=memory_in_gbs,
+                ),
+            )
+            for memory_in_gbs in ALLOWED_MEMORY_GBS
+        ]
+        details = oci.core.models.CreateComputeCapacityReportDetails(
+            compartment_id=COMPARTMENT_OCID,
+            availability_domain=AVAILABILITY_DOMAIN,
+            shape_availabilities=requested,
+        )
+        response = self._compute.create_compute_capacity_report(
+            details,
+            retry_strategy=oci.retry.NoneRetryStrategy(),
+        )
+        result: dict[float, tuple[str, Optional[int]]] = {}
+        for item in response.data.shape_availabilities:
+            config = item.instance_shape_config
+            if item.instance_shape != SHAPE or config is None:
+                continue
+            if config.ocpus is None or config.memory_in_gbs is None:
+                continue
+            if float(config.ocpus) != OCPUS:
+                continue
+            memory_in_gbs = float(config.memory_in_gbs)
+            if memory_in_gbs not in ALLOWED_MEMORY_GBS:
+                continue
+            if memory_in_gbs in result:
+                raise SafetyError("OCI returned duplicate A1 capacity rows")
+            count = (
+                None
+                if item.available_count is None
+                else int(item.available_count)
+            )
+            result[memory_in_gbs] = (item.availability_status, count)
+        return result
+
     def get_primary_vnic(self, instance_id: str) -> VnicRecord:
         response = self._oci.pagination.list_call_get_all_results(
             self._compute.list_vnic_attachments,
@@ -466,11 +521,15 @@ class OciGateway:
         ).data
         return VnicRecord(item.id, item.subnet_id, item.public_ip)
 
-    def launch_instance(self, retry_token: str) -> str:
+    def launch_instance(
+        self,
+        retry_token: str,
+        memory_in_gbs: float = MEMORY_GBS,
+    ) -> str:
         """Submit exactly one SDK request with all automatic retries disabled."""
 
         oci = self._oci
-        manifest = launch_manifest()
+        manifest = launch_manifest(memory_in_gbs)
         vnic = oci.core.models.CreateVnicDetails(
             **manifest.pop("create_vnic_details")
         )
@@ -522,11 +581,20 @@ def audit(gateway: Any) -> AuditReport:
     )
 
 
-def _retry_token(env: Mapping[str, str]) -> str:
-    # GITHUB_RUN_ID stays stable when a workflow run is re-run, making that
-    # re-run reuse the original idempotency token. New cron runs get new IDs.
+def _retry_token(
+    env: Mapping[str, str],
+    memory_in_gbs: float = MEMORY_GBS,
+) -> str:
+    # GITHUB_RUN_ID stays stable when a workflow run is re-run. Keep retries
+    # idempotent for the same exact launch intent, while giving the 2 GB
+    # fallback a distinct token if a later rerun selects a different profile.
+    if memory_in_gbs not in ALLOWED_MEMORY_GBS:
+        raise SafetyError("retry token memory is outside the approved A1 profiles")
     run_id = env.get("GITHUB_RUN_ID", "local")
-    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"guardamar-capacity:{run_id}"))
+    return str(uuid.uuid5(
+        uuid.NAMESPACE_URL,
+        f"guardamar-capacity:{run_id}:{memory_in_gbs:g}",
+    ))
 
 
 def _error_kind(exc: BaseException) -> str:
@@ -567,11 +635,13 @@ def _observe_instance(
     sleep: Callable[[float], None],
 ) -> CapacityResult:
     last_state = "UNKNOWN"
+    last_memory_in_gbs: Optional[float] = None
     for delay in POLL_DELAYS_SECONDS:
         if delay:
             sleep(delay)
         instance = gateway.get_instance(identifier)
         last_state = instance.lifecycle_state
+        last_memory_in_gbs = instance.memory_in_gbs
         blockers = _instance_blockers(instance)
         if blockers:
             return CapacityResult(
@@ -579,6 +649,7 @@ def _observe_instance(
                 "existing target configuration mismatch: " + ", ".join(blockers),
                 disable_schedule=True,
                 instance_id=identifier,
+                memory_in_gbs=instance.memory_in_gbs,
             )
         if instance.lifecycle_state == "RUNNING":
             try:
@@ -590,6 +661,7 @@ def _observe_instance(
                         "READY verification failed: " + _safe_error(exc),
                         disable_schedule=True,
                         instance_id=identifier,
+                        memory_in_gbs=instance.memory_in_gbs,
                     )
                 continue
             blockers = _ready_blockers(instance, vnic)
@@ -604,6 +676,7 @@ def _observe_instance(
                     disable_schedule=True,
                     instance_id=identifier,
                     public_ip=vnic.public_ip,
+                    memory_in_gbs=instance.memory_in_gbs,
                 )
             if vnic.public_ip:
                 return CapacityResult(
@@ -612,6 +685,7 @@ def _observe_instance(
                     disable_schedule=True,
                     instance_id=identifier,
                     public_ip=vnic.public_ip,
+                    memory_in_gbs=instance.memory_in_gbs,
                 )
         if instance.lifecycle_state in {
             "STOPPED",
@@ -624,11 +698,13 @@ def _observe_instance(
                 f"target entered unexpected state {instance.lifecycle_state}",
                 disable_schedule=True,
                 instance_id=identifier,
+                memory_in_gbs=instance.memory_in_gbs,
             )
     return CapacityResult(
         "PENDING",
         f"target remains in {last_state}; next run will verify it without launch",
         instance_id=identifier,
+        memory_in_gbs=last_memory_in_gbs,
     )
 
 
@@ -657,6 +733,31 @@ def _discover_after_ambiguous(
         if targets:
             return _observe_instance(gateway, targets[0].identifier, sleep)
     return None
+
+
+def _select_launch_memory(gateway: Any) -> float:
+    """Use 2 GB only on one explicit, positive host-capacity signal."""
+
+    try:
+        availability = gateway.get_a1_capacity_report()
+    except Exception:
+        return MEMORY_GBS
+
+    primary = availability.get(MEMORY_GBS)
+    fallback = availability.get(FALLBACK_MEMORY_GBS)
+    if primary is None or fallback is None:
+        return MEMORY_GBS
+
+    primary_status, _ = primary
+    fallback_status, fallback_count = fallback
+    fallback_has_count = fallback_count is None or fallback_count > 0
+    if (
+        primary_status == CAPACITY_STATUS_OUT_OF_HOST_CAPACITY
+        and fallback_status == CAPACITY_STATUS_AVAILABLE
+        and fallback_has_count
+    ):
+        return FALLBACK_MEMORY_GBS
+    return MEMORY_GBS
 
 
 def run_launch(
@@ -694,21 +795,30 @@ def run_launch(
             report=final_report,
         )
 
+    selected_memory_gbs = _select_launch_memory(gateway)
+
     try:
-        identifier = gateway.launch_instance(_retry_token(env))
+        identifier = gateway.launch_instance(
+            _retry_token(env, selected_memory_gbs),
+            selected_memory_gbs,
+        )
     except Exception as exc:
         kind = _error_kind(exc)
         if kind == "capacity":
             return CapacityResult(
                 "CAPACITY_MISS",
-                "OCI reported Out of host capacity; no retry in this run",
+                "OCI reported Out of host capacity for "
+                f"{OCPUS:g} OCPU / {selected_memory_gbs:g} GB; "
+                "no retry in this run",
                 report=final_report,
+                memory_in_gbs=selected_memory_gbs,
             )
         if kind == "rate_limit":
             return CapacityResult(
                 "RATE_LIMITED",
                 "OCI rate-limited the single request; no retry in this run",
                 report=final_report,
+                memory_in_gbs=selected_memory_gbs,
             )
         if kind == "fatal":
             return CapacityResult(
@@ -716,6 +826,7 @@ def run_launch(
                 "LaunchInstance rejected: " + _safe_error(exc),
                 disable_schedule=True,
                 report=final_report,
+                memory_in_gbs=selected_memory_gbs,
             )
         discovered = _discover_after_ambiguous(gateway, sleep)
         if discovered is not None:
@@ -726,6 +837,7 @@ def run_launch(
             "manual review required",
             disable_schedule=True,
             report=final_report,
+            memory_in_gbs=selected_memory_gbs,
         )
 
     result = _observe_instance(gateway, identifier, sleep)
@@ -760,8 +872,14 @@ def _emit_result(result: CapacityResult, env: Mapping[str, str]) -> None:
                 summary.write(
                     f"- Region / AD: `{REGION}` / `{AVAILABILITY_DOMAIN}`\n"
                 )
+                memory_in_gbs = (
+                    result.memory_in_gbs
+                    if result.memory_in_gbs is not None
+                    else MEMORY_GBS
+                )
                 summary.write(
-                    f"- Shape: `{SHAPE}` ({OCPUS:g} OCPU / {MEMORY_GBS:g} GB)\n"
+                    f"- Shape: `{SHAPE}` "
+                    f"({OCPUS:g} OCPU / {memory_in_gbs:g} GB)\n"
                 )
                 summary.write(f"- Instance OCID suffix: `…{short_id}`\n")
                 summary.write(

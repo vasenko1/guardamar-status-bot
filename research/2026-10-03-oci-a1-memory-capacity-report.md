@@ -60,8 +60,16 @@ than a simple 6 GB memory-fit problem.
 The 1 GB profile is rejected independently because the pinned Oracle Linux 9
 aarch64 operating system requires at least 2 GB RAM.
 
-A future implementation may use the capacity report as an opportunistic
-selector: prefer 6 GB, use 2 GB only when the report explicitly marks 6 GB
-unavailable and 2 GB available, and preserve the current 6 GB launch behavior
-when the report is unavailable or inconclusive. That design has not been
-activated by this investigation.
+ADR 0098 implements the capacity report as an opportunistic selector. The
+primary remains 1 OCPU / 6 GB. The 2 GB fallback is selected only when one
+fresh report explicitly returns 6 GB `OUT_OF_HOST_CAPACITY` and 2 GB
+`AVAILABLE`, with a positive count when OCI supplies one. Failure, missing or
+unexpected report data and every other status combination preserve the old
+6 GB launch behavior.
+
+The selector does not add a second `LaunchInstance` request. Its retry token
+also includes the selected memory so a GitHub rerun that changes profile cannot
+reuse an idempotency key for a different payload.
+
+The implementation passed compile validation and 43 focused
+capacity/backstop tests in GitHub Actions run `37154248312` before activation.
