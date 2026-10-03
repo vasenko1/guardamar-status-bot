@@ -515,6 +515,33 @@ class RegistrationDeliveryStateTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(resolved["uncertain"])
         self.assertEqual(resolved["announced_record_ids"], ["official:event-1"])
 
+    async def test_future_source_never_mutates_lifecycle_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state = RegistrationNotificationState(root / "notify.json")
+            source = root / "source.json"
+            source.write_text("{}", encoding="utf-8")
+
+            with patch(
+                "telegrambot.event_registration_notifications."
+                "convega_snapshot_observed_at",
+                new=AsyncMock(
+                    return_value=datetime(2026, 10, 2, 13, 0, tzinfo=TZ)
+                ),
+            ):
+                result = await run_registration_notifications(
+                    NOW,
+                    state,
+                    AsyncMock(return_value=123),
+                    source_state_path=source,
+                    translation_path=root / "translations.json",
+                )
+
+            saved = state.read()
+
+        self.assertEqual(result, "stale_source")
+        self.assertEqual(saved["baseline"], {})
+
     async def test_stale_source_never_mutates_lifecycle_state(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
