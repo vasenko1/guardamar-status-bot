@@ -16,6 +16,7 @@ class WeekendTermuxTests(unittest.TestCase):
         crond_running=True,
         service_available=True,
         crontab_read_ok=True,
+        sv_start_ok=True,
     ):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -58,8 +59,11 @@ class WeekendTermuxTests(unittest.TestCase):
             )
             (commands / "sv").write_text(
                 "#!/bin/sh\n"
-                "echo 1 >\"$FAKE_CROND_STATE\"\n"
                 "printf '%s\\n' \"SVDIR=$SVDIR $*\" >>\"$FAKE_SV_LOG\"\n"
+                "if [ \"$FAKE_SV_START_OK\" != 1 ]; then\n"
+                "  exit 1\n"
+                "fi\n"
+                "echo 1 >\"$FAKE_CROND_STATE\"\n"
                 "exit 0\n",
                 encoding="utf-8",
             )
@@ -73,6 +77,7 @@ class WeekendTermuxTests(unittest.TestCase):
                 "FAKE_CROND_STATE": str(crond_state),
                 "FAKE_SV_LOG": str(root / "sv.log"),
                 "FAKE_CRONTAB_READ_OK": "1" if crontab_read_ok else "0",
+                "FAKE_SV_START_OK": "1" if sv_start_ok else "0",
                 "PREFIX": str(prefix),
             })
             result = subprocess.run(
@@ -160,6 +165,20 @@ class WeekendTermuxTests(unittest.TestCase):
         self.assertIn("47 12 * * *", installed)
         self.assertIn("up crond", sv_log)
         self.assertIn("/var/service", sv_log)
+
+    def test_installer_does_not_change_crontab_when_service_start_fails(self):
+        initial = "12 3 * * * /other/bot.sh\n"
+        result, installed, sv_log = self._install(
+            initial,
+            crond_running=False,
+            service_available=True,
+            sv_start_ok=False,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(installed, initial)
+        self.assertIn("up crond", sv_log)
+        self.assertIn("crontab не изменён", result.stderr)
 
     def test_installer_fails_closed_on_real_crontab_read_error(self):
         initial = "12 3 * * * /other/bot.sh\n"
