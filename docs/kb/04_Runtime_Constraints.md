@@ -401,6 +401,9 @@ the existing `state/product_awards.json` before source access.
 - An exact reviewed product photo is the normal presentation. The selected
   candidate may try only a small explicit list of approved official image
   sources; there is no runtime image search or discovery.
+- Category selection itself remains media-neutral: image pages are not read
+  until one product has already won selection, except during an explicit
+  operator preview.
 - Product media still cannot make an otherwise valid product ineligible. Only
   after every reviewed image source is exhausted may delivery degrade to a
   no-image Rich Message.

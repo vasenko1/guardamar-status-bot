@@ -86,16 +86,22 @@ Variant-critical qualifiers must match when relevant:
 A generic brand image, family shot, unrelated pack size or similar-looking
 product is not an acceptable fallback.
 
-### 4. Image-source permission/reuse basis must be reviewed
+### 4. Image-source suitability is an explicit reviewed contract
 
-Technical accessibility is not enough.
+Technical accessibility is not enough and a public URL is never promoted to a
+runtime image source automatically.
 
-Each active image contract must record why the image may be reused in the
-public Telegram article. If that basis is not established for a source, that
-source is skipped for media but the product remains eligible.
+Every active image path must be explicitly admitted during source review and
+stored in the candidate's reviewed image contract: official page, allowed image
+hosts, exact page markers and exact image identity markers where available.
 
-This policy does **not** mean the article becomes text-only by default. The bot
-must continue through the next reviewed exact image source before degrading.
+The runtime does not search for alternative images and does not infer legal or
+editorial suitability from a URL at execution time. A separate machine-readable
+licence/state field is not required; admission itself is the review boundary.
+
+If a reviewed image source later becomes unsuitable or ambiguous, remove that
+contract. The product remains eligible and the bot continues through the next
+reviewed exact image source before degrading.
 
 ### 5. Preserve bounded delivery recovery
 
@@ -193,3 +199,19 @@ it does not add a new subsystem.
 
 The previous fourth-pass recommendation to make the current registry text-only
 is superseded by this ADR.
+
+## Implementation shape
+
+The reviewed implementation keeps selection media-neutral. After one candidate
+wins normal award/retail selection, delivery lazily resolves its reviewed image
+sources in order. Exact-alt contracts fail closed and cannot fall back to a
+generic same-host OG banner. The existing current retailer image is appended as
+a fallback only when the retail adapter already exposes one.
+
+The same change restores the deterministic article contract: retailer in the
+headline, exact package, verified country when available, producer, one
+source-backed product highlight, precise Carrefour website-price wording and
+correct Russian sample-count declension.
+
+See
+`research/2026-10-03-product-awards-photo-first-implementation-review.md`.

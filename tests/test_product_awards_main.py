@@ -42,10 +42,16 @@ def publication() -> ProductAwardPublication:
         offer=RetailOffer(
             retailer="Test Market",
             price="2,50 €",
-            image_url="https://cdn.example/product.jpg",
+            image_url=(
+                "https://cdn-consum.aktiosdigitalservices.com/"
+                "product.jpg"
+            ),
             product_name="Exact Product",
         ),
-        message='<img src="https://cdn.example/product.jpg"/><p>message</p>',
+        message=(
+            '<img src="https://cdn-consum.aktiosdigitalservices.com/'
+            'product.jpg"/><p>message</p>'
+        ),
     )
 
 
@@ -186,9 +192,12 @@ class ProductAwardCommandTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(await _run_command("product-awards-force"), 0)
 
             select.assert_called_once()
-            fetch_image.assert_called_once_with(
-                item.candidate,
-                item.offer.image_url,
+            fetch_image.assert_called_once()
+            resolved_image = fetch_image.call_args.args[0]
+            self.assertEqual(resolved_image.url, item.offer.image_url)
+            self.assertIn(
+                "cdn-consum.aktiosdigitalservices.com",
+                resolved_image.hosts,
             )
             upload.assert_awaited_once()
             self.assertIn(
@@ -238,9 +247,12 @@ class ProductAwardCommandTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(await _run_command("product-awards-force"), 0)
 
             select.assert_called_once()
-            fetch_image.assert_called_once_with(
-                item.candidate,
-                item.offer.image_url,
+            fetch_image.assert_called_once()
+            resolved_image = fetch_image.call_args.args[0]
+            self.assertEqual(resolved_image.url, item.offer.image_url)
+            self.assertIn(
+                "cdn-consum.aktiosdigitalservices.com",
+                resolved_image.hosts,
             )
             self.assertEqual(send.await_count, 2)
             self.assertIn("<img", send.await_args_list[0].args[2])

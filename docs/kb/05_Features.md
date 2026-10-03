@@ -762,13 +762,21 @@ production category rankings. Mercadona and Lidl remain active research targets,
 but no product is inserted merely to satisfy retailer diversity.
 
 Public Product Awards posts are photo-first. The normal article includes an
-exact reviewed photo of the selected product. The bot should make bounded
-best-effort attempts through the candidate's small approved official image
-hierarchy and use Telegram remote media plus bounded upload recovery where
-needed. A no-image Rich Message is allowed only as the final degraded fallback
-when every reviewed image path is blocked or fails deterministically. Media
-failure never discards a product whose award identity and current price are
-still valid.
+exact reviewed photo of the selected product. The bot makes bounded best-effort
+attempts through the selected candidate's small approved official image
+hierarchy and uses Telegram remote media plus bounded upload recovery where
+needed. A deterministic failure may advance to the next reviewed exact image.
+A no-image Rich Message is allowed only as the final degraded fallback when
+every reviewed image path is blocked or fails deterministically. Media failure
+never discards a product whose award identity and current price are still valid.
+
+The public copy is deterministic and must preserve the reviewed editorial facts
+available for that candidate: retailer in the headline, exact current package,
+verified country when proved by the source, producer/manufacturer, one
+source-backed reason the product stood out, and the fresh current price. Numeric
+scores remain in the body rather than becoming the default headline. Carrefour
+price wording refers explicitly to the official website and does not claim
+Guardamar-local shelf stock.
 
 Consum's current JSON uses working numbered `media[]` assets while its base
 `productData.imageURL` values may 404. ALDI NALTROS currently fails closed

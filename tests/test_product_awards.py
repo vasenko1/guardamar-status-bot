@@ -9,9 +9,11 @@ from zoneinfo import ZoneInfo
 import telegrambot.product_awards as awards
 from telegrambot.product_awards import (
     ProductAwardState,
+    ResolvedProductImage,
     RetailOffer,
     ReviewedCandidate,
     ReviewedCategory,
+    ReviewedImageSource,
     ReviewedSource,
     _aldi_offer,
     _tol_offer,
@@ -117,6 +119,35 @@ class SourceContractTests(unittest.TestCase):
             {"aldi", "carrefour", "dia", "consum", "masymas"},
         )
 
+    def test_registry_identifiers_and_ordering_are_unique(self):
+        categories = awards.CATEGORIES
+        self.assertEqual(
+            len({category.key for category in categories}),
+            len(categories),
+        )
+
+        candidates = [
+            item
+            for category in categories
+            for source in category.sources
+            for item in source.candidates
+        ]
+        self.assertEqual(
+            len({item.event_id for item in candidates}),
+            len(candidates),
+        )
+        self.assertEqual(
+            len({item.selection_key for item in candidates}),
+            len(candidates),
+        )
+
+        for category in categories:
+            priorities = [source.priority for source in category.sources]
+            self.assertEqual(len(set(priorities)), len(priorities))
+            for source in category.sources:
+                ranks = [item.rank for item in source.candidates]
+                self.assertEqual(len(set(ranks)), len(ranks))
+
     def test_html_retail_offer_uses_navigation_headers_and_exact_card_price(self):
         item = ReviewedCandidate(
             **{
@@ -190,18 +221,22 @@ class SourceContractTests(unittest.TestCase):
 
         self.assertEqual(caught.exception.diagnostic_code, "RETAIL-DRIFT")
 
-    def test_consum_product_image_download_uses_pinned_cdn(self):
-        item = candidate("media")
+    def test_product_image_download_uses_resolved_source_hosts(self):
         url = (
             "https://cdn-consum.aktiosdigitalservices.com/"
             "tol/consum/media/product/img/300x300/product.jpg"
+        )
+        image = ResolvedProductImage(
+            url=url,
+            hosts=frozenset({"cdn-consum.aktiosdigitalservices.com"}),
+            source_name="Consum exact product",
         )
         with patch.object(
             awards,
             "fetch_bounded",
             return_value=(b"jpeg", url, "image/jpeg"),
         ) as fetch:
-            payload, content_type = awards.fetch_product_image(item, url)
+            payload, content_type = awards.fetch_product_image(image)
 
         self.assertEqual(payload, b"jpeg")
         self.assertEqual(content_type, "image/jpeg")
@@ -209,6 +244,122 @@ class SourceContractTests(unittest.TestCase):
         self.assertTrue(allow(url))
         self.assertFalse(allow("https://example.com/product.jpg"))
         self.assertEqual(fetch.call_args.kwargs["limit_bytes"], awards.IMAGE_LIMIT_BYTES)
+
+    def test_reviewed_image_source_prefers_exact_alt_match(self):
+        source = ReviewedImageSource(
+            name="Brand product",
+            page_url="https://brand.example/product",
+            page_hosts=frozenset({"brand.example"}),
+            image_hosts=frozenset({"brand.example"}),
+            page_markers=("Exact Product", "1 L"),
+            image_alt_markers=("Exact Product",),
+        )
+        html_source = (
+            '<html><head><meta property="og:image" '
+            'content="https://brand.example/generic.jpg"></head>'
+            '<body><h1>Exact Product</h1><p>1 L</p>'
+            '<img alt="Exact Product front" src="/exact.jpg"></body></html>'
+        )
+        with patch.object(awards, "_fetch_html", return_value=html_source):
+            image = awards._resolve_reviewed_image_source(source)
+
+        self.assertEqual(image.url, "https://brand.example/exact.jpg")
+        self.assertEqual(image.source_name, "Brand product")
+
+    def test_exact_alt_contract_can_use_lazy_data_src(self):
+        source = ReviewedImageSource(
+            name="Brand product",
+            page_url="https://brand.example/product",
+            page_hosts=frozenset({"brand.example"}),
+            image_hosts=frozenset({"brand.example"}),
+            page_markers=("Exact Product",),
+            image_alt_markers=("Exact Product",),
+        )
+        html_source = (
+            '<html><body><h1>Exact Product</h1>'
+            '<img alt="Exact Product front" src="/placeholder.svg" '
+            'data-src="/exact.jpg"></body></html>'
+        )
+        with patch.object(awards, "_fetch_html", return_value=html_source):
+            image = awards._resolve_reviewed_image_source(source)
+
+        self.assertEqual(image.url, "https://brand.example/exact.jpg")
+
+    def test_exact_alt_contract_does_not_fall_back_to_generic_meta_image(self):
+        source = ReviewedImageSource(
+            name="Brand product",
+            page_url="https://brand.example/product",
+            page_hosts=frozenset({"brand.example"}),
+            image_hosts=frozenset({"brand.example"}),
+            page_markers=("Exact Product",),
+            image_alt_markers=("Exact Product",),
+        )
+        html_source = (
+            '<html><head><meta property="og:image" '
+            'content="https://brand.example/banner.jpg"></head>'
+            '<body><h1>Exact Product</h1>'
+            '<img alt="Brand logo" src="/logo.jpg"></body></html>'
+        )
+        with patch.object(awards, "_fetch_html", return_value=html_source):
+            with self.assertRaises(awards.ProductAwardError) as caught:
+                awards._resolve_reviewed_image_source(source)
+
+        self.assertEqual(caught.exception.diagnostic_code, "MEDIA-DRIFT")
+
+    def test_reviewed_image_source_rejects_unapproved_image_host(self):
+        source = ReviewedImageSource(
+            name="Brand product",
+            page_url="https://brand.example/product",
+            page_hosts=frozenset({"brand.example"}),
+            image_hosts=frozenset({"brand.example"}),
+            page_markers=("Exact Product",),
+            image_alt_markers=("Exact Product",),
+        )
+        html_source = (
+            '<html><body><h1>Exact Product</h1>'
+            '<img alt="Exact Product" src="https://cdn.other.example/exact.jpg">'
+            '</body></html>'
+        )
+        with patch.object(awards, "_fetch_html", return_value=html_source):
+            with self.assertRaises(awards.ProductAwardError) as caught:
+                awards._resolve_reviewed_image_source(source)
+
+        self.assertEqual(caught.exception.diagnostic_code, "MEDIA-DRIFT")
+
+    def test_primary_image_failure_falls_back_to_exact_retailer_image(self):
+        item = ReviewedCandidate(
+            **{
+                **candidate("image-fallback").__dict__,
+                "image_sources": (
+                    ReviewedImageSource(
+                        name="Brand product",
+                        page_url="https://brand.example/product",
+                        page_hosts=frozenset({"brand.example"}),
+                        image_hosts=frozenset({"brand.example"}),
+                        page_markers=("Exact Product",),
+                        image_alt_markers=("Exact Product",),
+                    ),
+                ),
+            }
+        )
+        retail_image = (
+            "https://cdn-consum.aktiosdigitalservices.com/"
+            "product.jpg"
+        )
+        current_offer = offer(image_url=retail_image)
+        with patch.object(
+            awards,
+            "_resolve_reviewed_image_source",
+            side_effect=awards.ProductAwardError(
+                "brand drift",
+                code="MEDIA-DRIFT",
+            ),
+        ):
+            images = tuple(awards.iter_product_images(item, current_offer))
+
+        self.assertEqual(len(images), 1)
+        self.assertEqual(images[0].url, retail_image)
+        self.assertEqual(images[0].source_name, "Test Market exact product")
 
     def test_consum_detail_requires_exact_ean_and_returns_media(self):
         item = candidate("retail")
@@ -593,7 +744,8 @@ class RenderingTests(unittest.TestCase):
         )
         message = build_message(item, offer(price="13,79 €"))
 
-        self.assertIn("победитель Premio Alimentos de España 2026", message)
+        self.assertIn("Premio Alimentos de España 2026", message)
+        self.assertIn("Test Market", message)
         self.assertIn("Министерство сельского хозяйства Испании", message)
         self.assertIn("Mejor Bebida Espirituosa", message)
         self.assertNotIn("/100", message)
@@ -613,11 +765,49 @@ class RenderingTests(unittest.TestCase):
             offer(price="0,75 €", regular_price="0,89 €"),
         )
 
-        self.assertIn("Пиво Ambar Especial получило золото", message)
+        self.assertIn("Ambar Especial — World Beer Awards 2026 · Test Market", message)
         self.assertIn("победителем Испании", message)
         self.assertIn("0,75 €", message)
         self.assertIn("0,89 €", message)
         self.assertNotIn("Ambar Especial - бронзу", message)
+
+    def test_ocu_sample_count_uses_correct_russian_declension(self):
+        item = ReviewedCandidate(
+            **{
+                **candidate("aove").__dict__,
+                "sample_size": 23,
+            }
+        )
+        message = build_message(item, offer())
+        self.assertIn("23 продукта", message)
+        self.assertNotIn("23 продуктов", message)
+
+    def test_editorial_contract_includes_retailer_package_country_producer_and_highlight(self):
+        item = ReviewedCandidate(
+            **{
+                **candidate("editorial").__dict__,
+                "retailer": "Carrefour",
+                "retailer_kind": "carrefour",
+                "headline_award": "Mejor del Análisis OCU",
+                "package_label": "1 л, PET",
+                "country_label": "Испания",
+                "producer_label": "CAÑA NATURE, S.L.U.",
+                "highlight": "90/100 и лучший результат дегустации.",
+            }
+        )
+        message = build_message(item, offer(price="3,99 €"))
+
+        self.assertIn(
+            "Exact Product — Mejor del Análisis OCU · Carrefour",
+            message,
+        )
+        self.assertIn("📦 1 л, PET", message)
+        self.assertIn("🌍 Испания", message)
+        self.assertIn("🏭 CAÑA NATURE, S.L.U.", message)
+        self.assertIn("Почему выделился", message)
+        self.assertIn("На сайте Carrefour сейчас указана цена", message)
+        headline = message.split("</p>", 1)[0]
+        self.assertNotIn("90/100", headline)
 
     def test_ocu_renderer_uses_correct_russian_score_form(self):
         item = ReviewedCandidate(
@@ -706,6 +896,45 @@ class StateTests(unittest.TestCase):
 
 
 class SelectionTests(unittest.TestCase):
+    def test_selector_does_not_resolve_product_images(self):
+        item = ReviewedCandidate(
+            **{
+                **candidate("media-neutral", "media-neutral").__dict__,
+                "image_sources": (
+                    ReviewedImageSource(
+                        name="Brand product",
+                        page_url="https://brand.example/product",
+                        page_hosts=frozenset({"brand.example"}),
+                        image_hosts=frozenset({"brand.example"}),
+                        page_markers=("Exact Product",),
+                        image_alt_markers=("Exact Product",),
+                    ),
+                ),
+            }
+        )
+        categories = (
+            ReviewedCategory(
+                "media-neutral",
+                (ReviewedSource("source", 1, (item,)),),
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "awards.json"
+            with (
+                patch.object(awards, "CATEGORIES", categories),
+                patch.object(awards, "_verify_award"),
+                patch.object(awards, "_refresh_offer", return_value=offer()),
+                patch.object(awards, "_resolve_reviewed_image_source") as media,
+            ):
+                selected = select_publication(
+                    datetime(2026, 10, 3, 14, 20, tzinfo=MADRID),
+                    ProductAwardState(path),
+                )
+
+        self.assertEqual(selected[1].candidate.event_id, item.event_id)
+        self.assertNotIn("<img", selected[1].message)
+        media.assert_not_called()
+
     def test_unknown_previous_event_does_not_block_ordinary_selection(self):
         current = candidate("current", "current")
         categories = (

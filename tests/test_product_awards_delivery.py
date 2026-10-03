@@ -9,6 +9,7 @@ from telegrambot.product_awards import (
     ProductAwardError,
     ProductAwardPublication,
     ProductAwardState,
+    ResolvedProductImage,
     RetailOffer,
     ReviewedCandidate,
     build_message,
@@ -63,6 +64,100 @@ def remote_media_error():
 
 
 class ProductAwardDeliveryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_deterministic_first_image_failure_tries_second_reviewed_image(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = ProductAwardState(Path(directory) / "awards.json")
+            item = publication()
+            first = ResolvedProductImage(
+                url="https://brand.example/first.jpg",
+                hosts=frozenset({"brand.example"}),
+                source_name="brand",
+            )
+            second = ResolvedProductImage(
+                url="https://retailer.example/second.jpg",
+                hosts=frozenset({"retailer.example"}),
+                source_name="retailer",
+            )
+            with (
+                patch(
+                    "telegrambot.__main__.iter_product_award_images",
+                    return_value=iter((first, second)),
+                ),
+                patch(
+                    "telegrambot.__main__.send_rich_message",
+                    side_effect=[remote_media_error(), 201],
+                ) as send,
+                patch(
+                    "telegrambot.__main__.fetch_product_award_image",
+                    side_effect=ProductAwardError(
+                        "brand image missing",
+                        code="MEDIA-HTTP-404",
+                    ),
+                ) as fetch,
+            ):
+                message_id = await _deliver_product_award(
+                    state,
+                    0,
+                    item,
+                    "token",
+                    "chat",
+                    date(2026, 10, 3),
+                )
+
+            self.assertEqual(message_id, 201)
+            self.assertEqual(send.await_count, 2)
+            self.assertIn(first.url, send.await_args_list[0].args[2])
+            self.assertIn(second.url, send.await_args_list[1].args[2])
+            fetch.assert_called_once_with(first)
+            self.assertIn(item.candidate.event_id, state.published_events())
+
+    async def test_ambiguous_first_image_never_attempts_second_image(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = ProductAwardState(Path(directory) / "awards.json")
+            item = publication()
+            first = ResolvedProductImage(
+                url="https://brand.example/first.jpg",
+                hosts=frozenset({"brand.example"}),
+                source_name="brand",
+            )
+            second = ResolvedProductImage(
+                url="https://retailer.example/second.jpg",
+                hosts=frozenset({"retailer.example"}),
+                source_name="retailer",
+            )
+            ambiguous = TelegramError(
+                "timeout",
+                retryable=True,
+                code="TIMEOUT",
+            )
+            with (
+                patch(
+                    "telegrambot.__main__.iter_product_award_images",
+                    return_value=iter((first, second)),
+                ),
+                patch(
+                    "telegrambot.__main__.send_rich_message",
+                    side_effect=ambiguous,
+                ) as send,
+                patch(
+                    "telegrambot.__main__.fetch_product_award_image",
+                ) as fetch,
+            ):
+                message_id = await _deliver_product_award(
+                    state,
+                    0,
+                    item,
+                    "token",
+                    "chat",
+                    date(2026, 10, 3),
+                )
+
+            self.assertIsNone(message_id)
+            send.assert_awaited_once()
+            self.assertIn(first.url, send.await_args.args[2])
+            fetch.assert_not_called()
+            self.assertEqual(state.uncertain_event(), item.candidate.event_id)
+
     async def test_local_media_failure_falls_back_to_no_image_rich_message(self):
         with tempfile.TemporaryDirectory() as directory:
             state = ProductAwardState(Path(directory) / "awards.json")
