@@ -128,6 +128,34 @@ date. A definite Telegram failure clears that date for retry; an ambiguous send
 keeps it to prevent an automatic duplicate. No browser, PDF, AI, database,
 daemon, queue or generic notification framework is involved.
 
+## One-off event registration notices
+
+Official one-off events may publish a compact registration lifecycle before
+their event day when the responsible first-party source exposes an actionable
+registration state or exact registration boundary. The first source is
+CONVEGA's guided GR-92 campaign.
+
+The source layer keeps one small normalized local catalogue that also projects
+ordinary `Event` rows into Morning, Tomorrow and Weekend. Registration
+lifecycle state remains separate from the global Event model and from recurring
+course notifications.
+
+A registration is announced on first discovery only when current source
+evidence positively proves it is open. First-seen full, closed or unknown
+records silently establish the baseline. Explicit full/closed/reopen
+transitions, exact opening/closing boundaries, material deadline changes and
+event-date corrections may notify under the bounded rules in ADR 0089.
+Disappearance never means closure or cancellation.
+
+The normal one-shot runs at 12:47 Europe/Madrid with one 13:47 recovery.
+Same-day freshness is mandatory for registration claims. The recovery skips
+source I/O when today's CONVEGA snapshot already exists. At most one Telegram
+message is sent per run, and ambiguous delivery blocks automatic resend.
+
+The implementation uses bounded WordPress REST plus deterministic parsing only:
+no browser, OCR, source-side AI, database, queue, daemon or generic notification
+framework. See ADR 0089.
+
 ## Weekend events digest
 
 One optional Friday-evening message, «Афиша выходных», previews Saturday and

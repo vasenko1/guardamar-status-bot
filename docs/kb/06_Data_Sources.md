@@ -30,6 +30,7 @@ official endpoints and lightweight access methods are validated.
 | Instituto Geografico Nacional (IGN) GeoRSS | Nearby recorded earthquakes | High; official Spanish seismic authority | One bounded public XML feed request per hour; deterministic 20 km and magnitude 1.8 filter | Yes, narrow standalone notice |
 | Policía Local Guardamar | Historical reviewed festival restriction only | The reviewed page did not provide a dependable current traffic feed in routine operation | Retired from runtime; no scheduled request and no AI fallback | No |
 | Agenda Guardamar | Official ticketed events occurring today | High for listed Ayuntamiento events | 05:30 bounded HTML/Schema.org catalog refresh | Yes |
+| CONVEGA WordPress REST (Senderismo + guided GR-92 landing) | Official guided-route event facts and one-off registration state | High for CONVEGA-organized events; announcement supplies occurrence facts while the dedicated landing supplies current registration evidence | One bounded daily REST refresh at 12:47 with 13:47 recovery only when today's snapshot is absent; Friday Weekend performs one best-effort fresh refresh | Yes, ADR 0089 |
 | Turismo Guardamar municipal agenda | Broader official monthly cultural text plus supplementary MUPI | High for text; image facts require agreement | 05:10 text-first catalog refresh; MUPI only after URL change | Yes |
 | Turismo Guardamar public WordPress festival article | Full dated programme when the monthly MUPI contains only a small inset | High; primary municipal tourism publication | Bounded public REST posts search, then linked full-size poster; explicit dated article facts survive poster/model failure. The validated poster URL may be retained as optional next-day media metadata; image bytes are not archived. | Yes, narrow Campo programme |
 | Biblioteca Pública Municipal de Guardamar agenda | Library exhibitions, films and other library activities | High; first-party library agenda | One bounded 05:10 list refresh; details only for new, visibly changed, or previously failed cards | Yes |
@@ -838,3 +839,25 @@ product; they are not a guarantee that every physical store has shelf stock at
 that moment. Marketplace listings, search-engine snippets and fuzzy brand-only
 matches are never accepted.
 
+
+### CONVEGA one-off guided routes
+
+CONVEGA is a first-party organizer for the approved GR-92 guided-route slice.
+The adapter uses WordPress REST, not browser rendering. Category `senderismo`
+provides a bounded discovery index; the current announcement supplies stable
+stage/date facts; the stable guided-route landing slug supplies current
+registration evidence.
+
+The landing status is associated only with one uniquely identified occurrence.
+CONVEGA is comarca-wide, so Event/RegistrationRecord projection additionally
+requires explicit official Guardamar relevance; another stage in the same
+campaign is not local merely because it shares the announcement.
+Exact terminal text such as `PLAZAS AGOTADAS` is authoritative for `full`.
+`open` requires a positively validated registration form/action on the current
+dedicated landing. Missing controls or disappearing records are `unknown`, not
+closed. Current accepted 2026-10-02 state is stage 21 `full`, stage 22
+`unknown`.
+
+The normal measured source cost is roughly 85 KB/day for category metadata, one
+announcement detail and landing content. The source snapshot is local, atomic
+and last-good preserving. See ADR 0089 and the dated CONVEGA research file.

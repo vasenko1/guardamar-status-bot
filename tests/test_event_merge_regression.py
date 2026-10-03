@@ -905,3 +905,39 @@ class MorningVenueMergeRegressionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RegistrationAccessMergeRegressionTests(unittest.TestCase):
+    def test_terminal_registration_note_suppresses_stale_registration_action(self):
+        event = Event(
+            title="Ruta guiada GR-92 · Etapa 21",
+            starts_at=None,
+            access_note="места закончились",
+            registration_url="https://example.invalid/stale",
+            registration_contact="stale@example.invalid",
+        )
+
+        rendered = "\n".join(build_event_section(
+            (event,),
+            "🎭 <b>События</b>",
+        ))
+
+        self.assertIn("места закончились", rendered)
+        self.assertNotIn("Регистрация</a>", rendered)
+        self.assertNotIn("stale@example.invalid", rendered)
+
+    def test_nonterminal_access_note_keeps_registration_action(self):
+        event = Event(
+            title="Мероприятие",
+            starts_at=None,
+            access_note="участие бесплатное",
+            registration_url="https://example.invalid/form",
+        )
+
+        rendered = "\n".join(build_event_section(
+            (event,),
+            "🎭 <b>События</b>",
+        ))
+
+        self.assertIn("участие бесплатное", rendered)
+        self.assertIn("Регистрация</a>", rendered)
