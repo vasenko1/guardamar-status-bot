@@ -458,7 +458,7 @@ def _tol_offer(candidate: ReviewedCandidate) -> RetailOffer:
     )
 
 
-def _aldi_next_data(source: str) -> dict | list:
+def _aldi_next_data(source: str):
     import re
 
     match = re.search(
