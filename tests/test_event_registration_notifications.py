@@ -295,7 +295,13 @@ class RegistrationPlanningTests(unittest.TestCase):
         self.assertIn("Сегодня в 10:30 откроется", before.publication.message)
 
         after = plan_registration_run(
-            (replace(timed, status="open"),),
+            (
+                replace(
+                    timed,
+                    status="open",
+                    registration_url="https://official.example/register",
+                ),
+            ),
             empty_state(),
             datetime(2026, 10, 2, 11, 0, tzinfo=TZ),
         )
