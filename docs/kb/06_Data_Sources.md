@@ -808,8 +808,9 @@ Product Awards use a reviewed source catalogue rather than autonomous web
 discovery. Durable category/source/rank rules are in ADR 0083, exact rich
 delivery in ADR 0084, and the 3 October resilience/retailer-rotation refinement
 in ADR 0092. Dated evidence is recorded in
-`research/2026-09-25-supermarket-product-awards.md` and
-`research/2026-10-03-product-awards-publication-gap.md`.
+`research/2026-09-25-supermarket-product-awards.md`,
+`research/2026-10-03-product-awards-publication-gap.md` and
+`research/2026-10-03-product-awards-retailer-balance-audit.md`.
 
 Current award-authority contracts in the production registry are:
 
@@ -846,10 +847,30 @@ has shelf stock at that moment. Search-engine snippets, marketplace sellers,
 brand-only matches and inferred image filenames are never accepted as current
 retail evidence.
 
-Retailer diversity is a publication policy, not a source-quality shortcut.
-The last confirmed retailer cannot be repeated in the next Product Awards post,
-but this restriction never authorizes a lower-ranked award candidate or weaker
-retail match.
+Retailer diversity is a publication preference, not a source-quality shortcut
+or publication veto. A due run first prefers a different retailer while
+preserving category/source/rank semantics. If no different-retailer candidate
+is publishable, the ordinary selector may publish the same retailer again.
+Diversity never authorizes a lower-ranked award candidate or weaker retail
+match, and it never suppresses the only valid product.
+
+The 3 October retailer-balance audit found that the current five-of-seven
+Consum concentration is a registry-construction artifact rather than evidence
+that Mercadona, Lidl, DIA or Carrefour lack award-worthy products. Earlier
+research already proved exact Mercadona award/SKU joins; Lidl and DIA expose
+current first-party awarded-product surfaces; Carrefour still exposes a
+reviewed exact Realfooding gazpacho retail match. Registry research should
+therefore prioritize underrepresented retailers while retaining identical
+quality and exact-retail gates. This is a research priority, not a retailer
+quota.
+
+The same audit also flags the four Producto del Año 2026 registry entries for
+source-policy re-review. Producto del Año is an innovation award family, while
+ADR 0083 admits sources primarily about product quality or a clearly defined
+championship result and treats innovation-only recognition as discovery unless
+its exact semantics justify production admission. Existing entries remain
+unchanged until that review is completed; technical ease of the Consum retail
+contract is not itself an admission reason.
 
 ### CONVEGA one-off guided routes
 
