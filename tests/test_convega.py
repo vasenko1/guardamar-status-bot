@@ -321,8 +321,8 @@ class ConvegaProjectionTests(unittest.TestCase):
 
     def test_open_event_projection_keeps_validated_action(self):
         snapshot = snapshot_with(
-            "<p>Inscripción</p>"
-            "<form><input type='text' name='name'>"
+            "<form><p>Inscripción</p>"
+            "<input type='text' name='name'>"
             "<input type='email' name='email'>"
             "<button type='submit'>Enviar</button></form>"
         )
