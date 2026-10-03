@@ -167,7 +167,7 @@ It requires no new infrastructure:
 - correct Consum media-field precedence;
 - explicit ALDI product-error recognition;
 - one small last-retailer state value;
-- strict retailer anti-repeat selection;
+- best-effort retailer-diversity selection with ordinary same-retailer fallback;
 - one invocation-local attempted-candidate set;
 - existing bounded Telegram upload recovery retained.
 
