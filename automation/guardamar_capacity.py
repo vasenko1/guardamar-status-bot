@@ -437,23 +437,31 @@ class OciGateway:
             retry_strategy=self._oci.retry.NoneRetryStrategy(),
         ).data
         shape_config = item.shape_config
-        if shape_config is None:
-            raise SafetyError("OCI omitted instance shape configuration")
+        ocpus = (
+            float(shape_config.ocpus)
+            if shape_config is not None and shape_config.ocpus is not None
+            else None
+        )
+        memory_in_gbs = (
+            float(shape_config.memory_in_gbs)
+            if shape_config is not None and shape_config.memory_in_gbs is not None
+            else None
+        )
         return InstanceDetails(
             item.id,
             item.display_name or "",
             item.lifecycle_state,
             item.shape,
-            float(shape_config.ocpus),
-            float(shape_config.memory_in_gbs),
+            ocpus,
+            memory_in_gbs,
             item.image_id,
             item.availability_domain,
             item.freeform_tags or {},
         )
 
-    def get_image(self) -> ImageRecord:
+    def get_image(self, profile: LaunchProfile = A1_PROFILE) -> ImageRecord:
         item = self._compute.get_image(
-            IMAGE_OCID,
+            profile.image_ocid,
             retry_strategy=self._oci.retry.NoneRetryStrategy(),
         ).data
         return ImageRecord(
@@ -475,35 +483,60 @@ class OciGateway:
             bool(item.prohibit_public_ip_on_vnic),
         )
 
-    def list_shapes(self) -> list[str]:
+    def list_shapes(
+        self, profile: LaunchProfile = A1_PROFILE
+    ) -> list[str]:
         response = self._oci.pagination.list_call_get_all_results(
             self._compute.list_shapes,
             COMPARTMENT_OCID,
             availability_domain=AVAILABILITY_DOMAIN,
-            image_id=IMAGE_OCID,
+            image_id=profile.image_ocid,
             retry_strategy=self._oci.retry.NoneRetryStrategy(),
         )
         return [item.shape for item in response.data]
 
-    def get_resource_availability(self) -> dict[str, ResourceAvailability]:
-        names = {
-            "a1_ocpus": ("compute", "standard-a1-core-regional-count"),
-            "a1_memory_gb": (
-                "compute",
-                "standard-a1-memory-regional-count",
-            ),
+    def get_resource_availability(
+        self, profile: LaunchProfile = A1_PROFILE
+    ) -> dict[str, ResourceAvailability]:
+        names: dict[str, tuple[str, str, Optional[str]]] = {
             "free_storage_gb": (
                 "block-storage",
                 "total-free-storage-gb-regional",
+                None,
             ),
         }
+        if profile.key == "a1":
+            names.update({
+                "a1_ocpus": (
+                    "compute",
+                    "standard-a1-core-regional-count",
+                    None,
+                ),
+                "a1_memory_gb": (
+                    "compute",
+                    "standard-a1-memory-regional-count",
+                    None,
+                ),
+            })
+        elif profile.key == "e2":
+            names["e2_micro_count"] = (
+                "compute",
+                "vm-standard-e2-1-micro-count",
+                AVAILABILITY_DOMAIN,
+            )
+        else:
+            raise SafetyError(f"unsupported launch profile {profile.key}")
+
         result = {}
-        for key, (service, limit_name) in names.items():
+        for key, (service, limit_name, availability_domain) in names.items():
+            kwargs = {"retry_strategy": self._oci.retry.NoneRetryStrategy()}
+            if availability_domain is not None:
+                kwargs["availability_domain"] = availability_domain
             item = self._limits.get_resource_availability(
                 service,
                 limit_name,
                 COMPARTMENT_OCID,
-                retry_strategy=self._oci.retry.NoneRetryStrategy(),
+                **kwargs,
             ).data
             if item.used is None or item.available is None:
                 raise SafetyError(f"OCI omitted availability data for {key}")
@@ -532,16 +565,25 @@ class OciGateway:
         ).data
         return VnicRecord(item.id, item.subnet_id, item.public_ip)
 
-    def launch_instance(self, retry_token: str) -> str:
+    def launch_instance(
+        self,
+        retry_token: str,
+        profile: LaunchProfile = A1_PROFILE,
+    ) -> str:
         """Submit exactly one SDK request with all automatic retries disabled."""
 
         oci = self._oci
-        manifest = launch_manifest()
+        manifest = launch_manifest(profile)
         vnic = oci.core.models.CreateVnicDetails(
             **manifest.pop("create_vnic_details")
         )
-        shape_config = oci.core.models.LaunchInstanceShapeConfigDetails(
-            **manifest.pop("shape_config")
+        shape_config_values = manifest.pop("shape_config", None)
+        shape_config = (
+            oci.core.models.LaunchInstanceShapeConfigDetails(
+                **shape_config_values
+            )
+            if shape_config_values is not None
+            else None
         )
         source = oci.core.models.InstanceSourceViaImageDetails(
             **manifest.pop("source_details")
@@ -561,15 +603,17 @@ class OciGateway:
             plugins_config=plugins,
             **manifest.pop("agent_config"),
         )
-        details = oci.core.models.LaunchInstanceDetails(
-            create_vnic_details=vnic,
-            shape_config=shape_config,
-            source_details=source,
-            instance_options=options,
-            availability_config=availability,
-            agent_config=agent,
+        details_values = {
+            "create_vnic_details": vnic,
+            "source_details": source,
+            "instance_options": options,
+            "availability_config": availability,
+            "agent_config": agent,
             **manifest,
-        )
+        }
+        if shape_config is not None:
+            details_values["shape_config"] = shape_config
+        details = oci.core.models.LaunchInstanceDetails(**details_values)
         response = self._compute.launch_instance(
             details,
             opc_retry_token=retry_token,
@@ -577,22 +621,55 @@ class OciGateway:
         )
         return response.data.id
 
-
-def audit(gateway: Any) -> AuditReport:
+def audit(
+    gateway: Any,
+    profile: LaunchProfile = A1_PROFILE,
+) -> AuditReport:
     return evaluate_audit(
         gateway.list_instances(),
-        gateway.get_image(),
+        gateway.get_image(profile),
         gateway.get_subnet(),
-        gateway.list_shapes(),
-        gateway.get_resource_availability(),
+        gateway.list_shapes(profile),
+        gateway.get_resource_availability(profile),
+        profile,
     )
 
 
-def _retry_token(env: Mapping[str, str]) -> str:
+def _select_profile(env: Mapping[str, str]) -> LaunchProfile:
+    run_number = env.get("GITHUB_RUN_NUMBER")
+    if not run_number:
+        return A1_PROFILE
+    try:
+        value = int(run_number)
+    except ValueError as exc:
+        raise SafetyError("invalid GITHUB_RUN_NUMBER") from exc
+    if value <= 0:
+        raise SafetyError("invalid GITHUB_RUN_NUMBER")
+    return E2_PROFILE if value % 2 == 0 else A1_PROFILE
+
+
+def _resolve_profile(name: str, env: Mapping[str, str]) -> LaunchProfile:
+    if name == "auto":
+        return _select_profile(env)
+    try:
+        return PROFILES[name]
+    except KeyError as exc:
+        raise SafetyError(f"unsupported launch profile {name}") from exc
+
+
+def _retry_token(
+    env: Mapping[str, str],
+    profile: LaunchProfile = A1_PROFILE,
+) -> str:
     # GITHUB_RUN_ID stays stable when a workflow run is re-run, making that
-    # re-run reuse the original idempotency token. New cron runs get new IDs.
+    # re-run reuse the original idempotency token. New runs get new IDs.
     run_id = env.get("GITHUB_RUN_ID", "local")
-    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"guardamar-capacity:{run_id}"))
+    return str(
+        uuid.uuid5(
+            uuid.NAMESPACE_URL,
+            f"guardamar-capacity:{run_id}:{profile.key}",
+        )
+    )
 
 
 def _error_kind(exc: BaseException) -> str:
