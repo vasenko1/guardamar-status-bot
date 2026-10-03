@@ -581,11 +581,20 @@ def audit(gateway: Any) -> AuditReport:
     )
 
 
-def _retry_token(env: Mapping[str, str]) -> str:
-    # GITHUB_RUN_ID stays stable when a workflow run is re-run, making that
-    # re-run reuse the original idempotency token. New cron runs get new IDs.
+def _retry_token(
+    env: Mapping[str, str],
+    memory_in_gbs: float = MEMORY_GBS,
+) -> str:
+    # GITHUB_RUN_ID stays stable when a workflow run is re-run. Keep retries
+    # idempotent for the same exact launch intent, while giving the 2 GB
+    # fallback a distinct token if a later rerun selects a different profile.
+    if memory_in_gbs not in ALLOWED_MEMORY_GBS:
+        raise SafetyError("retry token memory is outside the approved A1 profiles")
     run_id = env.get("GITHUB_RUN_ID", "local")
-    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"guardamar-capacity:{run_id}"))
+    return str(uuid.uuid5(
+        uuid.NAMESPACE_URL,
+        f"guardamar-capacity:{run_id}:{memory_in_gbs:g}",
+    ))
 
 
 def _error_kind(exc: BaseException) -> str:
@@ -790,7 +799,7 @@ def run_launch(
 
     try:
         identifier = gateway.launch_instance(
-            _retry_token(env),
+            _retry_token(env, selected_memory_gbs),
             selected_memory_gbs,
         )
     except Exception as exc:
