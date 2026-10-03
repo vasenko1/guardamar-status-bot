@@ -972,10 +972,11 @@ async def run_registration_notifications(
 ) -> str:
     observed = await convega_snapshot_observed_at(source_state_path)
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
-    if (
-        observed is None
-        or observed.astimezone(GUARDAMAR_TIMEZONE).date() != local_day
-    ):
+    if observed is None:
+        return "stale_source"
+    local_observed = observed.astimezone(GUARDAMAR_TIMEZONE)
+    local_now = now.astimezone(GUARDAMAR_TIMEZONE)
+    if local_observed.date() != local_day or local_observed > local_now:
         return "stale_source"
 
     records = await load_registration_records(source_state_path)
@@ -1056,10 +1057,13 @@ async def _run_cli(command: str) -> int:
 
     observed = await convega_snapshot_observed_at(source_path)
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
-    if (
-        observed is None
-        or observed.astimezone(GUARDAMAR_TIMEZONE).date() != local_day
-    ):
+    if observed is None:
+        if command == "preview":
+            print("No fresh CONVEGA registration snapshot")
+        return 0
+    local_observed = observed.astimezone(GUARDAMAR_TIMEZONE)
+    local_now = now.astimezone(GUARDAMAR_TIMEZONE)
+    if local_observed.date() != local_day or local_observed > local_now:
         if command == "preview":
             print("No fresh CONVEGA registration snapshot")
         return 0
