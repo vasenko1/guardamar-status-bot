@@ -286,6 +286,41 @@ class SourceContractTests(unittest.TestCase):
 
         self.assertEqual(caught.exception.diagnostic_code, "MEDIA-DRIFT")
 
+    def test_primary_image_failure_falls_back_to_exact_retailer_image(self):
+        item = ReviewedCandidate(
+            **{
+                **candidate("image-fallback").__dict__,
+                "image_sources": (
+                    ReviewedImageSource(
+                        name="Brand product",
+                        page_url="https://brand.example/product",
+                        page_hosts=frozenset({"brand.example"}),
+                        image_hosts=frozenset({"brand.example"}),
+                        page_markers=("Exact Product",),
+                        image_alt_markers=("Exact Product",),
+                    ),
+                ),
+            }
+        )
+        retail_image = (
+            "https://cdn-consum.aktiosdigitalservices.com/"
+            "product.jpg"
+        )
+        current_offer = offer(image_url=retail_image)
+        with patch.object(
+            awards,
+            "_resolve_reviewed_image_source",
+            side_effect=awards.ProductAwardError(
+                "brand drift",
+                code="MEDIA-DRIFT",
+            ),
+        ):
+            images = tuple(awards.iter_product_images(item, current_offer))
+
+        self.assertEqual(len(images), 1)
+        self.assertEqual(images[0].url, retail_image)
+        self.assertEqual(images[0].source_name, "Test Market exact product")
+
     def test_consum_detail_requires_exact_ean_and_returns_media(self):
         item = candidate("retail")
         payload = {
