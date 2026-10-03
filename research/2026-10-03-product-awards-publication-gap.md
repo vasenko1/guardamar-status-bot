@@ -138,9 +138,10 @@ After each Consum media failure, delivery selection restarts. NALTROS is then
 verified again and fails again, so one invocation may repeat the same ALDI
 request several times.
 
-This does not cause the missing post, but it is unnecessary network traffic.
-ADR 0092 therefore limits repeated candidate verification within one process
-without adding persistent negative cache state.
+This does not cause the missing post. The final ADR 0092 does not add a
+candidate-attempt cache solely for this symptom: making media non-fatal removes
+the normal delivery branch that caused the selector to restart after each
+Consum image failure.
 
 ## Retailer-diversity clarification
 
@@ -165,10 +166,10 @@ The approved design is ADR 0092.
 It requires no new infrastructure:
 
 - correct Consum media-field precedence;
-- explicit ALDI product-error recognition;
-- one small last-retailer state value;
-- best-effort retailer-diversity selection with ordinary same-retailer fallback;
-- one invocation-local attempted-candidate set;
-- existing bounded Telegram upload recovery retained.
+- explicit and precise ALDI product-error/contract-drift distinction;
+- retailer preference derived from existing published-event history;
+- one bounded selection scan with an in-memory same-retailer fallback;
+- existing bounded Telegram upload recovery retained;
+- no-image Rich Message delivery after deterministic media-path failure.
 
 No code was changed as part of this research/documentation checkpoint.
