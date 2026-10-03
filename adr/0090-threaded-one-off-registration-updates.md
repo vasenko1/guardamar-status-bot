@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-10-03
 - Implementation: Pending source/presentation probes
+- State layout: refined by ADR 0092
 
 ## Context
 
@@ -102,49 +103,46 @@ immediately generate a second deadline reply in the same run.
 Triggers represented in the root are acknowledged atomically with successful
 root delivery.
 
-### Persist Telegram root identity separately from semantic baseline
+### Persist lifecycle state around the event root
 
-The lifecycle state moves to a new bounded schema that keeps:
+ADR 0092 refines the pending state shape.
 
-- semantic baseline;
-- audience-announced IDs;
-- sent trigger IDs;
-- per-record Telegram root metadata;
-- at most one uncertain outbound publication.
+Do not extend ADR 0089 as separate global baseline/announced/root/trigger
+collections. The new bounded state stores one entry per lifecycle
+`record_id`, containing:
 
-Conceptually:
+- semantic event/option state;
+- `audience_known`;
+- optional Telegram root metadata;
+- record-local sent trigger history.
 
-```text
-root_messages[record_id] = {
-    message_id,
-    published_at,
-    media_kind
-}
-```
+Telegram root metadata remains presentation/delivery state and must not
+participate in source-semantic comparisons.
 
-Telegram root metadata is presentation/delivery state. It is not source
-evidence and must not participate in registration-state comparisons.
+When an event ages out of lifecycle retention, remove that one event entry so
+its semantic state, audience flag, root and triggers are pruned together.
 
-Root metadata is pruned with the corresponding expired lifecycle record.
+### Preserve legacy audience knowledge during migration
 
-### Preserve audience knowledge separately
+ADR 0089's `announced_record_ids` remains useful only as migration input.
 
-`announced_record_ids` remains semantically useful even after root IDs are
-added.
+A legacy record that was already shown to residents becomes
+`records[record_id].audience_known=true`, even when no recoverable per-event
+Telegram root exists.
 
-A migrated/legacy record may be known to the audience without a recoverable
-root message ID. Such a case must not be rewritten as "never announced" merely
-because threading metadata is absent.
+Such a record must not be rewritten as "never announced" merely because
+threading metadata is absent.
 
 ### Migrate state v1 fail-safe
 
-The deployed v1 state must be accepted and migrated deterministically to the
-new schema without deleting baseline or sent-trigger history.
+The deployed v1 state is migrated once into ADR 0092's event-centric schema
+without deleting baseline, last-explicit-status, audience or trigger history.
 
-Existing v1 records have no root metadata. The current production baseline is
-silent, so migration itself creates no Telegram publication.
+Existing v1 records have no per-event root metadata. Migration itself creates no
+Telegram publication and no Telegram root ID may be invented.
 
-No Telegram root ID may be invented during migration.
+Normal runtime supports only the new state version after successful migration;
+do not keep a permanent dual-schema compatibility path.
 
 ### Crash safety for new roots
 
