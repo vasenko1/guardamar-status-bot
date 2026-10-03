@@ -352,6 +352,37 @@ class CapacityAuditTests(unittest.TestCase):
         self.assertEqual(result.profile, "e2")
         self.assertEqual(gateway.launch_calls, [])
 
+    def test_existing_target_is_verified_before_selected_profile_reads(self):
+        class E2ReadsWouldFail(FakeGateway):
+            def get_image(self, profile=capacity.A1_PROFILE):
+                if profile.key == "e2":
+                    raise AssertionError("E2 image read must not happen")
+                return super().get_image(profile)
+
+            def list_shapes(self, profile=capacity.A1_PROFILE):
+                if profile.key == "e2":
+                    raise AssertionError("E2 shape read must not happen")
+                return super().list_shapes(profile)
+
+            def get_resource_availability(self, profile=capacity.A1_PROFILE):
+                if profile.key == "e2":
+                    raise AssertionError("E2 limits read must not happen")
+                return super().get_resource_availability(profile)
+
+        gateway = E2ReadsWouldFail()
+        gateway.instance_snapshots = [[record()]]
+        gateway.instance_reads = [details(profile=capacity.A1_PROFILE)]
+
+        result = capacity.run_launch(
+            gateway,
+            {"GITHUB_RUN_NUMBER": "2"},
+            lambda _: None,
+        )
+
+        self.assertEqual(result.outcome, "READY")
+        self.assertEqual(result.profile, "a1")
+        self.assertEqual(gateway.launch_calls, [])
+
     def test_rate_limit_makes_exactly_one_request_and_no_retry(self):
         gateway = FakeGateway()
         gateway.launch_error = FakeError(
@@ -492,6 +523,8 @@ class CapacityAuditTests(unittest.TestCase):
         self.assertIn("cancel-in-progress: false", workflow)
         self.assertIn("GUARDAMAR_LAUNCH_SWITCH", workflow)
         self.assertIn("profile:", workflow)
+        self.assertIn("default: auto", workflow)
+        self.assertIn("required: false", workflow)
         self.assertNotIn("pull_request:", workflow)
 
 
