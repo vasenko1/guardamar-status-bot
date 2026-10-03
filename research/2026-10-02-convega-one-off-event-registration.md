@@ -2,16 +2,26 @@
 
 ## Status
 
-Final research/design review after two read-only production probes on
-2026-10-02.
+Research/design finalized after two read-only production probes on 2026-10-02.
+The accepted design is recorded in ADR 0089.
 
-This document records the current evidence and the implementation shape that
-should be converted into an ADR before runtime code is written. It supersedes
-the provisional choices from the first version of this research where they
-conflict with the conclusions below.
+Implementation is now present on branch
+`feat/convega-one-off-registration` in draft PR #259. The branch contains the
+REST source adapter, normal Event projection, one-off registration lifecycle,
+Termux wrappers/cron integration, tests, rendering guard and documentation.
+It is intentionally **not merged or deployed yet**: the repository has no
+general CI workflow, so focused and full regression suites plus one bounded
+live source smoke test must pass on the Termux production device before PR
+promotion.
 
-No runtime code, cron, state or Telegram publication was changed by this
-research work.
+Current implementation review additionally enforces:
+
+- Guardamar locality before Event/RegistrationRecord projection;
+- explicit-open precedence over same-day opening wording;
+- rejection of same-day snapshots whose `observed_at` is in the future;
+- operator resolution commands for ambiguous Telegram delivery.
+
+This file remains the empirical source record; ADR 0089 is the durable decision.
 
 ## Question
 
