@@ -70,6 +70,7 @@ class WeekendTermuxTests(unittest.TestCase):
             for command in commands.iterdir():
                 command.chmod(0o755)
             environment = dict(os.environ)
+            environment.pop("SVDIR", None)
             environment.update({
                 "HOME": str(root / "home"),
                 "PATH": f"{commands}:/usr/bin:/bin",
