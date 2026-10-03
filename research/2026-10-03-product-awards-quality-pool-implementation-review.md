@@ -216,6 +216,15 @@ Existing Product Awards tests continue to cover:
 - no-image Telegram degradation;
 - uncertain-delivery safety.
 
+## Implementation merge checkpoint
+
+The reviewed implementation was squash-merged through PR #281 as
+`2814befac6a95fa9bcd7e2bb15d3405fcaa65d8c`.
+
+This records code availability in `main`, not production validation. The
+production Termux checkout must remain unchanged until the mandatory exact-commit
+gate below passes.
+
 ## Validation still required
 
 GitHub does not provide a reliable PR CI gate for this repository.
