@@ -82,12 +82,23 @@ It identifies a target by display name or either of two freeform tags, and any
 non-terminated target causes zero launch calls. OCI SDK automatic retries are
 disabled at both client and request level.
 
+After both audits pass, one best-effort Compute Capacity Report requests the
+approved A1 profiles together: 1 OCPU / 6 GB and 1 OCPU / 2 GB. The normal
+launch remains 6 GB. The selector chooses 2 GB only when that same report says
+6 GB is `OUT_OF_HOST_CAPACITY` and 2 GB is `AVAILABLE` with a positive
+`available_count` when OCI supplies one. Report failure, missing or unexpected
+data, both profiles available, or both profiles unavailable all preserve the
+original 6 GB launch. The report never creates or reserves a VM and never causes
+a second launch request.
+
 `Out of host capacity` and HTTP 429 end the current run without retry. An
 ambiguous response starts only bounded read-after-write discovery; it never
 repeats `LaunchInstance`. A permanent rejection or unresolved ambiguous result
 requests workflow disablement. An accepted or previously discovered instance
-is polled conservatively and must match image, shape, OCPU, RAM, AD, subnet, and
-public IPv4 before the result becomes `READY`.
+is polled conservatively and must match the exact image, shape, OCPU, one of
+the two approved RAM values (6 GB or 2 GB), AD, subnet, and public IPv4 before
+the result becomes `READY`. OCI retry tokens are profile-bound so a GitHub
+rerun cannot reuse one idempotency key for different 6 GB and 2 GB payloads.
 
 Manual dispatch defaults to `audit`; `launch` must be deliberately selected.
 The workflow has one concurrency group and runs at minutes 7, 22, 37, and 52.
@@ -183,7 +194,12 @@ production target for the pinned ARM image even if host capacity were later
 reported. The smallest acceptable fallback remains 1 OCPU / 2 GB.
 
 These results show that, at the sampled times, reducing A1 memory did not expose
-a separate capacity pool in Madrid 3. The production hunter therefore remains
-unchanged at 1 OCPU / 6 GB while the capacity-report result is retained for
-future selector design. The temporary probe workflow was removed after the
+a separate capacity pool in Madrid 3. They do not prove that 2 GB can never be
+available while 6 GB is not.
+
+ADR 0098 therefore keeps 6 GB as the default and uses the capacity report only
+as an opportunistic selector for the 2 GB fallback. A report failure or
+inconclusive result preserves the old 6 GB attempt. The fallback implementation
+passed compile validation and 42 focused capacity/backstop tests in GitHub
+Actions run `37154248312`. The temporary probe workflow was removed after the
 measurement.
