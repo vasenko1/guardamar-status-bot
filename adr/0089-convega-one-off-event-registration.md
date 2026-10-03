@@ -2,6 +2,8 @@
 
 - Status: Accepted
 - Date: 2026-10-02
+- Implementation: Deployed 2026-10-03
+- Production main: `8a906a5d462a7a9c415897bba6013d791421263a`
 
 ## Context
 
@@ -290,3 +292,29 @@ global Event registration state machine.
 - an extra morning CONVEGA fetch;
 - a separate translation cron;
 - inferring closure from disappearance.
+
+
+## Deployment verification
+
+The implementation was merged and deployed to the Termux production device on
+2026-10-03. The final post-review production rollout verified:
+
+- production fast-forwarded cleanly to
+  `8a906a5d462a7a9c415897bba6013d791421263a`;
+- syntax checks passed;
+- focused production regressions passed:
+  - CONVEGA source/projection 19/19;
+  - one-off registration lifecycle 23/23;
+  - event merge regression 30/30;
+  - Termux/cron installer 10/10;
+- the preceding full device regression passed 1,501/1,501 tests;
+- the existing `crond` process remained healthy and was not duplicated;
+- the managed cron block contains exactly the two registration runs at 12:47
+  and 13:47 Europe/Madrid;
+- the installer completed idempotently;
+- registration state was healthy with no uncertain delivery;
+- no Telegram publication was triggered by deployment.
+
+The source contract remains deliberately fail-closed. A future unobserved
+CONVEGA registration form/action shape may remain `unknown` until reviewed
+from real source evidence.
