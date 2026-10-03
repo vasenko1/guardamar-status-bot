@@ -855,11 +855,29 @@ Current exact-retail contracts are source-specific:
 
 Photo acquisition is separate from retail-price verification. Under ADR 0096,
 each candidate may use a small reviewed hierarchy of exact official image
-sources. Producer/brand or official media assets are preferred where practical,
-then award-organizer or exact retailer images. Technical access alone does not
-activate a media contract: exact product identity and a reviewed reuse basis
-must be recorded. If one image source is unusable, the runtime should try the
-next reviewed exact source before degrading to no-image delivery.
+sources. Producer/brand or official product-media pages are preferred where
+practical, then award-organizer or exact retailer images. Technical access alone
+does not relax exact-product identity: an image contract pins the official page,
+allowed image hosts, page identity markers and, where available, exact image
+alt-text markers. If one image source is unusable, the runtime tries the next
+reviewed exact source before degrading to no-image delivery.
+
+Current primary image contracts are:
+
+- **Realfooding Gazpacho:** exact Realfooding product page, exact
+  `Gazpacho Fresco` image alt;
+- **Oleoestepa DOP Estepa:** exact Oleoestepa 1 L page, exact product title/EAN
+  and exact image alt;
+- **AROM'ARTE Intenso:** exact DIA SKU 273821 page and exact product image alt;
+- **Anís Chinchón Dulce:** González Byass Chinchón page and exact bottle alt;
+- **Ambar Especial:** official Ambar Especial page and reviewed product-image
+  alt;
+- **Mahou Sin Filtrar:** exact Mahou San Miguel product page and exact product
+  image alt.
+
+NALTROS currently has no second primary photo source because its exact ALDI
+product page itself remains unavailable. When that backend becomes healthy,
+the already-reviewed ALDI primary asset remains the retailer photo path.
 
 A retailer page/API proves only that the chain's official current surface
 represents the exact product; it does not guarantee every physical branch has
