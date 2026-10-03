@@ -203,9 +203,10 @@ class _ProductImageParser(HTMLParser):
                 image_values.append(value.strip())
         srcset = values.get("srcset")
         if isinstance(srcset, str) and srcset.strip():
-            image_values.append(
-                srcset.split(",", 1)[0].strip().split(" ", 1)[0]
-            )
+            for item in srcset.split(","):
+                raw = item.strip().split(" ", 1)[0]
+                if raw:
+                    image_values.append(raw)
         for raw in image_values:
             self.images.append((alt, raw))
 
@@ -414,6 +415,19 @@ def _remote_image(
     return value
 
 
+def _image_resolution_score(url: str) -> int:
+    try:
+        query = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
+    except ValueError:
+        return 0
+    score = 0
+    for key in ("width", "w", "sw", "imwidth", "height", "h", "sh"):
+        for value in query.get(key, ()):
+            if value.isdigit():
+                score = max(score, int(value))
+    return score
+
+
 def _resolve_reviewed_image_source(
     source: ReviewedImageSource,
 ) -> ResolvedProductImage:
@@ -448,17 +462,21 @@ def _resolve_reviewed_image_source(
 
     if source.image_alt_markers:
         wanted = tuple(_fold(value) for value in source.image_alt_markers)
+        matches = []
         for alt, raw_url in parser.images:
             folded_alt = _fold(alt)
             if not all(marker in folded_alt for marker in wanted):
                 continue
             image_url = resolve(raw_url)
             if image_url is not None:
-                return ResolvedProductImage(
-                    url=image_url,
-                    hosts=source.image_hosts,
-                    source_name=source.name,
-                )
+                matches.append(image_url)
+        if matches:
+            image_url = max(matches, key=_image_resolution_score)
+            return ResolvedProductImage(
+                url=image_url,
+                hosts=source.image_hosts,
+                source_name=source.name,
+            )
     else:
         for raw_url in parser.meta_images:
             image_url = resolve(raw_url)
