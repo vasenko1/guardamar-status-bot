@@ -200,6 +200,6 @@ available while 6 GB is not.
 ADR 0098 therefore keeps 6 GB as the default and uses the capacity report only
 as an opportunistic selector for the 2 GB fallback. A report failure or
 inconclusive result preserves the old 6 GB attempt. The fallback implementation
-passed compile validation and 42 focused capacity/backstop tests in GitHub
+passed compile validation and 43 focused capacity/backstop tests in GitHub
 Actions run `37154248312`. The temporary probe workflow was removed after the
 measurement.
