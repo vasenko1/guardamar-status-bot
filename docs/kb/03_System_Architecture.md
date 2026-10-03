@@ -351,11 +351,15 @@ or inbound public port. Secrets and runtime state remain local.
 
 An independent GitHub Actions workflow performs a bounded OCI capacity search
 at minutes 7, 22, 37, and 52. It is not an application deployment path and adds
-no Android runtime dependency. Its immutable launch manifest is recovered from
-the OCI Resource Manager Stack. Each run checks OCI state twice and can issue
-at most one non-retried `LaunchInstance`; a non-terminated target always makes
-the run a zero-create verifier. Strict Always Free ceilings fail closed.
-Accepted targets are polled to RUNNING and verified through their primary VNIC.
+no Android runtime dependency. The primary A1 launch intent remains
+1 OCPU / 6 GB. After two complete OCI-state checks, one best-effort Compute
+Capacity Report may select the otherwise identical 1 OCPU / 2 GB fallback only
+when 6 GB is explicitly out of host capacity and 2 GB is explicitly available.
+Any unavailable or inconclusive report preserves the 6 GB path. Each run can
+issue at most one non-retried `LaunchInstance`; a non-terminated target always
+makes the run a zero-create verifier. Strict Always Free ceilings fail closed.
+Accepted 6 GB or 2 GB targets are polled to RUNNING and verified through their
+primary VNIC.
 
 After a device reboot, Android requires the first user unlock before Termux app
 storage and its boot-started services become available to the remote operator.
