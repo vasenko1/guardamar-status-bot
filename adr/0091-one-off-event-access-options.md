@@ -1,0 +1,419 @@
+# 0091: Generalize one-off registration into event-access lifecycle
+
+- Status: Accepted
+- Date: 2026-10-03
+- Implementation: Pending production probes
+
+## Context
+
+ADR 0089 deployed a source-owned one-off registration lifecycle.
+ADR 0090 accepted one Telegram root per event with rich presentation and strict
+threaded follow-ups.
+
+Further source review shows that residents need the same proactive treatment
+for several ways of getting into an event:
+
+- registration;
+- reservation of a place/seat;
+- paid ticket sale;
+- free ticket/invitation claim.
+
+Guardamar's official cultural sources publish all of these patterns. They also
+publish events with several independent sessions, each with its own
+registration/ticket link.
+
+The existing global `Event` model already has separate ticket and registration
+fields, and existing renderers already distinguish tickets, free tickets,
+registration contacts and capacity. The new requirement therefore belongs in
+the proactive lifecycle projection, not in a second global Event model.
+
+## Decision
+
+### Target concept: event access
+
+The next one-off lifecycle revision becomes an **event-access lifecycle**.
+
+It answers one narrow resident question:
+
+**Has a source-backed way to obtain access to this future event appeared,
+changed, filled or closed?**
+
+It is not a generic event bus, commerce system, ticket inventory, or booking
+engine.
+
+Supported access kinds in the first revision:
+
+- `registration` — sign-up/registration;
+- `reservation` — reserve a place/seat;
+- `ticket` — obtain a paid or free ticket/invitation.
+
+A free invitation remains `ticket` with zero price / invitation presentation
+rather than a fourth lifecycle kind.
+
+Free walk-in admission such as `entrada libre hasta completar aforo` does not
+create proactive access lifecycle output when the resident has no action to
+take in advance.
+
+### One event root, multiple access options
+
+One source-owned event record owns one Telegram root as defined by ADR 0090.
+
+The record may contain one or more source-proven access options.
+
+Conceptually:
+
+```text
+EventAccessRecord
+  record_id
+  source
+  source_url
+  event facts needed for lifecycle identity
+  options[]
+
+AccessOption
+  option_id
+  label
+  kind
+  status
+  action_url
+  action_contact
+  opens_at / closes_at (optional source facts)
+  price facts (optional presentation)
+  capacity_limited
+```
+
+This is conceptual schema, not permission to add generic inheritance or a
+database.
+
+A normal single-registration event has one option.
+
+A multi-session activity such as an Escape Room may have:
+
+```text
+10:00 -> registration link A
+12:00 -> registration link B
+13:00 -> registration link C
+```
+
+All three belong to one event root because the source proves they are sessions
+of the same activity.
+
+### Source-proven grouping only
+
+Do not group occurrences merely because titles look similar.
+
+A shared root requires source evidence such as:
+
+- one parent/detail page containing all sessions;
+- an explicit source session-family key;
+- another deterministic source-owned parent identity.
+
+Current municipal `session_source_key` is useful evidence for a session
+family, but production probes must verify whether it is durable enough for
+lifecycle identity across source corrections.
+
+Agenda Guardamar already parses multiple occurrence-specific ticket links from
+one event detail page. Its future access projection should retain that parent
+detail identity instead of flattening every occurrence into unrelated Event
+rows.
+
+### Option identity
+
+Each option needs deterministic source-owned identity when per-option state
+changes are tracked.
+
+Prefer, in order:
+
+1. explicit source option/session ID;
+2. stable occurrence/detail link identity;
+3. another reviewed deterministic source key.
+
+Do not treat a translated display label alone as identity.
+
+If a source cannot provide safe option identity, it may still publish one
+event-level access root, but option-specific full/closed transitions must fail
+closed rather than guess.
+
+### Several action methods are not several options
+
+A single tournament registration may offer:
+
+- web form;
+- WhatsApp;
+- email.
+
+Those are several ways to perform the same action, not separate access
+options.
+
+Keep one option and render one primary validated action URL plus reviewed
+contact/instructions. Do not create artificial lifecycle records for each
+contact channel.
+
+### Root card templates
+
+The root heading is selected from access semantics, for example:
+
+- `Открыта регистрация`;
+- `Открыта бронь мест`;
+- `Билеты поступили в продажу`;
+- `Доступны бесплатные билеты / приглашения`.
+
+If a future explicit boundary is the first useful notice:
+
+- `Завтра открывается регистрация`;
+- `Завтра открывается бронь`;
+- `Завтра начинается продажа билетов`.
+
+The rich card keeps the ADR 0090 poster/Russian event presentation contract.
+
+### Multi-option rendering
+
+If different options have different URLs, prefer compact linked rows:
+
+```text
+📝 Регистрация:
+• 10:00 — Записаться
+• 12:00 — Записаться
+• 13:00 — Записаться
+```
+
+If all options share the same action URL, avoid repeating the same link:
+
+```text
+🕐 Сеансы: 10:00 · 12:00 · 13:00
+📝 Записаться
+```
+
+Use date + time labels when options span several days.
+
+The first revision uses ordinary HTML links in message text/caption.
+
+Do not add inline keyboards by default. Telegram supports URL buttons, but
+buttons would add new reply-markup/edit semantics and stale-button management
+when one option later fills. Existing HTML links already satisfy the resident
+action with lower operational complexity.
+
+### Per-option lifecycle
+
+Option status keeps the existing narrow states:
+
+- `unknown`;
+- `open`;
+- `full`;
+- `closed`.
+
+One option becoming full does not make the whole event full while another
+option remains open.
+
+Examples of threaded follow-ups:
+
+```text
+⏰ Сеанс 12:00 — мест больше нет.
+На 10:00 и 13:00 запись ещё открыта.
+```
+
+If all known options become terminal, a compact event-level summary may say
+that no options remain available.
+
+If several options of the same event change in one observation, combine those
+changes into one reply to that event root.
+
+Never combine changes from different event roots.
+
+A newly added source-proven option may produce one reply such as
+`Добавлен сеанс 15:00 — запись открыта`.
+
+Disappearance alone never means full/closed/cancelled.
+
+### Aggregate event status is derived, not authoritative source truth
+
+Do not persist a synthetic event-level `full` merely because one option is
+terminal.
+
+User-facing aggregate wording is derived from the current option set.
+
+Claim the whole event has no availability only when source evidence safely
+establishes that no known option remains open and no unresolved/unknown option
+could still be available.
+
+### Ticket semantics
+
+A ticket lifecycle may become `open` when a source-specific contract proves
+tickets are currently obtainable.
+
+Positive evidence may include:
+
+- an explicit source statement such as `entradas ya están a la venta`;
+- a reviewed current sale window plus purchase location;
+- an occurrence-specific purchase URL whose source contract has been verified
+  to represent current availability.
+
+A price by itself does not prove sale is open.
+
+A future sale window follows the same ADR 0089 timing rule: store silently,
+create the rich root the day before opening, then reply when sale becomes
+currently actionable if that adds useful information.
+
+User-facing terminal wording depends on kind:
+
+- registration/reservation full -> places unavailable;
+- ticket full -> tickets sold out;
+- registration closed -> registration closed;
+- reservation closed -> reservation closed;
+- ticket closed -> ticket sales ended.
+
+### Free invitation semantics
+
+An official `entrada libre con invitación` action with a usable claim link is
+treated as zero-price ticket access and is proactively eligible.
+
+An official `entrada libre hasta completar aforo` with no advance action is
+not proactively eligible.
+
+This prevents a false "tickets available" alert for simple walk-in admission.
+
+### Existing Event model remains presentation-compatible
+
+Do not replace or duplicate the global `Event` model.
+
+Morning/Tomorrow/Weekend continue using existing fields such as:
+
+- `ticket_url`;
+- `ticket_price_cents`;
+- `registration_url`;
+- `registration_contact`;
+- `capacity_limited`;
+- `access_note`;
+- `image_url`.
+
+Source adapters additionally project one source-owned EventAccessRecord only
+when actionable access evidence/future boundaries exist.
+
+Do not scan merged Morning `Event[]` for lifecycle truth.
+
+### Current source implications
+
+#### Municipal/Turismo
+
+Already carries registration/reservation/ticket facts and source-proven session
+families for some multi-session events.
+
+Highest-reuse first target, subject to identity/presentation probes.
+
+#### Agenda Guardamar
+
+Already parses occurrence-specific ticket URLs and multiple sessions from one
+detail page, with a 45-day event horizon.
+
+The current snapshot loses the parent detail-page identity. A future access
+projection should retain that source identity so several session ticket links
+can belong to one root.
+
+Do not assume every ticket URL proves current sale until production probes
+confirm the live source behavior for available/sold-out/not-yet-open states.
+
+#### Biblioteca
+
+Official activity-registration form exists, and detail pages are already
+fetched/cached for changed cards.
+
+Probe first-party event details for occurrence-specific reservation evidence
+before extending the adapter.
+
+#### FACV
+
+Official tournament articles can publish current registration contacts, web
+forms, capacity and prices.
+
+Several contacts for one tournament remain one option.
+
+#### AM Guardamar
+
+The normalized SourceEvent/Event contract already has ticket/registration
+presentation fields and official featured images.
+
+Probe whether current WordPress posts expose deterministic actionable
+admission facts often enough to justify access projection.
+
+### Price changes
+
+Price belongs to the rich presentation.
+
+The first implementation does not add a generic price-change lifecycle.
+Early-bird/late-price changes can be added later only if real source evidence
+shows resident value.
+
+This avoids turning the feature into a ticket-market monitor.
+
+### Translation/media/threading
+
+ADR 0090 remains controlling for:
+
+- one rich root per event;
+- event-specific poster;
+- Russian presentation;
+- strict replies;
+- root message ID persistence;
+- crash-safe ambiguous delivery.
+
+Options are rendered inside that root and later replies.
+
+Poster identity is event-level, not option-level.
+
+### Scheduling/freshness
+
+ADR 0089 / the publication-sync research remain controlling initially:
+
+- reuse existing morning source snapshots;
+- per-source freshness in the multi-source revision;
+- 12:47 normal + 13:47 recovery initially;
+- add no second refresh until production timing probes prove morning snapshots
+  materially miss same-day access announcements.
+
+## Consequences
+
+### Benefits
+
+- one coherent resident experience for registration, reservation and tickets;
+- supports multi-session activities without one Telegram root per slot;
+- reuses existing Event fields, source adapters, media and Telegram links;
+- keeps later full/closed updates anchored to one rich event card;
+- supports both online and in-person access;
+- avoids artificial grouping of contact methods;
+- stays bounded and Termux-friendly.
+
+### Costs
+
+- lifecycle model needs an option collection instead of one scalar action;
+- state migration must preserve semantic baseline/root IDs while introducing
+  option-level evidence;
+- Agenda/municipal sources need stronger parent/option identity retention;
+- per-option renderer and regression tests are required.
+
+## Alternatives rejected
+
+### One lifecycle record per time slot
+
+Rejected. It would create several nearly identical root cards/posters for one
+activity and weaken the event-level Telegram thread.
+
+### One flat registration/ticket URL on the event
+
+Rejected. It cannot safely represent several independent session links.
+
+### Inline keyboards in v1
+
+Rejected as unnecessary transport/edit complexity. Revisit only after real
+resident UX evidence.
+
+### Treat every ticket price/link as open sale
+
+Rejected. Sale availability remains source-specific evidence.
+
+### Proactively announce free walk-in capacity
+
+Rejected when there is no resident action before arrival.
+
+### Generic commerce/ticket inventory engine
+
+Rejected. The feature remains a narrow event-access lifecycle.
