@@ -193,26 +193,34 @@ produce incorrect aggregate "all full/closed" conclusions.
 **Decision:** update only observed option IDs; retain missing prior option
 evidence until event-retention pruning. Disappearance stays silent.
 
-### 7. State v1 needs one deterministic migration
+### 7. State v1 needs one deterministic event-centric migration
 
 Do not create several state versions during the same rollout.
 
-Recommended next schema is one new version containing:
+The clean-sheet follow-up review recorded in ADR 0092 replaces the earlier
+parallel global target collections with one bounded event-centric map:
 
-- semantic record/option baseline;
-- announced record IDs;
-- trigger IDs;
-- root message metadata;
-- one uncertain outbound reservation.
+```text
+records[record_id] {
+  semantic
+  audience_known
+  root?
+  sent_triggers[]
+}
+uncertain?
+```
 
 Migrate every valid v1 `RegistrationRecord` as:
 
 - `access_kind="registration"`;
 - one deterministic single option (for example source-specific/default);
 - existing explicit/unknown evidence preserved;
+- legacy announced membership -> `audience_known`;
+- that record's legacy triggers -> record-local `sent_triggers`;
 - no invented root message ID.
 
 Current production baseline is silent, so migration itself must not publish.
+After the atomic migration, normal runtime supports only the new version.
 
 ### 8. First-known deadline still needs its own semantic
 
@@ -496,8 +504,8 @@ Recommended code shape:
 1. source adapters expose explicit small event-access projections from their
    existing snapshots;
 2. one access-notification module owns common validation/planning/rendering;
-3. one bounded atomic state file stores semantic baseline, roots, triggers and
-   one uncertain reservation;
+3. one bounded atomic state file stores event-centric `records[record_id]`
+   entries plus one uncertain reservation;
 4. explicit source calls provide partial-failure behavior and per-source
    freshness;
 5. one record-at-a-time loop performs reserve -> send -> commit;
@@ -681,20 +689,17 @@ already reviewed deterministic join. If the join cannot prove continuity,
 prefer the existing root and suppress the competing projection rather than
 perform an implicit owner migration.
 
-### 23. Re-evaluate the 512-trigger bound for option-scoped triggers
+### 23. Replace the global 512-trigger FIFO with record-local bounds
 
-The deployed state caps `sent_triggers` at 512.
+The deployed v1 state caps one global `sent_triggers` list at 512.
 
-Option-scoped opening/deadline/closing triggers can increase cardinality
-materially for multi-session events. Blindly retaining the old cap could evict
-an active event's earlier boundary trigger and make a reminder eligible again.
+Option-scoped triggers make that shape undesirable because unrelated events can
+evict each other's still-relevant boundary history.
 
-Do not introduce another trigger database.
-
-The production probe should measure the maximum active record/option volume and
-derive one conservative bounded list size for the rollout. Keep the existing
-flat trigger list unless real volume proves it inadequate; increase/prune the
-bound based on measured active state rather than speculation.
+ADR 0092 therefore stores trigger history inside each event entry. The
+production probe should measure maximum options/triggers per retained event and
+set one conservative record-local bound. Do not add a trigger database or
+unbounded history.
 
 ### 24. Complete event-source inventory
 
@@ -707,9 +712,10 @@ projection**, not that every rendered Event must create one.
 
 - Municipal/Turismo, Agenda, Library, AM, FACV, CONVEGA remain primary access
   candidates.
-- Pesca CV must be included in the production reconnaissance because federation
-  competitions may have registration detail outside the current calendar
-  snapshot.
+- Pesca CV is now confirmed as a real long-lead access source: the official
+  17 October Guardamar convocatoria was issued 14 September and sets club
+  registration through 13 October at 12:00. Project access from the exact
+  federation detail/PDF, not from the calendar row alone.
 - Blood donation keeps its dedicated donor workflow unless an official
   appointment/booking product requirement is separately accepted.
 - Mayor same-day late-event recovery is not a long-lead access source.
@@ -742,3 +748,23 @@ one rich root or one strict threaded reply
 
 No dynamic plugin registry is needed. A small explicit list/call sequence is
 clearer and safer for the current source count.
+
+## Clean-sheet state correction after live reconnaissance
+
+A final clean-sheet comparison asked whether the target would have the same
+persistent shape if one-root, multi-option and multi-source requirements had
+been known before ADR 0089.
+
+Answer: the source/projection/lifecycle boundaries remain correct, but the v1
+parallel global state collections are historical baggage.
+
+ADR 0092 therefore makes the event record the persistence/transaction unit.
+This is a simplification, not a framework expansion: one atomic JSON file,
+bounded `records[record_id]`, and one uncertain outbound slot.
+
+The live 2026-10-03 reconnaissance also closed one source question: Pesca CV
+does expose a real Guardamar registration deadline in an official federation
+convocatoria. Agenda Guardamar sale-state semantics, AM Guardamar access
+ownership and exact production snapshot identity/cardinality still require the
+read-only Termux probe recorded in
+`research/2026-10-03-event-access-production-recon.md`.
