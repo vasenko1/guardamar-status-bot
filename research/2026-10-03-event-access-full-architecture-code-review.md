@@ -512,14 +512,16 @@ The next probe must measure/verify, for each accepted source:
 
 - stable parent record identity;
 - stable option/session identity;
-- current/future access evidence;
+- current/future access evidence, including offline/in-person action text;
 - not-yet-open/open/full/sold-out/closed behavior where observable;
 - unique poster availability;
 - current presentation completeness;
 - source publication/modified time;
 - translation readiness;
 - event lead time vs current source horizon;
-- simultaneous eligible root count.
+- simultaneous eligible root count;
+- active option/trigger cardinality for state-bound sizing;
+- Pesca CV detail/registration evidence where available.
 
 Do not write multi-source runtime code until those facts are collected.
 
@@ -603,6 +605,119 @@ not required for lifecycle correctness.
 
 If real source probes show frequent action-link churn, revisit idempotent
 known-root edits using the already existing Telegram edit transport.
+
+### 18. Photo roots must opt into normal notifications
+
+The existing `send_photo_url()` helper defaults to
+`disable_notification=True`.
+
+That default is correct for some current media flows but would silently change
+the resident semantics of event-access alerts if reused without an explicit
+argument.
+
+**Decision:** root photo sends must pass `disable_notification=False`
+explicitly. Keep this in the root-delivery unit tests.
+
+### 19. Generic access needs offline action text
+
+The deployed registration model only has URL/contact actions.
+
+Official municipal access can instead be actionable through a physical point:
+for example ticket sales or invitation pickup at Casa de Cultura during a
+published campaign window.
+
+Do not misuse a "contact" field for this.
+
+**Decision:** the generic access option uses one optional validated
+`action_url` plus optional source-backed `action_text`. The latter may
+contain phone/email/WhatsApp instructions or an in-person box-office/desk
+instruction.
+
+An option may be current-open when either action form is positively proven by
+the source contract.
+
+### 20. Daily service hours are not lifecycle status
+
+A physical ticket office may have recurring daily opening hours within a
+multi-day sale campaign.
+
+Treating every desk closing/reopening as `closed/open` would generate noise
+and require a recurrent scheduler.
+
+**Decision:** lifecycle status describes the access campaign, not whether the
+physical counter is open at this minute. Recurring office hours stay in
+presentation/action text. Only source-backed campaign boundaries drive
+opening/closing lifecycle transitions.
+
+### 21. Reuse one pure source projection for lifecycle and translation selection
+
+Future rich-card translation must not implement a second independent
+"actionable candidate" classifier.
+
+**Decision:** each accepted source exposes one small deterministic access
+projection from its existing normalized snapshot. Both:
+
+- the access orchestrator; and
+- that source's translation-item preparation
+
+consume the same projected records.
+
+This prevents translation eligibility from drifting away from publication
+eligibility and keeps source parsing in one place.
+
+The projection is pure/local-state work. Network access remains in the existing
+source refresh layer.
+
+### 22. Ownership cannot silently change after a root exists
+
+Cross-source duplicate prevention already requires explicit ownership.
+
+One more invariant is needed: once a source-owned record has created a Telegram
+root, later discovery of another official source must not silently switch owner
+and create a second record/root.
+
+Secondary-source facts may enrich/confirm the existing owner only through an
+already reviewed deterministic join. If the join cannot prove continuity,
+prefer the existing root and suppress the competing projection rather than
+perform an implicit owner migration.
+
+### 23. Re-evaluate the 512-trigger bound for option-scoped triggers
+
+The deployed state caps `sent_triggers` at 512.
+
+Option-scoped opening/deadline/closing triggers can increase cardinality
+materially for multi-session events. Blindly retaining the old cap could evict
+an active event's earlier boundary trigger and make a reminder eligible again.
+
+Do not introduce another trigger database.
+
+The production probe should measure the maximum active record/option volume and
+derive one conservative bounded list size for the rollout. Keep the existing
+flat trigger list unless real volume proves it inadequate; increase/prune the
+bound based on measured active state rather than speculation.
+
+### 24. Complete event-source inventory
+
+The actual Morning/Weekend event pipeline also includes Pesca CV,
+blood-donation events, Mayor late events and static recurring rules.
+
+"Every event passes through the access filter" therefore means every
+**source-owned future event adapter is eligible to expose an access
+projection**, not that every rendered Event must create one.
+
+- Municipal/Turismo, Agenda, Library, AM, FACV, CONVEGA remain primary access
+  candidates.
+- Pesca CV must be included in the production reconnaissance because federation
+  competitions may have registration detail outside the current calendar
+  snapshot.
+- Blood donation keeps its dedicated donor workflow unless an official
+  appointment/booking product requirement is separately accepted.
+- Mayor same-day late-event recovery is not a long-lead access source.
+- static recurring Event rules have no source-owned actionable-access lifecycle
+  and therefore project nothing.
+
+This keeps coverage complete without turning the merged Morning Event list into
+a universal lifecycle input.
 
 ## Final implementation recommendation
 
