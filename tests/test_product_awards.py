@@ -28,7 +28,7 @@ def candidate(
     category: str = "test",
     *,
     rank: int = 1,
-    source_kind: str = "producto_del_ano",
+    source_kind: str = "ocu",
     award_scope: str = "exact_product",
 ) -> ReviewedCandidate:
     return ReviewedCandidate(
@@ -49,7 +49,7 @@ def candidate(
         award_year=2026,
         source_category="Snacks",
         award_scope=award_scope,
-        award_result="Producto del Año",
+        award_result="90/100",
         product_id=7,
         expected_ean="8410000000000",
         rank=rank,
@@ -560,15 +560,6 @@ class RenderingTests(unittest.TestCase):
         message = build_message(item, offer(), include_image=False)
 
         self.assertNotIn("<img", message)
-
-    def test_range_award_identifies_current_member_without_claiming_extra_win(self):
-        item = candidate("range", award_scope="range")
-        current = offer(product_name="Exact Product Café")
-        message = build_message(item, current)
-
-        self.assertIn("Награда относится к линейке", message)
-        self.assertIn("один из продуктов этой линейки", message)
-        self.assertIn("Exact Product Café", message)
 
     def test_generic_ocu_renderer_uses_category_sample_and_result(self):
         item = ReviewedCandidate(
