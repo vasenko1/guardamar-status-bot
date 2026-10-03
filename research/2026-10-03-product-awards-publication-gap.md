@@ -142,20 +142,21 @@ This does not cause the missing post, but it is unnecessary network traffic.
 ADR 0092 therefore limits repeated candidate verification within one process
 without adding persistent negative cache state.
 
-## Retailer-diversity requirement
+## Retailer-diversity clarification
 
-Product Awards now also has a strict public sequencing requirement: two
-confirmed posts must not feature the same supermarket consecutively.
+The 3 October follow-up requirement is **preference, not prohibition**.
 
-This must preserve authority rank semantics. A candidate blocked only because
-its retailer matches the last confirmed retailer defers that category for the
-current invocation; the runtime must not silently demote to a lower-ranked
-product from another supermarket merely to satisfy variety.
+Publication is primary: if at least one normal candidate is valid on a due run,
+retailer diversity must not be the reason for silence. The selector should
+first prefer a retailer different from the last confirmed post, while
+preserving authority rank semantics, then fall back to the ordinary selector
+and allow the same retailer when no different-retailer candidate is
+publishable.
 
-The current pool is strongly concentrated in Consum. With NALTROS currently
-unresolvable and Mahou/Masymas already published, a successful Consum post may
-therefore be followed by intentional silence until a different retailer has a
-reviewed eligible candidate.
+The current pool is still unacceptably concentrated in Consum from an editorial
+perspective. That concentration should be repaired by rebuilding the reviewed
+registry across Mercadona, Lidl, DIA, Carrefour, ALDI, Consum and Masymas
+rather than by suppressing valid Consum posts.
 
 ## Remediation boundary
 
