@@ -225,27 +225,64 @@ This records code availability in `main`, not production validation. The
 production Termux checkout must remain unchanged until the mandatory exact-commit
 gate below passes.
 
-## Validation still required
+## Production validation checkpoint
 
-GitHub does not provide a reliable PR CI gate for this repository.
+The mandatory Termux gate completed successfully on 3 October 2026 and deployed
+the exact reviewed `main` commit
+`ff33bdf7f49eabe81077774d738b8eab38d4e7d2`.
 
-Before production checkout changes, the Termux deploy gate must run against the
-exact reviewed commit:
+Pre-deploy results:
 
-1. compileall;
-2. all focused Product Awards tests;
-3. full repository unittest suite;
-4. read-only live Product Awards preview;
-5. inspect the restored Carrefour/DIA prices and award-source markers;
-6. only then fast-forward production.
+- compileall: PASS;
+- focused Product Awards tests: 56/56 PASS;
+- full repository unittest suite: 1,524/1,524 PASS;
+- production state compatibility: PASS;
+- strict live proof of all four restored quality-first candidates: PASS.
 
-The live preview is especially important because the exact retailer HTML
-contracts are intentionally fail-closed and may have drifted since the
-27 September production probe.
+Live pre-deploy exact offers:
+
+- Realfooding Gazpacho / Carrefour — 3.99 EUR, no image;
+- Oleoestepa DOP Estepa / Carrefour — 8.35 EUR, no image;
+- AROM'ARTE Intenso / DIA — 3.80 EUR, no image;
+- Anís Chinchón Dulce / Carrefour — 13.79 EUR, no image.
+
+The production checkout then fast-forwarded from
+`431fcedaa0de3ab180fb9f228ec92980b88f2edd` to
+`ff33bdf7f49eabe81077774d738b8eab38d4e7d2`.
+
+Post-deploy strict live proof repeated successfully with the same four prices
+and `image_url=None` for the restored Carrefour/DIA contracts.
+
+The final production Product Awards state remained unchanged:
+
+- schema version 1;
+- category cursor 0;
+- last delivery day 2026-09-29;
+- published event
+  `classic_pilsener:wba-2026:mahou-sin-filtrar`;
+- published selection `classic_pilsener:2026`;
+- no uncertain delivery.
+
+NALTROS remained unavailable as `RETAIL-PAGE-ERROR`, so with the current
+cursor/history the first publishable candidate is Realfooding Gazpacho /
+Carrefour.
+
+No Product Awards publication was triggered by the gate, and no cron reinstall
+or service restart was required.
+
+### Non-blocking copy follow-up
+
+The preview exposed one Russian declension defect:
+`23 продуктов` should be `23 продукта`.
+
+This is presentation-only and does not affect selection, source truth, price,
+state or delivery. Keep it separate from the production-validation checkpoint
+so the successfully validated runtime commit is not silently replaced.
 
 ## Final review assessment
 
-No blocking design or static code-review finding remains.
+No blocking design, code-review or production-validation finding remains.
 
-The change is a source-policy/registry correction with two small proven retailer
-adapters, not a new discovery architecture.
+ADR 0095 is production-validated. The change remains a source-policy/registry
+correction with two small proven retailer adapters, not a new discovery
+architecture.
