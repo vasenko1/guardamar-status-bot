@@ -45,9 +45,14 @@ def scheduled_run(now: datetime) -> MonitorRun:
     local = now.astimezone(GUARDAMAR_TIMEZONE)
     day = local.date()
     beach_window = in_query_window(local)
-    shoulder = beach_window and day.month in {6, 9}
-    beach_hours = {12, 14, 16, 18} if shoulder else {11, 13, 15, 17, 19}
-    aemet_hours = {12, 16, 20} if shoulder else {11, 15, 19}
+    beach_shoulder = beach_window and day.month in {6, 9, 10}
+    aemet_shoulder = day.month in {6, 9}
+    beach_hours = (
+        {12, 14, 16, 18}
+        if beach_shoulder
+        else {11, 13, 15, 17, 19}
+    )
+    aemet_hours = {12, 16, 20} if aemet_shoulder else {11, 15, 19}
     beach_phase = None
     if beach_window and local.hour in beach_hours:
         beach_phase = {0: 1, 5: 2, 10: 3}.get(local.minute)
