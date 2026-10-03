@@ -266,6 +266,25 @@ class SourceContractTests(unittest.TestCase):
         self.assertEqual(image.url, "https://brand.example/exact.jpg")
         self.assertEqual(image.source_name, "Brand product")
 
+    def test_exact_alt_contract_can_use_lazy_data_src(self):
+        source = ReviewedImageSource(
+            name="Brand product",
+            page_url="https://brand.example/product",
+            page_hosts=frozenset({"brand.example"}),
+            image_hosts=frozenset({"brand.example"}),
+            page_markers=("Exact Product",),
+            image_alt_markers=("Exact Product",),
+        )
+        html_source = (
+            '<html><body><h1>Exact Product</h1>'
+            '<img alt="Exact Product front" src="/placeholder.svg" '
+            'data-src="/exact.jpg"></body></html>'
+        )
+        with patch.object(awards, "_fetch_html", return_value=html_source):
+            image = awards._resolve_reviewed_image_source(source)
+
+        self.assertEqual(image.url, "https://brand.example/exact.jpg")
+
     def test_exact_alt_contract_does_not_fall_back_to_generic_meta_image(self):
         source = ReviewedImageSource(
             name="Brand product",
