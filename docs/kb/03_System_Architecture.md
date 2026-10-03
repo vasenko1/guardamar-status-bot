@@ -406,55 +406,44 @@ or resident scheduler is introduced.
 
 ## Product-award one-shot
 
-Product awards are an independent low-frequency workflow, not part of the
-Morning Digest. One daily Termux invocation reads its small atomic state first.
-If the three-local-day cooldown is still active, or every reviewed event is
-already published, it exits before any award or retailer HTTP request.
+Product awards are an independent low-frequency workflow. One daily Termux
+invocation reads the existing small atomic state first and exits before network
+access while cooldown is active or the reviewed registry is exhausted.
 
-A due run walks the reviewed broad-category registry from the stored category
-cursor. Inside one category it preserves configured authority priority and
-source-native rank order. ADR 0092 adds a best-effort retailer-diversity preference. A due run first
-tries to find a publishable category whose next reachable candidate uses a
-different retailer from the last confirmed post. It never demotes to a lower
-rank merely to change supermarket. If that first pass finds no valid
-different-retailer candidate, a second bounded pass uses the ordinary
-category/source/rank order and may publish the same retailer again. Retailer
-preference alone never makes a due run silent.
+A due run walks categories from the stored cursor and preserves authority
+priority plus source-native rank. The retailer of the last confirmed
+`published_events` entry is derived from the current registry when possible;
+no retailer field is added to state.
 
-The existing atomic state keeps cooldown/dedup/cursor/uncertain-delivery facts
-plus one small last-retailer identity. Old state without that optional field is
-backward-compatible and can derive the current retailer from the newest known
-published event before the next confirmed delivery writes it explicitly.
-Operator force mode bypasses cooldown only; it never bypasses deduplication or
-uncertain-delivery protection and keeps the same retailer-preference/fallback
-selection semantics.
+Selection uses one bounded scan. The first valid category winner from the same
+retailer as the previous post is held only as an in-memory fallback while later
+categories are checked. The first valid category winner from a different
+retailer is preferred. If none exists, the stored same-retailer fallback
+publishes. A valid candidate always ends ranking inside its own category, so
+retailer preference never demotes to a lower-ranked product.
 
-Current exact-retail adapters remain source-specific. Consum validates saved
-product ID/EAN/name/price from its official product JSON and, after ADR 0092,
-uses the payload's real ordered `media[]` assets instead of trusting a stale
-base `productData.imageURL`. Masymas keeps its separately proven exact JSON
-and image behavior. ALDI uses embedded Next.js product data only when the exact
-product page is healthy; `hasError=true`, missing page data or
-`apiData=None` is a product-specific retailer failure, not proof of current
-sale and not a reason to add a browser.
+Exact award evidence, exact current retailer identity and current price remain
+publication requirements. Product media is optional enrichment. Consum uses
+allowlisted official `media[]` URLs before its stale base
+`productData.imageURL`; ALDI distinguishes an explicit product-page error from
+a healthy page whose embedded product contract has drifted.
 
-Before Telegram send the event is stored as uncertain. Confirmed delivery
-records the event, local day, next category cursor and retailer identity. An
-explicit send failure clears the reservation, while an ambiguous result is
-never automatically resent. Rich publication remains remote-image first; one
-bounded allowlisted local image download plus multipart upload may recover a
-genuine Telegram remote-media rejection after a reachable exact retailer image
-has been selected.
+Delivery remains Rich Message first. When exact media exists, Telegram remote
+media is attempted, followed only after explicit remote-media rejection by the
+existing bounded local upload recovery. Deterministic media-path failure then
+degrades to the same Rich Message without an image. Ambiguous delivery never
+falls through to another send.
 
-One process-local attempted-event set prevents a candidate that already failed
-authority/retailer verification from being fetched again when delivery falls
-through to another candidate in the same invocation. It is discarded on exit;
-there is no persistent negative cache.
+Confirmed delivery alone advances the existing event/selection history,
+delivery day and category cursor. No retailer ledger, state migration, second
+selector pass, persistent candidate cache, browser, AI service, queue or new
+scheduler is introduced. A due run that publishes nothing records one concise
+final log reason.
 
-No discovery queue, catalogue crawler, database, resident process, browser,
-image processor or AI service is added. The current reviewed pool is retailer-imbalanced, so long-run diversity must
-be improved by registry research; runtime preference alone is only a
-presentation safeguard and never blocks the sole valid candidate.
+The reviewed registry itself is maintained separately. Retailer diversity in
+runtime cannot compensate for a catalogue concentrated in one chain; the
+3 October balance audit therefore prioritizes revalidation of Mercadona and
+research of Lidl, DIA and Carrefour without introducing retailer quotas.
 
 ### One-off event registration
 
