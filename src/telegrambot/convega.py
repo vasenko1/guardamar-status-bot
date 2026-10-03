@@ -143,7 +143,11 @@ class _RenderedContentParser(HTMLParser):
             }
             self.links.append(self._link)
         elif tag == "form":
-            self._form = {"has_submit": False, "user_fields": 0}
+            self._form = {
+                "has_submit": False,
+                "user_fields": 0,
+                "text_parts": [],
+            }
             self.forms.append(self._form)
         elif tag == "input" and self._form is not None:
             input_type = values.get("type", "text").casefold()
@@ -174,6 +178,8 @@ class _RenderedContentParser(HTMLParser):
         if not value:
             return
         self.text_parts.append(value)
+        if self._form is not None:
+            self._form["text_parts"].append(value)
         if self._link is not None:
             self._link["text"] = (
                 f"{self._link['text']} {value}".strip()
@@ -525,6 +531,17 @@ def _has_registration_semantics(text: str) -> bool:
     return any(phrase in folded for phrase in _OPEN_PHRASES)
 
 
+def _form_has_registration_semantics(form: Mapping[str, Any]) -> bool:
+    parts = form.get("text_parts")
+    if not isinstance(parts, list):
+        return False
+    accepted = frozenset(_OPEN_PHRASES)
+    return any(
+        isinstance(part, str) and _fold(" ".join(part.split())) in accepted
+        for part in parts
+    )
+
+
 def _landing_state(
     parser: _RenderedContentParser,
     canonical_url: str,
@@ -537,13 +554,11 @@ def _landing_state(
     if cta is not None:
         return "open", cta, False
 
-    if (
-        _has_registration_semantics(parser.text)
-        and any(
-            bool(form.get("has_submit"))
-            and int(form.get("user_fields", 0)) >= 2
-            for form in parser.forms
-        )
+    if any(
+        bool(form.get("has_submit"))
+        and int(form.get("user_fields", 0)) >= 2
+        and _form_has_registration_semantics(form)
+        for form in parser.forms
     ):
         return "open", canonical_url, False
 
