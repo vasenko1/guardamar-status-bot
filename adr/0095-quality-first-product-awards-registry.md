@@ -1,6 +1,6 @@
 # ADR 0095: Quality-first Product Awards registry rebuild
 
-- Status: Accepted, implementation pending
+- Status: Implemented in main; production validation pending
 - Date: 2026-10-03
 - Refines: ADR 0083, ADR 0093
 
