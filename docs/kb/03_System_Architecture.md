@@ -30,7 +30,7 @@ schemas, and library choices belong in later design work or ADRs.
    check; later recovery uses only the first invocation of already scheduled
    operational windows until today's UTC cycle is accepted, comparing the remaining
    local day semantically, and send one compact reply only for a material
-   change. From 1 June through 30 September, every update invocation also
+   change. From 1 June through 15 October, every update invocation also
    checks SafeBeach. The first valid current response with at least one flag
    creates the separate beach root immediately; later valid responses edit
    that same root through 10:40. Event catalogs are attempted at most once
@@ -272,8 +272,9 @@ the weather blocks independently of the separate SafeBeach lifecycle.
 
 The SafeBeach adapter performs one bounded HTML request per invocation and
 does not add an internal retry or response cache. Scheduled SafeBeach requests
-are allowed only from 1 June through 30 September; from 1 October through
-31 May there are none. Morning Digest collection never calls SafeBeach.
+are allowed only from 1 June through 15 October; from 16 October through
+31 May there are none. October uses the reduced four-window SafeBeach cadence
+while AEMET retains its existing year-round warning schedule. Morning Digest collection never calls SafeBeach.
 The 10:10–10:40 update invocations request it every five minutes inside the
 annual window. Any valid current response with at least one known beach flag
 is publishable immediately: the first creates the daily beach root and later
