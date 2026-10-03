@@ -1335,8 +1335,8 @@ CATEGORIES: tuple[ReviewedCategory, ...] = (
                         sample_size=29,
                         retailer_title="Cápsulas de café intenso Dia Arom'arte 20 unidades",
                         package_label="20 капсул, 108 г",
-                        country_label="Испания",
                         producer_label="Toscaf, S.A.",
+
                         headline_award="лучший результат в группе OCU",
                         highlight=(
                             "85/100 — лучший результат среди капсул Nespresso "
@@ -1821,7 +1821,11 @@ def select_publication(
                 accepted = ProductAwardPublication(
                     candidate=candidate,
                     offer=offer,
-                    message=build_message(candidate, offer),
+                    message=build_message(
+                        candidate,
+                        offer,
+                        include_image=False,
+                    ),
                 )
                 break
             if accepted is not None:
