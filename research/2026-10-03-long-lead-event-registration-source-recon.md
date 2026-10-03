@@ -416,3 +416,127 @@ projection must remain source-specific and evidence-owned.
 This preserves the project's main rule:
 
 **prefer a missed proactive notice over a false registration-state claim.**
+
+
+## Product requirement: rich first-open registration card
+
+The first proactive registration publication should ideally be a complete
+event card, not a bare lifecycle line.
+
+When an occurrence first becomes publishably `open`, prefer one Telegram
+photo message containing:
+
+- the event-specific official poster/image, when a unique reviewed image exists;
+- the Russian event title;
+- event date and time;
+- place / meeting point;
+- a concise translated description of what the event is;
+- audience/age/duration/route or other material participation facts when known;
+- registration action/contact;
+- explicit deadline/start boundary when published;
+- capacity/until-full conditions when published;
+- material participation requirements/cost when applicable.
+
+The image is presentation enrichment, not registration-state evidence. Missing
+or temporarily inaccessible media must not suppress an otherwise valid
+registration publication.
+
+Only an image uniquely attributable to the occurrence should be used. A generic
+monthly programme poster or ambiguous image should not be attached merely
+because it comes from an official source.
+
+### Reuse of existing runtime capabilities
+
+The project already has the needed media primitives:
+
+- global `Event` has `image_url`;
+- municipal `SourceEvent` has `image_url`;
+- Tomorrow already validates selected official HTTPS poster URLs before use;
+- Telegram transport already supports remote photo messages through
+  `send_photo_url()`.
+
+The future one-off registration extension should reuse that media path and add
+source-specific image policies rather than create a second downloader/browser
+pipeline.
+
+### Presentation projection, not merged Event scanning
+
+Do not construct the rich registration card by scanning the already merged
+Morning `Event[]`.
+
+Keep lifecycle evidence and presentation enrichment separate:
+
+- source-owned registration projection supplies stable identity/status/action;
+- the same accepted source record supplies or deterministically links the
+  event presentation facts;
+- optional poster/description fields do not affect lifecycle transitions.
+
+A small source-owned presentation payload should therefore accompany a
+`RegistrationRecord` (or be keyed by the same `record_id`) without becoming
+part of the semantic status baseline.
+
+This is especially important for `image_url`: poster changes must never look
+like registration-state changes.
+
+### Translation requirement
+
+A first-open registration publication should use the existing event translation
+cache rather than perform a second independent translation of the same title
+or teaser.
+
+The current cache reliably covers titles and selected municipal teasers. Rich
+cards require a follow-up inventory of which additional presentation facts are
+already Russian/deterministic and which remain Spanish (for example selected
+`details`, participation requirements, audience labels or schedule notes).
+
+Prefer extending the existing bounded translation-preparation phase before the
+12:47 registration publication. Do not introduce per-message noon AI work when
+the source was already collected during the morning event refresh.
+
+If a newly discovered source appears too late for cached translation, the
+implementation needs an explicit product fallback policy. Do not silently mix
+Spanish long-form prose into an otherwise Russian registration card.
+
+### Telegram caption constraint
+
+Telegram photo captions are currently limited to 1,024 characters after
+entity parsing. Therefore "maximally detailed" means "all material resident
+facts in a curated card", not a verbatim copy of the source page.
+
+Default behavior should be:
+
+1. one photo + complete compact caption when all material facts fit;
+2. prioritize date/time/place, event description, registration method,
+   deadline/capacity and participation requirements;
+3. omit low-value prose before omitting registration conditions;
+4. if critical material cannot safely fit, use an explicitly designed fallback
+   instead of truncating facts.
+
+A two-message photo-plus-long-text fallback is acceptable only when the event
+genuinely needs more than the caption can hold; one self-contained photo card
+remains the preferred resident experience.
+
+### Lifecycle media policy
+
+Use the rich photo card primarily for the first current-open announcement (and
+optionally a true reopening if the card is still current).
+
+Routine deadline/full/closed updates should normally stay compact text-only
+unless a later product decision justifies repeating media. This avoids visual
+spam while making the initial discovery post prominent and useful.
+
+### Additional production probes
+
+For each candidate source, the next read-only probe should inventory not only
+registration evidence but also presentation completeness:
+
+- official event-specific image/poster URL;
+- image host/path/content type and whether Telegram can fetch it directly;
+- title/teaser/details already retained in source state;
+- place/time/audience/duration/route completeness;
+- which presentation fields are already covered by translation cache;
+- whether the source page exposes a unique event image or only a generic
+  programme/month poster.
+
+This media/presentation inventory is required before choosing the first
+multi-source implementation target.
