@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 from telegrambot.convega import (
     ConvegaSourceError,
     REGISTRATION_FULL_ACCESS_NOTE,
+    convega_snapshot_is_fresh_today,
     convega_translation_items,
     fetch_convega_snapshot,
     fetch_today_convega_events,
@@ -244,6 +245,34 @@ class ConvegaParsingTests(unittest.TestCase):
                 landing(""),
                 NOW,
             )
+
+
+class ConvegaFreshnessTests(unittest.TestCase):
+    def test_future_same_day_snapshot_is_not_fresh(self):
+        snapshot = snapshot_with("<h3>PLAZAS AGOTADAS</h3>")
+        snapshot["observed_at"] = datetime(
+            2026, 10, 2, 13, 0, tzinfo=TZ
+        ).isoformat()
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "convega.json"
+            state.write_text(json.dumps(snapshot), encoding="utf-8")
+
+            fresh = convega_snapshot_is_fresh_today(NOW, state)
+
+        self.assertFalse(fresh)
+
+    def test_current_same_day_snapshot_is_fresh(self):
+        snapshot = snapshot_with("<h3>PLAZAS AGOTADAS</h3>")
+        snapshot["observed_at"] = datetime(
+            2026, 10, 2, 12, 30, tzinfo=TZ
+        ).isoformat()
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "convega.json"
+            state.write_text(json.dumps(snapshot), encoding="utf-8")
+
+            fresh = convega_snapshot_is_fresh_today(NOW, state)
+
+        self.assertTrue(fresh)
 
 
 class ConvegaProjectionTests(unittest.TestCase):
