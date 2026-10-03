@@ -224,6 +224,47 @@ They may fit a broader participant-opportunity lifecycle, but are lower
 priority than event attendance/visitor registration and should not be included
 automatically without an explicit product decision.
 
+## Clarification: registration information may open immediately without dates
+
+The source reconnaissance was rechecked against the deployed ADR 0089 engine.
+
+A registration start date and end date are **not required** before proactive
+publication. The decisive distinction is current source-backed availability:
+
+- if the accepted source now provides an actionable registration instruction
+  tied to the occurrence (form/CTA, registration contact/place, or an explicit
+  current-open instruction), project `status="open"`;
+- keep `registration_start_date=None` and/or
+  `registration_end_date=None` when the source does not publish those facts;
+- the first observed `open` state is publishable immediately as
+  "Идёт запись";
+- never substitute `observed_at` for a missing registration start date;
+- no opening/closing boundary reminder is created for a boundary that was not
+  explicitly published;
+- a bare statement that registration will be required later, or that details
+  are forthcoming, is not current-open evidence;
+- an explicit future registration window prevents a current-open claim before
+  its stated start.
+
+This behavior already matches the deployed planner contract:
+`RegistrationRecord.registration_start_date` and
+`registration_end_date` are optional, while first-seen `open` is an active
+publication.
+
+One follow-up is required before multi-source rollout. Today, if an already
+announced undated open registration later acquires its first explicit end date,
+the planner classifies it as `deadline-changed`. For municipal/FACV/library
+sources this should instead distinguish "deadline first became known" from
+"previously known deadline changed".
+
+The municipal investigation also confirms that Todo Cultura participation
+enrichment is applied across the dates in the accepted programme window, not
+only on the event day. The collector prioritizes a rolling 7-day window while
+also considering unchecked local candidates within a 44-day horizon. Therefore
+future one-off registration facts can already enter
+`state/municipal_agenda.json` before the event day; the remaining problems are
+stable source identity, evidence ownership and lifecycle projection.
+
 ## Why Morning Event objects cannot be fed directly into ADR 0089
 
 The global `Event` model already has `registration_url`,
@@ -235,8 +276,8 @@ A proactive lifecycle additionally needs:
 - stable source-owned identity;
 - source URL/authority;
 - same-day observation freshness;
-- explicit current registration status or exact registration boundary;
-- action/contact evidence tied to that occurrence;
+- explicit current-open evidence **or** an exact future registration boundary;
+- occurrence-bound action/contact/open-state evidence; boundary dates remain optional;
 - last-explicit-status preservation across unknown source states.
 
 The merged Morning event list must therefore **not** be scanned after
@@ -279,8 +320,9 @@ Needed:
 - bounded search window and candidate limit;
 - article identity from dated post URL or a stable WordPress ID if public REST
   is validated;
-- deterministic extraction of event date, registration action/contact and
-  exact boundary/capacity language;
+- deterministic extraction of event date and current registration evidence;
+  registration boundaries/capacity are retained when explicitly published but
+  are not required for an immediate `open` projection;
 - dedup with monthly municipal agenda.
 
 No new daemon or browser is justified.
