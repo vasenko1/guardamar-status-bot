@@ -73,8 +73,20 @@ Cross-record registration batching is incompatible with one-root-per-event
 threading and is therefore retired for the multi-source/threaded lifecycle.
 
 Planning and delivery operate per `record_id`. A single invocation may
-process a small bounded number of independent publications sequentially, but
-each send has its own crash-safe reservation and commit.
+process independent publications sequentially, but each send has its own
+crash-safe reservation and commit.
+
+The implementation must **not** reuse the v1 batch-state rule that advances the
+baseline for every publishable record when only one event root was actually
+sent. Process records deterministically one at a time:
+
+1. a record with no publication may commit its silent semantic baseline;
+2. a publishable record is reserved, sent and committed before moving on;
+3. an unsent publishable record keeps its prior baseline and therefore remains
+   eligible for the recovery/next invocation.
+
+This avoids losing a first-open/root publication merely because another event
+was sent earlier in the same run.
 
 No queue, worker, database or long-lived process is introduced.
 
@@ -192,9 +204,16 @@ implementation prefers one compact self-contained photo card over a
 multi-message compound transaction. Low-value prose is omitted before material
 registration conditions.
 
-If the critical card cannot fit safely as a photo caption, the implementation
-must use a deterministic reviewed fallback rather than truncate deadlines,
-registration actions or participation requirements.
+If the critical card cannot fit safely as a photo caption, prefer one
+self-contained **text root** over a two-message photo-plus-overflow transaction.
+The poster is desirable but lifecycle correctness and atomic root identity are
+more important than forcing media.
+
+If a remote-photo send fails deterministically before any message could have
+been created (for example a reviewed Telegram remote-media rejection), the same
+reserved root may fall back to the equivalent text card. If delivery is
+ambiguous (timeout/network/invalid success structure), do not fall back to text:
+keep the uncertain reservation because the photo root may already exist.
 
 ## Consequences
 

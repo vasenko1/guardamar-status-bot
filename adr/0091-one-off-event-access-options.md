@@ -67,13 +67,14 @@ EventAccessRecord
   record_id
   source
   source_url
+  access_kind
   event facts needed for lifecycle identity
+  presentation facts for the current observation
   options[]
 
 AccessOption
   option_id
-  label
-  kind
+  label / occurrence time facts
   status
   action_url
   action_contact
@@ -84,6 +85,15 @@ AccessOption
 
 This is conceptual schema, not permission to add generic inheritance or a
 database.
+
+For the first implementation, `access_kind` belongs to the **event root**, not
+to every option. All options under one root therefore share
+`registration`, `reservation` or `ticket` semantics. This matches the
+reviewed sources and avoids polymorphic per-option rendering.
+
+If a real first-party source later proves that one event simultaneously exposes
+heterogeneous access kinds, handle that source explicitly after review rather
+than generalizing the first schema in advance.
 
 A normal single-registration event has one option.
 
@@ -133,6 +143,19 @@ Do not treat a translated display label alone as identity.
 If a source cannot provide safe option identity, it may still publish one
 event-level access root, but option-specific full/closed transitions must fail
 closed rather than guess.
+
+### Missing options are not terminal evidence
+
+When a previously known option is absent from a later successful source
+observation, preserve its prior semantic baseline. Absence alone does not mean
+`full`, `closed`, cancelled or removed.
+
+Only observed options update their semantic evidence. This is the option-level
+equivalent of ADR 0089's disappearance/unknown rule.
+
+A newly observed option may create a threaded "added session" notice after the
+event root exists. An unobserved prior option is not silently deleted from
+lifecycle history before normal event-retention pruning.
 
 ### Several action methods are not several options
 
@@ -359,6 +382,34 @@ ADR 0090 remains controlling for:
 Options are rendered inside that root and later replies.
 
 Poster identity is event-level, not option-level.
+
+### Source horizons are source-specific
+
+Do not impose one global future-event horizon on all access sources.
+
+The current adapters already differ materially: Biblioteca is intentionally
+short, Agenda Guardamar and AM Guardamar are roughly month-scale, municipal
+programme discovery is month-scale, while CONVEGA is much longer.
+
+Production probes must measure how early actionable access appears for each
+source. Increase a source horizon only when its official catalogue actually
+contains useful earlier events and the bounded network/storage cost remains
+small.
+
+A short Morning-only horizon must not be assumed sufficient merely because it
+was adequate for same-day digest rendering.
+
+### Translation selection
+
+Rich access roots for future events require Russian presentation before the
+event day.
+
+Do not translate every future catalogue event. Extend the existing
+translation-preparation workflow so each source contributes only its future
+**actionable access candidates** (plus current Morning items).
+
+This reuses the existing bounded cache and 06:00/06:30/07:00 preparation path
+without adding per-message AI or a second translation framework.
 
 ### Scheduling/freshness
 
