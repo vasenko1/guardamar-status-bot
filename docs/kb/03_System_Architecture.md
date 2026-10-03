@@ -349,13 +349,17 @@ commands use changed code on their next run. There is no GitHub Actions
 promotion, `deploy` branch, self-update cron task, resident deployment agent,
 or inbound public port. Secrets and runtime state remain local.
 
-An independent GitHub Actions workflow performs a bounded OCI capacity search
-at minutes 7, 22, 37, and 52. It is not an application deployment path and adds
-no Android runtime dependency. Its immutable launch manifest is recovered from
-the OCI Resource Manager Stack. Each run checks OCI state twice and can issue
-at most one non-retried `LaunchInstance`; a non-terminated target always makes
-the run a zero-create verifier. Strict Always Free ceilings fail closed.
-Accepted targets are polled to RUNNING and verified through their primary VNIC.
+An independent GitHub Actions workflow performs a bounded OCI Always Free
+capacity search at minutes 7, 22, 37, and 52. It is not an application
+deployment path and adds no Android runtime dependency. The original exact A1
+profile is complemented by one exact `VM.Standard.E2.1.Micro` profile;
+automatic runs alternate profiles but still issue at most one non-retried
+`LaunchInstance` per run. A shared target lookup happens before
+profile-specific reads, so any non-terminated A1 or E2 target always makes the
+run a zero-create verifier. Only an empty target set proceeds to two complete
+profile-specific OCI-state checks. A1, E2 and shared-storage Always Free gates
+fail closed. Accepted targets are polled to RUNNING and verified through their
+primary VNIC.
 
 After a device reboot, Android requires the first user unlock before Termux app
 storage and its boot-started services become available to the remote operator.
