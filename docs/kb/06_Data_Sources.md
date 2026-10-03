@@ -804,41 +804,52 @@ For each evaluated source, record:
 
 ## Product-award sources and retailer evidence
 
-Product awards use a reviewed source catalogue rather than autonomous web
-discovery. Durable selection rules are in ADR 0083; dated score/retailer
-research is in `research/2026-09-25-supermarket-product-awards.md`.
+Product Awards use a reviewed source catalogue rather than autonomous web
+discovery. Durable category/source/rank rules are in ADR 0083, exact rich
+delivery in ADR 0084, and the 3 October resilience/retailer-rotation refinement
+in ADR 0092. Dated evidence is recorded in
+`research/2026-09-25-supermarket-product-awards.md` and
+`research/2026-10-03-product-awards-publication-gap.md`.
 
-Initial award authority contracts:
+Current award-authority contracts in the production registry are:
 
-- **OCU cava 2025:** the official press note names Naltros Brut (ALDI) among
-  the three 94/100 leaders from 25 analysed D.O. Cava products.
-- **OCU gazpacho 2025:** the official report states 39 products, Real Fooding
-  as `Mejor del Análisis`, and 90/100.
-- **OCU AOVE:** the official report states 23 analysed products and explicitly
-  says the list is led by AOVE Oleoestepa, DOP Estepa.
-- **OCU coffee capsules 2024:** the exact AROM'ARTE (DIA) Intenso page must
-  still identify the product, 20-unit Nespresso-compatible format and
-  `Analizado en el laboratorio`. OCU products evaluated only through OCU's
-  newer AI-derived non-laboratory scoring are ineligible.
-- **MAPA spirits 2026:** the official award page must still name Anís Chinchón
-  de la Alcoholera Dulce, I.G. Chinchón, González Byass Distribución, as the
-  2026 awardee.
+- **OCU cava 2025:** the official press note must still identify Naltros Brut
+  (ALDI) among the 94/100 leaders from 25 analysed D.O. Cava products.
+- **Producto del Año 2026:** the official winner surface supplies the reviewed
+  Celta +Proteína, Takis Blue Heat, ELPOZO ExtraTiernos and Nescafé Latte
+  Baileys category/range facts.
+- **World Beer Awards 2026:** the reviewed result pages supply the exact Ambar
+  Especial and Mahou Sin Filtrar gold/country-winner facts.
 
-Initial exact-retail contracts:
+Current exact-retail contracts are source-specific:
 
-- **ALDI NALTROS:** official ALDI product URL, embedded Next.js product payload,
-  brand `NALTROS ®`, sales unit `0,75 l unidad`, reviewed article reference
-  `KVArticleNumber=1903`, current availability and current price.
-- **Carrefour:** exact official supermarket product page must contain the
-  reviewed title plus identity markers, current price and `Añadir`.
-- **DIA:** exact official product page must contain the reviewed title plus
-  identity markers, current price and `Añadir`.
+- **ALDI / NALTROS:** the exact product page must return a healthy Next.js
+  product detail containing current `apiData`, exact product identity,
+  availability, price and primary media. On 3 October both reviewed NALTROS
+  routes returned `hasError=true`, `page=None`, `apiData=None`, while two
+  control ALDI products returned healthy exact payloads. Treat this as an
+  unprovable current product state, not as current availability and not as a
+  global ALDI parser failure.
+- **Consum:** the official exact-product JSON must match the saved EAN and
+  reviewed name markers and expose current price data. Current product payloads
+  expose stale base `productData.imageURL` values that return HTTP 404 while
+  their ordered `media[].url` assets return valid JPEGs. ADR 0092 therefore
+  treats `media[]` as the primary current image contract and never invents
+  numbered filenames.
+- **Masymas / Juan Fornés:** the exact-product JSON must match the saved EAN,
+  reviewed name markers and current price. Its separately reviewed image
+  contract retains the validated 300x300 preference over the 135x135 variant.
 
-Retailer product pages prove that the chain currently lists/sells the exact
-product; they are not a guarantee that every physical store has shelf stock at
-that moment. Marketplace listings, search-engine snippets and fuzzy brand-only
-matches are never accepted.
+A retailer page/API proves only that the chain's official current surface
+represents the exact product; it is not a guarantee that every physical branch
+has shelf stock at that moment. Search-engine snippets, marketplace sellers,
+brand-only matches and inferred image filenames are never accepted as current
+retail evidence.
 
+Retailer diversity is a publication policy, not a source-quality shortcut.
+The last confirmed retailer cannot be repeated in the next Product Awards post,
+but this restriction never authorizes a lower-ranked award candidate or weaker
+retail match.
 
 ### CONVEGA one-off guided routes
 
