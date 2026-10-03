@@ -411,23 +411,50 @@ Morning Digest. One daily Termux invocation reads its small atomic state first.
 If the three-local-day cooldown is still active, or every reviewed event is
 already published, it exits before any award or retailer HTTP request.
 
-A due run walks a reviewed broad-category registry from the stored category
-cursor. Inside one category it preserves the configured source priority and
-source-native rank order; only after all eligible candidates from one source
-fail exact retail verification may it move to the next source. The runtime does
-not discover new competitions or crawl retailer catalogues.
+A due run walks the reviewed broad-category registry from the stored category
+cursor. Inside one category it preserves configured authority priority and
+source-native rank order. ADR 0092 adds a second scheduling invariant: the
+retailer of the last confirmed Product Awards publication cannot be the
+retailer of the next confirmed publication. When the next candidate reached in
+normal source/rank order belongs to that retailer, the rest of that category is
+deferred for the invocation and selection continues with the next broad
+category. The selector does not demote to a lower-ranked product merely to
+change supermarket. If no different-retailer category is publishable, the run
+stays silent and consumes neither cooldown nor cursor progress.
 
-For the initial five-category set, each accepted candidate uses one bounded
-authority/product-page validation followed by one exact-product retailer
-refresh. Carrefour and DIA use their server-rendered official product pages.
-ALDI NALTROS uses the reviewed embedded Next.js product payload because that is
-the stable browser-free exact-product contract proved by the POC.
+The existing atomic state keeps cooldown/dedup/cursor/uncertain-delivery facts
+plus one small last-retailer identity. Old state without that optional field is
+backward-compatible and can derive the current retailer from the newest known
+published event before the next confirmed delivery writes it explicitly.
+Operator force mode bypasses cooldown only; it never bypasses deduplication,
+uncertain-delivery protection or retailer rotation.
+
+Current exact-retail adapters remain source-specific. Consum validates saved
+product ID/EAN/name/price from its official product JSON and, after ADR 0092,
+uses the payload's real ordered `media[]` assets instead of trusting a stale
+base `productData.imageURL`. Masymas keeps its separately proven exact JSON
+and image behavior. ALDI uses embedded Next.js product data only when the exact
+product page is healthy; `hasError=true`, missing page data or
+`apiData=None` is a product-specific retailer failure, not proof of current
+sale and not a reason to add a browser.
 
 Before Telegram send the event is stored as uncertain. Confirmed delivery
-records the event, local day and next category cursor; an explicit send failure
-clears the reservation, while an ambiguous result is never automatically
-resent. No discovery queue, database, resident process or AI service is added.
+records the event, local day, next category cursor and retailer identity. An
+explicit send failure clears the reservation, while an ambiguous result is
+never automatically resent. Rich publication remains remote-image first; one
+bounded allowlisted local image download plus multipart upload may recover a
+genuine Telegram remote-media rejection after a reachable exact retailer image
+has been selected.
 
+One process-local attempted-event set prevents a candidate that already failed
+authority/retailer verification from being fetched again when delivery falls
+through to another candidate in the same invocation. It is discarded on exit;
+there is no persistent negative cache.
+
+No discovery queue, catalogue crawler, database, resident process, browser,
+image processor or AI service is added. The current reviewed pool is
+retailer-imbalanced, so strict retailer rotation may intentionally create
+silence until a different retailer has a reviewed eligible candidate.
 
 ### One-off event registration
 
