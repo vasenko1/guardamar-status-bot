@@ -1,4 +1,5 @@
 # Decision Log
+| 2026-10-03 | Thread one-off registration updates under one event root | The first useful registration publication becomes a per-event rich Telegram root; later lifecycle changes reply to that stored root instead of batching unrelated events. | `adr/0090-threaded-one-off-registration-updates.md` |
 
 This is the concise index of important product and architecture decisions.
 Detailed decisions belong in `adr/`.
