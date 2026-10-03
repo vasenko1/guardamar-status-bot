@@ -745,13 +745,13 @@ consumer category the bot exhausts explicit source-native ranking only through
 normal eligibility failures; ranks from different competitions are never
 mixed, and unordered medals/finalists never create synthetic positions.
 
-ADR 0092 adds strict supermarket rotation: two confirmed Product Awards posts
-must never feature the same retailer consecutively. When the next candidate in
-a category belongs to the last confirmed retailer, that category is deferred
-for the current invocation. The bot does **not** choose a weaker/lower-ranked
-candidate from another store merely to manufacture variety. It continues to
-the next broad category instead. If every valid remainder would repeat the same
-retailer, no post is sent and the three-day slot is not consumed.
+ADR 0092 adds best-effort supermarket rotation. A due run first prefers a
+valid candidate from a retailer different from the last confirmed Product
+Awards post. The bot does **not** choose a weaker/lower-ranked candidate merely
+to manufacture variety. If no different-retailer candidate can be selected
+under the normal category/source/rank rules, the selector falls back to the
+ordinary order and may publish the same retailer again. Retailer diversity
+never suppresses the only valid post.
 
 The current production-reviewed pool is:
 
@@ -763,10 +763,13 @@ The current production-reviewed pool is:
 - Ambar Especial / World Beer Awards / Consum;
 - Mahou Sin Filtrar / World Beer Awards / Masymas.
 
-This pool is intentionally not treated as complete supermarket coverage.
-Mercadona, Lidl, DIA, Carrefour or another local chain may improve future
-rotation only after a separate award-authority and exact-current-retail review;
-the runtime never invents a candidate to fill a retailer slot.
+This pool is not acceptable as a long-run representation of supermarket
+coverage because five of seven current entries are Consum. Earlier research
+already proved strong Mercadona candidates and current public evidence shows
+active award surfaces for Lidl and DIA. Registry maintenance therefore
+prioritizes underrepresented retailers, while preserving the same award-quality
+and exact-retail requirements; the runtime never invents a candidate to fill a
+retailer slot.
 
 Public posts are deterministic Telegram Rich Messages containing an exact
 first-party product image, concise award context, current retailer price,
