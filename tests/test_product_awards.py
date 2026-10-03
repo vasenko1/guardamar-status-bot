@@ -266,6 +266,57 @@ class SourceContractTests(unittest.TestCase):
         self.assertEqual(image.url, "https://brand.example/exact.jpg")
         self.assertEqual(image.source_name, "Brand product")
 
+    def test_exact_alt_contract_prefers_larger_explicit_variant(self):
+        source = ReviewedImageSource(
+            name="Brand product",
+            page_url="https://brand.example/product",
+            page_hosts=frozenset({"brand.example"}),
+            image_hosts=frozenset({"brand.example"}),
+            page_markers=("Exact Product",),
+            image_alt_markers=("Exact Product",),
+        )
+        html_source = (
+            '<html><body><h1>Exact Product</h1>'
+            '<img alt="Exact Product" '
+            'src="https://brand.example/product.jpg?sw=106" />'
+            '<img alt="Exact Product" '
+            'src="https://brand.example/product.jpg?sw=420" />'
+            '<img alt="Exact Product" '
+            'src="https://brand.example/product.jpg?sw=720" />'
+            '</body></html>'
+        )
+        with patch.object(awards, "_fetch_html", return_value=html_source):
+            image = awards._resolve_reviewed_image_source(source)
+
+        self.assertEqual(
+            image.url,
+            "https://brand.example/product.jpg?sw=720",
+        )
+
+    def test_exact_alt_contract_considers_all_srcset_candidates(self):
+        source = ReviewedImageSource(
+            name="Brand product",
+            page_url="https://brand.example/product",
+            page_hosts=frozenset({"brand.example"}),
+            image_hosts=frozenset({"brand.example"}),
+            page_markers=("Exact Product",),
+            image_alt_markers=("Exact Product",),
+        )
+        html_source = (
+            '<html><body><h1>Exact Product</h1>'
+            '<img alt="Exact Product" src="/fallback.jpg" '
+            'srcset="/product.jpg?width=240 240w, '
+            '/product.jpg?width=640 640w" />'
+            '</body></html>'
+        )
+        with patch.object(awards, "_fetch_html", return_value=html_source):
+            image = awards._resolve_reviewed_image_source(source)
+
+        self.assertEqual(
+            image.url,
+            "https://brand.example/product.jpg?width=640",
+        )
+
     def test_exact_alt_contract_can_use_lazy_data_src(self):
         source = ReviewedImageSource(
             name="Brand product",
