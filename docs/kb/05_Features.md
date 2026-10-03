@@ -746,21 +746,20 @@ fallback while later categories are checked. A valid winner from another
 retailer is preferred; when none exists, the same-retailer fallback publishes.
 The bot never drops to a lower rank inside a category merely to change store.
 
-The current production-reviewed pool is:
+ADR 0095 rebuilds the production-reviewed pool around sources that satisfy
+ADR 0083's quality/championship admission rule:
 
 - NALTROS Brut / OCU / ALDI;
-- Celta +Proteína / Producto del Año / Consum;
-- Takis Blue Heat / Producto del Año / Consum;
-- ELPOZO ExtraTiernos / Producto del Año / Consum;
-- Nescafé Latte Baileys / Producto del Año / Consum;
+- Realfooding Gazpacho / OCU / Carrefour;
+- Oleoestepa DOP Estepa / OCU / Carrefour;
+- AROM'ARTE Intenso / OCU / DIA;
+- Anís Chinchón Dulce / MAPA / Carrefour;
 - Ambar Especial / World Beer Awards / Consum;
 - Mahou Sin Filtrar / World Beer Awards / Masymas.
 
-This pool is not treated as representative supermarket coverage. The 3 October
-balance audit found that the Consum concentration mainly reflects which exact
-retailer contracts were easiest to productionize, while earlier research
-already proved strong Mercadona joins and viable Lidl, DIA and Carrefour
-surfaces. Pool rebuilding is therefore a separate evidence task.
+Producto del Año and Sabor del Año remain discovery sources rather than
+production category rankings. Mercadona and Lidl remain active research targets,
+but no product is inserted merely to satisfy retailer diversity.
 
 Public posts prefer deterministic Telegram Rich Messages with an exact
 first-party product image. The image is optional enrichment: if remote delivery
@@ -773,7 +772,8 @@ Consum's current JSON uses working numbered `media[]` assets while its base
 because the exact product page reports an explicit product-page error rather
 than current product data.
 
-The four Producto del Año entries remain subject to a separate source-policy
-re-review against ADR 0083; technical convenience of the Consum API is not a
-reason to retain an award family.
+The 3 October source-policy re-review is complete: the four Producto del Año
+entries are removed from the production registry because the award is
+innovation-first. This is a source-semantics decision, not a negative judgment
+about the products themselves.
 
