@@ -9,7 +9,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class WeekendTermuxTests(unittest.TestCase):
-    def _install(self, initial, *, crond_running=True, service_available=True):
+    def _install(
+        self,
+        initial,
+        *,
+        crond_running=True,
+        service_available=True,
+        crontab_read_ok=True,
+    ):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             commands = root / "bin"
@@ -30,6 +37,10 @@ class WeekendTermuxTests(unittest.TestCase):
             (commands / "crontab").write_text(
                 "#!/bin/sh\n"
                 "if [ \"${1-}\" = -l ]; then\n"
+                "  if [ \"$FAKE_CRONTAB_READ_OK\" != 1 ]; then\n"
+                "    echo 'permission denied' >&2\n"
+                "    exit 1\n"
+                "  fi\n"
                 "  cat \"$FAKE_CRONTAB\"\n"
                 "elif [ -n \"${1-}\" ] && [ \"$1\" != - ]; then\n"
                 "  cat \"$1\" >\"$FAKE_CRONTAB\"\n"
@@ -40,6 +51,8 @@ class WeekendTermuxTests(unittest.TestCase):
             )
             (commands / "pgrep").write_text(
                 "#!/bin/sh\n"
+                "[ \"${1-}\" = -x ] || exit 2\n"
+                "[ \"${2-}\" = crond ] || exit 2\n"
                 "[ \"$(cat \"$FAKE_CROND_STATE\")\" = 1 ]\n",
                 encoding="utf-8",
             )
@@ -59,6 +72,7 @@ class WeekendTermuxTests(unittest.TestCase):
                 "FAKE_CRONTAB": str(crontab_state),
                 "FAKE_CROND_STATE": str(crond_state),
                 "FAKE_SV_LOG": str(root / "sv.log"),
+                "FAKE_CRONTAB_READ_OK": "1" if crontab_read_ok else "0",
                 "PREFIX": str(prefix),
             })
             result = subprocess.run(
@@ -146,6 +160,20 @@ class WeekendTermuxTests(unittest.TestCase):
         self.assertIn("47 12 * * *", installed)
         self.assertIn("up crond", sv_log)
         self.assertIn("/var/service", sv_log)
+
+    def test_installer_fails_closed_on_real_crontab_read_error(self):
+        initial = "12 3 * * * /other/bot.sh\n"
+        result, installed, sv_log = self._install(
+            initial,
+            crond_running=True,
+            service_available=True,
+            crontab_read_ok=False,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(installed, initial)
+        self.assertEqual(sv_log, "")
+        self.assertIn("безопасно прочитать", result.stderr)
 
     def test_installer_does_not_require_service_directory_when_crond_is_already_running(self):
         result, installed, sv_log = self._install(
