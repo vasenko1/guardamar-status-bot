@@ -20,7 +20,7 @@ def publication() -> ProductAwardPublication:
         selection_key="test:2026",
         event_id="test:event",
         source_name="Test",
-        source_kind="producto_del_ano",
+        source_kind="ocu",
         source_url="https://award.example/result",
         source_hosts=frozenset({"award.example"}),
         source_markers=("winner",),
