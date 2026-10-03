@@ -425,8 +425,9 @@ The existing atomic state keeps cooldown/dedup/cursor/uncertain-delivery facts
 plus one small last-retailer identity. Old state without that optional field is
 backward-compatible and can derive the current retailer from the newest known
 published event before the next confirmed delivery writes it explicitly.
-Operator force mode bypasses cooldown only; it never bypasses deduplication,
-uncertain-delivery protection or retailer rotation.
+Operator force mode bypasses cooldown only; it never bypasses deduplication or
+uncertain-delivery protection and keeps the same retailer-preference/fallback
+selection semantics.
 
 Current exact-retail adapters remain source-specific. Consum validates saved
 product ID/EAN/name/price from its official product JSON and, after ADR 0092,
