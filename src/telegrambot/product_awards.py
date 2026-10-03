@@ -1066,9 +1066,11 @@ CATEGORIES: tuple[ReviewedCategory, ...] = (
                         ),
                         product_name="AROM'ARTE Intenso",
                         award_year=2024,
-                        source_category="капсулы Nespresso с кофеином",
+                        source_category="кофейные капсулы Nespresso/Dolce Gusto",
                         award_scope="exact_product",
-                        award_result="85/100, лучший результат в своей группе",
+                        award_result=(
+                            "85/100, лучший результат среди Nespresso с кофеином"
+                        ),
                         product_id=273821,
                         expected_ean=None,
                         sample_size=29,
