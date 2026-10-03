@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-03
-- Implementation: Pending production probes
+- Implementation: Core architecture probe complete; source rollout capability-gated
 - State layout: ADR 0092
 
 ## Context
@@ -383,56 +383,69 @@ implicitly.
 
 #### Municipal/Turismo
 
-Already carries registration/reservation/ticket facts and source-proven session
-families for some multi-session events.
+The production snapshot carries several access-like facts, but the 2026-10-03
+probe found no current `session_source_key` family and showed that durable
+contacts also appear on routine CSJ rows.
 
-Highest-reuse first target, subject to identity/presentation probes.
+Enable only explicit reviewed one-off access evidence. Do not treat generic
+`registration_contact` presence as open registration and do not synthesize
+multi-session options when source family evidence is absent.
 
 #### Agenda Guardamar
 
-Already parses occurrence-specific ticket URLs and multiple sessions from one
-detail page, with a 45-day event horizon.
+The production probe found 13 future ticket occurrences. Two repeated ticket
+paths each had four dated occurrences, proving useful parent-path/session
+structure at small cardinality.
 
-The current snapshot loses the parent detail-page identity. A future access
-projection should retain that source identity so several session ticket links
-can belong to one root.
+The current snapshot still loses an explicit parent detail identity and image
+metadata, and it does not expose sale state separately from ticket-link
+existence.
 
-Do not assume every ticket URL proves current sale until production probes
-confirm the live source behavior for available/sold-out/not-yet-open states.
+Before enabling proactive ticket lifecycle, retain the parent source identity
+and verify not-yet-open/open/sold-out/closed behavior. A ticket URL alone still
+does not prove current availability.
 
 #### Biblioteca
 
-Official activity-registration form exists, and detail pages are already
-fetched/cached for changed cards.
+The production snapshot retained one exhibition with a stable detail URL and
+`detail_loaded=true`, but no access action. The public source simultaneously
+exposes later activities beyond the adapter's current seven-day horizon.
 
-Probe first-party event details for occurrence-specific reservation evidence
-before extending the adapter.
+Keep Biblioteca access disabled until a bounded wider future candidate horizon
+and event-specific reservation/action evidence are both implemented.
 
 #### FACV
 
 Official tournament articles can publish current registration contacts, web
-forms, capacity and prices.
+forms, capacity and prices, and several contacts for one tournament remain one
+option.
 
-Several contacts for one tournament remain one option.
+The probe-day local calendar snapshot contained no Guardamar FACV row and the
+calendar model itself retains no article/detail identity. Add one bounded exact
+detail projection before enabling FACV access.
 
 #### AM Guardamar
 
 The normalized SourceEvent/Event contract already has ticket/registration
 presentation fields and official featured images.
 
-Probe whether current WordPress posts expose deterministic actionable
-admission facts often enough to justify access projection.
+The probe-day snapshot contained zero posts/events, so no production evidence
+closed the access contract. Keep AM Guardamar disabled as an access owner until
+a real actionable first-party sample proves identity and action semantics.
 
 #### Pesca CV
 
-Live first-party reconnaissance on 2026-10-03 confirmed a Guardamar competition
-on 17 October whose official federation convocatoria was issued on 14 September
-and explicitly sets club registration through 13 October at 12:00.
+Live first-party reconnaissance confirmed a Guardamar competition on 17 October
+whose official federation convocatoria was issued on 14 September and
+explicitly sets club registration through 13 October at 12:00.
 
-Pesca CV is therefore a proven long-lead registration source rather than only a
-calendar supplement. Access projection must come from the exact convocatoria
-detail/PDF and must preserve the source restriction that clubs perform the
-registration; the calendar row alone is insufficient evidence.
+The production snapshot contains that 17 October calendar row plus a November
+national event, but only calendar fields are persisted; no convocatoria/detail
+identity or registration facts survive normalization.
+
+Pesca CV is therefore a proven long-lead access source, but rollout requires a
+small exact convocatoria projection. Preserve the source restriction that clubs
+perform registration; the calendar row alone is insufficient evidence.
 
 ### Price changes
 
