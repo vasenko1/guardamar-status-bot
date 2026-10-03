@@ -88,7 +88,11 @@ to `state/electricity.json`, and its private normalized target-day data defaults
 to `state/electricity_prices.json`; override the latter with
 `ELECTRICITY_SNAPSHOT_PATH` if needed. The pinned guide state defaults to
 `state/pinned_guide.json`, while the normalized places/activities source
-baseline defaults to `state/guide.json`. Secrets must not be committed.
+baseline defaults to `state/guide.json`. CONVEGA's normalized event source
+defaults to `state/convega_events.json`, and one-off registration lifecycle
+state defaults to `state/event_registration_notifications.json`. Override
+them only with `CONVEGA_STATE_PATH` and `EVENT_REGISTRATION_STATE_PATH`
+when isolation is required. Secrets must not be committed.
 
 `CAMS_DATA_URL` and `CAMS_CACHE_PATH` have the defaults shown above and normally
 need not be configured. The phone never receives an ADS credential. Invalid,
@@ -135,7 +139,10 @@ CRON_TZ=Europe/Madrid
 0,20 21 * * * /path/to/TelegramBot/termux/run-electricity.sh
 15 19 * * 5 /path/to/TelegramBot/termux/run-weekend.sh --fresh
 15 20 * * 5 /path/to/TelegramBot/termux/run-weekend.sh
+47 12 * * * /data/data/com.termux/files/usr/bin/sh /path/to/TelegramBot/termux/run-event-registration.sh
+47 13 * * * /data/data/com.termux/files/usr/bin/sh /path/to/TelegramBot/termux/run-event-registration.sh
 25 19 * * 0-4 /data/data/com.termux/files/usr/bin/sh /path/to/TelegramBot/termux/run-tomorrow-events.sh
+25 20 * * 0-4 /data/data/com.termux/files/usr/bin/sh /path/to/TelegramBot/termux/run-tomorrow-events.sh
 50 5 * * 0 /path/to/TelegramBot/termux/sync-pharmacy.sh
 19 * * * * /path/to/TelegramBot/termux/check-112.sh
 */30 * * * * /path/to/TelegramBot/termux/monitor-hidraqua.sh
@@ -183,6 +190,12 @@ The validated Android deployment uses the scripts in `termux/`:
   transition notice; `publish-course-notifications.sh` runs at 09:42 with an
   11:42 same-day retry opportunity and groups verified registration openings or
   closings that occur tomorrow;
+- `termux/run-event-registration.sh` at 12:47 with a 13:47 recovery checks
+  official one-off registration lifecycles. It first accepts a same-day,
+  non-future local CONVEGA snapshot; only when that snapshot is absent does it
+  run the bounded REST source refresh under the shared runtime lock. Telegram
+  delivery uses a separate lifecycle lock and ambiguous delivery is never
+  automatically resent;
 - `termux/run-tomorrow-events.sh` at 19:25 Sunday–Thursday reads only fresh
   same-day local event catalogs. It sends at most one next-day planning post,
   performs no source refresh or AI call, and lets Telegram fetch an optional
@@ -258,7 +271,10 @@ CRON_TZ=Europe/Madrid
 0,20 21 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity.sh
 15 19 * * 5 /data/data/com.termux/files/home/bots/guardamar-status/termux/run-weekend.sh --fresh
 15 20 * * 5 /data/data/com.termux/files/home/bots/guardamar-status/termux/run-weekend.sh
+47 12 * * * /data/data/com.termux/files/usr/bin/sh /data/data/com.termux/files/home/bots/guardamar-status/termux/run-event-registration.sh
+47 13 * * * /data/data/com.termux/files/usr/bin/sh /data/data/com.termux/files/home/bots/guardamar-status/termux/run-event-registration.sh
 25 19 * * 0-4 /data/data/com.termux/files/usr/bin/sh /data/data/com.termux/files/home/bots/guardamar-status/termux/run-tomorrow-events.sh
+25 20 * * 0-4 /data/data/com.termux/files/usr/bin/sh /data/data/com.termux/files/home/bots/guardamar-status/termux/run-tomorrow-events.sh
 50 5 * * 0 /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-pharmacy.sh
 19 * * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/check-112.sh
 */30 * * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-hidraqua.sh
@@ -283,8 +299,12 @@ cd ~/bots/guardamar-status
 ```
 
 The installer retains unrelated cron entries and owns only its marked event-
-planning block. The next-day row has one 19:25 attempt and deliberately does
-not refresh event sources again in the evening.
+planning block. It schedules one-off event-registration checks at 12:47 and
+13:47, the Friday Weekend publication at 19:15 with its existing 20:15
+recovery, and next-day planning at 19:25 with a 20:25 recovery. The registration
+wrapper refreshes CONVEGA only when today's successful snapshot is absent, so a
+normal 13:47 recovery performs no source HTTP. Next-day rendering itself remains
+local-state only and does not refresh sources in the evening.
 
 The installer saves the original crontab once as
 `~/.cache/crontab/crontab.before-monitor`, preserves unrelated lines, and owns
@@ -375,6 +395,8 @@ PYTHONPATH=src python -m telegrambot status
 PYTHONPATH=src python -m telegrambot electricity-preview
 PYTHONPATH=src python -m telegrambot weekend-preview
 PYTHONPATH=src python -m telegrambot tomorrow-events-preview
+PYTHONPATH=src python -m telegrambot.event_registration_notifications preview
+PYTHONPATH=src python -m telegrambot.event_registration_notifications status
 PYTHONPATH=src python -m telegrambot refresh-current
 PYTHONPATH=src python -m telegrambot pinned-preview
 ```
