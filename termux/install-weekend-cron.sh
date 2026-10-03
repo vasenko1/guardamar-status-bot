@@ -97,15 +97,17 @@ printf '%s\n' \
     "$END_MARKER" \
     >>"$NEXT"
 
-crontab "$NEXT"
-
 if ! crond_running; then
-    SVDIR="$CROND_SVDIR" sv up crond
+    if ! SVDIR="$CROND_SVDIR" sv up crond; then
+        echo "ОШИБКА: не удалось запустить crond; crontab не изменён" >&2
+        exit 1
+    fi
 fi
 
 if ! crond_running; then
-    echo "ОШИБКА: crontab установлен, но crond не удалось запустить" >&2
+    echo "ОШИБКА: crond не запущен после service startup; crontab не изменён" >&2
     exit 1
 fi
 
+crontab "$NEXT"
 echo "crond: running"
