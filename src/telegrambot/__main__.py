@@ -582,8 +582,8 @@ async def _deliver_product_award(
                     suffix=suffix,
                     delete=False,
                 ) as temporary:
-                    temporary.write(image_bytes)
                     upload_path = Path(temporary.name)
+                    temporary.write(image_bytes)
             except OSError as file_exc:
                 logging.warning(
                     "Product-award candidate %s: temporary media file failed "
