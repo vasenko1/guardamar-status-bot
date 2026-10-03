@@ -398,8 +398,12 @@ the existing `state/product_awards.json` before source access.
   cache. The previous retailer is derived best-effort from the last published
   event ID already stored.
 - Award evidence, exact retail identity and current price remain mandatory.
-- Product media is optional and cannot make an otherwise valid product
-  ineligible.
+- An exact reviewed product photo is the normal presentation. The selected
+  candidate may try only a small explicit list of approved official image
+  sources; there is no runtime image search or discovery.
+- Product media still cannot make an otherwise valid product ineligible. Only
+  after every reviewed image source is exhausted may delivery degrade to a
+  no-image Rich Message.
 - Consum image selection prefers allowlisted official `media[]` URLs; no
   synthetic filename guessing or eligibility-time image download is allowed.
 - ALDI may parse embedded Next.js JSON but never executes JavaScript. Explicit
@@ -409,10 +413,11 @@ the existing `state/product_awards.json` before source access.
   HTTP header profile required by their public SSR surfaces. This remains one
   bounded HTML GET with exact markers and product-card-scoped price parsing;
   no browser, JavaScript, cookie session or catalogue crawl is permitted.
-- Telegram tries remote image first. Only an explicit remote-media rejection
-  may trigger the existing bounded local image download/upload. A deterministic
-  media-path failure may then send the same Rich Message without media.
-  Ambiguous delivery always stops.
+- Telegram tries each reviewed image source remotely in order. Only an explicit
+  remote-media rejection may trigger the existing bounded local image
+  download/upload for that source. Deterministic failure may advance to the next
+  reviewed exact image source; no-image delivery is the final fallback only
+  after all reviewed image paths fail. Ambiguous delivery always stops.
 - Every HTTP operation remains bounded by the existing host allowlists,
   timeouts and response-size limits.
 - No browser/Playwright, OCR, LLM, search engine, database, daemon, retailer
