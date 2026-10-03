@@ -470,14 +470,26 @@ class CapacityAuditTests(unittest.TestCase):
         self.assertTrue(result.disable_schedule)
         self.assertEqual(len(gateway.launch_calls), 1)
 
-    def test_retry_token_is_stable_across_reruns_of_same_workflow(self):
+    def test_retry_token_is_stable_for_same_profile_across_reruns(self):
         first = {"GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "1"}
         rerun = {"GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "2"}
-        self.assertEqual(capacity._retry_token(first), capacity._retry_token(rerun))
-        self.assertNotEqual(
-            capacity._retry_token(first),
-            capacity._retry_token({"GITHUB_RUN_ID": "124"}),
+        self.assertEqual(
+            capacity._retry_token(first, capacity.MEMORY_GBS),
+            capacity._retry_token(rerun, capacity.MEMORY_GBS),
         )
+        self.assertNotEqual(
+            capacity._retry_token(first, capacity.MEMORY_GBS),
+            capacity._retry_token({"GITHUB_RUN_ID": "124"}, capacity.MEMORY_GBS),
+        )
+
+    def test_retry_token_differs_when_rerun_selects_other_profile(self):
+        env = {"GITHUB_RUN_ID": "123"}
+        self.assertNotEqual(
+            capacity._retry_token(env, capacity.MEMORY_GBS),
+            capacity._retry_token(env, capacity.FALLBACK_MEMORY_GBS),
+        )
+        with self.assertRaises(capacity.SafetyError):
+            capacity._retry_token(env, 1.0)
 
     def test_result_writes_safe_github_outputs_and_ready_summary(self):
         with tempfile.TemporaryDirectory() as directory:
