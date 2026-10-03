@@ -1715,3 +1715,23 @@ service-start failure before cron mutation.
 
 Review branch/PR #261 requires a final device focused test and full regression
 before merge.
+
+
+### Final review device validation — first attempt
+
+The first device run of PR #261 passed syntax checks and 18 of 19 focused
+CONVEGA tests before stopping on
+`test_open_event_projection_keeps_validated_action`.
+
+The failure was a stale positive test fixture, not a runtime defect. After the
+full review tightened embedded-form evidence to require registration semantics
+inside the same form, this projection fixture still placed `Inscripción`
+outside the form. The runtime correctly classified that shape as `unknown`
+and omitted the registration URL.
+
+The fixture was updated so the reviewed registration phrase is inside the same
+actionable form. A scan of the remaining CONVEGA form fixtures confirmed the
+other page-global `Inscripción` cases are intentionally negative/terminal
+tests. No production parser or lifecycle logic was weakened.
+
+A fresh device run against the new exact PR head is required before merge.
