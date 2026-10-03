@@ -998,13 +998,14 @@ def build_message(
     name = html.escape(candidate.product_name)
     category = html.escape(candidate.source_category)
     retailer = html.escape(candidate.retailer)
+    default_headline_awards = {
+        "world_beer_awards": f"World Beer Awards {candidate.award_year}",
+        "ocu": f"OCU {candidate.award_year}",
+        "mapa": f"Premio Alimentos de España {candidate.award_year}",
+    }
     headline_award = html.escape(
         candidate.headline_award
-        or (
-            f"World Beer Awards {candidate.award_year}"
-            if candidate.source_kind == "world_beer_awards"
-            else candidate.award_result
-        )
+        or default_headline_awards.get(candidate.source_kind, candidate.source_name)
     )
     title = f"{name} — {headline_award} · {retailer}"
 
