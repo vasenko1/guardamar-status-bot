@@ -196,17 +196,17 @@ class _ProductImageParser(HTMLParser):
         if tag.casefold() != "img":
             return
         alt = str(values.get("alt") or "").strip()
-        raw = None
+        image_values = []
         for key in ("src", "data-src", "data-lazy-src"):
             value = values.get(key)
             if isinstance(value, str) and value.strip():
-                raw = value.strip()
-                break
-        if raw is None:
-            srcset = values.get("srcset")
-            if isinstance(srcset, str) and srcset.strip():
-                raw = srcset.split(",", 1)[0].strip().split(" ", 1)[0]
-        if raw:
+                image_values.append(value.strip())
+        srcset = values.get("srcset")
+        if isinstance(srcset, str) and srcset.strip():
+            image_values.append(
+                srcset.split(",", 1)[0].strip().split(" ", 1)[0]
+            )
+        for raw in image_values:
             self.images.append((alt, raw))
 
 
