@@ -452,8 +452,9 @@ operator action, never a hidden cron side effect.
 
 The global `Event` model remains presentation-only for Morning/Tomorrow/Weekend
 and is not replaced by a second general event model. Access truth remains
-source-owned and fail-closed. Same-day freshness is required for proactive
-claims; Morning may still consume last-good Event data.
+source-owned and fail-closed. Proactive access uses each source's reviewed
+freshness contract; Morning may still consume last-good Event data under its
+separate presentation rules.
 
 The 2026-10-03 production probe opened the core implementation gate while
 keeping source rollout capability-gated. CONVEGA is the reference-ready source.
