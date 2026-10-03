@@ -104,19 +104,27 @@ undeliverable image must not invalidate an otherwise publishable product.
 
 Rich Message delivery uses this order:
 
-1. when an allowlisted exact image URL exists, try the normal remote-image Rich
-   Message;
+1. when an exact image URL belongs to a reviewed retailer-specific media host,
+   try the normal remote-image Rich Message;
 2. only after Telegram explicitly rejects remote media, keep ADR 0084's one
-   bounded local image download and multipart upload attempt;
-3. if the local image cannot be fetched, or the explicit upload path fails
+   bounded local image download and multipart upload attempt **when that same
+   media host is in the local-fetch allowlist**;
+3. if no local-fetch allowlist exists for that retailer/media host, skip the
+   upload attempt and degrade directly to no-image delivery;
+4. if the local image cannot be fetched, or the explicit upload path fails
    deterministically, send the same Rich Message **without the image**;
-4. after any ambiguous Telegram send outcome, do not attempt another send.
+5. after any ambiguous Telegram send outcome, do not attempt another send.
 
 Telegram Rich Messages support HTML content without media, so the final fallback
 does not need a second message format or a normal `sendMessage` conversion.
 
 A successful no-image delivery is a normal confirmed Product Awards
 publication and consumes the three-day slot.
+
+This ADR does not weaken the existing source/terms requirement for product
+media. A new retailer-media contract should record why that first-party image
+may be reused. When media reuse is unclear, keep the product eligible and use
+the no-image article instead.
 
 ### 5. Fix Consum media precedence without probing every image
 
