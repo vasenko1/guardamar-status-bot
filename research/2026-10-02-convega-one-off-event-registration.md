@@ -1654,3 +1654,27 @@ This preserves the project's central tradeoff:
 
 **prefer a small deterministic source-backed system that sometimes says
 nothing over a more general system that can confidently say something false.**
+
+
+### crond hotfix device validation — 2026-10-03
+
+A follow-up production-device probe confirmed the rollout failure was caused by
+the non-interactive SSH environment, not by the CONVEGA feature or cron data:
+
+- `SVDIR` was unset;
+- `$PREFIX/var/service/crond` existed;
+- `runsv crond`, `svlogd`, and `crond -n -s` were already running;
+- explicit `SVDIR=$PREFIX/var/service sv status crond` reported a healthy
+  service;
+- the managed event-planning block already contained exactly the two new
+  registration rows at 12:47 and 13:47.
+
+The hotfix branch was validated in a detached worktree on the same device:
+shell syntax passed and `test_termux_weekend.py` passed **8/8** tests,
+including the already-running daemon path, explicit-SVDIR startup path,
+fail-before-crontab-change path, idempotency, and preservation of unrelated
+jobs.
+
+Production remained on
+`24f0f8c8aa99dfcc6a93e774f4465968a86e7635` with a clean tree during this
+validation.
