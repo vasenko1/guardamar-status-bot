@@ -1,6 +1,6 @@
 # ADR 0095: Quality-first Product Awards registry rebuild
 
-- Status: Implemented in main; production validation pending
+- Status: Implemented and production-validated
 - Date: 2026-10-03
 - Refines: ADR 0083, ADR 0093
 
@@ -182,3 +182,40 @@ strong exact Carrefour matches; this is evidence-driven, not a quota.
 Mercadona and Lidl remain active research targets. They should enter only when a
 source-native quality/championship candidate satisfies the same category and
 exact-retail gates.
+
+## Production validation — 2026-10-03
+
+The exact reviewed `main` commit
+`ff33bdf7f49eabe81077774d738b8eab38d4e7d2` passed the Termux deployment gate
+before and after the production fast-forward.
+
+Validated on the production device:
+
+- Python compileall passed;
+- all 56 focused Product Awards tests passed;
+- the full repository suite passed: 1,524 tests;
+- production state remained schema v1 with cursor 0, Mahou Sin Filtrar as the
+  only confirmed published event/selection, last delivery day 2026-09-29 and no
+  uncertain delivery;
+- all four restored quality-first candidates passed live award and exact-retail
+  verification before deployment;
+- the same four candidates passed the exact live proof again after deployment;
+- observed current prices were:
+  - Realfooding Gazpacho / Carrefour — 3.99 EUR;
+  - Oleoestepa DOP Estepa / Carrefour — 8.35 EUR;
+  - AROM'ARTE Intenso / DIA — 3.80 EUR;
+  - Anís Chinchón Dulce / Carrefour — 13.79 EUR;
+- all restored Carrefour/DIA candidates correctly remained text-only with
+  `image_url=None`;
+- NALTROS still failed closed as `RETAIL-PAGE-ERROR`;
+- no Telegram publication was triggered by the validation;
+- preview/deployment did not mutate Product Awards state;
+- no cron reinstall or service restart was required.
+
+Production now runs
+`ff33bdf7f49eabe81077774d738b8eab38d4e7d2`.
+
+One non-blocking copy issue was observed in preview output:
+`23 продуктов` should be `23 продукта`. It does not affect source identity,
+price, selection, state or delivery and is deliberately deferred to a separate
+copy-only change rather than reopening the validated runtime commit.
