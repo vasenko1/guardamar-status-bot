@@ -523,7 +523,7 @@ class OciGateway:
         elif profile.key == "e2":
             names["e2_micro_count"] = (
                 "compute",
-                "vm-standard-e2-1-micro-count",
+                "standard-e2-micro-core-count",
                 AVAILABILITY_DOMAIN,
             )
         else:
