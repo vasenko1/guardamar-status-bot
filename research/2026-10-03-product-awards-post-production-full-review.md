@@ -557,3 +557,209 @@ precise retailer-price wording**, not a new retailer/session architecture.
 
 No reason was found to redesign the selector, cooldown, retailer preference,
 delivery state machine or Product Awards scheduling.
+
+
+## Fourth-pass review — final corrections to the repair scope
+
+A fourth adversarial pass found three additional issues and revalidated several
+previously questioned source decisions.
+
+### New finding A — HIGH: current retailer-image use conflicts with the accepted reuse-rights rule
+
+ADR 0083 says product photos remain disabled unless exact product identity and
+explicit reuse rights are documented.
+
+ADR 0093 repeats the same boundary: if retailer media reuse is unclear, the
+product remains eligible but publication should use the no-image article.
+
+Current runtime can still publish retailer product images for ALDI, Consum and
+Masymas when their adapters return an image URL.
+
+Current legal-source evidence is not sufficient to permit that behavior:
+
+- Consum's official legal notice expressly prohibits reproduction,
+  distribution and public communication of site content except personal/private
+  use;
+- Masymas / Juan Fornés' official legal notice expressly excludes reproduction,
+  distribution, transformation and public communication without prior
+  permission;
+- no reviewed Product Awards record establishes an explicit ALDI reuse grant for
+  the exact product image.
+
+Therefore the current active rich-media path does not satisfy the project's own
+accepted media policy.
+
+This is both a compliance/correctness gap and a complexity smell: the
+remote-image -> local-download -> multipart-upload recovery machinery currently
+serves media that the production registry should not publish unless reuse rights
+are independently documented.
+
+#### Recommended repair boundary
+
+For the current registry, default every candidate to text-only Product Awards.
+
+Do not infer permission from first-party hosting or technical accessibility.
+
+The simplest coherent runtime is:
+
+- exact award;
+- exact current retailer product;
+- current price;
+- deterministic text article;
+- no retailer image unless an explicit candidate/media contract records a
+  reusable image right.
+
+If no current candidate has such a right, remove or disable the active
+Product-Awards media delivery branch rather than maintaining it as production
+behavior. A future explicitly licensed source can reintroduce the small
+capability under a new reviewed contract.
+
+This finding supersedes the prior assumption that the existing Consum/Masymas
+image contracts are automatically acceptable because they are first-party.
+
+### New finding B — MEDIUM: positional category_cursor is coupled to registry shape
+
+State stores `category_cursor` as an integer index into `CATEGORIES`.
+
+That is safe for the current seven-category registry and current production
+cursor 0, but Product Awards deliberately uses a manually maintained registry
+whose categories can be added, removed or reordered.
+
+Consequences of a future structural registry edit:
+
+- reordering categories silently changes what the same stored cursor means;
+- shrinking the registry can make an otherwise valid state fail validation when
+  `category_cursor >= len(CATEGORIES)`;
+- a deployment therefore depends on preserving positional layout or performing a
+  manual/migration-aware state check.
+
+The 3 October rebuild avoided this only because it deliberately kept seven
+categories and production cursor 0.
+
+#### Recommended repair boundary
+
+This is not urgent for the next publication.
+
+Before the next registry change that alters category count/order, choose one of
+two small approaches:
+
+1. migrate the cursor to a stable category key / last-category key; or
+2. explicitly migrate/normalize the existing cursor as part of that registry
+   change and encode the mapping in tests/deployment validation.
+
+Do not add a generic migration framework merely for this.
+
+A stable category key is cleaner long-term if registry restructuring becomes
+normal.
+
+### New finding C — LOW/MEDIUM: production registry lacks static uniqueness invariants
+
+Current production registry was machine-checked during this review and contains
+no duplicate:
+
+- category keys;
+- event IDs;
+- selection keys.
+
+However, the test suite does not currently enforce those invariants.
+
+Because `published_events` and `published_selections` drive deduplication, a
+future hand-edited duplicate could make one candidate silently suppress another.
+
+#### Recommended repair boundary
+
+Add one small registry-invariant unit test asserting uniqueness of:
+
+- `ReviewedCategory.key`;
+- every production `event_id`;
+- every production `selection_key`;
+- source priorities within a category where appropriate;
+- candidate ranks within one source where appropriate.
+
+No runtime validation or framework is needed.
+
+### Revalidation: NALTROS tie semantics are correct
+
+The reviewed OCU cava comparison has three products tied at 94/100.
+
+The source-policy research explicitly permits tied top candidates to retain the
+tie semantics and use a candidate with a verified exact retail match without
+inventing a unique #1.
+
+NALTROS wording remains `one of the leaders`, not unique winner.
+
+No change is needed.
+
+### Revalidation: Oleoestepa READY status is evidence-backed
+
+The earlier strict research initially marked AOVE pending because the reviewed
+surface did not yet prove exact OCU winner identity.
+
+A later 27 September source re-check added new evidence: OCU's official
+23-product AOVE material explicitly states that the ranking is led by AOVE
+Oleoestepa DOP Estepa, and current exact Carrefour identity was then proven.
+
+Therefore ADR 0095 did not improperly promote an unresolved candidate; it used
+newer reviewed evidence.
+
+No source-policy change is needed.
+
+### Revalidation: World Beer Awards country-winner semantics are current
+
+Current official World Beer Awards 2026 pages still identify:
+
+- Ambar Especial as Spain Country Winner in International Lager;
+- Mahou Sin Filtrar as Spain Country Winner in Classic Pilsener.
+
+Their public wording must remain country/category winner semantics rather than
+World's Best.
+
+No rank/source change is needed.
+
+### Revised final implementation order after four reviews
+
+**Immediate, before the next normal Product Awards publication:**
+
+1. restore the lean deterministic editorial contract:
+   - package/format;
+   - verified production country;
+   - verified producer/manufacturer where supported;
+   - retailer in the headline;
+   - source-proven winner-specific highlight/reason;
+   - keep score out of the headline;
+2. make Carrefour wording explicitly about the current official-site price,
+   not Guardamar-local stock;
+3. fix Russian sample-count declension;
+4. disable retailer images for every current candidate unless explicit reuse
+   rights are documented.
+
+**Small hardening bundled with the same or next tiny change:**
+
+5. add static production-registry uniqueness tests.
+
+**Evidence-first follow-up:**
+
+6. probe real Carrefour/DIA promotional-price markup before changing price
+   extraction.
+
+**Deferred lifecycle maintenance:**
+
+7. add pre-send history-capacity validation before state approaches the cap;
+8. address positional cursor coupling before a future registry count/order
+   change;
+9. replenish candidate runway;
+10. optionally add a state-aware next-preview command;
+11. amend stale ADR 0083 retailer-count wording.
+
+### Fourth-pass overall conclusion
+
+The selector, cooldown, retailer diversity, source/rank order and Telegram
+at-most-once state machine still do not need redesign.
+
+The strongest newly discovered simplification is that Product Awards should be
+text-only under the current evidence. This removes a policy contradiction and
+also makes the media-recovery machinery unnecessary as active production
+behavior.
+
+The next implementation should remain a compact contract-restoration change,
+not another architecture rewrite.
