@@ -1119,6 +1119,15 @@ CATEGORIES: tuple[ReviewedCategory, ...] = (
                         product_id=190300,
                         expected_ean=None,
                         sample_size=25,
+                        package_label="0,75 л",
+                        country_label="Испания",
+                        producer_label="Jaume Serra",
+                        headline_award="один из лидеров OCU",
+                        highlight=(
+                            "94/100 — один из трёх лидирующих результатов OCU; "
+                            "в дегустации отмечены тонкая пузырьковая структура, "
+                            "хлебные и фруктовые ноты."
+                        ),
                     ),
                 ),
             ),
@@ -1170,6 +1179,25 @@ CATEGORIES: tuple[ReviewedCategory, ...] = (
                         expected_ean=None,
                         sample_size=39,
                         retailer_title="Gazpacho fresco Realfooding sin gluten 1 l",
+                        package_label="1 л, PET",
+                        country_label="Испания",
+                        producer_label="CAÑA NATURE, S.L.U.",
+                        headline_award="Mejor del Análisis OCU",
+                        highlight=(
+                            "90/100: лучший результат среди 39 газпачо; "
+                            "OCU поставила его первым и по дегустации, "
+                            "и по Escala Saludable."
+                        ),
+                        image_sources=(
+                            ReviewedImageSource(
+                                name="Realfooding official product",
+                                page_url="https://realfooding.com/products/gazpacho",
+                                page_hosts=frozenset({"realfooding.com"}),
+                                image_hosts=frozenset({"realfooding.com"}),
+                                page_markers=("Gazpacho Fresco", "Peso envase: 1L"),
+                                image_alt_markers=("Gazpacho Fresco",),
+                            ),
+                        ),
                     ),
                 ),
             ),
@@ -1225,6 +1253,34 @@ CATEGORIES: tuple[ReviewedCategory, ...] = (
                         expected_ean=None,
                         sample_size=23,
                         retailer_title="Aceite de oliva virgen extra Oleoestepa 1 l",
+                        package_label="1 л, PET",
+                        country_label="Испания",
+                        producer_label="Oleoestepa S.C.A.",
+                        headline_award="Mejor del Análisis OCU",
+                        highlight=(
+                            "Возглавляет рейтинг 23 AOVE OCU; лабораторные "
+                            "проверки подтвердили категорию extra, а "
+                            "профессиональная дегустация — отсутствие дефектов."
+                        ),
+                        image_sources=(
+                            ReviewedImageSource(
+                                name="Oleoestepa official product",
+                                page_url=(
+                                    "https://tienda.oleoestepa.com/es/"
+                                    "aceite-de-oliva-virgen-extra-oleoestepa/"
+                                    "29-aceite-de-oliva-virgen-extra-oleoestepa-1-l.html"
+                                ),
+                                page_hosts=frozenset({"tienda.oleoestepa.com"}),
+                                image_hosts=frozenset({"tienda.oleoestepa.com"}),
+                                page_markers=(
+                                    "Aceite de Oliva Virgen Extra Oleoestepa 1 L",
+                                    "8422975000069",
+                                ),
+                                image_alt_markers=(
+                                    "Aceite de Oliva Virgen Extra Oleoestepa 1 L",
+                                ),
+                            ),
+                        ),
                     ),
                 ),
             ),
@@ -1277,6 +1333,33 @@ CATEGORIES: tuple[ReviewedCategory, ...] = (
                         expected_ean=None,
                         sample_size=29,
                         retailer_title="Cápsulas de café intenso Dia Arom'arte 20 unidades",
+                        package_label="20 капсул, 108 г",
+                        country_label="Испания",
+                        producer_label="Toscaf, S.A.",
+                        headline_award="лучший результат в группе OCU",
+                        highlight=(
+                            "85/100 — лучший результат среди капсул Nespresso "
+                            "с кофеином в физическом сравнении OCU."
+                        ),
+                        image_sources=(
+                            ReviewedImageSource(
+                                name="DIA exact product",
+                                page_url=(
+                                    "https://www.dia.es/cafe-cacao-e-infusiones/"
+                                    "capsulas-compatibles-nespresso/p/273821"
+                                ),
+                                page_hosts=frozenset({"www.dia.es"}),
+                                image_hosts=frozenset({"www.dia.es"}),
+                                page_markers=(
+                                    "Cápsulas de café intenso Dia Arom'arte 20 unidades",
+                                    "Toscaf",
+                                ),
+                                image_alt_markers=(
+                                    "Cápsulas de café intenso Dia Arom'arte 20 unidades",
+                                ),
+                                use_navigation_headers=True,
+                            ),
+                        ),
                     ),
                 ),
             ),
@@ -1329,6 +1412,33 @@ CATEGORIES: tuple[ReviewedCategory, ...] = (
                         product_id=538001406,
                         expected_ean=None,
                         retailer_title="Anís Chinchón dulce 1 l",
+                        package_label="1 л, 35% об.",
+                        country_label="Испания",
+                        producer_label="González Byass S.A.",
+                        headline_award="Premio Alimentos de España 2026",
+                        highlight=(
+                            "Официальный национальный победитель MAPA в "
+                            "категории спиртных напитков с географическим указанием."
+                        ),
+                        image_sources=(
+                            ReviewedImageSource(
+                                name="González Byass Chinchón official product",
+                                page_url=(
+                                    "https://www.gonzalezbyass.com/es/"
+                                    "bodegas-marcas/chinchon"
+                                ),
+                                page_hosts=frozenset({
+                                    "www.gonzalezbyass.com",
+                                    "gonzalezbyass.com",
+                                }),
+                                image_hosts=frozenset({
+                                    "www.gonzalezbyass.com",
+                                    "gonzalezbyass.com",
+                                }),
+                                page_markers=("Anís dulce", "Chinchón"),
+                                image_alt_markers=("Botella Chinchón Anís Dulce",),
+                            ),
+                        ),
                     ),
                 ),
             ),
@@ -1374,6 +1484,24 @@ CATEGORIES: tuple[ReviewedCategory, ...] = (
                         award_result="gold_country_winner",
                         product_id=22554,
                         expected_ean="84107015",
+                        package_label="0,33 л, банка",
+                        country_label="Испания",
+                        producer_label="La Zaragozana, S.A.",
+                        headline_award="World Beer Awards 2026",
+                        highlight=(
+                            "Золото и Spain Country Winner в стиле "
+                            "International Lager."
+                        ),
+                        image_sources=(
+                            ReviewedImageSource(
+                                name="Ambar official product",
+                                page_url="https://ambar.com/cervezas/especial/",
+                                page_hosts=frozenset({"ambar.com", "www.ambar.com"}),
+                                image_hosts=frozenset({"ambar.com", "www.ambar.com"}),
+                                page_markers=("Ambar Especial", "5,2"),
+                                image_alt_markers=("especial nueva",),
+                            ),
+                        ),
                     ),
                 ),
             ),
@@ -1422,6 +1550,32 @@ CATEGORIES: tuple[ReviewedCategory, ...] = (
                         award_result="gold_country_winner",
                         product_id=10067,
                         expected_ean="8411327010153",
+                        package_label="0,33 л, банка",
+                        country_label="Испания",
+                        producer_label="Mahou, S.A.",
+                        headline_award="World Beer Awards 2026",
+                        highlight=(
+                            "Золото и Spain Country Winner в стиле "
+                            "Classic Pilsener."
+                        ),
+                        image_sources=(
+                            ReviewedImageSource(
+                                name="Mahou official product",
+                                page_url=(
+                                    "https://www.mahou-sanmiguel.com/tienda/p/"
+                                    "mahou-cinco-estrellas-sin-filtrar.html"
+                                ),
+                                page_hosts=frozenset({"www.mahou-sanmiguel.com"}),
+                                image_hosts=frozenset({"www.mahou-sanmiguel.com"}),
+                                page_markers=(
+                                    "Mahou Cinco Estrellas Sin Filtrar",
+                                    "5.50 % vol.",
+                                ),
+                                image_alt_markers=(
+                                    "Mahou Cinco Estrellas Sin Filtrar",
+                                ),
+                            ),
+                        ),
                     ),
                 ),
             ),
