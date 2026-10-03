@@ -208,6 +208,42 @@ ported onto current main rather than copying the older docs branch wholesale.
 
 This preserves the two newer event-access commits and avoids an ADR collision.
 
+## Production pre-deploy gate finding
+
+The first production-device validation run against merged commit
+`4bf98e4ddc9e971b737ffb88f34d038e729137e4` correctly aborted before deployment.
+
+Compileall passed and the new Product Awards unit/delivery tests passed, but one
+older command-level integration test still encoded ADR 0084's superseded
+behavior:
+
+`test_failed_local_media_recovery_skips_candidate_and_sends_next`
+
+It expected local media failure to exclude the selected event, invoke the
+selector a second time with `excluded_event_ids`, and publish another product.
+
+That expectation directly contradicts implemented ADR 0093:
+
+- the selected verified product remains eligible;
+- deterministic image recovery failure sends the **same** product without media;
+- selection runs once;
+- there is no `excluded_event_ids` retry contract.
+
+The production gate therefore identified a stale test, not a runtime defect.
+The test was rewritten as
+`test_failed_local_media_recovery_sends_same_candidate_without_image` and now
+asserts:
+
+- one selector invocation;
+- one bounded image-recovery attempt;
+- the second Telegram attempt contains no `<img>`;
+- the original event is confirmed;
+- cooldown state advances normally.
+
+No runtime code change was required for this finding. The full validation suite
+must be rerun against the new exact main commit before production checkout is
+updated.
+
 ## Residual risks
 
 No blocking code-review issues remain.
