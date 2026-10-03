@@ -459,7 +459,7 @@ class CapacityAuditTests(unittest.TestCase):
     def test_failed_discovery_after_ambiguous_response_disables_schedule(self):
         gateway = FakeGateway()
         gateway.launch_error = TimeoutError("response lost")
-        gateway.instance_snapshots = [[], [], TimeoutError("list failed")]
+        gateway.instance_snapshots = [[], [], [], TimeoutError("list failed")]
         original_list = gateway.list_instances
 
         def list_instances():
