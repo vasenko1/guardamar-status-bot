@@ -1735,3 +1735,29 @@ other page-global `Inscripción` cases are intentionally negative/terminal
 tests. No production parser or lifecycle logic was weakened.
 
 A fresh device run against the new exact PR head is required before merge.
+
+
+### Final review device validation — completed code gate
+
+The repeat device run after the fixture correction passed all focused review
+suites and the full repository regression:
+
+- CONVEGA source/projection: 19/19;
+- one-off registration lifecycle: 23/23;
+- event merge regression: 30/30;
+- Termux/cron review suite: 10/10;
+- Tomorrow integration: 13/13;
+- Weekend integration: 8/8;
+- **full repository regression: 1,501/1,501 passed**.
+
+The run then stopped only at the isolated live CONVEGA smoke with
+`CONVEGA-NETWORK`. This occurred after all code/tests had passed and did not
+produce a parser/state assertion failure. The same official landing remained
+publicly reachable externally during review and still showed stage 21 for
+2026-10-04 with explicit `PLAZAS AGOTADAS`, so no source-contract change was
+observed.
+
+The code-review gate is therefore accepted as passed. The device live-source
+probe failure is recorded as a transient network/source-availability event and
+does not justify weakening fail-closed runtime behavior or repeating the full
+1,501-test suite.
