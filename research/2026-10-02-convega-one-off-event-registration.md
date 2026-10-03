@@ -1511,6 +1511,38 @@ The source adapter should:
 
 Do not predict or fabricate that future markup.
 
+## Device validation checkpoint — 2026-10-03
+
+A non-production detached worktree validation was run on the actual Termux
+device against reviewed PR commit
+`e27870a79b288ba9301926ef8359061924e48362`. The production checkout remained
+on `main` at `527665b5657862d713d003ddfcb36e8f81bd9b5d`.
+
+Observed results:
+
+- `python -m compileall -q src tests`: passed;
+- focused `test_convega.py`: **18/18 passed**;
+- source failure/last-good warnings behaved as expected;
+- focused registration lifecycle suite reached 21 passing tests and one test
+  fixture failure before the shell stopped.
+
+The failing test was
+`test_exact_time_retry_recomputes_after_boundary`. Investigation showed the
+runtime correctly rejected the synthetic post-boundary record because the test
+changed it to `status=open` without any `registration_url` or
+`registration_contact`. ADR 0089 requires current open registration to be
+positively actionable. The runtime validation was therefore correct; the test
+fixture was stale.
+
+The test was corrected to add a validated synthetic registration URL when the
+post-boundary source becomes explicitly open. No production lifecycle logic was
+weakened for the test.
+
+A fresh device run against the new reviewed branch head is still required
+before merge. Full regression, live isolated CONVEGA smoke, and cron integration
+validation have not yet completed because the first run stopped at the focused
+test failure.
+
 ## Final recommendation
 
 The research phase is complete enough to proceed to a durable ADR and then
