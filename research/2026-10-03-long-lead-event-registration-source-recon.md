@@ -1,0 +1,376 @@
+# Long-lead event registration source reconnaissance
+
+## Status
+
+Source reconnaissance and repository-level technical reconnaissance completed
+2026-10-03. No runtime code, cron or Telegram behavior is changed by this
+research.
+
+The purpose is to identify official/public-interest activities that are useful
+to residents before the event day because registration, reservation, capacity,
+authorization or an application deadline matters.
+
+ADR 0089 remains the deployed architecture for one-off event registration.
+This research determines which existing and future sources are suitable for
+that lifecycle and which should stay in the separate course lifecycle.
+
+## Executive conclusion
+
+The project already has three different participation domains and they must not
+be collapsed:
+
+1. **Recurring/seasonal courses** already owned by
+   `course_notifications.py`.
+2. **One-off events requiring registration/reservation**, for which ADR 0089 is
+   the right lifecycle.
+3. **Ticket sales**, which are admission/ticket semantics and should not be
+   relabelled as registration.
+
+The largest immediate gap is not CONVEGA. It is the existing municipal
+one-off-event pipeline: `municipal_agenda.py` already extracts registration
+URL/contact and limited-capacity evidence for several real Guardamar activities,
+but `event_registration_notifications.py` currently projects only CONVEGA
+records.
+
+Therefore existing Morning events do **not** automatically receive one-off
+registration lifecycle notices. Reusing the lifecycle requires a
+source-owned registration projection before cross-source Event merging.
+
+## Existing lifecycle coverage
+
+### CONVEGA one-off registration
+
+Implemented and deployed under ADR 0089.
+
+The source owns stable occurrence identity, current registration evidence,
+same-day freshness and one-off lifecycle projection.
+
+### Course/season registration
+
+Already owned by `course_notifications.py`.
+
+Current projections include:
+
+- Sporttia municipal sports activities with registration intervals and
+  registration-until-full;
+- Dinamización Social with explicit registration start/end and until-full;
+- Escuela de Música / Jardín Musical registration windows;
+- chess-school and literary-group course facts where their current accepted
+  snapshots provide them.
+
+Do not duplicate these records into ADR 0089 one-off lifecycle.
+
+### Ticket/admission sources
+
+Agenda Guardamar and municipal agenda already retain occurrence-specific ticket
+URLs/prices for eligible events.
+
+Ticket purchase is not one-off registration. A future ticket-sale/sold-out
+feature would require separate product semantics and evidence.
+
+## Source reconnaissance
+
+### 1. Municipal monthly agenda / Todo Cultura participation details
+
+This is the highest-reuse one-off candidate.
+
+The current municipal normalization model already contains:
+
+- `registration_contact`;
+- `registration_url`;
+- `capacity_limited`;
+- `participation_note`;
+- occurrence date/time and source provenance.
+
+The existing `_enrich_todo_participation()` layer attaches those facts only
+to a matched occurrence.
+
+Reviewed repository fixtures demonstrate real event patterns:
+
+- youth drum workshop: registration at Centro Social Juvenil / WhatsApp;
+- free guided route to the geodetic point: reservation email;
+- drawing workshop: WhatsApp plus limited places;
+- night hiking routes: registration contact, required equipment, limited
+  capacity;
+- Escape Room: three independent sessions with three independent Google Forms
+  and limited places.
+
+Recent public Todo Cultura pages show the same repeated pattern in September and
+October 2026: guided routes, children's activities, Escape Room sessions and
+other municipal activities may require prior registration or have limited
+places.
+
+Important authority rule: Todo Cultura is useful as a municipal-agenda
+supplement/discovery surface, but a standalone proactive lifecycle should
+prefer the primary municipal/Turismo/Agenda evidence already linked from the
+event whenever possible.
+
+### 2. Ayuntamiento News long-lead campaigns
+
+Official source:
+`https://www.guardamardelsegura.es/noticias/`
+
+The official archive repeatedly publishes activities well before their start,
+including participation/application documents.
+
+Confirmed examples:
+
+- Programa Dinamización Social 2026/27: online registration;
+- Viaje Salón del Comic de Valencia, January 2026 publication for a later trip,
+  with registration/authorization material;
+- Programa Dale Vida a los Años 2026: published 17 December 2025, registration
+  through 14 January 2026, limited places, later workshop starts;
+- municipal contests/campaigns with explicit participation forms/deadlines.
+
+The current municipal-agenda code already has a bounded Ayuntamiento News HTML
+reader, but its candidate filter is intentionally restricted to fiesta
+programme posts. Registration-shaped news posts are not currently discovered
+by that component.
+
+This is a strong source for early discovery before an event appears in the
+monthly agenda.
+
+### 3. FACV/FECV Guardamar chess tournaments
+
+Existing source:
+`https://www.facv.org/appwebfacv/public/staff/torneos/calendario_oficial.php`
+
+The current `facv.py` adapter already stores future Guardamar tournament rows
+for Morning/Tomorrow/Weekend, but only:
+
+- title;
+- start/end;
+- place;
+- organizer;
+- calendar source URL.
+
+Federation detail articles may contain materially earlier participation facts.
+For the 2026 Open Dama Guardamar, the official federation article stated:
+
+- registration closes when local capacity reaches 220 players;
+- email and WhatsApp registration contacts;
+- external organizer web form;
+- competition date/venue and registration rules.
+
+This is a strong one-off lifecycle candidate, but current FACV normalized state
+does not retain a tournament detail URL/ID or registration facts.
+
+### 4. Library activities
+
+The official library adapter already has stable first-party detail URLs and
+loads changed/new detail pages, but it currently extracts teaser/content facts,
+not registration/reservation/capacity.
+
+Municipal programme examples show children's library workshops with limited
+places and reservation by phone/WhatsApp/library web page.
+
+Before implementation, the same reservation text must be confirmed on the
+first-party library detail surface. If present, library detail enrichment is a
+good lightweight candidate because detail-page fetch/cache machinery already
+exists.
+
+### 5. Dale Vida a los Años
+
+Official municipal publication:
+`https://www.guardamardelsegura.es/2025/12/17/programa-dale-vida-a-los-anos-2026/`
+
+This is long-lead registration but structurally a recurring/seasonal course
+programme, not a one-off event:
+
+- registration deadline;
+- limited places;
+- resident priority;
+- admission list;
+- multiple workshops and group schedules over months.
+
+If automated, it should be added as another course-source projection under
+`course_notifications.py`, not ADR 0089.
+
+### 6. Sporttia municipal sports
+
+Already implemented under the course lifecycle.
+
+The official Sporttia catalogue contains season dates, new-registration windows
+and registration-until-full semantics. No ADR 0089 duplication is needed.
+
+### 7. Municipal youth trips and excursions
+
+Recurring historical pattern, e.g. comic/manga trips:
+
+- municipal announcement before travel date;
+- registration mandatory;
+- limited places;
+- minor authorization where applicable;
+- municipal registration form/office/contact.
+
+These are true one-off events and should eventually use ADR 0089 semantics.
+Ayuntamiento News is likely a better early-discovery surface than waiting for
+the monthly agenda.
+
+### 8. School/institutional bookings
+
+Municipal educational dossiers can expose registration months before delivery
+of school activities.
+
+These are institution/school booking workflows rather than general resident
+events. Exclude from the public one-off lifecycle unless product scope changes.
+
+### 9. Municipal contests / parade participation
+
+Carnival, desfile and similar municipal calls may expose participant
+registration deadlines.
+
+They may fit a broader participant-opportunity lifecycle, but are lower
+priority than event attendance/visitor registration and should not be included
+automatically without an explicit product decision.
+
+## Why Morning Event objects cannot be fed directly into ADR 0089
+
+The global `Event` model already has `registration_url`,
+`registration_contact` and `capacity_limited`, but those fields are display
+facts, not sufficient lifecycle evidence.
+
+A proactive lifecycle additionally needs:
+
+- stable source-owned identity;
+- source URL/authority;
+- same-day observation freshness;
+- explicit current registration status or exact registration boundary;
+- action/contact evidence tied to that occurrence;
+- last-explicit-status preservation across unknown source states.
+
+The merged Morning event list must therefore **not** be scanned after
+`_merge_events()`. Cross-source merging is intentionally additive and can
+retain facts from different observations; it also loses the precise source
+identity required for lifecycle transitions.
+
+Each accepted source should project its own normalized source record to
+`RegistrationRecord` before global Event merging.
+
+## Technical gap matrix
+
+### Municipal agenda
+
+Already has most participation facts, but lacks an ADR-0089-ready source-owned
+registration identity/status layer.
+
+Current event key `(title, start_date, start_time)` is useful for local
+deduplication but is not durable enough as lifecycle identity when a source
+corrects the date/time.
+
+Needed before implementation:
+
+- determine which source inputs expose durable article/session IDs;
+- retain explicit registration evidence/status separately from additive Event
+  fields;
+- preserve source URL per one-off registration record;
+- use same-day municipal snapshot freshness;
+- define deterministic dedup when the same event later appears through another
+  municipal surface.
+
+### Ayuntamiento News
+
+Existing bounded HTML transport can be reused.
+
+Needed:
+
+- a separate registration-campaign candidate filter, not an expansion of the
+  current fiesta-only programme filter;
+- bounded search window and candidate limit;
+- article identity from dated post URL or a stable WordPress ID if public REST
+  is validated;
+- deterministic extraction of event date, registration action/contact and
+  exact boundary/capacity language;
+- dedup with monthly municipal agenda.
+
+No new daemon or browser is justified.
+
+### FACV chess
+
+Needed:
+
+- production probe of raw calendar row links/IDs;
+- determine whether stable tournament ID/detail URL is exposed;
+- bounded detail fetch only for future Guardamar rows;
+- source-specific registration action policy for federation/organizer links;
+- parse current open/full/deadline only from explicit evidence.
+
+Do not infer open merely because a tournament exists in the calendar.
+
+### Library
+
+Needed:
+
+- production probe of current/future detail pages with reservation activities;
+- verify first-party detail contains reservation/contact/capacity text;
+- if yes, extend the existing changed-detail extraction rather than create a new
+  source client;
+- use detail URL as a likely stable source identity only after verifying its
+  behavior across date corrections.
+
+## Recommended implementation order after probes
+
+1. Municipal one-off participation projection from existing municipal state.
+   This has the highest reuse and already contains real registration facts.
+2. Ayuntamiento News early registration-campaign discovery for trips and other
+   activities that appear before the monthly agenda.
+3. FACV/FECV tournament detail enrichment.
+4. Library reservation enrichment if first-party detail evidence is confirmed.
+5. Dale Vida as a separate course-notification source, not one-off lifecycle.
+
+Ticket-sale lifecycle and municipal contest participation remain separate
+future product decisions.
+
+## Required production probes before code
+
+### Municipal state probe
+
+Inspect the current `state/municipal_agenda.json` without modifying it:
+
+- fetched_at;
+- future events carrying registration URL/contact/capacity;
+- source provenance;
+- session source keys;
+- number of days between observation and event date.
+
+This determines how much ADR 0089 can reuse immediately without new network
+requests.
+
+### Ayuntamiento News probe
+
+From Termux, bounded/read-only:
+
+- fetch `/noticias/`;
+- inspect recent dated article links containing registration-shaped language;
+- test whether main-site WordPress REST is anonymously available;
+- measure response size/time;
+- inspect exact HTML/links for representative trip/workshop posts.
+
+### FACV probe
+
+From Termux, bounded/read-only:
+
+- inspect raw Guardamar calendar rows including anchors/attributes currently
+  discarded by `facv.py`;
+- identify stable tournament IDs/detail URLs;
+- fetch one reviewed Guardamar tournament detail and inventory registration
+  contacts/actions/deadlines/capacity.
+
+### Library probe
+
+From current official library agenda/detail pages:
+
+- locate a limited-capacity/reservation activity;
+- inspect whether reservation data exists in first-party detail markup;
+- measure whether current detail cache already fetches all required bytes.
+
+## No-code decision at this stage
+
+Do not add a generic "scan every Morning Event for registration" layer.
+
+The reusable part of ADR 0089 is the lifecycle/delivery engine. The source
+projection must remain source-specific and evidence-owned.
+
+This preserves the project's main rule:
+
+**prefer a missed proactive notice over a false registration-state claim.**
