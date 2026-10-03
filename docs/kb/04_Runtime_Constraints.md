@@ -47,11 +47,14 @@ CAMS polling process.
 
 The OCI capacity search also runs only on a GitHub-hosted runner. Each invocation
 is short-lived, has no SDK automatic retry, uses one concurrency group, and may
-make at most one `LaunchInstance` request after two complete OCI-state checks.
-It never loops on host capacity. The Android installation receives no OCI SDK or
-credential. A larger trial service limit must never override the explicit 2
-OCPU, 12 GB RAM, and 200 GB Always Free cost ceilings. Any existing
-non-terminated target makes subsequent runs read-only.
+make at most one `LaunchInstance` request. An existing target is checked before
+profile-specific reads and makes the run read-only; an empty target set must
+pass two complete profile-specific OCI-state checks before creation. Automatic
+runs alternate the exact A1 and E2 Micro profiles rather than trying both in
+one run. It never loops on host capacity. The Android installation receives no
+OCI SDK or credential. A larger trial service limit must never override the
+explicit A1 2 OCPU / 12 GB ceiling, the two-instance E2 Micro Always Free
+ceiling, or the shared 200 GB Always Free block-storage ceiling.
 An optional Termux one-shot backstop uses only standard-library outbound GitHub
 API calls five minutes after each GitHub schedule slot. It dispatches only when
 the workflow is active and no queued/in-progress or younger-than-ten-minute
