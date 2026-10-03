@@ -75,6 +75,24 @@ class RetailOffer:
 
 
 @dataclass(frozen=True)
+class ReviewedImageSource:
+    name: str
+    page_url: str
+    page_hosts: frozenset[str]
+    image_hosts: frozenset[str]
+    page_markers: tuple[str, ...]
+    image_alt_markers: tuple[str, ...] = ()
+    use_navigation_headers: bool = False
+
+
+@dataclass(frozen=True)
+class ResolvedProductImage:
+    url: str
+    hosts: frozenset[str]
+    source_name: str
+
+
+@dataclass(frozen=True)
 class ReviewedCandidate:
     category_key: str
     selection_key: str
@@ -99,6 +117,12 @@ class ReviewedCandidate:
     sample_size: Optional[int] = None
     rank: int = 1
     retailer_title: Optional[str] = None
+    package_label: Optional[str] = None
+    country_label: Optional[str] = None
+    producer_label: Optional[str] = None
+    headline_award: Optional[str] = None
+    highlight: Optional[str] = None
+    image_sources: tuple[ReviewedImageSource, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -141,6 +165,49 @@ class _VisibleTextParser(HTMLParser):
 
     def text(self) -> str:
         return " ".join(" ".join(self.parts).split())
+
+
+class _ProductImageParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.meta_images: list[str] = []
+        self.images: list[tuple[str, str]] = []
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        values = {
+            str(key).casefold(): value
+            for key, value in attrs
+            if value is not None
+        }
+        if tag.casefold() == "meta":
+            key = str(
+                values.get("property") or values.get("name") or ""
+            ).casefold()
+            if key in {
+                "og:image",
+                "og:image:url",
+                "twitter:image",
+                "twitter:image:src",
+            }:
+                content = values.get("content")
+                if isinstance(content, str) and content.strip():
+                    self.meta_images.append(content.strip())
+            return
+        if tag.casefold() != "img":
+            return
+        alt = str(values.get("alt") or "").strip()
+        raw = None
+        for key in ("src", "data-src", "data-lazy-src"):
+            value = values.get(key)
+            if isinstance(value, str) and value.strip():
+                raw = value.strip()
+                break
+        if raw is None:
+            srcset = values.get("srcset")
+            if isinstance(srcset, str) and srcset.strip():
+                raw = srcset.split(",", 1)[0].strip().split(" ", 1)[0]
+        if raw:
+            self.images.append((alt, raw))
 
 
 def _fold(value: str) -> str:
