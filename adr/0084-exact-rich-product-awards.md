@@ -51,11 +51,11 @@ retailer CDN, keep it only in a private temporary file, and resend the same Rich
 Message once using Telegram's explicit InputRichMessage media attachment with
 `attach://`. The temporary file is deleted before exit.
 
-If that bounded local media read fails, omit only that candidate for the current
-invocation and continue through the same finite reviewed registry. Do not
-persist the transport rejection: a retailer CDN may recover before a later
-cycle. Ambiguous delivery during either send still blocks automatic resend, and
-any unrelated deterministic Rich Message rejection remains fail-closed.
+If that bounded local media read fails, this ADR originally omitted the
+candidate. ADR 0092 supersedes that outcome: image delivery is enrichment, not
+product eligibility. After an explicit deterministic media-path failure, the
+same already-verified article may be delivered as a Rich Message without media.
+Ambiguous delivery still blocks every automatic fallback send.
 
 Keep editorial generation deterministic. Do not require Gemini, OpenRouter or
 another LLM for Product Awards publication. The runtime may use only facts
@@ -72,7 +72,8 @@ The initial reviewed pool is:
 
 ## Consequences
 
-The publication path stays dependency-free and cheap on Termux. Exact identity,
-price and photo failures omit a candidate rather than producing a weak or
-misleading post. Adding another award product requires a reviewed source fact
+The publication path stays dependency-free and cheap on Termux. Exact identity
+or current-price failure still omits a candidate. ADR 0092 makes product media
+optional so a photo failure degrades presentation rather than discarding a
+verified article. Adding another award product requires a reviewed source fact
 and an exact current retailer locator, but not a new runtime subsystem.
