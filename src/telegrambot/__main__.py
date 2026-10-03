@@ -628,7 +628,13 @@ async def _deliver_product_award(
             return confirm(message_id, mode=" with uploaded media")
         finally:
             if upload_path is not None:
-                upload_path.unlink(missing_ok=True)
+                try:
+                    upload_path.unlink(missing_ok=True)
+                except OSError as cleanup_exc:
+                    logging.warning(
+                        "Product-award temporary media cleanup failed: %s",
+                        cleanup_exc,
+                    )
 
     return confirm(message_id, mode="")
 
