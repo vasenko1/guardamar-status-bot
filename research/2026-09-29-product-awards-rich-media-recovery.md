@@ -61,10 +61,11 @@ Only after an explicit deterministic Rich Message remote-media rejection:
    multipart `attach://` photo;
 7. delete the temporary file before exit.
 
-If the local media download fails, omit that candidate only for the current
-finite registry scan. If the uploaded-media send is ambiguous, leave the
-reservation uncertain and never resend automatically. Unrelated Telegram
-rejections remain fail-closed.
+This was the original 29 September decision. ADR 0092 supersedes the
+candidate-omission outcome: after a deterministic media-path failure, a
+verified product may be sent as the same Rich Message without an image. An
+ambiguous send still leaves the reservation uncertain and forbids every
+automatic fallback.
 
 No browser, image processor, persistent media cache, new daemon, scheduler or
 dependency is added.
