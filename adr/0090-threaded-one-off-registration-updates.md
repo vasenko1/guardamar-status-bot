@@ -220,10 +220,11 @@ ready source with a uniquely attributable poster actually needs them.
 The threaded lifecycle reuses existing event image and Telegram media
 infrastructure. It does not introduce a browser or general media downloader.
 
-A root photo caption must remain within Telegram's caption limit. The first
-implementation prefers one compact self-contained photo card over a
-multi-message compound transaction. Low-value prose is omitted before material
-registration conditions.
+When photo roots are introduced in a later source rollout, a photo caption
+must remain within Telegram's caption limit. That future media implementation
+should prefer one compact self-contained photo card over a multi-message
+compound transaction. Low-value prose is omitted before material access
+conditions.
 
 If the critical card cannot fit safely as a photo caption, prefer one
 self-contained **text root** over a two-message photo-plus-overflow transaction.
