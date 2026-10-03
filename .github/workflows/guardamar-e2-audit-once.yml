@@ -26,6 +26,67 @@ jobs:
         run: python -m unittest tests.test_guardamar_capacity tests.test_capacity_backstop
       - name: Install OCI SDK
         run: python -m pip install "oci==2.185.2"
+      - name: Probe E2 shape visibility
+        env:
+          OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
+          OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import oci
+          from automation import guardamar_capacity as capacity
+
+          signer = oci.signer.Signer(
+              tenancy=os.environ["OCI_TENANCY_OCID"],
+              user=os.environ["OCI_USER_OCID"],
+              fingerprint=os.environ["OCI_FINGERPRINT"],
+              private_key_file_location=None,
+              private_key_content=os.environ["OCI_PRIVATE_KEY"],
+          )
+          config = {
+              "tenancy": os.environ["OCI_TENANCY_OCID"],
+              "user": os.environ["OCI_USER_OCID"],
+              "fingerprint": os.environ["OCI_FINGERPRINT"],
+              "key_file": "<in-memory>",
+              "region": capacity.REGION,
+          }
+          client = oci.core.ComputeClient(
+              config, signer=signer, retry_strategy=oci.retry.NoneRetryStrategy()
+          )
+
+          def shapes(image_id=None):
+              kwargs = {
+                  "availability_domain": capacity.AVAILABILITY_DOMAIN,
+                  "retry_strategy": oci.retry.NoneRetryStrategy(),
+              }
+              if image_id:
+                  kwargs["image_id"] = image_id
+              response = oci.pagination.list_call_get_all_results(
+                  client.list_shapes,
+                  capacity.COMPARTMENT_OCID,
+                  **kwargs,
+              )
+              return sorted({item.shape for item in response.data})
+
+          all_shapes = shapes()
+          e2_image_shapes = shapes(capacity.E2_IMAGE_OCID)
+          print(json.dumps({
+              "availability_domain": capacity.AVAILABILITY_DOMAIN,
+              "e2_shape_visible_without_image_filter":
+                  capacity.E2_SHAPE in all_shapes,
+              "e2_shape_visible_for_configured_image":
+                  capacity.E2_SHAPE in e2_image_shapes,
+              "visible_e2_family_shapes": [
+                  shape for shape in all_shapes if "E2" in shape
+              ],
+              "configured_image_e2_family_shapes": [
+                  shape for shape in e2_image_shapes if "E2" in shape
+              ],
+          }, sort_keys=True))
+          PY
       - name: Run read-only E2 audit
         env:
           OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
