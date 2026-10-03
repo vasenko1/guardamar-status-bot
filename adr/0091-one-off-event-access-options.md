@@ -188,6 +188,12 @@ An `open` option may therefore be actionable through either a validated URL
 or reviewed action text. A physical ticket office/reservation desk must not be
 forced into a misleading "contact" field merely to satisfy the model.
 
+Action identity is lifecycle-relevant enough to retain in option semantic
+state. If an audience-known currently open option changes from one explicit
+validated action to another, one compact correction reply is eligible. A
+current `unknown` observation does not erase the previous last-known action
+identity, but rendering never presents a stale action as current evidence.
+
 ### Root card templates
 
 The root heading is selected from access semantics, for example:
@@ -320,6 +326,23 @@ A price by itself does not prove sale is open.
 A future sale window follows the same ADR 0089 timing rule: store silently,
 create the rich root the day before opening, then reply when sale becomes
 currently actionable if that adds useful information.
+
+### Deadline semantics
+
+A first discovered deadline and a changed deadline are different resident
+facts.
+
+For an already-known root:
+
+- no previous deadline -> explicit deadline = "deadline is now known";
+- explicit deadline A -> explicit deadline B = "deadline changed".
+
+Tomorrow/today closing reminders require current positive evidence that the
+access campaign is open. A deadline combined only with current `unknown`
+does not prove residents can still act.
+
+A first root created from current `open` absorbs any same-run deadline
+reminder into that root and acknowledges the trigger atomically.
 
 User-facing terminal wording depends on kind:
 
@@ -481,6 +504,16 @@ shows resident value.
 
 This avoids turning the feature into a ticket-market monitor.
 
+### Stable lifecycle identity
+
+For an existing `record_id`, `source` and `access_kind` are immutable.
+A source projection that attempts to reuse the same record ID with another
+source or access kind is an identity conflict and fails closed.
+
+Event date/range remains lifecycle correction state. Generic event-time/place
+correction tracking is not added in the first CONVEGA rollout; add it only when
+a ready source requires that semantic.
+
 ### Legacy-state migration guard
 
 ADR 0092 controls the target persistent layout.
@@ -508,12 +541,15 @@ follow-up.
 
 ADR 0090 remains controlling for:
 
-- one rich root per event;
-- event-specific poster;
+- one root per event;
 - Russian presentation;
 - strict replies;
 - root message ID persistence;
 - crash-safe ambiguous delivery.
+
+The first state-v2 rollout is text-root only. Poster/photo delivery remains a
+later presentation enhancement and does not participate in the initial
+migration.
 
 Options are rendered inside that root and later replies.
 
