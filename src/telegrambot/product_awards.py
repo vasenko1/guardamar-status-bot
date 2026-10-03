@@ -36,6 +36,7 @@ STATE_SCHEMA_VERSION = 1
 MAX_HISTORY = 128
 CONSUM_MEDIA_HOSTS = frozenset({"cdn-consum.aktiosdigitalservices.com"})
 MASYMAS_MEDIA_HOSTS = frozenset({"cdn-fornes.aktiosdigitalservices.com"})
+ALDI_MEDIA_HOSTS = frozenset({"s7g10.scene7.com"})
 
 
 class ProductAwardError(RuntimeError):
@@ -50,7 +51,7 @@ class ProductAwardError(RuntimeError):
 class RetailOffer:
     retailer: str
     price: str
-    image_url: str
+    image_url: Optional[str]
     product_name: str
     regular_price: Optional[str] = None
 
@@ -258,19 +259,25 @@ def _decimal_price(value) -> Optional[str]:
     return f"{number:.2f}".replace(".", ",") + " €"
 
 
-def _remote_image(value: object) -> Optional[str]:
+def _remote_image(
+    value: object,
+    hosts: Optional[frozenset[str]] = None,
+) -> Optional[str]:
     if not isinstance(value, str):
         return None
     try:
         parsed = urllib.parse.urlsplit(value)
+        port = parsed.port
     except ValueError:
         return None
+    hostname = parsed.hostname.casefold() if parsed.hostname else None
     if (
         parsed.scheme != "https"
-        or not parsed.hostname
+        or hostname is None
         or parsed.username is not None
         or parsed.password is not None
-        or parsed.port not in {None, 443}
+        or port not in {None, 443}
+        or (hosts is not None and hostname not in hosts)
     ):
         return None
     return value
@@ -283,6 +290,7 @@ def fetch_product_image(
     media_hosts = {
         "consum": CONSUM_MEDIA_HOSTS,
         "masymas": MASYMAS_MEDIA_HOSTS,
+        "aldi": ALDI_MEDIA_HOSTS,
     }.get(candidate.retailer_kind, frozenset())
     allowed_hosts = candidate.retailer_hosts | media_hosts
     try:
@@ -370,23 +378,34 @@ def _price_data(payload: dict) -> tuple[str, Optional[str]]:
     )
 
 
-def _first_product_image(payload: dict) -> Optional[str]:
-    product_data = payload.get("productData")
-    if isinstance(product_data, dict):
-        image = _remote_image(product_data.get("imageURL"))
-        if image is not None:
-            return image
-
-    media = payload.get("media")
-    if isinstance(media, list):
+def _first_product_image(
+    payload: dict,
+    hosts: frozenset[str],
+    *,
+    prefer_media: bool = False,
+) -> Optional[str]:
+    def media_image() -> Optional[str]:
+        media = payload.get("media")
+        if not isinstance(media, list):
+            return None
         for item in media:
             if not isinstance(item, dict):
                 continue
             for key in ("url", "imageURL"):
-                image = _remote_image(item.get(key))
+                image = _remote_image(item.get(key), hosts)
                 if image is not None:
                     return image
-    return None
+        return None
+
+    def product_data_image() -> Optional[str]:
+        product_data = payload.get("productData")
+        if not isinstance(product_data, dict):
+            return None
+        return _remote_image(product_data.get("imageURL"), hosts)
+
+    if prefer_media:
+        return media_image() or product_data_image()
+    return product_data_image() or media_image()
 
 
 def _tol_offer(candidate: ReviewedCandidate) -> RetailOffer:
@@ -418,14 +437,17 @@ def _tol_offer(candidate: ReviewedCandidate) -> RetailOffer:
         )
 
     price, regular_price = _price_data(payload)
-    image_url = _first_product_image(payload)
-    if image_url is None:
-        raise ProductAwardError(
-            "retailer exact product image missing",
-            code="MEDIA",
-        )
-    if candidate.retailer_kind == "masymas":
-        image_url = _upgrade_masymas_image(image_url, candidate.retailer_hosts)
+    media_hosts = {
+        "consum": CONSUM_MEDIA_HOSTS,
+        "masymas": MASYMAS_MEDIA_HOSTS,
+    }.get(candidate.retailer_kind, frozenset())
+    image_url = _first_product_image(
+        payload,
+        media_hosts,
+        prefer_media=(candidate.retailer_kind == "consum"),
+    )
+    if candidate.retailer_kind == "masymas" and image_url is not None:
+        image_url = _upgrade_masymas_image(image_url, media_hosts)
 
     return RetailOffer(
         retailer=candidate.retailer,
@@ -436,7 +458,7 @@ def _tol_offer(candidate: ReviewedCandidate) -> RetailOffer:
     )
 
 
-def _aldi_next_data(source: str) -> dict:
+def _aldi_next_data(source: str) -> dict | list:
     import re
 
     match = re.search(
@@ -451,13 +473,39 @@ def _aldi_next_data(source: str) -> dict:
         )
     try:
         next_data = json.loads(match.group(1))
-        api_data = next_data["props"]["pageProps"]["apiData"]
-        payload = json.loads(api_data)
+        page_props = next_data["props"]["pageProps"]
     except (json.JSONDecodeError, KeyError, TypeError) as exc:
         raise ProductAwardError(
-            "ALDI product payload invalid",
+            "ALDI page payload invalid",
             code="RETAIL-DRIFT",
         ) from exc
+    if not isinstance(page_props, dict):
+        raise ProductAwardError(
+            "ALDI page payload changed",
+            code="RETAIL-DRIFT",
+        )
+    if page_props.get("hasError") is True:
+        raise ProductAwardError(
+            "ALDI exact product page reports an error",
+            code="RETAIL-PAGE-ERROR",
+        )
+
+    api_data = page_props.get("apiData")
+    if isinstance(api_data, str):
+        try:
+            payload = json.loads(api_data)
+        except json.JSONDecodeError as exc:
+            raise ProductAwardError(
+                "ALDI product payload invalid",
+                code="RETAIL-DRIFT",
+            ) from exc
+    elif isinstance(api_data, (dict, list)):
+        payload = api_data
+    else:
+        raise ProductAwardError(
+            "ALDI product payload missing",
+            code="RETAIL-DRIFT",
+        )
     if not isinstance(payload, (dict, list)):
         raise ProductAwardError(
             "ALDI product payload changed",
@@ -535,14 +583,9 @@ def _aldi_offer(candidate: ReviewedCandidate, source: str) -> RetailOffer:
         for asset in assets:
             if not isinstance(asset, dict) or asset.get("type") != "primary":
                 continue
-            image_url = _remote_image(asset.get("url"))
+            image_url = _remote_image(asset.get("url"), ALDI_MEDIA_HOSTS)
             if image_url is not None:
                 break
-    if image_url is None:
-        raise ProductAwardError(
-            "ALDI primary product image missing",
-            code="MEDIA",
-        )
 
     name = product.get("name")
     brand = product.get("brandName")
@@ -686,15 +729,18 @@ def build_message(
             code="CONFIG",
         )
 
-    image = html.escape(image_src or offer.image_url, quote=True)
-    rendered = "\n".join((
-        f'<img src="{image}"/>',
+    parts = []
+    image_value = image_src if image_src is not None else offer.image_url
+    if image_value:
+        parts.append(f'<img src="{html.escape(image_value, quote=True)}"/>')
+    parts.extend((
         f"<p>🏆 <b>{title}</b></p>",
         f"<p>{first}</p>",
         f"<p>{price}</p>",
         _methodology(candidate),
         f"<p>{FOOTER}</p>",
     ))
+    rendered = "\n".join(parts)
     if not 1 <= len(rendered) <= 32768:
         raise ProductAwardError(
             "product-award rich message exceeds Telegram limit",
@@ -1084,6 +1130,10 @@ class ProductAwardState:
     def published_events(self) -> frozenset[str]:
         return frozenset(self._read()["published_events"])
 
+    def last_published_event_id(self) -> Optional[str]:
+        published = self._read()["published_events"]
+        return published[-1] if published else None
+
     def published_selections(self) -> frozenset[str]:
         return frozenset(self._read()["published_selections"])
 
@@ -1171,12 +1221,20 @@ def _category_order(cursor: int) -> tuple[int, ...]:
     return tuple((cursor + offset) % len(CATEGORIES) for offset in range(len(CATEGORIES)))
 
 
+def _retailer_for_event(event_id: Optional[str]) -> Optional[str]:
+    if event_id is None:
+        return None
+    for candidate in _all_candidates():
+        if candidate.event_id == event_id:
+            return candidate.retailer_kind
+    return None
+
+
 def select_publication(
     now: datetime,
     state: ProductAwardState,
     *,
     ignore_cooldown: bool = False,
-    excluded_event_ids: frozenset[str] = frozenset(),
 ) -> Optional[tuple[int, ProductAwardPublication]]:
     local_day = now.date()
     if state.uncertain_event() is not None:
@@ -1196,13 +1254,16 @@ def select_publication(
 
     published = state.published_events()
     published_selections = state.published_selections()
+    previous_retailer = _retailer_for_event(state.last_published_event_id())
+    same_retailer_fallback: Optional[tuple[int, ProductAwardPublication]] = None
+
     for category_index in _category_order(state.category_cursor()):
         category = CATEGORIES[category_index]
+        accepted: Optional[ProductAwardPublication] = None
         for source in sorted(category.sources, key=lambda item: item.priority):
             for candidate in sorted(source.candidates, key=lambda item: item.rank):
                 if (
                     candidate.event_id in published
-                    or candidate.event_id in excluded_event_ids
                     or candidate.selection_key in published_selections
                 ):
                     continue
@@ -1216,17 +1277,27 @@ def select_publication(
                         exc.diagnostic_code,
                     )
                     continue
-                if offer is None:
-                    LOGGER.info("Product-award candidate %s has no current exact offer", candidate.event_id)
-                    continue
-                publication = ProductAwardPublication(
+                accepted = ProductAwardPublication(
                     candidate=candidate,
                     offer=offer,
                     message=build_message(candidate, offer),
                 )
-                return category_index, publication
-    return None
+                break
+            if accepted is not None:
+                break
 
+        if accepted is None:
+            continue
+        if previous_retailer is None or accepted.candidate.retailer_kind != previous_retailer:
+            return category_index, accepted
+        if same_retailer_fallback is None:
+            same_retailer_fallback = (category_index, accepted)
+
+    if same_retailer_fallback is not None:
+        return same_retailer_fallback
+
+    LOGGER.info("SKIP: all reviewed product-award candidates are unavailable")
+    return None
 
 def preview_publications(now: datetime) -> tuple[ProductAwardPublication, ...]:
     publications: list[ProductAwardPublication] = []
