@@ -2,24 +2,34 @@
 
 ## Status
 
-Research/design finalized after two read-only production probes on 2026-10-02.
-The accepted design is recorded in ADR 0089.
+Research and implementation are complete.
 
-Implementation is now present on branch
-`feat/convega-one-off-registration` in draft PR #259. The branch contains the
-REST source adapter, normal Event projection, one-off registration lifecycle,
-Termux wrappers/cron integration, tests, rendering guard and documentation.
-It is intentionally **not merged or deployed yet**: the repository has no
-general CI workflow, so focused and full regression suites plus one bounded
-live source smoke test must pass on the Termux production device before PR
-promotion.
+ADR 0089 is accepted and the reviewed implementation was deployed to the
+Termux production device on 2026-10-03. Current production main is
+`8a906a5d462a7a9c415897bba6013d791421263a`.
 
-Current implementation review additionally enforces:
+The deployed solution includes:
 
-- Guardamar locality before Event/RegistrationRecord projection;
-- explicit-open precedence over same-day opening wording;
-- rejection of same-day snapshots whose `observed_at` is in the future;
-- operator resolution commands for ambiguous Telegram delivery.
+- bounded CONVEGA WordPress REST discovery and last-good source snapshot;
+- Guardamar-local Event projection into Morning / Tomorrow / Weekend;
+- source-independent one-off registration lifecycle with crash-safe delivery;
+- fail-closed registration evidence and future-snapshot guards;
+- terminal registration rendering protection;
+- 12:47 normal + 13:47 recovery scheduling;
+- non-interactive Termux `crond` safety and transactional cron installation;
+- durable ADR, KB, Research and regression coverage.
+
+Final validation established:
+
+- focused production review suites all passed;
+- full repository device regression passed 1,501/1,501 tests;
+- managed registration cron rows are installed exactly twice;
+- production tree is clean on the reviewed main commit;
+- no Telegram publication was triggered by deployment.
+
+The only intentional empirical unknown is the exact future CONVEGA markup used
+when a new occurrence becomes registrable. Runtime remains `unknown` for any
+unreviewed shape rather than inferring an open/closed state.
 
 This file remains the empirical source record; ADR 0089 is the durable decision.
 
@@ -1622,63 +1632,25 @@ cron installer to:
 The hotfix must be device-validated before merge. No registration Telegram
 message was emitted by the failed rollout.
 
-## Final recommendation
+## Final production state
 
-The research phase is complete enough to proceed to a durable ADR and then
-implementation.
+The original research recommendation has been fully executed.
 
-Before runtime code:
+Production now uses:
 
-1. convert the accepted durable architecture from this research into an ADR;
-2. recheck the current latest ADR number rather than assuming it;
-3. update relevant KB/Decision Log with the accepted architecture;
-4. implement source layer first:
-   - CONVEGA REST fetch/validation;
-   - source snapshot;
-   - stage 21/22 fixtures;
-   - Event projection;
-   - translation-item projection;
-   - Friday Weekend refresh integration;
-   - terminal-access rendering guard;
-5. then implement lifecycle/delivery:
-   - RegistrationRecord projection;
-   - baseline + last-explicit evidence;
-   - announced IDs;
-   - bounded triggers;
-   - uncertain reservation with candidate commit state;
-   - one-message renderer;
-   - 12:47/13:47 launcher/cron;
-6. run code review and production preview/probe before enabling public sends.
+1. one bounded source-specific CONVEGA adapter;
+2. one normalized source snapshot with dual Event/RegistrationRecord
+   projection;
+3. the narrow one-off registration lifecycle defined by ADR 0089;
+4. crash-safe one-message delivery state;
+5. 12:47 / 13:47 one-shot scheduling;
+6. fail-closed source/form evidence;
+7. transactional, idempotent Termux cron installation.
 
-This preserves the project's central tradeoff:
+The implementation deliberately preserves the original product tradeoff:
 
 **prefer a small deterministic source-backed system that sometimes says
 nothing over a more general system that can confidently say something false.**
-
-
-### crond hotfix device validation — 2026-10-03
-
-A follow-up production-device probe confirmed the rollout failure was caused by
-the non-interactive SSH environment, not by the CONVEGA feature or cron data:
-
-- `SVDIR` was unset;
-- `$PREFIX/var/service/crond` existed;
-- `runsv crond`, `svlogd`, and `crond -n -s` were already running;
-- explicit `SVDIR=$PREFIX/var/service sv status crond` reported a healthy
-  service;
-- the managed event-planning block already contained exactly the two new
-  registration rows at 12:47 and 13:47.
-
-The hotfix branch was validated in a detached worktree on the same device:
-shell syntax passed and `test_termux_weekend.py` passed **8/8** tests,
-including the already-running daemon path, explicit-SVDIR startup path,
-fail-before-crontab-change path, idempotency, and preservation of unrelated
-jobs.
-
-Production remained on
-`24f0f8c8aa99dfcc6a93e774f4465968a86e7635` with a clean tree during this
-validation.
-
 
 ## Full post-deployment code review — 2026-10-03
 
@@ -1761,3 +1733,33 @@ The code-review gate is therefore accepted as passed. The device live-source
 probe failure is recorded as a transient network/source-availability event and
 does not justify weakening fail-closed runtime behavior or repeating the full
 1,501-test suite.
+
+
+## Final production rollout — 2026-10-03
+
+The final reviewed main commit
+`8a906a5d462a7a9c415897bba6013d791421263a` was fast-forwarded onto the
+production Termux checkout.
+
+Production verification then confirmed:
+
+- branch `main`, clean working tree;
+- syntax checks passed;
+- CONVEGA focused regression 19/19;
+- registration lifecycle 23/23;
+- event merge regression 30/30;
+- Termux installer regression 10/10;
+- exact `crond` process remained healthy;
+- idempotent event-planning cron installation completed successfully;
+- managed block contains registration checks at 12:47 and 13:47;
+- lifecycle state is healthy with no uncertain delivery;
+- no Telegram publication was triggered by the deployment.
+
+The observed lifecycle state after rollout contained one silent baseline record,
+zero announced records, zero sent triggers and no uncertain delivery. This is
+the expected result for the currently observed first-seen terminal/full
+registration state: semantic evidence is retained without announcing a
+historical/full registration that the audience was never told was open.
+
+ADR 0089 is therefore implemented and deployed. Further changes should be
+driven by new source evidence rather than speculative support for future markup.
