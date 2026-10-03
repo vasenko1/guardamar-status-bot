@@ -1581,6 +1581,47 @@ The branch is therefore empirically ready for final PR review/merge. Production
 deployment and cron installation remain a separate controlled step.
 
 
+## Production rollout checkpoint — 2026-10-03
+
+Production was fast-forwarded from
+`527665b5657862d713d003ddfcb36e8f81bd9b5d` to merged main
+`24f0f8c8aa99dfcc6a93e774f4465968a86e7635`.
+
+The merged-main focused suites passed again on the actual device:
+
+- CONVEGA: 18/18;
+- registration lifecycle: 22/22;
+- event merge regression: 30/30;
+- Tomorrow: 13/13;
+- Weekend: 8/8;
+- Termux/cron: 5/5.
+
+The production source sync succeeded and confirmed the same two-record contract:
+stage 21 local/full and stage 22 non-local/unknown. Production registration
+preview produced no Telegram message and the lifecycle state was empty.
+
+The rollout then stopped inside `termux/install-weekend-cron.sh` after the new
+crontab had already been written. Bare `sv up crond` failed with:
+
+`fail: crond: unable to change to service directory: file does not exist`
+
+The deployment was run through a non-interactive SSH shell. Official
+`termux-services` startup config exports `SVDIR=$PREFIX/var/service` in a
+login shell, so bare `sv` must not be assumed to have that environment during
+remote installer execution.
+
+A dedicated hotfix branch `fix/termux-crond-noninteractive` changes the event
+cron installer to:
+
+1. detect an already-running `crond` and avoid starting another daemon;
+2. preflight the Termux `crond` service directory before mutating crontab when
+   no daemon is running;
+3. invoke `sv` with an explicit Termux service root when startup is needed;
+4. verify that `crond` is actually running after installation.
+
+The hotfix must be device-validated before merge. No registration Telegram
+message was emitted by the failed rollout.
+
 ## Final recommendation
 
 The research phase is complete enough to proceed to a durable ADR and then
