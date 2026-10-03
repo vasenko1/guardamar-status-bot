@@ -20,7 +20,7 @@ def publication() -> ProductAwardPublication:
         selection_key="test:2026",
         event_id="test:event",
         source_name="Test",
-        source_kind="producto_del_ano",
+        source_kind="ocu",
         source_url="https://award.example/result",
         source_hosts=frozenset({"award.example"}),
         source_markers=("winner",),
@@ -33,7 +33,7 @@ def publication() -> ProductAwardPublication:
         award_year=2026,
         source_category="Snacks",
         award_scope="exact_product",
-        award_result="Producto del Año",
+        award_result="90/100",
         product_id=7,
         expected_ean="8410000000000",
     )

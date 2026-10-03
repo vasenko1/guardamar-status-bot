@@ -427,7 +427,11 @@ Exact award evidence, exact current retailer identity and current price remain
 publication requirements. Product media is optional enrichment. Consum uses
 allowlisted official `media[]` URLs before its stale base
 `productData.imageURL`; ALDI distinguishes an explicit product-page error from
-a healthy page whose embedded product contract has drifted.
+a healthy page whose embedded product contract has drifted. Carrefour and DIA
+use only their previously production-proven exact server-rendered product pages:
+one browser-navigation HTTP header profile, exact marker validation and
+product-card-scoped price extraction, with no browser runtime, cookie session,
+catalogue search or retailer media.
 
 Delivery remains Rich Message first. When exact media exists, Telegram remote
 media is attempted, followed only after explicit remote-media rejection by the
@@ -441,10 +445,11 @@ selector pass, persistent candidate cache, browser, AI service, queue or new
 scheduler is introduced. A due run that publishes nothing records one concise
 final log reason.
 
-The reviewed registry itself is maintained separately. Retailer diversity in
-runtime cannot compensate for a catalogue concentrated in one chain; the
-3 October balance audit therefore prioritizes revalidation of Mercadona and
-research of Lidl, DIA and Carrefour without introducing retailer quotas.
+The reviewed registry itself is maintained separately. ADR 0095 removes
+innovation-only Producto del Año entries and restores previously proven
+quality-first OCU/MAPA categories. Retailer diversity in runtime cannot
+compensate for source-policy weakness, so Mercadona and Lidl remain research
+targets rather than quota-filling registry entries.
 
 ### One-off event access
 

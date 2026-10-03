@@ -3,6 +3,7 @@
 - Status: Implemented and production-validated
 - Date: 2026-10-03
 - Refines: ADR 0083, ADR 0084
+- Registry source-policy follow-up: ADR 0095
 
 ## Context
 

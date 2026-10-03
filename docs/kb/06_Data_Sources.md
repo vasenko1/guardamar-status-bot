@@ -808,77 +808,64 @@ For each evaluated source, record:
 
 Product Awards use a reviewed source catalogue rather than autonomous web
 discovery. Durable category/source/rank rules are in ADR 0083, exact rich
-delivery in ADR 0084, and the 3 October resilience/retailer-rotation refinement
-in ADR 0093. Dated evidence is recorded in
+delivery in ADR 0084, resilience/retailer preference in ADR 0093, and the
+quality-first registry rebuild in ADR 0095. Dated evidence is in
 `research/2026-09-25-supermarket-product-awards.md`,
-`research/2026-10-03-product-awards-publication-gap.md` and
-`research/2026-10-03-product-awards-retailer-balance-audit.md`.
+`research/2026-10-03-product-awards-publication-gap.md`,
+`research/2026-10-03-product-awards-retailer-balance-audit.md` and
+`research/2026-10-03-product-awards-quality-pool-rebuild.md`.
 
-Current award-authority contracts in the production registry are:
+Current production award-authority contracts are:
 
-- **OCU cava 2025:** the official press note must still identify Naltros Brut
-  (ALDI) among the 94/100 leaders from 25 analysed D.O. Cava products.
-- **Producto del Año 2026:** the official winner surface supplies the reviewed
-  Celta +Proteína, Takis Blue Heat, ELPOZO ExtraTiernos and Nescafé Latte
-  Baileys category/range facts.
-- **World Beer Awards 2026:** the reviewed result pages supply the exact Ambar
-  Especial and Mahou Sin Filtrar gold/country-winner facts.
+- **OCU cava 2025:** NALTROS Brut remains one of the 94/100 leaders from the
+  reviewed 25-product D.O. Cava comparison.
+- **OCU gazpacho 2025:** Real Fooding is `Mejor del Análisis`, 90/100, in the
+  39-product physical comparison.
+- **OCU AOVE 2024:** the 23-product laboratory/sensory comparison is led by
+  Oleoestepa DOP Estepa.
+- **OCU coffee capsules 2024:** the reviewed physical result places exact
+  AROM'ARTE (DIA) Intenso at 85/100 in the Nespresso-with-caffeine group; the
+  exact OCU page must still identify the 20-capsule laboratory-tested product.
+- **MAPA spirits 2026:** the official national winner is Anís Chinchón de la
+  Alcoholera Dulce in Mejor Bebida Espirituosa con Indicación Geográfica.
+- **World Beer Awards 2026:** reviewed result pages provide Ambar Especial and
+  Mahou Sin Filtrar gold/country-winner facts.
+
+`Producto del Año` and `Sabor del Año` are discovery-only for this workflow.
+The former is innovation-first; the latter normally exposes an unordered
+recognition set. Neither creates a broad production category ranking merely to
+increase volume or retailer variety.
 
 Current exact-retail contracts are source-specific:
 
-- **ALDI / NALTROS:** the exact product page must return a healthy Next.js
-  product detail containing current `apiData`, exact product identity,
-  availability, price and primary media. On 3 October both reviewed NALTROS
-  routes returned `hasError=true`, `page=None`, `apiData=None`, while two
-  control ALDI products returned healthy exact payloads. Treat this as an
-  unprovable current product state, not as current availability and not as a
-  global ALDI parser failure.
-- **Consum:** the official exact-product JSON must match the saved EAN and
-  reviewed name markers and expose current price data. Current product payloads
-  expose stale base `productData.imageURL` values that return HTTP 404 while
-  their ordered `media[].url` assets return valid JPEGs. ADR 0093 therefore
-  treats `media[]` as the primary current image contract and never invents
-  numbered filenames.
-- **Masymas / Juan Fornés:** the exact-product JSON must match the saved EAN,
-  reviewed name markers and current price. Its separately reviewed image
-  contract retains the validated 300x300 preference over the 135x135 variant.
+- **ALDI / NALTROS:** healthy exact Next.js product payload required; the
+  current `hasError=true` state fails closed as `RETAIL-PAGE-ERROR`.
+- **Carrefour / Realfooding, Oleoestepa, Anís Chinchón:** use the exact public
+  supermarket product page with the reviewed navigation header profile, exact
+  identity markers and price scoped to the exact title card ending at
+  `Añadir`. Marketplace cards are not accepted.
+- **DIA / AROM'ARTE Intenso:** same bounded SSR contract; exact SKU/title,
+  Toscaf and Nespresso markers are required. Header/cart `0,00 €` must never
+  be mistaken for the product-card price.
+- **Consum / Ambar:** exact JSON EAN/name/current-price contract; official
+  `media[]` is preferred over stale base image fields.
+- **Masymas / Mahou:** exact JSON EAN/name/current-price contract; existing
+  reviewed media handling remains.
+
+Carrefour and DIA are text-only Product Awards sources in this registry rebuild.
+Technical access to retailer images is not enough to establish redistribution
+rights, and ADR 0093 makes media optional.
 
 A retailer page/API proves only that the chain's official current surface
-represents the exact product; it is not a guarantee that every physical branch
-has shelf stock at that moment. Search-engine snippets, marketplace sellers,
-brand-only matches and inferred image filenames are never accepted as current
-retail evidence.
+represents the exact product; it does not guarantee every physical branch has
+shelf stock at that moment. Search-engine snippets, marketplace sellers,
+brand-only matches, producer-only matches and inferred image filenames are not
+current retail evidence.
 
-Product media is optional publication enrichment. A current award/identity/price
-match remains publishable when retailer media is missing or cannot be delivered.
-Remote media URLs must be on the retailer-specific media allowlist; no filename
-guessing is permitted.
-
-Retailer diversity is a publication preference, not a source-quality shortcut
-or publication veto. The previous retailer is derived best-effort from the
-existing last published event; no retailer field is added to state. The first
-valid same-retailer category winner is kept as an in-memory fallback while
-later categories are checked. Diversity never authorizes a lower-ranked award
-candidate or weaker retail match, and it never suppresses the only valid
-product.
-
-The 3 October retailer-balance audit found that the current five-of-seven
-Consum concentration is a registry-construction artifact rather than evidence
-that Mercadona, Lidl, DIA or Carrefour lack award-worthy products. Earlier
-research already proved exact Mercadona award/SKU joins; Lidl and DIA expose
-current first-party awarded-product surfaces; Carrefour still exposes a
-reviewed exact Realfooding gazpacho retail match. Registry research should
-therefore prioritize underrepresented retailers while retaining identical
-quality and exact-retail gates. This is a research priority, not a retailer
-quota.
-
-The same audit also flags the four Producto del Año 2026 registry entries for
-source-policy re-review. Producto del Año is an innovation award family, while
-ADR 0083 admits sources primarily about product quality or a clearly defined
-championship result and treats innovation-only recognition as discovery unless
-its exact semantics justify production admission. Existing entries remain
-unchanged until that review is completed; technical ease of the Consum retail
-contract is not itself an admission reason.
+Retailer diversity remains best-effort. It never authorizes a lower-ranked
+source result or weaker identity match, and it never suppresses the only valid
+product. Mercadona and Lidl remain research targets until a qualifying
+source-native category result also has an exact current retail match.
 
 ### CONVEGA one-off guided routes
 
