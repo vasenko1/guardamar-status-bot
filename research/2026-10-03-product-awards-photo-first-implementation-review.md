@@ -304,3 +304,8 @@ present in the fetched official page.
 
 The deployment target must include this correction; PR #289 alone is therefore
 not the final production SHA.
+
+The correction was reviewed and squash-merged through PR #295 as
+`9a345b89b0cbc1d4cb29b761c9684743c3e4d6a8`.
+Production validation remains pending; the deployment gate must target the
+current exact `main` commit containing that merge.
