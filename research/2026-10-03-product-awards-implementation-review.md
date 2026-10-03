@@ -236,6 +236,7 @@ asserts:
 
 - one selector invocation;
 - one bounded image-recovery attempt;
+- the first mocked Telegram attempt contains the remote `<img>` path;
 - the second Telegram attempt contains no `<img>`;
 - the original event is confirmed;
 - cooldown state advances normally.
