@@ -564,7 +564,7 @@ delivery state machine or Product Awards scheduling.
 A fourth adversarial pass found three additional issues and revalidated several
 previously questioned source decisions.
 
-### New finding A — HIGH: current retailer-image use conflicts with the accepted reuse-rights rule
+### New finding A — SUPERSEDED BY ADR 0096: retailer-image rights require a reviewed source hierarchy
 
 ADR 0083 says product photos remain disabled unless exact product identity and
 explicit reuse rights are documented.
@@ -594,9 +594,17 @@ remote-image -> local-download -> multipart-upload recovery machinery currently
 serves media that the production registry should not publish unless reuse rights
 are independently documented.
 
-#### Recommended repair boundary
+#### Superseded repair boundary
 
-For the current registry, default every candidate to text-only Product Awards.
+The operator clarified that product photography is a required normal presentation
+element. Therefore the text-only recommendation below is superseded by ADR 0096.
+
+The retained part of this finding is narrower: technical access to one retailer
+image is not enough by itself. The implementation must instead try a small
+reviewed hierarchy of exact official image sources and degrade to no-image only
+after those paths are exhausted.
+
+~~For the current registry, default every candidate to text-only Product Awards.~~
 
 Do not infer permission from first-party hosting or technical accessibility.
 
