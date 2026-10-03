@@ -205,8 +205,11 @@ is superseded by this ADR.
 The reviewed implementation keeps selection media-neutral. After one candidate
 wins normal award/retail selection, delivery lazily resolves its reviewed image
 sources in order. Exact-alt contracts fail closed and cannot fall back to a
-generic same-host OG banner. The existing current retailer image is appended as
-a fallback only when the retail adapter already exposes one.
+generic same-host OG banner. When one official page exposes several already
+eligible exact-product image URLs, the resolver prefers the largest explicitly
+sized variant without downloading or transforming images. The existing current
+retailer image is appended as a fallback only when the retail adapter already
+exposes one.
 
 The same change restores the deterministic article contract: retailer in the
 headline, exact package, verified country when available, producer, one
