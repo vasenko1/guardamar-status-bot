@@ -159,6 +159,31 @@ First observation:
 - `open` -> publish current-active registration;
 - `full`, `closed`, `unknown` -> silent baseline.
 
+Registration start/end boundaries are optional evidence, not prerequisites for
+`open`. If a source-specific adapter positively establishes that residents can
+register **now** (for example, a reviewed registration form/CTA/contact or an
+explicit current-open instruction tied to the occurrence), project
+`status="open"` even when both registration boundary dates are absent. The
+first such observation is immediately eligible for the normal current-active
+registration notice.
+
+Do **not** manufacture `registration_start_date` from the day the bot first
+observes that evidence. Observation time means only "known open by now"; it is
+not proof of the historical opening date. Likewise, an absent end date means
+"no source-backed deadline known", not "open forever".
+
+If the source explicitly publishes a future opening boundary, that boundary
+wins over an already-visible generic action: do not claim current-open before
+the source-backed start. Boundary reminders continue to require explicit
+source-backed dates/times.
+
+When a registration was already announced open with no known end date and a
+deadline later appears for the first time, that is newly discovered deadline
+information, not necessarily a changed deadline. Multi-source expansion should
+render that semantic separately (for example, "появился срок регистрации")
+instead of describing it as a revision unless an earlier explicit deadline was
+actually known.
+
 Track audience knowledge separately from source observation through bounded
 `announced_record_ids`.
 
