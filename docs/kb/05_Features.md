@@ -761,11 +761,14 @@ Producto del Año and Sabor del Año remain discovery sources rather than
 production category rankings. Mercadona and Lidl remain active research targets,
 but no product is inserted merely to satisfy retailer diversity.
 
-Public posts prefer deterministic Telegram Rich Messages with an exact
-first-party product image. The image is optional enrichment: if remote delivery
-and the bounded upload recovery cannot deliver media, the same verified article
-is sent as a Rich Message without the image. Media failure never discards a
-product whose award identity and current price are still valid.
+Public Product Awards posts are photo-first. The normal article includes an
+exact reviewed photo of the selected product. The bot should make bounded
+best-effort attempts through the candidate's small approved official image
+hierarchy and use Telegram remote media plus bounded upload recovery where
+needed. A no-image Rich Message is allowed only as the final degraded fallback
+when every reviewed image path is blocked or fails deterministically. Media
+failure never discards a product whose award identity and current price are
+still valid.
 
 Consum's current JSON uses working numbered `media[]` assets while its base
 `productData.imageURL` values may 404. ALDI NALTROS currently fails closed

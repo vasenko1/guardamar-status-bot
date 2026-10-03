@@ -4,7 +4,7 @@ Date: 2026-09-28
 
 ## Status
 
-Accepted. This refines the first Product Awards implementation in ADR 0083. ADR 0093 further refines Consum media selection, ALDI product-error handling, optional media delivery and best-effort retailer preference.
+Accepted. This refines the first Product Awards implementation in ADR 0083. ADR 0093 further refines Consum media selection, ALDI product-error handling and best-effort retailer preference. ADR 0096 supersedes the optional-media presentation default: exact product photography is now the normal presentation, while no-image delivery remains the final degraded fallback.
 
 ## Context
 

@@ -4,6 +4,7 @@
 - Date: 2026-10-03
 - Refines: ADR 0083, ADR 0084
 - Registry source-policy follow-up: ADR 0095
+- Photo-first media follow-up: ADR 0096
 
 ## Context
 
@@ -91,6 +92,8 @@ different retailer. The registry is finite and reviewed; this additional work
 occurs only on due runs.
 
 ### 4. A product image is enrichment, not publication eligibility
+
+> ADR 0096 supersedes this section's presentation priority: an exact reviewed product photo is the normal Product Awards presentation. The important resilience rule from this section remains unchanged — image failure must not invalidate an otherwise publishable product, and no-image delivery is the final degraded fallback after reviewed image paths are exhausted.
 
 A Product Awards article still requires:
 

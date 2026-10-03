@@ -424,20 +424,21 @@ publishes. A valid candidate always ends ranking inside its own category, so
 retailer preference never demotes to a lower-ranked product.
 
 Exact award evidence, exact current retailer identity and current price remain
-publication requirements. Product media is optional enrichment. Consum uses
-allowlisted official `media[]` URLs before its stale base
-`productData.imageURL`; ALDI distinguishes an explicit product-page error from
-a healthy page whose embedded product contract has drifted. Carrefour and DIA
-use only their previously production-proven exact server-rendered product pages:
-one browser-navigation HTTP header profile, exact marker validation and
-product-card-scoped price extraction, with no browser runtime, cookie session,
-catalogue search or retailer media.
+publication requirements. Product photography is the normal presentation under
+ADR 0096. Each candidate may expose a small reviewed hierarchy of exact official
+image sources; producer/brand or official media assets are preferred where
+practical, followed by award-organizer or exact retailer images. Consum still
+prefers working official `media[]` over stale base `productData.imageURL`;
+ALDI distinguishes an explicit product-page error from a healthy page whose
+embedded product contract has drifted. Carrefour and DIA retain their
+production-proven exact server-rendered retail verification path.
 
-Delivery remains Rich Message first. When exact media exists, Telegram remote
-media is attempted, followed only after explicit remote-media rejection by the
-existing bounded local upload recovery. Deterministic media-path failure then
-degrades to the same Rich Message without an image. Ambiguous delivery never
-falls through to another send.
+Delivery remains Rich Message first. The bot tries the first reviewed exact
+image source remotely; after explicit remote-media rejection it may use the
+existing bounded local upload recovery. A deterministic failure may advance to
+the next reviewed exact image source. Only after all reviewed image paths are
+exhausted may the same verified article degrade to a no-image Rich Message.
+Ambiguous delivery never falls through to another send.
 
 Confirmed delivery alone advances the existing event/selection history,
 delivery day and category cursor. No retailer ledger, state migration, second

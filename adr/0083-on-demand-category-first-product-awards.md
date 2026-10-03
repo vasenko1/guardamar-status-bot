@@ -5,6 +5,8 @@
 
 > 2026-10-03 refinement: ADR 0093 adds a best-effort retailer-diversity preference while preserving this ADR's category/source/rank semantics. A same-retailer category winner may be retained as an in-memory fallback while later categories are checked, but retailer preference never suppresses the only valid publication and never demotes to a lower rank merely to change supermarket.
 
+> 2026-10-03 photo-first refinement: ADR 0096 supersedes section 8's text-first media default. A Product Awards article should normally include an exact reviewed product photo. No-image delivery remains only a degraded fallback after all reviewed image paths fail or are unusable.
+
 ## Context
 
 The product-award idea has converged on a strict editorial rule: one exceptional
