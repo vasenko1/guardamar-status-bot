@@ -386,37 +386,36 @@ Any exception to these constraints requires an accepted ADR.
 
 ## Product-award runtime budget
 
-The product-award feature has one daily one-shot cron invocation. It must read
-`state/product_awards.json` before source access.
+The product-award feature has one daily one-shot cron invocation and reads only
+the existing `state/product_awards.json` before source access.
 
 - During the three-day cooldown: zero award/retailer HTTP requests.
-- After all reviewed events are published: zero award/retailer HTTP requests.
-- On a due run: inspect only the finite reviewed registry; never scan a full
-  retailer catalogue or discover products dynamically.
-- Retailer diversity is evaluated from configured candidate identity and the
-  last confirmed retailer. The first bounded pass prefers a different retailer
-  and defers a same-retailer category rather than falling through to a lower
-  rank solely for variety.
-- If that pass finds no publishable different-retailer candidate, one fallback
-  pass may select the same retailer under ordinary category/source/rank rules.
-  Retailer diversity alone never causes a silent due run.
-- A candidate already evaluated unsuccessfully in the current process is not
-  fetched again after another candidate's deterministic delivery/media failure.
-  This suppression is process-local and is never persisted.
-- Every request uses the shared bounded standard-library transport, exact HTTPS
-  hosts and a 15-second timeout. HTML/JSON/image limits remain explicit.
-- Consum image selection uses exact official `media[]` URLs when present.
-  A base-only `productData.imageURL` requires one bounded local image
-  validation; synthetic filename guessing is forbidden.
-- ALDI exact-product verification may parse the embedded Next.js JSON already
-  present in bounded HTML. A product error shell is fail-closed; JavaScript or
-  browser execution is not allowed.
-- Telegram media recovery may download at most the existing bounded image size
-  from allowlisted retailer hosts and keeps bytes only in a private temporary
-  file for the one upload attempt.
-- No browser/Playwright, OCR, LLM, search engine, database, daemon, discovery
-  queue, raw-response cache or retailer-specific recurring job is allowed.
-- State stores only cooldown/dedup/cursor/last-retailer/uncertain-delivery
-  fields; raw award and retailer pages are discarded when the process exits.
-- The product-award log rotates at 512 KiB with one previous file.
+- After registry exhaustion: zero award/retailer HTTP requests.
+- A due run uses one finite category scan. It may inspect later categories only
+  when the first valid category winner repeats the previous retailer and a
+  different-retailer alternative is being sought.
+- Retailer preference adds no state field, second scan, queue or persistent
+  cache. The previous retailer is derived best-effort from the last published
+  event ID already stored.
+- Award evidence, exact retail identity and current price remain mandatory.
+- Product media is optional and cannot make an otherwise valid product
+  ineligible.
+- Consum image selection prefers allowlisted official `media[]` URLs; no
+  synthetic filename guessing or eligibility-time image download is allowed.
+- ALDI may parse embedded Next.js JSON but never executes JavaScript. Explicit
+  `hasError=true` is a product-page failure; a healthy page with missing
+  `apiData` is contract drift.
+- Telegram tries remote image first. Only an explicit remote-media rejection
+  may trigger the existing bounded local image download/upload. A deterministic
+  media-path failure may then send the same Rich Message without media.
+  Ambiguous delivery always stops.
+- Every HTTP operation remains bounded by the existing host allowlists,
+  timeouts and response-size limits.
+- No browser/Playwright, OCR, LLM, search engine, database, daemon, retailer
+  quota, discovery queue, raw-response cache or retailer-specific recurring job
+  is allowed.
+- State remains cooldown/dedup/cursor/uncertain-delivery only; no migration is
+  required for retailer preference.
+- Product-award logs remain bounded and a due no-publication run records one
+  concise final reason.
 
