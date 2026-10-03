@@ -1,4 +1,4 @@
-"""Bounded OCI capacity automation for one exact Always Free instance."""
+"""Bounded OCI capacity automation for one exact Always Free target."""
 
 from __future__ import annotations
 
@@ -19,13 +19,24 @@ COMPARTMENT_OCID = (
     "p3kazcv67dsqfa"
 )
 DISPLAY_NAME = "guardamar-bot"
-SHAPE = "VM.Standard.A1.Flex"
-OCPUS = 1.0
-MEMORY_GBS = 6.0
-IMAGE_OCID = (
+A1_SHAPE = "VM.Standard.A1.Flex"
+A1_OCPUS = 1.0
+A1_MEMORY_GBS = 6.0
+A1_IMAGE_OCID = (
     "ocid1.image.oc1.eu-madrid-3.aaaaaaaaurntbnbuaaicth3wbgs77lkqcb6giko"
     "55bl6tfkqjk472gvvl6yq"
 )
+E2_SHAPE = "VM.Standard.E2.1.Micro"
+E2_IMAGE_OCID = (
+    "ocid1.image.oc1.eu-madrid-3.aaaaaaaa2nsuyzwg7zpslg3xvd4xbt2jlrbs"
+    "icyie7uipj2pbhrcryudgjga"
+)
+
+# Backward-compatible aliases for the original Stack-derived A1 target.
+SHAPE = A1_SHAPE
+OCPUS = A1_OCPUS
+MEMORY_GBS = A1_MEMORY_GBS
+IMAGE_OCID = A1_IMAGE_OCID
 SUBNET_OCID = (
     "ocid1.subnet.oc1.eu-madrid-3.aaaaaaaanuiwwug7n4gn4djssg4ztnamwtc56"
     "j2rwnjes5e6chko6hjif7oa"
@@ -42,6 +53,7 @@ SSH_PUBLIC_KEY = (
 
 FREE_A1_OCPU_LIMIT = 2.0
 FREE_A1_MEMORY_GB_LIMIT = 12.0
+FREE_E2_MICRO_LIMIT = 2.0
 FREE_STORAGE_GB_LIMIT = 200.0
 BOOT_VOLUME_GB = 50
 MANAGED_TAG = "guardamar-capacity-managed"
@@ -79,6 +91,22 @@ class SafetyError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class LaunchProfile:
+    key: str
+    shape: str
+    image_ocid: str
+    ocpus: Optional[float] = None
+    memory_gbs: Optional[float] = None
+
+
+A1_PROFILE = LaunchProfile(
+    "a1", A1_SHAPE, A1_IMAGE_OCID, A1_OCPUS, A1_MEMORY_GBS
+)
+E2_PROFILE = LaunchProfile("e2", E2_SHAPE, E2_IMAGE_OCID)
+PROFILES = {profile.key: profile for profile in (A1_PROFILE, E2_PROFILE)}
+
+
+@dataclass(frozen=True)
 class InstanceRecord:
     identifier: str
     display_name: str
@@ -92,8 +120,8 @@ class InstanceDetails:
     display_name: str
     lifecycle_state: str
     shape: str
-    ocpus: float
-    memory_in_gbs: float
+    ocpus: Optional[float]
+    memory_in_gbs: Optional[float]
     image_id: str
     availability_domain: str
     freeform_tags: Mapping[str, str]
@@ -130,12 +158,14 @@ class ResourceAvailability:
 
 @dataclass(frozen=True)
 class AuditReport:
+    profile: str
     region: str
     availability_domain: str
     target_instances: tuple[str, ...]
     target_states: tuple[str, ...]
-    a1_ocpus_used: float
-    a1_memory_gb_used: float
+    a1_ocpus_used: Optional[float]
+    a1_memory_gb_used: Optional[float]
+    e2_micro_used: Optional[float]
     free_storage_gb_used: float
     image_name: str
     target_shape_available: bool
@@ -152,6 +182,7 @@ class CapacityResult:
     instance_id: Optional[str] = None
     public_ip: Optional[str] = None
     report: Optional[AuditReport] = None
+    profile: Optional[str] = None
 
     @property
     def exit_code(self) -> int:
@@ -164,20 +195,18 @@ class CapacityResult:
         } else 2
 
 
-def launch_manifest() -> dict[str, Any]:
-    """Return the exact, immutable launch intent recovered from the ORM Stack."""
+def launch_manifest(profile: LaunchProfile = A1_PROFILE) -> dict[str, Any]:
+    """Return one exact immutable Always Free launch intent."""
 
-    return {
+    manifest = {
         "availability_domain": AVAILABILITY_DOMAIN,
         "compartment_id": COMPARTMENT_OCID,
         "display_name": DISPLAY_NAME,
-        "shape": SHAPE,
-        "shape_config": {"ocpus": OCPUS, "memory_in_gbs": MEMORY_GBS},
+        "shape": profile.shape,
         "source_details": {
             "source_type": "image",
-            "image_id": IMAGE_OCID,
-            # Pin the Stack's implicit/default size so API default drift cannot
-            # allocate more than the already budgeted Always Free 50 GB.
+            "image_id": profile.image_ocid,
+            # Pin the default size so API drift cannot consume paid storage.
             "boot_volume_size_in_gbs": BOOT_VOLUME_GB,
         },
         "create_vnic_details": {
@@ -203,7 +232,12 @@ def launch_manifest() -> dict[str, Any]:
             TARGET_TAG: DISPLAY_NAME,
         },
     }
-
+    if profile.ocpus is not None and profile.memory_gbs is not None:
+        manifest["shape_config"] = {
+            "ocpus": profile.ocpus,
+            "memory_in_gbs": profile.memory_gbs,
+        }
+    return manifest
 
 def _is_target(instance: InstanceRecord) -> bool:
     return (
@@ -219,17 +253,23 @@ def evaluate_audit(
     subnet: SubnetRecord,
     available_shapes: Sequence[str],
     resource_availability: Mapping[str, ResourceAvailability],
+    profile: LaunchProfile = A1_PROFILE,
 ) -> AuditReport:
-    """Evaluate duplicate, configuration, and strict cost gates."""
+    """Evaluate duplicate, configuration, and strict Always Free cost gates."""
 
-    required = ("a1_ocpus", "a1_memory_gb", "free_storage_gb")
+    required = ["free_storage_gb"]
+    if profile.key == "a1":
+        required.extend(("a1_ocpus", "a1_memory_gb"))
+    elif profile.key == "e2":
+        required.append("e2_micro_count")
+    else:
+        raise SafetyError(f"unsupported launch profile {profile.key}")
+
     missing = [name for name in required if name not in resource_availability]
     if missing:
         raise SafetyError("missing availability data: " + ", ".join(missing))
 
     targets = tuple(instance for instance in instances if _is_target(instance))
-    cores = resource_availability["a1_ocpus"]
-    memory = resource_availability["a1_memory_gb"]
     storage = resource_availability["free_storage_gb"]
     for name, value in resource_availability.items():
         if value.used < 0 or value.available < 0:
@@ -244,62 +284,89 @@ def evaluate_audit(
     blockers: list[str] = []
     if targets:
         blockers.append("a non-terminated target instance already exists")
-    if image.identifier != IMAGE_OCID or image.lifecycle_state != "AVAILABLE":
+    if image.identifier != profile.image_ocid or image.lifecycle_state != "AVAILABLE":
         blockers.append("the exact configured image is not available")
     if image.operating_system != "Oracle Linux":
         blockers.append("the configured image is not Oracle Linux")
-    if SHAPE not in available_shapes:
-        blockers.append("the configured A1 shape is unavailable for image and AD")
+    if profile.shape not in available_shapes:
+        blockers.append("the configured shape is unavailable for image and AD")
     if not subnet_ok:
         blockers.append("the exact subnet cannot safely provide the public VNIC")
-    if cores.used + OCPUS > FREE_A1_OCPU_LIMIT:
-        blockers.append("the launch would exceed the 2 Always Free A1 OCPU cap")
-    if memory.used + MEMORY_GBS > FREE_A1_MEMORY_GB_LIMIT:
-        blockers.append("the launch would exceed the 12 GB Always Free A1 RAM cap")
     if storage.used + BOOT_VOLUME_GB > FREE_STORAGE_GB_LIMIT:
         blockers.append("the launch would exceed the 200 GB Always Free storage cap")
-    if cores.available < OCPUS:
-        blockers.append("OCI reports insufficient A1 OCPU service availability")
-    if memory.available < MEMORY_GBS:
-        blockers.append("OCI reports insufficient A1 RAM service availability")
     if storage.available < BOOT_VOLUME_GB:
         blockers.append("OCI reports insufficient free storage availability")
 
+    a1_cores = resource_availability.get("a1_ocpus")
+    a1_memory = resource_availability.get("a1_memory_gb")
+    e2_count = resource_availability.get("e2_micro_count")
+    if profile.key == "a1":
+        assert a1_cores is not None and a1_memory is not None
+        if a1_cores.used + A1_OCPUS > FREE_A1_OCPU_LIMIT:
+            blockers.append("the launch would exceed the 2 Always Free A1 OCPU cap")
+        if a1_memory.used + A1_MEMORY_GBS > FREE_A1_MEMORY_GB_LIMIT:
+            blockers.append("the launch would exceed the 12 GB Always Free A1 RAM cap")
+        if a1_cores.available < A1_OCPUS:
+            blockers.append("OCI reports insufficient A1 OCPU service availability")
+        if a1_memory.available < A1_MEMORY_GBS:
+            blockers.append("OCI reports insufficient A1 RAM service availability")
+    else:
+        assert e2_count is not None
+        if e2_count.used + 1 > FREE_E2_MICRO_LIMIT:
+            blockers.append("the launch would exceed the two Always Free E2 Micro cap")
+        if e2_count.available < 1:
+            blockers.append("OCI reports insufficient E2 Micro service availability")
+
     return AuditReport(
+        profile=profile.key,
         region=REGION,
         availability_domain=AVAILABILITY_DOMAIN,
         target_instances=tuple(instance.identifier for instance in targets),
         target_states=tuple(instance.lifecycle_state for instance in targets),
-        a1_ocpus_used=cores.used,
-        a1_memory_gb_used=memory.used,
+        a1_ocpus_used=a1_cores.used if a1_cores is not None else None,
+        a1_memory_gb_used=a1_memory.used if a1_memory is not None else None,
+        e2_micro_used=e2_count.used if e2_count is not None else None,
         free_storage_gb_used=storage.used,
         image_name=image.display_name,
-        target_shape_available=SHAPE in available_shapes,
+        target_shape_available=profile.shape in available_shapes,
         target_subnet_available=subnet_ok,
         launch_safe=not blockers,
         blockers=tuple(blockers),
     )
 
+def _profile_for_instance(instance: InstanceDetails) -> Optional[LaunchProfile]:
+    for profile in PROFILES.values():
+        if instance.shape == profile.shape and instance.image_id == profile.image_ocid:
+            return profile
+    return None
 
-def _instance_blockers(instance: InstanceDetails) -> list[str]:
+
+def _instance_blockers(
+    instance: InstanceDetails,
+    profile: LaunchProfile = A1_PROFILE,
+) -> list[str]:
     blockers = []
     if instance.display_name != DISPLAY_NAME:
         blockers.append("display name mismatch")
-    if instance.shape != SHAPE:
+    if instance.shape != profile.shape:
         blockers.append("shape mismatch")
-    if instance.ocpus != OCPUS:
+    if profile.ocpus is not None and instance.ocpus != profile.ocpus:
         blockers.append("OCPU mismatch")
-    if instance.memory_in_gbs != MEMORY_GBS:
+    if profile.memory_gbs is not None and instance.memory_in_gbs != profile.memory_gbs:
         blockers.append("RAM mismatch")
-    if instance.image_id != IMAGE_OCID:
+    if instance.image_id != profile.image_ocid:
         blockers.append("image mismatch")
     if instance.availability_domain != AVAILABILITY_DOMAIN:
         blockers.append("availability domain mismatch")
     return blockers
 
 
-def _ready_blockers(instance: InstanceDetails, vnic: VnicRecord) -> list[str]:
-    blockers = _instance_blockers(instance)
+def _ready_blockers(
+    instance: InstanceDetails,
+    vnic: VnicRecord,
+    profile: LaunchProfile = A1_PROFILE,
+) -> list[str]:
+    blockers = _instance_blockers(instance, profile)
     if instance.lifecycle_state != "RUNNING":
         blockers.append("instance is not RUNNING")
     if vnic.subnet_id != SUBNET_OCID:
@@ -307,7 +374,6 @@ def _ready_blockers(instance: InstanceDetails, vnic: VnicRecord) -> list[str]:
     if not vnic.public_ip:
         blockers.append("public IPv4 is missing")
     return blockers
-
 
 class OciGateway:
     """Small OCI adapter with SDK automatic retries disabled."""
