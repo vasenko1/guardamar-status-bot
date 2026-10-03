@@ -735,23 +735,14 @@ seasonal root with confirmed changes threaded beneath that root.
 ## Supermarket product awards
 
 Every three local calendar days at most one independently recognised product may
-be published. The exact award identity must still pass its reviewed authority
-contract and the exact current retailer product must still provide a fresh
-price. Product Awards are allowed to remain silent when no candidate satisfies
-all rules.
+be published. Publication requires reviewed award evidence, exact current
+retailer identity and a fresh current price.
 
-Selection remains category-first and source-rank preserving. For one broad
-consumer category the bot exhausts explicit source-native ranking only through
-normal eligibility failures; ranks from different competitions are never
-mixed, and unordered medals/finalists never create synthetic positions.
-
-ADR 0092 adds best-effort supermarket rotation. A due run first prefers a
-valid candidate from a retailer different from the last confirmed Product
-Awards post. The bot does **not** choose a weaker/lower-ranked candidate merely
-to manufacture variety. If no different-retailer candidate can be selected
-under the normal category/source/rank rules, the selector falls back to the
-ordinary order and may publish the same retailer again. Retailer diversity
-never suppresses the only valid post.
+Retailer diversity is a preference, not a quota or veto. The first valid
+category winner from the same supermarket as the previous post is retained as a
+fallback while later categories are checked. A valid winner from another
+retailer is preferred; when none exists, the same-retailer fallback publishes.
+The bot never drops to a lower rank inside a category merely to change store.
 
 The current production-reviewed pool is:
 
@@ -763,24 +754,24 @@ The current production-reviewed pool is:
 - Ambar Especial / World Beer Awards / Consum;
 - Mahou Sin Filtrar / World Beer Awards / Masymas.
 
-This pool is not acceptable as a long-run representation of supermarket
-coverage because five of seven current entries are Consum. Earlier research
-already proved strong Mercadona candidates and current public evidence shows
-active award surfaces for Lidl and DIA. Registry maintenance therefore
-prioritizes underrepresented retailers, while preserving the same award-quality
-and exact-retail requirements; the runtime never invents a candidate to fill a
-retailer slot.
+This pool is not treated as representative supermarket coverage. The 3 October
+balance audit found that the Consum concentration mainly reflects which exact
+retailer contracts were easiest to productionize, while earlier research
+already proved strong Mercadona joins and viable Lidl, DIA and Carrefour
+surfaces. Pool rebuilding is therefore a separate evidence task.
 
-Public posts are deterministic Telegram Rich Messages containing an exact
-first-party product image, concise award context, current retailer price,
-source-specific methodology and the standard group footer. Consum's current
-official JSON exposes real image assets under `media[]`; ADR 0092 rejects the
-stale base-image assumption that caused the 2–3 October publication gap.
-Telegram remote-media delivery remains remote-first with one bounded local
-upload recovery for a reachable exact image.
+Public posts prefer deterministic Telegram Rich Messages with an exact
+first-party product image. The image is optional enrichment: if remote delivery
+and the bounded upload recovery cannot deliver media, the same verified article
+is sent as a Rich Message without the image. Media failure never discards a
+product whose award identity and current price are still valid.
 
-ALDI NALTROS currently fails closed because the exact ALDI product page returns
-a product-specific error shell rather than current product data. That temporary
-retailer failure does not mark the award published and does not consume the
-three-day slot.
+Consum's current JSON uses working numbered `media[]` assets while its base
+`productData.imageURL` values may 404. ALDI NALTROS currently fails closed
+because the exact product page reports an explicit product-page error rather
+than current product data.
+
+The four Producto del Año entries remain subject to a separate source-policy
+re-review against ADR 0083; technical convenience of the Consum API is not a
+reason to retain an award family.
 
