@@ -171,7 +171,7 @@ class _ProductImageParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.meta_images: list[str] = []
-        self.images: list[tuple[str, str]] = []
+        self.images: list[tuple[str, str, int]] = []
 
     def handle_starttag(self, tag: str, attrs) -> None:
         values = {
@@ -196,19 +196,23 @@ class _ProductImageParser(HTMLParser):
         if tag.casefold() != "img":
             return
         alt = str(values.get("alt") or "").strip()
-        image_values = []
-        for key in ("src", "data-src", "data-lazy-src"):
+        image_values: list[tuple[str, int]] = []
+        for key, source_priority in (
+            ("src", 0),
+            ("data-src", 1),
+            ("data-lazy-src", 1),
+        ):
             value = values.get(key)
             if isinstance(value, str) and value.strip():
-                image_values.append(value.strip())
+                image_values.append((value.strip(), source_priority))
         srcset = values.get("srcset")
         if isinstance(srcset, str) and srcset.strip():
             for item in srcset.split(","):
                 raw = item.strip().split(" ", 1)[0]
                 if raw:
-                    image_values.append(raw)
-        for raw in image_values:
-            self.images.append((alt, raw))
+                    image_values.append((raw, 1))
+        for raw, source_priority in image_values:
+            self.images.append((alt, raw, source_priority))
 
 
 def _fold(value: str) -> str:
@@ -462,16 +466,22 @@ def _resolve_reviewed_image_source(
 
     if source.image_alt_markers:
         wanted = tuple(_fold(value) for value in source.image_alt_markers)
-        matches = []
-        for alt, raw_url in parser.images:
+        matches: list[tuple[str, int]] = []
+        for alt, raw_url, source_priority in parser.images:
             folded_alt = _fold(alt)
             if not all(marker in folded_alt for marker in wanted):
                 continue
             image_url = resolve(raw_url)
             if image_url is not None:
-                matches.append(image_url)
+                matches.append((image_url, source_priority))
         if matches:
-            image_url = max(matches, key=_image_resolution_score)
+            image_url, _ = max(
+                matches,
+                key=lambda item: (
+                    _image_resolution_score(item[0]),
+                    item[1],
+                ),
+            )
             return ResolvedProductImage(
                 url=image_url,
                 hosts=source.image_hosts,
@@ -487,7 +497,7 @@ def _resolve_reviewed_image_source(
                     source_name=source.name,
                 )
 
-        for _, raw_url in parser.images:
+        for _, raw_url, _ in parser.images:
             image_url = resolve(raw_url)
             if image_url is not None:
                 return ResolvedProductImage(
