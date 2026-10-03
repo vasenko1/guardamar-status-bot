@@ -22,7 +22,7 @@ jobs:
           cache: pip
       - name: Install pinned OCI SDK
         run: python -m pip install "oci==2.185.2"
-      - name: Probe A1 1/6 and 1/2 host capacity
+      - name: Probe A1 1/6, 1/2 and 1/1 host capacity
         env:
           OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
           OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
@@ -74,6 +74,13 @@ jobs:
                       memory_in_gbs=2.0,
                   ),
               ),
+              oci.core.models.CreateCapacityReportShapeAvailabilityDetails(
+                  instance_shape=SHAPE,
+                  instance_shape_config=oci.core.models.CapacityReportInstanceShapeConfig(
+                      ocpus=1.0,
+                      memory_in_gbs=1.0,
+                  ),
+              ),
           ]
 
           details = oci.core.models.CreateComputeCapacityReportDetails(
@@ -104,6 +111,7 @@ jobs:
               "requested_profiles": [
                   {"ocpus": 1.0, "memory_in_gbs": 6.0},
                   {"ocpus": 1.0, "memory_in_gbs": 2.0},
+                  {"ocpus": 1.0, "memory_in_gbs": 1.0},
               ],
               "results": rows,
           }, sort_keys=True))
