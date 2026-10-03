@@ -377,6 +377,7 @@ def _ready_blockers(
         blockers.append("public IPv4 is missing")
     return blockers
 
+
 class OciGateway:
     """Small OCI adapter with SDK automatic retries disabled."""
 
