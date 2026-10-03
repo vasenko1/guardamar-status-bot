@@ -215,6 +215,13 @@ reserved root may fall back to the equivalent text card. If delivery is
 ambiguous (timeout/network/invalid success structure), do not fall back to text:
 keep the uncertain reservation because the photo root may already exist.
 
+The existing shared `send_photo_url()` helper defaults to
+`disable_notification=True` because it is also used by quieter publication
+flows. Event-access roots are proactive resident alerts and must therefore pass
+`disable_notification=False` explicitly. Do not inherit the helper default
+accidentally. Threaded follow-up replies keep the normal non-silent
+`send_message()` behavior unless a later product decision says otherwise.
+
 ## Consequences
 
 - Residents can tap any later lifecycle reply and return to the original
