@@ -192,6 +192,9 @@ Confirmed success commits that candidate and clears uncertainty. A
 deterministic send failure clears uncertainty and leaves the old semantic
 baseline so the next run recomputes from current facts/time. An ambiguous send
 keeps uncertainty and blocks automatic resend until operator resolution.
+Operator commands may commit that exact reserved candidate as sent after
+verifying Telegram, or clear it as unsent so the next invocation recomputes
+from current facts and time.
 
 This preserves crash safety without the multi-message state machine required by
 course notifications.
@@ -199,7 +202,8 @@ course notifications.
 ### Freshness and schedules
 
 Registration lifecycle notices require a CONVEGA snapshot observed on the same
-Europe/Madrid date.
+Europe/Madrid date and not later than the current invocation time. Future-dated
+snapshots fail closed exactly like stale or missing snapshots.
 
 Run one wrapper:
 
