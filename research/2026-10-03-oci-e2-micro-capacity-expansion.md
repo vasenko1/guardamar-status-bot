@@ -64,3 +64,40 @@ be activated, add exactly this second image-read statement:
 
 No broader Compute, image, network, storage, delete, update, power or IAM
 permissions are needed.
+
+
+## Live tenancy verification
+
+The staged read-only gate deliberately kept the production A1 launch workflow
+unchanged.
+
+Run `37150852498` passed 41 focused capacity/backstop tests and reached OCI.
+The E2 audit returned:
+
+- image: `Oracle-Linux-9.8-2026.08.14-0`;
+- E2 usage: `0.0`;
+- free-storage usage: `0.0`;
+- subnet available: `true`;
+- target instances: none;
+- target shape available: `false`;
+- blocker: `the configured shape is unavailable for image and AD`.
+
+Run `37150980031` then performed a second read-only probe. With no image
+filter at all, OCI returned:
+
+```json
+{
+  "availability_domain": "OhIQ:EU-MADRID-3-AD-1",
+  "e2_shape_visible_without_image_filter": false,
+  "e2_shape_visible_for_configured_image": false,
+  "visible_e2_family_shapes": [],
+  "configured_image_e2_family_shapes": []
+}
+```
+
+This distinguishes regional shape absence from image incompatibility. Because
+Oracle documents `eu-madrid-3` as a one-availability-domain region, there is
+no second AD to test. The E2 expansion is therefore rejected for this tenancy
+unless Oracle later exposes the shape in Madrid 3.
+
+No E2 launch call occurred during this investigation.
