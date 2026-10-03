@@ -23,9 +23,14 @@ media album system or second Event model is justified.
 The implementation should remain one small source-projection + lifecycle
 extension of the existing bot.
 
-However, the code is **not yet ready** for multi-source event-access rollout.
-Several concrete gaps must be resolved or probed first. None requires a heavy
-framework.
+The production reconnaissance and final pre-implementation review later closed
+the core gate. The findings below remain the historical code/design analysis,
+while the controlling implementation refinements are now recorded in
+`research/2026-10-03-event-access-final-preimplementation-review.md` and
+ADRs 0090-0092.
+
+The first runtime rollout is deliberately narrower than the full multi-source
+target: event-access core + state v2 + CONVEGA only.
 
 ## Verified strengths to reuse
 
@@ -514,24 +519,19 @@ Recommended code shape:
 
 Keep all network collection outside the semantic planner.
 
-## Required production probe before code
+## Production probe status
 
-The next probe must measure/verify, for each accepted source:
+The required read-only production probe was completed on 2026-10-03 and is
+recorded in
+`research/2026-10-03-event-access-production-recon.md`.
 
-- stable parent record identity;
-- stable option/session identity;
-- current/future access evidence, including offline/in-person action text;
-- not-yet-open/open/full/sold-out/closed behavior where observable;
-- unique poster availability;
-- current presentation completeness;
-- source publication/modified time;
-- translation readiness;
-- event lead time vs current source horizon;
-- simultaneous eligible root count;
-- active option/trigger cardinality for state-bound sizing;
-- Pesca CV detail/registration evidence where available.
+It opened the **core + CONVEGA** implementation gate while keeping every other
+source capability-gated.
 
-Do not write multi-source runtime code until those facts are collected.
+The final pre-implementation audit then tightened migration/rollback,
+future-opening transitions, missing-option semantics, trigger identity,
+CONVEGA freshness and the text-only first rollout. Those refinements are
+controlling over earlier conceptual examples in this file.
 
 
 ## Final consistency findings
@@ -731,19 +731,17 @@ After production probes, implement one narrow access module evolution rather
 than a framework:
 
 ```text
-explicit accepted source loaders
+CONVEGA normalized snapshot
         ↓
-AccessSourceBatch(source, observed_at, records)
+pure CONVEGA access projection
         ↓
-per-source freshness filter
-        ↓
-deterministic access-owner suppression
+access-specific freshness
         ↓
 record-at-a-time planner
         ↓
-single-slot uncertain outbox
+single-slot uncertain reservation
         ↓
-one rich root or one strict threaded reply
+one text root or one strict text reply
 ```
 
 No dynamic plugin registry is needed. A small explicit list/call sequence is
@@ -762,9 +760,10 @@ ADR 0092 therefore makes the event record the persistence/transaction unit.
 This is a simplification, not a framework expansion: one atomic JSON file,
 bounded `records[record_id]`, and one uncertain outbound slot.
 
-The live 2026-10-03 reconnaissance also closed one source question: Pesca CV
-does expose a real Guardamar registration deadline in an official federation
-convocatoria. Agenda Guardamar sale-state semantics, AM Guardamar access
-ownership and exact production snapshot identity/cardinality still require the
-read-only Termux probe recorded in
-`research/2026-10-03-event-access-production-recon.md`.
+The live 2026-10-03 reconnaissance and subsequent Termux probe are complete.
+They confirmed that CONVEGA is the only source ready for the first runtime
+rollout; Agenda Guardamar, Municipal/Turismo, Biblioteca, FACV, Pesca CV and AM
+Guardamar remain capability-gated.
+
+The final controlling review is
+`research/2026-10-03-event-access-final-preimplementation-review.md`.
