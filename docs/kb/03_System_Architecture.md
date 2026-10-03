@@ -458,17 +458,19 @@ source-specific projections grouped as fresh per-source batches; a stale source
 is omitted independently and cannot suppress fresh unrelated sources. Do not
 turn the notification runner into a second multi-source refresh subsystem.
 
-Persistent lifecycle state is event-centric. One bounded
-`records[record_id]` entry keeps that event's semantic option state,
-`audience_known`, optional Telegram root metadata and record-local sent
-triggers. One global uncertain reservation protects the single outbound
-operation currently being attempted. The planner processes one record at a time
-and commits only that record after confirmed delivery.
+Persistent lifecycle state is event-centric. State v2 keeps one bounded
+`records[record_id]` entry containing semantic option state,
+`audience_known`, one optional `root_message_id`, and record-local trigger
+history. One global uncertain reservation protects exactly one outbound record
+candidate. The planner processes one record at a time and commits only that
+record after confirmed delivery. State migration is an explicit locked
+operator action, never a hidden cron side effect.
 
 The global `Event` model remains presentation-only for Morning/Tomorrow/Weekend
 and is not replaced by a second general event model. Access truth remains
-source-owned and fail-closed. Same-day freshness is required for proactive
-claims; Morning may still consume last-good Event data.
+source-owned and fail-closed. Proactive access uses each source's reviewed
+freshness contract; Morning may still consume last-good Event data under its
+separate presentation rules.
 
 The 2026-10-03 production probe opened the core implementation gate while
 keeping source rollout capability-gated. CONVEGA is the reference-ready source.
@@ -477,3 +479,10 @@ Agenda Guardamar, Biblioteca, FACV, Pesca CV and AM Guardamar remain disabled
 for proactive access until their documented identity/action gaps are closed.
 This staged enablement avoids both a generic event scanner and speculative
 source abstractions.
+
+The first state-v2 rollout is intentionally smaller than the eventual
+multi-source shape: CONVEGA only, text roots/replies only, no generic ownership
+resolver and no photo transaction. CONVEGA proactive access requires a
+same-day, non-future observation no more than 90 minutes old; a preserved older
+last-good snapshot may still serve ordinary event presentation but cannot drive
+a current access claim.
