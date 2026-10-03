@@ -459,17 +459,16 @@ def _resolve_reviewed_image_source(
                     hosts=source.image_hosts,
                     source_name=source.name,
                 )
+    else:
+        for raw_url in parser.meta_images:
+            image_url = resolve(raw_url)
+            if image_url is not None:
+                return ResolvedProductImage(
+                    url=image_url,
+                    hosts=source.image_hosts,
+                    source_name=source.name,
+                )
 
-    for raw_url in parser.meta_images:
-        image_url = resolve(raw_url)
-        if image_url is not None:
-            return ResolvedProductImage(
-                url=image_url,
-                hosts=source.image_hosts,
-                source_name=source.name,
-            )
-
-    if not source.image_alt_markers:
         for _, raw_url in parser.images:
             image_url = resolve(raw_url)
             if image_url is not None:
