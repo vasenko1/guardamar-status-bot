@@ -3,6 +3,8 @@
 - Status: Accepted
 - Date: 2026-09-27
 
+> 2026-10-03 refinement: ADR 0092 adds a hard consecutive-retailer exclusion while preserving this ADR's category/source/rank semantics. A rotation-blocked category is deferred; lower ranks are not selected merely to change supermarket.
+
 ## Context
 
 The product-award idea has converged on a strict editorial rule: one exceptional
