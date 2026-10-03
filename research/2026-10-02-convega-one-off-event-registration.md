@@ -1513,35 +1513,73 @@ Do not predict or fabricate that future markup.
 
 ## Device validation checkpoint — 2026-10-03
 
-A non-production detached worktree validation was run on the actual Termux
-device against reviewed PR commit
-`e27870a79b288ba9301926ef8359061924e48362`. The production checkout remained
-on `main` at `527665b5657862d713d003ddfcb36e8f81bd9b5d`.
+### First run
 
-Observed results:
+A non-production detached worktree validation was first run on the actual
+Termux device against reviewed PR commit
+`e27870a79b288ba9301926ef8359061924e48362`. Production remained on
+`main` at `527665b5657862d713d003ddfcb36e8f81bd9b5d`.
+
+That run established:
 
 - `python -m compileall -q src tests`: passed;
-- focused `test_convega.py`: **18/18 passed**;
-- source failure/last-good warnings behaved as expected;
-- focused registration lifecycle suite reached 21 passing tests and one test
-  fixture failure before the shell stopped.
+- focused `test_convega.py`: 18/18 passed;
+- the registration suite exposed one stale synthetic fixture, not a runtime
+  defect.
 
-The failing test was
-`test_exact_time_retry_recomputes_after_boundary`. Investigation showed the
-runtime correctly rejected the synthetic post-boundary record because the test
-changed it to `status=open` without any `registration_url` or
-`registration_contact`. ADR 0089 requires current open registration to be
-positively actionable. The runtime validation was therefore correct; the test
-fixture was stale.
+The failing exact-time retry fixture changed a record to `status=open`
+without a registration URL or registration contact. ADR 0089 deliberately
+rejects unactionable `open` state. The fixture was corrected to include a
+validated synthetic registration URL; production validation semantics were not
+weakened.
 
-The test was corrected to add a validated synthetic registration URL when the
-post-boundary source becomes explicitly open. No production lifecycle logic was
-weakened for the test.
+### Final device validation
 
-A fresh device run against the new reviewed branch head is still required
-before merge. Full regression, live isolated CONVEGA smoke, and cron integration
-validation have not yet completed because the first run stopped at the focused
-test failure.
+A second detached-worktree run completed successfully against the corrected
+feature branch while the production checkout again remained untouched.
+
+Observed final results:
+
+- syntax/bytecode compilation: passed;
+- focused registration lifecycle suite: 22/22 passed;
+- focused CONVEGA source suite: 18/18 passed;
+- focused event merge regression suite: 30/30 passed;
+- focused Tomorrow suite: 13/13 passed;
+- focused Weekend suite: 8/8 passed;
+- focused Termux/cron suite: 5/5 passed;
+- **full repository regression: 1,494/1,494 tests passed in about 56 s**.
+
+The isolated live CONVEGA smoke on 2026-10-03 produced exactly two normalized
+records:
+
+- `convega:post-42197:stage-21` — 2026-10-04, Guardamar-relevant,
+  `status=full`, current landing associated, no registration URL;
+- `convega:post-42197:stage-22` — 2026-11-08, non-local,
+  `status=unknown`, no current landing association or registration URL.
+
+The validation script reported `LIVE SOURCE CONTRACT: OK`.
+
+The isolated registration preview correctly produced no Telegram publication
+for the current source state. The isolated lifecycle state remained empty:
+zero announced records, zero baseline records, zero sent triggers and no
+uncertain delivery.
+
+The real production crontab was inspected only; no registration/CONVEGA rows
+were installed during validation. Existing Weekend/Tomorrow rows were
+unchanged.
+
+Final safety verification confirmed:
+
+- production branch remained `main`;
+- production HEAD remained
+  `527665b5657862d713d003ddfcb36e8f81bd9b5d`;
+- production working tree remained clean;
+- the device script ended with
+  `ALL DEVICE VALIDATION CHECKS PASSED`.
+
+The branch is therefore empirically ready for final PR review/merge. Production
+deployment and cron installation remain a separate controlled step.
+
 
 ## Final recommendation
 
