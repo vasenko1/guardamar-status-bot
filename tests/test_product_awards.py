@@ -61,12 +61,13 @@ def offer(
     price: str = "2,50 €",
     regular_price=None,
     product_name: str = "Exact Product",
+    image_url="https://cdn.example/product.jpg",
 ) -> RetailOffer:
     return RetailOffer(
         retailer="Test Market",
         price=price,
         regular_price=regular_price,
-        image_url="https://cdn.example/product.jpg",
+        image_url=image_url,
         product_name=product_name,
     )
 
@@ -115,7 +116,10 @@ class SourceContractTests(unittest.TestCase):
             "ean": item.expected_ean,
             "productData": {
                 "name": "Exact Product",
-                "imageURL": "https://cdn.example/product.jpg",
+                "imageURL": (
+                    "https://cdn-consum.aktiosdigitalservices.com/"
+                    "tol/consum/media/product/img/300x300/product.jpg"
+                ),
             },
             "priceData": {
                 "prices": [
@@ -136,7 +140,80 @@ class SourceContractTests(unittest.TestCase):
         self.assertEqual(result.price, "2,00 €")
         self.assertEqual(result.regular_price, "2,50 €")
         self.assertEqual(result.product_name, "Exact Product")
-        self.assertEqual(result.image_url, "https://cdn.example/product.jpg")
+        self.assertEqual(
+            result.image_url,
+            "https://cdn-consum.aktiosdigitalservices.com/"
+            "tol/consum/media/product/img/300x300/product.jpg",
+        )
+
+    def test_consum_prefers_media_array_over_stale_base_image(self):
+        item = candidate("retail-media")
+        payload = {
+            "ean": item.expected_ean,
+            "productData": {
+                "name": "Exact Product",
+                "imageURL": (
+                    "https://cdn-consum.aktiosdigitalservices.com/"
+                    "tol/consum/media/product/img/300x300/7.jpg"
+                ),
+            },
+            "media": [
+                {
+                    "url": (
+                        "https://cdn-consum.aktiosdigitalservices.com/"
+                        "tol/consum/media/product/img/300x300/7_001.jpg"
+                    )
+                }
+            ],
+            "priceData": {
+                "prices": [
+                    {"id": "PRICE", "value": {"centAmount": 2.50}},
+                ],
+            },
+        }
+        with patch.object(awards, "_fetch_json", return_value=payload):
+            result = _tol_offer(item)
+
+        self.assertTrue(result.image_url.endswith("/7_001.jpg"))
+
+    def test_consum_ignores_unreviewed_media_hosts(self):
+        item = candidate("retail-host")
+        payload = {
+            "ean": item.expected_ean,
+            "productData": {
+                "name": "Exact Product",
+                "imageURL": "https://untrusted.example/base.jpg",
+            },
+            "media": [
+                {"url": "https://untrusted.example/product_001.jpg"},
+            ],
+            "priceData": {
+                "prices": [
+                    {"id": "PRICE", "value": {"centAmount": 2.50}},
+                ],
+            },
+        }
+        with patch.object(awards, "_fetch_json", return_value=payload):
+            result = _tol_offer(item)
+
+        self.assertIsNone(result.image_url)
+
+    def test_consum_missing_media_keeps_exact_offer_publishable(self):
+        item = candidate("retail-no-media")
+        payload = {
+            "ean": item.expected_ean,
+            "productData": {"name": "Exact Product"},
+            "priceData": {
+                "prices": [
+                    {"id": "PRICE", "value": {"centAmount": 2.50}},
+                ],
+            },
+        }
+        with patch.object(awards, "_fetch_json", return_value=payload):
+            result = _tol_offer(item)
+
+        self.assertIsNone(result.image_url)
+        self.assertEqual(result.price, "2,50 €")
 
     def test_consum_detail_rejects_ean_drift(self):
         item = candidate("retail")
@@ -259,6 +336,104 @@ class SourceContractTests(unittest.TestCase):
         self.assertIn("NALTROS", result.product_name)
 
 
+    def test_aldi_missing_primary_media_keeps_offer_publishable(self):
+        item = ReviewedCandidate(
+            **{
+                **candidate("aldi-no-media").__dict__,
+                "retailer": "ALDI",
+                "retailer_kind": "aldi",
+                "retailer_url": "https://www.aldi.es/p/cava-brut-190300.html",
+                "retailer_hosts": frozenset({"www.aldi.es", "aldi.es"}),
+                "retailer_markers": ("NALTROS", "Cava brut", "0,75 l"),
+                "product_id": 190300,
+                "expected_ean": None,
+            }
+        )
+        payload = {
+            "props": {
+                "pageProps": {
+                    "apiData": json.dumps([{
+                        "objectID": "190300",
+                        "brandName": "NALTROS",
+                        "name": "Cava brut",
+                        "salesUnit": "0,75 l unidad",
+                        "isAvailable": True,
+                        "isComingSoon": False,
+                        "isRecall": False,
+                        "currentPrice": {"priceValue": 3.15},
+                        "assets": [],
+                    }])
+                }
+            }
+        }
+        source = (
+            '<script id="__NEXT_DATA__" type="application/json">'
+            + json.dumps(payload)
+            + "</script>"
+        )
+
+        result = _aldi_offer(item, source)
+
+        self.assertEqual(result.price, "3,15 €")
+        self.assertIsNone(result.image_url)
+
+    def test_aldi_explicit_page_error_is_not_generic_drift(self):
+        item = ReviewedCandidate(
+            **{
+                **candidate("aldi-error").__dict__,
+                "retailer": "ALDI",
+                "retailer_kind": "aldi",
+                "retailer_url": "https://www.aldi.es/p/cava-brut-190300.html",
+                "retailer_hosts": frozenset({"www.aldi.es", "aldi.es"}),
+                "retailer_markers": ("NALTROS",),
+                "product_id": 190300,
+                "expected_ean": None,
+            }
+        )
+        source = (
+            '<script id="__NEXT_DATA__" type="application/json">'
+            + json.dumps({
+                "props": {
+                    "pageProps": {
+                        "hasError": True,
+                        "page": None,
+                        "apiData": None,
+                    }
+                }
+            })
+            + "</script>"
+        )
+
+        with self.assertRaises(awards.ProductAwardError) as caught:
+            _aldi_offer(item, source)
+
+        self.assertEqual(caught.exception.diagnostic_code, "RETAIL-PAGE-ERROR")
+
+    def test_aldi_missing_api_data_without_error_remains_drift(self):
+        item = ReviewedCandidate(
+            **{
+                **candidate("aldi-drift").__dict__,
+                "retailer": "ALDI",
+                "retailer_kind": "aldi",
+                "retailer_url": "https://www.aldi.es/p/cava-brut-190300.html",
+                "retailer_hosts": frozenset({"www.aldi.es", "aldi.es"}),
+                "retailer_markers": ("NALTROS",),
+                "product_id": 190300,
+                "expected_ean": None,
+            }
+        )
+        source = (
+            '<script id="__NEXT_DATA__" type="application/json">'
+            + json.dumps({"props": {"pageProps": {"apiData": None}}})
+            + "</script>"
+        )
+
+        with self.assertRaises(awards.ProductAwardError) as caught:
+            _aldi_offer(item, source)
+
+        self.assertEqual(caught.exception.diagnostic_code, "RETAIL-DRIFT")
+
+
 class RenderingTests(unittest.TestCase):
     def test_rich_message_has_visual_paragraph_boundary_and_no_external_links(self):
         item = candidate("event")
@@ -271,6 +446,20 @@ class RenderingTests(unittest.TestCase):
         self.assertIn("обЪявления Гуардамар", message)
         self.assertNotIn("award.example", message)
         self.assertNotIn("shop.example", message)
+
+    def test_rich_message_can_render_without_image(self):
+        item = candidate("no-image")
+        message = build_message(item, offer(image_url=None))
+
+        self.assertNotIn("<img", message)
+        self.assertIn("2,50 €", message)
+        self.assertIn("обЪявления Гуардамар", message)
+
+    def test_rich_message_can_explicitly_omit_available_image(self):
+        item = candidate("no-image-explicit")
+        message = build_message(item, offer(), include_image=False)
+
+        self.assertNotIn("<img", message)
 
     def test_range_award_identifies_current_member_without_claiming_extra_win(self):
         item = candidate("range", award_scope="range")
@@ -347,7 +536,209 @@ class StateTests(unittest.TestCase):
             self.assertEqual(state.category_cursor(), 2)
 
 
+    def test_last_published_event_preserves_confirmation_order(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = ProductAwardState(Path(directory) / "awards.json")
+            state.mark_uncertain("first")
+            state.confirm("first", "first:2026", 0, date(2026, 9, 27))
+            state.mark_uncertain("second")
+            state.confirm("second", "second:2026", 1, date(2026, 9, 30))
+
+            self.assertEqual(state.last_published_event_id(), "second")
+
+
 class SelectionTests(unittest.TestCase):
+    def test_unknown_previous_event_does_not_block_ordinary_selection(self):
+        current = candidate("current", "current")
+        categories = (
+            ReviewedCategory(
+                "current",
+                (ReviewedSource("current", 1, (current,)),),
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "awards.json"
+            path.write_text(
+                json.dumps({
+                    "schema_version": 1,
+                    "last_delivery_day": "2026-09-27",
+                    "published_events": ["removed:event"],
+                    "published_selections": ["removed:2026"],
+                    "category_cursor": 0,
+                    "uncertain_event": None,
+                }),
+                encoding="utf-8",
+            )
+            with (
+                patch.object(awards, "CATEGORIES", categories),
+                patch.object(awards, "_verify_award"),
+                patch.object(awards, "_refresh_offer", return_value=offer()),
+            ):
+                selected = select_publication(
+                    datetime(2026, 9, 30, 14, 20, tzinfo=MADRID),
+                    ProductAwardState(path),
+                )
+
+        self.assertEqual(selected[1].candidate.event_id, current.event_id)
+
+    def test_prefers_later_different_retailer_over_same_retailer_fallback(self):
+        previous = candidate("previous", "previous")
+        same = candidate("same", "same")
+        different = ReviewedCandidate(
+            **{
+                **candidate("different", "different").__dict__,
+                "retailer": "ALDI",
+                "retailer_kind": "aldi",
+            }
+        )
+        categories = (
+            ReviewedCategory(
+                "previous",
+                (ReviewedSource("history", 1, (previous,)),),
+            ),
+            ReviewedCategory(
+                "same",
+                (ReviewedSource("same", 1, (same,)),),
+            ),
+            ReviewedCategory(
+                "different",
+                (ReviewedSource("different", 1, (different,)),),
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "awards.json"
+            path.write_text(
+                json.dumps({
+                    "schema_version": 1,
+                    "last_delivery_day": "2026-09-27",
+                    "published_events": [previous.event_id],
+                    "published_selections": [previous.selection_key],
+                    "category_cursor": 1,
+                    "uncertain_event": None,
+                }),
+                encoding="utf-8",
+            )
+            with (
+                patch.object(awards, "CATEGORIES", categories),
+                patch.object(awards, "_verify_award") as verify,
+                patch.object(awards, "_refresh_offer", return_value=offer()) as refresh,
+            ):
+                selected = select_publication(
+                    datetime(2026, 9, 30, 14, 20, tzinfo=MADRID),
+                    ProductAwardState(path),
+                )
+
+        self.assertEqual(selected[1].candidate.event_id, different.event_id)
+        self.assertEqual(
+            [call.args[0].event_id for call in verify.call_args_list],
+            [same.event_id, different.event_id],
+        )
+        self.assertEqual(refresh.call_count, 2)
+
+    def test_same_retailer_fallback_publishes_when_no_alternative_is_valid(self):
+        previous = candidate("previous", "previous")
+        same = candidate("same", "same")
+        unavailable = ReviewedCandidate(
+            **{
+                **candidate("unavailable", "other").__dict__,
+                "retailer": "ALDI",
+                "retailer_kind": "aldi",
+            }
+        )
+        categories = (
+            ReviewedCategory(
+                "previous",
+                (ReviewedSource("history", 1, (previous,)),),
+            ),
+            ReviewedCategory(
+                "same",
+                (ReviewedSource("same", 1, (same,)),),
+            ),
+            ReviewedCategory(
+                "other",
+                (ReviewedSource("other", 1, (unavailable,)),),
+            ),
+        )
+
+        def refresh(item):
+            if item.event_id == unavailable.event_id:
+                raise awards.ProductAwardError("gone", code="TEST")
+            return offer()
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "awards.json"
+            path.write_text(
+                json.dumps({
+                    "schema_version": 1,
+                    "last_delivery_day": "2026-09-27",
+                    "published_events": [previous.event_id],
+                    "published_selections": [previous.selection_key],
+                    "category_cursor": 1,
+                    "uncertain_event": None,
+                }),
+                encoding="utf-8",
+            )
+            with (
+                patch.object(awards, "CATEGORIES", categories),
+                patch.object(awards, "_verify_award"),
+                patch.object(awards, "_refresh_offer", side_effect=refresh),
+            ):
+                selected = select_publication(
+                    datetime(2026, 9, 30, 14, 20, tzinfo=MADRID),
+                    ProductAwardState(path),
+                )
+
+        self.assertEqual(selected[1].candidate.event_id, same.event_id)
+
+    def test_retailer_preference_does_not_demote_within_category(self):
+        previous = candidate("previous", "previous")
+        first = candidate("first", "ranked", rank=1)
+        second = ReviewedCandidate(
+            **{
+                **candidate("second", "ranked", rank=2).__dict__,
+                "retailer": "ALDI",
+                "retailer_kind": "aldi",
+            }
+        )
+        categories = (
+            ReviewedCategory(
+                "previous",
+                (ReviewedSource("history", 1, (previous,)),),
+            ),
+            ReviewedCategory(
+                "ranked",
+                (ReviewedSource("ranked", 1, (first, second)),),
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "awards.json"
+            path.write_text(
+                json.dumps({
+                    "schema_version": 1,
+                    "last_delivery_day": "2026-09-27",
+                    "published_events": [previous.event_id],
+                    "published_selections": [previous.selection_key],
+                    "category_cursor": 1,
+                    "uncertain_event": None,
+                }),
+                encoding="utf-8",
+            )
+            with (
+                patch.object(awards, "CATEGORIES", categories),
+                patch.object(awards, "_verify_award") as verify,
+                patch.object(awards, "_refresh_offer", return_value=offer()),
+            ):
+                selected = select_publication(
+                    datetime(2026, 9, 30, 14, 20, tzinfo=MADRID),
+                    ProductAwardState(path),
+                )
+
+        self.assertEqual(selected[1].candidate.event_id, first.event_id)
+        self.assertEqual(
+            [call.args[0].event_id for call in verify.call_args_list],
+            [first.event_id],
+        )
+
     def test_cooldown_causes_zero_network_requests(self):
         with tempfile.TemporaryDirectory() as directory:
             state = ProductAwardState(Path(directory) / "awards.json")
@@ -405,38 +796,6 @@ class SelectionTests(unittest.TestCase):
 
         self.assertIsNotNone(selected)
         self.assertEqual(selected[0], 1)
-        self.assertEqual(selected[1].candidate.event_id, second.event_id)
-        verify.assert_called_once_with(second)
-        refresh.assert_called_once_with(second)
-
-    def test_selection_can_exclude_one_transport_rejected_event(self):
-        first = candidate("first", "first")
-        second = candidate("second", "second")
-        categories = (
-            ReviewedCategory(
-                key="first",
-                sources=(ReviewedSource("A", 1, (first,)),),
-            ),
-            ReviewedCategory(
-                key="second",
-                sources=(ReviewedSource("B", 1, (second,)),),
-            ),
-        )
-        with tempfile.TemporaryDirectory() as directory:
-            state = ProductAwardState(Path(directory) / "awards.json")
-            with (
-                patch.object(awards, "CATEGORIES", categories),
-                patch.object(awards, "_verify_award") as verify,
-                patch.object(awards, "_refresh_offer", return_value=offer()) as refresh,
-            ):
-                selected = select_publication(
-                    datetime(2026, 9, 29, 10, 45, tzinfo=MADRID),
-                    state,
-                    ignore_cooldown=True,
-                    excluded_event_ids=frozenset({first.event_id}),
-                )
-
-        self.assertIsNotNone(selected)
         self.assertEqual(selected[1].candidate.event_id, second.event_id)
         verify.assert_called_once_with(second)
         refresh.assert_called_once_with(second)

@@ -735,26 +735,43 @@ seasonal root with confirmed changes threaded beneath that root.
 ## Supermarket product awards
 
 Every three local calendar days at most one independently recognised product may
-be published, provided the exact awarded product is currently represented by
-Mercadona, Carrefour España supermarket, ALDI España, Lidl España, DIA España
-or Consum and a fresh exact-product price can be read.
+be published. Publication requires reviewed award evidence, exact current
+retailer identity and a fresh current price.
 
-Selection is category-first. For one broad consumer category the bot exhausts
-the explicitly ordered #1/#2/#3 of source #1 before moving to source #2. Ranks
-from different competitions are never mixed. A winner-only authority supplies
-only its winner. Unordered medals/finalists do not create synthetic ranks.
+Retailer diversity is a preference, not a quota or veto. The first valid
+category winner from the same supermarket as the previous post is retained as a
+fallback while later categories are checked. A valid winner from another
+retailer is preferred; when none exists, the same-retailer fallback publishes.
+The bot never drops to a lower rank inside a category merely to change store.
 
-The initial reviewed launch set is:
+The current production-reviewed pool is:
 
-- cava: NALTROS Brut / ALDI via the OCU fallback;
-- gazpacho: Realfooding / Carrefour via OCU;
-- AOVE: Oleoestepa DOP Estepa / Carrefour via the OCU fallback;
-- coffee capsules: AROM'ARTE Intenso / DIA via a physically laboratory-tested
-  OCU analysis;
-- spirits/anís: Anís Chinchón Dulce / Carrefour via MAPA 2026.
+- NALTROS Brut / OCU / ALDI;
+- Celta +Proteína / Producto del Año / Consum;
+- Takis Blue Heat / Producto del Año / Consum;
+- ELPOZO ExtraTiernos / Producto del Año / Consum;
+- Nescafé Latte Baileys / Producto del Año / Consum;
+- Ambar Especial / World Beer Awards / Consum;
+- Mahou Sin Filtrar / World Beer Awards / Masymas.
 
-The public post is deterministic and text-only: award/result context, exact
-current package/price, retailer link and authority link. A missing or ambiguous
-exact offer means silence, not a price-less post. Product photos are excluded
-unless separate reuse permission is documented.
+This pool is not treated as representative supermarket coverage. The 3 October
+balance audit found that the Consum concentration mainly reflects which exact
+retailer contracts were easiest to productionize, while earlier research
+already proved strong Mercadona joins and viable Lidl, DIA and Carrefour
+surfaces. Pool rebuilding is therefore a separate evidence task.
+
+Public posts prefer deterministic Telegram Rich Messages with an exact
+first-party product image. The image is optional enrichment: if remote delivery
+and the bounded upload recovery cannot deliver media, the same verified article
+is sent as a Rich Message without the image. Media failure never discards a
+product whose award identity and current price are still valid.
+
+Consum's current JSON uses working numbered `media[]` assets while its base
+`productData.imageURL` values may 404. ALDI NALTROS currently fails closed
+because the exact product page reports an explicit product-page error rather
+than current product data.
+
+The four Producto del Año entries remain subject to a separate source-policy
+re-review against ADR 0083; technical convenience of the Consum API is not a
+reason to retain an award family.
 

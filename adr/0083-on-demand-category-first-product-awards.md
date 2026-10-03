@@ -3,6 +3,8 @@
 - Status: Accepted
 - Date: 2026-09-27
 
+> 2026-10-03 refinement: ADR 0093 adds a best-effort retailer-diversity preference while preserving this ADR's category/source/rank semantics. A same-retailer category winner may be retained as an in-memory fallback while later categories are checked, but retailer preference never suppresses the only valid publication and never demotes to a lower rank merely to change supermarket.
+
 ## Context
 
 The product-award idea has converged on a strict editorial rule: one exceptional
