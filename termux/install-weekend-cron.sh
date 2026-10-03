@@ -9,6 +9,9 @@ WEEKEND="$PROJECT_DIR/termux/run-weekend.sh"
 TOMORROW="$PROJECT_DIR/termux/run-tomorrow-events.sh"
 REGISTRATION="$PROJECT_DIR/termux/run-event-registration.sh"
 SH_BIN=$(command -v sh)
+TERMUX_PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+CROND_SVDIR="${SVDIR:-$TERMUX_PREFIX/var/service}"
+CROND_SERVICE="$CROND_SVDIR/crond"
 BACKUP_DIR="$HOME/.cache/crontab"
 CURRENT=$(mktemp)
 JOBS=$(mktemp)
@@ -31,6 +34,16 @@ if [ ! -f "$TOMORROW" ]; then
 fi
 if [ ! -f "$REGISTRATION" ]; then
     echo "ОШИБКА: run-event-registration.sh не найден" >&2
+    exit 1
+fi
+
+crond_running() {
+    pgrep -f '[c]rond' >/dev/null 2>&1
+}
+
+if ! crond_running && [ ! -d "$CROND_SERVICE" ]; then
+    echo "ОШИБКА: crond не запущен и service directory отсутствует: $CROND_SERVICE" >&2
+    echo "Установите/настройте termux-services или запустите crond до изменения crontab." >&2
     exit 1
 fi
 
@@ -79,4 +92,14 @@ printf '%s\n' \
     >>"$NEXT"
 
 crontab "$NEXT"
-sv up crond
+
+if ! crond_running; then
+    SVDIR="$CROND_SVDIR" sv up crond
+fi
+
+if ! crond_running; then
+    echo "ОШИБКА: crontab установлен, но crond не удалось запустить" >&2
+    exit 1
+fi
+
+echo "crond: running"
