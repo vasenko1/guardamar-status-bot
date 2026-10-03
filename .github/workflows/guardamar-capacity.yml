@@ -13,6 +13,14 @@ on:
         options:
           - audit
           - launch
+      profile:
+        description: "Profile for a manual audit or launch"
+        required: true
+        default: a1
+        type: choice
+        options:
+          - a1
+          - e2
 
 permissions:
   contents: read
@@ -42,7 +50,9 @@ jobs:
           OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
           OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
           OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
-        run: python -m automation.guardamar_capacity audit
+        run: >-
+          python -m automation.guardamar_capacity audit
+          --profile "${{ inputs.profile }}"
       - name: Run one bounded capacity attempt
         id: capacity
         if: github.event_name == 'schedule' || inputs.action == 'launch'
@@ -53,7 +63,12 @@ jobs:
           OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
           OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
           GUARDAMAR_LAUNCH_SWITCH: OWNER_AUTHORIZED_PHASE_2
-        run: python -m automation.guardamar_capacity launch --allow-launch
+        run: |
+          PROFILE=auto
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            PROFILE="${{ inputs.profile }}"
+          fi
+          python -m automation.guardamar_capacity launch --allow-launch --profile "$PROFILE"
       - name: Preserve blocked result
         if: steps.capacity.outcome == 'failure'
         run: exit 1
