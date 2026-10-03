@@ -210,6 +210,18 @@ class RegistrationPlanningTests(unittest.TestCase):
         self.assertIn("Места закончились", plan.publication.message)
         self.assertNotIn("Завтра заканчивается", plan.publication.message)
 
+    def test_future_opening_notice_does_not_offer_signup_action(self):
+        future = record(
+            status="unknown",
+            registration_start_date=date(2026, 10, 3),
+            registration_url="https://official.example/register",
+        )
+
+        plan = plan_registration_run((future,), empty_state(), NOW)
+
+        self.assertIn("Завтра открывается", plan.publication.message)
+        self.assertNotIn("Записаться", plan.publication.message)
+
     def test_opening_tomorrow_suppresses_same_day_fallback_after_success(self):
         opening = record(
             registration_start_date=date(2026, 10, 3),
