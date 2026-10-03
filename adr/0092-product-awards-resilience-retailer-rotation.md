@@ -1,4 +1,4 @@
-# ADR 0092: Product Awards resilience and retailer rotation
+# ADR 0092: Product Awards resilience and retailer preference
 
 - Status: Accepted, implementation pending
 - Date: 2026-10-03
@@ -12,236 +12,257 @@ runtime problems after the three-day cooldown expired.
 First, the reviewed ALDI NALTROS product page no longer resolves as a current
 product detail. Both reviewed public routes return HTTP 200 and a Next.js shell,
 but `pageProps.hasError=true`, `page=None` and `apiData=None`. Two control
-ALDI product pages on the same build still return full product payloads. This is
-therefore product-specific ALDI failure or delisting, not a global ALDI parser,
-network, User-Agent or route failure.
+ALDI product pages on the same build still return full product payloads.
 
 Second, every current Consum candidate returns a correct exact EAN, product name
-and price while also returning two different image surfaces. The
-`productData.imageURL` base filename exists as a string but returns HTTP 404.
-The official `media[].url` entries for the same exact product return valid
-JPEGs. The runtime preferred the stale base field, so Telegram correctly
-rejected the missing image and the local recovery then downloaded the same
-missing URL and also received 404.
+and price while also returning two image surfaces. The current
+`productData.imageURL` base filename returns HTTP 404, while the same official
+payload's numbered `media[].url` entries return valid JPEGs. Production chose
+the stale base field; Telegram therefore correctly rejected a missing asset and
+the local recovery retried the same missing URL.
 
-The 29 September diagnosis therefore localized the Consum failure at the wrong
-layer. The reachable `_001.jpg` observed during that investigation was not the
-URL actually selected by production.
+The 29 September diagnosis localized the Consum failure at the wrong layer.
 
-A new editorial requirement also applies: consecutive Product Awards posts
-should prefer different supermarkets when a valid alternative exists. This is
-secondary to publication itself; retailer diversity must never suppress the
-only valid candidate.
+A new editorial preference also applies: consecutive Product Awards posts
+should use different supermarkets when a valid alternative exists. Publication
+itself remains more important than retailer diversity.
 
-The target runtime remains a weak Android phone under Termux. The solution must
-stay bounded, deterministic and browser-free.
+The target runtime is a weak Android phone under Termux. The repair should
+remove failure modes without adding a scheduler, queue, database, browser,
+persistent cache or new state machine.
 
 ## Decision
 
-### 1. Make retailer diversity a preference, never a publication blocker
+### 1. Publication is primary; retailer diversity is best-effort
 
-The primary Product Awards invariant is availability of useful content: when a
-due run has at least one valid unpublished candidate, retailer diversity must
-not be the reason the workflow stays silent.
+When a due run has a valid unpublished candidate, retailer diversity must not be
+the reason for silence.
 
-The last **confirmed** Product Awards retailer is therefore a preference input,
-not a hard exclusion. Use the stable retailer identity key already attached to
-a reviewed candidate (the current `retailer_kind` concept), not the display
-label.
+Use the retailer of the last confirmed published event only as a preference:
 
-The rule is:
+- prefer a valid product sold by a different retailer;
+- if no different-retailer product is valid, publish the same retailer again;
+- never choose a lower-ranked candidate inside a category merely to change
+  supermarket;
+- force mode keeps the same preference semantics.
 
-- prefer a valid candidate from a retailer different from the last confirmed
-  retailer;
-- if no such candidate can be selected under the normal category/source/rank
-  rules, allow the same retailer again;
-- force/operator cooldown bypass preserves the same preference/fallback logic;
-- an uncertain or failed Telegram delivery never advances the last retailer;
-- retailer diversity alone never creates a silent due run.
+### 2. Do not add retailer state
 
-A due run may still stay silent when every candidate fails the ordinary award,
-exact-retail, price, media or delivery-safety requirements.
+No `last_retailer_kind` field is needed.
 
-### 2. Use a two-pass selector and preserve source-native rank
+`published_events` already preserves confirmed publication order. For
+selection, inspect only its last event ID and resolve that ID against the
+current reviewed registry:
 
-Retailer diversity is not permission to demote an authoritative result.
+- if the event is still known, use its configured `retailer_kind`;
+- if there is no prior event or the old event no longer exists in the current
+  registry, treat the previous retailer as unknown and use ordinary selection.
 
-Walk categories from the existing category cursor and keep the configured
-source priority and source-native rank order.
+Retailer preference is not a safety invariant, so an unknown historical
+retailer is acceptable. This avoids schema migration, extra state validation,
+manual-requeue repair and rollback concerns.
 
-Use two bounded passes over the same finite reviewed registry:
+### 3. Use one bounded scan with one in-memory fallback
 
-1. **diversity pass:** prefer categories whose next reachable candidate does
-   not use the last confirmed retailer. When normal rank order reaches a
-   same-retailer candidate, defer the remainder of that category for this pass
-   rather than skipping that candidate to reach a lower rank;
-2. **fallback pass:** only when the diversity pass finds no publishable
-   candidate, walk the registry under the ordinary category/source/rank rules
-   with no retailer exclusion. A same-retailer candidate may then publish.
+Keep the existing category cursor and ordinary source-native priority/rank
+semantics.
 
-Candidates already proved unavailable in pass one are remembered only in a
-process-local attempted set and are not fetched again in pass two.
+During one selection call:
 
-This keeps three invariants true:
+1. walk categories in cursor order;
+2. inside each category, find its first **valid** candidate using the current
+   source/rank rules;
+3. if there is no known previous retailer, return that publication immediately;
+4. if its retailer differs from the previous retailer, return it immediately;
+5. if it uses the same retailer and no fallback is stored yet, keep that
+   publication in one local variable and continue with the next category;
+6. after all categories have been inspected, return the stored same-retailer
+   fallback, if any.
 
-1. publish when at least one normal candidate is valid;
-2. prefer a different supermarket whenever a valid alternative exists;
-3. never choose a lower-ranked product merely to manufacture retailer variety.
+Do not inspect lower ranks after a valid candidate has already won its category.
 
-### 3. Keep one minimal retailer field in delivery state
+This requires no second registry pass, no persistent rotation ledger and no
+new candidate-attempt state.
 
-Extend the existing atomic Product Awards state with one optional
-`last_retailer_kind` field.
+The cost tradeoff is explicit: when the first valid category repeats the
+previous retailer, the due run may verify later categories in search of a
+different retailer. The registry is finite and reviewed; this additional work
+occurs only on due runs.
 
-This is a backward-compatible additive state change. Existing schema-v1 files
-without the field remain readable. On the first upgraded read, derive the value
-from the most recently confirmed published event when that event is still known
-to the reviewed registry; otherwise treat it as unknown. Every later confirmed
-delivery writes the explicit retailer key.
+### 4. A product image is enrichment, not publication eligibility
 
-No retailer history, queue, database or rotation ledger is added.
+A Product Awards article still requires:
 
-Operator recovery that manually removes the most recent published event must
-also recompute or clear `last_retailer_kind`; normal runtime never edits
-published history backwards.
+- valid reviewed award evidence;
+- exact current retailer product identity;
+- current price.
 
-### 4. Treat Consum `media[]` as the current exact image contract
+A product image is preferred but optional.
+
+`RetailOffer.image_url` therefore becomes optional. A missing, stale or
+undeliverable image must not invalidate an otherwise publishable product.
+
+Rich Message delivery uses this order:
+
+1. when an allowlisted exact image URL exists, try the normal remote-image Rich
+   Message;
+2. only after Telegram explicitly rejects remote media, keep ADR 0084's one
+   bounded local image download and multipart upload attempt;
+3. if the local image cannot be fetched, or the explicit upload path fails
+   deterministically, send the same Rich Message **without the image**;
+4. after any ambiguous Telegram send outcome, do not attempt another send.
+
+Telegram Rich Messages support HTML content without media, so the final fallback
+does not need a second message format or a normal `sendMessage` conversion.
+
+A successful no-image delivery is a normal confirmed Product Awards
+publication and consumes the three-day slot.
+
+### 5. Fix Consum media precedence without probing every image
 
 For `retailer_kind=consum`:
 
-1. keep exact product-code/EAN/name/price validation unchanged;
-2. inspect the official product payload's `media[]` entries in source order;
-3. use the first syntactically valid allowlisted HTTPS `url`/ `imageURL`;
-4. do not synthesize `_001`, `_002` or other filenames;
-5. only if no usable `media[]` entry exists, consider
-   `productData.imageURL`, and accept that base field only after one bounded
-   local image validation.
+1. keep exact EAN/name/price validation unchanged;
+2. inspect official `media[]` entries first, in source order;
+3. accept only syntactically valid HTTPS URLs on the explicit Consum media-host
+   allowlist;
+4. if no usable `media[]` entry exists, consider
+   `productData.imageURL` only when it is also on the allowlist;
+5. do not synthesize `_001`, `_002` or other filenames;
+6. do not download an image merely to decide whether the product itself is
+   eligible.
 
-The current remote-URL Telegram path remains the cheapest first attempt. If
-Telegram still rejects a valid first-party image, ADR 0084's one bounded local
-download plus multipart upload remains the recovery path.
+Reachability is handled by the delivery recovery path. If all image paths fail,
+the article degrades to no-image publication.
 
-This change is Consum-specific. Do not generalize the stale-base-image behavior
-to Masymas or another retailer without source evidence.
+This is Consum-specific evidence. Do not generalize its field precedence to
+other retailers without a source probe.
 
-### 5. Recognize ALDI product-specific error state explicitly
+### 6. Make ALDI error classification precise
 
-Before parsing ALDI `apiData`, inspect the reviewed Next.js page state.
+Parse the Next.js page state before `apiData`.
 
-If `pageProps.hasError is true`, `page is None`, or `apiData is None`,
-classify the exact product as a product-specific retailer failure and skip the
-candidate for that invocation. Do not call it a successful current listing, do
-not infer delisting as a public fact, and do not switch to browser automation,
-search-engine snippets or an alternate route.
+- `pageProps.hasError is True` -> classify as a product-page error for this
+  candidate and fail it closed for the invocation;
+- healthy/ordinary page state with missing, null or malformed `apiData` ->
+  classify as retailer contract drift;
+- otherwise continue with the existing exact object ID, identity-marker,
+  availability and price checks.
 
-The current NALTROS candidate remains unpublished and retryable. If ALDI later
-restores a valid exact product payload, the ordinary exact-object checks may
-make it eligible again.
+Do not use `page is None` by itself as a product-error predicate.
 
-### 6. Do not re-fetch a failed candidate within one invocation
+This avoids turning a future global ALDI frontend change into a false
+product-specific diagnosis.
 
-Keep one process-local set of Product Awards event IDs already evaluated during
-the current command.
+NALTROS remains unpublished and retryable on a later daily due run.
 
-If delivery of a later selected candidate fails deterministically and selection
-continues, candidates that already failed authority/retailer verification in
-that same invocation are not fetched again.
+### 7. Keep the existing delivery-safety boundary
 
-This set is never persisted. A later daily invocation starts clean so temporary
-source recovery remains automatic.
+Before every non-idempotent send attempt, reserve the event as uncertain.
 
-### 7. Keep the existing delivery and resource boundaries
+- explicit deterministic failure clears the reservation before another safe
+  fallback attempt;
+- ambiguous send outcome leaves the reservation and stops;
+- confirmed remote-image, uploaded-image or no-image delivery uses the same
+  existing `confirm` path;
+- no retry path may create a second message after an ambiguous result.
 
-No new cron, daemon, queue, browser, image processor, LLM, database, cache or
-dependency is introduced.
+### 8. Improve due-run observability without a new alerting system
 
-The existing rules remain:
+A due run that publishes nothing should finish with one concise final log reason,
+for example:
 
-- one cheap daily cron invocation;
-- three-local-day cooldown after a confirmed publication;
-- one non-idempotent publication at most per invocation;
-- exact source and retailer identity validation;
-- bounded standard-library HTTP;
-- uncertain-before-send reservation;
-- no state consumption on a skipped/unpublishable candidate.
+- registry exhausted;
+- all candidates unavailable/unprovable;
+- uncertain prior delivery blocks resend.
 
-## Current-pool consequence
+Do not add a new operator-notification channel, monitoring daemon or persistent
+failure state solely for Product Awards.
 
-The current reviewed production registry is retailer-imbalanced:
+Candidate-level diagnostic logs remain the evidence for the exact source/media
+failure.
 
-- one ALDI candidate: NALTROS Brut;
+## Registry rebalance is separate from the incident repair
+
+The current reviewed registry is editorially imbalanced:
+
+- one ALDI candidate;
 - five Consum candidates;
-- one Masymas candidate: Mahou Sin Filtrar.
+- one Masymas candidate.
 
-Mahou is already published and NALTROS is currently product-erroring at ALDI.
-Therefore a same-retailer Consum publication remains allowed when every
-different-retailer candidate is unavailable. The imbalance is still an
-editorial-health problem because repeated Consum posts can make the feature look
-retailer-sponsored, so the reviewed pool should be expanded before relying on
-runtime preference alone.
+Earlier project research already proved strong Mercadona award-to-SKU joins and
+identified viable Lidl, DIA and Carrefour award/retail surfaces. The current
+Consum concentration is therefore a registry-construction artifact, not
+evidence that other chains lack strong products.
 
-Registry enrichment for Mercadona, Lidl, DIA, Carrefour or another approved
-local retailer is a separate evidence task. A retailer may be added only with
-the existing award-authority and exact-current-retail proof; rotation must never
-manufacture a weaker product merely to fill a slot.
+Rebuilding the pool is a separate research/configuration workstream and must not
+delay the small runtime repair above.
 
-## Registry rebalance is a separate required workstream
+Research priority:
 
-The selector preference solves presentation order but cannot repair a reviewed
-registry that is itself concentrated in one supermarket.
+1. revalidate already-proven Mercadona/WCCC joins;
+2. investigate Lidl, DIA and Carrefour candidates;
+3. add another healthy ALDI candidate when evidence supports one;
+4. keep Masymas locally relevant;
+5. retain valid Consum candidates, but do not expand Consum first merely because
+   its exact-product API is easy;
+6. re-review the four Producto del Año 2026 candidates against ADR 0083 source
+   admission because retailer technical convenience is not award-quality
+   evidence.
 
-The 3 October retailer-balance audit found that five of seven current entries
-use Consum even though earlier project research had already proved exact
-Mercadona award-to-SKU joins and current first-party award surfaces are
-available for Lidl, DIA and Carrefour. The imbalance is therefore not evidence
-that those chains lack strong products.
+This is not a retailer quota. If only one retailer has valid products, the bot
+continues publishing that retailer.
 
-Before treating the current registry as the long-run catalogue:
+## Scope deliberately rejected
 
-- revalidate the already-proven Mercadona/WCCC joins;
-- investigate Lidl, DIA and Carrefour candidates next;
-- add another healthy ALDI candidate independent of NALTROS when evidence
-  supports one;
-- keep Masymas locally relevant;
-- retain valid Consum candidates but do not expand Consum first merely because
-  its API is easier;
-- re-review the four Producto del Año 2026 entries against ADR 0083's
-  source-admission rule because technical retailer convenience cannot substitute
-  for award-quality semantics.
+Do not add:
 
-This is editorial maintenance priority, not a runtime quota. If evidence still
-leaves only one retailer publishable, the bot continues publishing it.
-
-See `research/2026-10-03-product-awards-retailer-balance-audit.md`.
+- a retailer quota;
+- a retailer-history ledger;
+- `last_retailer_kind` state;
+- a second selector pass;
+- a persistent negative-candidate cache;
+- `attempted_event_ids` state;
+- image filename guessing;
+- image reachability probes for publication eligibility;
+- browser/Playwright;
+- LLM product matching;
+- a new cron or discovery worker.
 
 ## Validation required before implementation is complete
 
 Tests must prove at least:
 
-- old state without `last_retailer_kind` still loads;
-- confirmed delivery records the retailer; failed/uncertain delivery does not;
-- the diversity pass prefers a different retailer without falling through to a
-  lower rank solely for variety;
-- the selector can continue to a later category from a different retailer;
-- when no different-retailer candidate is publishable, the fallback pass may
-  publish the same retailer;
-- retailer preference alone never causes silence or cooldown/cursor mutation;
-- after another retailer publishes, the previously deferred category naturally
-  regains first-pass priority;
-- Consum chooses a real `media[].url` over a stale
-  `productData.imageURL`;
-- a Consum base-only image requires bounded validation;
-- no synthetic Consum filename guessing is used;
-- ALDI `hasError=true/apiData=None` is classified before product parsing;
-- a candidate already failed in the current invocation is not fetched again
-  after another candidate's deterministic media failure.
+- previous retailer is derived from the last published event when that event is
+  still present in the registry;
+- unknown/removed historical event causes ordinary selection, not failure;
+- same-retailer first valid category is kept as fallback while a later
+  different-retailer valid category is preferred;
+- when no different-retailer candidate is valid, the stored same-retailer
+  fallback publishes;
+- a valid candidate prevents lower ranks in its category from being used merely
+  for retailer diversity;
+- no new state field is written for retailer preference;
+- Consum prefers allowlisted `media[].url` over the stale base image;
+- non-allowlisted media URLs are ignored;
+- absence or failure of every image still produces a no-image publication;
+- ambiguous remote/upload/no-image delivery never triggers another automatic
+  send;
+- ALDI `hasError=true` is classified as product-page failure;
+- ALDI missing/null `apiData` without `hasError=true` remains contract
+  drift;
+- a due run with no publication writes one final summary reason.
 
 ## Consequences
 
-The runtime remains small and publication cadence is not weakened by retailer
-diversity. Repeating one supermarket is acceptable when it is the only valid
-choice, but a different valid retailer is preferred first.
+The repair stays small and makes the product more reliable:
 
-The source investigation and exact retail registry remain the main mechanism
-for improving long-run variety; runtime preference cannot compensate for an
-imbalanced pool and must never substitute for award/retail evidence.
+- retailer variety improves when the reviewed pool supports it;
+- retailer preference never suppresses the only valid article;
+- media cannot block a verified product;
+- no state migration is required;
+- no second selector pass or candidate cache is required;
+- ALDI diagnostics become more truthful.
+
+Pool quality remains the long-run control against the appearance of retailer
+promotion; runtime heuristics are only a presentation preference.
