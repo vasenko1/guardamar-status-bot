@@ -45,7 +45,7 @@ def publication() -> ProductAwardPublication:
             image_url="https://cdn.example/product.jpg",
             product_name="Exact Product",
         ),
-        message="<p>message</p>",
+        message='<img src="https://cdn.example/product.jpg"/><p>message</p>',
     )
 
 
@@ -202,40 +202,8 @@ class ProductAwardCommandTests(unittest.IsolatedAsyncioTestCase):
                 list(Path(directory).glob(".product-award-media-*"))
             )
 
-    async def test_failed_local_media_recovery_skips_candidate_and_sends_next(self):
-        first = publication()
-        second_candidate = ReviewedCandidate(
-            category_key="next",
-            selection_key="next:2026",
-            event_id="next:event",
-            source_name="Test",
-            source_kind="producto_del_ano",
-            source_url="https://award.example/result",
-            source_hosts=frozenset({"award.example"}),
-            source_markers=("winner",),
-            retailer="Test Market",
-            retailer_kind="consum",
-            retailer_url="https://shop.example/api/product/8",
-            retailer_hosts=frozenset({"shop.example"}),
-            retailer_markers=("Next Product",),
-            product_name="Next Product",
-            award_year=2026,
-            source_category="Snacks",
-            award_scope="exact_product",
-            award_result="Producto del Año",
-            product_id=8,
-            expected_ean="8410000000001",
-        )
-        second = ProductAwardPublication(
-            candidate=second_candidate,
-            offer=RetailOffer(
-                retailer="Test Market",
-                price="3,00 €",
-                image_url="https://cdn.example/next.jpg",
-                product_name="Next Product",
-            ),
-            message="<p>next</p>",
-        )
+    async def test_failed_local_media_recovery_sends_same_candidate_without_image(self):
+        item = publication()
         media_error = TelegramError(
             "bad request",
             retryable=False,
@@ -256,7 +224,7 @@ class ProductAwardCommandTests(unittest.IsolatedAsyncioTestCase):
                 ),
                 patch(
                     "telegrambot.__main__.select_product_award_publication",
-                    side_effect=((0, first), (1, second)),
+                    return_value=(0, item),
                 ) as select,
                 patch(
                     "telegrambot.__main__.send_rich_message",
@@ -265,20 +233,23 @@ class ProductAwardCommandTests(unittest.IsolatedAsyncioTestCase):
                 patch(
                     "telegrambot.__main__.fetch_product_award_image",
                     side_effect=ProductAwardError("media", code="MEDIA-NETWORK"),
-                ),
+                ) as fetch_image,
             ):
                 self.assertEqual(await _run_command("product-awards-force"), 0)
 
-            self.assertEqual(send.await_count, 2)
-            self.assertEqual(select.call_count, 2)
-            self.assertEqual(
-                select.call_args_list[1].kwargs["excluded_event_ids"],
-                frozenset({first.candidate.event_id}),
+            select.assert_called_once()
+            fetch_image.assert_called_once_with(
+                item.candidate,
+                item.offer.image_url,
             )
+            self.assertEqual(send.await_count, 2)
+            self.assertIn("<img", send.await_args_list[0].args[2])
+            self.assertNotIn("<img", send.await_args_list[1].args[2])
+
             state = ProductAwardState(state_path)
-            self.assertNotIn(first.candidate.event_id, state.published_events())
-            self.assertIn(second.candidate.event_id, state.published_events())
+            self.assertIn(item.candidate.event_id, state.published_events())
             self.assertIsNone(state.uncertain_event())
+            self.assertIsNotNone(state._read()["last_delivery_day"])
 
     async def test_ambiguous_send_remains_uncertain(self):
         item = publication()
