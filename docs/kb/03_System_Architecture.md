@@ -413,14 +413,13 @@ already published, it exits before any award or retailer HTTP request.
 
 A due run walks the reviewed broad-category registry from the stored category
 cursor. Inside one category it preserves configured authority priority and
-source-native rank order. ADR 0092 adds a second scheduling invariant: the
-retailer of the last confirmed Product Awards publication cannot be the
-retailer of the next confirmed publication. When the next candidate reached in
-normal source/rank order belongs to that retailer, the rest of that category is
-deferred for the invocation and selection continues with the next broad
-category. The selector does not demote to a lower-ranked product merely to
-change supermarket. If no different-retailer category is publishable, the run
-stays silent and consumes neither cooldown nor cursor progress.
+source-native rank order. ADR 0092 adds a best-effort retailer-diversity preference. A due run first
+tries to find a publishable category whose next reachable candidate uses a
+different retailer from the last confirmed post. It never demotes to a lower
+rank merely to change supermarket. If that first pass finds no valid
+different-retailer candidate, a second bounded pass uses the ordinary
+category/source/rank order and may publish the same retailer again. Retailer
+preference alone never makes a due run silent.
 
 The existing atomic state keeps cooldown/dedup/cursor/uncertain-delivery facts
 plus one small last-retailer identity. Old state without that optional field is
@@ -452,9 +451,9 @@ through to another candidate in the same invocation. It is discarded on exit;
 there is no persistent negative cache.
 
 No discovery queue, catalogue crawler, database, resident process, browser,
-image processor or AI service is added. The current reviewed pool is
-retailer-imbalanced, so strict retailer rotation may intentionally create
-silence until a different retailer has a reviewed eligible candidate.
+image processor or AI service is added. The current reviewed pool is retailer-imbalanced, so long-run diversity must
+be improved by registry research; runtime preference alone is only a
+presentation safeguard and never blocks the sole valid candidate.
 
 ### One-off event registration
 
