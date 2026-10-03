@@ -32,10 +32,11 @@ There is no single municipal date that should drive a user-facing
 Zona Azul keeps its own reviewed seasonal rule and its own resident
 notification. SafeBeach is an independent operational source: its data is
 accepted only when the page is current and the record itself is active
-(`hasActividad`) and not ended (`serviceEnded`). The current
-15 June–15 September request boundary remains only as an internal stale-data
-guard rail while off-season source behaviour is being reviewed; it is not
-presented as an official season and is not coupled to the parking notice.
+(`hasActividad`) and not ended (`serviceEnded`). The request boundary is an
+internal stale-data guard rail, not an official season and not coupled to the
+parking notice. The later 3 October 2026 observation proved that the former
+September cutoff was too early; ADR 0094 now owns the 1 June–15 October runtime
+guard. See `research/2026-10-03-safebeach-post-september-observation.md`.
 
 The annual bathing-water programme is also independent. Its current dates and
 latest weekly report are now discovered from the municipal programme index

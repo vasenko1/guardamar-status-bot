@@ -127,6 +127,7 @@ CRON_TZ=Europe/Madrid
 10-40/5 10 * * * /path/to/TelegramBot/termux/update-daily.sh
 0,5,10 11,13,15,17,19 * 7,8 * /path/to/TelegramBot/termux/monitor-updates.sh
 0,5,10 12,14,16,18 * 6,9 * /path/to/TelegramBot/termux/monitor-updates.sh
+0,5,10 12,14,16,18 1-15 10 * /path/to/TelegramBot/termux/monitor-updates.sh
 0 20 * 6,9 * /path/to/TelegramBot/termux/monitor-updates.sh
 0 11,15,19 * 1-5,10-12 * /path/to/TelegramBot/termux/monitor-updates.sh
 2 9 * * * /path/to/TelegramBot/termux/sync-guide.sh
@@ -165,13 +166,15 @@ The validated Android deployment uses the scripts in `termux/`:
   SafeBeach dependency. `termux/run-suma.sh` is an independent 08:05 one-shot
   for exact-date SUMA tax reminders, deliberately staggered from the Morning
   Digest and neighboring device jobs. `termux/update-daily.sh` runs every five minutes
-  from 10:10 through 10:40; from 1 June through 30 September its first valid
+  from 10:10 through 10:40; from 1 June through 15 October its first valid
   SafeBeach response creates the separate beach root immediately and later
-  responses edit that root in place. CAMS uses only the 10:40 invocation for
+  responses edit that root in place. From 16 October through 31 May these
+  invocations make no SafeBeach request. CAMS uses only the 10:40 invocation for
   its early late-cycle check;
-- `termux/monitor-updates.sh` uses the same 1 June–30 September beach guard;
-  confirmed later beach changes are replies to the root, while AEMET warning
-  checks continue year-round on their documented cadence;
+- `termux/monitor-updates.sh` uses the same 1 June–15 October beach guard;
+  October keeps the reduced four-window SafeBeach cadence used at the seasonal
+  shoulders, while AEMET warning checks keep their existing year-round cadence;
+  confirmed later beach changes are replies to the root;
 - `termux/sync-municipal-events.sh` at 05:10 and
   `termux/sync-agenda-events.sh` at 05:30 to atomically refresh small event
   catalogs before publication;
@@ -259,6 +262,7 @@ CRON_TZ=Europe/Madrid
 10-40/5 10 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/update-daily.sh
 0,5,10 11,13,15,17,19 * 7,8 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
 0,5,10 12,14,16,18 * 6,9 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
+0,5,10 12,14,16,18 1-15 10 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
 0 20 * 6,9 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
 0 11,15,19 * 1-5,10-12 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
 2 9 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-guide.sh

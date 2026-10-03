@@ -355,7 +355,7 @@ end must not leave that stale warning uncorrected.
 
 ### Daily beach root
 
-From 1 June through 30 September, SafeBeach has one separate daily root titled
+From 1 June through 15 October, SafeBeach has one separate daily root titled
 `🏖 Пляжи Гуардамара сегодня`. The Morning Digest never requests or renders
 SafeBeach. During the 10:10–10:40 update cycle, the first valid current
 SafeBeach response containing at least one known beach flag creates the root
@@ -645,14 +645,16 @@ presented as absence of warnings.
 
 - Publish the immutable Morning Digest at `07:30`; it never collects
   SafeBeach.
-- From 1 June through 30 September, check SafeBeach at `10:10` and every
+- From 1 June through 15 October, check SafeBeach at `10:10` and every
   five minutes through `10:40`.
 - Any valid current response with at least one known Guardamar flag is enough
   to create the separate beach root immediately.
 - Every later valid response through `10:40` edits that same root. Do not
   merge records from separate responses; each edit represents one whole
   current source response.
-- From 1 October through 31 May, make no scheduled SafeBeach requests.
+- From 16 October through 31 May, make no scheduled SafeBeach requests.
+- During 1–15 October, later SafeBeach monitoring uses the reduced four-window
+  shoulder cadence; AEMET warning checks keep their existing year-round cadence.
 - After `10:40`, do not silently rewrite the SafeBeach snapshot in an
   existing root. The bounded operational monitor confirms later flag/jellyfish
   changes and publishes them as replies to the root.
