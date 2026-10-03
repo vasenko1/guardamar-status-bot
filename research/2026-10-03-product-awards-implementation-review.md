@@ -245,6 +245,43 @@ No runtime code change was required for this finding. The full validation suite
 must be rerun against the new exact main commit before production checkout is
 updated.
 
+## Second production pre-deploy gate finding
+
+The second production-device validation run used reviewed Product Awards commit
+`08ea774103e6da8f80e617f7bcf107669b962d33`.
+
+Results before deployment:
+
+- compileall passed;
+- all 50 focused Product Awards tests passed, including the corrected no-image
+  command-level integration test;
+- the full repository suite progressed to 1518 tests and failed on one unrelated
+  Weekend Termux installer test;
+- deployment again stopped before the production checkout was changed.
+
+The failing test was:
+
+`test_installer_fails_before_crontab_change_when_crond_is_unavailable`.
+
+Root cause is test-environment leakage, not a runtime regression. The test
+helper copied the real Termux environment and replaced `PREFIX`, `PATH`,
+`pgrep`, `sv` and crontab with isolated fakes, but it did not remove an
+already-exported real `SVDIR`. On a live Termux device with termux-services,
+the installer correctly prefers `SVDIR` over `PREFIX`, so the supposedly
+missing fake service directory was replaced by the real production service
+root. The fake `sv` then marked fake crond as running and the test returned
+success instead of the expected fail-closed result.
+
+The test harness now removes inherited `SVDIR` before injecting the fake
+`PREFIX`. This matches the test's stated non-interactive-shell scenario and
+keeps the real installer behavior unchanged.
+
+No Product Awards runtime code and no Weekend installer runtime code were changed
+for this finding.
+
+The complete production-device validation suite must be rerun against the new
+exact main commit before production checkout is updated.
+
 ## Residual risks
 
 No blocking code-review issues remain.
