@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-10-03
 - Implementation: Pending production probes
+- State layout: ADR 0092
 
 ## Context
 
@@ -356,6 +357,8 @@ Examples of the intended rule:
 - municipal/Turismo remains the owner for its own registration/reservation
   forms and contacts;
 - FACV owns its tournament registration;
+- Pesca CV owns federation competition registration/convocatoria facts when
+  projected from the exact official detail;
 - Biblioteca owns a first-party library reservation when proven;
 - CONVEGA owns its own registration record.
 
@@ -420,6 +423,17 @@ presentation fields and official featured images.
 Probe whether current WordPress posts expose deterministic actionable
 admission facts often enough to justify access projection.
 
+#### Pesca CV
+
+Live first-party reconnaissance on 2026-10-03 confirmed a Guardamar competition
+on 17 October whose official federation convocatoria was issued on 14 September
+and explicitly sets club registration through 13 October at 12:00.
+
+Pesca CV is therefore a proven long-lead registration source rather than only a
+calendar supplement. Access projection must come from the exact convocatoria
+detail/PDF and must preserve the source restriction that clubs perform the
+registration; the calendar row alone is insufficient evidence.
+
 ### Price changes
 
 Price belongs to the rich presentation.
@@ -432,23 +446,26 @@ This avoids turning the feature into a ticket-market monitor.
 
 ### Legacy-state migration guard
 
+ADR 0092 controls the target persistent layout.
+
 The first event-access deployment migrates the deployed registration state only
-once.
+once into one event-centric `records[record_id]` entry per legacy event.
 
 Use deterministic single-option migration for each valid v1 record
 (`access_kind="registration"`, one stable default option) while preserving
-baseline, last explicit status, audience knowledge and sent triggers. Never
-invent a Telegram root ID.
+baseline, last explicit status, audience knowledge and that record's sent
+triggers. Never invent a Telegram root ID.
 
 Deployment must refuse the migration while the legacy v1 state contains an
 unresolved `uncertain` delivery; the operator must resolve that existing
 ambiguity first. This avoids trying to reinterpret an in-flight v1 publication
 under the new root schema.
 
-If a legacy `announced_record_id` has no root message ID, preserve audience
-knowledge. On its next material publication, create one self-contained
-replacement/current-state root and store its Telegram ID instead of pretending
-the event was never announced or sending an unthreaded follow-up.
+A legacy `announced_record_id` becomes `audience_known=true` on that event
+entry. If it has no root message ID, the next material publication creates one
+self-contained replacement/current-state root and stores its Telegram ID
+instead of pretending the event was never announced or sending an unthreaded
+follow-up.
 
 ### Translation/media/threading
 

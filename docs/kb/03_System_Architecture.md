@@ -429,17 +429,27 @@ clears the reservation, while an ambiguous result is never automatically
 resent. No discovery queue, database, resident process or AI service is added.
 
 
-### One-off event registration
+### One-off event access
 
-ADR 0089 adds a narrow registration lifecycle for official one-off events. A
-source-specific adapter owns collection, stable occurrence identity and current
-registration evidence. One local source snapshot projects both ordinary
-`Event` rows and minimal registration records, avoiding a second general event
-model.
+ADR 0089 is the deployed CONVEGA registration-only first slice. ADRs 0090-0092
+define the pending general form: registration, reservation and paid/free ticket
+access share one source-owned lifecycle, one real event owns one rich Telegram
+root, and source-proven sessions are child options.
 
-Registration delivery has its own small atomic baseline/trigger state and one
-uncertain reservation for ambiguous Telegram sends. It is not a generic
-notification service and does not reuse recurring-course state. Same-day source
-freshness is required for registration claims; Morning may still consume
-last-good Event data. The project runtime lock, when needed, protects only the
-bounded source-refresh phase and is released before Telegram delivery.
+Existing source refreshers remain responsible for network collection and small
+normalized snapshots. Event-access publication consumes only pure local
+source-specific projections grouped as fresh per-source batches; a stale source
+is omitted independently and cannot suppress fresh unrelated sources. Do not
+turn the notification runner into a second multi-source refresh subsystem.
+
+Persistent lifecycle state is event-centric. One bounded
+`records[record_id]` entry keeps that event's semantic option state,
+`audience_known`, optional Telegram root metadata and record-local sent
+triggers. One global uncertain reservation protects the single outbound
+operation currently being attempted. The planner processes one record at a time
+and commits only that record after confirmed delivery.
+
+The global `Event` model remains presentation-only for Morning/Tomorrow/Weekend
+and is not replaced by a second general event model. Access truth remains
+source-owned and fail-closed. Same-day freshness is required for proactive
+claims; Morning may still consume last-good Event data.
