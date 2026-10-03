@@ -37,46 +37,55 @@ stay bounded, deterministic and browser-free.
 
 ## Decision
 
-### 1. Make consecutive-retailer exclusion a hard publication rule
+### 1. Make retailer diversity a preference, never a publication blocker
 
-The last **confirmed** Product Awards retailer becomes temporarily ineligible
-for the next confirmed Product Awards publication.
+The primary Product Awards invariant is availability of useful content: when a
+due run has at least one valid unpublished candidate, retailer diversity must
+not be the reason the workflow stays silent.
 
-Use the stable retailer identity key already attached to a reviewed candidate
-(the current `retailer_kind` concept), not the display label.
+The last **confirmed** Product Awards retailer is therefore a preference input,
+not a hard exclusion. Use the stable retailer identity key already attached to
+a reviewed candidate (the current `retailer_kind` concept), not the display
+label.
 
-The rule is strict:
+The rule is:
 
-- a force/operator cooldown bypass does not bypass retailer rotation;
-- an uncertain Telegram outcome does not advance the last retailer;
-- a deterministic failed send does not advance the last retailer;
-- when every otherwise eligible remaining category would repeat the last
-  retailer, publish nothing;
-- a silent run does not consume the three-day slot or change the category
-  cursor.
+- prefer a valid candidate from a retailer different from the last confirmed
+  retailer;
+- if no such candidate can be selected under the normal category/source/rank
+  rules, allow the same retailer again;
+- force/operator cooldown bypass preserves the same preference/fallback logic;
+- an uncertain or failed Telegram delivery never advances the last retailer;
+- retailer diversity alone never creates a silent due run.
 
-No same-retailer fallback is allowed merely to maintain cadence.
+A due run may still stay silent when every candidate fails the ordinary award,
+exact-retail, price, media or delivery-safety requirements.
 
-### 2. Preserve category/source rank semantics while rotating retailers
+### 2. Use a two-pass selector and preserve source-native rank
 
-Retailer rotation is not permission to demote an authoritative result.
+Retailer diversity is not permission to demote an authoritative result.
 
-Walk categories from the existing category cursor. Inside a category, preserve
-the configured source priority and source-native rank order.
+Walk categories from the existing category cursor and keep the configured
+source priority and source-native rank order.
 
-When the next candidate reached in that order belongs to the last confirmed
-retailer, defer the **rest of that category for this invocation** and continue
-with the next broad category. Do not skip a rotation-blocked #1 merely to
-publish #2 or a secondary source from another supermarket.
+Use two bounded passes over the same finite reviewed registry:
 
-Higher-ranked candidates that already failed their normal exact authority or
-retail verification may still allow the next ranked candidate to be reached in
-the ordinary way. The retailer gate applies when each candidate is reached.
+1. **diversity pass:** prefer categories whose next reachable candidate does
+   not use the last confirmed retailer. When normal rank order reaches a
+   same-retailer candidate, defer the remainder of that category for this pass
+   rather than skipping that candidate to reach a lower rank;
+2. **fallback pass:** only when the diversity pass finds no publishable
+   candidate, walk the registry under the ordinary category/source/rank rules
+   with no retailer exclusion. A same-retailer candidate may then publish.
 
-This keeps both invariants true:
+Candidates already proved unavailable in pass one are remembered only in a
+process-local attempted set and are not fetched again in pass two.
 
-1. source-native quality ordering remains authoritative;
-2. the public retailer sequence never repeats consecutively.
+This keeps three invariants true:
+
+1. publish when at least one normal candidate is valid;
+2. prefer a different supermarket whenever a valid alternative exists;
+3. never choose a lower-ranked product merely to manufacture retailer variety.
 
 ### 3. Keep one minimal retailer field in delivery state
 
@@ -164,11 +173,11 @@ The current reviewed production registry is retailer-imbalanced:
 - one Masymas candidate: Mahou Sin Filtrar.
 
 Mahou is already published and NALTROS is currently product-erroring at ALDI.
-Therefore, after the next successful Consum publication, strict retailer
-rotation may intentionally produce no later publication until ALDI recovers or
-a new reviewed candidate from a different supermarket is added.
-
-This is expected behavior, not a reason to weaken the rotation rule.
+Therefore a same-retailer Consum publication remains allowed when every
+different-retailer candidate is unavailable. The imbalance is still an
+editorial-health problem because repeated Consum posts can make the feature look
+retailer-sponsored, so the reviewed pool should be expanded before relying on
+runtime preference alone.
 
 Registry enrichment for Mercadona, Lidl, DIA, Carrefour or another approved
 local retailer is a separate evidence task. A retailer may be added only with
@@ -181,14 +190,14 @@ Tests must prove at least:
 
 - old state without `last_retailer_kind` still loads;
 - confirmed delivery records the retailer; failed/uncertain delivery does not;
-- force mode cannot repeat the same retailer;
-- a same-retailer next candidate defers its category without source/retailer
-  HTTP and without falling through to a lower rank solely for diversity;
+- the diversity pass prefers a different retailer without falling through to a
+  lower rank solely for variety;
 - the selector can continue to a later category from a different retailer;
-- all-same-retailer remainder produces no publication and no state/cooldown
-  mutation;
-- after another retailer publishes, the previously deferred category becomes
-  eligible again;
+- when no different-retailer candidate is publishable, the fallback pass may
+  publish the same retailer;
+- retailer preference alone never causes silence or cooldown/cursor mutation;
+- after another retailer publishes, the previously deferred category naturally
+  regains first-pass priority;
 - Consum chooses a real `media[].url` over a stale
   `productData.imageURL`;
 - a Consum base-only image requires bounded validation;
@@ -199,12 +208,10 @@ Tests must prove at least:
 
 ## Consequences
 
-The runtime remains small, but publication cadence becomes deliberately
-content-dependent. Retailer diversity may create silence when the reviewed pool
-is too concentrated in one chain.
+The runtime remains small and publication cadence is not weakened by retailer
+diversity. Repeating one supermarket is acceptable when it is the only valid
+choice, but a different valid retailer is preferred first.
 
-That silence is preferable to presenting Product Awards as if the feature
-covered different supermarkets while repeatedly showing the same retailer.
-
-The source investigation and exact retail registry remain the mechanism for
-improving variety; runtime heuristics do not substitute for evidence.
+The source investigation and exact retail registry remain the main mechanism
+for improving long-run variety; runtime preference cannot compensate for an
+imbalanced pool and must never substitute for award/retail evidence.
