@@ -200,12 +200,11 @@ underrepresented retailers in this order until the pool is healthy:
 
 This is a **research priority**, not a retailer quota.
 
-### Pool-health target
+### Pool-health review
 
-Do not impose a hard runtime quota. As an editorial maintenance target, the
-reviewed unpublished pool should normally contain candidates from at least
-three different retailers, and no single retailer should dominate simply
-because its API is easier.
+Do not impose a numeric retailer quota or arbitrary minimum retailer count.
+Periodically inspect whether one retailer dominates because its API is easier
+rather than because the reviewed evidence is stronger.
 
 If evidence only supports one retailer for a period, publication continues.
 The bot should prefer another retailer when one is valid but must never go
@@ -213,15 +212,14 @@ silent merely to preserve diversity.
 
 ## Selection semantics
 
-ADR 0092 implements retailer preference with two bounded passes:
+ADR 0092 implements retailer preference in one bounded scan. The first valid
+same-retailer category winner is held only as an in-memory fallback while later
+categories are checked. A different-retailer winner is preferred; otherwise
+the stored fallback publishes.
 
-1. first pass prefers a different retailer while preserving category/source/rank
-   order;
-2. if no different-retailer candidate is publishable, the ordinary selector is
-   the fallback and the same retailer may publish again.
-
-This solves presentation order. It does **not** solve an imbalanced registry,
-which is why the pool rebuild is required independently.
+This solves presentation order without another selector pass or retailer state.
+It does **not** solve an imbalanced registry, which is why the pool rebuild is
+required independently.
 
 ## Implementation boundary
 
@@ -232,8 +230,8 @@ include:
 
 - Consum media repair;
 - explicit ALDI error-state handling;
-- two-pass best-effort retailer diversity;
-- process-local attempted-candidate suppression;
+- one-scan best-effort retailer diversity with an in-memory fallback;
+- no-image publication after deterministic media-path failure;
 - a reviewed registry rebuild using the retailer priorities above;
 - re-review of Producto del Año candidates against ADR 0083 source admission.
 
