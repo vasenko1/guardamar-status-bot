@@ -1,5 +1,7 @@
 # Product Awards Rich Message media recovery — 2026-09-29
 
+> **Correction — 2026-10-03:** this document records the original incident and decision, but its root-cause conclusion was incomplete. Production later proved that the runtime sent Consum's stale base `productData.imageURL` (HTTP 404), not the working `media[0].url` ending in `_001.jpg` that was manually verified here. Telegram therefore rejected a genuinely missing asset, and the local recovery retried the same missing URL. See `research/2026-10-03-product-awards-publication-gap.md` and ADR 0092. The multipart recovery remains useful only after a reachable exact first-party image has been selected.
+
 ## Incident
 
 The first controlled Product Awards recovery run after the deleted NALTROS post
