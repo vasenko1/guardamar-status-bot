@@ -1,0 +1,110 @@
+name: Guardamar A1 capacity report probe
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/guardamar-a1-capacity-report-once.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install pinned OCI SDK
+        run: python -m pip install "oci==2.185.2"
+      - name: Probe A1 1/6 and 1/2 host capacity
+        env:
+          OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
+          OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import oci
+
+          REGION = "eu-madrid-3"
+          AD = "OhIQ:EU-MADRID-3-AD-1"
+          ROOT_COMPARTMENT = "ocid1.tenancy.oc1..aaaaaaaapdyqhnggirlwkrratalmp4hio25ol6rd2xgravp3kazcv67dsqfa"
+          SHAPE = "VM.Standard.A1.Flex"
+
+          signer = oci.signer.Signer(
+              tenancy=os.environ["OCI_TENANCY_OCID"],
+              user=os.environ["OCI_USER_OCID"],
+              fingerprint=os.environ["OCI_FINGERPRINT"],
+              private_key_file_location=None,
+              private_key_content=os.environ["OCI_PRIVATE_KEY"],
+          )
+          config = {
+              "tenancy": os.environ["OCI_TENANCY_OCID"],
+              "user": os.environ["OCI_USER_OCID"],
+              "fingerprint": os.environ["OCI_FINGERPRINT"],
+              "key_file": "<in-memory>",
+              "region": REGION,
+          }
+          client = oci.core.ComputeClient(
+              config,
+              signer=signer,
+              retry_strategy=oci.retry.NoneRetryStrategy(),
+          )
+
+          requested = [
+              oci.core.models.CreateCapacityReportShapeAvailabilityDetails(
+                  instance_shape=SHAPE,
+                  instance_shape_config=oci.core.models.CapacityReportInstanceShapeConfig(
+                      ocpus=1.0,
+                      memory_in_gbs=6.0,
+                  ),
+              ),
+              oci.core.models.CreateCapacityReportShapeAvailabilityDetails(
+                  instance_shape=SHAPE,
+                  instance_shape_config=oci.core.models.CapacityReportInstanceShapeConfig(
+                      ocpus=1.0,
+                      memory_in_gbs=2.0,
+                  ),
+              ),
+          ]
+
+          details = oci.core.models.CreateComputeCapacityReportDetails(
+              compartment_id=ROOT_COMPARTMENT,
+              availability_domain=AD,
+              shape_availabilities=requested,
+          )
+          response = client.create_compute_capacity_report(
+              details,
+              retry_strategy=oci.retry.NoneRetryStrategy(),
+          )
+
+          rows = []
+          for item in response.data.shape_availabilities:
+              cfg = item.instance_shape_config
+              rows.append({
+                  "shape": item.instance_shape,
+                  "ocpus": None if cfg is None else cfg.ocpus,
+                  "memory_in_gbs": None if cfg is None else cfg.memory_in_gbs,
+                  "fault_domain": item.fault_domain,
+                  "availability_status": item.availability_status,
+                  "available_count": item.available_count,
+              })
+
+          print(json.dumps({
+              "region": REGION,
+              "availability_domain": response.data.availability_domain,
+              "requested_profiles": [
+                  {"ocpus": 1.0, "memory_in_gbs": 6.0},
+                  {"ocpus": 1.0, "memory_in_gbs": 2.0},
+              ],
+              "results": rows,
+          }, sort_keys=True))
+          PY
