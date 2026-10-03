@@ -452,7 +452,6 @@ def _parse_post(raw: Any, now: datetime) -> Tuple[Dict[str, Any], ...]:
             continue
         stage = occurrence["stage"]
         relevant = occurrence["guardamar_relevant"]
-        sentence = occurrence["sentence"]
         route = None
         records.append({
             "record_id": f"convega:post-{identifier}:stage-{stage}",
@@ -524,11 +523,6 @@ def _explicit_registration_cta(
         if action is not None:
             return action
     return None
-
-
-def _has_registration_semantics(text: str) -> bool:
-    folded = _fold(text)
-    return any(phrase in folded for phrase in _OPEN_PHRASES)
 
 
 def _form_has_registration_semantics(form: Mapping[str, Any]) -> bool:
