@@ -45,7 +45,7 @@ def publication() -> ProductAwardPublication:
             image_url="https://cdn.example/product.jpg",
             product_name="Exact Product",
         ),
-        message="<p>message</p>",
+        message='<img src="https://cdn.example/product.jpg"/><p>message</p>',
     )
 
 
@@ -243,6 +243,7 @@ class ProductAwardCommandTests(unittest.IsolatedAsyncioTestCase):
                 item.offer.image_url,
             )
             self.assertEqual(send.await_count, 2)
+            self.assertIn("<img", send.await_args_list[0].args[2])
             self.assertNotIn("<img", send.await_args_list[1].args[2])
 
             state = ProductAwardState(state_path)
