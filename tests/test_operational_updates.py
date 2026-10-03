@@ -76,10 +76,23 @@ class ScheduleTests(unittest.TestCase):
         self.assertEqual(september_end.beach_phase, 1)
         self.assertFalse(september_end.check_aemet)
 
-        october = scheduled_run(
-            datetime(2026, 10, 1, 14, 0, tzinfo=MADRID)
+        october_end = scheduled_run(
+            datetime(2026, 10, 15, 14, 0, tzinfo=MADRID)
         )
-        self.assertIsNone(october.beach_phase)
+        self.assertEqual(october_end.beach_phase, 1)
+        self.assertFalse(october_end.check_aemet)
+
+        october_aemet = scheduled_run(
+            datetime(2026, 10, 15, 15, 0, tzinfo=MADRID)
+        )
+        self.assertIsNone(october_aemet.beach_phase)
+        self.assertTrue(october_aemet.check_aemet)
+
+        after_window = scheduled_run(
+            datetime(2026, 10, 16, 14, 0, tzinfo=MADRID)
+        )
+        self.assertIsNone(after_window.beach_phase)
+        self.assertFalse(after_window.check_aemet)
 
         winter = scheduled_run(
             datetime(2026, 12, 7, 11, 0, tzinfo=MADRID)
