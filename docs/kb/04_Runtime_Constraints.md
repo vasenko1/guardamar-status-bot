@@ -386,20 +386,36 @@ Any exception to these constraints requires an accepted ADR.
 
 ## Product-award runtime budget
 
-The product-award feature has one daily one-shot cron invocation. It must read
-`state/product_awards.json` before source access.
+The product-award feature has one daily one-shot cron invocation and reads only
+the existing `state/product_awards.json` before source access.
 
 - During the three-day cooldown: zero award/retailer HTTP requests.
-- After all reviewed events are published: zero award/retailer HTTP requests.
-- On a due run: request only the reviewed award page and exact retailer product
-  page needed for candidate verification; never scan a full catalogue.
-- Every request uses the shared bounded standard-library transport, exact HTTPS
-  hosts, a 15-second timeout and a 768 KiB HTML ceiling.
-- ALDI exact-product verification may parse the embedded Next.js JSON already
-  present in the bounded HTML; it must not execute JavaScript.
-- No browser/Playwright, OCR, LLM, search engine, database, daemon, discovery
-  queue, raw-response cache or retailer-specific recurring job is allowed.
-- State stores only cooldown/dedup/cursor/uncertain-delivery fields; raw award
-  and retailer pages are discarded when the process exits.
-- The product-award log rotates at 512 KiB with one previous file.
+- After registry exhaustion: zero award/retailer HTTP requests.
+- A due run uses one finite category scan. It may inspect later categories only
+  when the first valid category winner repeats the previous retailer and a
+  different-retailer alternative is being sought.
+- Retailer preference adds no state field, second scan, queue or persistent
+  cache. The previous retailer is derived best-effort from the last published
+  event ID already stored.
+- Award evidence, exact retail identity and current price remain mandatory.
+- Product media is optional and cannot make an otherwise valid product
+  ineligible.
+- Consum image selection prefers allowlisted official `media[]` URLs; no
+  synthetic filename guessing or eligibility-time image download is allowed.
+- ALDI may parse embedded Next.js JSON but never executes JavaScript. Explicit
+  `hasError=true` is a product-page failure; a healthy page with missing
+  `apiData` is contract drift.
+- Telegram tries remote image first. Only an explicit remote-media rejection
+  may trigger the existing bounded local image download/upload. A deterministic
+  media-path failure may then send the same Rich Message without media.
+  Ambiguous delivery always stops.
+- Every HTTP operation remains bounded by the existing host allowlists,
+  timeouts and response-size limits.
+- No browser/Playwright, OCR, LLM, search engine, database, daemon, retailer
+  quota, discovery queue, raw-response cache or retailer-specific recurring job
+  is allowed.
+- State remains cooldown/dedup/cursor/uncertain-delivery only; no migration is
+  required for retailer preference.
+- Product-award logs remain bounded and a due no-publication run records one
+  concise final reason.
 
