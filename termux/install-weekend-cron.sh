@@ -16,11 +16,12 @@ BACKUP_DIR="$HOME/.cache/crontab"
 CURRENT=$(mktemp)
 JOBS=$(mktemp)
 NEXT=$(mktemp)
+ERRORS=$(mktemp)
 BEGIN_MARKER='# BEGIN guardamar-status weekend digest'
 END_MARKER='# END guardamar-status weekend digest'
 
 cleanup() {
-    rm -f "$CURRENT" "$JOBS" "$NEXT"
+    rm -f "$CURRENT" "$JOBS" "$NEXT" "$ERRORS"
 }
 trap cleanup EXIT HUP INT TERM
 
@@ -38,7 +39,7 @@ if [ ! -f "$REGISTRATION" ]; then
 fi
 
 crond_running() {
-    pgrep -f '[c]rond' >/dev/null 2>&1
+    pgrep -x crond >/dev/null 2>&1
 }
 
 if ! crond_running && [ ! -d "$CROND_SERVICE" ]; then
@@ -48,7 +49,12 @@ if ! crond_running && [ ! -d "$CROND_SERVICE" ]; then
 fi
 
 mkdir -p "$BACKUP_DIR"
-crontab -l >"$CURRENT" 2>/dev/null || true
+if ! crontab -l >"$CURRENT" 2>"$ERRORS"; then
+    if ! grep -qi 'no crontab for' "$ERRORS"; then
+        echo "ОШИБКА: не удалось безопасно прочитать текущий crontab; ничего не изменено" >&2
+        exit 1
+    fi
+fi
 if [ ! -f "$BACKUP_DIR/crontab.before-weekend" ]; then
     cp "$CURRENT" "$BACKUP_DIR/crontab.before-weekend"
 fi
