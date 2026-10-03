@@ -4,9 +4,11 @@ Date: 2026-09-28
 
 ## Status
 
-Accepted. This refines the first Product Awards implementation in ADR 0083.
+Accepted. This refines the first Product Awards implementation in ADR 0083. ADR 0092 further refines Consum media selection, ALDI product-error handling, per-invocation retries and consecutive-retailer rotation.
 
 ## Context
+
+> **2026-10-03 correction:** the 29 September `RICH_MESSAGE_PHOTO_NO_MEDIA_FOUND` incident was not proved to be a Telegram/CDN fetch defect. Forensic production probes later showed that the runtime selected Consum's stale `productData.imageURL`, which returned HTTP 404, while the same official payload exposed working numbered `media[].url` assets. ADR 0092 supersedes the Consum media-selection assumption below; the bounded multipart upload path remains valid only after a real first-party image URL has been selected.
 
 Production probes showed that the original reviewed catalogue had two problems:
 some retailers were no longer in scope or were not safely refreshable from
