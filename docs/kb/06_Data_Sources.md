@@ -847,12 +847,18 @@ has shelf stock at that moment. Search-engine snippets, marketplace sellers,
 brand-only matches and inferred image filenames are never accepted as current
 retail evidence.
 
+Product media is optional publication enrichment. A current award/identity/price
+match remains publishable when retailer media is missing or cannot be delivered.
+Remote media URLs must be on the retailer-specific media allowlist; no filename
+guessing is permitted.
+
 Retailer diversity is a publication preference, not a source-quality shortcut
-or publication veto. A due run first prefers a different retailer while
-preserving category/source/rank semantics. If no different-retailer candidate
-is publishable, the ordinary selector may publish the same retailer again.
-Diversity never authorizes a lower-ranked award candidate or weaker retail
-match, and it never suppresses the only valid product.
+or publication veto. The previous retailer is derived best-effort from the
+existing last published event; no retailer field is added to state. The first
+valid same-retailer category winner is kept as an in-memory fallback while
+later categories are checked. Diversity never authorizes a lower-ranked award
+candidate or weaker retail match, and it never suppresses the only valid
+product.
 
 The 3 October retailer-balance audit found that the current five-of-seven
 Consum concentration is a registry-construction artifact rather than evidence
