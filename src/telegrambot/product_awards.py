@@ -555,8 +555,6 @@ def _html_retail_offer(candidate: ReviewedCandidate) -> RetailOffer:
 
 
 def _aldi_next_data(source: str):
-    import re
-
     match = re.search(
         r'<script[^>]*id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>',
         source,
@@ -735,18 +733,6 @@ def _price_sentence(offer: RetailOffer, *, range_member: bool) -> str:
 
 
 def _methodology(candidate: ReviewedCandidate) -> str:
-    if candidate.source_kind == "producto_del_ano":
-        return (
-            "<blockquote expandable>"
-            "🔬 <b>Как выбирают Producto del Año</b><br><br>"
-            "Это испанская потребительская премия за инновации. "
-            "По данным организатора, в голосовании участвуют более "
-            "10 000 потребителей, а каждый кандидат дополнительно "
-            "проходит тест продукта среди 100 представителей своей "
-            "целевой аудитории. Победителем становится продукт с "
-            "наибольшим результатом в своей категории."
-            "</blockquote>"
-        )
     if candidate.source_kind == "world_beer_awards":
         return (
             "<blockquote expandable>"
@@ -793,23 +779,7 @@ def build_message(
     name = html.escape(candidate.product_name)
     category = html.escape(candidate.source_category)
 
-    if candidate.source_kind == "producto_del_ano":
-        title = f"Producto del Año {candidate.award_year}: {name}"
-        if candidate.award_scope == "range":
-            first = (
-                f"Награда относится к линейке <b>{name}</b> в категории "
-                f"{category}. В {html.escape(offer.retailer)} сейчас продается "
-                "один из продуктов этой линейки: "
-                f"<b>{html.escape(offer.product_name)}</b>."
-            )
-            price = _price_sentence(offer, range_member=True)
-        else:
-            first = (
-                f"<b>{name}</b> стал победителем Producto del Año "
-                f"{candidate.award_year} в категории {category}."
-            )
-            price = _price_sentence(offer, range_member=False)
-    elif candidate.source_kind == "world_beer_awards":
+    if candidate.source_kind == "world_beer_awards":
         title = (
             f"Пиво {name} получило золото World Beer Awards "
             f"{candidate.award_year}"
@@ -868,10 +838,6 @@ def build_message(
     return rendered
 
 
-PRODUCTO_DEL_ANO_URL = (
-    "https://granpremioalainnovacion.com/productos-ganadores-pda/"
-)
-PRODUCTO_DEL_ANO_HOSTS = frozenset({"granpremioalainnovacion.com"})
 WORLD_BEER_HOSTS = frozenset({"www.worldbeerawards.com", "worldbeerawards.com"})
 
 
