@@ -1,6 +1,6 @@
 # ADR 0031: Bounded operational change monitoring
 
-- Status: Accepted; initial-publication rules superseded by ADR 0064
+- Status: Accepted; initial-publication rules superseded by ADR 0064; annual SafeBeach query window superseded by ADR 0093
 - Date: 2026-08-07
 
 ## Context
