@@ -933,7 +933,11 @@ def _price_sentence(
     )
 
     if candidate.retailer_kind == "carrefour":
-        subject = "Для этого варианта на сайте Carrefour" if range_member else "На сайте Carrefour"
+        subject = (
+            "Для этого варианта на сайте Carrefour"
+            if range_member
+            else "На сайте Carrefour"
+        )
         if regular is not None and regular != current:
             return (
                 f"{subject} сейчас указана цена <b>{current}</b> "
@@ -1335,7 +1339,6 @@ CATEGORIES: tuple[ReviewedCategory, ...] = (
                         retailer_title="Cápsulas de café intenso Dia Arom'arte 20 unidades",
                         package_label="20 капсул, 108 г",
                         producer_label="Toscaf, S.A.",
-
                         headline_award="лучший результат в группе OCU",
                         highlight=(
                             "85/100 — лучший результат среди капсул Nespresso "
