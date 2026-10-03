@@ -216,6 +216,23 @@ buttons would add new reply-markup/edit semantics and stale-button management
 when one option later fills. Existing HTML links already satisfy the resident
 action with lower operational complexity.
 
+### Option-specific trigger identity
+
+Boundary and transition trigger IDs must include the option identity when the
+fact is option-specific.
+
+Conceptually:
+
+```text
+<kind>:<record_id>:<option_id>:<boundary>
+```
+
+The current ADR 0089 record-level trigger key is insufficient for a
+multi-session event because two options may share the same deadline/date.
+
+Event-level triggers remain event-level only when the source fact truly applies
+to the whole root.
+
 ### Per-option lifecycle
 
 Option status keeps the existing narrow states:
@@ -314,6 +331,34 @@ when actionable access evidence/future boundaries exist.
 
 Do not scan merged Morning `Event[]` for lifecycle truth.
 
+### Cross-source ownership and duplicate prevention
+
+The same real event may appear in more than one official source. Do not solve
+this with a generic fuzzy cross-source merge.
+
+Each accepted access projection must define which source **owns the actionable
+access lifecycle** for that source shape.
+
+Examples of the intended rule:
+
+- a municipal/Turismo event whose ticket action delegates to an accepted
+  Agenda Guardamar occurrence should not independently create a second ticket
+  lifecycle root;
+- municipal/Turismo remains the owner for its own registration/reservation
+  forms and contacts;
+- FACV owns its tournament registration;
+- Biblioteca owns a first-party library reservation when proven;
+- CONVEGA owns its own registration record.
+
+A secondary official source may enrich presentation only after a deterministic
+source-backed join (for example exact action URL + exact occurrence identity).
+If that join is not proven, prefer one less-enriched root over a duplicate or
+fuzzy merge.
+
+The production probes must therefore inventory not only IDs/options but also
+cross-source overlap and delegated action URLs before source ownership is
+coded.
+
 ### Current source implications
 
 #### Municipal/Turismo
@@ -367,6 +412,26 @@ Early-bird/late-price changes can be added later only if real source evidence
 shows resident value.
 
 This avoids turning the feature into a ticket-market monitor.
+
+### Legacy-state migration guard
+
+The first event-access deployment migrates the deployed registration state only
+once.
+
+Use deterministic single-option migration for each valid v1 record
+(`access_kind="registration"`, one stable default option) while preserving
+baseline, last explicit status, audience knowledge and sent triggers. Never
+invent a Telegram root ID.
+
+Deployment must refuse the migration while the legacy v1 state contains an
+unresolved `uncertain` delivery; the operator must resolve that existing
+ambiguity first. This avoids trying to reinterpret an in-flight v1 publication
+under the new root schema.
+
+If a legacy `announced_record_id` has no root message ID, preserve audience
+knowledge. On its next material publication, create one self-contained
+replacement/current-state root and store its Telegram ID instead of pretending
+the event was never announced or sending an unthreaded follow-up.
 
 ### Translation/media/threading
 
