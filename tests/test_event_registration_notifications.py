@@ -270,6 +270,17 @@ class RegistrationPlanningTests(unittest.TestCase):
 
         self.assertIsNone(closed.publication)
 
+    def test_explicit_open_today_does_not_also_claim_it_will_open(self):
+        active = record(
+            status="open",
+            registration_start_date=date(2026, 10, 2),
+        )
+
+        plan = plan_registration_run((active,), empty_state(), NOW)
+
+        self.assertIn("Идёт запись", plan.publication.message)
+        self.assertNotIn("Сегодня открывается регистрация", plan.publication.message)
+
     def test_exact_time_retry_recomputes_after_boundary(self):
         timed = record(
             registration_start_date=date(2026, 10, 2),
