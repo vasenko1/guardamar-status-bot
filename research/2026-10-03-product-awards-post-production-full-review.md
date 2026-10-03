@@ -331,3 +331,229 @@ Recommended priority:
 
 Until items 1–2 are resolved, the runtime is technically safe but the
 user-facing Product Awards contract is not fully satisfied.
+
+
+## Third-pass adversarial review — refined repair plan
+
+A second adversarial pass over the proposed remediation changes several
+priorities.
+
+### Confirmed: the core architecture still does not need redesign
+
+The following remain correct and should not be touched:
+
+- one daily short-lived Product Awards invocation;
+- three-local-calendar-day cooldown;
+- state-first zero-HTTP cooldown exit;
+- one finite category scan;
+- source-native rank semantics;
+- one same-retailer in-memory fallback;
+- publication-first retailer diversity;
+- existing state schema for retailer preference;
+- media-optional delivery;
+- ambiguous-send protection;
+- no browser, AI, queue, database, background worker or generic retailer
+  framework.
+
+The primary risk is now accidental scope growth while repairing presentation
+and evidence wording.
+
+### Revision A — editorial contract is the only immediate blocking repair
+
+The editorial regression remains real.
+
+However the correct repair is **not** to restore the old rich POC schema or add
+a generic multi-variant product model.
+
+For the current reviewed registry, add only the deterministic facts needed by
+the accepted article contract:
+
+- exact package/format for the reviewed retail identity;
+- verified production country;
+- verified producer/manufacturer when available and useful;
+- retailer in the headline;
+- one source-proven product-specific highlight/reason.
+
+Keep score/detail in the body rather than making a numeric score the headline.
+
+If an award-to-retail join cannot prove which package carries the award, keep
+that candidate unready rather than implementing arbitrary package discovery.
+
+The earlier requirement to show all prices/packages should be interpreted
+narrowly: show all **already reviewed exact qualifying package variants** for
+the same award identity. The current registry has one exact reviewed retail
+format per candidate, so a list-of-variants runtime abstraction is not needed
+now.
+
+### Revision B — Carrefour locality should not trigger browser/session work
+
+The generic Carrefour page does not prove Guardamar-specific stock. That fact
+remains true.
+
+But current Product Awards requirements need a fresh official retailer price
+for an exact product; they do not require proof that a particular Guardamar
+physical shelf contains it at that moment.
+
+Therefore the least-complex correct repair is semantic:
+
+- keep the exact first-party Carrefour supermarket product page as current
+  online retail evidence;
+- phrase the claim as e.g. `На сайте Carrefour сейчас указана цена ...`;
+- do not claim Guardamar-local stock or a local-store-specific price;
+- research a postcode/store contract only if future product requirements
+  explicitly require local availability.
+
+Do not add cookies, session bootstrap, a browser or a postcode API solely to
+preserve the broader wording `в Carrefour стоит`.
+
+This demotes the previous locality finding from an immediate blocker to a
+wording/evidence-precision fix.
+
+### Revision C — page-global extra markers are not worth a parser framework
+
+Exact Carrefour/DIA URL + exact reviewed product title + price found in the
+title-to-`Añadir` region already provide the main identity boundary.
+
+Page-global manufacturer/qualifier markers are a secondary defense.
+
+Tightening every marker to a DOM-like product region would add complexity and
+could reject legitimate details rendered outside the buy card.
+
+Do not build a generic DOM/product-region parser now.
+
+If a future live incident shows a false positive from recommendations or
+related products, add one source-specific boundary for that retailer.
+
+### Revision D — promotion-price ambiguity is real, but needs evidence before code
+
+The current first-positive-price algorithm can theoretically misread a future
+promotion.
+
+A naive `multiple prices => fail` fix may itself be wrong because a card can
+legitimately show:
+
+- package price;
+- reference price per litre/kg;
+- regular price;
+- club/promotional price.
+
+Before changing runtime, perform one read-only raw-HTML probe on current
+Carrefour/DIA cards, ideally including a promotional item, and document the
+actual markup/labels.
+
+Then implement the smallest source-specific rule.
+
+Do not guess `first`, `last` or `minimum` as a universal current-price
+algorithm.
+
+### Revision E — MAX_HISTORY=128 is a real boundary, but not urgent
+
+The previous review overstated the time-to-failure by assuming a publication
+every three days forever.
+
+The reviewed registry is manually replenished and currently small, so actual
+history growth is likely much slower.
+
+The dangerous property is not the number 128 itself; it is that capacity is
+checked inside `confirm()`, after Telegram may already have returned success.
+
+The eventual repair should therefore prioritize **pre-send capacity
+validation**.
+
+A larger bounded cap (for example 512) can be considered as a simple
+operational margin, but compaction/rollover logic should not be introduced
+without an actual retention policy.
+
+Do not implement a complex historical-pruning algorithm now.
+
+### Revision F — runway is an editorial maintenance issue, not a scheduler bug
+
+With Mahou already published and NALTROS currently unavailable, the present
+registry has about five immediately publishable unpublished categories.
+
+At the three-day cadence that is about fifteen days of runway.
+
+Do not respond with autonomous discovery, retailer scans, queueing or an
+operator alert subsystem.
+
+Continue reviewed source-first candidate research and keep a practical manual
+runway buffer.
+
+Only automate runway warnings if maintaining that buffer proves unreliable in
+practice.
+
+### Revision G — preview UX is useful but optional
+
+The existing `product-awards-preview` is correctly a catalogue/source-health
+preview, not a selector simulation.
+
+Do not change its selection semantics.
+
+A future small `product-awards-next-preview` command would be useful because
+the operator frequently asks which post is next, but this is convenience, not
+correctness.
+
+If added, it should call the real state-aware selector read-only and clearly
+identify itself as the next scheduled candidate.
+
+### Revision H — ADR 0083 retailer wording is stale, runtime scope is not
+
+The old ADR 0083 text says the retailer set is exactly six chains.
+
+Later accepted Product Awards work explicitly productionized Masymas exact
+retail identities (ADR 0084 / Decision Log), so Mahou/Masymas is not an
+accidental runtime scope leak.
+
+The repair is documentation only: add an amendment pointing to the later
+seven-retailer scope.
+
+### Revision I — NALTROS tie semantics are valid
+
+The OCU cava source has three products tied at 94/100.
+
+Reviewed research explicitly permits tied candidates to retain tie semantics,
+prefer one with a verified exact retail match, and preserve source order when
+needed.
+
+NALTROS is therefore valid as a tied top-score candidate provided public wording
+continues to say `один из лидеров` rather than unique #1.
+
+No rank-logic change is needed.
+
+### Revised implementation order
+
+**Before the next Product Awards publication:**
+
+1. restore the lean deterministic editorial contract:
+   package, verified country/producer facts where supported, retailer in the
+   headline and a source-proven winner-specific highlight;
+2. change Carrefour wording from a broad/local-sounding price claim to an
+   explicit official-site price claim;
+3. fix Russian sample-count declension.
+
+**Next hardening pass, after one read-only source probe:**
+
+4. inspect real Carrefour/DIA promotional price markup and then harden price
+   extraction only if a deterministic current-price rule is proved.
+
+**Deferred maintenance:**
+
+5. add pre-send Product Awards history-capacity validation before history gets
+   large;
+6. optionally raise the bounded history cap rather than designing compaction
+   now;
+7. replenish candidate runway;
+8. optionally add a state-aware next-preview command;
+9. amend ADR 0083 retailer-set wording.
+
+### Final third-pass assessment
+
+The previous full review correctly identified real weak spots, but its first
+repair plan would have risked overengineering Carrefour locality, HTML parsing
+and state retention.
+
+The smallest coherent next change is an **editorial-contract restoration plus
+precise retailer-price wording**, not a new retailer/session architecture.
+
+No reason was found to redesign the selector, cooldown, retailer preference,
+delivery state machine or Product Awards scheduling.
