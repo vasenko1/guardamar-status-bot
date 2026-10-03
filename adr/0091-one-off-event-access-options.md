@@ -79,7 +79,8 @@ AccessOption
   status
   action_url
   action_text
-  opens_at / closes_at (optional source facts)
+  opens_on / optional opens_time
+  closes_on / optional closes_time
   price facts (optional presentation)
   capacity_limited
 ```
@@ -145,18 +146,23 @@ If a source cannot provide safe option identity, it may still publish one
 event-level access root, but option-specific full/closed transitions must fail
 closed rather than guess.
 
-### Missing options are not terminal evidence
+### Missing options are unresolved, not terminal evidence
 
 When a previously known option is absent from a later successful source
-observation, preserve its prior semantic baseline. Absence alone does not mean
-`full`, `closed`, cancelled or removed.
+observation, preserve its prior semantic history. Absence alone does not mean
+`open`, `full`, `closed`, cancelled or removed.
 
-Only observed options update their semantic evidence. This is the option-level
-equivalent of ADR 0089's disappearance/unknown rule.
+For current aggregate wording, a missing prior option is **unresolved**:
+
+- it does not count as currently open;
+- it does not count as terminal;
+- it prevents the bot from claiming that every option is unavailable.
+
+Only currently observed options support current availability claims.
 
 A newly observed option may create a threaded "added session" notice after the
-event root exists. An unobserved prior option is not silently deleted from
-lifecycle history before normal event-retention pruning.
+event root exists. An unobserved prior option is not silently deleted before
+normal event-retention pruning. No persisted `missing` status is added.
 
 ### Several action methods are not several options
 
@@ -234,11 +240,14 @@ fact is option-specific.
 Conceptually:
 
 ```text
-<kind>:<record_id>:<option_id>:<boundary>
+<kind>:<option_id>:<boundary>
 ```
 
 The current ADR 0089 record-level trigger key is insufficient for a
 multi-session event because two options may share the same deadline/date.
+ADR 0092 stores these keys inside one event record already, so repeating
+`record_id` inside every new key is unnecessary. New trigger keys are opaque
+deduplication strings and are not parsed for runtime semantics.
 
 Event-level triggers remain event-level only when the source fact truly applies
 to the whole root.
@@ -273,6 +282,13 @@ Never combine changes from different event roots.
 A newly added source-proven option may produce one reply such as
 `Добавлен сеанс 15:00 — запись открыта`.
 
+Terminal-to-terminal changes that do not restore resident action are silent:
+`full -> closed` and `closed -> full` do not need another resident message.
+
+A future-opening root must receive a later positive `open` reply with the
+current action, including one-day windows. `open -> unknown -> open` is not a
+reopen, while `full/closed -> unknown -> open` is.
+
 Disappearance alone never means full/closed/cancelled.
 
 ### Aggregate event status is derived, not authoritative source truth
@@ -282,9 +298,10 @@ terminal.
 
 User-facing aggregate wording is derived from the current option set.
 
-Claim the whole event has no availability only when source evidence safely
-establishes that no known option remains open and no unresolved/unknown option
-could still be available.
+Claim the whole event has no availability only when every previously known,
+still-relevant option is currently observed with safe terminal evidence.
+A missing prior option or a current `unknown` option blocks the aggregate
+"nothing remains" claim.
 
 ### Ticket semantics
 
@@ -378,6 +395,13 @@ may enrich or confirm the same access only through the already reviewed
 deterministic join. If ownership cannot be reconciled safely, keep the existing
 root owner and fail closed on the competing projection rather than migrate it
 implicitly.
+
+The first runtime rollout has only CONVEGA enabled. Therefore it implements no
+generic ownership resolver or fuzzy/registry suppression layer. It validates
+source-owned IDs and immutable source/access-kind identity only.
+
+Add the first explicit ownership/delegation rule together with the second
+source that is actually enabled.
 
 ### Current source implications
 
@@ -513,25 +537,41 @@ was adequate for same-day digest rendering.
 
 ### Translation selection
 
-Rich access roots for future events require Russian presentation before the
-event day.
+Rich access roots require Russian presentation, but the send path must not call
+AI.
 
-Do not translate every future catalogue event. Extend the existing
-translation-preparation workflow so each source contributes only its future
-**actionable access candidates** (plus current Morning items).
+For CONVEGA, use its structured stage number to produce a deterministic Russian
+title (for example `Маршрут GR-92 · этап 21`) so a late source refresh cannot
+be blocked by a title-cache miss.
 
-This reuses the existing bounded cache and 06:00/06:30/07:00 preparation path
-without adding per-message AI or a second translation framework.
+For future sources, do not translate every future catalogue event. Extend the
+existing translation-preparation workflow so each source contributes only its
+future **actionable access candidates** (plus current Morning items). If a
+future source requires prepared Russian text and it is unavailable, fail closed
+rather than silently invoking AI during Telegram delivery.
 
 ### Scheduling/freshness
 
-ADR 0089 / the publication-sync research remain controlling initially:
+Keep the 12:47 normal + 13:47 recovery cadence.
 
-- reuse existing morning source snapshots;
-- per-source freshness in the multi-source revision;
-- 12:47 normal + 13:47 recovery initially;
-- add no second refresh until production timing probes prove morning snapshots
-  materially miss same-day access announcements.
+Freshness is source-specific. The final production review showed that
+"same local day" is too weak for CONVEGA availability: the probe snapshot was
+10:06 while publication runs at 12:47/13:47.
+
+For the first rollout:
+
+- CONVEGA access evidence must be same-day, not future, and no more than
+  90 minutes old;
+- when that condition fails, the existing wrapper may make one bounded normal
+  CONVEGA refresh attempt;
+- the notification runner independently re-checks freshness after the refresh,
+  because CONVEGA intentionally preserves last-good snapshot data when the
+  source request fails;
+- a successful ~12:47 refresh may therefore be reused at 13:47;
+- an older last-good snapshot is never promoted into a current access claim.
+
+Do not generalize 90 minutes to future sources. Review each source contract
+when that source is enabled.
 
 Recurring office/box-office opening hours are presentation instructions, not
 daily lifecycle transitions. For example, a ticket campaign available from
