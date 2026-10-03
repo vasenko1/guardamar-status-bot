@@ -1,5 +1,7 @@
 name: Guardamar E2 audit gate
 
+# Temporary read-only gate; retained only until E2 activation is verified.
+
 on:
   push:
     branches:
