@@ -808,8 +808,9 @@ For each evaluated source, record:
 
 Product Awards use a reviewed source catalogue rather than autonomous web
 discovery. Durable category/source/rank rules are in ADR 0083, exact rich
-delivery in ADR 0084, resilience/retailer preference in ADR 0093, and the
-quality-first registry rebuild in ADR 0095. Dated evidence is in
+delivery in ADR 0084, resilience/retailer preference in ADR 0093, the
+quality-first registry rebuild in ADR 0095, and photo-first media sourcing in
+ADR 0096. Dated evidence is in
 `research/2026-09-25-supermarket-product-awards.md`,
 `research/2026-10-03-product-awards-publication-gap.md`,
 `research/2026-10-03-product-awards-retailer-balance-audit.md` and
@@ -852,9 +853,13 @@ Current exact-retail contracts are source-specific:
 - **Masymas / Mahou:** exact JSON EAN/name/current-price contract; existing
   reviewed media handling remains.
 
-Carrefour and DIA are text-only Product Awards sources in this registry rebuild.
-Technical access to retailer images is not enough to establish redistribution
-rights, and ADR 0093 makes media optional.
+Photo acquisition is separate from retail-price verification. Under ADR 0096,
+each candidate may use a small reviewed hierarchy of exact official image
+sources. Producer/brand or official media assets are preferred where practical,
+then award-organizer or exact retailer images. Technical access alone does not
+activate a media contract: exact product identity and a reviewed reuse basis
+must be recorded. If one image source is unusable, the runtime should try the
+next reviewed exact source before degrading to no-image delivery.
 
 A retailer page/API proves only that the chain's official current surface
 represents the exact product; it does not guarantee every physical branch has
