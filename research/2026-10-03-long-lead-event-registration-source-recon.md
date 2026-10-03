@@ -540,3 +540,32 @@ registration evidence but also presentation completeness:
 
 This media/presentation inventory is required before choosing the first
 multi-source implementation target.
+
+
+## Threaded lifecycle decision
+
+ADR 0090 accepts a Telegram-thread model for one-off registration notices.
+
+Each source-owned `record_id` gets its own Telegram root when the first
+proactive registration publication is sent. The root is the rich event card
+described above. Every later lifecycle publication for that occurrence should
+be a strict reply to the stored root message ID.
+
+This changes the technical requirements for the multi-source implementation:
+
+- retire cross-record batching in the registration planner;
+- persist bounded `record_id -> root message_id` delivery metadata;
+- migrate deployed v1 state without inventing roots;
+- keep one uncertain send at a time while allowing a bounded sequence of
+  per-record sends in one invocation;
+- require a verified root message ID when an ambiguous first/root send is
+  manually resolved as sent;
+- make a future-opening rich card a valid root, then permit a later concise
+  current-open reply when actionable registration becomes usable;
+- keep deadline/full/closed/reopen/correction notices compact and threaded;
+- probe presentation/image completeness before selecting the first additional
+  source.
+
+The existing shared Telegram text transport already supports strict
+`reply_parameters`. The missing work is lifecycle state/planning, not a new
+Telegram client.
