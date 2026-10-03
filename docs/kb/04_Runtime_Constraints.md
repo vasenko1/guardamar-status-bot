@@ -405,6 +405,10 @@ the existing `state/product_awards.json` before source access.
 - ALDI may parse embedded Next.js JSON but never executes JavaScript. Explicit
   `hasError=true` is a product-page failure; a healthy page with missing
   `apiData` is contract drift.
+- Exact Carrefour/DIA product pages may use the reviewed browser-navigation
+  HTTP header profile required by their public SSR surfaces. This remains one
+  bounded HTML GET with exact markers and product-card-scoped price parsing;
+  no browser, JavaScript, cookie session or catalogue crawl is permitted.
 - Telegram tries remote image first. Only an explicit remote-media rejection
   may trigger the existing bounded local image download/upload. A deterministic
   media-path failure may then send the same Rich Message without media.
