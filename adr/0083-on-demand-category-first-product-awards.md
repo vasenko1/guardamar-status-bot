@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-09-27
 
-> 2026-10-03 refinement: ADR 0092 adds a hard consecutive-retailer exclusion while preserving this ADR's category/source/rank semantics. A rotation-blocked category is deferred; lower ranks are not selected merely to change supermarket.
+> 2026-10-03 refinement: ADR 0092 adds a best-effort retailer-diversity preference while preserving this ADR's category/source/rank semantics. A same-retailer category may be deferred during the diversity pass, but the ordinary selector remains the fallback so retailer preference never suppresses the only valid publication.
 
 ## Context
 
