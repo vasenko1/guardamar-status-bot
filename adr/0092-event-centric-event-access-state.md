@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-03
-- Implementation: Pending production-state probe and rollout
+- Implementation: Production-state probe passed; runtime rollout pending
 
 ## Context
 
@@ -163,8 +163,14 @@ Bounds remain explicit:
 - bounded triggers per record;
 - exactly one uncertain outbound operation.
 
-Final numeric bounds must be derived from the production-state probe rather
-than copied from ADR 0089's `512` global trigger cap.
+The production probe observed one retained lifecycle record, zero triggers,
+no municipal session family and at most four repeated Agenda occurrences under
+one ticket path. These values confirm that one bounded JSON state remains
+appropriate, but one day's maximum is not a permanent product cap.
+
+Final numeric bounds should therefore come from accepted source-parser limits
+during implementation, with conservative per-record option/trigger caps. Do
+not copy ADR 0089's global `512` trigger cap into the new schema.
 
 ### Source collection remains outside lifecycle state
 
@@ -201,6 +207,17 @@ the first rollout, but new sources must not copy its "refresh from the
 notification runner" pattern without measured timing evidence.
 
 ### V1 migration
+
+The 2026-10-03 read-only production probe measured the deployed v1 state as:
+
+- one baseline record;
+- zero announced records;
+- zero sent triggers;
+- no uncertain outbound reservation.
+
+This confirms the migration shape is small and the measured production state
+currently satisfies the deployment gate. Runtime must still re-check the gate
+at the actual migration moment because state may change after the probe.
 
 Perform one deterministic migration from the deployed ADR 0089 state.
 
