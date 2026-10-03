@@ -161,6 +161,7 @@ from .product_awards import (
     ProductAwardState,
     build_message as build_product_award_message,
     fetch_product_image as fetch_product_award_image,
+    iter_product_images as iter_product_award_images,
     preview_publications as preview_product_awards,
     select_publication as select_product_award_publication,
 )
@@ -467,7 +468,7 @@ async def _deliver_product_award(
     chat_id: str,
     local_day,
 ) -> Optional[int]:
-    """Deliver one selected Product Award with bounded media degradation."""
+    """Deliver one selected Product Award with photo-first bounded recovery."""
 
     event_id = publication.candidate.event_id
 
@@ -520,53 +521,72 @@ async def _deliver_product_award(
             raise
         return confirm(message_id, mode=" without media")
 
-    product_state.mark_uncertain(event_id)
-    try:
-        message_id = await send_rich_message(
-            bot_token,
-            chat_id,
-            publication.message,
-            disable_notification=False,
-            max_attempts=1,
-            retry_only_rate_limits=True,
+    image_attempted = False
+    for image in iter_product_award_images(
+        publication.candidate,
+        publication.offer,
+    ):
+        image_attempted = True
+        remote_message = build_product_award_message(
+            publication.candidate,
+            publication.offer,
+            image_src=image.url,
         )
-    except TelegramError as exc:
-        if is_ambiguous_send_failure(exc):
-            logging.warning(
-                "Product-award delivery uncertain [TELEGRAM-%s]; "
-                "automatic resend disabled",
-                exc.diagnostic_code,
-            )
-            return None
-
-        product_state.clear_uncertain(event_id)
-        if exc.diagnostic_code != "REMOTE-MEDIA" or publication.offer.image_url is None:
-            logging.warning(
-                "Product-award Telegram rejection for %s [TELEGRAM-%s]: %s",
-                event_id,
-                exc.diagnostic_code,
-                exc.server_description or exc.safe_description or "no description",
-            )
-            raise
-
-        logging.warning(
-            "Product-award candidate %s: Telegram could not fetch retailer "
-            "media; trying bounded upload",
-            event_id,
-        )
+        product_state.mark_uncertain(event_id)
         try:
-            image_bytes, image_type = fetch_product_award_image(
-                publication.candidate,
-                publication.offer.image_url,
+            message_id = await send_rich_message(
+                bot_token,
+                chat_id,
+                remote_message,
+                disable_notification=False,
+                max_attempts=1,
+                retry_only_rate_limits=True,
             )
+        except TelegramError as exc:
+            if is_ambiguous_send_failure(exc):
+                logging.warning(
+                    "Product-award delivery uncertain for image source %s "
+                    "[TELEGRAM-%s]; automatic resend disabled",
+                    image.source_name,
+                    exc.diagnostic_code,
+                )
+                return None
+
+            product_state.clear_uncertain(event_id)
+            if exc.diagnostic_code != "REMOTE-MEDIA":
+                logging.warning(
+                    "Product-award Telegram rejection for %s via %s "
+                    "[TELEGRAM-%s]: %s",
+                    event_id,
+                    image.source_name,
+                    exc.diagnostic_code,
+                    exc.server_description or exc.safe_description or "no description",
+                )
+                raise
+
+            logging.warning(
+                "Product-award candidate %s: Telegram could not fetch %s; "
+                "trying bounded upload",
+                event_id,
+                image.source_name,
+            )
+        else:
+            return confirm(
+                message_id,
+                mode=f" with remote media ({image.source_name})",
+            )
+
+        try:
+            image_bytes, image_type = fetch_product_award_image(image)
         except ProductAwardError as media_exc:
             logging.warning(
-                "Product-award candidate %s: local media recovery failed [%s]; "
-                "sending without media",
+                "Product-award candidate %s: image source %s download failed "
+                "[%s]; trying next reviewed image",
                 event_id,
+                image.source_name,
                 media_exc.diagnostic_code,
             )
-            return await send_without_image()
+            continue
 
         suffix = {
             "image/jpeg": ".jpg",
@@ -587,11 +607,12 @@ async def _deliver_product_award(
             except OSError as file_exc:
                 logging.warning(
                     "Product-award candidate %s: temporary media file failed "
-                    "(%s); sending without media",
+                    "for %s (%s); trying next reviewed image",
                     event_id,
+                    image.source_name,
                     file_exc,
                 )
-                return await send_without_image()
+                continue
 
             upload_message = build_product_award_message(
                 publication.candidate,
@@ -611,21 +632,26 @@ async def _deliver_product_award(
             except TelegramError as upload_exc:
                 if is_ambiguous_send_failure(upload_exc):
                     logging.warning(
-                        "Product-award uploaded-media delivery uncertain "
+                        "Product-award uploaded-media delivery uncertain via %s "
                         "[TELEGRAM-%s]; automatic resend disabled",
+                        image.source_name,
                         upload_exc.diagnostic_code,
                     )
                     return None
                 product_state.clear_uncertain(event_id)
                 logging.warning(
-                    "Product-award uploaded-media rejection for %s "
-                    "[TELEGRAM-%s]; sending without media",
+                    "Product-award uploaded-media rejection for %s via %s "
+                    "[TELEGRAM-%s]; trying next reviewed image",
                     event_id,
+                    image.source_name,
                     upload_exc.diagnostic_code,
                 )
-                return await send_without_image()
+                continue
 
-            return confirm(message_id, mode=" with uploaded media")
+            return confirm(
+                message_id,
+                mode=f" with uploaded media ({image.source_name})",
+            )
         finally:
             if upload_path is not None:
                 try:
@@ -636,8 +662,19 @@ async def _deliver_product_award(
                         cleanup_exc,
                     )
 
-    return confirm(message_id, mode="")
-
+    if image_attempted:
+        logging.warning(
+            "Product-award candidate %s: all reviewed image paths failed; "
+            "using final no-image fallback",
+            event_id,
+        )
+    else:
+        logging.warning(
+            "Product-award candidate %s: no reviewed image path resolved; "
+            "using final no-image fallback",
+            event_id,
+        )
+    return await send_without_image()
 
 async def _run_command(command: str, extra: tuple = ()) -> int:
     now = datetime.now(GUARDAMAR_TIMEZONE)
