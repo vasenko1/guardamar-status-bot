@@ -679,6 +679,7 @@ def build_message(
     offer: RetailOffer,
     *,
     image_src: Optional[str] = None,
+    include_image: bool = True,
 ) -> str:
     name = html.escape(candidate.product_name)
     category = html.escape(candidate.source_category)
@@ -730,7 +731,9 @@ def build_message(
         )
 
     parts = []
-    image_value = image_src if image_src is not None else offer.image_url
+    image_value = (
+        image_src if image_src is not None else offer.image_url
+    ) if include_image else None
     if image_value:
         parts.append(f'<img src="{html.escape(image_value, quote=True)}"/>')
     parts.extend((
