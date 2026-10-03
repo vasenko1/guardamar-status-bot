@@ -1856,10 +1856,16 @@ def preview_publications(now: datetime) -> tuple[ProductAwardPublication, ...]:
                     )
                     continue
                 if offer is not None:
+                    image = first_product_image(candidate, offer)
                     accepted = ProductAwardPublication(
                         candidate=candidate,
                         offer=offer,
-                        message=build_message(candidate, offer),
+                        message=build_message(
+                            candidate,
+                            offer,
+                            image_src=(image.url if image is not None else None),
+                            include_image=(image is not None),
+                        ),
                     )
                     break
             if accepted is not None:
