@@ -234,6 +234,15 @@ This change deliberately does not solve unrelated medium-term items:
 
 None is a blocker for the photo/editorial repair.
 
+## Implementation merge checkpoint
+
+The reviewed implementation was squash-merged through PR #289 as
+`3f7741a6db0f176159cfcabd6f0a6d33ab62f376`.
+
+This records code availability in `main`, not production validation. The
+production Termux checkout remains on the previously validated Product Awards
+runtime until the exact-commit gate below passes.
+
 ## Validation required before production deployment
 
 The repository does not provide a dependable PR CI gate, so the exact merged
