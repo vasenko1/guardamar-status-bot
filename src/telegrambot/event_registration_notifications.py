@@ -552,15 +552,18 @@ def _boundary_notices(
         today_key = _trigger("opening-today", record, opening)
         if opening == tomorrow and tomorrow_key not in sent_triggers:
             notices.append(_Notice("opening-tomorrow", record, tomorrow_key))
-        elif opening == today and tomorrow_key not in sent_triggers and today_key not in sent_triggers:
+        elif (
+            opening == today
+            and record.status != "open"
+            and tomorrow_key not in sent_triggers
+            and today_key not in sent_triggers
+        ):
             if record.registration_start_time is None:
                 notices.append(_Notice("opening-today", record, today_key))
             else:
                 boundary = _local_datetime(opening, record.registration_start_time)
                 if local < boundary:
                     notices.append(_Notice("opening-today", record, today_key))
-                elif record.status == "open":
-                    notices.append(_Notice("active", record, today_key))
 
     if closing is not None:
         tomorrow_key = _trigger("closing-tomorrow", record, closing)
