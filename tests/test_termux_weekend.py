@@ -144,8 +144,20 @@ class WeekendTermuxTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0)
         self.assertIn("47 12 * * *", installed)
-        self.assertIn("sv up crond", sv_log)
+        self.assertIn("up crond", sv_log)
         self.assertIn("/var/service", sv_log)
+
+    def test_installer_does_not_require_service_directory_when_crond_is_already_running(self):
+        result, installed, sv_log = self._install(
+            "",
+            crond_running=True,
+            service_available=False,
+        )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("47 12 * * *", installed)
+        self.assertEqual(sv_log, "")
+        self.assertIn("crond: running", result.stdout)
 
     def test_installer_fails_before_crontab_change_when_crond_is_unavailable(self):
         initial = "12 3 * * * /other/bot.sh\n"
