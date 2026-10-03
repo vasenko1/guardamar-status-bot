@@ -62,6 +62,19 @@ class FakeGateway:
         self.instance_reads = [details()]
         self.launch_error = None
         self.launch_calls = []
+        self.launch_memories = []
+        self.capacity_report_calls = 0
+        self.capacity_report_error = None
+        self.capacity_report = {
+            capacity.MEMORY_GBS: (
+                capacity.CAPACITY_STATUS_OUT_OF_HOST_CAPACITY,
+                None,
+            ),
+            capacity.FALLBACK_MEMORY_GBS: (
+                capacity.CAPACITY_STATUS_OUT_OF_HOST_CAPACITY,
+                None,
+            ),
+        }
         self.vnics = [
             capacity.VnicRecord("vnic-id", capacity.SUBNET_OCID, "203.0.113.7")
         ]
@@ -83,6 +96,12 @@ class FakeGateway:
     def get_resource_availability(self):
         return availability()
 
+    def get_a1_capacity_report(self):
+        self.capacity_report_calls += 1
+        if self.capacity_report_error is not None:
+            raise self.capacity_report_error
+        return self.capacity_report
+
     def get_instance(self, _identifier):
         if len(self.instance_reads) > 1:
             return self.instance_reads.pop(0)
@@ -97,8 +116,9 @@ class FakeGateway:
             raise value
         return value
 
-    def launch_instance(self, token):
+    def launch_instance(self, token, memory_in_gbs=capacity.MEMORY_GBS):
         self.launch_calls.append(token)
+        self.launch_memories.append(memory_in_gbs)
         if self.launch_error:
             raise self.launch_error
         return "instance-id"
@@ -189,6 +209,12 @@ class CapacityAuditTests(unittest.TestCase):
         self.assertEqual(
             manifest["shape_config"], {"ocpus": 1.0, "memory_in_gbs": 6.0}
         )
+        fallback = capacity.launch_manifest(capacity.FALLBACK_MEMORY_GBS)
+        self.assertEqual(
+            fallback["shape_config"], {"ocpus": 1.0, "memory_in_gbs": 2.0}
+        )
+        with self.assertRaises(capacity.SafetyError):
+            capacity.launch_manifest(1.0)
         self.assertEqual(manifest["source_details"]["image_id"], capacity.IMAGE_OCID)
         self.assertEqual(manifest["source_details"]["boot_volume_size_in_gbs"], 50)
         self.assertEqual(
@@ -225,6 +251,32 @@ class CapacityAuditTests(unittest.TestCase):
         self.assertEqual(result.public_ip, "203.0.113.7")
         self.assertTrue(result.disable_schedule)
         self.assertEqual(gateway.launch_calls, [])
+        self.assertEqual(gateway.capacity_report_calls, 0)
+
+    def test_existing_2gb_target_is_verified_with_zero_launch_calls(self):
+        gateway = FakeGateway()
+        gateway.instance_snapshots = [[record()]]
+        gateway.instance_reads = [
+            details(memory_in_gbs=capacity.FALLBACK_MEMORY_GBS)
+        ]
+
+        result = capacity.run_launch(gateway, {}, lambda _: None)
+
+        self.assertEqual(result.outcome, "READY")
+        self.assertEqual(result.memory_in_gbs, capacity.FALLBACK_MEMORY_GBS)
+        self.assertEqual(gateway.launch_calls, [])
+        self.assertEqual(gateway.capacity_report_calls, 0)
+
+    def test_existing_1gb_target_is_rejected(self):
+        gateway = FakeGateway()
+        gateway.instance_snapshots = [[record()]]
+        gateway.instance_reads = [details(memory_in_gbs=1.0)]
+
+        result = capacity.run_launch(gateway, {}, lambda _: None)
+
+        self.assertEqual(result.outcome, "BLOCKED")
+        self.assertTrue(result.disable_schedule)
+        self.assertEqual(gateway.launch_calls, [])
 
     def test_existing_mismatched_target_blocks_with_zero_launch_calls(self):
         gateway = FakeGateway()
@@ -236,6 +288,80 @@ class CapacityAuditTests(unittest.TestCase):
         self.assertEqual(result.outcome, "BLOCKED")
         self.assertTrue(result.disable_schedule)
         self.assertEqual(gateway.launch_calls, [])
+
+    def test_selector_uses_2gb_only_when_6gb_is_out_and_2gb_is_available(self):
+        gateway = FakeGateway()
+        gateway.capacity_report = {
+            capacity.MEMORY_GBS: (
+                capacity.CAPACITY_STATUS_OUT_OF_HOST_CAPACITY,
+                None,
+            ),
+            capacity.FALLBACK_MEMORY_GBS: (
+                capacity.CAPACITY_STATUS_AVAILABLE,
+                1,
+            ),
+        }
+        gateway.instance_reads = [
+            details(memory_in_gbs=capacity.FALLBACK_MEMORY_GBS)
+        ]
+
+        result = capacity.run_launch(gateway, {"GITHUB_RUN_ID": "123"}, lambda _: None)
+
+        self.assertEqual(result.outcome, "READY")
+        self.assertEqual(gateway.capacity_report_calls, 1)
+        self.assertEqual(gateway.launch_memories, [capacity.FALLBACK_MEMORY_GBS])
+        self.assertEqual(result.memory_in_gbs, capacity.FALLBACK_MEMORY_GBS)
+
+    def test_selector_prefers_6gb_when_both_profiles_are_available(self):
+        gateway = FakeGateway()
+        gateway.capacity_report = {
+            capacity.MEMORY_GBS: (capacity.CAPACITY_STATUS_AVAILABLE, 1),
+            capacity.FALLBACK_MEMORY_GBS: (
+                capacity.CAPACITY_STATUS_AVAILABLE,
+                1,
+            ),
+        }
+
+        result = capacity.run_launch(gateway, {"GITHUB_RUN_ID": "123"}, lambda _: None)
+
+        self.assertEqual(result.outcome, "READY")
+        self.assertEqual(gateway.launch_memories, [capacity.MEMORY_GBS])
+
+    def test_selector_keeps_6gb_when_both_profiles_are_out_of_capacity(self):
+        gateway = FakeGateway()
+
+        result = capacity.run_launch(gateway, {"GITHUB_RUN_ID": "123"}, lambda _: None)
+
+        self.assertEqual(result.outcome, "READY")
+        self.assertEqual(gateway.launch_memories, [capacity.MEMORY_GBS])
+
+    def test_selector_keeps_6gb_when_capacity_report_is_unavailable(self):
+        gateway = FakeGateway()
+        gateway.capacity_report_error = TimeoutError("report unavailable")
+
+        result = capacity.run_launch(gateway, {"GITHUB_RUN_ID": "123"}, lambda _: None)
+
+        self.assertEqual(result.outcome, "READY")
+        self.assertEqual(gateway.capacity_report_calls, 1)
+        self.assertEqual(gateway.launch_memories, [capacity.MEMORY_GBS])
+
+    def test_selector_does_not_use_2gb_when_available_count_is_zero(self):
+        gateway = FakeGateway()
+        gateway.capacity_report = {
+            capacity.MEMORY_GBS: (
+                capacity.CAPACITY_STATUS_OUT_OF_HOST_CAPACITY,
+                None,
+            ),
+            capacity.FALLBACK_MEMORY_GBS: (
+                capacity.CAPACITY_STATUS_AVAILABLE,
+                0,
+            ),
+        }
+
+        result = capacity.run_launch(gateway, {"GITHUB_RUN_ID": "123"}, lambda _: None)
+
+        self.assertEqual(result.outcome, "READY")
+        self.assertEqual(gateway.launch_memories, [capacity.MEMORY_GBS])
 
     def test_capacity_miss_makes_exactly_one_request_and_no_retry(self):
         gateway = FakeGateway()
@@ -358,7 +484,12 @@ class CapacityAuditTests(unittest.TestCase):
             output = Path(directory) / "output"
             summary = Path(directory) / "summary"
             result = capacity.CapacityResult(
-                "READY", "verified", True, "ocid1.instance.example", "203.0.113.7"
+                "READY",
+                "verified",
+                True,
+                "ocid1.instance.example",
+                "203.0.113.7",
+                memory_in_gbs=capacity.FALLBACK_MEMORY_GBS,
             )
             capacity._emit_result(
                 result,
@@ -367,6 +498,7 @@ class CapacityAuditTests(unittest.TestCase):
             self.assertIn("outcome=READY", output.read_text())
             self.assertIn("disable_schedule=true", output.read_text())
             self.assertIn("VM.Standard.A1.Flex", summary.read_text())
+            self.assertIn("1 OCPU / 2 GB", summary.read_text())
             self.assertNotIn(capacity.SSH_PUBLIC_KEY, summary.read_text())
 
     def test_workflow_has_one_launch_path_and_a_safe_manual_audit(self):
