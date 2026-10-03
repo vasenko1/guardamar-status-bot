@@ -15,10 +15,11 @@ on:
           - launch
       profile:
         description: "Profile for a manual audit or launch"
-        required: true
-        default: a1
+        required: false
+        default: auto
         type: choice
         options:
+          - auto
           - a1
           - e2
 
@@ -50,9 +51,12 @@ jobs:
           OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
           OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
           OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
-        run: >-
-          python -m automation.guardamar_capacity audit
-          --profile "${{ inputs.profile }}"
+        run: |
+          PROFILE="${{ inputs.profile }}"
+          if [ "$PROFILE" = "auto" ]; then
+            PROFILE=a1
+          fi
+          python -m automation.guardamar_capacity audit --profile "$PROFILE"
       - name: Run one bounded capacity attempt
         id: capacity
         if: github.event_name == 'schedule' || inputs.action == 'launch'
