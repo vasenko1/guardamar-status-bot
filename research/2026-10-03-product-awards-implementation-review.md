@@ -282,6 +282,39 @@ for this finding.
 The complete production-device validation suite must be rerun against the new
 exact main commit before production checkout is updated.
 
+## Third production pre-deploy gate and successful deployment
+
+The third production-device validation run used exact main commit
+`431fcedaa0de3ab180fb9f228ec92980b88f2edd`.
+
+Results:
+
+- compileall passed;
+- all 50 focused Product Awards tests passed;
+- the dedicated Weekend SVDIR isolation regression test passed;
+- the full repository suite passed: 1518 tests, zero failures;
+- read-only live Product Awards preview succeeded before deployment;
+- production fast-forwarded from
+  `8a906a5d462a7a9c415897bba6013d791421263a` to
+  `431fcedaa0de3ab180fb9f228ec92980b88f2edd`;
+- deployed implementation markers were verified;
+- the post-deploy read-only Product Awards preview matched the pre-deploy
+  preview;
+- Product Awards state remained unchanged by preview;
+- no Telegram publication was triggered by deployment;
+- no cron reinstall or Product Awards service restart was required.
+
+The live preview confirmed the intended source behavior:
+
+- NALTROS now fails explicitly as `RETAIL-PAGE-ERROR`;
+- Consum candidates resolve to working numbered `media[].url` assets;
+- current first available unpublished candidate after NALTROS is
+  Celta +Proteína / Consum at 1.15 EUR;
+- the last confirmed Product Awards event remains Mahou Sin Filtrar / Masymas,
+  so Celta is also a different-retailer candidate under ADR 0093.
+
+Production validation is therefore complete for the incident repair.
+
 ## Residual risks
 
 No blocking code-review issues remain.
@@ -304,5 +337,5 @@ from this incident repair.
 **No blocking code-review findings remain after fixes.**
 
 The implementation matches ADR 0093, preserves the existing state schema and
-Termux architecture, and is ready for the mandatory production-device test
-gate before live checkout update.
+Termux architecture, and has passed the mandatory production-device validation
+gate and live production deployment.
