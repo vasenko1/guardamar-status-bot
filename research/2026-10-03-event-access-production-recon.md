@@ -2,14 +2,19 @@
 
 ## Status
 
-Started 2026-10-03.
+Completed 2026-10-03.
 
 This research combines:
 
 1. a live read-only first-party source reconnaissance performed against the
    current production source set; and
-2. a pending read-only Termux state probe needed for facts that cannot be
-   established from public pages alone.
+2. a read-only Termux production-state probe covering the deployed snapshots,
+   translation cache, lifecycle state and source logs.
+
+The Termux probe ran on production branch `main` at
+`8a906a5d462a7a9c415897bba6013d791421263a`. The GitHub `main` branch was
+already ahead only by documentation/research commits; no runtime delta relevant
+to this probe existed.
 
 No runtime code, cron, state or Telegram publication is changed by this
 research.
@@ -247,36 +252,236 @@ continuation.
 
 This is recorded in ADR 0092.
 
-## Still required from the Termux production-state probe
+## Termux production-state probe results
 
-Public source reconnaissance cannot establish all runtime facts. The production
-device must be inspected read-only for:
+The read-only probe completed successfully without source refreshes, network
+requests, Telegram calls or state writes.
 
-1. actual snapshot timestamps for Municipal, Agenda, Library, AM, FACV,
-   Pesca CV and CONVEGA;
-2. real current/future record counts;
-3. stable source IDs already retained in each snapshot;
-4. municipal `session_source_key` families and current action URLs;
-5. Agenda Guardamar session/ticket rows and whether parent identity is absent;
-6. Library detail URLs and detail-enrichment status for future rows;
-7. FACV/Pesca current row identity and any retained detail URL;
-8. AM post IDs with more than one extracted occurrence;
-9. translation-cache coverage for future actionable candidates;
-10. exact cross-source duplicate/action URLs in the current state;
-11. maximum options per plausible root in the current snapshots;
-12. current v1 event-registration state size, trigger count and
-    `uncertain == null` migration precondition;
-13. source log refresh times relative to 12:47.
+### Snapshot freshness and volume
 
-No source refresh, Telegram send, state write, migration or cron change is
-required for this probe.
+At 16:59 Europe/Madrid on 2026-10-03:
+
+- Municipal snapshot: fetched 10:10, 71 total facts, 44 current/future facts;
+- Agenda Guardamar snapshot: fetched 10:10, 13 current/future occurrences;
+- Biblioteca snapshot: fetched 05:11, one retained event;
+- AM Guardamar snapshot: fetched 05:11, zero posts/events;
+- FACV snapshot: observed 05:11, zero Guardamar events;
+- Pesca CV snapshot: observed 05:11, two Guardamar competition rows;
+- CONVEGA snapshot: observed 10:06, two route records.
+
+The 10:10 Municipal/Agenda timestamps come from the existing later catalog
+refresh path, while the normal source logs confirm pre-morning refreshes around
+05:11 and 05:30.
+
+This means the access runner can safely consume local source snapshots and does
+not need to become a general refresh orchestrator. A later source refresh may
+improve same-day freshness, but that is an existing collection concern.
+
+### Deployed migration state
+
+The ADR 0089 v1 state is tiny and migration-ready:
+
+- version: 1;
+- one baseline record;
+- zero announced records;
+- zero sent triggers;
+- `uncertain=false`.
+
+The single baseline is
+`convega:post-42197:stage-21`, currently explicit `full` with
+`last_explicit_status=full`.
+
+Therefore ADR 0092's deployment precondition
+`legacy uncertain == null` is satisfied on the measured production state.
+
+The migration is still required to remain fail-closed at deployment time;
+the probe is evidence, not permission to remove the runtime precondition.
+
+### Municipal/Turismo
+
+The current snapshot contains ten rows with some access-like fields, but no
+current `session_source_key` family.
+
+Important examples include:
+
+- Todo Cultura activities with a contact but no proof that the contact is a
+  current one-off reservation action;
+- a Google Form registration for the same-day Hogwarts activity;
+- municipal rows delegating guided-tour purchase to Agenda Guardamar
+  `/espectaculo/` parent pages.
+
+Therefore:
+
+- Municipal/Turismo is ready for a narrow source projection only for explicit,
+  reviewed access evidence;
+- generic presence of `registration_contact` is not sufficient because
+  routine CSJ rows expose the same durable contact;
+- the current snapshot does not provide evidence for implementing a generic
+  multi-session municipal family yet;
+- source-proven session support remains in the model, but rollout must not
+  fabricate options when no family is present.
+
+### Agenda Guardamar
+
+Production confirms 13 future ticket occurrences through 30 October.
+
+Two recurring products each appear four times under the same
+`/entradas/<id>/<slug>.html` path with occurrence-specific query parameters.
+
+This proves:
+
+- the existing flattened occurrence rows retain a useful source path identity;
+- a parent product can have several future occurrences;
+- current snapshot cardinality is small (observed maximum four occurrences per
+  repeated ticket path).
+
+But the snapshot does **not** retain:
+
+- the parent detail-page identity as an explicit field;
+- event image/poster metadata;
+- a source-backed sale status separate from URL existence.
+
+Therefore Agenda Guardamar is not ready for generic proactive ticket
+publication merely because a ticket URL is present. Before enabling this source,
+retain explicit parent identity and prove the URL/state contract for
+not-yet-open/open/sold-out/closed behavior.
+
+### Biblioteca
+
+Production retained only one exhibition row, even though the public library
+page exposes later activities beyond the current seven-day adapter horizon.
+
+The retained row has a stable first-party detail URL and
+`detail_loaded=true`, but no access action.
+
+This confirms the horizon gap and means Biblioteca should remain gated from
+event-access rollout until a bounded wider candidate read plus event-specific
+reservation evidence is implemented.
+
+### AM Guardamar
+
+The current snapshot has zero posts/events.
+
+No new production evidence closes the access contract. Keep AM Guardamar
+disabled as an access owner until a real actionable post is observed.
+
+### FACV
+
+The current snapshot has zero Guardamar tournament rows.
+
+The external first-party reconnaissance still proves that FACV articles can
+carry registration methods, capacity and deadlines, but the deployed calendar
+snapshot retains no detail/article identity. FACV access therefore requires a
+small article/detail projection before rollout.
+
+### Pesca CV
+
+Production contains two future calendar rows:
+
+- 17 October `MAR COSTA`;
+- 23-29 November `Mar Costa Dúos`.
+
+The current normalized rows contain only calendar facts
+(title/date/place/organizer/level/source URL), with no convocatoria/detail URL
+or registration fields.
+
+Combined with the external 17 October convocatoria evidence, this gives a clear
+implementation requirement: enrich only exact accepted competition rows with
+their official convocatoria identity/access facts. Never infer registration
+from the calendar row alone.
+
+### CONVEGA
+
+Production confirms the expected strong source contract:
+
+- stable record ID `convega:post-42197:stage-21`;
+- Guardamar relevance;
+- explicit current `full`;
+- `until_full=true`;
+- stable source and landing URLs.
+
+CONVEGA is ready to serve as the migration/reference adapter for the new
+event-centric engine.
+
+### Translation readiness
+
+The current cache has 131 entries, but the probe found misses among future
+Municipal and Agenda titles and for the current CONVEGA title.
+
+This is not a reason to add runtime translation. It confirms the existing ADR
+0091 rule: future access projections must feed the same pre-morning translation
+preparation function so only actionable future candidates are prepared.
+
+Do not require all 44 Municipal future rows to be translated. Only projected
+event-access candidates need guaranteed presentation readiness.
+
+### Cross-source overlap
+
+No exact cross-source URL overlap was present in the current snapshots.
+
+That does not invalidate ownership rules. It means current data provides no
+evidence for a generic cross-source resolver.
+
+Keep explicit ownership and deterministic exact joins only. The existing
+Municipal `/espectaculo/` links and Agenda `/entradas/` occurrences show why
+an exact source-specific delegation join is preferable to fuzzy event matching.
+
+### Cardinality and bounds
+
+Observed production maxima are small:
+
+- municipal source-proven session-family size: 0 in the current snapshot;
+- repeated Agenda ticket-path occurrences: 4;
+- retained v1 lifecycle records: 1;
+- v1 trigger count: 0.
+
+These measurements support the existing one-file/event-centric design and
+provide no justification for a database, queue or generic source registry.
+
+They are not sufficient to treat `4` as a permanent product cap. Numeric
+option/trigger limits should be conservative structural bounds derived from the
+accepted source parsers during implementation, not from one day's observed
+maximum.
+
+### Schedule evidence
+
+Source logs show:
+
+- Municipal/Library/AM/FACV/Pesca normal refresh around 05:11;
+- Agenda Guardamar normal refresh around 05:30;
+- translation preparation at 06:00/06:30/07:00;
+- ADR 0089 lifecycle runs at 12:47 and 13:47.
+
+On the probe day both lifecycle runs completed `no_message`, consistent with
+the only relevant CONVEGA record already being `full` and never announced.
+
+No second generic event-access refresh is justified by this probe.
 
 ## Implementation gate after local probe
 
-Multi-source runtime implementation may begin only when the local probe closes
-these remaining identity/volume questions.
+The architecture gate is now **open**, but source rollout remains explicitly
+capability-gated.
 
-Expected implementation shape after that probe:
+Safe to implement now:
+
+1. the ADR 0092 event-centric state migration and validator;
+2. one-record planner / reserve -> send -> commit engine;
+3. generic `EventAccessRecord` / `AccessOption` semantics;
+4. CONVEGA as the first/reference projection;
+5. source-batch freshness and explicit ownership plumbing;
+6. future-access translation selection driven by the same pure projections.
+
+Source adapters may be enabled only when their missing contract is closed:
+
+- Municipal/Turismo: explicit access-evidence filtering; no generic contact
+  rule and no unproven session grouping;
+- Agenda Guardamar: retain parent identity and verify sale-state semantics;
+- Biblioteca: wider bounded future candidate horizon plus reservation evidence;
+- FACV: retain article/detail identity and action facts;
+- Pesca CV: retain exact convocatoria identity/access facts;
+- AM Guardamar: wait for a real actionable first-party sample.
+
+Expected implementation shape:
 
 ```text
 existing bounded source refreshes

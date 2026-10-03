@@ -453,3 +453,11 @@ The global `Event` model remains presentation-only for Morning/Tomorrow/Weekend
 and is not replaced by a second general event model. Access truth remains
 source-owned and fail-closed. Same-day freshness is required for proactive
 claims; Morning may still consume last-good Event data.
+
+The 2026-10-03 production probe opened the core implementation gate while
+keeping source rollout capability-gated. CONVEGA is the reference-ready source.
+Municipal/Turismo may expose only explicit reviewed one-off access facts.
+Agenda Guardamar, Biblioteca, FACV, Pesca CV and AM Guardamar remain disabled
+for proactive access until their documented identity/action gaps are closed.
+This staged enablement avoids both a generic event scanner and speculative
+source abstractions.
