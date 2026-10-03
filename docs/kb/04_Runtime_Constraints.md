@@ -391,15 +391,31 @@ The product-award feature has one daily one-shot cron invocation. It must read
 
 - During the three-day cooldown: zero award/retailer HTTP requests.
 - After all reviewed events are published: zero award/retailer HTTP requests.
-- On a due run: request only the reviewed award page and exact retailer product
-  page needed for candidate verification; never scan a full catalogue.
+- On a due run: inspect only the finite reviewed registry; never scan a full
+  retailer catalogue or discover products dynamically.
+- Consecutive-retailer exclusion is evaluated from configured candidate
+  identity and the last confirmed retailer. A rotation-blocked candidate is not
+  fetched, and its category is deferred rather than falling through to a lower
+  rank solely for variety.
+- If every remaining category would repeat the last retailer, the run stays
+  silent without changing cooldown or cursor state.
+- A candidate already evaluated unsuccessfully in the current process is not
+  fetched again after another candidate's deterministic delivery/media failure.
+  This suppression is process-local and is never persisted.
 - Every request uses the shared bounded standard-library transport, exact HTTPS
-  hosts, a 15-second timeout and a 768 KiB HTML ceiling.
+  hosts and a 15-second timeout. HTML/JSON/image limits remain explicit.
+- Consum image selection uses exact official `media[]` URLs when present.
+  A base-only `productData.imageURL` requires one bounded local image
+  validation; synthetic filename guessing is forbidden.
 - ALDI exact-product verification may parse the embedded Next.js JSON already
-  present in the bounded HTML; it must not execute JavaScript.
+  present in bounded HTML. A product error shell is fail-closed; JavaScript or
+  browser execution is not allowed.
+- Telegram media recovery may download at most the existing bounded image size
+  from allowlisted retailer hosts and keeps bytes only in a private temporary
+  file for the one upload attempt.
 - No browser/Playwright, OCR, LLM, search engine, database, daemon, discovery
   queue, raw-response cache or retailer-specific recurring job is allowed.
-- State stores only cooldown/dedup/cursor/uncertain-delivery fields; raw award
-  and retailer pages are discarded when the process exits.
+- State stores only cooldown/dedup/cursor/last-retailer/uncertain-delivery
+  fields; raw award and retailer pages are discarded when the process exits.
 - The product-award log rotates at 512 KiB with one previous file.
 
