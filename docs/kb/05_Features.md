@@ -735,26 +735,49 @@ seasonal root with confirmed changes threaded beneath that root.
 ## Supermarket product awards
 
 Every three local calendar days at most one independently recognised product may
-be published, provided the exact awarded product is currently represented by
-Mercadona, Carrefour España supermarket, ALDI España, Lidl España, DIA España
-or Consum and a fresh exact-product price can be read.
+be published. The exact award identity must still pass its reviewed authority
+contract and the exact current retailer product must still provide a fresh
+price. Product Awards are allowed to remain silent when no candidate satisfies
+all rules.
 
-Selection is category-first. For one broad consumer category the bot exhausts
-the explicitly ordered #1/#2/#3 of source #1 before moving to source #2. Ranks
-from different competitions are never mixed. A winner-only authority supplies
-only its winner. Unordered medals/finalists do not create synthetic ranks.
+Selection remains category-first and source-rank preserving. For one broad
+consumer category the bot exhausts explicit source-native ranking only through
+normal eligibility failures; ranks from different competitions are never
+mixed, and unordered medals/finalists never create synthetic positions.
 
-The initial reviewed launch set is:
+ADR 0092 adds strict supermarket rotation: two confirmed Product Awards posts
+must never feature the same retailer consecutively. When the next candidate in
+a category belongs to the last confirmed retailer, that category is deferred
+for the current invocation. The bot does **not** choose a weaker/lower-ranked
+candidate from another store merely to manufacture variety. It continues to
+the next broad category instead. If every valid remainder would repeat the same
+retailer, no post is sent and the three-day slot is not consumed.
 
-- cava: NALTROS Brut / ALDI via the OCU fallback;
-- gazpacho: Realfooding / Carrefour via OCU;
-- AOVE: Oleoestepa DOP Estepa / Carrefour via the OCU fallback;
-- coffee capsules: AROM'ARTE Intenso / DIA via a physically laboratory-tested
-  OCU analysis;
-- spirits/anís: Anís Chinchón Dulce / Carrefour via MAPA 2026.
+The current production-reviewed pool is:
 
-The public post is deterministic and text-only: award/result context, exact
-current package/price, retailer link and authority link. A missing or ambiguous
-exact offer means silence, not a price-less post. Product photos are excluded
-unless separate reuse permission is documented.
+- NALTROS Brut / OCU / ALDI;
+- Celta +Proteína / Producto del Año / Consum;
+- Takis Blue Heat / Producto del Año / Consum;
+- ELPOZO ExtraTiernos / Producto del Año / Consum;
+- Nescafé Latte Baileys / Producto del Año / Consum;
+- Ambar Especial / World Beer Awards / Consum;
+- Mahou Sin Filtrar / World Beer Awards / Masymas.
+
+This pool is intentionally not treated as complete supermarket coverage.
+Mercadona, Lidl, DIA, Carrefour or another local chain may improve future
+rotation only after a separate award-authority and exact-current-retail review;
+the runtime never invents a candidate to fill a retailer slot.
+
+Public posts are deterministic Telegram Rich Messages containing an exact
+first-party product image, concise award context, current retailer price,
+source-specific methodology and the standard group footer. Consum's current
+official JSON exposes real image assets under `media[]`; ADR 0092 rejects the
+stale base-image assumption that caused the 2–3 October publication gap.
+Telegram remote-media delivery remains remote-first with one bounded local
+upload recovery for a reachable exact image.
+
+ALDI NALTROS currently fails closed because the exact ALDI product page returns
+a product-specific error shell rather than current product data. That temporary
+retailer failure does not mark the award published and does not consume the
+three-day slot.
 
