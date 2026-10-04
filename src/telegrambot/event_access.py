@@ -610,11 +610,6 @@ def plan_event_access_record(
         candidate["sent_triggers"] = sent_order
         return EventAccessDecision(candidate, (root_notice,), "root", None)
 
-    # Migrated legacy announcements can be audience-known without a stored
-    # Telegram root. First rollout fails closed instead of inventing one.
-    if root_id is None:
-        return EventAccessDecision(candidate, (), None, None)
-
     notices = []
     for option in record.options:
         old = prior_options.get(option.option_id)
@@ -657,11 +652,12 @@ def plan_event_access_record(
     if not notices:
         return EventAccessDecision(candidate, (), None, None)
 
+    operation = "reply" if root_id is not None else "root"
     return EventAccessDecision(
         candidate,
         tuple(notices),
-        "reply",
-        root_id,
+        operation,
+        root_id if operation == "reply" else None,
     )
 
 
