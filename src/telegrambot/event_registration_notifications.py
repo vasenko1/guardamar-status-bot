@@ -1,8 +1,8 @@
-"""Crash-safe one-off event registration lifecycle.
+"""Crash-safe one-off event-access lifecycle.
 
-Source adapters own evidence and stable identity.  This module owns only the
-small source-independent semantic diff, one-message rendering and delivery
-transaction.  The first source is CONVEGA.
+The external module name is retained for production compatibility.  Source
+adapters own evidence and stable identity; this wrapper owns state persistence,
+explicit migration, rendering, Telegram delivery and operator recovery.
 """
 
 from __future__ import annotations
@@ -16,20 +16,31 @@ import logging
 import os
 import tempfile
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict, Iterator, Mapping, Optional, Sequence, Tuple
+from typing import Any, Awaitable, Callable, Dict, Iterator, Mapping, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from .branding import with_footer
 from .convega import (
     ConvegaSourceError,
-    convega_event_title,
-    convega_snapshot_observed_at,
-    load_convega_records,
+    convega_snapshot_is_access_fresh,
+    load_convega_access_records,
 )
-from .event_translations import cached_title
+from .event_access import (
+    AccessNotice,
+    EventAccessDecision,
+    EventAccessRecord,
+    EventAccessStateError,
+    MAX_MESSAGE_LENGTH,
+    STATE_VERSION,
+    empty_state,
+    migrate_v1_state,
+    plan_event_access_record,
+    prune_records,
+    temporally_consistent,
+    validate_state,
+)
 from .telegram import TelegramError, is_ambiguous_send_failure, send_message
 
 
@@ -38,390 +49,49 @@ GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 
 DEFAULT_SOURCE_STATE_PATH = Path("state/convega_events.json")
 DEFAULT_STATE_PATH = Path("state/event_registration_notifications.json")
-DEFAULT_TRANSLATION_PATH = Path("state/event_translations.json")
 
-STATE_VERSION = 1
-MAX_BASELINE_RECORDS = 128
-MAX_ANNOUNCED_RECORDS = 128
-MAX_SENT_TRIGGERS = 512
-MAX_MESSAGE_LENGTH = 4096
-RETENTION_DAYS = 30
-
-_EXPLICIT_STATUSES = frozenset({"open", "full", "closed"})
-_STATUSES = frozenset({"unknown", *_EXPLICIT_STATUSES})
-
-
-class RegistrationStateError(RuntimeError):
-    """Lifecycle state is unreadable or violates its strict contract."""
+RegistrationStateError = EventAccessStateError
 
 
 class RegistrationDeliveryUncertain(RuntimeError):
-    """Telegram may already contain the reserved publication."""
-
-
-@dataclass(frozen=True)
-class RegistrationRecord:
-    record_id: str
-    source: str
-    source_url: str
-    title: str
-    event_start_date: date
-    event_end_date: Optional[date] = None
-    registration_start_date: Optional[date] = None
-    registration_start_time: Optional[time] = None
-    registration_end_date: Optional[date] = None
-    registration_end_time: Optional[time] = None
-    status: str = "unknown"
-    until_full: bool = False
-    registration_url: Optional[str] = None
-    registration_contact: Optional[str] = None
-
-
-@dataclass(frozen=True)
-class RegistrationPublication:
-    message: str
-    record_ids: Tuple[str, ...]
-    trigger_ids: Tuple[str, ...]
-    candidate_baseline: Mapping[str, Mapping[str, Any]]
-    candidate_announced_record_ids: Tuple[str, ...]
-    candidate_sent_triggers: Tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class RegistrationPlan:
-    candidate_baseline: Mapping[str, Mapping[str, Any]]
-    candidate_announced_record_ids: Tuple[str, ...]
-    candidate_sent_triggers: Tuple[str, ...]
-    publication: Optional[RegistrationPublication]
-
-
-@dataclass(frozen=True)
-class _Notice:
-    kind: str
-    record: RegistrationRecord
-    trigger_id: Optional[str] = None
-    old_event_date: Optional[date] = None
-    old_end_date: Optional[date] = None
-
-
-def _date_or_none(value: Any) -> Optional[date]:
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise ValueError
-    return date.fromisoformat(value)
-
-
-def _time_or_none(value: Any) -> Optional[time]:
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise ValueError
-    parsed = time.fromisoformat(value)
-    if parsed.tzinfo is not None:
-        raise ValueError
-    return parsed.replace(second=0, microsecond=0)
-
-
-def _record_from_convega(raw: Any) -> Optional[RegistrationRecord]:
-    if not isinstance(raw, Mapping) or not raw.get("guardamar_relevant"):
-        return None
-    title = convega_event_title(
-        raw.get("stage"),
-        raw.get("direction_from"),
-        raw.get("direction_to"),
-    )
-    if title is None:
-        return None
-    try:
-        record = RegistrationRecord(
-            record_id=raw["record_id"],
-            source=raw["source"],
-            source_url=raw["source_url"],
-            title=title,
-            event_start_date=date.fromisoformat(raw["event_start_date"]),
-            event_end_date=_date_or_none(raw.get("event_end_date")),
-            registration_start_date=_date_or_none(
-                raw.get("registration_start_date")
-            ),
-            registration_start_time=_time_or_none(
-                raw.get("registration_start_time")
-            ),
-            registration_end_date=_date_or_none(
-                raw.get("registration_end_date")
-            ),
-            registration_end_time=_time_or_none(
-                raw.get("registration_end_time")
-            ),
-            status=raw["observed_status"],
-            until_full=raw["until_full"],
-            registration_url=raw.get("registration_url"),
-            registration_contact=raw.get("registration_contact"),
-        )
-    except (KeyError, TypeError, ValueError):
-        return None
-    if not valid_registration_record(record):
-        return None
-    return record
-
-
-def valid_registration_record(record: RegistrationRecord) -> bool:
-    if (
-        not record.record_id
-        or not record.source
-        or not record.source_url
-        or not record.title
-        or record.status not in _STATUSES
-        or record.event_end_date is not None
-        and record.event_end_date < record.event_start_date
-        or record.registration_start_date is not None
-        and record.registration_end_date is not None
-        and record.registration_end_date < record.registration_start_date
-        or record.registration_start_time is not None
-        and record.registration_start_date is None
-        or record.registration_end_time is not None
-        and record.registration_end_date is None
-        or record.status == "open"
-        and record.registration_url is None
-        and record.registration_contact is None
-    ):
-        return False
-    for value in (
-        record.registration_url,
-        record.registration_contact,
-    ):
-        if value is not None and (not isinstance(value, str) or not value.strip()):
-            return False
-    return True
-
-
-def _temporally_consistent(record: RegistrationRecord, now: datetime) -> bool:
-    """Reject only source states that make an explicit open claim impossible."""
-
-    if record.status != "open":
-        return True
-    local = now.astimezone(GUARDAMAR_TIMEZONE)
-    today = local.date()
-    if record.registration_start_date is not None:
-        if record.registration_start_date > today:
-            return False
-        if (
-            record.registration_start_date == today
-            and record.registration_start_time is not None
-            and local.time().replace(tzinfo=None)
-            < record.registration_start_time
-        ):
-            return False
-    if record.registration_end_date is not None:
-        if record.registration_end_date < today:
-            return False
-        if (
-            record.registration_end_date == today
-            and record.registration_end_time is not None
-            and local.time().replace(tzinfo=None)
-            >= record.registration_end_time
-        ):
-            return False
-    return True
-
-
-async def load_registration_records(
-    source_state_path: Path = DEFAULT_SOURCE_STATE_PATH,
-) -> Tuple[RegistrationRecord, ...]:
-    result = []
-    for raw in await load_convega_records(source_state_path):
-        record = _record_from_convega(raw)
-        if record is not None:
-            result.append(record)
-    result.sort(key=lambda item: (item.event_start_date, item.record_id))
-    return tuple(result)
-
-
-def _baseline_record(record: RegistrationRecord, previous: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
-    last_explicit = None
-    if previous is not None:
-        value = previous.get("last_explicit_status")
-        if value in _EXPLICIT_STATUSES:
-            last_explicit = value
-    if record.status in _EXPLICIT_STATUSES:
-        last_explicit = record.status
-    return {
-        "record_id": record.record_id,
-        "source": record.source,
-        "source_url": record.source_url,
-        "title": record.title,
-        "event_start_date": record.event_start_date.isoformat(),
-        "event_end_date": (
-            record.event_end_date.isoformat()
-            if record.event_end_date is not None else None
-        ),
-        "registration_start_date": (
-            record.registration_start_date.isoformat()
-            if record.registration_start_date is not None else None
-        ),
-        "registration_start_time": (
-            record.registration_start_time.strftime("%H:%M")
-            if record.registration_start_time is not None else None
-        ),
-        "registration_end_date": (
-            record.registration_end_date.isoformat()
-            if record.registration_end_date is not None else None
-        ),
-        "registration_end_time": (
-            record.registration_end_time.strftime("%H:%M")
-            if record.registration_end_time is not None else None
-        ),
-        "status": record.status,
-        "last_explicit_status": last_explicit,
-        "until_full": record.until_full,
-        "registration_url": record.registration_url,
-        "registration_contact": record.registration_contact,
-    }
-
-
-_BASELINE_FIELDS = frozenset({
-    "record_id", "source", "source_url", "title", "event_start_date",
-    "event_end_date", "registration_start_date", "registration_start_time",
-    "registration_end_date", "registration_end_time", "status",
-    "last_explicit_status", "until_full", "registration_url",
-    "registration_contact",
-})
-
-
-def _valid_baseline_record(value: Any) -> bool:
-    if not isinstance(value, dict) or set(value) != _BASELINE_FIELDS:
-        return False
-    for field in ("record_id", "source", "source_url", "title"):
-        if not isinstance(value.get(field), str) or not value[field]:
-            return False
-    if value.get("status") not in _STATUSES:
-        return False
-    if value.get("last_explicit_status") not in {*_EXPLICIT_STATUSES, None}:
-        return False
-    if not isinstance(value.get("until_full"), bool):
-        return False
-    try:
-        start = date.fromisoformat(value["event_start_date"])
-        end = _date_or_none(value["event_end_date"])
-        reg_start = _date_or_none(value["registration_start_date"])
-        reg_end = _date_or_none(value["registration_end_date"])
-        _time_or_none(value["registration_start_time"])
-        _time_or_none(value["registration_end_time"])
-    except (TypeError, ValueError):
-        return False
-    if end is not None and end < start:
-        return False
-    if reg_start is not None and reg_end is not None and reg_end < reg_start:
-        return False
-    for field in ("registration_url", "registration_contact"):
-        if value[field] is not None and not isinstance(value[field], str):
-            return False
-    return True
-
-
-def _empty_state() -> Dict[str, Any]:
-    return {
-        "version": STATE_VERSION,
-        "baseline": {},
-        "announced_record_ids": [],
-        "sent_triggers": [],
-        "uncertain": None,
-    }
-
-
-def _valid_id_list(value: Any, *, limit: int) -> bool:
-    return (
-        isinstance(value, list)
-        and len(value) <= limit
-        and len(value) == len(set(value))
-        and all(isinstance(item, str) and item for item in value)
-    )
-
-
-def _valid_baseline(value: Any) -> bool:
-    return (
-        isinstance(value, dict)
-        and len(value) <= MAX_BASELINE_RECORDS
-        and all(
-            isinstance(key, str)
-            and key
-            and isinstance(item, dict)
-            and item.get("record_id") == key
-            and _valid_baseline_record(item)
-            for key, item in value.items()
-        )
-    )
-
-
-def _valid_uncertain(value: Any) -> bool:
-    if value is None:
-        return True
-    if not isinstance(value, dict) or set(value) != {
-        "created_at", "message", "record_ids", "trigger_ids",
-        "candidate_baseline", "candidate_announced_record_ids",
-        "candidate_sent_triggers",
-    }:
-        return False
-    try:
-        created = datetime.fromisoformat(value["created_at"])
-    except (KeyError, TypeError, ValueError):
-        return False
-    return (
-        created.tzinfo is not None
-        and isinstance(value["message"], str)
-        and 0 < len(value["message"]) <= MAX_MESSAGE_LENGTH
-        and _valid_id_list(value["record_ids"], limit=MAX_ANNOUNCED_RECORDS)
-        and _valid_id_list(value["trigger_ids"], limit=MAX_SENT_TRIGGERS)
-        and _valid_baseline(value["candidate_baseline"])
-        and _valid_id_list(
-            value["candidate_announced_record_ids"],
-            limit=MAX_ANNOUNCED_RECORDS,
-        )
-        and _valid_id_list(
-            value["candidate_sent_triggers"],
-            limit=MAX_SENT_TRIGGERS,
-        )
-    )
-
-
-def _validate_state(value: Any) -> Dict[str, Any]:
-    if not isinstance(value, dict) or set(value) != {
-        "version", "baseline", "announced_record_ids",
-        "sent_triggers", "uncertain",
-    }:
-        raise RegistrationStateError("registration state has unexpected fields")
-    if value.get("version") != STATE_VERSION:
-        raise RegistrationStateError("registration state version is unsupported")
-    if not _valid_baseline(value.get("baseline")):
-        raise RegistrationStateError("registration baseline is invalid")
-    if not _valid_id_list(
-        value.get("announced_record_ids"), limit=MAX_ANNOUNCED_RECORDS
-    ):
-        raise RegistrationStateError("registration announced set is invalid")
-    if not _valid_id_list(
-        value.get("sent_triggers"), limit=MAX_SENT_TRIGGERS
-    ):
-        raise RegistrationStateError("registration trigger set is invalid")
-    if not _valid_uncertain(value.get("uncertain")):
-        raise RegistrationStateError("registration uncertain delivery is invalid")
-    return value
+    """Telegram may already contain the reserved event-access publication."""
 
 
 class RegistrationNotificationState:
     def __init__(self, path: Path = DEFAULT_STATE_PATH) -> None:
         self.path = path
 
-    def read(self) -> Dict[str, Any]:
+    @property
+    def backup_path(self) -> Path:
+        return self.path.with_name(self.path.stem + ".v1-backup.json")
+
+    def read_raw(self) -> Optional[Dict[str, Any]]:
         if not self.path.exists():
-            return _empty_state()
+            return None
         try:
             value = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise RegistrationStateError("registration state is unreadable") from exc
-        return _validate_state(value)
+            raise EventAccessStateError(
+                "event-access state is unreadable"
+            ) from exc
+        if not isinstance(value, dict):
+            raise EventAccessStateError(
+                "event-access state must be a JSON object"
+            )
+        return value
+
+    def read(self) -> Dict[str, Any]:
+        value = self.read_raw()
+        if value is None:
+            return empty_state()
+        if value.get("version") == 1:
+            raise EventAccessStateError(
+                "event-access state v1 requires migrate-state"
+            )
+        return validate_state(value)
 
     def _write(self, value: Mapping[str, Any]) -> None:
-        checked = _validate_state(dict(value))
+        checked = validate_state(dict(value))
         self.path.parent.mkdir(parents=True, exist_ok=True)
         descriptor, temporary = tempfile.mkstemp(
             prefix=f".{self.path.name}.",
@@ -429,7 +99,12 @@ class RegistrationNotificationState:
         )
         try:
             with os.fdopen(descriptor, "w", encoding="utf-8") as output:
-                json.dump(checked, output, ensure_ascii=False, separators=(",", ":"))
+                json.dump(
+                    checked,
+                    output,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
                 output.write("\n")
                 output.flush()
                 os.fsync(output.fileno())
@@ -455,589 +130,586 @@ class RegistrationNotificationState:
             try:
                 fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError as exc:
-                raise RegistrationStateError(
-                    "another event-registration run is active"
+                raise EventAccessStateError(
+                    "another event-access run is active"
                 ) from exc
             yield
 
-    def commit_plan(self, plan: RegistrationPlan) -> None:
-        value = self.read()
-        self._write({
-            "version": STATE_VERSION,
-            "baseline": dict(plan.candidate_baseline),
-            "announced_record_ids": list(plan.candidate_announced_record_ids),
-            "sent_triggers": list(plan.candidate_sent_triggers),
-            "uncertain": None,
-        })
+    def migrate(self) -> str:
+        with self.exclusive_run():
+            raw = self.read_raw()
+            if raw is None:
+                self._write(empty_state())
+                return "created_v2"
+            if raw.get("version") == STATE_VERSION:
+                validate_state(raw)
+                return "already_v2"
+            if raw.get("version") != 1:
+                raise EventAccessStateError(
+                    "event-access state version cannot be migrated"
+                )
 
-    def mark_uncertain(
+            migrated = migrate_v1_state(raw)
+            backup = self.backup_path
+            if backup.exists():
+                try:
+                    existing = json.loads(
+                        backup.read_text(encoding="utf-8")
+                    )
+                except (
+                    OSError,
+                    UnicodeDecodeError,
+                    json.JSONDecodeError,
+                ) as exc:
+                    raise EventAccessStateError(
+                        "event-access v1 backup is unreadable"
+                    ) from exc
+                if existing != raw:
+                    raise EventAccessStateError(
+                        "event-access v1 backup collision"
+                    )
+            else:
+                backup.parent.mkdir(parents=True, exist_ok=True)
+                descriptor, temporary = tempfile.mkstemp(
+                    prefix=f".{backup.name}.",
+                    dir=str(backup.parent),
+                )
+                try:
+                    with os.fdopen(
+                        descriptor, "w", encoding="utf-8"
+                    ) as output:
+                        json.dump(
+                            raw,
+                            output,
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                        )
+                        output.write("\n")
+                        output.flush()
+                        os.fsync(output.fileno())
+                    os.chmod(temporary, 0o600)
+                    os.replace(temporary, backup)
+                    directory = os.open(str(backup.parent), os.O_RDONLY)
+                    try:
+                        os.fsync(directory)
+                    finally:
+                        os.close(directory)
+                finally:
+                    try:
+                        os.unlink(temporary)
+                    except FileNotFoundError:
+                        pass
+            self._write(migrated)
+            return "migrated_v1_to_v2"
+
+    def reserve(
         self,
-        publication: RegistrationPublication,
+        current: Mapping[str, Any],
+        record_id: str,
+        operation: str,
+        message: str,
+        candidate_record: Mapping[str, Any],
         now: datetime,
     ) -> None:
-        value = self.read()
-        if value["uncertain"] is not None:
-            raise RegistrationStateError(
-                "registration delivery is already uncertain"
+        if current.get("uncertain") is not None:
+            raise EventAccessStateError(
+                "event-access delivery is already uncertain"
             )
-        value["uncertain"] = {
-            "created_at": now.isoformat(),
-            "message": publication.message,
-            "record_ids": list(publication.record_ids),
-            "trigger_ids": list(publication.trigger_ids),
-            "candidate_baseline": dict(publication.candidate_baseline),
-            "candidate_announced_record_ids": list(
-                publication.candidate_announced_record_ids
-            ),
-            "candidate_sent_triggers": list(
-                publication.candidate_sent_triggers
-            ),
+        value = {
+            "version": STATE_VERSION,
+            "records": {
+                key: dict(item)
+                for key, item in current["records"].items()
+            },
+            "uncertain": {
+                "created_at": now.isoformat(),
+                "record_id": record_id,
+                "operation": operation,
+                "message": message,
+                "candidate_record": dict(candidate_record),
+            },
         }
         self._write(value)
 
-    def clear_uncertain(self) -> None:
+    def clear_uncertain(self) -> Dict[str, Any]:
         value = self.read()
+        if value["uncertain"] is None:
+            raise EventAccessStateError(
+                "no uncertain event-access delivery"
+            )
         value["uncertain"] = None
         self._write(value)
+        return value
 
-    def confirm_uncertain(self) -> None:
+    def confirm_uncertain(
+        self,
+        root_message_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
         value = self.read()
         pending = value["uncertain"]
         if pending is None:
-            raise RegistrationStateError("no uncertain registration delivery")
-        self._write({
-            "version": STATE_VERSION,
-            "baseline": pending["candidate_baseline"],
-            "announced_record_ids": pending["candidate_announced_record_ids"],
-            "sent_triggers": pending["candidate_sent_triggers"],
-            "uncertain": None,
-        })
+            raise EventAccessStateError(
+                "no uncertain event-access delivery"
+            )
+        candidate = dict(pending["candidate_record"])
+        if pending["operation"] == "root":
+            if (
+                not isinstance(root_message_id, int)
+                or isinstance(root_message_id, bool)
+                or root_message_id <= 0
+            ):
+                raise EventAccessStateError(
+                    "root resolution requires a positive Telegram message ID"
+                )
+            candidate["root_message_id"] = root_message_id
+            candidate["audience_known"] = True
+        value["records"][pending["record_id"]] = candidate
+        value["uncertain"] = None
+        self._write(value)
+        return value
 
-
-def _local_datetime(day: date, value: time) -> datetime:
-    return datetime.combine(day, value, GUARDAMAR_TIMEZONE)
-
-
-def _trigger(kind: str, record: RegistrationRecord, boundary: date) -> str:
-    return f"{kind}:{record.record_id}:{boundary.isoformat()}"
-
-
-def _boundary_notices(
-    record: RegistrationRecord,
-    now: datetime,
-    sent_triggers: set[str],
-) -> Tuple[_Notice, ...]:
-    if record.status in {"full", "closed"}:
-        return ()
-    local = now.astimezone(GUARDAMAR_TIMEZONE)
-    today = local.date()
-    tomorrow = today + timedelta(days=1)
-    notices = []
-
-    opening = record.registration_start_date
-    closing = record.registration_end_date
-    if opening is not None and opening == closing:
-        tomorrow_key = _trigger("one-day-tomorrow", record, opening)
-        today_key = _trigger("one-day-today", record, opening)
-        if opening == tomorrow and tomorrow_key not in sent_triggers:
-            return (_Notice("one-day-tomorrow", record, tomorrow_key),)
-        if (
-            opening == today
-            and tomorrow_key not in sent_triggers
-            and today_key not in sent_triggers
-        ):
-            if record.registration_start_time is None:
-                return (_Notice("one-day-today", record, today_key),)
-            boundary = _local_datetime(opening, record.registration_start_time)
-            if local < boundary:
-                return (_Notice("one-day-today", record, today_key),)
-            if record.status == "open":
-                return (_Notice("active", record, today_key),)
-        return ()
-
-    if opening is not None:
-        tomorrow_key = _trigger("opening-tomorrow", record, opening)
-        today_key = _trigger("opening-today", record, opening)
-        if opening == tomorrow and tomorrow_key not in sent_triggers:
-            notices.append(_Notice("opening-tomorrow", record, tomorrow_key))
-        elif (
-            opening == today
-            and record.status != "open"
-            and tomorrow_key not in sent_triggers
-            and today_key not in sent_triggers
-        ):
-            if record.registration_start_time is None:
-                notices.append(_Notice("opening-today", record, today_key))
-            else:
-                boundary = _local_datetime(opening, record.registration_start_time)
-                if local < boundary:
-                    notices.append(_Notice("opening-today", record, today_key))
-
-    if closing is not None:
-        tomorrow_key = _trigger("closing-tomorrow", record, closing)
-        today_key = _trigger("closing-today", record, closing)
-        if closing == tomorrow and tomorrow_key not in sent_triggers:
-            notices.append(_Notice("closing-tomorrow", record, tomorrow_key))
-        elif closing == today and tomorrow_key not in sent_triggers and today_key not in sent_triggers:
-            if record.registration_end_time is None:
-                notices.append(_Notice("closing-today", record, today_key))
-            else:
-                boundary = _local_datetime(closing, record.registration_end_time)
-                if local < boundary:
-                    notices.append(_Notice("closing-today", record, today_key))
-    return tuple(notices)
-
-
-def _status_notice(
-    record: RegistrationRecord,
-    previous: Optional[Mapping[str, Any]],
-    announced: bool,
-    sent_triggers: set[str],
-) -> Optional[_Notice]:
-    previous_explicit = (
-        previous.get("last_explicit_status")
-        if previous is not None else None
-    )
-    if record.status == "full":
-        if announced and previous_explicit != "full":
-            return _Notice("full", record)
-        return None
-    if record.status == "closed":
-        if not announced or previous_explicit == "closed":
-            return None
-        closing = record.registration_end_date
-        if closing is not None:
-            expected_keys = {
-                _trigger("closing-tomorrow", record, closing),
-                _trigger("closing-today", record, closing),
-            }
-            if record.registration_start_date == closing:
-                expected_keys.update({
-                    _trigger("one-day-tomorrow", record, closing),
-                    _trigger("one-day-today", record, closing),
-                })
-            if expected_keys & sent_triggers:
-                return None
-        return _Notice("closed", record)
-    if record.status == "open":
-        if announced and previous_explicit in {"full", "closed"}:
-            return _Notice("reopened", record)
-        if not announced:
-            return _Notice("active", record)
-    return None
-
-
-def _change_notices(
-    record: RegistrationRecord,
-    previous: Optional[Mapping[str, Any]],
-    announced: bool,
-) -> Tuple[_Notice, ...]:
-    if previous is None or not announced:
-        return ()
-    result = []
-    try:
-        previous_event = date.fromisoformat(previous["event_start_date"])
-    except (KeyError, TypeError, ValueError):
-        previous_event = record.event_start_date
-    if previous_event != record.event_start_date:
-        result.append(_Notice(
-            "event-date-changed",
-            record,
-            old_event_date=previous_event,
-        ))
-
-    previous_end = None
-    try:
-        previous_end = _date_or_none(previous.get("registration_end_date"))
-    except ValueError:
-        previous_end = None
-    if (
-        previous_end != record.registration_end_date
-        and record.registration_end_date is not None
-        and record.status not in {"full", "closed"}
-    ):
-        result.append(_Notice(
-            "deadline-changed",
-            record,
-            old_end_date=previous_end,
-        ))
-    return tuple(result)
-
-
-_NOTICE_PRIORITY = {
-    "full": 10,
-    "closed": 20,
-    "reopened": 30,
-    "event-date-changed": 40,
-    "deadline-changed": 50,
-    "opening-tomorrow": 60,
-    "opening-today": 70,
-    "active": 80,
-    "closing-tomorrow": 90,
-    "closing-today": 100,
-    "one-day-tomorrow": 65,
-    "one-day-today": 75,
-}
-
-
-def _select_notices(
-    records: Sequence[RegistrationRecord],
-    previous_baseline: Mapping[str, Mapping[str, Any]],
-    announced_ids: set[str],
-    sent_triggers: set[str],
-    now: datetime,
-) -> Tuple[_Notice, ...]:
-    notices = []
-    today = now.astimezone(GUARDAMAR_TIMEZONE).date()
-    for record in records:
-        if record.event_start_date < today:
-            continue
-        previous = previous_baseline.get(record.record_id)
-        announced = record.record_id in announced_ids
-
-        status = _status_notice(record, previous, announced, sent_triggers)
-        changes = _change_notices(record, previous, announced)
-        boundaries = (
-            ()
-            if status is not None and status.kind in {"full", "closed"}
-            else _boundary_notices(record, now, sent_triggers)
-        )
-
-        if status is not None and not (
-            status.kind == "active" and boundaries
-        ):
-            notices.append(status)
-        notices.extend(changes)
-        notices.extend(boundaries)
-
-    # One semantic kind per record when multiple rules collapse to the same
-    # resident meaning.  Preserve independent correction + terminal sections.
-    unique = {}
-    for notice in notices:
-        key = (notice.kind, notice.record.record_id, notice.trigger_id)
-        unique[key] = notice
-    return tuple(sorted(
-        unique.values(),
-        key=lambda item: (
-            _NOTICE_PRIORITY[item.kind],
-            item.record.event_start_date,
-            item.record.record_id,
-        ),
-    ))
+    def write(self, value: Mapping[str, Any]) -> None:
+        self._write(value)
 
 
 def _format_date(value: date) -> str:
     months = (
-        "", "января", "февраля", "марта", "апреля", "мая", "июня",
-        "июля", "августа", "сентября", "октября", "ноября", "декабря",
+        "",
+        "января",
+        "февраля",
+        "марта",
+        "апреля",
+        "мая",
+        "июня",
+        "июля",
+        "августа",
+        "сентября",
+        "октября",
+        "ноября",
+        "декабря",
     )
     return f"{value.day} {months[value.month]}"
 
 
-def _record_line(record: RegistrationRecord, *, include_action: bool = False) -> str:
-    title = html.escape(record.title)
-    line = f"• <b>{title}</b> — {_format_date(record.event_start_date)}"
-    if include_action and record.status == "open" and record.registration_url:
-        line += (
-            ' · <a href="'
-            + html.escape(record.registration_url, quote=True)
-            + '">Записаться</a>'
+def _option(record: EventAccessRecord, option_id: str):
+    for option in record.options:
+        if option.option_id == option_id:
+            return option
+    raise ValueError("event-access notice references unknown option")
+
+
+def _action_label(record: EventAccessRecord) -> str:
+    if record.access_kind == "reservation":
+        return "Забронировать"
+    if record.access_kind == "ticket":
+        return "Получить билет"
+    return "Записаться"
+
+
+def _action_line(record: EventAccessRecord, option_id: str) -> Optional[str]:
+    option = _option(record, option_id)
+    if option.status != "open":
+        return None
+    if option.action_url:
+        return (
+            "📝 <a href=\""
+            + html.escape(option.action_url, quote=True)
+            + "\">"
+            + _action_label(record)
+            + "</a>"
         )
-    elif include_action and record.status == "open" and record.registration_contact:
-        line += " · регистрация: " + html.escape(record.registration_contact)
-    return line
+    if option.action_text:
+        return "📝 " + html.escape(option.action_text)
+    return None
 
 
-def _section_title(kind: str, record: RegistrationRecord) -> str:
-    if kind == "full":
-        return "🎟 <b>Места закончились</b>"
-    if kind == "closed":
-        return "🔒 <b>Запись закрыта</b>"
-    if kind == "reopened":
-        return "📝 <b>Регистрация снова открыта</b>"
-    if kind == "active":
-        return "📝 <b>Идёт запись</b>"
-    if kind == "opening-tomorrow":
-        return "📝 <b>Завтра открывается регистрация</b>"
-    if kind == "opening-today":
-        if record.registration_start_time is not None:
-            return (
-                "📝 <b>Сегодня в "
-                f"{record.registration_start_time.strftime('%H:%M')} "
-                "откроется регистрация</b>"
-            )
-        return "📝 <b>Сегодня открывается регистрация</b>"
-    if kind == "one-day-tomorrow":
-        return "📝 <b>Регистрация только завтра</b>"
-    if kind == "one-day-today":
-        return "📝 <b>Регистрация только сегодня</b>"
-    if kind == "closing-tomorrow":
-        return "⏳ <b>Завтра заканчивается запись</b>"
-    if kind == "closing-today":
-        if record.registration_end_time is not None:
-            return (
-                "⏳ <b>Сегодня в "
-                f"{record.registration_end_time.strftime('%H:%M')} "
-                "заканчивается запись</b>"
-            )
-        return "⏳ <b>Сегодня заканчивается запись</b>"
-    if kind == "event-date-changed":
-        return "🗓 <b>Изменилась дата мероприятия</b>"
-    if kind == "deadline-changed":
-        return "⏳ <b>Изменился срок регистрации</b>"
-    raise ValueError(kind)
+def _deadline_text(record: EventAccessRecord, option_id: str) -> Optional[str]:
+    option = _option(record, option_id)
+    if option.closes_on is None:
+        return None
+    result = _format_date(option.closes_on)
+    if option.closes_time is not None:
+        result += ", " + option.closes_time.strftime("%H:%M")
+    if option.until_full:
+        result += ", если места не закончатся раньше"
+    return result
 
 
-def _notice_line(notice: _Notice) -> str:
-    record = notice.record
-    if notice.kind == "event-date-changed":
-        old = (
-            f" (было {_format_date(notice.old_event_date)})"
-            if notice.old_event_date is not None else ""
-        )
-        return _record_line(record) + old
-    if notice.kind == "deadline-changed":
-        deadline = _format_date(record.registration_end_date)
-        if record.registration_end_time is not None:
-            deadline += f", {record.registration_end_time.strftime('%H:%M')}"
-        suffix = (
-            ", если места не закончатся раньше"
-            if record.until_full else ""
-        )
-        return _record_line(record) + f" · теперь до {deadline}{suffix}"
-    include_action = notice.kind in {
-        "active", "reopened", "opening-today", "opening-tomorrow",
-        "closing-today", "closing-tomorrow", "one-day-today",
-        "one-day-tomorrow",
+def _root_heading(kind: str) -> str:
+    headings = {
+        "active": "📝 <b>Открыта регистрация</b>",
+        "open": "📝 <b>Регистрация открыта</b>",
+        "reopened": "📝 <b>Регистрация снова открыта</b>",
+        "full": "⛔ <b>Мест больше нет</b>",
+        "closed": "📝 <b>Регистрация закрыта</b>",
+        "deadline-known": "⏳ <b>Появился срок регистрации</b>",
+        "deadline-changed": "⏳ <b>Срок регистрации изменён</b>",
+        "opening-tomorrow": "📝 <b>Завтра открывается регистрация</b>",
+        "opening-today": "📝 <b>Сегодня открывается регистрация</b>",
+        "one-day-tomorrow": "📝 <b>Регистрация только завтра</b>",
+        "option-added": "➕ <b>Добавлен вариант регистрации</b>",
     }
-    line = _record_line(record, include_action=include_action)
-    if notice.kind in {"closing-today", "closing-tomorrow"}:
-        deadline = _format_date(record.registration_end_date)
-        if record.registration_end_time is not None:
-            deadline += f", {record.registration_end_time.strftime('%H:%M')}"
-        if record.until_full:
-            deadline += ", если места не закончатся раньше"
-        line += f" · до {deadline}"
-    return line
+    return headings.get(kind, "📝 <b>Обновление регистрации</b>")
 
 
-def _render_notices(notices: Sequence[_Notice], translation_path: Path) -> str:
-    groups: Dict[str, list[_Notice]] = {}
-    order = []
-    for notice in notices:
-        translated = RegistrationRecord(
-            **{
-                **asdict(notice.record),
-                "title": cached_title(
-                    translation_path,
-                    notice.record.source,
-                    notice.record.title,
-                ),
-            }
+def _opening_text(record: EventAccessRecord, option_id: str) -> Optional[str]:
+    option = _option(record, option_id)
+    if option.opens_on is None:
+        return None
+    result = _format_date(option.opens_on)
+    if option.opens_time is not None:
+        result += ", " + option.opens_time.strftime("%H:%M")
+    if option.closes_on == option.opens_on:
+        return "📝 Регистрация: только " + result
+    return "📝 Регистрация: с " + result
+
+
+def _event_date_line(record: EventAccessRecord) -> str:
+    if (
+        record.event_end_date is not None
+        and record.event_end_date != record.event_start_date
+    ):
+        return (
+            "📅 "
+            + _format_date(record.event_start_date)
+            + " — "
+            + _format_date(record.event_end_date)
         )
-        notice = _Notice(
-            notice.kind,
-            translated,
-            notice.trigger_id,
-            notice.old_event_date,
-            notice.old_end_date,
-        )
-        if notice.kind not in groups:
-            order.append(notice.kind)
-            groups[notice.kind] = []
-        groups[notice.kind].append(notice)
+    return "📅 " + _format_date(record.event_start_date)
 
-    # Keep section heading and lines compact without special renderer state.
-    lines = []
-    for kind in order:
-        group = groups[kind]
-        if lines:
+
+def render_root(
+    record: EventAccessRecord,
+    decision: EventAccessDecision,
+) -> str:
+    if not decision.notices:
+        raise ValueError("root publication requires a notice")
+    first = decision.notices[0]
+    lines = [
+        _root_heading(first.kind),
+        "",
+        "<b>" + html.escape(record.title) + "</b>",
+        _event_date_line(record),
+    ]
+    if first.kind in {
+        "opening-tomorrow",
+        "opening-today",
+        "one-day-tomorrow",
+    }:
+        opening = _opening_text(record, first.option_id)
+        if opening is not None:
+            lines.append(opening)
+    if first.kind in {"deadline-known", "deadline-changed"}:
+        deadline = _deadline_text(record, first.option_id)
+        if deadline is not None:
+            lines.append("⏳ до " + html.escape(deadline))
+    if record.route:
+        lines.append("🥾 Маршрут: " + html.escape(record.route))
+    if record.details:
+        lines.append(" • ".join(html.escape(item) for item in record.details))
+    if record.schedule_note:
+        lines.append("🕐 " + html.escape(record.schedule_note))
+    if record.place:
+        lines.append("📍 " + html.escape(record.place))
+
+    for option in record.options:
+        action = _action_line(record, option.option_id)
+        if action is not None:
             lines.append("")
-        lines.append(_section_title(kind, group[0].record))
-        lines.extend(_notice_line(notice) for notice in group)
+            lines.append(action)
+            deadline = _deadline_text(record, option.option_id)
+            if deadline is not None:
+                lines.append("⏳ до " + html.escape(deadline))
+            if option.until_full:
+                lines.append("Места ограничены")
+
+    lines.append("")
+    lines.append(
+        '<a href="'
+        + html.escape(record.source_url, quote=True)
+        + '">Подробнее</a>'
+    )
     message = with_footer("\n".join(lines))
-    if not message or len(message) > MAX_MESSAGE_LENGTH:
-        raise ValueError("event-registration message exceeds Telegram limit")
+    if not 1 <= len(message) <= MAX_MESSAGE_LENGTH:
+        raise ValueError("event-access root exceeds Telegram limit")
     return message
 
 
-def _prune_baseline(
-    baseline: Dict[str, Dict[str, Any]],
-    announced: set[str],
-    today: date,
-) -> Tuple[Dict[str, Dict[str, Any]], set[str]]:
-    cutoff = today - timedelta(days=RETENTION_DAYS)
-    kept = {}
-    for key, value in baseline.items():
-        try:
-            event_day = date.fromisoformat(value["event_end_date"] or value["event_start_date"])
-        except (KeyError, TypeError, ValueError):
-            continue
-        if event_day >= cutoff:
-            kept[key] = value
-        else:
-            announced.discard(key)
-    return kept, announced
-
-
-def plan_registration_run(
-    records: Sequence[RegistrationRecord],
-    state_value: Mapping[str, Any],
-    now: datetime,
-    translation_path: Path = DEFAULT_TRANSLATION_PATH,
-) -> RegistrationPlan:
-    """Build the next semantic state and at most one current publication."""
-
-    _validate_state(dict(state_value))
-    unique: Dict[str, RegistrationRecord] = {}
-    for record in records:
-        if (
-            not valid_registration_record(record)
-            or not _temporally_consistent(record, now)
-        ):
-            continue
-        existing = unique.get(record.record_id)
-        if existing is not None and existing != record:
-            raise ValueError("conflicting registration record identity")
-        unique[record.record_id] = record
-
-    previous_baseline = state_value["baseline"]
-    announced = set(state_value["announced_record_ids"])
-    sent_order = list(state_value["sent_triggers"])
-    sent = set(sent_order)
-    notices = _select_notices(
-        tuple(unique[key] for key in sorted(unique)),
-        previous_baseline,
-        announced,
-        sent,
-        now,
-    )
-
-    candidate_baseline = {
-        key: dict(value)
-        for key, value in previous_baseline.items()
-    }
-    for record in unique.values():
-        candidate_baseline[record.record_id] = _baseline_record(
-            record,
-            previous_baseline.get(record.record_id),
+def _reply_block(
+    record: EventAccessRecord,
+    notice: AccessNotice,
+) -> Tuple[str, ...]:
+    option = _option(record, notice.option_id)
+    if notice.kind == "open":
+        heading = "📝 <b>Регистрация открыта</b>"
+    elif notice.kind == "reopened":
+        heading = "📝 <b>Регистрация снова открыта</b>"
+    elif notice.kind == "full":
+        return ("⛔ <b>Мест больше нет</b>",)
+    elif notice.kind == "closed":
+        return ("📝 <b>Регистрация закрыта</b>",)
+    elif notice.kind == "deadline-known":
+        deadline = _deadline_text(record, notice.option_id)
+        prefix = (
+            "Записаться можно до "
+            if option.status == "open"
+            else "Указан срок регистрации: до "
         )
-
-    for notice in notices:
-        announced.add(notice.record.record_id)
-        if notice.trigger_id is not None and notice.trigger_id not in sent:
-            sent.add(notice.trigger_id)
-            sent_order.append(notice.trigger_id)
-
-    today = now.astimezone(GUARDAMAR_TIMEZONE).date()
-    candidate_baseline, announced = _prune_baseline(
-        candidate_baseline,
-        announced,
-        today,
-    )
-    ordered_announced = tuple(sorted(announced))[-MAX_ANNOUNCED_RECORDS:]
-    ordered_triggers = tuple(sent_order[-MAX_SENT_TRIGGERS:])
-
-    if not notices:
-        return RegistrationPlan(
-            candidate_baseline,
-            ordered_announced,
-            ordered_triggers,
-            None,
+        return (
+            "⏳ <b>Появился срок регистрации</b>",
+            prefix + html.escape(deadline or "указанного срока"),
         )
+    elif notice.kind == "deadline-changed":
+        deadline = _deadline_text(record, notice.option_id)
+        return (
+            "⏳ <b>Срок регистрации изменён</b>",
+            "Теперь до " + html.escape(deadline or "указанного срока"),
+        )
+    elif notice.kind == "closing-tomorrow":
+        heading = "⏳ <b>Завтра заканчивается регистрация</b>"
+    elif notice.kind == "closing-today":
+        heading = "⏳ <b>Сегодня заканчивается регистрация</b>"
+    elif notice.kind == "opening-tomorrow":
+        opening = _opening_text(record, notice.option_id)
+        return tuple(
+            item for item in (
+                "📝 <b>Завтра открывается регистрация</b>",
+                opening,
+            )
+            if item is not None
+        )
+    elif notice.kind == "opening-today":
+        opening = _opening_text(record, notice.option_id)
+        return tuple(
+            item for item in (
+                "📝 <b>Сегодня открывается регистрация</b>",
+                opening,
+            )
+            if item is not None
+        )
+    elif notice.kind == "one-day-tomorrow":
+        opening = _opening_text(record, notice.option_id)
+        return tuple(
+            item for item in (
+                "📝 <b>Регистрация только завтра</b>",
+                opening,
+            )
+            if item is not None
+        )
+    elif notice.kind == "action-changed":
+        heading = "📝 <b>Изменился способ регистрации</b>"
+    elif notice.kind == "option-added":
+        heading = "➕ <b>Добавлен новый вариант регистрации</b>"
+    else:
+        heading = "📝 <b>Обновление регистрации</b>"
 
-    message = _render_notices(notices, translation_path)
-    record_ids = tuple(dict.fromkeys(
-        notice.record.record_id for notice in notices
-    ))
-    trigger_ids = tuple(dict.fromkeys(
-        notice.trigger_id for notice in notices
-        if notice.trigger_id is not None
-    ))
-    publication = RegistrationPublication(
-        message=message,
-        record_ids=record_ids,
-        trigger_ids=trigger_ids,
-        candidate_baseline=candidate_baseline,
-        candidate_announced_record_ids=ordered_announced,
-        candidate_sent_triggers=ordered_triggers,
-    )
-    return RegistrationPlan(
-        candidate_baseline,
-        ordered_announced,
-        ordered_triggers,
-        publication,
-    )
+    lines = [heading]
+    action = _action_line(record, notice.option_id)
+    if action is not None:
+        lines.append(action)
+    if notice.kind in {"open", "reopened"}:
+        deadline = _deadline_text(record, notice.option_id)
+        if deadline is not None:
+            lines.append("⏳ до " + html.escape(deadline))
+    if notice.kind in {"closing-tomorrow", "closing-today"}:
+        deadline = _deadline_text(record, notice.option_id)
+        if deadline is not None:
+            lines.append("⏳ до " + html.escape(deadline))
+    if option.label and len(record.options) > 1:
+        lines.insert(1, "⏰ " + html.escape(option.label))
+    return tuple(lines)
+
+
+def render_reply(
+    record: EventAccessRecord,
+    decision: EventAccessDecision,
+) -> str:
+    if not decision.notices:
+        raise ValueError("reply publication requires a notice")
+    lines = []
+    for notice in decision.notices:
+        if lines:
+            lines.append("")
+        lines.extend(_reply_block(record, notice))
+    message = with_footer("\n".join(lines))
+    if not 1 <= len(message) <= MAX_MESSAGE_LENGTH:
+        raise ValueError("event-access reply exceeds Telegram limit")
+    return message
+
+
+def render_decision(
+    record: EventAccessRecord,
+    decision: EventAccessDecision,
+) -> str:
+    if decision.operation == "root":
+        return render_root(record, decision)
+    if decision.operation == "reply":
+        return render_reply(record, decision)
+    raise ValueError("event-access decision has no publication")
+
+
+def _status_summary(raw: Optional[Mapping[str, Any]]) -> str:
+    if raw is None:
+        return json.dumps({
+            "version": None,
+            "migration_required": False,
+            "records": 0,
+            "uncertain": False,
+        }, ensure_ascii=False, sort_keys=True)
+    version = raw.get("version")
+    if version == 1:
+        uncertain = raw.get("uncertain")
+        return json.dumps({
+            "version": 1,
+            "migration_required": True,
+            "baseline_records": len(raw.get("baseline", {})),
+            "announced_records": len(raw.get("announced_record_ids", [])),
+            "sent_triggers": len(raw.get("sent_triggers", [])),
+            "uncertain": uncertain is not None,
+        }, ensure_ascii=False, sort_keys=True)
+    value = validate_state(dict(raw))
+    return json.dumps({
+        "version": STATE_VERSION,
+        "migration_required": False,
+        "records": len(value["records"]),
+        "audience_known_records": sum(
+            1
+            for item in value["records"].values()
+            if item["audience_known"]
+        ),
+        "root_records": sum(
+            1
+            for item in value["records"].values()
+            if item["root_message_id"] is not None
+        ),
+        "sent_triggers": sum(
+            len(item["sent_triggers"])
+            for item in value["records"].values()
+        ),
+        "uncertain": value["uncertain"] is not None,
+        "uncertain_record_id": (
+            value["uncertain"]["record_id"]
+            if value["uncertain"] is not None
+            else None
+        ),
+        "uncertain_operation": (
+            value["uncertain"]["operation"]
+            if value["uncertain"] is not None
+            else None
+        ),
+    }, ensure_ascii=False, sort_keys=True)
 
 
 async def run_registration_notifications(
     now: datetime,
     state: RegistrationNotificationState,
-    publish: Callable[[str], Awaitable[int]],
+    publish: Callable[[str, Optional[int]], Awaitable[int]],
     *,
     source_state_path: Path = DEFAULT_SOURCE_STATE_PATH,
-    translation_path: Path = DEFAULT_TRANSLATION_PATH,
 ) -> str:
-    observed = await convega_snapshot_observed_at(source_state_path)
-    local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
-    if observed is None:
-        return "stale_source"
-    local_observed = observed.astimezone(GUARDAMAR_TIMEZONE)
-    local_now = now.astimezone(GUARDAMAR_TIMEZONE)
-    if local_observed.date() != local_day or local_observed > local_now:
+    if not convega_snapshot_is_access_fresh(now, source_state_path):
         return "stale_source"
 
-    records = await load_registration_records(source_state_path)
+    records = await load_convega_access_records(source_state_path)
+    sent_any = False
     with state.exclusive_run():
         current = state.read()
         if current["uncertain"] is not None:
             return "uncertain"
 
-        plan = plan_registration_run(
-            records,
-            current,
-            now,
-            translation_path,
-        )
-        if plan.publication is None:
-            state.commit_plan(plan)
-            return "no_message"
+        today = now.astimezone(GUARDAMAR_TIMEZONE).date()
+        current["records"] = prune_records(current["records"], today)
 
-        state.mark_uncertain(plan.publication, now)
-        try:
-            await publish(plan.publication.message)
-        except TelegramError as exc:
-            if is_ambiguous_send_failure(exc):
+        for record in records:
+            event_day = record.event_end_date or record.event_start_date
+            if event_day < today or not temporally_consistent(record, now):
+                continue
+            previous = current["records"].get(record.record_id)
+            decision = plan_event_access_record(record, previous, now)
+
+            if decision.operation is None:
+                current["records"][record.record_id] = dict(
+                    decision.candidate_record
+                )
+                continue
+
+            message = render_decision(record, decision)
+            state.reserve(
+                current,
+                record.record_id,
+                decision.operation,
+                message,
+                decision.candidate_record,
+                now,
+            )
+            try:
+                message_id = await publish(
+                    message,
+                    decision.reply_to_message_id,
+                )
+            except TelegramError as exc:
+                if is_ambiguous_send_failure(exc):
+                    raise RegistrationDeliveryUncertain() from exc
+                current = state.clear_uncertain()
+                raise
+            except Exception as exc:
                 raise RegistrationDeliveryUncertain() from exc
-            state.clear_uncertain()
-            raise
-        except Exception:
-            # Unknown publisher exceptions are deliberately ambiguous: the
-            # outbound side effect cannot be proven absent.
-            raise RegistrationDeliveryUncertain()
 
-        state.confirm_uncertain()
-        return "sent"
+            if decision.operation == "root":
+                current = state.confirm_uncertain(message_id)
+            else:
+                current = state.confirm_uncertain()
+            sent_any = True
 
+        current["records"] = prune_records(current["records"], today)
+        state.write(current)
 
-def _status_summary(value: Mapping[str, Any]) -> str:
-    uncertain = value["uncertain"]
-    return json.dumps({
-        "version": value["version"],
-        "baseline_records": len(value["baseline"]),
-        "announced_records": len(value["announced_record_ids"]),
-        "sent_triggers": len(value["sent_triggers"]),
-        "uncertain": uncertain is not None,
-        "uncertain_created_at": (
-            uncertain["created_at"] if uncertain is not None else None
-        ),
-        "uncertain_record_ids": (
-            uncertain["record_ids"] if uncertain is not None else []
-        ),
-    }, ensure_ascii=False, sort_keys=True)
+    return "sent" if sent_any else "no_message"
 
 
-async def _run_cli(command: str) -> int:
+async def _preview(
+    now: datetime,
+    state: RegistrationNotificationState,
+    source_state_path: Path,
+) -> Tuple[str, ...]:
+    if not convega_snapshot_is_access_fresh(now, source_state_path):
+        return ("No access-fresh CONVEGA snapshot",)
+    records = await load_convega_access_records(source_state_path)
+    current = state.read()
+    if current["uncertain"] is not None:
+        return (
+            "Event-access delivery is uncertain; automatic publication blocked",
+        )
+    messages = []
+    simulated = {
+        "version": STATE_VERSION,
+        "records": {
+            key: dict(value)
+            for key, value in current["records"].items()
+        },
+        "uncertain": None,
+    }
+    today = now.astimezone(GUARDAMAR_TIMEZONE).date()
+    simulated["records"] = prune_records(simulated["records"], today)
+    for record in records:
+        event_day = record.event_end_date or record.event_start_date
+        if event_day < today or not temporally_consistent(record, now):
+            continue
+        previous = simulated["records"].get(record.record_id)
+        decision = plan_event_access_record(record, previous, now)
+        simulated["records"][record.record_id] = dict(
+            decision.candidate_record
+        )
+        if decision.operation is not None:
+            messages.append(render_decision(record, decision))
+    return tuple(messages) or ("No event-access notification due",)
+
+
+async def _run_cli(
+    command: str,
+    *,
+    root_message_id: Optional[int] = None,
+) -> int:
     now = datetime.now(GUARDAMAR_TIMEZONE)
     source_path = Path(os.environ.get(
         "CONVEGA_STATE_PATH", str(DEFAULT_SOURCE_STATE_PATH)
@@ -1045,58 +717,65 @@ async def _run_cli(command: str) -> int:
     state = RegistrationNotificationState(Path(os.environ.get(
         "EVENT_REGISTRATION_STATE_PATH", str(DEFAULT_STATE_PATH)
     )))
-    translation_path = Path(os.environ.get(
-        "EVENT_TRANSLATIONS_PATH", str(DEFAULT_TRANSLATION_PATH)
-    ))
 
     if command == "status":
-        print(_status_summary(state.read()))
-        return 0
-    if command == "resolve-sent":
-        with state.exclusive_run():
-            state.confirm_uncertain()
-        print("uncertain registration delivery committed as sent")
-        return 0
-    if command == "resolve-unsent":
-        with state.exclusive_run():
-            state.clear_uncertain()
-        print("uncertain registration delivery cleared for recomputation")
+        print(_status_summary(state.read_raw()))
         return 0
 
-    observed = await convega_snapshot_observed_at(source_path)
-    local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
-    if observed is None:
-        if command == "preview":
-            print("No fresh CONVEGA registration snapshot")
+    if command == "migrate-state":
+        result = state.migrate()
+        print(result)
+        print(_status_summary(state.read_raw()))
         return 0
-    local_observed = observed.astimezone(GUARDAMAR_TIMEZONE)
-    local_now = now.astimezone(GUARDAMAR_TIMEZONE)
-    if local_observed.date() != local_day or local_observed > local_now:
-        if command == "preview":
-            print("No fresh CONVEGA registration snapshot")
+
+    if command == "resolve-sent":
+        with state.exclusive_run():
+            current = state.read()
+            pending = current["uncertain"]
+            if pending is None:
+                raise EventAccessStateError(
+                    "no uncertain event-access delivery"
+                )
+            if pending["operation"] == "root":
+                current = state.confirm_uncertain(root_message_id)
+            else:
+                current = state.confirm_uncertain()
+        print("uncertain event-access delivery committed as sent")
+        print(_status_summary(current))
+        return 0
+
+    if command == "resolve-unsent":
+        with state.exclusive_run():
+            current = state.clear_uncertain()
+        print("uncertain event-access delivery cleared for recomputation")
+        print(_status_summary(current))
         return 0
 
     if command == "preview":
-        records = await load_registration_records(source_path)
-        current = state.read()
-        if current["uncertain"] is not None:
-            print("Registration delivery is uncertain; automatic publication blocked")
-            return 0
-        plan = plan_registration_run(records, current, now, translation_path)
-        print(plan.publication.message if plan.publication else "No registration notification due")
+        for message in await _preview(now, state, source_path):
+            print(message)
         return 0
+
+    # Normal run must never auto-migrate legacy persistent state.
+    state.read()
 
     bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
     if not bot_token or not chat_id:
-        raise ValueError("TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are required")
+        raise ValueError(
+            "TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are required"
+        )
 
-    async def publish(message: str) -> int:
+    async def publish(
+        message: str,
+        reply_to_message_id: Optional[int],
+    ) -> int:
         return await send_message(
             bot_token,
             chat_id,
             message,
             disable_notification=False,
+            reply_to_message_id=reply_to_message_id,
             retry_only_rate_limits=True,
         )
 
@@ -1106,26 +785,38 @@ async def _run_cli(command: str) -> int:
             state,
             publish,
             source_state_path=source_path,
-            translation_path=translation_path,
         )
     except RegistrationDeliveryUncertain:
         LOGGER.warning(
-            "Event-registration delivery uncertain; automatic resend disabled"
+            "Event-access delivery uncertain; automatic resend disabled"
         )
         return 0
-    LOGGER.info("Event-registration run complete: %s", result)
+    LOGGER.info("Event-access run complete: %s", result)
     return 0
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="One-off event registration lifecycle"
+        description="One-off event access lifecycle"
     )
     parser.add_argument(
         "command",
         nargs="?",
-        choices=("run", "preview", "status", "resolve-sent", "resolve-unsent"),
+        choices=(
+            "run",
+            "preview",
+            "status",
+            "migrate-state",
+            "resolve-sent",
+            "resolve-unsent",
+        ),
         default="run",
+    )
+    parser.add_argument(
+        "--message-id",
+        type=int,
+        default=None,
+        help="verified Telegram root ID for resolve-sent",
     )
     args = parser.parse_args()
     logging.basicConfig(
@@ -1133,10 +824,13 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(message)s",
     )
     try:
-        code = asyncio.run(_run_cli(args.command))
+        code = asyncio.run(_run_cli(
+            args.command,
+            root_message_id=args.message_id,
+        ))
     except (
         ConvegaSourceError,
-        RegistrationStateError,
+        EventAccessStateError,
         TelegramError,
         ValueError,
     ) as exc:

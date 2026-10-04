@@ -2,7 +2,7 @@ import asyncio
 import json
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
@@ -12,6 +12,8 @@ from telegrambot.digest import build_event_section
 from telegrambot.convega import (
     ConvegaSourceError,
     REGISTRATION_FULL_ACCESS_NOTE,
+    convega_access_record,
+    convega_snapshot_is_access_fresh,
     convega_snapshot_is_fresh_today,
     convega_translation_items,
     fetch_convega_snapshot,
@@ -316,6 +318,81 @@ class ConvegaFreshnessTests(unittest.TestCase):
         self.assertTrue(fresh)
 
 
+class ConvegaAccessTests(unittest.TestCase):
+    def test_access_freshness_rejects_old_same_day_snapshot(self):
+        snapshot = snapshot_with("<h3>PLAZAS AGOTADAS</h3>")
+        snapshot["observed_at"] = datetime(
+            2026, 10, 2, 10, 6, tzinfo=TZ
+        ).isoformat()
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "convega.json"
+            state.write_text(json.dumps(snapshot), encoding="utf-8")
+
+            fresh = convega_snapshot_is_access_fresh(NOW, state)
+
+        self.assertFalse(fresh)
+
+    def test_access_freshness_accepts_snapshot_within_90_minutes(self):
+        snapshot = snapshot_with("<h3>PLAZAS AGOTADAS</h3>")
+        snapshot["observed_at"] = datetime(
+            2026, 10, 2, 11, 49, tzinfo=TZ
+        ).isoformat()
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "convega.json"
+            state.write_text(json.dumps(snapshot), encoding="utf-8")
+
+            fresh = convega_snapshot_is_access_fresh(NOW, state)
+
+        self.assertTrue(fresh)
+
+    def test_access_freshness_rejects_future_snapshot(self):
+        snapshot = snapshot_with("<h3>PLAZAS AGOTADAS</h3>")
+        snapshot["observed_at"] = datetime(
+            2026, 10, 2, 12, 48, tzinfo=TZ
+        ).isoformat()
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "convega.json"
+            state.write_text(json.dumps(snapshot), encoding="utf-8")
+
+            fresh = convega_snapshot_is_access_fresh(NOW, state)
+
+        self.assertFalse(fresh)
+
+    def test_access_projection_keeps_source_identity_and_default_option(self):
+        snapshot = snapshot_with(
+            "<form><p>Inscripción</p>"
+            "<input type='text' name='name'>"
+            "<input type='email' name='email'>"
+            "<button type='submit'>Enviar</button></form>"
+        )
+        raw = next(
+            item
+            for item in snapshot["records"]
+            if item["stage"] == 21
+        )
+
+        projected = convega_access_record(raw)
+
+        self.assertIsNotNone(projected)
+        self.assertEqual(
+            projected.record_id,
+            "convega:post-42197:stage-21",
+        )
+        self.assertEqual(projected.access_kind, "registration")
+        self.assertEqual(
+            projected.title,
+            "Поход с гидом по пешеходному маршруту GR-92: "
+            "Guardamar → Torrevieja",
+        )
+        self.assertEqual(len(projected.options), 1)
+        self.assertEqual(projected.options[0].option_id, "default")
+        self.assertEqual(projected.options[0].status, "open")
+        self.assertEqual(
+            projected.options[0].action_url,
+            LANDING_LINK,
+        )
+
+
 class ConvegaRichRouteTests(unittest.TestCase):
     def test_landing_enrichment_projects_standard_digest_facts(self):
         snapshot = snapshot_with(rich_landing_inner())
@@ -520,9 +597,12 @@ class ConvegaRefreshTests(unittest.IsolatedAsyncioTestCase):
             ):
                 records = await refresh_convega_catalog(NOW, state)
             saved = json.loads(state.read_text(encoding="utf-8"))
+            later = NOW + timedelta(minutes=91)
+            fresh = convega_snapshot_is_access_fresh(later, state)
 
         self.assertEqual(saved, previous)
         self.assertEqual(tuple(previous["records"]), records)
+        self.assertFalse(fresh)
 
     async def test_corrupt_local_state_recovers_from_valid_remote(self):
         current = snapshot_with("<h3>PLAZAS AGOTADAS</h3>")
