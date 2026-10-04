@@ -1137,6 +1137,9 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     "Late environment check deferred to a later checkpoint: %s", exc
                 )
 
+        if schedule.beach_phase is None and not schedule.check_aemet:
+            return 0
+
         monitor_state = OperationalUpdateState(Path(os.environ.get(
             "OPERATIONAL_UPDATE_STATE_PATH", DEFAULT_OPERATIONAL_UPDATE_STATE_PATH
         )))
