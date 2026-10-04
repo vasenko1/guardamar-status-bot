@@ -348,7 +348,7 @@ class EventAccessPlannerTests(unittest.TestCase):
 
         self.assertEqual(reopened.notices[0].kind, "reopened")
 
-    def test_audience_known_without_root_never_creates_replacement_root(self):
+    def test_migrated_audience_known_rootless_creates_complete_root(self):
         previous = candidate_record_state(
             record(option(status="full")),
             None,
@@ -367,17 +367,16 @@ class EventAccessPlannerTests(unittest.TestCase):
             NOW,
         )
 
-        self.assertIsNone(decision.operation)
-        self.assertEqual(decision.notices, ())
+        self.assertEqual(decision.operation, "root")
+        self.assertEqual(decision.notices[0].kind, "reopened")
         self.assertTrue(decision.candidate_record["audience_known"])
         self.assertIsNone(decision.candidate_record["root_message_id"])
         self.assertEqual(
             decision.candidate_record["options"]["default"]["status"],
             "open",
         )
-        self.assertEqual(decision.candidate_record["sent_triggers"], [])
 
-    def test_rootless_audience_known_does_not_consume_unsent_trigger(self):
+    def test_rootless_material_trigger_is_absorbed_into_new_root(self):
         previous = candidate_record_state(
             record(option(status="unknown")),
             None,
@@ -391,9 +390,12 @@ class EventAccessPlannerTests(unittest.TestCase):
             NOW,
         )
 
-        self.assertIsNone(decision.operation)
-        self.assertEqual(decision.notices, ())
-        self.assertEqual(decision.candidate_record["sent_triggers"], [])
+        self.assertEqual(decision.operation, "root")
+        self.assertEqual(decision.notices[0].kind, "opening-tomorrow")
+        self.assertEqual(
+            decision.candidate_record["sent_triggers"],
+            ["opening-tomorrow:default:2026-10-03"],
+        )
 
     def test_open_to_full_and_closed_are_notified(self):
         for status in ("full", "closed"):
