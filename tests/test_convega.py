@@ -325,7 +325,6 @@ class ConvegaRichRouteTests(unittest.TestCase):
 
         self.assertEqual(stage21["direction_from"], "Guardamar del Segura")
         self.assertEqual(stage21["direction_to"], "Torrevieja")
-        self.assertEqual(stage21["start_time"], "08:00")
         self.assertEqual(
             stage21["place"],
             "Urb. Costa Bella, Guardamar del Segura",
@@ -345,7 +344,7 @@ class ConvegaRichRouteTests(unittest.TestCase):
         )
         self.assertEqual(
             stage21["schedule_note"],
-            "Старт 08:30 · финиш около 14:00 · "
+            "Сбор 08:00 · старт 08:30 · финиш около 14:00 · "
             "возвращение 14:30–15:00",
         )
 
@@ -365,10 +364,7 @@ class ConvegaRichRouteTests(unittest.TestCase):
             "Поход с гидом по пешеходному маршруту GR-92: "
             "Guardamar → Torrevieja",
         )
-        self.assertEqual(
-            event.starts_at,
-            datetime(2026, 10, 4, 8, 0, tzinfo=TZ),
-        )
+        self.assertIsNone(event.starts_at)
         self.assertEqual(
             event.place,
             "Urb. Costa Bella, Guardamar del Segura",
@@ -393,7 +389,7 @@ class ConvegaRichRouteTests(unittest.TestCase):
         ))
         self.assertEqual(rendered.count("GR-92"), 1)
         self.assertIn(
-            "• <b>08:00</b> — Поход с гидом по пешеходному "
+            "• Поход с гидом по пешеходному "
             "маршруту GR-92: Guardamar → Torrevieja",
             rendered,
         )
@@ -408,7 +404,7 @@ class ConvegaRichRouteTests(unittest.TestCase):
             rendered,
         )
         self.assertIn(
-            "🕐 Старт 08:30 · финиш около 14:00 · "
+            "🕐 Сбор 08:00 · старт 08:30 · финиш около 14:00 · "
             "возвращение 14:30–15:00",
             rendered,
         )
@@ -430,7 +426,6 @@ class ConvegaRichRouteTests(unittest.TestCase):
             for field in (
                 "direction_from",
                 "direction_to",
-                "start_time",
                 "details",
                 "schedule_note",
             ):
