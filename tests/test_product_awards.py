@@ -836,7 +836,7 @@ class RenderingTests(unittest.TestCase):
         self.assertIn("gazpachos", message)
         self.assertIn("Mejor del Análisis, 90/100", message)
         self.assertIn("50% — на профессиональную дегустацию", message)
-        self.assertIn("40% — на пищевую ценность", message)
+        self.assertIn("40% — на оценку пищевой ценности", message)
         self.assertNotIn("физически тестировала", message)
         self.assertNotIn("25 cava", message)
 
@@ -854,6 +854,10 @@ class RenderingTests(unittest.TestCase):
                 self.assertNotIn(item.product_name, block)
                 self.assertNotIn(item.award_result, block)
                 self.assertNotIn(item.retailer, block)
+                if item.sample_size is not None:
+                    self.assertNotIn(str(item.sample_size), block)
+                if item.highlight:
+                    self.assertNotIn(item.highlight, block)
 
         gazpacho = next(item for item in items if item.category_key == "gazpacho")
         self.assertIn("10% итоговой оценки", awards._methodology(gazpacho))
