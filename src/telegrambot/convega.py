@@ -639,22 +639,17 @@ def _explicit_route_direction(text: str) -> Optional[Tuple[str, str]]:
     return None
 
 
-def _leading_clock(value: str) -> Optional[str]:
-    match = re.match(r"^\s*(\d{1,2}:\d{2})(?:H)?\b", value, re.IGNORECASE)
-    if match is None:
-        return None
+def _clock(value: str) -> Optional[str]:
     try:
-        parsed = time.fromisoformat(match.group(1))
+        return time.fromisoformat(value).strftime("%H:%M")
     except ValueError:
         return None
-    return parsed.strftime("%H:%M")
 
 
 def _landing_route_facts(parser: _RenderedContentParser) -> Dict[str, Any]:
-    """Extract optional presentation facts from the current guided-route page."""
+    """Extract optional facts from the labelled current guided-route page."""
 
     text = parser.text
-    folded = _fold(text)
     result: Dict[str, Any] = {}
 
     direction = _explicit_route_direction(text)
@@ -662,104 +657,101 @@ def _landing_route_facts(parser: _RenderedContentParser) -> Dict[str, Any]:
         result["direction_from"], result["direction_to"] = direction
 
     details: List[str] = []
-    distance_match = re.search(
+    match = re.search(
         r"\bDistancia\s+total\s+(\d{1,3}(?:[,.]\d{1,2})?)\s*KM\b",
         text,
         re.IGNORECASE,
     )
-    if distance_match is not None:
-        details.append(distance_match.group(1).replace(".", ",") + " км")
+    if match is not None:
+        details.append(match.group(1).replace(".", ",") + " км")
 
-    duration_match = re.search(
+    match = re.search(
         r"\bDuraci[oó]n\s+(\d{1,2}(?:[,.]\d)?)\s*[–-]\s*"
         r"(\d{1,2}(?:[,.]\d)?)\s*horas\b",
         text,
         re.IGNORECASE,
     )
-    if duration_match is not None:
+    if match is not None:
         details.append(
-            duration_match.group(1).replace(".", ",")
+            match.group(1).replace(".", ",")
             + "–"
-            + duration_match.group(2).replace(".", ",")
+            + match.group(2).replace(".", ",")
             + " ч"
         )
 
-    difficulty_match = re.search(
-        r"\bDificultad\s+"
-        r"([A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+"
+    match = re.search(
+        r"\bDificultad\s+([A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+"
         r"(?:\s*[/–-]\s*[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+)?)",
         text,
         re.IGNORECASE,
     )
-    if difficulty_match is not None:
-        difficulty = route_difficulty_detail(
-            "Dificultad: " + difficulty_match.group(1)
-        )
+    if match is not None:
+        difficulty = route_difficulty_detail("Dificultad: " + match.group(1))
         if difficulty is not None:
             details.append(difficulty)
     if details:
         result["details"] = details
 
+    reception = re.search(
+        r"\b(\d{1,2}:\d{2})H?\s*[-–—]\s*"
+        r"Recepci[oó]n\s+de\s+participantes\s+en\s+"
+        r"(?:la\s+|el\s+)?(.+?)(?=\s+\d{1,2}:\d{2}\b|\Z)",
+        text,
+        re.IGNORECASE | re.DOTALL,
+    )
     meeting_point = None
-    reception_time = None
-    hike_start = None
+    if reception is not None:
+        clock = _clock(reception.group(1))
+        if clock is not None:
+            result["start_time"] = clock
+        meeting_point = " ".join(reception.group(2).split()).strip(" .")
+        if meeting_point:
+            result["place"] = meeting_point
+
+    hike_start_match = re.search(
+        r"\b(\d{1,2}:\d{2})\s*[-–—]\s*Inicio\s+de\s+la\s+marcha\b",
+        text,
+        re.IGNORECASE,
+    )
+    hike_start = (
+        _clock(hike_start_match.group(1))
+        if hike_start_match is not None else None
+    )
+
+    finish_match = re.search(
+        r"\b(\d{1,2}:\d{2})\s*[-–—]\s*Llegada\s+prevista\s+a\s+"
+        r"(.+?)(?:,\s*fin\s+de\s+la\s+ruta|"
+        r"(?=\s+\d{1,2}:\d{2}\b)|\Z)",
+        text,
+        re.IGNORECASE | re.DOTALL,
+    )
     expected_finish = None
     finish_point = None
+    if finish_match is not None:
+        expected_finish = _clock(finish_match.group(1))
+        finish_point = " ".join(finish_match.group(2).split()).strip(" .")
+        finish_point = re.sub(r"\s*\([^)]{1,80}\)\s*$", "", finish_point)
+
+    return_match = re.search(
+        r"\b(\d{1,2}:\d{2})\s*[–-]\s*(\d{1,2}:\d{2})\s*"
+        r"[-–—]\s*Regreso\s+en\s+autob[uú]s\b",
+        text,
+        re.IGNORECASE,
+    )
     return_window = None
-    for raw_part in parser.text_parts:
-        part = " ".join(raw_part.split())
-        part_folded = _fold(part)
+    if return_match is not None:
+        return_start = _clock(return_match.group(1))
+        return_end = _clock(return_match.group(2))
+        if return_start is not None and return_end is not None:
+            return_window = f"{return_start}–{return_end}"
 
-        if "recepcion de participantes" in part_folded:
-            reception_time = _leading_clock(part) or reception_time
-            match = re.search(
-                r"recepci[oó]n\s+de\s+participantes\s+en\s+"
-                r"(?:la\s+|el\s+)?(.+)$",
-                part,
-                re.IGNORECASE,
-            )
-            if match is not None:
-                meeting_point = match.group(1).strip(" .")
-
-        if "inicio de la marcha" in part_folded:
-            hike_start = _leading_clock(part) or hike_start
-
-        if "llegada prevista" in part_folded:
-            expected_finish = _leading_clock(part) or expected_finish
-            match = re.search(
-                r"llegada\s+prevista\s+a\s+(.+?)(?:,\s*fin\b|$)",
-                part,
-                re.IGNORECASE,
-            )
-            if match is not None:
-                finish_point = re.sub(
-                    r"\s*\([^)]{1,80}\)\s*$",
-                    "",
-                    match.group(1).strip(" ."),
-                )
-
-        if "regreso en autobus" in part_folded:
-            match = re.search(
-                r"(\d{1,2}:\d{2})\s*[–-]\s*(\d{1,2}:\d{2})",
-                part,
-            )
-            if match is not None:
-                return_window = f"{match.group(1)}–{match.group(2)}"
-
-    if meeting_point:
-        result["place"] = meeting_point
-    if reception_time:
-        result["start_time"] = reception_time
-
-    route_parts = sorted({
-        int(value)
-        for value in re.findall(r"\bTRAMO\s+(\d{1,2})\b", text, re.IGNORECASE)
-    })
-    bus_transfer = "traslado en autobus" in folded
+    segment_count = len(set(
+        re.findall(r"\bTRAMO\s+(\d{1,2})\b", text, re.IGNORECASE)
+    ))
+    bus_transfer = "traslado en autobus" in _fold(text)
     if meeting_point and finish_point:
-        start_label = meeting_point.split(",", 1)[0].strip()
-        route = f"{start_label} → {finish_point}"
-        if bus_transfer and len(route_parts) == 2:
+        route = f"{meeting_point.split(',', 1)[0].strip()} → {finish_point}"
+        if bus_transfer and segment_count == 2:
             route += ", 2 пеших участка с трансфером"
         elif bus_transfer:
             route += ", пешие участки с трансфером"
@@ -774,7 +766,6 @@ def _landing_route_facts(parser: _RenderedContentParser) -> Dict[str, Any]:
         schedule.append(f"возвращение {return_window}")
     if schedule:
         result["schedule_note"] = " · ".join(schedule)
-
     return result
 
 
