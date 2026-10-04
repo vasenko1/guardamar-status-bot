@@ -6,11 +6,17 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
-from telegrambot.event_access import AccessOption, EventAccessRecord
+from telegrambot.event_access import (
+    AccessNotice,
+    AccessOption,
+    EventAccessDecision,
+    EventAccessRecord,
+)
 from telegrambot.event_registration_notifications import (
     RegistrationDeliveryUncertain,
     RegistrationNotificationState,
     EventAccessStateError,
+    render_reply,
     render_root,
     run_registration_notifications,
 )
@@ -163,6 +169,47 @@ class MigrationStateTests(unittest.TestCase):
 
 
 class RenderingTests(unittest.TestCase):
+    def test_future_opening_root_keeps_exact_boundary(self):
+        from telegrambot.event_access import plan_event_access_record
+
+        item = record(
+            options=(
+                AccessOption(
+                    option_id="default",
+                    opens_on=date(2026, 10, 3),
+                    opens_time=datetime.strptime("10:30", "%H:%M").time(),
+                ),
+            )
+        )
+        decision = plan_event_access_record(item, None, NOW)
+
+        message = render_root(item, decision)
+
+        self.assertIn("Завтра открывается регистрация", message)
+        self.assertIn("Регистрация: с 3 октября, 10:30", message)
+
+    def test_unknown_deadline_wording_does_not_claim_registration_is_open(self):
+        item = record(
+            options=(
+                AccessOption(
+                    option_id="default",
+                    status="unknown",
+                    closes_on=date(2026, 10, 10),
+                ),
+            )
+        )
+        decision = EventAccessDecision(
+            candidate_record={},
+            notices=(AccessNotice("deadline-known", "default"),),
+            operation="reply",
+            reply_to_message_id=100,
+        )
+
+        message = render_reply(item, decision)
+
+        self.assertIn("Указан срок регистрации", message)
+        self.assertNotIn("Записаться можно", message)
+
     def test_root_is_self_contained_and_uses_current_action(self):
         from telegrambot.event_access import plan_event_access_record
 
