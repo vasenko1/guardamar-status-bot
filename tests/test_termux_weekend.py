@@ -234,7 +234,7 @@ class WeekendTermuxTests(unittest.TestCase):
         )
 
         freshness = content.index(
-            "python -m telegrambot.convega fresh-today"
+            "python -m telegrambot.convega fresh-access"
         )
         source_sync = content.index('sh "$SCRIPT_DIR/sync-convega.sh"')
         lifecycle = content.index(
