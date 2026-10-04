@@ -130,9 +130,17 @@ class ConvegaParsingTests(unittest.TestCase):
             "convega:post-42197:stage-21",
         )
         self.assertIsNone(by_stage[21]["route"])
+        self.assertEqual(
+            (by_stage[21]["direction_from"], by_stage[21]["direction_to"]),
+            ("Guardamar del Segura", "Torrevieja"),
+        )
 
         self.assertFalse(by_stage[22]["guardamar_relevant"])
         self.assertEqual(by_stage[22]["event_start_date"], "2026-11-08")
+        self.assertEqual(
+            (by_stage[22]["direction_from"], by_stage[22]["direction_to"]),
+            ("Torrevieja", "Pilar de la Horadada"),
+        )
         self.assertEqual(by_stage[22]["observed_status"], "unknown")
         self.assertIsNone(by_stage[22]["landing_url"])
 
