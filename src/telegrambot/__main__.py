@@ -1117,7 +1117,10 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         ):
             logging.info("SKIP: no operational update check is due")
             return 0
-        api_key = _required_environment("AEMET_API_KEY") if schedule.check_aemet else ""
+        api_key = (
+            _required_environment("AEMET_API_KEY")
+            if schedule.check_aemet else ""
+        )
         bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
         chat_id = _required_environment("TELEGRAM_CHAT_ID")
         publication_state = PublicationState(Path(os.environ.get(
@@ -1295,7 +1298,6 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                             return 1
                     clear_beach_ready(value)
                     monitor_state.write(value)
-
 
             if not schedule.check_aemet:
                 return 0
