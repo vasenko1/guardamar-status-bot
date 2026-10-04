@@ -375,6 +375,25 @@ class EventAccessPlannerTests(unittest.TestCase):
             decision.candidate_record["options"]["default"]["status"],
             "open",
         )
+        self.assertEqual(decision.candidate_record["sent_triggers"], [])
+
+    def test_rootless_audience_known_does_not_consume_unsent_trigger(self):
+        previous = candidate_record_state(
+            record(option(status="unknown")),
+            None,
+        )
+        previous["audience_known"] = True
+        previous["root_message_id"] = None
+
+        decision = plan_event_access_record(
+            record(option(opens_on=date(2026, 10, 3))),
+            previous,
+            NOW,
+        )
+
+        self.assertIsNone(decision.operation)
+        self.assertEqual(decision.notices, ())
+        self.assertEqual(decision.candidate_record["sent_triggers"], [])
 
     def test_open_to_full_and_closed_are_notified(self):
         for status in ("full", "closed"):
