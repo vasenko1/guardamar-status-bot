@@ -1102,9 +1102,25 @@ def _event_for_day(
             return None
     if not start <= local_day <= end:
         return None
-    title = convega_event_title(raw.get("stage"))
+    title = convega_event_title(
+        raw.get("stage"),
+        raw.get("direction_from"),
+        raw.get("direction_to"),
+    )
     if title is None:
         return None
+    starts_at = None
+    start_time = raw.get("start_time")
+    if start_time is not None:
+        try:
+            starts_at = datetime.combine(
+                start,
+                time.fromisoformat(start_time),
+                GUARDAMAR_TIMEZONE,
+            )
+        except (TypeError, ValueError):
+            return None
+
     status = raw.get("observed_status")
     access_note = (
         REGISTRATION_FULL_ACCESS_NOTE
@@ -1118,9 +1134,11 @@ def _event_for_day(
     )
     return Event(
         title=title,
-        starts_at=None,
+        starts_at=starts_at,
         place=raw.get("place"),
         route=raw.get("route"),
+        details=tuple(raw.get("details") or ()),
+        schedule_note=raw.get("schedule_note"),
         access_note=access_note,
         registration_url=registration_url,
         capacity_limited=bool(raw.get("until_full")),
