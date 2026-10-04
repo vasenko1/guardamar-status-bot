@@ -253,6 +253,12 @@ optional products have at most two. `401`, ordinary `404`, schema, date,
 archive, size, and validation failures are not retried. `Retry-After` is
 honored only when it fits the bounded process budget.
 
+The four-product sequence above describes the prepared/morning weather
+collection. Later operational warning monitoring is intentionally narrower:
+only the CAP warning product is requested, once per hour at minute `:51` from
+07:51 through 23:51 Europe/Madrid. Those CAP-only checks reuse the same bounded
+two-step adapter and do not refetch forecast, observation or beach products.
+
 AEMET forecast periods of six hours or more are expressed in UTC. User-facing
 rain intervals are converted to `Europe/Madrid`, including daylight-saving
 time.
