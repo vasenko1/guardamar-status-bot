@@ -522,6 +522,38 @@ class EventAccessPlannerTests(unittest.TestCase):
             [notice.kind for notice in decision.notices],
         )
 
+    def test_deadline_and_action_change_share_one_reply(self):
+        previous = candidate_record_state(
+            record(
+                option(
+                    status="open",
+                    closes_on=date(2026, 10, 10),
+                    action_url="https://example.com/old",
+                )
+            ),
+            None,
+        )
+        previous["audience_known"] = True
+        previous["root_message_id"] = 100
+
+        decision = plan_event_access_record(
+            record(
+                option(
+                    status="open",
+                    closes_on=date(2026, 10, 11),
+                    action_url="https://example.com/new",
+                )
+            ),
+            previous,
+            NOW,
+        )
+
+        self.assertEqual(decision.operation, "reply")
+        self.assertEqual(
+            [notice.kind for notice in decision.notices],
+            ["deadline-changed", "action-changed"],
+        )
+
     def test_action_change_while_open_is_notified(self):
         previous = candidate_record_state(
             record(
