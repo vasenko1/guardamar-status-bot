@@ -651,12 +651,17 @@ def plan_event_access_record(
         raise EventAccessStateError("event-access trigger bound exceeded")
     if not notices:
         return EventAccessDecision(candidate, (), None, None)
-    operation = "reply" if root_id is not None else "root"
+
+    # A migrated legacy record may be audience-known without a stored root ID.
+    # First rollout must never invent a replacement root for that history.
+    if root_id is None:
+        return EventAccessDecision(candidate, (), None, None)
+
     return EventAccessDecision(
         candidate,
         tuple(notices),
-        operation,
-        root_id if operation == "reply" else None,
+        "reply",
+        root_id,
     )
 
 
