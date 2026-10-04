@@ -24,6 +24,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
 from ._transport import BoundedFetchError, fetch_bounded
+from .event_access import AccessOption, EventAccessRecord
 from .event_facts import route_difficulty_detail
 from .models import Event
 
@@ -1157,6 +1158,106 @@ async def convega_translation_items(
     return ()
 
 
+def convega_access_record(raw: Any) -> Optional[EventAccessRecord]:
+    """Project one validated CONVEGA row into the generic event-access model."""
+
+    if not isinstance(raw, Mapping) or not raw.get("guardamar_relevant"):
+        return None
+    title = convega_event_title(
+        raw.get("stage"),
+        raw.get("direction_from"),
+        raw.get("direction_to"),
+    )
+    if title is None:
+        return None
+    try:
+        option = AccessOption(
+            option_id="default",
+            status=raw["observed_status"],
+            opens_on=(
+                date.fromisoformat(raw["registration_start_date"])
+                if raw.get("registration_start_date") is not None
+                else None
+            ),
+            opens_time=(
+                time.fromisoformat(raw["registration_start_time"])
+                if raw.get("registration_start_time") is not None
+                else None
+            ),
+            closes_on=(
+                date.fromisoformat(raw["registration_end_date"])
+                if raw.get("registration_end_date") is not None
+                else None
+            ),
+            closes_time=(
+                time.fromisoformat(raw["registration_end_time"])
+                if raw.get("registration_end_time") is not None
+                else None
+            ),
+            until_full=bool(raw["until_full"]),
+            action_url=raw.get("registration_url"),
+            action_text=raw.get("registration_contact"),
+        )
+        record = EventAccessRecord(
+            record_id=raw["record_id"],
+            source=raw["source"],
+            source_url=raw["source_url"],
+            access_kind="registration",
+            title=title,
+            event_start_date=date.fromisoformat(raw["event_start_date"]),
+            event_end_date=(
+                date.fromisoformat(raw["event_end_date"])
+                if raw.get("event_end_date") is not None
+                else None
+            ),
+            place=raw.get("place"),
+            route=raw.get("route"),
+            details=tuple(raw.get("details") or ()),
+            schedule_note=raw.get("schedule_note"),
+            options=(option,),
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+    return record
+
+
+async def load_convega_access_records(
+    state_path: Path = Path(DEFAULT_STATE_PATH),
+) -> Tuple[EventAccessRecord, ...]:
+    result = []
+    for raw in await load_convega_records(state_path):
+        record = convega_access_record(raw)
+        if record is not None:
+            result.append(record)
+    result.sort(key=lambda item: (item.event_start_date, item.record_id))
+    return tuple(result)
+
+
+def convega_snapshot_is_access_fresh(
+    now: datetime,
+    state_path: Path = Path(DEFAULT_STATE_PATH),
+    *,
+    max_age: timedelta = timedelta(minutes=90),
+) -> bool:
+    """Require same-day CONVEGA evidence no older than the access SLA."""
+
+    try:
+        snapshot = _load_snapshot(state_path)
+    except ConvegaSourceError:
+        return False
+    if snapshot is None:
+        return False
+    observed = datetime.fromisoformat(snapshot["observed_at"])
+    local_now = now.astimezone(GUARDAMAR_TIMEZONE)
+    local_observed = observed.astimezone(GUARDAMAR_TIMEZONE)
+    age = local_now - local_observed
+    return (
+        local_observed.date() == local_now.date()
+        and age >= timedelta(0)
+        and age <= max_age
+    )
+
+
 def convega_snapshot_is_fresh_today(
     now: datetime,
     state_path: Path = Path(DEFAULT_STATE_PATH),
@@ -1181,7 +1282,7 @@ def main() -> None:
     parser.add_argument(
         "command",
         nargs="?",
-        choices=("sync", "fresh-today"),
+        choices=("sync", "fresh-today", "fresh-access"),
         default="sync",
     )
     args = parser.parse_args()
@@ -1194,6 +1295,10 @@ def main() -> None:
     if args.command == "fresh-today":
         raise SystemExit(
             0 if convega_snapshot_is_fresh_today(now, state_path) else 1
+        )
+    if args.command == "fresh-access":
+        raise SystemExit(
+            0 if convega_snapshot_is_access_fresh(now, state_path) else 1
         )
     try:
         records = asyncio.run(refresh_convega_catalog(now, state_path))
