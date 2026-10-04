@@ -2,8 +2,7 @@
 
 ## Status
 
-Completed architecture/source review. No production code, cron, state or Telegram
-publication is changed by this research branch.
+Architecture stabilized after eight adversarial review cycles. No production code, cron, state or Telegram publication is changed by this research branch.
 
 This review supersedes only the **publication-surface** conclusion in
 `research/2026-09-17-guardamar-sports-event-sources.md` that sports needed no
@@ -1447,3 +1446,42 @@ hypothetical edge case.
 The architecture should preserve it when a relevant source exposes it, but the
 exact normalized representation should be chosen with the first accepted
 source adapter rather than adding a project-wide status enum now.
+
+
+## Review cycle 8 — final adversarial checklist
+
+This pass found **no new architecture-changing defect**.
+
+Checklist result:
+
+- product surfaces: coherent — advance access root/thread, planning tomorrow/weekend,
+  current-day sports reminder, no Morning duplicate;
+- human presentation: coherent — sport + participants + competition level/stage +
+  timing/place + source-backed duration/format;
+- model: minimal — one global `Event.sport` addition; competition context stays in
+  ordered details;
+- source ownership: coherent — source-owned access identity before global merge,
+  explicit delegated-provider rules only;
+- dedupe: bounded — known different sports never merge; no generic resolver;
+- registration lifecycle: reused — no sports-specific state machine;
+- photo lifecycle: one missing generic completion only, already accepted by ADR 0090;
+- event-access correctness: known missing date-correction reply and generic access-kind
+  wording are explicit required fixes;
+- cancellation/postponement: current-day correction + rooted-event correction when
+  source-backed, without continuous monitoring;
+- multi-day semantics: source-contract gated, not inferred from date ranges;
+- message length: silent truncation is rejected; use complete bounded rendering with
+  deterministic degradation before considering pagination;
+- delivery safety: Tomorrow is crash-safe; Weekend's existing ambiguous-delivery gap
+  is explicitly identified and must be fixed before relying on it for richer sports;
+- schedule/runtime: one-shot architecture remains valid; exact minutes remain a
+  production-crontab planning gate, not an architectural unknown;
+- source cost: first publication slice adds zero new network sources;
+- Python/dependencies: Python 3.9 and standard-library constraints remain satisfied;
+- Pesca PDF: explicit ADR/runtime permission required, no OCR/browser;
+- production safety: research branch is based on main and changes only this research
+  file.
+
+The idea is therefore ready to move from research into a formal implementation
+plan/ADR phase. Do not start runtime implementation until that plan captures every
+required fix/gate above.
