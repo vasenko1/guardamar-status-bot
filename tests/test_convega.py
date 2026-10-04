@@ -2,7 +2,7 @@ import asyncio
 import json
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
@@ -348,7 +348,7 @@ class ConvegaAccessTests(unittest.TestCase):
     def test_access_freshness_rejects_future_snapshot(self):
         snapshot = snapshot_with("<h3>PLAZAS AGOTADAS</h3>")
         snapshot["observed_at"] = datetime(
-            2026, 10, 2, 12, 1, tzinfo=TZ
+            2026, 10, 2, 12, 48, tzinfo=TZ
         ).isoformat()
         with tempfile.TemporaryDirectory() as directory:
             state = Path(directory) / "convega.json"
@@ -381,7 +381,8 @@ class ConvegaAccessTests(unittest.TestCase):
         self.assertEqual(projected.access_kind, "registration")
         self.assertEqual(
             projected.title,
-            "Поход с гидом по GR-92 · этап 21: Guardamar → Torrevieja",
+            "Поход с гидом по пешеходному маршруту GR-92: "
+            "Guardamar → Torrevieja",
         )
         self.assertEqual(len(projected.options), 1)
         self.assertEqual(projected.options[0].option_id, "default")
@@ -599,7 +600,7 @@ class ConvegaRefreshTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(saved, previous)
         self.assertEqual(tuple(previous["records"]), records)
-        later = NOW + __import__("datetime").timedelta(minutes=91)
+        later = NOW + timedelta(minutes=91)
         self.assertFalse(convega_snapshot_is_access_fresh(later, state))
 
     async def test_corrupt_local_state_recovers_from_valid_remote(self):
