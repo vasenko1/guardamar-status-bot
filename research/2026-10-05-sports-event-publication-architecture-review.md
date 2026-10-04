@@ -1235,3 +1235,117 @@ resident requirement without speculative schema.
 
 Revisit only if two or more implemented adapters need cross-source logic on
 those components rather than presentation.
+
+
+## Review cycle 6 — correction semantics and source-safety findings
+
+### Current-day sport must explicitly correct a previously announced cancellation
+
+If Friday Weekend announced a Sunday match and the responsible federation later
+marks it cancelled/postponed, simply omitting the match from Sunday Sports Today
+is unsafe: a resident may still act on Friday's message.
+
+Therefore the current-day sports projection must be able to render a concise
+source-proven correction when the source exposes it, for example:
+
+- `❌ Матч отменён`;
+- `↪️ Матч перенесён на ...`.
+
+This does **not** imply continuous sports monitoring. It is a correction at the
+normal current-day checkpoint.
+
+Do not add a generic Event status enum until the first accepted league/source
+contract proves exact status values and semantics. But source acceptance now
+requires us to preserve cancellation/postponement rather than discarding those
+rows.
+
+### Rooted-event terminal status outranks access-only wording
+
+For an event that already has an event-access root, if one source observation
+explicitly proves cancellation/postponement at the same time that access closes,
+the resident-facing update must lead with the material event change.
+
+Do not produce a misleading standalone `Регистрация закрыта` reply when the
+actual reason/meaning is that the event itself is cancelled.
+
+This is a narrow rooted-event correction requirement, not a generic event bus.
+
+### "Home team" is not enough to prove Guardamar locality
+
+A fixture with the local club listed as home may still be moved to another
+venue or neutral ground.
+
+A league adapter is publishable only when its accepted source contract can
+prove the match is physically in Guardamar through venue/field/location data or
+another equally strong official occurrence fact.
+
+Do not hard-code "home side = Guardamar venue" as production truth.
+
+### National Pesca 23-29 grouping is unsafe for resident day-by-day publication
+
+The current regional Pesca table has consecutive FEPyC/NACIONAL Mar Costa Dúos
+rows starting 23 November. The current adapter collapses consecutive identical
+rows into one 23-29 range.
+
+The national FEPyC event page explicitly identifies the actual championship as
+26-29 November 2026.
+
+Before sports planning/current-day publication can rely on that record, the
+source-specific conflict must be corrected so 23-25 are not presented as
+championship competition days merely because the regional operational table has
+rows there.
+
+Do not fix this by a global source-priority system.
+
+Use FEPyC as authority for the national championship occurrence/date and FPCV
+for explicit regional/local organization/access facts.
+
+### Photo is best-effort, lifecycle truth is mandatory
+
+The operator strongly prefers one event-specific poster on the canonical
+event-access root.
+
+Keep the ADR 0090 rule:
+
+- do not delay an actionable registration notice merely because the poster is
+  not yet published;
+- do not use a generic venue/team logo/monthly programme image as a substitute;
+- if the complete safe card cannot fit the Telegram photo-caption limit, prefer
+  one complete text root over a fragile photo + overflow transaction;
+- do not edit/create a second root later solely because an image appeared.
+
+For normal rich sport cards the expected critical facts should usually fit
+within 1024 characters; source adapters should keep the root dense and useful
+rather than copying full regulations.
+
+### Federation image hosts must stay source-scoped
+
+Tomorrow's current image allowlist contains only the reviewed AM Guardamar /
+Turismo WordPress hosts.
+
+Do not broaden that global allowlist to every sports federation in anticipation.
+
+When an event-access source genuinely provides an event-specific official
+poster, validate the image through that source adapter's reviewed host/path
+contract and pass only the accepted URL to the generic photo-root delivery.
+
+### Venue enrichment remains deterministic only
+
+If a federation fixture lacks a usable venue but a municipal source has one,
+enrich only through a deterministic occurrence join (source IDs/action URL or
+strong exact date/time/team evidence).
+
+Do not infer a standard home ground from team identity unless a later reviewed
+source contract explicitly establishes that inference as safe.
+
+### Friendly/exhibition/qualifying labels require explicit evidence
+
+The new "what kind of game is this?" requirement must stay factual:
+
+- league + numbered jornada -> regular league round;
+- source says semifinal/final/playoff -> use it;
+- source says amistoso/friendly -> use it;
+- source says qualifying/classification -> use it.
+
+Never infer "qualifier", "semi-final" or "important match" from date position,
+opponent quality or a generic word such as tournament.
