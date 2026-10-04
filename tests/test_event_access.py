@@ -6,6 +6,8 @@ from telegrambot.event_access import (
     AccessOption,
     EventAccessRecord,
     EventAccessStateError,
+    MAX_RECORDS,
+    MAX_TRIGGERS_PER_RECORD,
     candidate_record_state,
     empty_state,
     migrate_v1_state,
@@ -156,6 +158,40 @@ class EventAccessMigrationTests(unittest.TestCase):
 
         with self.assertRaises(EventAccessStateError):
             migrate_v1_state(value)
+
+    def test_source_and_access_kind_are_immutable(self):
+        previous = candidate_record_state(record(), None)
+
+        with self.assertRaises(EventAccessStateError):
+            candidate_record_state(
+                record(source="other"),
+                previous,
+            )
+        with self.assertRaises(EventAccessStateError):
+            candidate_record_state(
+                record(access_kind="ticket"),
+                previous,
+            )
+
+    def test_state_bounds_fail_closed_instead_of_trimming(self):
+        item = candidate_record_state(record(), None)
+        value = empty_state()
+        for index in range(MAX_RECORDS + 1):
+            value["records"][f"record-{index}"] = dict(item)
+
+        with self.assertRaises(EventAccessStateError):
+            validate_state(value)
+
+        bounded = empty_state()
+        trigger_item = dict(item)
+        trigger_item["sent_triggers"] = [
+            f"trigger-{index}"
+            for index in range(MAX_TRIGGERS_PER_RECORD + 1)
+        ]
+        bounded["records"]["record"] = trigger_item
+
+        with self.assertRaises(EventAccessStateError):
+            validate_state(bounded)
 
     def test_root_requires_audience_known(self):
         value = empty_state()
@@ -320,33 +356,35 @@ class EventAccessPlannerTests(unittest.TestCase):
 
         self.assertIsNone(again.operation)
 
-    def test_full_unknown_open_is_reopened(self):
-        previous = candidate_record_state(
-            record(option(status="full")),
-            None,
-        )
-        previous["audience_known"] = True
-        previous["root_message_id"] = 100
-        unknown = plan_event_access_record(
-            record(option(status="unknown")),
-            previous,
-            NOW,
-        )
-        previous_unknown = dict(unknown.candidate_record)
-        previous_unknown["root_message_id"] = 100
-
-        reopened = plan_event_access_record(
-            record(
-                option(
-                    status="open",
-                    action_url="https://example.com/register",
+    def test_terminal_unknown_open_is_reopened(self):
+        for terminal in ("full", "closed"):
+            with self.subTest(terminal=terminal):
+                previous = candidate_record_state(
+                    record(option(status=terminal)),
+                    None,
                 )
-            ),
-            previous_unknown,
-            NOW,
-        )
+                previous["audience_known"] = True
+                previous["root_message_id"] = 100
+                unknown = plan_event_access_record(
+                    record(option(status="unknown")),
+                    previous,
+                    NOW,
+                )
+                previous_unknown = dict(unknown.candidate_record)
+                previous_unknown["root_message_id"] = 100
 
-        self.assertEqual(reopened.notices[0].kind, "reopened")
+                reopened = plan_event_access_record(
+                    record(
+                        option(
+                            status="open",
+                            action_url="https://example.com/register",
+                        )
+                    ),
+                    previous_unknown,
+                    NOW,
+                )
+
+                self.assertEqual(reopened.notices[0].kind, "reopened")
 
     def test_migrated_audience_known_rootless_creates_complete_root(self):
         previous = candidate_record_state(
