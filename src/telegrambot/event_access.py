@@ -610,6 +610,11 @@ def plan_event_access_record(
         candidate["sent_triggers"] = sent_order
         return EventAccessDecision(candidate, (root_notice,), "root", None)
 
+    # Migrated legacy announcements can be audience-known without a stored
+    # Telegram root. First rollout fails closed instead of inventing one.
+    if root_id is None:
+        return EventAccessDecision(candidate, (), None, None)
+
     notices = []
     for option in record.options:
         old = prior_options.get(option.option_id)
@@ -650,11 +655,6 @@ def plan_event_access_record(
     if len(sent_order) > MAX_TRIGGERS_PER_RECORD:
         raise EventAccessStateError("event-access trigger bound exceeded")
     if not notices:
-        return EventAccessDecision(candidate, (), None, None)
-
-    # A migrated legacy record may be audience-known without a stored root ID.
-    # First rollout must never invent a replacement root for that history.
-    if root_id is None:
         return EventAccessDecision(candidate, (), None, None)
 
     return EventAccessDecision(
