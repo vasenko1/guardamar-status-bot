@@ -882,8 +882,11 @@ class RenderingTests(unittest.TestCase):
         self.assertIn("60% приходится на дегустацию", awards._methodology(mapa))
 
         beer = next(item for item in items if item.category_key == "classic_pilsener")
-        self.assertIn("три этапа", awards._methodology(beer))
-        self.assertIn("снова дегустируют вслепую", awards._methodology(beer))
+        beer_methodology = awards._methodology(beer)
+        self.assertIn("три этапа", beer_methodology)
+        self.assertIn("снова дегустируют вслепую", beer_methodology)
+        self.assertNotIn("Country Winner", beer_methodology)
+        self.assertNotIn("золото", beer_methodology.casefold())
 
     def test_mapa_renderer_names_official_winner_without_score(self):
         item = ReviewedCandidate(
