@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from datetime import date, datetime
@@ -16,6 +17,7 @@ from telegrambot.event_registration_notifications import (
     RegistrationDeliveryUncertain,
     RegistrationNotificationState,
     EventAccessStateError,
+    _run_cli,
     render_reply,
     render_root,
     run_registration_notifications,
@@ -304,6 +306,68 @@ class RenderingTests(unittest.TestCase):
         self.assertIn("Места ограничены", message)
 
 
+class DeliveryPolicyTests(unittest.IsolatedAsyncioTestCase):
+    async def test_cli_enables_only_rate_limit_retry_for_new_messages(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "notify.json"
+            state = RegistrationNotificationState(state_path)
+            state.write({
+                "version": 2,
+                "records": {},
+                "uncertain": None,
+            })
+
+            async def fake_run(
+                _now,
+                _state,
+                publish,
+                *,
+                source_state_path,
+            ):
+                self.assertEqual(
+                    source_state_path,
+                    Path(directory) / "convega.json",
+                )
+                message_id = await publish("hello", None)
+                self.assertEqual(message_id, 77)
+                return "sent"
+
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "EVENT_REGISTRATION_STATE_PATH": str(state_path),
+                        "CONVEGA_STATE_PATH": str(
+                            Path(directory) / "convega.json"
+                        ),
+                        "TELEGRAM_BOT_TOKEN": "token",
+                        "TELEGRAM_CHAT_ID": "-100123",
+                    },
+                    clear=False,
+                ),
+                patch(
+                    "telegrambot.event_registration_notifications."
+                    "run_registration_notifications",
+                    new=fake_run,
+                ),
+                patch(
+                    "telegrambot.event_registration_notifications.send_message",
+                    new=AsyncMock(return_value=77),
+                ) as send,
+            ):
+                code = await _run_cli("run")
+
+        self.assertEqual(code, 0)
+        send.assert_awaited_once_with(
+            "token",
+            "-100123",
+            "hello",
+            disable_notification=False,
+            reply_to_message_id=None,
+            retry_only_rate_limits=True,
+        )
+
+
 class DeliveryTests(unittest.IsolatedAsyncioTestCase):
     async def run_with(self, records, publish, state=None):
         if state is None:
@@ -498,6 +562,38 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNotNone(saved["uncertain"])
         self.assertEqual(saved["uncertain"]["operation"], "root")
+
+    async def test_ambiguous_first_record_blocks_later_record_same_run(self):
+        calls = []
+
+        async def publish(message, reply_to):
+            calls.append((message, reply_to))
+            raise TelegramError(
+                "timeout",
+                retryable=True,
+                code="TIMEOUT",
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = RegistrationNotificationState(
+                Path(directory) / "notify.json"
+            )
+            first = record("convega:post-1:stage-21")
+            second = record("convega:post-2:stage-22")
+
+            with self.assertRaises(RegistrationDeliveryUncertain):
+                await self.run_with((first, second), publish, state)
+            saved = state.read()
+
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(
+            saved["uncertain"]["record_id"],
+            "convega:post-1:stage-21",
+        )
+        self.assertNotIn(
+            "convega:post-2:stage-22",
+            saved["records"],
+        )
 
     async def test_uncertain_blocks_automatic_followup(self):
         async def timeout(_message, _reply_to):
