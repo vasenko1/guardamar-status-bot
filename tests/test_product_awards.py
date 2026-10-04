@@ -878,6 +878,7 @@ class RenderingTests(unittest.TestCase):
         mapa = next(item for item in items if item.category_key == "spirits_anis")
         self.assertIn("как минимум из пяти", awards._methodology(mapa))
         self.assertIn("Пять образцов с лучшими результатами", awards._methodology(mapa))
+        self.assertIn("60% приходится на дегустацию", awards._methodology(mapa))
 
         beer = next(item for item in items if item.category_key == "classic_pilsener")
         self.assertIn("три этапа", awards._methodology(beer))
