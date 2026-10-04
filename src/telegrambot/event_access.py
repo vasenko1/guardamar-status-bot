@@ -537,6 +537,39 @@ def _action_notice(
     return AccessNotice("action-changed", option.option_id)
 
 
+def temporally_consistent(
+    record: EventAccessRecord,
+    now: datetime,
+) -> bool:
+    """Reject only explicit open states impossible at the current local time."""
+
+    local = now.astimezone(GUARDAMAR_TIMEZONE)
+    today = local.date()
+    local_time = local.time().replace(tzinfo=None)
+    for option in record.options:
+        if option.status != "open":
+            continue
+        if option.opens_on is not None:
+            if option.opens_on > today:
+                return False
+            if (
+                option.opens_on == today
+                and option.opens_time is not None
+                and local_time < option.opens_time
+            ):
+                return False
+        if option.closes_on is not None:
+            if option.closes_on < today:
+                return False
+            if (
+                option.closes_on == today
+                and option.closes_time is not None
+                and local_time >= option.closes_time
+            ):
+                return False
+    return True
+
+
 def plan_event_access_record(
     record: EventAccessRecord,
     previous: Optional[Mapping[str, Any]],
@@ -750,6 +783,7 @@ def migrate_v1_state(value: Any) -> Dict[str, Any]:
         or any(
             not isinstance(key, str)
             or not key
+            or not isinstance(item, dict)
             or item.get("record_id") != key
             or not _legacy_record(item)
             for key, item in baseline.items()
