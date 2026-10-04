@@ -25,6 +25,7 @@ from zoneinfo import ZoneInfo
 from .branding import with_footer
 from .convega import (
     ConvegaSourceError,
+    convega_event_title,
     convega_snapshot_observed_at,
     load_convega_records,
 )
@@ -125,12 +126,15 @@ def _time_or_none(value: Any) -> Optional[time]:
 def _record_from_convega(raw: Any) -> Optional[RegistrationRecord]:
     if not isinstance(raw, Mapping) or not raw.get("guardamar_relevant"):
         return None
+    title = convega_event_title(raw.get("stage"))
+    if title is None:
+        return None
     try:
         record = RegistrationRecord(
             record_id=raw["record_id"],
             source=raw["source"],
             source_url=raw["source_url"],
-            title=raw["title"],
+            title=title,
             event_start_date=date.fromisoformat(raw["event_start_date"]),
             event_end_date=_date_or_none(raw.get("event_end_date")),
             registration_start_date=_date_or_none(
