@@ -70,7 +70,7 @@ no message.
 | TomTom road/lane closures | Hourly at `:37` | One bounded Guardamar snapshot; strict provider-ID reconciliation preserves the physical closure lifecycle before two-snapshot end confirmation, so source ID churn cannot create false reopen/new-close messages. |
 | Transport | 05:00 sync, 08:42 notification | Owns and repairs the dynamic airport, Alicante, Elche, Orihuela and Zenia Boulevard cards; reconciles transport state and publishes accepted schedule/service/fare changes. |
 | Linked guide + courses | 09:02 sync; course notices 09:42/11:42; two seasonal 19:45 checks | Reconciles guide-owned cards while preserving existing transport-owned cards in the shared Telegram graph; may send pool/Zona Azul seasonal notices and publishes accepted course/programme changes, including grouped fresh-source registration boundaries for tomorrow. |
-| One-off event access | 12:47 daily, recovery 13:47 | Current deployed runtime is ADR 0089 registration-only. ADRs 0090–0091 define the pending multi-source revision: one rich Telegram root per event, source-proven registration/reservation/ticket options inside that root, and later access changes as strict replies. |
+| One-off event access | 12:47 daily, recovery 13:47 | ADRs 0090–0092 define the event-centric v2 runtime: one text root per event, source-proven access options, and strict threaded replies. The first implementation enables only CONVEGA and remains inert on legacy v1 state until the operator runs the explicit migration. |
 | Electricity | 20:30/20:35/20:45/21:00/21:20 attempts | One next-day PVPC table reply after the first complete official dataset. |
 | Resident-impact news | 11:11/15:11/18:11 daily | One bounded EWN discovery read; one batch AI classification; at most one first-party-grounded Russian Telegram note. |
 | Next-day events | Sunday–Thursday 19:25, recovery 20:25 | Reads only fresh same-day local event catalogs; one editorial unit may be rich with one official image URL, while multiple units stay in one text planning post. The recovery reuses the same state, so a confirmed or uncertain first delivery cannot duplicate. No evening source fetch or AI. |
@@ -458,10 +458,12 @@ targets rather than quota-filling registry entries.
 
 ### One-off event access
 
-ADR 0089 is the deployed CONVEGA registration-only first slice. ADRs 0090-0092
-define the pending general form: registration, reservation and paid/free ticket
-access share one source-owned lifecycle, one real event owns one rich Telegram
-root, and source-proven sessions are child options.
+ADR 0089 is the legacy CONVEGA registration-only state contract. ADRs 0090-0092
+define the implemented event-centric v2 runtime: registration, reservation and
+paid/free ticket access share one source-owned lifecycle, one real event owns
+one Telegram root, and source-proven sessions are child options. The first
+rollout activates only CONVEGA, uses text roots/replies, and requires an explicit
+operator migration from v1 before normal scheduled runs can use v2.
 
 Existing source refreshers remain responsible for network collection and small
 normalized snapshots. Event-access publication consumes only pure local
