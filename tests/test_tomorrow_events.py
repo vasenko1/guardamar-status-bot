@@ -126,7 +126,7 @@ class TomorrowEventPublicationTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertIsNotNone(publication)
-        self.assertIn("Ruta guiada GR-92", publication.message)
+        self.assertIn("Поход с гидом по GR-92 · этап 21", publication.message)
         self.assertIn("места закончились", publication.message)
 
     async def test_stale_convega_catalog_cannot_make_tomorrow_claim(self):
