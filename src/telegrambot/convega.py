@@ -17,13 +17,14 @@ import re
 import tempfile
 import unicodedata
 import urllib.parse
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
 from ._transport import BoundedFetchError, fetch_bounded
+from .event_facts import route_difficulty_detail
 from .models import Event
 
 
@@ -48,8 +49,16 @@ REGISTRATION_FULL_ACCESS_NOTE = "места закончились"
 REGISTRATION_CLOSED_ACCESS_NOTE = "регистрация закрыта"
 
 
-def convega_event_title(stage: Any) -> Optional[str]:
-    """Return the fixed Russian title for one validated CONVEGA GR-92 stage."""
+def _route_city_label(value: str) -> str:
+    return "Guardamar" if value == "Guardamar del Segura" else value
+
+
+def convega_event_title(
+    stage: Any,
+    direction_from: Any = None,
+    direction_to: Any = None,
+) -> Optional[str]:
+    """Return one deterministic Russian title for a validated guided route."""
 
     if (
         not isinstance(stage, int)
@@ -57,6 +66,17 @@ def convega_event_title(stage: Any) -> Optional[str]:
         or not 1 <= stage <= 999
     ):
         return None
+    if (
+        isinstance(direction_from, str)
+        and direction_from.strip()
+        and isinstance(direction_to, str)
+        and direction_to.strip()
+    ):
+        return (
+            "Поход с гидом по пешеходному маршруту GR-92: "
+            f"{_route_city_label(direction_from.strip())} → "
+            f"{_route_city_label(direction_to.strip())}"
+        )
     return f"Поход с гидом по GR-92 · этап {stage}"
 
 
