@@ -455,7 +455,11 @@ class ConvegaProjectionTests(unittest.TestCase):
             items = asyncio.run(convega_translation_items(NOW, state))
 
         self.assertEqual(len(events), 1)
-        self.assertEqual(events[0].title, "Поход с гидом по GR-92 · этап 21")
+        self.assertEqual(
+            events[0].title,
+            "Поход с гидом по пешеходному маршруту GR-92: "
+            "Guardamar → Torrevieja",
+        )
         self.assertEqual(events[0].access_note, REGISTRATION_FULL_ACCESS_NOTE)
         self.assertIsNone(events[0].registration_url)
         self.assertIsNone(events[0].route)
