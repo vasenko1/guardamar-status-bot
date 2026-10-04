@@ -45,6 +45,14 @@ Operator previews use a disposable copied cache that is removed when the
 preview ends. Android has no ADS credential, scientific Python dependency, or
 CAMS polling process.
 
+AEMET operational warning monitoring is an independent CAP-only one-shot at
+minute 51 from 07:51 through 23:51 Europe/Madrid. It uses the existing optional-
+product adapter limits: two bounded attempts, 15-second request timeouts and
+bounded retry delays. These extra AEMET checks do not increase SafeBeach,
+CAMS or Meteosalud request cadence, add a resident process, or persist raw CAP
+responses. A failed CAP observation preserves the prior delivered/pending state
+and does not publish a potentially stale pending warning on that invocation.
+
 The OCI capacity search also runs only on a GitHub-hosted runner. Each invocation
 is short-lived, has no SDK automatic retry, uses one concurrency group, and may
 make at most one `LaunchInstance` request after two complete OCI-state checks.
@@ -227,8 +235,10 @@ allowed for the guide.
 - Later-day beach monitoring uses four or five primary seasonal checks. A
   five-minute confirmation request occurs only for a candidate change; one
   final request is allowed only when that confirmation reveals a different
-  explicit state. Later AEMET checks request only the CAP warning product every
-  four hours and share delivery with beach changes when their windows overlap.
+  explicit state. Later AEMET checks request only the CAP warning product
+  hourly at :51 from 07:51 through 23:51 and remain independent of beach and
+  environment delivery. AEMET pending state never adds SafeBeach requests, and
+  beach confirmation never suppresses an AEMET CAP checkpoint.
 - The 05:30 Agenda Guardamar refresh may inspect at most twelve same-host
   detail links with no more than three requests in flight. The 05:10 municipal
   refresh makes one HTML request and downloads MUPI only after its official

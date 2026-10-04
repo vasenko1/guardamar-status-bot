@@ -125,6 +125,7 @@ CRON_TZ=Europe/Madrid
 30 7 * * * /path/to/TelegramBot/termux/run-daily.sh
 5 8 * * * /usr/bin/sh /path/to/TelegramBot/termux/run-suma.sh
 10-40/5 10 * * * /path/to/TelegramBot/termux/update-daily.sh
+51 7-23 * * * /path/to/TelegramBot/termux/monitor-updates.sh
 0,5,10 11,13,15,17,19 * 7,8 * /path/to/TelegramBot/termux/monitor-updates.sh
 0,5,10 12,14,16,18 * 6,9 * /path/to/TelegramBot/termux/monitor-updates.sh
 0,5,10 12,14,16,18 1-15 10 * /path/to/TelegramBot/termux/monitor-updates.sh
@@ -171,10 +172,12 @@ The validated Android deployment uses the scripts in `termux/`:
   responses edit that root in place. From 16 October through 31 May these
   invocations make no SafeBeach request. CAMS uses only the 10:40 invocation for
   its early late-cycle check;
-- `termux/monitor-updates.sh` uses the same 1 June–15 October beach guard;
-  October keeps the reduced four-window SafeBeach cadence used at the seasonal
-  shoulders, while AEMET warning checks keep their existing year-round cadence;
-  confirmed later beach changes are replies to the root;
+- `termux/monitor-updates.sh` uses the same 1 June–15 October beach guard.
+  SafeBeach keeps its existing seasonal primary/confirmation windows and
+  CAMS/Meteosalud keep their existing recovery checkpoints. Independent AEMET
+  CAP-only checks run hourly at `:51` from 07:51 through 23:51 year-round;
+  confirmed later beach changes remain replies to the root, while AEMET changes
+  reply to the Morning Digest;
 - `termux/sync-municipal-events.sh` at 05:10 and
   `termux/sync-agenda-events.sh` at 05:30 to atomically refresh small event
   catalogs before publication;
@@ -260,6 +263,7 @@ CRON_TZ=Europe/Madrid
 30 7 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-daily.sh
 5 8 * * * /data/data/com.termux/files/usr/bin/sh /data/data/com.termux/files/home/bots/guardamar-status/termux/run-suma.sh
 10-40/5 10 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/update-daily.sh
+51 7-23 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
 0,5,10 11,13,15,17,19 * 7,8 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
 0,5,10 12,14,16,18 * 6,9 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
 0,5,10 12,14,16,18 1-15 10 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh

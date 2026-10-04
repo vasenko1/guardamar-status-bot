@@ -10,6 +10,7 @@ from telegrambot.operational_updates import (
     OperationalUpdateStateError,
     build_beach_message,
     build_update_message,
+    clear_beach_ready,
     finalize_delivery,
     miss_beach_sample,
     observe_beaches,
@@ -40,65 +41,102 @@ def _status(flags, jellyfish=None, minute=0):
 
 
 class ScheduleTests(unittest.TestCase):
-    def test_july_primary_and_confirmation_windows(self):
-        self.assertEqual(
-            scheduled_run(datetime(2026, 8, 7, 11, 0, tzinfo=MADRID)),
-            scheduled_run(datetime(2026, 8, 7, 15, 0, tzinfo=MADRID)),
-        )
+    def test_july_beach_and_environment_keep_old_primary_windows(self):
         primary = scheduled_run(
             datetime(2026, 8, 7, 11, 0, tzinfo=MADRID)
         )
         self.assertEqual(primary.beach_phase, 1)
-        self.assertTrue(primary.check_aemet)
-        self.assertEqual(
-            scheduled_run(
-                datetime(2026, 8, 7, 11, 5, tzinfo=MADRID)
-            ).beach_phase,
-            2,
-        )
-        self.assertEqual(
-            scheduled_run(
-                datetime(2026, 8, 7, 11, 10, tzinfo=MADRID)
-            ).beach_phase,
-            3,
-        )
+        self.assertTrue(primary.check_environment)
+        self.assertFalse(primary.check_aemet)
 
-    def test_query_window_and_winter(self):
-        june_start = scheduled_run(
+        confirmation = scheduled_run(
+            datetime(2026, 8, 7, 11, 5, tzinfo=MADRID)
+        )
+        self.assertEqual(confirmation.beach_phase, 2)
+        self.assertFalse(confirmation.check_environment)
+        self.assertFalse(confirmation.check_aemet)
+
+        final_confirmation = scheduled_run(
+            datetime(2026, 8, 7, 11, 10, tzinfo=MADRID)
+        )
+        self.assertEqual(final_confirmation.beach_phase, 3)
+        self.assertFalse(final_confirmation.check_environment)
+        self.assertFalse(final_confirmation.check_aemet)
+
+        aemet = scheduled_run(
+            datetime(2026, 8, 7, 11, 51, tzinfo=MADRID)
+        )
+        self.assertIsNone(aemet.beach_phase)
+        self.assertFalse(aemet.check_environment)
+        self.assertTrue(aemet.check_aemet)
+
+    def test_shoulder_and_winter_environment_cadence_is_preserved(self):
+        june_primary = scheduled_run(
             datetime(2026, 6, 1, 12, 0, tzinfo=MADRID)
         )
-        self.assertEqual(june_start.beach_phase, 1)
-        self.assertTrue(june_start.check_aemet)
+        self.assertEqual(june_primary.beach_phase, 1)
+        self.assertTrue(june_primary.check_environment)
+        self.assertFalse(june_primary.check_aemet)
 
-        september_end = scheduled_run(
+        june_recovery = scheduled_run(
+            datetime(2026, 6, 1, 20, 0, tzinfo=MADRID)
+        )
+        self.assertIsNone(june_recovery.beach_phase)
+        self.assertTrue(june_recovery.check_environment)
+        self.assertFalse(june_recovery.check_aemet)
+
+        september_primary = scheduled_run(
             datetime(2026, 9, 30, 14, 0, tzinfo=MADRID)
         )
-        self.assertEqual(september_end.beach_phase, 1)
-        self.assertFalse(september_end.check_aemet)
+        self.assertEqual(september_primary.beach_phase, 1)
+        self.assertTrue(september_primary.check_environment)
+        self.assertFalse(september_primary.check_aemet)
 
-        october_end = scheduled_run(
+        october_primary = scheduled_run(
             datetime(2026, 10, 15, 14, 0, tzinfo=MADRID)
         )
-        self.assertEqual(october_end.beach_phase, 1)
-        self.assertFalse(october_end.check_aemet)
+        self.assertEqual(october_primary.beach_phase, 1)
+        self.assertTrue(october_primary.check_environment)
+        self.assertFalse(october_primary.check_aemet)
 
-        october_aemet = scheduled_run(
+        october_environment = scheduled_run(
             datetime(2026, 10, 15, 15, 0, tzinfo=MADRID)
         )
-        self.assertIsNone(october_aemet.beach_phase)
-        self.assertTrue(october_aemet.check_aemet)
+        self.assertIsNone(october_environment.beach_phase)
+        self.assertTrue(october_environment.check_environment)
+        self.assertFalse(october_environment.check_aemet)
 
         after_window = scheduled_run(
             datetime(2026, 10, 16, 14, 0, tzinfo=MADRID)
         )
         self.assertIsNone(after_window.beach_phase)
+        self.assertFalse(after_window.check_environment)
         self.assertFalse(after_window.check_aemet)
 
         winter = scheduled_run(
             datetime(2026, 12, 7, 11, 0, tzinfo=MADRID)
         )
         self.assertIsNone(winter.beach_phase)
-        self.assertTrue(winter.check_aemet)
+        self.assertTrue(winter.check_environment)
+        self.assertFalse(winter.check_aemet)
+
+    def test_aemet_hourly_bounds_and_exact_minute(self):
+        for hour in (7, 8, 12, 19, 23):
+            with self.subTest(hour=hour):
+                run = scheduled_run(
+                    datetime(2026, 12, 7, hour, 51, tzinfo=MADRID)
+                )
+                self.assertTrue(run.check_aemet)
+                self.assertFalse(run.check_environment)
+                self.assertIsNone(run.beach_phase)
+
+        for hour, minute in ((6, 51), (0, 51), (7, 50), (7, 52), (23, 50)):
+            with self.subTest(hour=hour, minute=minute):
+                self.assertFalse(
+                    scheduled_run(
+                        datetime(2026, 12, 7, hour, minute, tzinfo=MADRID)
+                    ).check_aemet
+                )
 
 
 class BeachConfirmationTests(unittest.TestCase):
@@ -117,7 +155,7 @@ class BeachConfirmationTests(unittest.TestCase):
         self.assertTrue(state["beach_pending"]["initial"])
         observe_beaches(state, sample, 2)
         self.assertTrue(state["beach_ready"][0]["initial"])
-        finalize_delivery(state)
+        clear_beach_ready(state)
         self.assertEqual(state["beaches"]["Centre"]["flag"], "green")
 
     def test_published_full_digest_can_seed_beach_baseline(self):
@@ -143,7 +181,7 @@ class BeachConfirmationTests(unittest.TestCase):
         self.assertIsNone(self.state["beach_pending"])
         self.assertEqual(self.state["beach_ready"][0]["new"], "yellow")
         self.assertEqual(self.state["beaches"]["Centre"]["flag"], "green")
-        finalize_delivery(self.state)
+        clear_beach_ready(self.state)
         self.assertEqual(self.state["beaches"]["Centre"]["flag"], "yellow")
 
     def test_new_state_at_second_sample_gets_one_final_confirmation(self):
@@ -284,6 +322,52 @@ class WarningChangeTests(unittest.TestCase):
         observe_warnings(self.state, (), after)
         self.assertIsNone(self.state["warning_ready"])
         self.assertEqual(self.state["warnings"], [])
+
+
+    def test_refetch_clears_undelivered_warning_after_natural_expiry(self):
+        changed = Warning(
+            **{**self.warning.__dict__, "level": "orange"}
+        )
+        observe_warnings(self.state, (changed,), self.now)
+        self.assertIsNotNone(self.state["warning_ready"])
+
+        after = self.warning.ends_at + timedelta(minutes=1)
+        observe_warnings(self.state, (), after)
+
+        self.assertIsNone(self.state["warning_ready"])
+        self.assertEqual(self.state["warnings"], [])
+
+    def test_refetch_replaces_undelivered_warning_with_latest_cap(self):
+        orange = Warning(
+            **{**self.warning.__dict__, "level": "orange"}
+        )
+        red = Warning(
+            **{**self.warning.__dict__, "level": "red"}
+        )
+        observe_warnings(self.state, (orange,), self.now)
+        observe_warnings(self.state, (red,), self.now + timedelta(hours=1))
+
+        self.assertEqual(
+            self.state["warning_ready"]["current"][0]["level"], "red"
+        )
+
+    def test_aemet_finalize_does_not_mutate_beach_ready_state(self):
+        changed = Warning(
+            **{**self.warning.__dict__, "level": "orange"}
+        )
+        self.state["beach_ready"] = [{
+            "beach": "Centre",
+            "field": "flag",
+            "old": "green",
+            "new": "yellow",
+        }]
+        observe_warnings(self.state, (changed,), self.now)
+
+        finalize_delivery(self.state)
+
+        self.assertEqual(len(self.state["beach_ready"]), 1)
+        self.assertIsNone(self.state["warning_ready"])
+        self.assertEqual(self.state["warnings"][0]["level"], "orange")
 
     def test_early_cancellation_notifies(self):
         observe_warnings(self.state, (), self.now)

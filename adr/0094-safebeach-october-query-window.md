@@ -1,6 +1,6 @@
 # ADR 0094: Bound SafeBeach requests through 15 October
 
-- Status: Accepted
+- Status: Accepted for the SafeBeach query window; its requirement to keep the previous AEMET cadence is superseded by ADR 0099
 - Date: 2026-10-03
 - Supersedes: the annual SafeBeach query-window parts of ADR 0031
 

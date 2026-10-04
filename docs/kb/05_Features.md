@@ -654,7 +654,8 @@ presented as absence of warnings.
   current source response.
 - From 16 October through 31 May, make no scheduled SafeBeach requests.
 - During 1–15 October, later SafeBeach monitoring uses the reduced four-window
-  shoulder cadence; AEMET warning checks keep their existing year-round cadence.
+  shoulder cadence. Independent AEMET CAP-only checks run hourly at `:51`
+  from 07:51 through 23:51 year-round.
 - After `10:40`, do not silently rewrite the SafeBeach snapshot in an
   existing root. The bounded operational monitor confirms later flag/jellyfish
   changes and publishes them as replies to the root.
