@@ -1349,3 +1349,101 @@ The new "what kind of game is this?" requirement must stay factual:
 
 Never infer "qualifier", "semi-final" or "important match" from date position,
 opponent quality or a generic word such as tournament.
+
+
+## Review cycle 7 — runtime-constraint and source-evidence convergence
+
+### The Pesca convocatoria proves the competition-context requirement is valuable
+
+The official FPCV convocatoria for the 17 October Guardamar event explicitly
+states:
+
+- `CAMPEONATO PROVINCIAL DE ALICANTE`;
+- Mar-Costa masculino;
+- qualifying for the Comunidad Valenciana 2027 championship;
+- Guardamar, Playas La Roqueta y Centro;
+- club-mediated registration until 13 October at 12:00;
+- two competition heats (`mangas`) of three hours;
+- programme: 18:00-21:00 first heat, 22:30-01:30 second heat.
+
+This is exactly the resident-level context the product should preserve.
+
+A good public block can therefore say, from source facts rather than editorial
+inference:
+
+`Провинциальный чемпионат Аликанте · отбор на чемпионат Comunidad Valenciana 2027`
+
+and:
+
+`2 тура по 3 часа`.
+
+No new Competition object is necessary to represent this.
+
+Official source:
+`https://federacionpescacv.com/wp-content/uploads/2026/09/bases-prov-mar-costa-captura-y-suelta-2026.pdf`
+
+### Pesca access PDF needs an explicit runtime-policy amendment
+
+The current Runtime Constraints approve Termux `pdftotext` only for named
+existing workflows such as CCE/transport documents.
+
+The FPCV convocatoria is a six-page text-layer PDF. Enabling its access/details
+projection therefore requires an explicit ADR/Runtime Constraints amendment
+before production code may invoke `pdftotext` for this source.
+
+The intended contract remains lightweight:
+
+- only the exact official convocatoria linked by the accepted FPCV table row;
+- bounded PDF bytes;
+- text-layer extraction only;
+- no OCR/image rendering;
+- parse only the small required facts;
+- normalized last-good facts only, no raw PDF archive;
+- no repeated PDF work when the convocatoria identity/content is unchanged.
+
+Do not silently expand the existing Poppler permission.
+
+### Python/runtime compatibility remains clean
+
+The core publication proposal still fits the existing runtime floor:
+
+- `Event.sport: Optional[str] = None` is Python-3.9-compatible;
+- no new dependency is needed for Slice 1;
+- Telegram photo primitives already exist;
+- source-specific HTML remains standard-library/bounded;
+- no browser, daemon, database, queue or background worker is introduced.
+
+### Final model pressure check
+
+After seven review cycles, the only globally justified Event-model addition
+remains `sport`.
+
+Competition level/stage, race format, time limits and qualification meaning can
+remain ordered source-backed details.
+
+Do **not** add speculative global fields for:
+
+- competition level;
+- round;
+- bracket stage;
+- team IDs;
+- status;
+- distance variants;
+
+until an implemented source needs cross-source program logic on those values
+rather than presentation.
+
+Raw team/fixture IDs stay in source snapshots, where they are needed for source
+identity.
+
+### Status/cancellation remains source-contract gated, not ignored
+
+The official FPCV 2026 convocatoria index itself demonstrates explicit
+`CANCELADO` rows for other competitions.
+
+This confirms that cancellation is a real first-party source fact, not a
+hypothetical edge case.
+
+The architecture should preserve it when a relevant source exposes it, but the
+exact normalized representation should be chosen with the first accepted
+source adapter rather than adding a project-wide status enum now.
