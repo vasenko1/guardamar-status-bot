@@ -19,7 +19,7 @@ from telegrambot.telegram import TelegramError
 
 def publication(*, image_url="https://cdn-consum.aktiosdigitalservices.com/product.jpg"):
     candidate = ReviewedCandidate(
-        category_key="snacks",
+        category_key="gazpacho",
         selection_key="snacks:2026",
         event_id="snacks:test:product",
         source_name="OCU",
