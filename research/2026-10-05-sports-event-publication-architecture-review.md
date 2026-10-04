@@ -915,3 +915,196 @@ fishing, e.g. `Tipo Competición: Nacional`, category `Dúos`.
 
 Therefore federation adapters should preserve these fields as readable
 competition context rather than reducing every item to only title/date/place.
+
+
+## Review cycle 3 — runtime, delivery and schedule findings
+
+### Weekend delivery is not crash-safe today
+
+Friday Weekend currently uses the generic `PublicationState`:
+
+1. check `is_published(saturday)`;
+2. build message;
+3. call `send_message()`;
+4. only after confirmed success call `mark_published(saturday)`.
+
+It has no `uncertain` reservation.
+
+Worse, the call currently uses `send_message()` with its default transient
+retry behavior rather than `retry_only_rate_limits=True`.
+
+Therefore a timeout/network/5xx after Telegram may have accepted the first
+message can cause:
+
+- a same-process retry; and/or
+- the scheduled 20:15 Weekend recovery to send another copy because
+  `last_successful_date` was never committed.
+
+This is an existing planning-delivery bug. Adding sports to Weekend would
+increase the impact; do not add a sports workaround.
+
+The dated crash-safe state abstraction considered for Sports Today now has a
+stronger justification: use one small versioned at-most-once dated-publication
+primitive for Tomorrow, Sports Today and Weekend, with explicit compatibility
+handling for the existing Weekend `last_successful_date` file. This remains
+a narrow publication-state reuse, not a generic workflow framework.
+
+New message sends in these planning lifecycles should retry automatically only
+explicit HTTP 429 rejection; ambiguous network/5xx failures preserve uncertain
+state.
+
+### Exact sports/current-day cron minutes are not final yet
+
+Repository cron installers show a dense recurring minute layout:
+
+- capacity backstop: :12, :27, :42, :57;
+- 112: :19;
+- Hidraqua: :00 and :30;
+- traffic: :37;
+- earthquakes: :55;
+- guide: 09:02;
+- course notices: 09:42 and 11:42;
+- transport notice: 08:42;
+- SUMA: 08:05;
+- later seasonal SafeBeach/monitor windows.
+
+Therefore the earlier candidate times (08:25/09:25 Sports Today and
+09:47/10:47 event-access) are **product-window candidates, not accepted cron
+rows**.
+
+Before implementation/deploy, inspect the live production crontab and measured
+neighboring task durations, then choose staggered minutes. Preserve:
+
+- one primary + one recovery for current-day sport if recovery is retained;
+- exactly two event-access checkpoints (move them earlier rather than adding a
+  third sports-specific checkpoint);
+- Europe/Madrid cron semantics;
+- no per-sport schedules.
+
+The architecture depends on the window, not those exact minute values.
+
+### Offline/ambiguous Telegram delivery must prefer no duplicate
+
+The shared Telegram client treats no-status network failures and 5xx as
+ambiguous for new-message sends.
+
+Sports Today should follow the same safety policy as Tomorrow/Event Access:
+an ambiguous send blocks automatic resend until operator resolution or the next
+lifecycle day. Do not add connectivity probes or optimistic resends merely to
+improve delivery rate.
+
+This preserves the project's existing "no duplicate after ambiguous send"
+contract, even though a phone-offline incident can occasionally cost a
+time-sensitive post.
+
+## Review cycle 4 — identity, deduplication and source ownership
+
+### Keep raw source identity separate from editorial team names
+
+Federation adapters should retain stable team/competition IDs and raw official
+names inside their source snapshot for identity.
+
+The public Event title may be deterministic editorial Russian such as:
+
+`Футбол — Guardamar против Sporting Saladar`
+
+rather than exposing a sponsor-heavy local source string such as
+`GRUPO NEXUS GUARDAMAR`.
+
+Do not build a global club-name rewriting database. Each accepted federation
+adapter may have a tiny exact alias map for the known local team IDs/names it
+owns. Opponent proper names remain source names unless a reviewed transliteration
+rule is necessary.
+
+### Federation competition context should enrich Event.details
+
+Use explicit source fields to construct ordered context strings, e.g.
+
+- `Segona FFCV · группа 8 · 5-й тур`;
+- `Кубок ... · полуфинал`;
+- `Провинциальный чемпионат Аликанте`;
+- `Национальный чемпионат · категория дуэты`.
+
+The 2026/27 official FFCV calendar explicitly identifies Segona FFCV, Group 8
+and numbered Jornadas; FEPyC explicitly identifies competition type
+`Nacional` and category `Dúos`.
+
+No inference from calendar position is allowed.
+
+### Ordinary Event cross-source dedupe needs one sports guard, not a resolver
+
+Event-access avoids duplicate roots by source ownership **before** global Event
+merge. Ordinary city-event dedupe still relies on title/time/place overlap.
+
+For sports, add only the minimum extra safety:
+
+- different known `sport` values can never merge;
+- same exact federation source occurrence remains authoritative for competition
+  context;
+- a municipal/Turismo row may merge with a federation fixture only under the
+  existing time/title/place evidence strengthened by source-specific team or
+  occurrence evidence when available;
+- if identity is ambiguous, keep the federation event and do not use a fuzzy
+  cross-source suppression rule that could erase a real second match.
+
+When a second source adds only presentation (poster/venue), enrich after a
+deterministic join rather than moving lifecycle ownership.
+
+Do not create a generic canonical-sports-event resolver.
+
+### Municipal SourceEvent eventually needs sport provenance too
+
+Adding `Event.sport` only to FACV/Pesca is enough for the first publication
+slice, but future Turismo/municipal mass-sport discovery must preserve the
+source-backed sport fact before Event projection.
+
+When that source is enabled, add an optional source-level sport/provenance field
+(or an equally narrow source-owned deterministic projection) rather than
+reclassifying translated Event titles downstream.
+
+Do not expand the municipal schema in advance of an accepted source contract.
+
+### Access ownership remains explicit with delegated providers
+
+For a mass race discovered/owned by Turismo or the responsible organiser, an
+explicit registration platform link does not make the commercial provider the
+event owner.
+
+Preferred ownership:
+
+- official event/organiser source supplies the stable event/root identity and
+  presentation;
+- explicitly delegated timing/registration provider may supply only reviewed
+  access action/status/price/deadline facts;
+- the provider does not create a second root or independent discovery event.
+
+This is exactly the explicit ownership/delegation rule required by ADR 0091
+when the second overlapping access source is enabled.
+
+### Event-access date correction is now a required core completion
+
+ADR 0090 already promises material event-date correction replies, but runtime
+does not implement them.
+
+Because v2 state already stores event start/end dates, add the missing date
+transition notice to the same event-access planner before relying on photo roots
+as canonical long-lived sport cards.
+
+No state-schema expansion is needed for date-only correction detection.
+
+### Cancellation/postponement should stay narrow
+
+Do not turn every ordinary fixture into a long-lived lifecycle root.
+
+For an event that already owns an access root, an explicit responsible-source
+cancellation or postponement is material enough that leaving the detailed root
+unqualified would be misleading. A narrow rooted-event correction should be
+supported when a real source contract supplies that status.
+
+For ordinary matches without an access root, current planning/Sports Today
+freshness should simply omit or label the fixture from the current federation
+state. Do not create a generic cancellation monitoring daemon.
+
+Time/place corrections beyond date changes require a real source contract and
+a separate bounded design review; do not silently claim that current event-
+access state already handles them.
