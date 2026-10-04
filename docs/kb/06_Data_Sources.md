@@ -813,8 +813,9 @@ quality-first registry rebuild in ADR 0095, and photo-first media sourcing in
 ADR 0096. Dated evidence is in
 `research/2026-09-25-supermarket-product-awards.md`,
 `research/2026-10-03-product-awards-publication-gap.md`,
-`research/2026-10-03-product-awards-retailer-balance-audit.md` and
-`research/2026-10-03-product-awards-quality-pool-rebuild.md`.
+`research/2026-10-03-product-awards-retailer-balance-audit.md`,
+`research/2026-10-03-product-awards-quality-pool-rebuild.md` and
+`research/2026-10-04-product-awards-methodology-copy-review.md`.
 
 Current production award-authority contracts are:
 
@@ -831,6 +832,15 @@ Current production award-authority contracts are:
   Alcoholera Dulce in Mejor Bebida Espirituosa con Indicación Geográfica.
 - **World Beer Awards 2026:** reviewed result pages provide Ambar Especial and
   Mahou Sin Filtrar gold/country-winner facts.
+
+Methodology copy is a separate reviewed source contract. OCU uses distinct
+procedure text for cava, gazpacho, AOVE and coffee capsules; the common World
+Beer Awards judging ladder is shared across the two reviewed beer styles; MAPA
+spirits uses the 2026 competition's sensory-plus-jury procedure. The public
+methodology quote describes only the testing/selection process and deliberately
+omits candidate identity, result, score/rank, retailer, price, sample count and
+highlight. Unknown source/category methodology is a configuration failure, not
+a generic fallback.
 
 `Producto del Año` and `Sabor del Año` are discovery-only for this workflow.
 The former is innovation-first; the latter normally exposes an unordered
