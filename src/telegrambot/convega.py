@@ -24,7 +24,6 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
 from ._transport import BoundedFetchError, fetch_bounded
-from .event_translations import cached_title
 from .models import Event
 
 
@@ -47,6 +46,20 @@ EVENT_HORIZON_DAYS = 370
 
 REGISTRATION_FULL_ACCESS_NOTE = "места закончились"
 REGISTRATION_CLOSED_ACCESS_NOTE = "регистрация закрыта"
+
+
+def convega_event_title(stage: Any) -> Optional[str]:
+    """Return the fixed Russian title for one validated CONVEGA GR-92 stage."""
+
+    if (
+        not isinstance(stage, int)
+        or isinstance(stage, bool)
+        or not 1 <= stage <= 999
+    ):
+        return None
+    return f"Поход с гидом по GR-92 · этап {stage}"
+
+
 _MONTHS = {
     "enero": 1,
     "febrero": 2,
@@ -847,6 +860,9 @@ def _event_for_day(
             return None
     if not start <= local_day <= end:
         return None
+    title = convega_event_title(raw.get("stage"))
+    if title is None:
+        return None
     status = raw.get("observed_status")
     access_note = (
         REGISTRATION_FULL_ACCESS_NOTE
@@ -859,11 +875,7 @@ def _event_for_day(
         raw.get("registration_url") if status == "open" else None
     )
     return Event(
-        title=cached_title(
-            translation_cache_path,
-            "convega",
-            raw["title"],
-        ),
+        title=title,
         starts_at=None,
         place=raw.get("place"),
         route=raw.get("route"),
@@ -894,18 +906,9 @@ async def convega_translation_items(
     now: datetime,
     state_path: Path = Path(DEFAULT_STATE_PATH),
 ) -> Tuple[Tuple[str, str], ...]:
-    local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
-    result = []
-    for raw in await load_convega_records(state_path):
-        if not raw.get("guardamar_relevant"):
-            continue
-        try:
-            event_day = date.fromisoformat(raw["event_start_date"])
-        except (KeyError, TypeError, ValueError):
-            continue
-        if event_day >= local_day:
-            result.append(("convega", raw["title"]))
-    return tuple(result)
+    """CONVEGA titles are deterministic and require no AI translation."""
+
+    return ()
 
 
 def convega_snapshot_is_fresh_today(

@@ -577,8 +577,9 @@ Rich access roots require Russian presentation, but the send path must not call
 AI.
 
 For CONVEGA, use its structured stage number to produce a deterministic Russian
-title (for example `Маршрут GR-92 · этап 21`) so a late source refresh cannot
-be blocked by a title-cache miss.
+activity title (for example `Поход с гидом по GR-92 · этап 21`) so the guided
+event is not reduced to the name of the permanent trail and a late source refresh
+cannot be blocked by a title-cache miss.
 
 For future sources, do not translate every future catalogue event. Extend the
 existing translation-preparation workflow so each source contributes only its
