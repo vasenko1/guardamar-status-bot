@@ -11,6 +11,7 @@ from telegrambot.event_access import (
     migrate_v1_state,
     plan_event_access_record,
     prune_records,
+    temporally_consistent,
     validate_state,
 )
 
@@ -149,6 +150,13 @@ class EventAccessMigrationTests(unittest.TestCase):
         with self.assertRaises(EventAccessStateError):
             migrate_v1_state(value)
 
+    def test_malformed_legacy_record_fails_with_state_error(self):
+        value = legacy_state()
+        value["baseline"]["convega:post-42197:stage-21"] = "broken"
+
+        with self.assertRaises(EventAccessStateError):
+            migrate_v1_state(value)
+
     def test_root_requires_audience_known(self):
         value = empty_state()
         item = candidate_record_state(
@@ -163,6 +171,28 @@ class EventAccessMigrationTests(unittest.TestCase):
 
 
 class EventAccessPlannerTests(unittest.TestCase):
+    def test_explicit_open_before_boundary_is_temporally_invalid(self):
+        current = record(
+            option(
+                status="open",
+                opens_on=date(2026, 10, 3),
+                action_url="https://example.com/register",
+            )
+        )
+
+        self.assertFalse(temporally_consistent(current, NOW))
+
+    def test_explicit_open_after_deadline_is_temporally_invalid(self):
+        current = record(
+            option(
+                status="open",
+                closes_on=date(2026, 10, 1),
+                action_url="https://example.com/register",
+            )
+        )
+
+        self.assertFalse(temporally_consistent(current, NOW))
+
     def test_first_unknown_is_silent(self):
         decision = plan_event_access_record(record(), None, NOW)
 
