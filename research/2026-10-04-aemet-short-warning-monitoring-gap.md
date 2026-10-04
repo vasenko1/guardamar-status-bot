@@ -55,6 +55,22 @@ would become more important if AEMET frequency were increased:
 These are addressed by ADR 0099 without adding a new source or resident
 process.
 
+## API-key operational note
+
+AEMET OpenData's official `Novedades` page states that API keys originally
+issued without an expiration date stop being valid on 15 October 2026 and will
+return `401 Unauthorized`. Newly issued keys have a three-month validity.
+This is an operational prerequisite rather than a reason to add key-rotation
+logic to the bot.
+
+Production deployment of ADR 0099 must therefore perform one live CAP read
+with the configured production key before installing the new cron schedule. A
+failed authentication probe stops deployment without printing or persisting
+the key.
+
+Official source checked 5 October 2026:
+`https://opendata.aemet.es/centrodedescargas/novedades`.
+
 ## Design boundary
 
 The reviewed remediation uses CAP-only one-shots at minute 51 from 07:51
