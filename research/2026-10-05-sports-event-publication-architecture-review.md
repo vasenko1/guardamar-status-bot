@@ -726,3 +726,192 @@ The smallest coherent design is:
   source contract is proven.
 
 This maximizes reuse while keeping each responsibility explicit and recoverable.
+
+
+## Review cycle 2 — newly found gaps and corrections
+
+This cycle intentionally tried to invalidate the prior conclusion rather than
+confirm it.
+
+### Competition context is required resident information
+
+A match row is incomplete if it only says the sport and opponents.
+
+For a league/cup/tournament source, publish the source-backed competitive
+context when available:
+
+- competition name / division;
+- group;
+- round / jornada;
+- qualifying stage;
+- quarter-final / semi-final / final;
+- playoff;
+- friendly / exhibition match when explicitly identified as such;
+- age/sex/team category when it materially explains who is playing.
+
+Do not infer knockout importance from calendar position or words such as
+`torneo`.
+
+The current 2026/27 FFCV official Segona FFCV Group 8 calendar proves that this
+metadata can be explicit: the document identifies `Segona FFCV, Grup 8` and
+individual `Jornada` numbers. For example, Guardamar Soccer vs Sporting
+Saladar is in Jornada 5 on 25 October 2026.
+
+This does **not** yet justify a new generic competition object. The preferred
+first representation is one or more ordered, source-backed `Event.details`
+lines such as:
+
+`Segona FFCV · группа 8 · 5-й тур`
+
+or:
+
+`Кубок ... · полуфинал`
+
+A dedicated model field should be introduced only if real adapters prove that
+`details` cannot preserve ordering/authority without ambiguity.
+
+### Multiple race distances cannot be stored as bare distance details
+
+The shared renderer's `_normalized_event_details()` treats multiple
+distance-only strings as route alternatives and collapses them to one maximum
+distance marked approximate.
+
+Therefore this would be wrong for a two-race event:
+
+```python
+details=("21,097 км", "10,5 км")
+```
+
+because the renderer may turn it into one approximate maximum.
+
+Use labelled facts instead, for example:
+
+- `Полумарафон: 21,097 км · лимит времени 2 ч 30 мин`;
+- `10K: 10,5 км · лимит времени 1 ч 30 мин`.
+
+Those facts remain distinct and accurately describe separate disciplines.
+
+The official Turismo Media Maratón 2026 page explicitly provides both
+distances and their separate maximum times, so the distinction is source-backed.
+
+### ADR 0090 promises material date corrections, but runtime does not emit them
+
+ADR 0090 explicitly lists `material event-date corrections` among notices
+that should reply to an existing root.
+
+Current `candidate_record_state()` silently replaces
+`event_start_date/event_end_date`, while `plan_event_access_record()`
+creates notices only from option opening/status/deadline/action/closing changes.
+
+Therefore a changed event date currently updates stored state with **no reply**.
+
+This is a real generic event-access implementation gap, not a sports-only
+feature request.
+
+Because event dates already exist in v2 state, a date-change reply can be added
+without inventing a second lifecycle or a new storage subsystem.
+
+Time/place/cancellation changes remain a broader question and are reviewed
+separately below; do not pretend the date-correction promise is already
+implemented.
+
+### A canonical root creates a responsibility for material event changes
+
+Once the root is intentionally a detailed event card, registration state is not
+the only fact that can make it stale.
+
+For events with an existing access root, the architecture must distinguish:
+
+1. access-only changes -> existing event-access notices;
+2. material event-date changes -> reply to root (already promised by ADR 0090);
+3. explicit cancellation/postponement from a responsible source -> should be
+   reviewable as a root reply for rooted events rather than leaving the card
+   misleading;
+4. ordinary league fixtures without an access root -> current planning/current-
+   day source freshness is enough; do not create a root merely to monitor them.
+
+Do **not** turn event-access into a generic event bus. Add only source-proven
+material event corrections needed to keep an existing root safe.
+
+### Sports Today must be time-aware
+
+An 08:25 current-day message cannot call every same-day event "upcoming".
+Some sport may start early.
+
+Rendering policy under review:
+
+- event starts later -> ordinary `Начало в ...`;
+- event has started and a known end is still in the future -> factual
+  `Началось в ...` / ongoing presentation;
+- event has a known end already in the past -> omit;
+- event started earlier but has no known end -> do not invent duration; use a
+  neutral `Сегодня с ...` form if still editorially useful;
+- all-day/date-only competitions remain eligible.
+
+This avoids both stale "will start" claims and guessed durations.
+
+### Friday weekend planning and Sports Today serve different freshness horizons
+
+Friday's 19:15 weekend digest may describe a Sunday fixture roughly 36-48 hours
+before it occurs.
+
+Sunday Sports Today reads the newest accepted same-day source snapshots and is
+therefore not redundant. It is the natural current-day correction layer for
+late fixture changes without creating a continuous sports monitor.
+
+Mutable future league sources still need a reviewed freshness contract in the
+existing morning event refresh. Do not add per-sport morning cron rows.
+
+### Descriptive sports copy increases Telegram size risk
+
+The shared `build_event_section()` stops appending blocks when the 3900-byte
+presentation budget would be exceeded. It does not currently surface an
+explicit "some events were omitted" condition.
+
+Adding richer sports copy could therefore make a planning/current-day post
+silently lose tail events.
+
+New sports publication behavior must not rely on silent truncation.
+
+Preferred invariant:
+
+1. render all eligible sports with rich but bounded blocks;
+2. if the complete aggregate does not fit, deterministically remove optional
+   prose/teasers while preserving every event's identity, sport, competition
+   context, time and place;
+3. if it still cannot fit, fail closed in preview/runtime and measure actual
+   cardinality before introducing multi-message pagination.
+
+Do not pre-build a multi-message transaction protocol for a volume that has
+not been observed.
+
+### Mixed municipal programme grouping needs projection care
+
+A municipal programme can theoretically contain both sport and non-sport
+children under one `programme_title`.
+
+Naively splitting the merged Event list into sport/non-sport subsets can cause
+the same programme parent to be rendered once in the general section and once
+in the sports section.
+
+The sports presentation projection should therefore avoid blindly reusing a
+mixed programme parent. If a programme is mixed, render the sports occurrence
+as a sports item and retain the programme name only as optional context (for
+example, "в рамках ..."). If the whole source-proven programme is sport, normal
+programme grouping may remain.
+
+This is presentation-only logic; it does not require a second event identity.
+
+### Source-backed competition stage examples
+
+Official FFCV material confirms that league context is explicit rather than
+inferred:
+
+- `Segona FFCV, Grup 8, Temporada 2026-2027`;
+- numbered `Jornada` rows.
+
+Official FEPyC event metadata likewise exposes competition type/category for
+fishing, e.g. `Tipo Competición: Nacional`, category `Dúos`.
+
+Therefore federation adapters should preserve these fields as readable
+competition context rather than reducing every item to only title/date/place.
