@@ -57,6 +57,11 @@ class OperationalMonitorCliTests(unittest.IsolatedAsyncioTestCase):
                 now,
             )
             self.assertIsNotNone(value["warning_ready"])
+            value["beach_pending"] = {
+                "stage": 1,
+                "candidates": [],
+                "held": [],
+            }
             store.write(value)
 
             latest = (_warning(now, level="red"),)
@@ -84,6 +89,7 @@ class OperationalMonitorCliTests(unittest.IsolatedAsyncioTestCase):
             saved = store.read(now)
             self.assertIsNone(saved["warning_ready"])
             self.assertEqual(saved["warnings"][0]["level"], "red")
+            self.assertIsNotNone(saved["beach_pending"])
 
     async def test_aemet_failure_preserves_pending_without_stale_delivery(self):
         now = datetime(2026, 8, 7, 11, 51, tzinfo=MADRID)
