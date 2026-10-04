@@ -11,6 +11,7 @@ from telegrambot.event_registration_notifications import (
     RegistrationDeliveryUncertain,
     RegistrationNotificationState,
     RegistrationRecord,
+    load_registration_records,
     plan_registration_run,
     run_registration_notifications,
 )
@@ -45,6 +46,32 @@ def empty_state():
         return RegistrationNotificationState(
             Path(directory) / "state.json"
         ).read()
+
+
+class ConvegaRegistrationProjectionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_convega_registration_title_keeps_guided_activity(self):
+        raw = {
+            "record_id": "convega:post-1:stage-21",
+            "source": "convega",
+            "source_url": "https://convega.com/example",
+            "title": "Ruta guiada GR-92 · Etapa 21",
+            "stage": 21,
+            "event_start_date": "2026-10-04",
+            "event_end_date": None,
+            "guardamar_relevant": True,
+            "observed_status": "full",
+            "until_full": True,
+            "registration_url": None,
+            "registration_contact": None,
+        }
+        with patch(
+            "telegrambot.event_registration_notifications.load_convega_records",
+            new=AsyncMock(return_value=(raw,)),
+        ):
+            records = await load_registration_records(Path("unused.json"))
+
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].title, "Поход с гидом по GR-92 · этап 21")
 
 
 class RegistrationPlanningTests(unittest.TestCase):
