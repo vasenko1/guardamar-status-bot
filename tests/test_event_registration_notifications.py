@@ -1,624 +1,426 @@
-import asyncio
+import json
 import tempfile
 import unittest
-from dataclasses import replace
-from datetime import date, datetime, time
+from datetime import date, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
+from telegrambot.event_access import AccessOption, EventAccessRecord
 from telegrambot.event_registration_notifications import (
     RegistrationDeliveryUncertain,
     RegistrationNotificationState,
-    RegistrationRecord,
-    load_registration_records,
-    plan_registration_run,
+    EventAccessStateError,
+    render_root,
     run_registration_notifications,
 )
 from telegrambot.telegram import TelegramError
 
 
 TZ = ZoneInfo("Europe/Madrid")
-NOW = datetime(2026, 10, 2, 12, 47, tzinfo=TZ)
+NOW = datetime(2026, 10, 2, 12, 0, tzinfo=TZ)
 
 
-def record(**changes):
+def record(record_id="convega:post-1:stage-21", **changes):
     values = {
-        "record_id": "official:event-1",
-        "source": "official",
-        "source_url": "https://official.example/event",
-        "title": "Evento de prueba",
-        "event_start_date": date(2026, 10, 10),
-        "status": "unknown",
+        "record_id": record_id,
+        "source": "convega",
+        "source_url": "https://convega.com/example",
+        "access_kind": "registration",
+        "title": "Поход с гидом по GR-92 · этап 21",
+        "event_start_date": date(2026, 10, 4),
+        "event_end_date": None,
+        "place": "Guardamar del Segura",
+        "route": "Guardamar → Torrevieja",
+        "details": ("15,43 км", "4,5–5 ч"),
+        "schedule_note": "Сбор 08:00 · старт 08:30",
+        "options": (
+            AccessOption(
+                option_id="default",
+                status="open",
+                action_url="https://convega.com/register",
+                until_full=True,
+            ),
+        ),
     }
     values.update(changes)
-    if (
-        values["status"] == "open"
-        and "registration_url" not in changes
-        and "registration_contact" not in changes
-    ):
-        values["registration_url"] = "https://official.example/register"
-    return RegistrationRecord(**values)
+    return EventAccessRecord(**values)
 
 
-def empty_state():
-    with tempfile.TemporaryDirectory() as directory:
-        return RegistrationNotificationState(
-            Path(directory) / "state.json"
-        ).read()
+def legacy_state():
+    return {
+        "version": 1,
+        "baseline": {
+            "convega:post-42197:stage-21": {
+                "record_id": "convega:post-42197:stage-21",
+                "source": "convega",
+                "source_url": "https://convega.com/example",
+                "title": "Ruta guiada GR-92 · Etapa 21",
+                "event_start_date": "2026-10-04",
+                "event_end_date": None,
+                "registration_start_date": None,
+                "registration_start_time": None,
+                "registration_end_date": None,
+                "registration_end_time": None,
+                "status": "full",
+                "last_explicit_status": "full",
+                "until_full": True,
+                "registration_url": None,
+                "registration_contact": None,
+            }
+        },
+        "announced_record_ids": [],
+        "sent_triggers": [],
+        "uncertain": None,
+    }
 
 
-class ConvegaRegistrationProjectionTests(unittest.IsolatedAsyncioTestCase):
-    async def test_convega_registration_title_keeps_guided_activity(self):
-        raw = {
-            "record_id": "convega:post-1:stage-21",
-            "source": "convega",
-            "source_url": "https://convega.com/example",
-            "title": "Ruta guiada GR-92 · Etapa 21",
-            "stage": 21,
-            "direction_from": "Guardamar del Segura",
-            "direction_to": "Torrevieja",
-            "event_start_date": "2026-10-04",
-            "event_end_date": None,
-            "guardamar_relevant": True,
-            "observed_status": "full",
-            "until_full": True,
-            "registration_url": None,
-            "registration_contact": None,
-        }
-        with patch(
-            "telegrambot.event_registration_notifications.load_convega_records",
-            new=AsyncMock(return_value=(raw,)),
-        ):
-            records = await load_registration_records(Path("unused.json"))
-
-        self.assertEqual(len(records), 1)
-        self.assertEqual(
-            records[0].title,
-            "Поход с гидом по пешеходному маршруту GR-92: "
-            "Guardamar → Torrevieja",
-        )
-
-
-class RegistrationPlanningTests(unittest.TestCase):
-    def test_first_seen_full_is_silent_but_keeps_explicit_evidence(self):
-        plan = plan_registration_run(
-            (record(status="full"),),
-            empty_state(),
-            NOW,
-        )
-
-        self.assertIsNone(plan.publication)
-        saved = plan.candidate_baseline["official:event-1"]
-        self.assertEqual(saved["status"], "full")
-        self.assertEqual(saved["last_explicit_status"], "full")
-        self.assertEqual(plan.candidate_announced_record_ids, ())
-
-    def test_first_seen_open_publishes_current_active_registration(self):
-        active = record(
-            status="open",
-            registration_url="https://official.example/register",
-        )
-        plan = plan_registration_run((active,), empty_state(), NOW)
-
-        self.assertIsNotNone(plan.publication)
-        self.assertIn("Идёт запись", plan.publication.message)
-        self.assertIn("Записаться", plan.publication.message)
-        self.assertEqual(
-            plan.candidate_announced_record_ids,
-            ("official:event-1",),
-        )
-
-    def test_first_seen_full_then_open_is_active_not_reopened(self):
-        first = plan_registration_run(
-            (record(status="full"),),
-            empty_state(),
-            NOW,
-        )
-        state = {
-            "version": 1,
-            "baseline": dict(first.candidate_baseline),
-            "announced_record_ids": list(first.candidate_announced_record_ids),
-            "sent_triggers": list(first.candidate_sent_triggers),
-            "uncertain": None,
-        }
-
-        second = plan_registration_run(
-            (record(status="open"),),
-            state,
-            datetime(2026, 10, 3, 12, 47, tzinfo=TZ),
-        )
-
-        self.assertIn("Идёт запись", second.publication.message)
-        self.assertNotIn("снова открыта", second.publication.message)
-
-    def test_announced_full_unknown_open_keeps_reopening_evidence(self):
-        state = empty_state()
-        opened = plan_registration_run((record(status="open"),), state, NOW)
-        state = {
-            "version": 1,
-            "baseline": dict(opened.candidate_baseline),
-            "announced_record_ids": list(opened.candidate_announced_record_ids),
-            "sent_triggers": list(opened.candidate_sent_triggers),
-            "uncertain": None,
-        }
-        full = plan_registration_run(
-            (record(status="full"),),
-            state,
-            datetime(2026, 10, 3, 12, 47, tzinfo=TZ),
-        )
-        state = {
-            "version": 1,
-            "baseline": dict(full.candidate_baseline),
-            "announced_record_ids": list(full.candidate_announced_record_ids),
-            "sent_triggers": list(full.candidate_sent_triggers),
-            "uncertain": None,
-        }
-        unknown = plan_registration_run(
-            (record(status="unknown"),),
-            state,
-            datetime(2026, 10, 4, 12, 47, tzinfo=TZ),
-        )
-        self.assertIsNone(unknown.publication)
-        self.assertEqual(
-            unknown.candidate_baseline["official:event-1"]["status"],
-            "unknown",
-        )
-        self.assertEqual(
-            unknown.candidate_baseline["official:event-1"]["last_explicit_status"],
-            "full",
-        )
-        state = {
-            "version": 1,
-            "baseline": dict(unknown.candidate_baseline),
-            "announced_record_ids": list(unknown.candidate_announced_record_ids),
-            "sent_triggers": list(unknown.candidate_sent_triggers),
-            "uncertain": None,
-        }
-
-        reopened = plan_registration_run(
-            (record(status="open"),),
-            state,
-            datetime(2026, 10, 5, 12, 47, tzinfo=TZ),
-        )
-
-        self.assertIn("Регистрация снова открыта", reopened.publication.message)
-
-    def test_first_seen_open_with_deadline_tomorrow_prefers_deadline_notice(self):
-        active = record(
-            status="open",
-            registration_end_date=date(2026, 10, 3),
-        )
-
-        plan = plan_registration_run((active,), empty_state(), NOW)
-
-        self.assertIn("Завтра заканчивается запись", plan.publication.message)
-        self.assertNotIn("<b>Идёт запись</b>", plan.publication.message)
-
-    def test_contact_only_open_registration_renders_contact(self):
-        active = record(
-            status="open",
-            registration_url=None,
-            registration_contact="inscripciones@official.example",
-        )
-
-        plan = plan_registration_run((active,), empty_state(), NOW)
-
-        self.assertIn(
-            "регистрация: inscripciones@official.example",
-            plan.publication.message,
-        )
-
-    def test_full_transition_beats_deadline_reminder(self):
-        state = empty_state()
-        opened = plan_registration_run(
-            (
-                record(
-                    status="open",
-                    registration_end_date=date(2026, 10, 4),
-                ),
-            ),
-            state,
-            NOW,
-        )
-        state = {
-            "version": 1,
-            "baseline": dict(opened.candidate_baseline),
-            "announced_record_ids": list(opened.candidate_announced_record_ids),
-            "sent_triggers": list(opened.candidate_sent_triggers),
-            "uncertain": None,
-        }
-
-        plan = plan_registration_run(
-            (
-                record(
-                    status="full",
-                    registration_end_date=date(2026, 10, 4),
-                ),
-            ),
-            state,
-            datetime(2026, 10, 3, 12, 47, tzinfo=TZ),
-        )
-
-        self.assertIn("Места закончились", plan.publication.message)
-        self.assertNotIn("Завтра заканчивается", plan.publication.message)
-
-    def test_future_opening_notice_does_not_offer_signup_action(self):
-        future = record(
-            status="unknown",
-            registration_start_date=date(2026, 10, 3),
-            registration_url="https://official.example/register",
-        )
-
-        plan = plan_registration_run((future,), empty_state(), NOW)
-
-        self.assertIn("Завтра открывается", plan.publication.message)
-        self.assertNotIn("Записаться", plan.publication.message)
-
-    def test_opening_tomorrow_suppresses_same_day_fallback_after_success(self):
-        opening = record(
-            registration_start_date=date(2026, 10, 3),
-            status="unknown",
-        )
-        advance = plan_registration_run((opening,), empty_state(), NOW)
-
-        self.assertIn("Завтра открывается", advance.publication.message)
-        state = {
-            "version": 1,
-            "baseline": dict(advance.candidate_baseline),
-            "announced_record_ids": list(advance.candidate_announced_record_ids),
-            "sent_triggers": list(advance.candidate_sent_triggers),
-            "uncertain": None,
-        }
-
-        same_day = plan_registration_run(
-            (opening,),
-            state,
-            datetime(2026, 10, 3, 8, 0, tzinfo=TZ),
-        )
-
-        self.assertIsNone(same_day.publication)
-
-    def test_one_day_window_tomorrow_is_one_semantic_notice(self):
-        one_day = record(
-            registration_start_date=date(2026, 10, 3),
-            registration_end_date=date(2026, 10, 3),
-            status="unknown",
-        )
-
-        plan = plan_registration_run((one_day,), empty_state(), NOW)
-
-        self.assertIn("Регистрация только завтра", plan.publication.message)
-        self.assertNotIn("заканчивается запись", plan.publication.message)
-        self.assertEqual(len(plan.publication.trigger_ids), 1)
-
-    def test_one_day_advance_suppresses_expected_closed_followup(self):
-        one_day = record(
-            registration_start_date=date(2026, 10, 3),
-            registration_end_date=date(2026, 10, 3),
-            status="unknown",
-        )
-        advance = plan_registration_run((one_day,), empty_state(), NOW)
-        state = {
-            "version": 1,
-            "baseline": dict(advance.candidate_baseline),
-            "announced_record_ids": list(advance.candidate_announced_record_ids),
-            "sent_triggers": list(advance.candidate_sent_triggers),
-            "uncertain": None,
-        }
-
-        closed = plan_registration_run(
-            (replace(one_day, status="closed"),),
-            state,
-            datetime(2026, 10, 3, 18, 0, tzinfo=TZ),
-        )
-
-        self.assertIsNone(closed.publication)
-
-    def test_explicit_open_today_does_not_also_claim_it_will_open(self):
-        active = record(
-            status="open",
-            registration_start_date=date(2026, 10, 2),
-        )
-
-        plan = plan_registration_run((active,), empty_state(), NOW)
-
-        self.assertIn("Идёт запись", plan.publication.message)
-        self.assertNotIn("Сегодня открывается регистрация", plan.publication.message)
-
-    def test_exact_time_retry_recomputes_after_boundary(self):
-        timed = record(
-            registration_start_date=date(2026, 10, 2),
-            registration_start_time=time(10, 30),
-            status="unknown",
-        )
-        before = plan_registration_run(
-            (timed,),
-            empty_state(),
-            datetime(2026, 10, 2, 9, 0, tzinfo=TZ),
-        )
-        self.assertIn("Сегодня в 10:30 откроется", before.publication.message)
-
-        after = plan_registration_run(
-            (
-                replace(
-                    timed,
-                    status="open",
-                    registration_url="https://official.example/register",
-                ),
-            ),
-            empty_state(),
-            datetime(2026, 10, 2, 11, 0, tzinfo=TZ),
-        )
-        self.assertIn("Идёт запись", after.publication.message)
-        self.assertNotIn("10:30 откроется", after.publication.message)
-
-    def test_disappearance_is_silent_and_preserves_baseline(self):
-        initial = plan_registration_run(
-            (record(status="full"),),
-            empty_state(),
-            NOW,
-        )
-        state = {
-            "version": 1,
-            "baseline": dict(initial.candidate_baseline),
-            "announced_record_ids": list(initial.candidate_announced_record_ids),
-            "sent_triggers": list(initial.candidate_sent_triggers),
-            "uncertain": None,
-        }
-
-        missing = plan_registration_run(
-            (),
-            state,
-            datetime(2026, 10, 3, 12, 47, tzinfo=TZ),
-        )
-
-        self.assertIsNone(missing.publication)
-        self.assertIn("official:event-1", missing.candidate_baseline)
-
-    def test_event_date_correction_preserves_identity_and_notifies_announced_record(self):
-        initial = plan_registration_run(
-            (record(status="open"),),
-            empty_state(),
-            NOW,
-        )
-        state = {
-            "version": 1,
-            "baseline": dict(initial.candidate_baseline),
-            "announced_record_ids": list(initial.candidate_announced_record_ids),
-            "sent_triggers": list(initial.candidate_sent_triggers),
-            "uncertain": None,
-        }
-        changed = replace(
-            record(status="open"),
-            event_start_date=date(2026, 10, 12),
-        )
-
-        plan = plan_registration_run(
-            (changed,),
-            state,
-            datetime(2026, 10, 3, 12, 47, tzinfo=TZ),
-        )
-
-        self.assertIn("Изменилась дата мероприятия", plan.publication.message)
-        self.assertEqual(changed.record_id, "official:event-1")
-
-    def test_open_before_explicit_start_is_rejected(self):
-        impossible = record(
-            status="open",
-            registration_start_date=date(2026, 10, 3),
-        )
-
-        plan = plan_registration_run((impossible,), empty_state(), NOW)
-
-        self.assertIsNone(plan.publication)
-        self.assertNotIn("official:event-1", plan.candidate_baseline)
-
-    def test_open_after_exact_deadline_is_rejected(self):
-        impossible = record(
-            status="open",
-            registration_end_date=date(2026, 10, 2),
-            registration_end_time=time(12, 0),
-        )
-
-        plan = plan_registration_run((impossible,), empty_state(), NOW)
-
-        self.assertIsNone(plan.publication)
-        self.assertNotIn("official:event-1", plan.candidate_baseline)
-
-    def test_past_event_does_not_create_new_notice(self):
-        past = record(
-            event_start_date=date(2026, 10, 1),
-            status="open",
-        )
-
-        plan = plan_registration_run((past,), empty_state(), NOW)
-
-        self.assertIsNone(plan.publication)
-
-
-class RegistrationDeliveryStateTests(unittest.IsolatedAsyncioTestCase):
-    async def test_confirmed_send_commits_candidate_once(self):
+class MigrationStateTests(unittest.TestCase):
+    def test_explicit_migration_writes_backup_and_v2(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            state = RegistrationNotificationState(root / "notify.json")
-            source = root / "source.json"
-            source.write_text("{}", encoding="utf-8")
+            path = Path(directory) / "state.json"
+            path.write_text(json.dumps(legacy_state()), encoding="utf-8")
+            state = RegistrationNotificationState(path)
 
-            async def publish(message):
-                self.assertIn("Идёт запись", message)
-                return 123
+            result = state.migrate()
+            saved = state.read()
+            backup = json.loads(
+                state.backup_path.read_text(encoding="utf-8")
+            )
 
+        self.assertEqual(result, "migrated_v1_to_v2")
+        self.assertEqual(saved["version"], 2)
+        self.assertEqual(backup, legacy_state())
+
+    def test_migration_is_idempotent_after_v2(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            path.write_text(json.dumps(legacy_state()), encoding="utf-8")
+            state = RegistrationNotificationState(path)
+
+            state.migrate()
+            before = path.read_bytes()
+            result = state.migrate()
+            after = path.read_bytes()
+
+        self.assertEqual(result, "already_v2")
+        self.assertEqual(before, after)
+
+    def test_backup_collision_mismatch_fails_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            path.write_text(json.dumps(legacy_state()), encoding="utf-8")
+            state = RegistrationNotificationState(path)
+            state.backup_path.write_text('{"different":true}', encoding="utf-8")
+
+            with self.assertRaises(EventAccessStateError):
+                state.migrate()
+
+    def test_root_resolution_requires_message_id(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = RegistrationNotificationState(
+                Path(directory) / "state.json"
+            )
+            state.write({
+                "version": 2,
+                "records": {},
+                "uncertain": None,
+            })
+            current = state.read()
+            candidate = {
+                "source": "convega",
+                "access_kind": "registration",
+                "event_start_date": "2026-10-04",
+                "event_end_date": None,
+                "options": {
+                    "default": {
+                        "status": "open",
+                        "last_explicit_status": "open",
+                        "opens_on": None,
+                        "opens_time": None,
+                        "closes_on": None,
+                        "closes_time": None,
+                        "until_full": True,
+                        "action_url": "https://convega.com/register",
+                        "action_text": None,
+                    }
+                },
+                "audience_known": True,
+                "root_message_id": None,
+                "sent_triggers": [],
+            }
+            state.reserve(
+                current,
+                "convega:post-1:stage-21",
+                "root",
+                "message",
+                candidate,
+                NOW,
+            )
+
+            with self.assertRaises(EventAccessStateError):
+                state.confirm_uncertain()
+
+
+class RenderingTests(unittest.TestCase):
+    def test_root_is_self_contained_and_uses_current_action(self):
+        from telegrambot.event_access import plan_event_access_record
+
+        item = record()
+        decision = plan_event_access_record(item, None, NOW)
+
+        message = render_root(item, decision)
+
+        self.assertIn("Открыта регистрация", message)
+        self.assertIn("Поход с гидом по GR-92", message)
+        self.assertIn("Guardamar → Torrevieja", message)
+        self.assertIn("15,43 км", message)
+        self.assertIn("Сбор 08:00", message)
+        self.assertIn("Записаться", message)
+        self.assertIn("Места ограничены", message)
+
+
+class DeliveryTests(unittest.IsolatedAsyncioTestCase):
+    async def run_with(self, records, publish, state=None):
+        if state is None:
+            temp = tempfile.TemporaryDirectory()
+            self.addCleanup(temp.cleanup)
+            state = RegistrationNotificationState(
+                Path(temp.name) / "notify.json"
+            )
+
+        with (
+            patch(
+                "telegrambot.event_registration_notifications."
+                "convega_snapshot_is_access_fresh",
+                return_value=True,
+            ),
+            patch(
+                "telegrambot.event_registration_notifications."
+                "load_convega_access_records",
+                new=AsyncMock(return_value=tuple(records)),
+            ),
+        ):
+            return await run_registration_notifications(
+                NOW,
+                state,
+                publish,
+                source_state_path=Path("unused.json"),
+            )
+
+    async def test_confirmed_root_stores_returned_message_id(self):
+        async def publish(message, reply_to):
+            self.assertIsNone(reply_to)
+            self.assertIn("Открыта регистрация", message)
+            return 123
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = RegistrationNotificationState(
+                Path(directory) / "notify.json"
+            )
+            result = await self.run_with((record(),), publish, state)
+            saved = state.read()
+
+        self.assertEqual(result, "sent")
+        item = saved["records"]["convega:post-1:stage-21"]
+        self.assertEqual(item["root_message_id"], 123)
+        self.assertTrue(item["audience_known"])
+        self.assertIsNone(saved["uncertain"])
+
+    async def test_deterministic_failure_clears_uncertain(self):
+        async def publish(_message, _reply_to):
+            raise TelegramError(
+                "rejected",
+                retryable=False,
+                code="HTTP-400",
+                status=400,
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = RegistrationNotificationState(
+                Path(directory) / "notify.json"
+            )
+            with self.assertRaises(TelegramError):
+                await self.run_with((record(),), publish, state)
+            saved = state.read()
+
+        self.assertIsNone(saved["uncertain"])
+        self.assertNotIn(
+            "convega:post-1:stage-21",
+            saved["records"],
+        )
+
+    async def test_ambiguous_failure_keeps_root_reservation(self):
+        async def publish(_message, _reply_to):
+            raise TelegramError(
+                "timeout",
+                retryable=True,
+                code="TIMEOUT",
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = RegistrationNotificationState(
+                Path(directory) / "notify.json"
+            )
+            with self.assertRaises(RegistrationDeliveryUncertain):
+                await self.run_with((record(),), publish, state)
+            raw = state.read()
+
+        self.assertIsNotNone(raw["uncertain"])
+        self.assertEqual(raw["uncertain"]["operation"], "root")
+        self.assertEqual(
+            raw["uncertain"]["record_id"],
+            "convega:post-1:stage-21",
+        )
+
+    async def test_reply_uses_existing_root_id(self):
+        calls = []
+
+        async def publish(message, reply_to):
+            calls.append((message, reply_to))
+            return 222
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = RegistrationNotificationState(
+                Path(directory) / "notify.json"
+            )
+            await self.run_with((record(),), publish, state)
+
+            full = record(
+                options=(
+                    AccessOption(
+                        option_id="default",
+                        status="full",
+                        until_full=True,
+                    ),
+                )
+            )
+            result = await self.run_with((full,), publish, state)
+            saved = state.read()
+
+        self.assertEqual(result, "sent")
+        self.assertEqual(calls[-1][1], 222)
+        self.assertIn("Мест больше нет", calls[-1][0])
+        self.assertEqual(
+            saved["records"][
+                "convega:post-1:stage-21"
+            ]["root_message_id"],
+            222,
+        )
+
+    async def test_state_write_failure_after_send_leaves_uncertain(self):
+        async def publish(_message, _reply_to):
+            return 123
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = RegistrationNotificationState(
+                Path(directory) / "notify.json"
+            )
+            original = state.confirm_uncertain
+
+            def fail_confirm(root_message_id=None):
+                raise OSError("disk failure")
+
+            state.confirm_uncertain = fail_confirm
+            with self.assertRaises(OSError):
+                await self.run_with((record(),), publish, state)
+            state.confirm_uncertain = original
+            saved = state.read()
+
+        self.assertIsNotNone(saved["uncertain"])
+        self.assertEqual(saved["uncertain"]["operation"], "root")
+
+    async def test_uncertain_blocks_automatic_followup(self):
+        async def timeout(_message, _reply_to):
+            raise TelegramError(
+                "timeout",
+                retryable=True,
+                code="TIMEOUT",
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = RegistrationNotificationState(
+                Path(directory) / "notify.json"
+            )
+            with self.assertRaises(RegistrationDeliveryUncertain):
+                await self.run_with((record(),), timeout, state)
+
+            async def should_not_send(_message, _reply_to):
+                raise AssertionError("must not publish while uncertain")
+
+            result = await self.run_with(
+                (record(),),
+                should_not_send,
+                state,
+            )
+
+        self.assertEqual(result, "uncertain")
+
+    async def test_earlier_record_stays_committed_when_later_is_ambiguous(self):
+        first = record("convega:post-1:stage-21")
+        second = record("convega:post-2:stage-22")
+        calls = 0
+
+        async def publish(_message, _reply_to):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                return 111
+            raise TelegramError(
+                "timeout",
+                retryable=True,
+                code="TIMEOUT",
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = RegistrationNotificationState(
+                Path(directory) / "notify.json"
+            )
+            with self.assertRaises(RegistrationDeliveryUncertain):
+                await self.run_with((first, second), publish, state)
+            saved = state.read()
+
+        self.assertEqual(
+            saved["records"][
+                "convega:post-1:stage-21"
+            ]["root_message_id"],
+            111,
+        )
+        self.assertEqual(
+            saved["uncertain"]["record_id"],
+            "convega:post-2:stage-22",
+        )
+
+    async def test_stale_source_skips_before_loading_records(self):
+        async def publish(_message, _reply_to):
+            raise AssertionError
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = RegistrationNotificationState(
+                Path(directory) / "notify.json"
+            )
             with (
                 patch(
                     "telegrambot.event_registration_notifications."
-                    "convega_snapshot_observed_at",
-                    new=AsyncMock(return_value=NOW),
+                    "convega_snapshot_is_access_fresh",
+                    return_value=False,
                 ),
                 patch(
                     "telegrambot.event_registration_notifications."
-                    "load_registration_records",
-                    new=AsyncMock(return_value=(record(status="open"),)),
+                    "load_convega_access_records",
+                    new=AsyncMock(
+                        side_effect=AssertionError("must not load stale")
+                    ),
                 ),
             ):
                 result = await run_registration_notifications(
                     NOW,
                     state,
                     publish,
-                    source_state_path=source,
-                    translation_path=root / "translations.json",
+                    source_state_path=Path("unused.json"),
                 )
-
-            saved = state.read()
-
-        self.assertEqual(result, "sent")
-        self.assertIsNone(saved["uncertain"])
-        self.assertEqual(saved["announced_record_ids"], ["official:event-1"])
-
-    async def test_deterministic_telegram_failure_clears_uncertainty_and_old_baseline(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            state = RegistrationNotificationState(root / "notify.json")
-            source = root / "source.json"
-            source.write_text("{}", encoding="utf-8")
-
-            async def publish(_message):
-                raise TelegramError(
-                    "rejected",
-                    retryable=False,
-                    code="HTTP-400",
-                    status=400,
-                )
-
-            with (
-                patch(
-                    "telegrambot.event_registration_notifications."
-                    "convega_snapshot_observed_at",
-                    new=AsyncMock(return_value=NOW),
-                ),
-                patch(
-                    "telegrambot.event_registration_notifications."
-                    "load_registration_records",
-                    new=AsyncMock(return_value=(record(status="open"),)),
-                ),
-            ):
-                with self.assertRaises(TelegramError):
-                    await run_registration_notifications(
-                        NOW,
-                        state,
-                        publish,
-                        source_state_path=source,
-                        translation_path=root / "translations.json",
-                    )
-
-            saved = state.read()
-
-        self.assertIsNone(saved["uncertain"])
-        self.assertEqual(saved["baseline"], {})
-        self.assertEqual(saved["announced_record_ids"], [])
-
-    async def test_ambiguous_telegram_failure_keeps_candidate_for_operator_resolution(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            state = RegistrationNotificationState(root / "notify.json")
-            source = root / "source.json"
-            source.write_text("{}", encoding="utf-8")
-
-            async def publish(_message):
-                raise TelegramError(
-                    "timeout",
-                    retryable=True,
-                    code="TIMEOUT",
-                )
-
-            with (
-                patch(
-                    "telegrambot.event_registration_notifications."
-                    "convega_snapshot_observed_at",
-                    new=AsyncMock(return_value=NOW),
-                ),
-                patch(
-                    "telegrambot.event_registration_notifications."
-                    "load_registration_records",
-                    new=AsyncMock(return_value=(record(status="open"),)),
-                ),
-            ):
-                with self.assertRaises(RegistrationDeliveryUncertain):
-                    await run_registration_notifications(
-                        NOW,
-                        state,
-                        publish,
-                        source_state_path=source,
-                        translation_path=root / "translations.json",
-                    )
-
-            uncertain = state.read()["uncertain"]
-            self.assertIsNotNone(uncertain)
-            self.assertEqual(
-                uncertain["candidate_announced_record_ids"],
-                ["official:event-1"],
-            )
-
-            with state.exclusive_run():
-                state.confirm_uncertain()
-            resolved = state.read()
-
-        self.assertIsNone(resolved["uncertain"])
-        self.assertEqual(resolved["announced_record_ids"], ["official:event-1"])
-
-    async def test_future_source_never_mutates_lifecycle_state(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            state = RegistrationNotificationState(root / "notify.json")
-            source = root / "source.json"
-            source.write_text("{}", encoding="utf-8")
-
-            with patch(
-                "telegrambot.event_registration_notifications."
-                "convega_snapshot_observed_at",
-                new=AsyncMock(
-                    return_value=datetime(2026, 10, 2, 13, 0, tzinfo=TZ)
-                ),
-            ):
-                result = await run_registration_notifications(
-                    NOW,
-                    state,
-                    AsyncMock(return_value=123),
-                    source_state_path=source,
-                    translation_path=root / "translations.json",
-                )
-
-            saved = state.read()
 
         self.assertEqual(result, "stale_source")
-        self.assertEqual(saved["baseline"], {})
-
-    async def test_stale_source_never_mutates_lifecycle_state(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            state = RegistrationNotificationState(root / "notify.json")
-            source = root / "source.json"
-            source.write_text("{}", encoding="utf-8")
-
-            with patch(
-                "telegrambot.event_registration_notifications."
-                "convega_snapshot_observed_at",
-                new=AsyncMock(
-                    return_value=datetime(2026, 10, 1, 12, 47, tzinfo=TZ)
-                ),
-            ):
-                result = await run_registration_notifications(
-                    NOW,
-                    state,
-                    AsyncMock(return_value=123),
-                    source_state_path=source,
-                    translation_path=root / "translations.json",
-                )
-
-            saved = state.read()
-
-        self.assertEqual(result, "stale_source")
-        self.assertEqual(saved["baseline"], {})
 
 
 if __name__ == "__main__":
