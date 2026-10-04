@@ -778,6 +778,16 @@ scores remain in the body rather than becoming the default headline. Carrefour
 price wording refers explicitly to the official website and does not claim
 Guardamar-local shelf stock.
 
+The expandable methodology quote has one separate job: explain how that
+specific source/category tests products or selects a winner. It must not repeat
+the product name, award/result, score/rank, retailer, price, sample count or
+candidate highlight already present in the article body. OCU methodology is
+category-specific because cava, gazpacho, AOVE and coffee capsules use different
+test procedures. World Beer Awards may share one reviewed judging-process text
+across beer styles; MAPA spirits uses its own reviewed selection procedure. A
+new source/category without reviewed methodology fails closed instead of using
+generic filler prose.
+
 Consum's current JSON uses working numbered `media[]` assets while its base
 `productData.imageURL` values may 404. ALDI NALTROS currently fails closed
 because the exact product page reports an explicit product-page error rather

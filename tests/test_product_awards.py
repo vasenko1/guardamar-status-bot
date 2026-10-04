@@ -27,15 +27,16 @@ MADRID = ZoneInfo("Europe/Madrid")
 
 def candidate(
     event_id: str,
-    category: str = "test",
+    selection_category: str = "test",
     *,
+    methodology_category: str = "gazpacho",
     rank: int = 1,
     source_kind: str = "ocu",
     award_scope: str = "exact_product",
 ) -> ReviewedCandidate:
     return ReviewedCandidate(
-        category_key=category,
-        selection_key=f"{category}:2026",
+        category_key=methodology_category,
+        selection_key=f"{selection_category}:2026",
         event_id=event_id,
         source_name="Test Award",
         source_kind=source_kind,
@@ -835,13 +836,63 @@ class RenderingTests(unittest.TestCase):
         self.assertIn("39 продуктов", message)
         self.assertIn("gazpachos", message)
         self.assertIn("Mejor del Análisis, 90/100", message)
-        self.assertIn("физически тестировала", message)
+        self.assertIn("50% — на профессиональную дегустацию", message)
+        self.assertIn("40% — на оценку пищевой ценности", message)
+        self.assertNotIn("физически тестировала", message)
         self.assertNotIn("25 cava", message)
+
+    def test_reviewed_methodology_is_specific_and_does_not_repeat_product_result(self):
+        items = [
+            item
+            for category in awards.CATEGORIES
+            for source in category.sources
+            for item in source.candidates
+        ]
+
+        for item in items:
+            with self.subTest(event_id=item.event_id):
+                block = awards._methodology(item)
+                self.assertNotIn(item.product_name, block)
+                self.assertNotIn(item.award_result, block)
+                self.assertNotIn(item.retailer, block)
+                if item.sample_size is not None:
+                    self.assertNotIn(str(item.sample_size), block)
+                if item.highlight:
+                    self.assertNotIn(item.highlight, block)
+
+        gazpacho = next(item for item in items if item.category_key == "gazpacho")
+        self.assertIn("10% итоговой оценки", awards._methodology(gazpacho))
+        self.assertIn("50% — на профессиональную дегустацию", awards._methodology(gazpacho))
+
+        aove = next(item for item in items if item.category_key == "aove")
+        self.assertIn("подлинность", awards._methodology(aove))
+        self.assertIn("сенсорная оценка", awards._methodology(aove))
+
+        coffee = next(item for item in items if item.category_key == "coffee_capsules")
+        self.assertIn("акриламид", awards._methodology(coffee))
+        self.assertIn("одной и той же кофемашине", awards._methodology(coffee))
+
+        cava = next(item for item in items if item.category_key == "sparkling_cava")
+        self.assertIn("независимую лабораторию", awards._methodology(cava))
+        self.assertIn("анонимно дегустирует", awards._methodology(cava))
+
+        mapa = next(item for item in items if item.category_key == "spirits_anis")
+        self.assertIn("как минимум из пяти", awards._methodology(mapa))
+        self.assertIn("Пять образцов с лучшими результатами", awards._methodology(mapa))
+        self.assertIn("60% приходится на дегустацию", awards._methodology(mapa))
+
+        beer = next(item for item in items if item.category_key == "classic_pilsener")
+        beer_methodology = awards._methodology(beer)
+        self.assertIn("три этапа", beer_methodology)
+        self.assertIn("снова дегустируют вслепую", beer_methodology)
+        self.assertNotIn("Country Winner", beer_methodology)
+        self.assertNotIn("золото", beer_methodology.casefold())
 
     def test_mapa_renderer_names_official_winner_without_score(self):
         item = ReviewedCandidate(
             **{
                 **candidate("mapa").__dict__,
+                "category_key": "spirits_anis",
                 "source_kind": "mapa",
                 "product_name": "Anís Chinchón Dulce",
                 "source_category": "Mejor Bebida Espirituosa con Indicación Geográfica",
@@ -882,6 +933,7 @@ class RenderingTests(unittest.TestCase):
         item = ReviewedCandidate(
             **{
                 **candidate("aove").__dict__,
+                "category_key": "aove",
                 "sample_size": 23,
             }
         )
@@ -920,6 +972,7 @@ class RenderingTests(unittest.TestCase):
         item = ReviewedCandidate(
             **{
                 **candidate("ocu").__dict__,
+                "category_key": "sparkling_cava",
                 "source_kind": "ocu",
                 "product_name": "NALTROS Brut",
                 "source_category": "cava",
