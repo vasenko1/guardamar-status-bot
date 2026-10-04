@@ -486,6 +486,7 @@ def _parse_post(raw: Any, now: datetime) -> Tuple[Dict[str, Any], ...]:
         stage = occurrence["stage"]
         relevant = occurrence["guardamar_relevant"]
         route = None
+        direction = _explicit_route_direction(occurrence["sentence"])
         records.append({
             "record_id": f"convega:post-{identifier}:stage-{stage}",
             "source": "convega",
@@ -499,6 +500,14 @@ def _parse_post(raw: Any, now: datetime) -> Tuple[Dict[str, Any], ...]:
             "place": "Guardamar del Segura" if relevant else None,
             "route": route,
             "guardamar_relevant": relevant,
+            **(
+                {
+                    "direction_from": direction[0],
+                    "direction_to": direction[1],
+                }
+                if direction is not None
+                else {}
+            ),
             "registration_start_date": None,
             "registration_start_time": None,
             "registration_end_date": None,
@@ -602,7 +611,7 @@ _ROUTE_MUNICIPALITIES = (
 )
 
 
-def _landing_direction(text: str) -> Optional[Tuple[str, str]]:
+def _explicit_route_direction(text: str) -> Optional[Tuple[str, str]]:
     """Extract only an explicit municipality-to-municipality direction."""
 
     for origin in _ROUTE_MUNICIPALITIES:
@@ -617,6 +626,16 @@ def _landing_direction(text: str) -> Optional[Tuple[str, str]]:
             )
             if any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns):
                 return origin, destination
+
+    if "a traves del litoral de" in _fold(text):
+        positions = []
+        for municipality in _ROUTE_MUNICIPALITIES:
+            match = re.search(re.escape(municipality), text, re.IGNORECASE)
+            if match is not None:
+                positions.append((match.start(), municipality))
+        ordered = [municipality for _, municipality in sorted(positions)]
+        if len(ordered) >= 2 and ordered[0] != ordered[-1]:
+            return ordered[0], ordered[-1]
     return None
 
 
@@ -638,7 +657,7 @@ def _landing_route_facts(parser: _RenderedContentParser) -> Dict[str, Any]:
     folded = _fold(text)
     result: Dict[str, Any] = {}
 
-    direction = _landing_direction(text)
+    direction = _explicit_route_direction(text)
     if direction is not None:
         result["direction_from"], result["direction_to"] = direction
 
