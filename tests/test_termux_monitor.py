@@ -17,6 +17,7 @@ class OperationalMonitorTermuxTests(unittest.TestCase):
         no_crontab=False,
         crond_running=True,
         service_dir=True,
+        sv_fail=False,
     ):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -47,10 +48,14 @@ class OperationalMonitorTermuxTests(unittest.TestCase):
             )
             crontab.chmod(0o755)
 
+            crond_state = root / "crond-running"
+            if crond_running:
+                crond_state.write_text("1\n", encoding="utf-8")
+
             pgrep = commands / "pgrep"
             pgrep.write_text(
                 "#!/bin/sh\n"
-                "if [ \"${CROND_RUNNING-}\" = 1 ]; then exit 0; fi\n"
+                "if [ -f \"$CROND_STATE\" ]; then exit 0; fi\n"
                 "exit 1\n",
                 encoding="utf-8",
             )
@@ -60,6 +65,7 @@ class OperationalMonitorTermuxTests(unittest.TestCase):
             sv.write_text(
                 "#!/bin/sh\n"
                 "if [ \"${SV_FAIL-}\" = 1 ]; then exit 1; fi\n"
+                "touch \"$CROND_STATE\"\n"
                 "exit 0\n",
                 encoding="utf-8",
             )
@@ -77,7 +83,8 @@ class OperationalMonitorTermuxTests(unittest.TestCase):
                 "FAKE_CRONTAB": str(crontab_state),
                 "LIST_ERROR": list_error or "",
                 "NO_CRONTAB": "1" if no_crontab else "",
-                "CROND_RUNNING": "1" if crond_running else "",
+                "CROND_STATE": str(crond_state),
+                "SV_FAIL": "1" if sv_fail else "",
             })
             result = subprocess.run(
                 ["sh", str(ROOT / "termux" / "install-monitor-cron.sh")],
@@ -150,6 +157,32 @@ class OperationalMonitorTermuxTests(unittest.TestCase):
             initial,
             crond_running=False,
             service_dir=False,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(after, initial)
+
+    def test_installer_can_start_crond_before_rewriting(self):
+        initial = "12 3 * * * /other/bot.sh\n"
+
+        result, installed = self._install(
+            initial,
+            crond_running=False,
+            service_dir=True,
+        )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn(initial.strip(), installed)
+        self.assertIn("51 7-23 * * *", installed)
+
+    def test_service_start_failure_leaves_crontab_unchanged(self):
+        initial = "12 3 * * * /other/bot.sh\n"
+
+        result, after = self._install(
+            initial,
+            crond_running=False,
+            service_dir=True,
+            sv_fail=True,
         )
 
         self.assertNotEqual(result.returncode, 0)
