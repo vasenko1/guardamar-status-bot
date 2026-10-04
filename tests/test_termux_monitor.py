@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -26,9 +27,12 @@ class OperationalMonitorTermuxTests(unittest.TestCase):
             crontab_state = root / "crontab"
             crontab_state.write_text(initial, encoding="utf-8")
 
+            shell = shutil.which("sh")
+            self.assertIsNotNone(shell)
+
             crontab = commands / "crontab"
             crontab.write_text(
-                "#!/bin/sh\n"
+                f"#!{shell}\n"
                 "if [ \"${1-}\" = -l ]; then\n"
                 "  if [ -n \"${LIST_ERROR-}\" ]; then\n"
                 "    echo \"$LIST_ERROR\" >&2\n"
@@ -54,7 +58,7 @@ class OperationalMonitorTermuxTests(unittest.TestCase):
 
             pgrep = commands / "pgrep"
             pgrep.write_text(
-                "#!/bin/sh\n"
+                f"#!{shell}\n"
                 "if [ -f \"$CROND_STATE\" ]; then exit 0; fi\n"
                 "exit 1\n",
                 encoding="utf-8",
@@ -63,7 +67,7 @@ class OperationalMonitorTermuxTests(unittest.TestCase):
 
             sv = commands / "sv"
             sv.write_text(
-                "#!/bin/sh\n"
+                f"#!{shell}\n"
                 "if [ \"${SV_FAIL-}\" = 1 ]; then exit 1; fi\n"
                 "touch \"$CROND_STATE\"\n"
                 "exit 0\n",
@@ -79,7 +83,7 @@ class OperationalMonitorTermuxTests(unittest.TestCase):
             environment.update({
                 "HOME": str(root / "home"),
                 "PREFIX": str(prefix),
-                "PATH": f"{commands}:/usr/bin:/bin",
+                "PATH": f"{commands}:{os.environ.get('PATH', '')}",
                 "FAKE_CRONTAB": str(crontab_state),
                 "LIST_ERROR": list_error or "",
                 "NO_CRONTAB": "1" if no_crontab else "",
