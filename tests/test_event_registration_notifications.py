@@ -82,6 +82,21 @@ def legacy_state():
 
 
 class MigrationStateTests(unittest.TestCase):
+    def test_missing_state_migrates_to_empty_v2(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = RegistrationNotificationState(
+                Path(directory) / "state.json"
+            )
+
+            result = state.migrate()
+            saved = state.read()
+
+        self.assertEqual(result, "created_v2")
+        self.assertEqual(
+            saved,
+            {"version": 2, "records": {}, "uncertain": None},
+        )
+
     def test_explicit_migration_writes_backup_and_v2(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "state.json"
@@ -166,6 +181,68 @@ class MigrationStateTests(unittest.TestCase):
 
             with self.assertRaises(EventAccessStateError):
                 state.confirm_uncertain()
+
+    def test_ambiguous_reply_resolution_needs_no_reply_message_id(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = RegistrationNotificationState(
+                Path(directory) / "state.json"
+            )
+            committed = {
+                "source": "convega",
+                "access_kind": "registration",
+                "event_start_date": "2026-10-04",
+                "event_end_date": None,
+                "options": {
+                    "default": {
+                        "status": "open",
+                        "last_explicit_status": "open",
+                        "opens_on": None,
+                        "opens_time": None,
+                        "closes_on": None,
+                        "closes_time": None,
+                        "until_full": True,
+                        "action_url": "https://convega.com/register",
+                        "action_text": None,
+                    }
+                },
+                "audience_known": True,
+                "root_message_id": 321,
+                "sent_triggers": [],
+            }
+            state.write({
+                "version": 2,
+                "records": {"convega:post-1:stage-21": committed},
+                "uncertain": None,
+            })
+            candidate = json.loads(json.dumps(committed))
+            candidate["options"]["default"]["status"] = "full"
+            candidate["options"]["default"]["last_explicit_status"] = "full"
+            candidate["options"]["default"]["action_url"] = None
+            current = state.read()
+            state.reserve(
+                current,
+                "convega:post-1:stage-21",
+                "reply",
+                "message",
+                candidate,
+                NOW,
+            )
+
+            resolved = state.confirm_uncertain()
+
+        self.assertIsNone(resolved["uncertain"])
+        self.assertEqual(
+            resolved["records"][
+                "convega:post-1:stage-21"
+            ]["root_message_id"],
+            321,
+        )
+        self.assertEqual(
+            resolved["records"][
+                "convega:post-1:stage-21"
+            ]["options"]["default"]["status"],
+            "full",
+        )
 
 
 class RenderingTests(unittest.TestCase):
@@ -298,7 +375,11 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_ambiguous_failure_keeps_root_reservation(self):
+        calls = 0
+
         async def publish(_message, _reply_to):
+            nonlocal calls
+            calls += 1
             raise TelegramError(
                 "timeout",
                 retryable=True,
@@ -319,6 +400,7 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
             raw["uncertain"]["record_id"],
             "convega:post-1:stage-21",
         )
+        self.assertEqual(calls, 1)
 
     async def test_reply_uses_existing_root_id(self):
         calls = []
@@ -354,6 +436,46 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
             ]["root_message_id"],
             222,
         )
+
+    async def test_missing_reply_target_fails_closed_without_replacement_root(self):
+        calls = []
+
+        async def publish(message, reply_to):
+            calls.append((message, reply_to))
+            if len(calls) == 1:
+                return 222
+            raise TelegramError(
+                "reply target missing",
+                retryable=False,
+                code="MESSAGE-NOT-FOUND",
+                status=400,
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = RegistrationNotificationState(
+                Path(directory) / "notify.json"
+            )
+            await self.run_with((record(),), publish, state)
+
+            full = record(
+                options=(
+                    AccessOption(
+                        option_id="default",
+                        status="full",
+                        until_full=True,
+                    ),
+                )
+            )
+            with self.assertRaises(TelegramError):
+                await self.run_with((full,), publish, state)
+            saved = state.read()
+
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[-1][1], 222)
+        self.assertIsNone(saved["uncertain"])
+        item = saved["records"]["convega:post-1:stage-21"]
+        self.assertEqual(item["root_message_id"], 222)
+        self.assertEqual(item["options"]["default"]["status"], "open")
 
     async def test_state_write_failure_after_send_leaves_uncertain(self):
         async def publish(_message, _reply_to):
