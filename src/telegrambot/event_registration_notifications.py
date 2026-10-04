@@ -38,6 +38,7 @@ from .event_access import (
     migrate_v1_state,
     plan_event_access_record,
     prune_records,
+    temporally_consistent,
     validate_state,
 )
 from .telegram import TelegramError, is_ambiguous_send_failure, send_message
@@ -188,6 +189,11 @@ class RegistrationNotificationState:
                         os.fsync(output.fileno())
                     os.chmod(temporary, 0o600)
                     os.replace(temporary, backup)
+                    directory = os.open(str(backup.parent), os.O_RDONLY)
+                    try:
+                        os.fsync(directory)
+                    finally:
+                        os.close(directory)
                 finally:
                     try:
                         os.unlink(temporary)
@@ -556,7 +562,7 @@ async def run_registration_notifications(
 
         for record in records:
             event_day = record.event_end_date or record.event_start_date
-            if event_day < today:
+            if event_day < today or not temporally_consistent(record, now):
                 continue
             previous = current["records"].get(record.record_id)
             decision = plan_event_access_record(record, previous, now)
@@ -627,7 +633,7 @@ async def _preview(
     simulated["records"] = prune_records(simulated["records"], today)
     for record in records:
         event_day = record.event_end_date or record.event_start_date
-        if event_day < today:
+        if event_day < today or not temporally_consistent(record, now):
             continue
         previous = simulated["records"].get(record.record_id)
         decision = plan_event_access_record(record, previous, now)
