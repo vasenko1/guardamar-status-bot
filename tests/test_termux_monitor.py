@@ -9,7 +9,15 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class OperationalMonitorTermuxTests(unittest.TestCase):
-    def _install(self, initial, *, list_error=None, no_crontab=False):
+    def _install(
+        self,
+        initial,
+        *,
+        list_error=None,
+        no_crontab=False,
+        crond_running=True,
+        service_dir=True,
+    ):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             commands = root / "bin"
@@ -20,16 +28,18 @@ class OperationalMonitorTermuxTests(unittest.TestCase):
             crontab = commands / "crontab"
             crontab.write_text(
                 "#!/bin/sh\n"
-                "if [ \"\${1-}\" = -l ]; then\n"
-                "  if [ -n \"\${LIST_ERROR-}\" ]; then\n"
+                "if [ \"${1-}\" = -l ]; then\n"
+                "  if [ -n \"${LIST_ERROR-}\" ]; then\n"
                 "    echo \"$LIST_ERROR\" >&2\n"
                 "    exit 2\n"
                 "  fi\n"
-                "  if [ \"\${NO_CRONTAB-}\" = 1 ]; then\n"
+                "  if [ \"${NO_CRONTAB-}\" = 1 ]; then\n"
                 "    echo \"no crontab for test\" >&2\n"
                 "    exit 1\n"
                 "  fi\n"
                 "  cat \"$FAKE_CRONTAB\"\n"
+                "elif [ \"$#\" -eq 1 ]; then\n"
+                "  cat \"$1\" >\"$FAKE_CRONTAB\"\n"
                 "else\n"
                 "  cat >\"$FAKE_CRONTAB\"\n"
                 "fi\n",
@@ -37,17 +47,37 @@ class OperationalMonitorTermuxTests(unittest.TestCase):
             )
             crontab.chmod(0o755)
 
+            pgrep = commands / "pgrep"
+            pgrep.write_text(
+                "#!/bin/sh\n"
+                "if [ \"${CROND_RUNNING-}\" = 1 ]; then exit 0; fi\n"
+                "exit 1\n",
+                encoding="utf-8",
+            )
+            pgrep.chmod(0o755)
+
             sv = commands / "sv"
-            sv.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            sv.write_text(
+                "#!/bin/sh\n"
+                "if [ \"${SV_FAIL-}\" = 1 ]; then exit 1; fi\n"
+                "exit 0\n",
+                encoding="utf-8",
+            )
             sv.chmod(0o755)
+
+            prefix = root / "prefix"
+            if service_dir:
+                (prefix / "var" / "service" / "crond").mkdir(parents=True)
 
             environment = dict(os.environ)
             environment.update({
                 "HOME": str(root / "home"),
+                "PREFIX": str(prefix),
                 "PATH": f"{commands}:/usr/bin:/bin",
                 "FAKE_CRONTAB": str(crontab_state),
                 "LIST_ERROR": list_error or "",
                 "NO_CRONTAB": "1" if no_crontab else "",
+                "CROND_RUNNING": "1" if crond_running else "",
             })
             result = subprocess.run(
                 ["sh", str(ROOT / "termux" / "install-monitor-cron.sh")],
@@ -112,6 +142,26 @@ class OperationalMonitorTermuxTests(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(after, initial)
+
+    def test_installer_rejects_missing_service_when_crond_is_down(self):
+        initial = "12 3 * * * /other/bot.sh\n"
+
+        result, after = self._install(
+            initial,
+            crond_running=False,
+            service_dir=False,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(after, initial)
+
+    def test_installer_uses_explicit_termux_service_root(self):
+        script = (
+            ROOT / "termux" / "install-monitor-cron.sh"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('CROND_SVDIR="${SVDIR:-$TERMUX_PREFIX/var/service}"', script)
+        self.assertIn('SVDIR="$CROND_SVDIR" sv up crond', script)
 
 
 if __name__ == "__main__":
