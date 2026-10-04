@@ -45,12 +45,14 @@ schemas, and library choices belong in later design work or ADRs.
    message IDs, publication time, and compact semantic baselines.
 11. **Exit** ends every process; no collector or watcher remains active.
 
-Externally scheduled operational checks compare current SafeBeach and AEMET
-warning state with one small daily snapshot. Beach candidates use at most two
-scheduled confirmations. Confirmed beach changes reply to the independently
-maintained beach root; AEMET, CAMS and Meteosalud changes reply to the immutable
-Morning Digest. Source failure preserves the last verified baseline and never
-creates an all-clear message.
+Externally scheduled operational checks keep SafeBeach, AEMET and late
+environment work as independent bounded lifecycles. Beach candidates use at
+most two scheduled confirmations. AEMET performs CAP-only checks hourly at
+`:51` from 07:51 through 23:51, while SafeBeach and CAMS/Meteosalud retain their
+existing windows. Confirmed beach changes reply to the independently maintained
+beach root; AEMET, CAMS and Meteosalud changes reply to the immutable Morning
+Digest. Source failure preserves the last verified baseline and never creates
+an all-clear message.
 
 If nothing trustworthy and useful remains after filtering, the run may produce
 no message.
@@ -62,7 +64,7 @@ no message.
 | Morning Digest | 07:30 daily | One immutable daily message; pharmacy, events, holidays/markets, AEMET weather/sea/UV, locally computed sunrise/sunset, CAMS/Meteosalud baseline and fresh CCE hydrology contribute here without becoming separate morning processes. |
 | SUMA tax reminders | 08:05 daily one-shot | Independent one-shot cross-checks two official HTML pages and may publish at most one exact-date tax/debit reminder; separate state, no daemon or resident scheduler. |
 | SafeBeach + Mayor bathing status | 10:10–10:40 in season, then bounded operational checks | Separate daily beach root, live early edits, later confirmed replies; explicit Mayor bathing restrictions remain an independent safety signal. |
-| AEMET operational warnings | Existing `monitor-updates` windows | Material warning changes reply to the Morning Digest. |
+| AEMET operational warnings | Hourly at `:51` from 07:51 through 23:51 | One bounded CAP-only check; material warning changes reply to the Morning Digest. |
 | CAMS / Meteosalud late environment | 10:40 CAMS early check plus existing operational recovery; Meteosalud on operational checkpoints | Material air-quality, pollen, heat or cold changes reply to the Morning Digest. |
 | CCE / Previfoc emergency risks | Hourly at `:19` | CCE/Segura hydrological transitions remain immediate. Previfoc is still observed hourly, but changes seen before 07:00 are kept silent and only the still-current delta may publish on the first run after 07:00; fresh active hydrology may also appear in the next Morning Digest. |
 | IGN earthquakes | Hourly at `:55` | Standalone/series notice for new events at M1.8+ within 20 km. |
