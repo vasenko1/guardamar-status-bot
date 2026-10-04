@@ -700,10 +700,9 @@ def _landing_route_facts(parser: _RenderedContentParser) -> Dict[str, Any]:
         re.IGNORECASE | re.DOTALL,
     )
     meeting_point = None
+    reception_time = None
     if reception is not None:
-        clock = _clock(reception.group(1))
-        if clock is not None:
-            result["start_time"] = clock
+        reception_time = _clock(reception.group(1))
         meeting_point = " ".join(reception.group(2).split()).strip(" .")
         if meeting_point:
             result["place"] = meeting_point
@@ -758,8 +757,10 @@ def _landing_route_facts(parser: _RenderedContentParser) -> Dict[str, Any]:
         result["route"] = route
 
     schedule = []
+    if reception_time:
+        schedule.append(f"Сбор {reception_time}")
     if hike_start:
-        schedule.append(f"Старт {hike_start}")
+        schedule.append(f"старт {hike_start}")
     if expected_finish:
         schedule.append(f"финиш около {expected_finish}")
     if return_window:
@@ -877,8 +878,7 @@ def valid_convega_snapshot(value: Any) -> bool:
         "registration_url", "registration_contact",
     }
     optional = {
-        "direction_from", "direction_to", "start_time", "details",
-        "schedule_note",
+        "direction_from", "direction_to", "details", "schedule_note",
     }
     seen = set()
     for record in records:
@@ -958,18 +958,6 @@ def valid_convega_snapshot(value: Any) -> bool:
             or direction_from == direction_to
         ):
             return False
-
-        start_time = record.get("start_time")
-        if start_time is not None:
-            if (
-                not isinstance(start_time, str)
-                or re.fullmatch(r"\d{2}:\d{2}", start_time) is None
-            ):
-                return False
-            try:
-                time.fromisoformat(start_time)
-            except ValueError:
-                return False
 
         details = record.get("details")
         if details is not None and (
@@ -1119,18 +1107,6 @@ def _event_for_day(
     )
     if title is None:
         return None
-    starts_at = None
-    start_time = raw.get("start_time")
-    if start_time is not None:
-        try:
-            starts_at = datetime.combine(
-                start,
-                time.fromisoformat(start_time),
-                GUARDAMAR_TIMEZONE,
-            )
-        except (TypeError, ValueError):
-            return None
-
     status = raw.get("observed_status")
     access_note = (
         REGISTRATION_FULL_ACCESS_NOTE
@@ -1144,7 +1120,7 @@ def _event_for_day(
     )
     return Event(
         title=title,
-        starts_at=starts_at,
+        starts_at=None,
         place=raw.get("place"),
         route=raw.get("route"),
         details=tuple(raw.get("details") or ()),
