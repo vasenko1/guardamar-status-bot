@@ -1763,3 +1763,42 @@ historical/full registration that the audience was never told was open.
 
 ADR 0089 is therefore implemented and deployed. Further changes should be
 driven by new source evidence rather than speculative support for future markup.
+
+
+## Rich guided-route presentation evidence — 2026-10-04
+
+The live CONVEGA guided-route landing for stage 21 now exposes substantially
+more resident-useful facts than the original registration-only projection:
+
+- explicit direction: Guardamar del Segura → Torrevieja;
+- total distance: 15.43 km;
+- difficulty: Baja / Media;
+- duration: 4.5–5 hours;
+- reception at 08:00 and walking start at 08:30;
+- expected finish around 14:00 and return bus at 14:30–15:00;
+- reception/start/return point: Urb. Costa Bella, Guardamar del Segura;
+- finish point: Cala Cornuda, Torrevieja;
+- two walking sections connected by an organized bus transfer.
+
+The source adapter should extract these only from explicit current landing
+evidence and project them through the existing normalized `Event` fields.
+The digest renderer remains shared and unchanged.  The public title uses the
+explicit municipality direction when available:
+
+`Поход с гидом по пешеходному маршруту GR-92: Guardamar → Torrevieja`.
+
+The source announcement itself can also provide a direction before the rich
+landing is available.  Only explicit municipality sequences are accepted:
+for example `entre Guardamar del Segura y Torrevieja`, or the ordered coastal
+sequence for stage 22.  No route geography is inferred from the stage number.
+
+Presentation remains compact.  Morning Digest shows the standard event heading,
+one route line, compact distance/duration facts, the existing route-difficulty
+line, one schedule line, one map-linked meeting place and the existing access
+line.  It does not add a CONVEGA-specific renderer or decorative emoji set.
+
+The football/futsal source remains deferred under the 2026-09-17 sports-source
+audit: there is still no active football adapter and routine league matches do
+not justify adding one solely to reuse this presentation contract.  A future
+sports adapter may populate the same existing `Event` fields when its official
+source proves equivalent useful facts.

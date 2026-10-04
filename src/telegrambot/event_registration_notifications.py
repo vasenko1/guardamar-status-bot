@@ -126,7 +126,11 @@ def _time_or_none(value: Any) -> Optional[time]:
 def _record_from_convega(raw: Any) -> Optional[RegistrationRecord]:
     if not isinstance(raw, Mapping) or not raw.get("guardamar_relevant"):
         return None
-    title = convega_event_title(raw.get("stage"))
+    title = convega_event_title(
+        raw.get("stage"),
+        raw.get("direction_from"),
+        raw.get("direction_to"),
+    )
     if title is None:
         return None
     try:

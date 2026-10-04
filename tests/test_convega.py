@@ -7,6 +7,8 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
+from telegrambot.digest import build_event_section
+
 from telegrambot.convega import (
     ConvegaSourceError,
     REGISTRATION_FULL_ACCESS_NOTE,
@@ -93,6 +95,24 @@ def snapshot_with(inner):
     )
 
 
+def rich_landing_inner():
+    return """
+        <p>Un recorrido que nos llevará de Guardamar del Segura a Torrevieja.</p>
+        <h3>¡¡PLAZAS AGOTADAS!!</h3>
+        <h3>Distancia total</h3><p>15,43 KM</p>
+        <h3>Dificultad</h3><p>Baja / Media</p>
+        <h3>Duración</h3><p>4,5 – 5 horas</p>
+        <p>TRAMO 1</p>
+        <p>TRAMO 2</p>
+        <p>08:00H - Recepción de participantes en la Urb. Costa Bella,
+        Guardamar del Segura</p>
+        <p>08:30 - Inicio de la marcha (Tramo 1, hacia Guardamar del Segura).</p>
+        <p>— Traslado en autobús desde avenida de Cervantes hasta La Mata.</p>
+        <p>14:00 — Llegada prevista a Cala Cornuda (Torrevieja), fin de la ruta.</p>
+        <p>14:30–15:00 — Regreso en autobús hasta el punto de inicio.</p>
+    """
+
+
 class ConvegaParsingTests(unittest.TestCase):
     def test_current_production_shape_keeps_stage21_full_and_stage22_nonlocal(self):
         snapshot = snapshot_with("<h3>¡¡PLAZAS AGOTADAS!!</h3>")
@@ -110,9 +130,17 @@ class ConvegaParsingTests(unittest.TestCase):
             "convega:post-42197:stage-21",
         )
         self.assertIsNone(by_stage[21]["route"])
+        self.assertEqual(
+            (by_stage[21]["direction_from"], by_stage[21]["direction_to"]),
+            ("Guardamar del Segura", "Torrevieja"),
+        )
 
         self.assertFalse(by_stage[22]["guardamar_relevant"])
         self.assertEqual(by_stage[22]["event_start_date"], "2026-11-08")
+        self.assertEqual(
+            (by_stage[22]["direction_from"], by_stage[22]["direction_to"]),
+            ("Torrevieja", "Pilar de la Horadada"),
+        )
         self.assertEqual(by_stage[22]["observed_status"], "unknown")
         self.assertIsNone(by_stage[22]["landing_url"])
 
@@ -288,6 +316,124 @@ class ConvegaFreshnessTests(unittest.TestCase):
         self.assertTrue(fresh)
 
 
+class ConvegaRichRouteTests(unittest.TestCase):
+    def test_landing_enrichment_projects_standard_digest_facts(self):
+        snapshot = snapshot_with(rich_landing_inner())
+        stage21 = next(
+            item for item in snapshot["records"] if item["stage"] == 21
+        )
+
+        self.assertEqual(stage21["direction_from"], "Guardamar del Segura")
+        self.assertEqual(stage21["direction_to"], "Torrevieja")
+        self.assertEqual(
+            stage21["place"],
+            "Urb. Costa Bella, Guardamar del Segura",
+        )
+        self.assertEqual(
+            stage21["route"],
+            "Urb. Costa Bella → Cala Cornuda, "
+            "2 пеших участка с трансфером",
+        )
+        self.assertEqual(
+            stage21["details"],
+            [
+                "15,43 км",
+                "4,5–5 ч",
+                "Сложность маршрута: низкая–средняя",
+            ],
+        )
+        self.assertEqual(
+            stage21["schedule_note"],
+            "Сбор 08:00 · старт 08:30 · финиш около 14:00 · "
+            "возвращение 14:30–15:00",
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "convega.json"
+            state.write_text(json.dumps(snapshot), encoding="utf-8")
+            events = asyncio.run(fetch_today_convega_events(
+                datetime(2026, 10, 4, 7, 30, tzinfo=TZ),
+                state,
+                Path(directory) / "translations.json",
+            ))
+
+        self.assertEqual(len(events), 1)
+        event = events[0]
+        self.assertEqual(
+            event.title,
+            "Поход с гидом по пешеходному маршруту GR-92: "
+            "Guardamar → Torrevieja",
+        )
+        self.assertIsNone(event.starts_at)
+        self.assertEqual(
+            event.place,
+            "Urb. Costa Bella, Guardamar del Segura",
+        )
+        self.assertEqual(
+            event.route,
+            "Urb. Costa Bella → Cala Cornuda, "
+            "2 пеших участка с трансфером",
+        )
+        self.assertEqual(
+            event.details,
+            (
+                "15,43 км",
+                "4,5–5 ч",
+                "Сложность маршрута: низкая–средняя",
+            ),
+        )
+
+        rendered = "\n".join(build_event_section(
+            events,
+            "<b>События дня:</b>",
+        ))
+        self.assertEqual(rendered.count("GR-92"), 1)
+        self.assertIn(
+            "• Поход с гидом по пешеходному "
+            "маршруту GR-92: Guardamar → Torrevieja",
+            rendered,
+        )
+        self.assertIn(
+            "Маршрут: Urb. Costa Bella → Cala Cornuda, "
+            "2 пеших участка с трансфером",
+            rendered,
+        )
+        self.assertIn("15,43 км • 4,5–5 ч", rendered)
+        self.assertIn(
+            "Сложность маршрута: низкая–средняя",
+            rendered,
+        )
+        self.assertIn(
+            "🕐 Сбор 08:00 · старт 08:30 · финиш около 14:00 · "
+            "возвращение 14:30–15:00",
+            rendered,
+        )
+        self.assertIn(
+            "📍 ",
+            rendered,
+        )
+        self.assertIn(
+            "Urb. Costa Bella, Guardamar del Segura",
+            rendered,
+        )
+        self.assertIn("🎟 места закончились", rendered)
+        self.assertNotIn("🚌", rendered)
+        self.assertNotIn("📏", rendered)
+
+    def test_legacy_snapshot_shape_remains_valid(self):
+        snapshot = snapshot_with(rich_landing_inner())
+        for record in snapshot["records"]:
+            for field in (
+                "direction_from",
+                "direction_to",
+                "details",
+                "schedule_note",
+            ):
+                record.pop(field, None)
+
+        self.assertTrue(valid_convega_snapshot(snapshot))
+
+
 class ConvegaProjectionTests(unittest.TestCase):
     def test_event_projection_is_guardamar_only_and_keeps_terminal_access(self):
         snapshot = snapshot_with("<h3>PLAZAS AGOTADAS</h3>")
@@ -309,7 +455,11 @@ class ConvegaProjectionTests(unittest.TestCase):
             items = asyncio.run(convega_translation_items(NOW, state))
 
         self.assertEqual(len(events), 1)
-        self.assertEqual(events[0].title, "Поход с гидом по GR-92 · этап 21")
+        self.assertEqual(
+            events[0].title,
+            "Поход с гидом по пешеходному маршруту GR-92: "
+            "Guardamar → Torrevieja",
+        )
         self.assertEqual(events[0].access_note, REGISTRATION_FULL_ACCESS_NOTE)
         self.assertIsNone(events[0].registration_url)
         self.assertIsNone(events[0].route)

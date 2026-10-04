@@ -17,13 +17,14 @@ import re
 import tempfile
 import unicodedata
 import urllib.parse
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
 from ._transport import BoundedFetchError, fetch_bounded
+from .event_facts import route_difficulty_detail
 from .models import Event
 
 
@@ -48,8 +49,16 @@ REGISTRATION_FULL_ACCESS_NOTE = "места закончились"
 REGISTRATION_CLOSED_ACCESS_NOTE = "регистрация закрыта"
 
 
-def convega_event_title(stage: Any) -> Optional[str]:
-    """Return the fixed Russian title for one validated CONVEGA GR-92 stage."""
+def _route_city_label(value: str) -> str:
+    return "Guardamar" if value == "Guardamar del Segura" else value
+
+
+def convega_event_title(
+    stage: Any,
+    direction_from: Any = None,
+    direction_to: Any = None,
+) -> Optional[str]:
+    """Return one deterministic Russian title for a validated guided route."""
 
     if (
         not isinstance(stage, int)
@@ -57,6 +66,17 @@ def convega_event_title(stage: Any) -> Optional[str]:
         or not 1 <= stage <= 999
     ):
         return None
+    if (
+        isinstance(direction_from, str)
+        and direction_from.strip()
+        and isinstance(direction_to, str)
+        and direction_to.strip()
+    ):
+        return (
+            "Поход с гидом по пешеходному маршруту GR-92: "
+            f"{_route_city_label(direction_from.strip())} → "
+            f"{_route_city_label(direction_to.strip())}"
+        )
     return f"Поход с гидом по GR-92 · этап {stage}"
 
 
@@ -466,6 +486,7 @@ def _parse_post(raw: Any, now: datetime) -> Tuple[Dict[str, Any], ...]:
         stage = occurrence["stage"]
         relevant = occurrence["guardamar_relevant"]
         route = None
+        direction = _explicit_route_direction(occurrence["sentence"])
         records.append({
             "record_id": f"convega:post-{identifier}:stage-{stage}",
             "source": "convega",
@@ -479,6 +500,14 @@ def _parse_post(raw: Any, now: datetime) -> Tuple[Dict[str, Any], ...]:
             "place": "Guardamar del Segura" if relevant else None,
             "route": route,
             "guardamar_relevant": relevant,
+            **(
+                {
+                    "direction_from": direction[0],
+                    "direction_to": direction[1],
+                }
+                if direction is not None
+                else {}
+            ),
             "registration_start_date": None,
             "registration_start_time": None,
             "registration_end_date": None,
@@ -572,6 +601,175 @@ def _landing_state(
     return "unknown", None, False
 
 
+
+_ROUTE_MUNICIPALITIES = (
+    "Guardamar del Segura",
+    "Torrevieja",
+    "Orihuela Costa",
+    "Orihuela",
+    "Pilar de la Horadada",
+)
+
+
+def _explicit_route_direction(text: str) -> Optional[Tuple[str, str]]:
+    """Extract only an explicit municipality-to-municipality direction."""
+
+    for origin in _ROUTE_MUNICIPALITIES:
+        for destination in _ROUTE_MUNICIPALITIES:
+            if origin == destination:
+                continue
+            patterns = (
+                rf"\b(?:de|desde)\s+{re.escape(origin)}\s+"
+                rf"(?:a|hasta)\s+{re.escape(destination)}\b",
+                rf"\bentre\s+{re.escape(origin)}\s+y\s+"
+                rf"{re.escape(destination)}\b",
+            )
+            if any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns):
+                return origin, destination
+
+    if "a traves del litoral de" in _fold(text):
+        positions = []
+        for municipality in _ROUTE_MUNICIPALITIES:
+            match = re.search(re.escape(municipality), text, re.IGNORECASE)
+            if match is not None:
+                positions.append((match.start(), municipality))
+        ordered = [municipality for _, municipality in sorted(positions)]
+        if len(ordered) >= 2 and ordered[0] != ordered[-1]:
+            return ordered[0], ordered[-1]
+    return None
+
+
+def _clock(value: str) -> Optional[str]:
+    try:
+        return time.fromisoformat(value).strftime("%H:%M")
+    except ValueError:
+        return None
+
+
+def _landing_route_facts(parser: _RenderedContentParser) -> Dict[str, Any]:
+    """Extract optional facts from the labelled current guided-route page."""
+
+    text = parser.text
+    result: Dict[str, Any] = {}
+
+    direction = _explicit_route_direction(text)
+    if direction is not None:
+        result["direction_from"], result["direction_to"] = direction
+
+    details: List[str] = []
+    match = re.search(
+        r"\bDistancia\s+total\s+(\d{1,3}(?:[,.]\d{1,2})?)\s*KM\b",
+        text,
+        re.IGNORECASE,
+    )
+    if match is not None:
+        details.append(match.group(1).replace(".", ",") + " км")
+
+    match = re.search(
+        r"\bDuraci[oó]n\s+(\d{1,2}(?:[,.]\d)?)\s*[–-]\s*"
+        r"(\d{1,2}(?:[,.]\d)?)\s*horas\b",
+        text,
+        re.IGNORECASE,
+    )
+    if match is not None:
+        details.append(
+            match.group(1).replace(".", ",")
+            + "–"
+            + match.group(2).replace(".", ",")
+            + " ч"
+        )
+
+    match = re.search(
+        r"\bDificultad\s+([A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+"
+        r"(?:\s*[/–-]\s*[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+)?)",
+        text,
+        re.IGNORECASE,
+    )
+    if match is not None:
+        difficulty = route_difficulty_detail("Dificultad: " + match.group(1))
+        if difficulty is not None:
+            details.append(difficulty)
+    if details:
+        result["details"] = details
+
+    reception = re.search(
+        r"\b(\d{1,2}:\d{2})H?\s*[-–—]\s*"
+        r"Recepci[oó]n\s+de\s+participantes\s+en\s+"
+        r"(?:la\s+|el\s+)?(.+?)(?=\s+\d{1,2}:\d{2}\b|\Z)",
+        text,
+        re.IGNORECASE | re.DOTALL,
+    )
+    meeting_point = None
+    reception_time = None
+    if reception is not None:
+        reception_time = _clock(reception.group(1))
+        meeting_point = " ".join(reception.group(2).split()).strip(" .")
+        if meeting_point:
+            result["place"] = meeting_point
+
+    hike_start_match = re.search(
+        r"\b(\d{1,2}:\d{2})\s*[-–—]\s*Inicio\s+de\s+la\s+marcha\b",
+        text,
+        re.IGNORECASE,
+    )
+    hike_start = (
+        _clock(hike_start_match.group(1))
+        if hike_start_match is not None else None
+    )
+
+    finish_match = re.search(
+        r"\b(\d{1,2}:\d{2})\s*[-–—]\s*Llegada\s+prevista\s+a\s+"
+        r"(.+?)(?:,\s*fin\s+de\s+la\s+ruta|"
+        r"(?=\s+\d{1,2}:\d{2}\b)|\Z)",
+        text,
+        re.IGNORECASE | re.DOTALL,
+    )
+    expected_finish = None
+    finish_point = None
+    if finish_match is not None:
+        expected_finish = _clock(finish_match.group(1))
+        finish_point = " ".join(finish_match.group(2).split()).strip(" .")
+        finish_point = re.sub(r"\s*\([^)]{1,80}\)\s*$", "", finish_point)
+
+    return_match = re.search(
+        r"\b(\d{1,2}:\d{2})\s*[–-]\s*(\d{1,2}:\d{2})\s*"
+        r"[-–—]\s*Regreso\s+en\s+autob[uú]s\b",
+        text,
+        re.IGNORECASE,
+    )
+    return_window = None
+    if return_match is not None:
+        return_start = _clock(return_match.group(1))
+        return_end = _clock(return_match.group(2))
+        if return_start is not None and return_end is not None:
+            return_window = f"{return_start}–{return_end}"
+
+    segment_count = len(set(
+        re.findall(r"\bTRAMO\s+(\d{1,2})\b", text, re.IGNORECASE)
+    ))
+    bus_transfer = "traslado en autobus" in _fold(text)
+    if meeting_point and finish_point:
+        route = f"{meeting_point.split(',', 1)[0].strip()} → {finish_point}"
+        if bus_transfer and segment_count == 2:
+            route += ", 2 пеших участка с трансфером"
+        elif bus_transfer:
+            route += ", пешие участки с трансфером"
+        result["route"] = route
+
+    schedule = []
+    if reception_time:
+        schedule.append(f"Сбор {reception_time}")
+    if hike_start:
+        schedule.append(f"старт {hike_start}")
+    if expected_finish:
+        schedule.append(f"финиш около {expected_finish}")
+    if return_window:
+        schedule.append(f"возвращение {return_window}")
+    if schedule:
+        result["schedule_note"] = " · ".join(schedule)
+    return result
+
+
 def _apply_landing(
     records: Sequence[Dict[str, Any]],
     value: Any,
@@ -610,6 +808,7 @@ def _apply_landing(
         "observed_status": status,
         "until_full": until_full or bool(result[index].get("until_full")),
         "registration_url": action_url,
+        **_landing_route_facts(parser),
     }
     return tuple(result)
 
@@ -678,9 +877,16 @@ def valid_convega_snapshot(value: Any) -> bool:
         "registration_end_time", "observed_status", "until_full",
         "registration_url", "registration_contact",
     }
+    optional = {
+        "direction_from", "direction_to", "details", "schedule_note",
+    }
     seen = set()
     for record in records:
-        if not isinstance(record, dict) or set(record) != required:
+        if (
+            not isinstance(record, dict)
+            or not required.issubset(record)
+            or not set(record).issubset(required | optional)
+        ):
             return False
         if (
             not isinstance(record["record_id"], str)
@@ -739,6 +945,40 @@ def valid_convega_snapshot(value: Any) -> bool:
                     date.fromisoformat(record[field])
                 except ValueError:
                     return False
+
+        direction_from = record.get("direction_from")
+        direction_to = record.get("direction_to")
+        if (direction_from is None) != (direction_to is None):
+            return False
+        if direction_from is not None and (
+            not isinstance(direction_from, str)
+            or direction_from not in _ROUTE_MUNICIPALITIES
+            or not isinstance(direction_to, str)
+            or direction_to not in _ROUTE_MUNICIPALITIES
+            or direction_from == direction_to
+        ):
+            return False
+
+        details = record.get("details")
+        if details is not None and (
+            not isinstance(details, list)
+            or len(details) > 6
+            or any(
+                not isinstance(detail, str)
+                or not detail
+                or len(detail) > 96
+                for detail in details
+            )
+        ):
+            return False
+
+        schedule_note = record.get("schedule_note")
+        if schedule_note is not None and (
+            not isinstance(schedule_note, str)
+            or not schedule_note
+            or len(schedule_note) > 240
+        ):
+            return False
     return True
 
 
@@ -860,7 +1100,11 @@ def _event_for_day(
             return None
     if not start <= local_day <= end:
         return None
-    title = convega_event_title(raw.get("stage"))
+    title = convega_event_title(
+        raw.get("stage"),
+        raw.get("direction_from"),
+        raw.get("direction_to"),
+    )
     if title is None:
         return None
     status = raw.get("observed_status")
@@ -879,6 +1123,8 @@ def _event_for_day(
         starts_at=None,
         place=raw.get("place"),
         route=raw.get("route"),
+        details=tuple(raw.get("details") or ()),
+        schedule_note=raw.get("schedule_note"),
         access_note=access_note,
         registration_url=registration_url,
         capacity_limited=bool(raw.get("until_full")),

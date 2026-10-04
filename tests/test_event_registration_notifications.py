@@ -56,6 +56,8 @@ class ConvegaRegistrationProjectionTests(unittest.IsolatedAsyncioTestCase):
             "source_url": "https://convega.com/example",
             "title": "Ruta guiada GR-92 · Etapa 21",
             "stage": 21,
+            "direction_from": "Guardamar del Segura",
+            "direction_to": "Torrevieja",
             "event_start_date": "2026-10-04",
             "event_end_date": None,
             "guardamar_relevant": True,
@@ -71,7 +73,11 @@ class ConvegaRegistrationProjectionTests(unittest.IsolatedAsyncioTestCase):
             records = await load_registration_records(Path("unused.json"))
 
         self.assertEqual(len(records), 1)
-        self.assertEqual(records[0].title, "Поход с гидом по GR-92 · этап 21")
+        self.assertEqual(
+            records[0].title,
+            "Поход с гидом по пешеходному маршруту GR-92: "
+            "Guardamar → Torrevieja",
+        )
 
 
 class RegistrationPlanningTests(unittest.TestCase):
