@@ -399,6 +399,10 @@ def render_root(
         opening = _opening_text(record, first.option_id)
         if opening is not None:
             lines.append(opening)
+    if first.kind in {"deadline-known", "deadline-changed"}:
+        deadline = _deadline_text(record, first.option_id)
+        if deadline is not None:
+            lines.append("⏳ до " + html.escape(deadline))
     if record.route:
         lines.append("🥾 Маршрут: " + html.escape(record.route))
     if record.details:
@@ -446,9 +450,14 @@ def _reply_block(
         return ("📝 <b>Регистрация закрыта</b>",)
     elif notice.kind == "deadline-known":
         deadline = _deadline_text(record, notice.option_id)
+        prefix = (
+            "Записаться можно до "
+            if option.status == "open"
+            else "Указан срок регистрации: до "
+        )
         return (
             "⏳ <b>Появился срок регистрации</b>",
-            "Записаться можно до " + html.escape(deadline or "указанного срока"),
+            prefix + html.escape(deadline or "указанного срока"),
         )
     elif notice.kind == "deadline-changed":
         deadline = _deadline_text(record, notice.option_id)
@@ -498,6 +507,10 @@ def _reply_block(
     action = _action_line(record, notice.option_id)
     if action is not None:
         lines.append(action)
+    if notice.kind in {"open", "reopened"}:
+        deadline = _deadline_text(record, notice.option_id)
+        if deadline is not None:
+            lines.append("⏳ до " + html.escape(deadline))
     if notice.kind in {"closing-tomorrow", "closing-today"}:
         deadline = _deadline_text(record, notice.option_id)
         if deadline is not None:
