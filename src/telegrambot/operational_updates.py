@@ -38,6 +38,7 @@ class OperationalUpdateStateError(RuntimeError):
 class MonitorRun:
     beach_phase: Optional[int]
     check_aemet: bool
+    check_environment: bool
 
 
 def scheduled_run(now: datetime) -> MonitorRun:
@@ -46,19 +47,31 @@ def scheduled_run(now: datetime) -> MonitorRun:
     day = local.date()
     beach_window = in_query_window(local)
     beach_shoulder = beach_window and day.month in {6, 9, 10}
-    aemet_shoulder = day.month in {6, 9}
+    environment_shoulder = day.month in {6, 9}
     beach_hours = (
         {12, 14, 16, 18}
         if beach_shoulder
         else {11, 13, 15, 17, 19}
     )
-    aemet_hours = {12, 16, 20} if aemet_shoulder else {11, 15, 19}
+    legacy_environment_hours = (
+        {12, 16, 20}
+        if environment_shoulder
+        else {11, 15, 19}
+    )
+    environment_hours = set(legacy_environment_hours)
+    if beach_window:
+        environment_hours.update(beach_hours)
+
     beach_phase = None
     if beach_window and local.hour in beach_hours:
         beach_phase = {0: 1, 5: 2, 10: 3}.get(local.minute)
+
     return MonitorRun(
         beach_phase=beach_phase,
-        check_aemet=local.minute == 0 and local.hour in aemet_hours,
+        check_aemet=local.minute == 51 and 7 <= local.hour <= 23,
+        check_environment=(
+            local.minute == 0 and local.hour in environment_hours
+        ),
     )
 
 
@@ -545,6 +558,7 @@ def observe_warnings(
         }
     else:
         state["warnings"] = current
+        state["warning_ready"] = None
 
 
 def _warning_from_dict(value: dict) -> Warning:
@@ -1005,8 +1019,7 @@ def clear_beach_ready(state: dict) -> None:
 
 
 def finalize_delivery(state: dict) -> None:
-    """Commit a successfully delivered AEMET update."""
-    clear_beach_ready(state)
+    """Commit only a successfully delivered AEMET update."""
     ready = state.get("warning_ready")
     if isinstance(ready, dict):
         state["warnings"] = list(ready.get("current", ()))
