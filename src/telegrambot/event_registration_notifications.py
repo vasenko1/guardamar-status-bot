@@ -338,12 +338,30 @@ def _deadline_text(record: EventAccessRecord, option_id: str) -> Optional[str]:
 def _root_heading(kind: str) -> str:
     headings = {
         "active": "📝 <b>Открыта регистрация</b>",
+        "open": "📝 <b>Регистрация открыта</b>",
+        "reopened": "📝 <b>Регистрация снова открыта</b>",
+        "full": "⛔ <b>Мест больше нет</b>",
+        "closed": "📝 <b>Регистрация закрыта</b>",
+        "deadline-known": "⏳ <b>Появился срок регистрации</b>",
+        "deadline-changed": "⏳ <b>Срок регистрации изменён</b>",
         "opening-tomorrow": "📝 <b>Завтра открывается регистрация</b>",
         "opening-today": "📝 <b>Сегодня открывается регистрация</b>",
         "one-day-tomorrow": "📝 <b>Регистрация только завтра</b>",
         "option-added": "➕ <b>Добавлен вариант регистрации</b>",
     }
     return headings.get(kind, "📝 <b>Обновление регистрации</b>")
+
+
+def _opening_text(record: EventAccessRecord, option_id: str) -> Optional[str]:
+    option = _option(record, option_id)
+    if option.opens_on is None:
+        return None
+    result = _format_date(option.opens_on)
+    if option.opens_time is not None:
+        result += ", " + option.opens_time.strftime("%H:%M")
+    if option.closes_on == option.opens_on:
+        return "📝 Регистрация: только " + result
+    return "📝 Регистрация: с " + result
 
 
 def _event_date_line(record: EventAccessRecord) -> str:
@@ -373,6 +391,14 @@ def render_root(
         "<b>" + html.escape(record.title) + "</b>",
         _event_date_line(record),
     ]
+    if first.kind in {
+        "opening-tomorrow",
+        "opening-today",
+        "one-day-tomorrow",
+    }:
+        opening = _opening_text(record, first.option_id)
+        if opening is not None:
+            lines.append(opening)
     if record.route:
         lines.append("🥾 Маршрут: " + html.escape(record.route))
     if record.details:
@@ -435,11 +461,32 @@ def _reply_block(
     elif notice.kind == "closing-today":
         heading = "⏳ <b>Сегодня заканчивается регистрация</b>"
     elif notice.kind == "opening-tomorrow":
-        return ("📝 <b>Завтра открывается регистрация</b>",)
+        opening = _opening_text(record, notice.option_id)
+        return tuple(
+            item for item in (
+                "📝 <b>Завтра открывается регистрация</b>",
+                opening,
+            )
+            if item is not None
+        )
     elif notice.kind == "opening-today":
-        return ("📝 <b>Сегодня открывается регистрация</b>",)
+        opening = _opening_text(record, notice.option_id)
+        return tuple(
+            item for item in (
+                "📝 <b>Сегодня открывается регистрация</b>",
+                opening,
+            )
+            if item is not None
+        )
     elif notice.kind == "one-day-tomorrow":
-        return ("📝 <b>Регистрация только завтра</b>",)
+        opening = _opening_text(record, notice.option_id)
+        return tuple(
+            item for item in (
+                "📝 <b>Регистрация только завтра</b>",
+                opening,
+            )
+            if item is not None
+        )
     elif notice.kind == "action-changed":
         heading = "📝 <b>Изменился способ регистрации</b>"
     elif notice.kind == "option-added":
