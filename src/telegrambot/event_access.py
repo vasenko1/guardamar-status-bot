@@ -636,7 +636,7 @@ def plan_event_access_record(
             notices.append(opening)
         if deadline is not None and status is None:
             notices.append(deadline)
-        elif action is not None and status is None and deadline is None:
+        if action is not None and status is None:
             notices.append(action)
         if closing is not None and status is None and deadline is None:
             notices.append(closing)
