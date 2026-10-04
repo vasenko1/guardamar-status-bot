@@ -17,7 +17,7 @@ cd "$PROJECT_DIR"
 . ./.env
 export PYTHONPATH="$PROJECT_DIR/src"
 
-if ! ./.venv/bin/python -m telegrambot.convega fresh-today >/dev/null 2>&1; then
+if ! ./.venv/bin/python -m telegrambot.convega fresh-access >/dev/null 2>&1; then
     if ! sh "$SCRIPT_DIR/sync-convega.sh"; then
         echo "$(date '+%Y-%m-%d %H:%M:%S') WARNING CONVEGA source refresh failed"
     fi
