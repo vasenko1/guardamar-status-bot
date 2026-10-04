@@ -27,15 +27,16 @@ MADRID = ZoneInfo("Europe/Madrid")
 
 def candidate(
     event_id: str,
-    category: str = "test",
+    selection_category: str = "test",
     *,
+    methodology_category: str = "gazpacho",
     rank: int = 1,
     source_kind: str = "ocu",
     award_scope: str = "exact_product",
 ) -> ReviewedCandidate:
     return ReviewedCandidate(
-        category_key="gazpacho",
-        selection_key=f"{category}:2026",
+        category_key=methodology_category,
+        selection_key=f"{selection_category}:2026",
         event_id=event_id,
         source_name="Test Award",
         source_kind=source_kind,
