@@ -348,6 +348,34 @@ class EventAccessPlannerTests(unittest.TestCase):
 
         self.assertEqual(reopened.notices[0].kind, "reopened")
 
+    def test_audience_known_without_root_never_creates_replacement_root(self):
+        previous = candidate_record_state(
+            record(option(status="full")),
+            None,
+        )
+        previous["audience_known"] = True
+        previous["root_message_id"] = None
+
+        decision = plan_event_access_record(
+            record(
+                option(
+                    status="open",
+                    action_url="https://example.com/register",
+                )
+            ),
+            previous,
+            NOW,
+        )
+
+        self.assertIsNone(decision.operation)
+        self.assertEqual(decision.notices, ())
+        self.assertTrue(decision.candidate_record["audience_known"])
+        self.assertIsNone(decision.candidate_record["root_message_id"])
+        self.assertEqual(
+            decision.candidate_record["options"]["default"]["status"],
+            "open",
+        )
+
     def test_open_to_full_and_closed_are_notified(self):
         for status in ("full", "closed"):
             with self.subTest(status=status):
