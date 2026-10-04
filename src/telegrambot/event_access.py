@@ -651,7 +651,6 @@ def plan_event_access_record(
         raise EventAccessStateError("event-access trigger bound exceeded")
     if not notices:
         return EventAccessDecision(candidate, (), None, None)
-
     operation = "reply" if root_id is not None else "root"
     return EventAccessDecision(
         candidate,
