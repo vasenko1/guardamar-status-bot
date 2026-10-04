@@ -345,6 +345,19 @@ class ConvegaAccessTests(unittest.TestCase):
 
         self.assertTrue(fresh)
 
+    def test_access_freshness_rejects_future_snapshot(self):
+        snapshot = snapshot_with("<h3>PLAZAS AGOTADAS</h3>")
+        snapshot["observed_at"] = datetime(
+            2026, 10, 2, 12, 1, tzinfo=TZ
+        ).isoformat()
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "convega.json"
+            state.write_text(json.dumps(snapshot), encoding="utf-8")
+
+            fresh = convega_snapshot_is_access_fresh(NOW, state)
+
+        self.assertFalse(fresh)
+
     def test_access_projection_keeps_source_identity_and_default_option(self):
         snapshot = snapshot_with(
             "<form><p>Inscripción</p>"
@@ -366,6 +379,10 @@ class ConvegaAccessTests(unittest.TestCase):
             "convega:post-42197:stage-21",
         )
         self.assertEqual(projected.access_kind, "registration")
+        self.assertEqual(
+            projected.title,
+            "Поход с гидом по GR-92 · этап 21: Guardamar → Torrevieja",
+        )
         self.assertEqual(len(projected.options), 1)
         self.assertEqual(projected.options[0].option_id, "default")
         self.assertEqual(projected.options[0].status, "open")
@@ -582,6 +599,8 @@ class ConvegaRefreshTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(saved, previous)
         self.assertEqual(tuple(previous["records"]), records)
+        later = NOW + __import__("datetime").timedelta(minutes=91)
+        self.assertFalse(convega_snapshot_is_access_fresh(later, state))
 
     async def test_corrupt_local_state_recovers_from_valid_remote(self):
         current = snapshot_with("<h3>PLAZAS AGOTADAS</h3>")
