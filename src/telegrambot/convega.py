@@ -58,6 +58,8 @@ def convega_event_title(stage: Any) -> Optional[str]:
     ):
         return None
     return f"Поход с гидом по GR-92 · этап {stage}"
+
+
 _MONTHS = {
     "enero": 1,
     "febrero": 2,
