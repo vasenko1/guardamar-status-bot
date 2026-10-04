@@ -1108,3 +1108,130 @@ state. Do not create a generic cancellation monitoring daemon.
 Time/place corrections beyond date changes require a real source contract and
 a separate bounded design review; do not silently claim that current event-
 access state already handles them.
+
+
+## Review cycle 5 — renderer and semantic integration findings
+
+### Essential sports meaning cannot live only in teaser
+
+Current Tomorrow rendering removes `Event.teaser` whenever more than one
+editorial unit is present.
+
+Therefore these facts must survive independently of teaser:
+
+- sport label;
+- teams/participants;
+- competition/division;
+- group;
+- round/jornada/stage;
+- category (senior/youth, men/women) when material.
+
+Use deterministic title + ordered `details` for this core meaning. Teaser may
+add optional natural-language context, but losing it must not make the event
+opaque.
+
+### Recommended sports block hierarchy
+
+For team fixtures the presentation contract should be:
+
+1. title: sport + sides;
+2. first detail/context line: competition level/stage;
+3. optional second fact line: category/format/duration rule;
+4. time;
+5. place;
+6. current ticket/registration fact when source-backed.
+
+Example intent:
+
+```text
+⚽ Футбол — Guardamar против Sporting Saladar
+Segona FFCV · группа 8 · 5-й тур
+🕐 18:30
+📍 Campo Municipal Les Raboses
+```
+
+If the source says semi-final/final/friendly, that semantic replaces the
+regular-league round description rather than being inferred.
+
+### Preserve meaningful squad/category suffixes
+
+Editorial humanization must not erase source identity such as A/B/C squad,
+senior/junior or sex/category when it distinguishes teams.
+
+A local display alias may simplify sponsor-heavy branding, but the source
+adapter must retain raw team ID/name and enough category information to avoid
+turning two distinct squads into the same public fixture identity.
+
+### Multi-day sport requires an adapter contract
+
+Do not implement the rule `sport != None => every date in active range is an
+occurrence` globally.
+
+Instead, each sports adapter must define whether its normalized date interval
+means:
+
+- every day is an active competition day; or
+- only a broad event/availability period.
+
+If every day is source-proven active, its day reader may emit the Event for
+every active date and the sports planning/current-day projection may show it.
+Otherwise create discrete source-proven occurrences or preserve the existing
+first/final-day behavior.
+
+This avoids reintroducing the generic date-range bug that Tomorrow's current
+first/final rule was designed to prevent.
+
+### Planning access facts must share current source truth
+
+Tomorrow/Weekend/Sports Today may display ticket/registration lines through the
+existing Event fields. Those lines must not become a stale second copy of
+event-access state.
+
+Rule:
+
+- proactive lifecycle ownership remains Event Access;
+- planning surfaces may show the **current source-backed access fact** only when
+  it comes from the same accepted/latest source projection (or a deterministic
+  delegated-provider join);
+- do not cache an independent "registration open" flag solely for planning;
+- if current access truth cannot be joined safely, omit the action from the
+  planning item rather than contradict the root thread.
+
+This is particularly important when a registration closes between the morning
+event snapshot and an evening planning post.
+
+### Existing FACV/Pesca titles need sports-aware presentation, not wholesale rewrite
+
+FACV already uses the prepared title translation cache.
+
+Pesca already renders a translated modality prefixed by a Russian level label.
+
+The sports projection should reuse those verified translations/facts and add
+the explicit sport/context layer. Do not retranslate federation names at send
+time or introduce another AI path.
+
+### All-sport and mixed programme grouping should remain presentation-only
+
+The generic event renderer uses a celebration emoji for programme parents.
+A sports projection should not blindly expose that cultural programme shape.
+
+- mixed programme: flatten the sport child into the sports subsection and keep
+  parent name only as optional context;
+- wholly sport programme with useful source-proven grouping: it may stay grouped
+  using a sports-appropriate presentation wrapper.
+
+Do not mutate source programme identity merely for cosmetics.
+
+### No new general competition schema yet
+
+After this review, a new global `Competition` dataclass or fields such as
+`competition_type/competition_round/competition_level` are still not
+justified.
+
+The current sources vary substantially (league rounds, race distances,
+national/provincial fishing, chess tournaments). One ordered source-backed
+competition context line in `Event.details`, plus `Event.sport`, covers the
+resident requirement without speculative schema.
+
+Revisit only if two or more implemented adapters need cross-source logic on
+those components rather than presentation.
