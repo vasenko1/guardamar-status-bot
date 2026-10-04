@@ -888,6 +888,17 @@ class RenderingTests(unittest.TestCase):
         self.assertNotIn("Country Winner", beer_methodology)
         self.assertNotIn("золото", beer_methodology.casefold())
 
+    def test_unknown_ocu_methodology_fails_closed(self):
+        item = candidate(
+            "unknown-methodology",
+            methodology_category="unknown_category",
+        )
+
+        with self.assertRaises(awards.ProductAwardError) as caught:
+            awards._methodology(item)
+
+        self.assertEqual(caught.exception.diagnostic_code, "CONFIG")
+
     def test_mapa_renderer_names_official_winner_without_score(self):
         item = ReviewedCandidate(
             **{
