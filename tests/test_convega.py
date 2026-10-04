@@ -597,11 +597,12 @@ class ConvegaRefreshTests(unittest.IsolatedAsyncioTestCase):
             ):
                 records = await refresh_convega_catalog(NOW, state)
             saved = json.loads(state.read_text(encoding="utf-8"))
+            later = NOW + timedelta(minutes=91)
+            fresh = convega_snapshot_is_access_fresh(later, state)
 
         self.assertEqual(saved, previous)
         self.assertEqual(tuple(previous["records"]), records)
-        later = NOW + timedelta(minutes=91)
-        self.assertFalse(convega_snapshot_is_access_fresh(later, state))
+        self.assertFalse(fresh)
 
     async def test_corrupt_local_state_recovers_from_valid_remote(self):
         current = snapshot_with("<h3>PLAZAS AGOTADAS</h3>")
