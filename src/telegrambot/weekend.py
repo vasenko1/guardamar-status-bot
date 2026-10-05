@@ -15,6 +15,11 @@ from .fishing_enrichment import (
     DEFAULT_FPCV_DETAILS_STATE_PATH,
 )
 from .planning_events import load_local_planning_events
+from .sports_presentation import (
+    SPORTS_SECTION_HEADING,
+    split_sport_events,
+    sport_is_plannable,
+)
 
 LOGGER = logging.getLogger(__name__)
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
@@ -112,6 +117,10 @@ async def produce_weekend_message(
             translation_cache_path=translation_cache_path,
             diagnostics=diagnostics,
         )
+        events = tuple(
+            event for event in events
+            if sport_is_plannable(event)
+        )
         if events:
             day_events.append((day, events))
 
@@ -131,15 +140,27 @@ async def produce_weekend_message(
                 if compact_teasers
                 else events
             )
+            ordinary, sports = split_sport_events(render_events)
             heading = (
                 f"📅 <b>{DAY_LABELS[day.weekday()]}, "
                 f"{day.day} {MONTHS_GENITIVE[day.month]}:</b>"
             )
-            lines.extend(build_complete_event_section(
-                render_events,
-                heading,
-                prefix_length=len("\n".join(lines)),
-            ))
+
+            if ordinary:
+                lines.extend(build_complete_event_section(
+                    ordinary,
+                    heading,
+                    prefix_length=len("\n".join(lines)),
+                ))
+            else:
+                lines.extend(("", heading))
+
+            if sports:
+                lines.extend(build_complete_event_section(
+                    sports,
+                    SPORTS_SECTION_HEADING,
+                    prefix_length=len("\n".join(lines)),
+                ))
         return lines
 
     try:
