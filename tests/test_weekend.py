@@ -219,6 +219,34 @@ class WeekendMessageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Воскресенье, 16 августа", message)
         self.assertIn("Рынок Campo de Guardamar", message)
 
+    async def test_stale_friday_catalog_is_omitted_but_recurring_market_survives(self):
+        now = datetime(2026, 8, 14, 18, 0, tzinfo=TZ)
+        with tempfile.TemporaryDirectory() as directory:
+            paths = _paths(directory)
+            _write_agenda_snapshot(
+                paths["agenda_state_path"],
+                datetime(2026, 8, 13, 18, 0, tzinfo=TZ),
+                (Event(
+                    title="Вчерашний каталог",
+                    starts_at=datetime(2026, 8, 15, 20, 0, tzinfo=TZ),
+                    place="Casa de Cultura",
+                ),),
+            )
+
+            message = await produce_weekend_message(
+                now,
+                "",
+                paths["municipal_agenda_state_path"],
+                agenda_state_path=paths["agenda_state_path"],
+                library_agenda_state_path=paths["library_agenda_state_path"],
+                am_guardamar_state_path=paths["am_guardamar_state_path"],
+                convega_state_path=paths["convega_state_path"],
+                translation_cache_path=paths["translation_cache_path"],
+            )
+
+        self.assertNotIn("Вчерашний каталог", message)
+        self.assertIn("Рынок Campo de Guardamar", message)
+
     async def test_catalog_failures_degrade_to_recurring_events_only(self):
         now = datetime(2026, 8, 14, 18, 0, tzinfo=TZ)
         with tempfile.TemporaryDirectory() as directory:
