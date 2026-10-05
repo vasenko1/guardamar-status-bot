@@ -626,6 +626,9 @@ def parse_fpcv_index_html(
         scope = str(row[columns["scope"]]["text"])
         modality = str(row[columns["modality"]]["text"])
         venue = str(row[columns["venue"]]["text"])
+        province = str(row[columns["province"]]["text"])
+        if _fold(province) != "alicante":
+            continue
         candidates = _base_match_candidates(
             row_day=row_day,
             scope=scope,
