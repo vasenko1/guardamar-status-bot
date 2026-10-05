@@ -616,7 +616,11 @@ def parse_fpcv_index_html(
     for row in parser.rows[header_index + 1 :]:
         if len(row) <= required_max:
             continue
-        row_day = _parse_index_date(str(row[columns["date"]]["text"]))
+        raw_date = str(row[columns["date"]]["text"])
+        if re.search(r"\b\d{1,2}/\d{1,2}/20\d{2}\b", raw_date) is None:
+            # Ignore decorative/service rows that may share the table shape.
+            continue
+        row_day = _parse_index_date(raw_date)
         if row_day < local_day:
             continue
         scope = str(row[columns["scope"]]["text"])
