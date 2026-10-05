@@ -342,74 +342,149 @@ No Morning/Tomorrow/Weekend routing changes occur in this slice.
 
 ---
 
-# Slice C — fishing occurrence correctness before sports activation
+# Slice C — fishing authority + rich source details before sports activation
 
 ## Goal
 
-Make the known FPCV/FEPyC national-date conflict impossible to publish as a
-false day-by-day sports claim.
+Make the known FPCV/FEPyC national-date conflict impossible to publish and
+prepare sufficiently rich fishing facts **before** the first Sports Today /
+Tomorrow sports rollout.
 
-## C1. Production source probe first
+This slice deliberately normalizes the FPCV convocatoria once so the same
+accepted facts can later feed both Event presentation and Event Access. Do not
+parse the PDF twice in separate lifecycles.
 
-Before implementation, probe the current official FEPyC browserless contract
-for:
+## C1. Production source probes first
+
+Probe two current official contracts:
+
+### FEPyC
+
+Verify the browserless contract for:
 
 - Guardamar national competitions;
 - stable event identity/code;
 - exact start/end dates;
+- competition type/category;
 - content type;
 - redirect policy;
 - response size/time;
 - update/cancellation semantics if exposed.
 
-Record the probe in `research/`.
+The 2026-10-05 web recheck still exposes first-party event `26MC26` with
+Dúos/Nacional/Guardamar and exact 26-29 November dates. Termux verification is
+still mandatory.
 
-## C2. Preferred implementation
+### FPCV convocatoria/details
 
-The 2026-10-05 public-web recheck still exposes a first-party FEPyC event page
-with stable ID `26MC26`, category `Dúos`, competition type `Nacional`,
-Guardamar location and exact 26-29 November 2026 dates. This makes a bounded
-official contract likely, but the Termux production probe remains mandatory.
+Verify:
 
-If one stable bounded official HTML contract exists:
+- competition/index -> exact official convocatoria PDF relationship;
+- MIME/redirect/size;
+- stable link/content identity;
+- text-layer quality;
+- competition level/qualification wording;
+- schedule/heat duration;
+- audience/registration/deadline;
+- cancellation marker semantics;
+- measured bound on relevant Guardamar documents.
+
+Record both probes in `research/`.
+
+## C2. Explicit runtime permission for the FPCV PDF
+
+Before code invokes Poppler for this source, amend ADR/Runtime Constraints to
+allow exactly:
+
+- official linked FPCV convocatoria documents;
+- bounded bytes/document count;
+- existing Termux `pdftotext` only;
+- no OCR/image rendering/browser;
+- parse only reviewed facts;
+- no raw PDF archive;
+- text extraction only when the reviewed document identity/content changed.
+
+Do not silently broaden generic PDF permission.
+
+## C3. FEPyC national occurrence authority
+
+If the production probe confirms the current stable contract:
 
 - add one small FEPyC national competition source;
-- refresh it inside the existing 05:10 event-source wrapper;
-- retain only current/future Guardamar national competition facts;
-- use source-owned FEPyC identity and exact dates;
-- suppress/replace only deterministically joined FPCV `NACIONAL` occurrence
-  dates for the same national event;
-- keep FPCV local/regional organization/access facts available for enrichment.
+- refresh inside the existing 05:10 event-source wrapper;
+- retain only current/future Guardamar national facts;
+- use source-owned identity and exact dates;
+- deterministically suppress/replace only matching FPCV `NACIONAL`
+  occurrence dates;
+- keep FPCV local/regional organization/details available for enrichment.
 
-No generic priority system.
+If the FEPyC contract cannot be proven safely, fail closed: withhold ambiguous
+FPCV national ranges from sports surfaces while retaining verified
+provincial/autonomous events.
 
-## C3. Fail-closed fallback
+No generic source-priority system.
 
-If the FEPyC live contract cannot be proven safely:
+## C4. New rollback-safe FPCV details snapshot
 
-- do not publish ambiguous FPCV national ranges in sports surfaces;
-- keep provincial/autonomous verified FPCV events;
-- document the national row as withheld until authoritative dates are
-  available.
+Keep the existing strict `state/pesca_cv_events.json` unchanged so old code
+can still read it.
 
-Wrong dates are worse than incomplete sports coverage.
+From the **same** existing 05:10 `telegrambot.pesca_cv` invocation, write one
+new bounded normalized file, for example:
 
-## C4. Required regression
+`state/pesca_cv_details.json`
 
-The November 2026 Mar Costa Dúos case must not produce championship occurrence
-days on 23-25 November when FEPyC says 26-29 November.
+It may contain only deterministic joins for current/future relevant Guardamar
+competitions and reviewed facts such as:
 
-## C5. Tests/runtime
+- source/event identity needed for the join;
+- official convocatoria URL/content identity;
+- competition context;
+- qualification meaning;
+- schedule/heats;
+- source-known duration/time limits;
+- audience/registration boundary/action facts;
+- explicit cancellation status when published;
+- `observed_at`.
 
-- bounded request and source validation;
-- deterministic overlap/suppression;
-- source failure preserves last-good accepted facts but never invents date
-  authority;
+Calendar success and details/PDF success are independent:
+
+- base calendar refresh may succeed even when details extraction fails;
+- details failure preserves last-good details;
+- old production code ignores the new file, so rollback remains safe.
+
+## C5. Enrich the normal Event projection now
+
+Before sports publication is activated, use a deterministic source-specific
+join between `pesca_cv_events.json`, FEPyC date authority and
+`pesca_cv_details.json` to make the Event human-readable.
+
+For the reviewed 17 October case, preserve source-backed context equivalent to:
+
+- provincial Alicante championship;
+- qualifying meaning for Comunidad Valenciana 2027;
+- two heats of three hours;
+- exact schedule;
+- Guardamar beach zones.
+
+Registration/access facts may be present in the normalized details source, but
+proactive lifecycle publication still waits for Slice G.
+
+Do not tell residents to self-register when the official process is
+club-mediated.
+
+## C6. Required regressions
+
+At minimum:
+
+- November 2026 Mar Costa Dúos never produces championship days on 23-25 when
+  FEPyC says 26-29;
+- rich 17 October context survives Event projection;
+- labelled schedule/duration facts render without distance/route collapse;
+- details-source failure cannot corrupt/drop the base Pesca calendar;
+- stale details cannot be promoted as current access truth later;
 - no browser/OCR/AI;
-- 05:10 wrapper still remains one short-lived sequential source-preparation
-  process.
-
----
+- 05:10 remains one short-lived sequential preparation lifecycle.
 
 # Slice D — shared local planning read and complete rendering
 
@@ -774,109 +849,67 @@ Add:
 
 ---
 
-# Slice G — FPCV access + second event-access source + access-time correction
+# Slice G — FPCV event-access projection + second access source + access-time correction
 
 ## Goal
 
-Use the real 17 October Guardamar fishing case to prove the multi-source
-event-access path without a generic source framework.
+Reuse the already-normalized FPCV details from Slice C to prove the
+multi-source event-access path. **No PDF parsing or second FPCV source read
+belongs in the access runner.**
 
-## G1. ADR/runtime permission for FPCV convocatoria PDF
+## G1. One normalized observation -> EventAccessRecord
 
-Before code, amend the accepted docs to allow exactly the reviewed FPCV
-convocatoria contract:
+Project the same accepted `pesca_cv_details.json` facts into
+`EventAccessRecord`.
 
-- exact official linked PDF only;
-- bounded bytes;
-- text-layer extraction with existing Termux `pdftotext`;
-- no OCR/image rendering/browser;
-- parse only required facts;
-- no raw PDF archive;
-- normalized last-good facts only;
-- bounded number of relevant Guardamar documents per refresh.
+For the reviewed 17 October case preserve:
 
-Do not silently expand the generic Poppler permission.
-
-## G2. Production probe and bounds
-
-Probe:
-
-- convocatoria index -> exact PDF link relationship;
-- MIME/redirect/size;
-- whether stable link/content identity exists;
-- whether conditional metadata/ETag can avoid unnecessary text extraction;
-- exact wording for registration audience/deadline;
-- cancellation marker semantics.
-
-Choose explicit max documents/bytes/time from measured source behavior.
-
-## G3. Preserve rollback and isolate optional access enrichment
-
-Current `valid_pesca_cv_snapshot()` requires the **exact** existing event keys.
-If new access fields are written into `state/pesca_cv_events.json`, the
-previous production commit will reject that file after rollback.
-
-Therefore:
-
-- keep `state/pesca_cv_events.json` byte/schema-compatible with the old event
-  contract;
-- store convocatoria/access enrichment in one new small normalized source
-  snapshot, for example `state/pesca_cv_access.json`;
-- write that file from the **same** existing 05:10 `telegrambot.pesca_cv`
-  source invocation; do not add a new cron or polling lifecycle;
-- bound it to relevant current/future Guardamar access records and one
-  `observed_at`;
-- validate/write it atomically and independently so an access parse failure
-  preserves the last-good access snapshot without corrupting the event
-  calendar;
-- treat access enrichment failure as an isolated warning when the base Pesca
-  calendar refresh itself succeeded; do not make a convocatoria/PDF failure
-  invalidate or delete the usable competition calendar;
-- event-access publication applies its own source-specific freshness gate to
-  the access snapshot and fails closed when that evidence is too old;
-- previous code simply ignores the new access file, so rollback remains safe.
-
-This extra file is a source-normalization artifact, not a second sports state
-machine.
-
-## G4. One raw source observation -> two projections
-
-From the same accepted normalized Pesca facts produce:
-
-- normal `Event` for planning/current day;
-- `EventAccessRecord` for advance registration lifecycle.
-
-Do not parse the PDF independently in the access runner.
-
-For the 17 October case preserve:
-
-- sport = fishing;
-- provincial Alicante championship;
-- qualification meaning;
-- exact competition schedule/heat duration;
-- club-mediated registration;
+- stable source-owned record identity;
+- access kind = registration;
+- event dates from the corrected occurrence;
+- club-mediated audience/action wording;
 - exact deadline;
-- place/zone;
-- current cancellation state if explicitly published.
+- current source-backed action/contact;
+- place/context needed for the complete root;
+- optional event-specific image only if the official source later supplies one
+  under a reviewed image contract.
 
-## G5. Multi-source access orchestration
+The normal Event projection and EventAccessRecord must share the same source
+fact identity; do not re-parse or re-translate the source.
+
+## G2. Source-specific access freshness
+
+Define FPCV details freshness from the measured source contract.
+
+Do not copy CONVEGA's <=90-minute rule automatically.
+
+At minimum:
+
+- future timestamps fail closed;
+- too-old details do not produce a current open/closing/cancelled claim;
+- a failed current details refresh preserves last-good storage but cannot be
+  promoted past the accepted freshness horizon.
+
+## G3. Multi-source access orchestration
 
 Current runtime is CONVEGA-only.
 
-With Pesca as the second source, introduce only a small explicit source-batch
+With FPCV as the second source, introduce only a small explicit source-batch
 orchestrator:
 
 - CONVEGA loader + its freshness;
-- Pesca loader + its freshness;
+- FPCV details/access loader + its freshness;
 - deterministic record ordering;
 - existing single global uncertain outbound slot;
 - no plugin registry;
 - no dynamic source discovery;
 - no generic ownership resolver.
 
-Source ownership remains explicit.
+Existing event-access state remains v2 and can retain records from both sources;
+`source` is already a non-empty immutable string rather than a hard-coded
+CONVEGA enum.
 
-## G6. Move the two event-access checkpoints earlier
+## G4. Move the two event-access checkpoints earlier
 
 The existing 12:47/13:47 window cannot send a useful same-day reminder before a
 known 12:00 deadline.
@@ -898,19 +931,17 @@ The final schedule belongs to the shared event-access lifecycle, not to Pesca.
 Exact minute values are an implementation/deploy decision, not fixed by this
 plan.
 
-## G7. Tests
+## G5. Tests
 
 - club-mediated wording does not imply direct public self-registration;
 - closing-tomorrow and closing-today before exact deadline;
 - no closing-today after deadline;
-- Pesca source failure cannot promote stale access truth;
+- FPCV details/source failure cannot promote stale access truth;
+- no PDF/source read occurs inside the access runner;
 - CONVEGA behavior remains unchanged;
-- one ambiguous source record publication blocks later record sends exactly as
+- one ambiguous source-record publication blocks later record sends exactly as
   current v2;
-- second source does not create duplicate root for deterministically delegated
-  same event.
-
----
+- deterministic ownership prevents duplicate roots for one joined event.
 
 # Slice H — FVBCV volleyball source
 
@@ -1225,14 +1256,17 @@ No sports behavior change.
 
 Observe one real Weekend lifecycle before relying on it for richer sports.
 
-## Deployment 2 — sport model/source correctness foundation
+## Deployment 2 — sport model/source correctness + rich fishing facts
 
 Slices B + C.
 
 No Morning removal yet.
 
-Run Tomorrow/Weekend previews and verify sport identity/dedup, but resident
-output may remain unchanged until Slice E.
+This deployment may add FEPyC/FPCV source-preparation files and enrich Event
+presentation, but it does not yet publish a new Sports Today lifecycle.
+
+Run source probes plus Tomorrow/Weekend previews and verify sport identity,
+national-date authority, rich fishing context and dedup before Slice E.
 
 ## Deployment 3 — sports resident product
 
@@ -1270,11 +1304,14 @@ Slice F.
 
 Do not add Pesca access until photo/date/wording behavior is fully tested.
 
-## Deployment 5 — Pesca access and shared checkpoint move
+## Deployment 5 — Pesca access projection and shared checkpoint move
 
 Slice G.
 
-Requires live crontab preflight and FPCV PDF/source production probe.
+The FPCV PDF/source contract was already production-probed and normalized in
+Slice C. This deployment adds no second PDF parser/fetch path; it only enables
+the EventAccessRecord projection/orchestration and moves the shared access
+checkpoints.
 
 Prefer installing the moved event-access cron **after the old day's 13:47
 recovery has completed** (or before the first new early checkpoint, with the
@@ -1577,3 +1614,37 @@ No remaining operational-order or cron-migration blocker found in this review.
 
 No remaining integration-test or obvious overengineering objection found in
 this review.
+
+
+---
+
+## Plan review cycle 6 — document consistency / presentation dependency
+
+### Findings
+
+1. The plan was internally consistent after prior edits: no stale fixed cron
+   minutes, no in-place Pesca schema expansion and no old Weekend collector
+   assumption remained.
+2. A deeper ordering issue remained: first sports activation in Slice E would
+   have occurred **before** FPCV convocatoria enrichment in the old Slice G,
+   producing correct but editorially inadequate fishing copy. That contradicts
+   the agreed human-description contract.
+3. Parsing the same official PDF later only for Event Access would also split
+   one source observation into two parsing lifecycles.
+
+### Corrections made
+
+- Moved FPCV convocatoria/details probe, PDF permission, normalized details
+  snapshot and Event presentation enrichment into Slice C, before any sports
+  publication is activated.
+- Renamed the new rollback-safe source file concept to
+  `pesca_cv_details.json` because it serves both presentation and access.
+- Slice G now only projects the already accepted details into Event Access,
+  adds the second explicit access source and fixes the shared access schedule.
+- Updated deployment sequencing accordingly.
+
+### Result
+
+The same FPCV document is now collected/normalized once and reused twice, and
+the first resident sports release already meets the descriptive-quality
+requirement. No new consistency objection remains after this correction.
