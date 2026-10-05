@@ -1520,6 +1520,30 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             )
             return 0
 
+        tomorrow_state = None
+        if command == "tomorrow-events":
+            tomorrow_state = TomorrowEventState(Path(os.environ.get(
+                "TOMORROW_EVENTS_STATE_PATH",
+                DEFAULT_TOMORROW_EVENTS_STATE_PATH,
+            )))
+            target_date = (
+                now.astimezone(GUARDAMAR_TIMEZONE).date()
+                + timedelta(days=1)
+            )
+            delivery_status = tomorrow_state.status(target_date)
+            if delivery_status == "sent":
+                logging.info(
+                    "SKIP: next-day event notice already published for %s",
+                    target_date,
+                )
+                return 0
+            if delivery_status == "uncertain":
+                logging.warning(
+                    "SKIP: next-day event delivery remains uncertain for %s",
+                    target_date,
+                )
+                return 0
+
         publication = await produce_tomorrow_event_publication(
             now,
             municipal_agenda_state_path=municipal_path,
@@ -1532,6 +1556,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             pesca_cv_details_state_path=pesca_cv_details_path,
             convega_state_path=convega_path,
             translation_cache_path=translations_path,
+            gemini_api_key=os.environ.get("GEMINI_API_KEY", "").strip(),
         )
         if command == "tomorrow-events-preview":
             if publication is None:
@@ -1547,10 +1572,8 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
 
         bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
         chat_id = _required_environment("TELEGRAM_CHAT_ID")
-        tomorrow_state = TomorrowEventState(Path(os.environ.get(
-            "TOMORROW_EVENTS_STATE_PATH",
-            DEFAULT_TOMORROW_EVENTS_STATE_PATH,
-        )))
+        if tomorrow_state is None:
+            raise RuntimeError("tomorrow-event state is unavailable")
 
         async def send_tomorrow_text() -> int:
             return await send_message(

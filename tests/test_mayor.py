@@ -273,6 +273,113 @@ class MayorChannelTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(cancelled)
         extract.assert_not_awaited()
 
+    async def test_no_ai_key_is_needed_when_no_market_post_exists(self):
+        now = datetime(2026, 10, 5, 19, 25, tzinfo=TZ)
+        with patch(
+            "telegrambot.mayor._read_page",
+            return_value=page(
+                "Concierto esta noche.",
+                "2026-10-05T17:00:00+00:00",
+            ),
+        ):
+            cancelled = await market_is_cancelled(
+                now,
+                "",
+                market_day=date(2026, 10, 6),
+            )
+
+        self.assertFalse(cancelled)
+
+    async def test_tomorrow_market_uses_observation_time_and_target_date(self):
+        now = datetime(2026, 10, 5, 19, 25, tzinfo=TZ)
+        extract = AsyncMock(
+            return_value={
+                "cancelled": True,
+                "evidence_es": (
+                    "El mercadillo del martes 6 de octubre queda suspendido."
+                ),
+                "event_date": "2026-10-06",
+            }
+        )
+        with (
+            patch(
+                "telegrambot.mayor._read_page",
+                return_value=page(
+                    "El mercadillo del martes 6 de octubre queda suspendido.",
+                    "2026-10-05T17:00:00+00:00",
+                ),
+            ),
+            patch("telegrambot.mayor.extract_market_status", new=extract),
+        ):
+            cancelled = await market_is_cancelled(
+                now,
+                "key",
+                market_day=date(2026, 10, 6),
+            )
+
+        self.assertTrue(cancelled)
+        self.assertEqual(extract.await_args.args[2], date(2026, 10, 6))
+
+    async def test_invalid_positive_market_status_fails_closed(self):
+        now = datetime(2026, 10, 5, 19, 25, tzinfo=TZ)
+        with (
+            patch(
+                "telegrambot.mayor._read_page",
+                return_value=page(
+                    "El mercadillo del martes 6 de octubre queda suspendido.",
+                    "2026-10-05T17:00:00+00:00",
+                ),
+            ),
+            patch(
+                "telegrambot.mayor.extract_market_status",
+                new=AsyncMock(return_value={
+                    "cancelled": True,
+                    "evidence_es": "texto que no existe",
+                    "event_date": "2026-10-06",
+                }),
+            ),
+        ):
+            with self.assertRaises(MayorChannelError) as raised:
+                await market_is_cancelled(
+                    now,
+                    "key",
+                    market_day=date(2026, 10, 6),
+                )
+
+        self.assertEqual(
+            raised.exception.diagnostic_code,
+            "INVALID-MARKET-STATUS",
+        )
+
+    async def test_noncanonical_negative_market_status_fails_closed(self):
+        now = datetime(2026, 10, 5, 19, 25, tzinfo=TZ)
+        source = "El mercadillo se traslada al martes 6 de octubre."
+        with (
+            patch(
+                "telegrambot.mayor._read_page",
+                return_value=page(source, "2026-10-05T17:00:00+00:00"),
+            ),
+            patch(
+                "telegrambot.mayor.extract_market_status",
+                new=AsyncMock(return_value={
+                    "cancelled": False,
+                    "evidence_es": source,
+                    "event_date": "2026-10-06",
+                }),
+            ),
+        ):
+            with self.assertRaises(MayorChannelError) as raised:
+                await market_is_cancelled(
+                    now,
+                    "key",
+                    market_day=date(2026, 10, 6),
+                )
+
+        self.assertEqual(
+            raised.exception.diagnostic_code,
+            "INVALID-MARKET-STATUS",
+        )
+
     async def test_checks_a_market_moved_to_tuesday(self):
         now = datetime(2026, 6, 23, 7, 30, tzinfo=TZ)
         with (

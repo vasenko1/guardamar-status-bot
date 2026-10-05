@@ -213,10 +213,12 @@ The validated Android deployment uses the scripts in `termux/`:
   run the bounded REST source refresh under the shared runtime lock. Telegram
   delivery uses a separate lifecycle lock and ambiguous delivery is never
   automatically resent;
-- `termux/run-tomorrow-events.sh` at 19:25 Sunday–Thursday reads only fresh
-  same-day local event catalogs. It sends at most one next-day planning post,
-  performs no source refresh or AI call, and lets Telegram fetch an optional
-  validated official event image by URL;
+- `termux/run-tomorrow-events.sh` at 19:25 Sunday–Thursday reads fresh
+  same-day local event catalogs plus the reviewed La Redonda market rule. Only
+  when tomorrow is a scheduled La Redonda market does it reuse the bounded
+  Mayor-channel exception check; Gemini is called only if fresh market-related
+  text exists. It sends at most one next-day planning post and lets Telegram
+  fetch an optional validated official event image by URL;
 - `termux/monitor-earthquakes.sh` at minute 55 of every hour to check the
   official IGN GeoRSS feed for a new qualifying local event;
 - `termux/run-resident-news.sh` at 11:11, 15:11 and 18:11 to perform one

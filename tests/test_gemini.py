@@ -224,6 +224,27 @@ class GeminiRequestTests(unittest.TestCase):
                     request_json.call_args.kwargs["allow_groq_fallback"]
                 )
 
+    def test_market_prompt_distinguishes_move_to_target_from_move_away(self):
+        result = {
+            "cancelled": False,
+            "evidence_es": "",
+            "event_date": None,
+        }
+        with patch(
+            "telegrambot.gemini._request_json",
+            return_value=result,
+        ) as request_json:
+            _request_market_status(
+                "key",
+                "El mercadillo se traslada al martes 6 de octubre.",
+                date(2026, 10, 6),
+            )
+
+        prompt = request_json.call_args.args[1][0]["text"]
+        self.assertIn("move FROM TARGET_DATE", prompt)
+        self.assertIn("move TO TARGET_DATE", prompt)
+        self.assertIn("Whenever cancelled=false", prompt)
+
     def test_event_translation_accepts_full_valid_event_length(self):
         translated = "Д" * 100
         with patch(

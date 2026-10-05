@@ -1,7 +1,8 @@
-"""Lightweight next-day event announcement from fresh local catalogs."""
+"""Lightweight next-day planning from fresh catalogs and reviewed local rules."""
 
 from __future__ import annotations
 
+import logging
 import urllib.parse
 from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta
@@ -9,6 +10,7 @@ from pathlib import Path
 from typing import Optional, Sequence
 from zoneinfo import ZoneInfo
 
+from .agenda import recurring_events, requires_market_exception_check
 from .branding import with_footer
 from .digest import MONTHS_GENITIVE, build_complete_event_section
 from .dated_publication import DatedPublicationState
@@ -16,9 +18,12 @@ from .fishing_enrichment import (
     DEFAULT_FEPYC_AUTHORITY_STATE_PATH,
     DEFAULT_FPCV_DETAILS_STATE_PATH,
 )
+from .holidays import official_holidays_on
+from .mayor import MayorChannelError, market_is_cancelled
 from .models import Event
 from .planning_events import load_local_planning_events
 
+LOGGER = logging.getLogger(__name__)
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 _DUE_WEEKDAYS = frozenset({0, 1, 2, 3, 6})  # Sunday through Thursday.
 _IMAGE_HOSTS = frozenset({
@@ -134,6 +139,117 @@ def _unit_image_url(unit: Sequence[Event]) -> Optional[str]:
     return next(iter(values)) if len(values) == 1 else None
 
 
+def _scheduled_market(target: datetime) -> Optional[Event]:
+    """Return the one reviewed La Redonda market for this target day."""
+
+    if not requires_market_exception_check(target):
+        return None
+    events = recurring_events(target)
+    if len(events) != 1:
+        LOGGER.warning(
+            "Tomorrow market schedule is ambiguous for %s; omitting it",
+            target.date(),
+        )
+        return None
+    return events[0]
+
+
+def _is_scheduled_market(event: Event, scheduled: Event) -> bool:
+    """Match the weekly market even if a catalog enriched its title/place."""
+
+    title = event.title.casefold()
+    return (
+        event.starts_at == scheduled.starts_at
+        and ("рынок" in title or "mercad" in title)
+        and (
+            event.place is None
+            or "redonda" in event.place.casefold()
+            or event.place == scheduled.place
+        )
+    )
+
+
+def _moved_market_schedule_note(target_day: date) -> Optional[str]:
+    """Explain the ordinance-driven Tuesday move without another source."""
+
+    if target_day.weekday() != 1:
+        return None
+    holidays = official_holidays_on(target_day + timedelta(days=1))
+    if not holidays:
+        return None
+    holiday = holidays[0]
+    return (
+        "Перенесён со среды: "
+        f"{holiday.date.day} {MONTHS_GENITIVE[holiday.date.month]} — "
+        f"{holiday.name}"
+    )
+
+
+def _sort_events(events: Sequence[Event]) -> tuple[Event, ...]:
+    return tuple(sorted(
+        events,
+        key=lambda event: (
+            event.starts_at is None,
+            event.starts_at
+            or datetime.max.replace(tzinfo=GUARDAMAR_TIMEZONE),
+            event.title.casefold(),
+        ),
+    ))
+
+
+async def _merge_verified_market(
+    events: Sequence[Event],
+    *,
+    now: datetime,
+    target: datetime,
+    gemini_api_key: str,
+) -> tuple[Event, ...]:
+    """Add only the verified La Redonda market to the local planning stream."""
+
+    scheduled = _scheduled_market(target)
+    if scheduled is None:
+        return tuple(events)
+
+    try:
+        cancelled = await market_is_cancelled(
+            now,
+            gemini_api_key,
+            market_day=target.date(),
+        )
+    except MayorChannelError as exc:
+        LOGGER.warning(
+            "Tomorrow events omit municipal market; Mayor check unavailable: %s",
+            exc,
+        )
+        cancelled = True
+
+    if cancelled:
+        return tuple(
+            event
+            for event in events
+            if not _is_scheduled_market(event, scheduled)
+        )
+
+    note = _moved_market_schedule_note(target.date())
+    result = []
+    matched = False
+    for event in events:
+        if not _is_scheduled_market(event, scheduled):
+            result.append(event)
+            continue
+        matched = True
+        result.append(
+            replace(event, schedule_note=note)
+            if note is not None else event
+        )
+    if not matched:
+        result.append(
+            replace(scheduled, schedule_note=note)
+            if note is not None else scheduled
+        )
+    return _sort_events(result)
+
+
 def _render_message(
     events: Sequence[Event],
     unit_count: int,
@@ -179,8 +295,9 @@ async def produce_tomorrow_event_publication(
     ),
     convega_state_path: Path = Path("state/convega_events.json"),
     translation_cache_path: Path,
+    gemini_api_key: str = "",
 ) -> Optional[TomorrowEventPublication]:
-    """Build tomorrow's proactive announcement with no source network I/O."""
+    """Build tomorrow's proactive announcement from reviewed local facts."""
 
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
     target_day = local_day + timedelta(days=1)
@@ -201,6 +318,12 @@ async def produce_tomorrow_event_publication(
         convega_state_path=convega_state_path,
         translation_cache_path=translation_cache_path,
         surface="Tomorrow events",
+    )
+    merged = await _merge_verified_market(
+        merged,
+        now=now,
+        target=target,
+        gemini_api_key=gemini_api_key,
     )
     eligible = tuple(
         event
