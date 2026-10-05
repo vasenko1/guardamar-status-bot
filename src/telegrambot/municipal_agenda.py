@@ -824,7 +824,7 @@ def _canonicalize_todo_programme_aliases(
     return tuple(rewritten)
 
 
-def _apply_reviewed_todo_conflicts(
+def _suppress_reviewed_rosario_2026_10_06_todo_conflict(
     programme_events: Tuple[SourceEvent, ...],
     todo_events: Tuple[SourceEvent, ...],
 ) -> Tuple[SourceEvent, ...]:
@@ -5066,7 +5066,7 @@ async def refresh_municipal_catalog(
             todo_events,
             todo_explicit_rows,
         )
-        todo_events = _apply_reviewed_todo_conflicts(events, todo_events)
+        todo_events = _suppress_reviewed_rosario_2026_10_06_todo_conflict(events, todo_events)
         events = merge_text_and_poster_events(events, todo_events)
         events = merge_text_and_poster_events(events, facebook_events)
         events = _normalize_exhibition_opening_times(events)
