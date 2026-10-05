@@ -66,6 +66,7 @@ def _fepyc_html():
     return b"""
     <html><body>
     <div>Id: 26MC26</div>
+    <div>XVI Campeonato de España Mar-costa Dúos</div>
     <div>Especialidad: Lanzado Mar Costa</div>
     <div>Categor&iacute;a: D&uacute;os</div>
     <div>Fecha: Del 26 al 29 de Noviembre de 2026</div>
@@ -125,10 +126,15 @@ class FishingEnrichmentTests(unittest.TestCase):
                 "source_id": "26MC26",
                 "url": FEPYC_26MC26_URL,
                 "match_title": "Mar Costa Dúos",
+                "competition_name": "XVI Campeonato de España Mar-costa Dúos",
             },
         )
 
         self.assertEqual(record["source_id"], "26MC26")
+        self.assertEqual(
+            record["competition_name"],
+            "XVI Campeonato de España Mar-costa Dúos",
+        )
         self.assertEqual(record["start"], "2026-11-26")
         self.assertEqual(record["end"], "2026-11-29")
         self.assertEqual(record["competition_type"], "Nacional")
@@ -298,6 +304,7 @@ class FishingEnrichmentTests(unittest.TestCase):
                 "source_id": "26MC26",
                 "url": FEPYC_26MC26_URL,
                 "match_title": "Mar Costa Dúos",
+                "competition_name": "XVI Campeonato de España Mar-costa Dúos",
             },
         )
         state = {"version": 1, "records": [record]}
@@ -317,6 +324,7 @@ class FishingEnrichmentTests(unittest.TestCase):
                 "source_id": "26MC26",
                 "url": FEPYC_26MC26_URL,
                 "match_title": "Mar Costa Dúos",
+                "competition_name": "XVI Campeonato de España Mar-costa Dúos",
             },
         )
         state = {"version": 1, "records": [record]}
@@ -349,6 +357,7 @@ class FishingEnrichmentTests(unittest.TestCase):
                             "source_id": "26MC26",
                             "url": FEPYC_26MC26_URL,
                             "match_title": "Mar Costa Dúos",
+                            "competition_name": "XVI Campeonato de España Mar-costa Dúos",
                         },
                     )
                 ),
@@ -381,6 +390,27 @@ class FishingEnrichmentTests(unittest.TestCase):
             self.assertEqual(second, first)
             saved = json.loads(state.read_text(encoding="utf-8"))
             self.assertEqual(saved["records"][0]["observed_at"], NOW.isoformat())
+
+    def test_no_base_events_skip_fpcv_index_network(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "details.json"
+            fetch_index = AsyncMock(
+                side_effect=AssertionError("index must not be fetched")
+            )
+            with patch(
+                "telegrambot.fishing_enrichment._fetch_fpcv_index",
+                new=fetch_index,
+            ):
+                records = asyncio.run(
+                    refresh_fpcv_details(NOW, (), state)
+                )
+
+            self.assertEqual(records, ())
+            fetch_index.assert_not_awaited()
+            self.assertEqual(
+                json.loads(state.read_text(encoding="utf-8")),
+                {"version": 1, "records": []},
+            )
 
     def test_unchanged_pdf_bytes_are_refetched_but_not_reextracted(self):
         descriptor = parse_fpcv_index_html(
