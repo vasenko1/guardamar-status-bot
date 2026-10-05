@@ -93,6 +93,7 @@ class PescaCvParserTests(unittest.TestCase):
             "records": [{
                 "source_id": "26MC26",
                 "match_title": "Mar Costa Dúos",
+                "competition_name": "XVI Campeonato de España Mar-costa Dúos",
                 "specialty": "Lanzado Mar Costa",
                 "category": "Dúos",
                 "competition_type": "Nacional",
@@ -137,6 +138,10 @@ class PescaCvParserTests(unittest.TestCase):
         )
         self.assertEqual(events[0].active_from, date(2026, 11, 26))
         self.assertEqual(events[0].active_until, date(2026, 11, 29))
+        self.assertEqual(
+            events[0].details,
+            ("Чемпионат Испании · категория дуэты",),
+        )
         self.assertEqual(events[0].sport, "fishing")
         self.assertEqual(items, (("pesca_cv", "Mar Costa Dúos"),))
 
