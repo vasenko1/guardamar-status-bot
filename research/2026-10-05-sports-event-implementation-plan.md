@@ -675,6 +675,11 @@ Current v2 state already stores event start/end dates.
 When an audience-known event with a root changes date/range:
 
 - compare previous vs current event date/range before committing candidate;
+- represent the correction as an **event-level** notice, not by attaching it
+  to an arbitrary access option;
+- minimally allow `AccessNotice.option_id` (or an equivalent in-memory field)
+  to be absent for event-level notices; do not create a second notice hierarchy
+  or persist new state merely for this;
 - create one material date-correction reply to that same root;
 - render the new date explicitly;
 - combine with any stronger same-observation access change into **one reply**
@@ -688,7 +693,8 @@ Add precedence tests for date + access change in one observation.
 
 ## F3. Implement photo roots, text replies
 
-Add optional presentation-only `image_url` to `EventAccessRecord`.
+Add optional presentation-only `image_url` to the **end** of
+`EventAccessRecord` so positional construction remains backward-compatible.
 
 Do not persist it in event-access semantic state and do not bump state version.
 
@@ -770,18 +776,29 @@ Probe:
 
 Choose explicit max documents/bytes/time from measured source behavior.
 
-## G3. Keep one source snapshot boundary
+## G3. Preserve rollback by keeping the existing Pesca event snapshot unchanged
 
-Prefer extending the existing Pesca normalized source snapshot with optional,
-strictly validated access/enrichment fields while retaining backward
-compatibility with old snapshots.
+Current `valid_pesca_cv_snapshot()` requires the **exact** existing event keys.
+If new access fields are written into `state/pesca_cv_events.json`, the
+previous production commit will reject that file after rollback.
 
-Do not invalidate the entire last-good v1-like Pesca snapshot merely because
-new optional access facts are absent.
+Therefore:
 
-If the safest implementation needs a separate normalized convocatoria section,
-keep it within the same Pesca source state rather than introducing another
-independent cron/state lifecycle.
+- keep `state/pesca_cv_events.json` byte/schema-compatible with the old event
+  contract;
+- store convocatoria/access enrichment in one new small normalized source
+  snapshot, for example `state/pesca_cv_access.json`;
+- write that file from the **same** existing 05:10 `telegrambot.pesca_cv`
+  source invocation; do not add a new cron or polling lifecycle;
+- bound it to relevant current/future Guardamar access records and one
+  `observed_at`;
+- validate/write it atomically and independently so an access parse failure
+  preserves the last-good access snapshot without corrupting the event
+  calendar;
+- previous code simply ignores the new access file, so rollback remains safe.
+
+This extra file is a source-normalization artifact, not a second sports state
+machine.
 
 ## G4. One raw source observation -> two projections
 
@@ -1164,8 +1181,12 @@ logic bugs.
 
 ## Slice G+
 
-Source snapshots must remain backward-readable or have an explicit rollback
-procedure before deploy.
+Source snapshots must remain backward-readable or be isolated from old
+readers.
+
+For FPCV access specifically, the plan now keeps the strict existing
+`pesca_cv_events.json` untouched and writes access enrichment to a new source
+file that old code ignores.
 
 Do not bump a strict source snapshot schema in a way that makes the previous
 production commit unable to read the last-good file unless a reversible
@@ -1256,3 +1277,39 @@ The initiative is complete when all of the following are true:
 ### Result
 
 No remaining dependency-cycle or rollback blocker found in this review.
+
+
+---
+
+## Plan review cycle 2 — state/backward compatibility
+
+### Findings
+
+1. **Extending `pesca_cv_events.json` in place was rollback-unsafe.**
+   Current validation requires an exact event-key set; old code would reject a
+   new snapshot carrying access fields.
+2. A separate bounded `pesca_cv_access.json` written by the same 05:10 source
+   process is the smallest rollback-safe correction. It adds no cron/daemon and
+   cleanly separates calendar last-good from convocatoria/access last-good.
+3. **Event-date correction is event-level.** Current `AccessNotice` requires
+   an `option_id`; forcing a date correction onto the first/default option
+   would be semantically wrong for multi-option events. The plan now allows a
+   minimal optional option ID for in-memory event-level notices.
+4. `EventAccessRecord.image_url` must be appended, not inserted, to preserve
+   positional-call compatibility.
+5. Existing event-access state v2 is rollback-compatible with additional Pesca
+   records: its validator requires only a non-empty immutable `source`, not a
+   hard-coded CONVEGA allowlist. The old runner will leave unrelated valid
+   records in the same v2 map and only process its CONVEGA projection.
+
+### Corrections made
+
+- Replaced in-place Pesca snapshot expansion with a separate bounded access
+  source snapshot under the existing 05:10 process.
+- Added explicit event-level notice representation to Slice F.
+- Tightened positional compatibility for EventAccessRecord.
+
+### Result
+
+No remaining persistent-state schema blocker found in this review. Slices A-G
+can preserve rollback at the file/schema level.
