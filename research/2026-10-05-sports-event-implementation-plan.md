@@ -1781,5 +1781,7 @@ its iterative code-review/test cycle:
 The detailed gate record is
 `research/2026-10-05-sports-slice-a-implementation-review.md`.
 
-Slice B remains blocked until the final post-report test run is green and the
-temporary branch-only verification workflow is removed.
+The final post-report run is green (77 focused / 1608 full tests). Slice A is
+PASS. Slice B remains blocked only until the temporary branch-only verification
+workflow is removed and the final branch diff/main-delta check confirms that no
+untested application change was introduced.
