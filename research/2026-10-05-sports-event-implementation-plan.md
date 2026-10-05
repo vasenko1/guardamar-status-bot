@@ -4,8 +4,8 @@
 
 **Stabilized after eight adversarial plan-review cycles. ADR 0100 is now accepted on the implementation branch; Slice A is the next implementation stage.**
 
-This document remains implementation-free: no production code, cron or runtime
-state is changed by the planning branch. Any later change to a dependency,
+This plan remains implementation-free: the architecture-fixation stage changes
+only documentation, not production code, cron or runtime state. Any later change to a dependency,
 source contract or current main requires a targeted delta review before the
 affected slice begins.
 
@@ -17,9 +17,9 @@ Base production architecture reviewed at:
 - ADRs 0080 and 0089-0092;
 - current runtime/cron constraints in KB 03-04.
 
-ADR 0099 is already allocated to hourly AEMET CAP monitoring, so the next
-durable sports architecture decision should use **ADR 0100** unless main moves
-again before implementation.
+ADR 0100 is now the accepted durable sports architecture decision. Later
+source/runtime refinements use new ADR numbers only when they materially change
+that accepted boundary.
 
 No production code or runtime state is changed by this planning document.
 
