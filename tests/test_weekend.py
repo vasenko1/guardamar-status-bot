@@ -224,6 +224,90 @@ class WeekendMessageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Воскресенье, 16 августа", message)
         self.assertIn("Рынок Campo de Guardamar", message)
 
+    async def test_sports_render_in_each_day_subsection(self):
+        now = datetime(2026, 10, 9, 19, 15, tzinfo=TZ)
+        saturday = (
+            Event(
+                "Concierto",
+                datetime(2026, 10, 10, 18, 0, tzinfo=TZ),
+            ),
+            Event(
+                "Open Dama",
+                datetime(2026, 10, 10, 19, 0, tzinfo=TZ),
+                details=("Liga autonómica · 3-й тур",),
+                sport="chess",
+            ),
+        )
+        sunday = (
+            Event(
+                "Mar Costa",
+                datetime(2026, 10, 11, 8, 0, tzinfo=TZ),
+                sport="fishing",
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            paths = _paths(directory)
+            with patch(
+                "telegrambot.weekend._day_events",
+                new=AsyncMock(side_effect=(saturday, sunday)),
+            ):
+                message = await produce_weekend_message(
+                    now,
+                    "",
+                    paths["municipal_agenda_state_path"],
+                    agenda_state_path=paths["agenda_state_path"],
+                    library_agenda_state_path=paths["library_agenda_state_path"],
+                    am_guardamar_state_path=paths["am_guardamar_state_path"],
+                    convega_state_path=paths["convega_state_path"],
+                    translation_cache_path=paths["translation_cache_path"],
+                )
+
+        self.assertEqual(
+            message.count("🏅 <b>Спортивные мероприятия</b>"),
+            2,
+        )
+        self.assertIn("♟ Шахматы — Open Dama", message)
+        self.assertIn("🎣 Спортивная рыбалка — Mar Costa", message)
+        self.assertIn("Liga autonómica · 3-й тур", message)
+
+    async def test_mixed_weekend_programme_parent_is_not_duplicated(self):
+        now = datetime(2026, 10, 9, 19, 15, tzinfo=TZ)
+        programme = "Fiestas del Barrio"
+        saturday = (
+            Event(
+                "Concierto",
+                datetime(2026, 10, 10, 18, 0, tzinfo=TZ),
+                programme_title=programme,
+                programme_order=1,
+            ),
+            Event(
+                "Carrera",
+                datetime(2026, 10, 10, 19, 0, tzinfo=TZ),
+                programme_title=programme,
+                programme_order=2,
+                sport="chess",
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            paths = _paths(directory)
+            with patch(
+                "telegrambot.weekend._day_events",
+                new=AsyncMock(side_effect=(saturday, ())),
+            ):
+                message = await produce_weekend_message(
+                    now,
+                    "",
+                    paths["municipal_agenda_state_path"],
+                    agenda_state_path=paths["agenda_state_path"],
+                    library_agenda_state_path=paths["library_agenda_state_path"],
+                    am_guardamar_state_path=paths["am_guardamar_state_path"],
+                    convega_state_path=paths["convega_state_path"],
+                    translation_cache_path=paths["translation_cache_path"],
+                )
+
+        self.assertEqual(message.count(programme), 1)
+        self.assertIn("♟ Шахматы — Carrera", message)
+
     async def test_aggregate_overflow_compacts_optional_prose_across_both_days(self):
         now = datetime(2026, 10, 9, 19, 15, tzinfo=TZ)
         saturday_event = Event(
