@@ -247,5 +247,10 @@ compatibility gap was corrected before the Slice E merge, and the missing
 top-level Sports Today CLI choices were caught after merge but before any
 production activation and fixed in the follow-up hotfix.
 
-Merge remains blocked only until the documentation head receives the same
-focused/full CI verification and the temporary branch-only workflow is removed.
+Implementation, merge and production activation are complete on
+`main=c1b303b356f33fc28ad2e8154ccbc448b27e236b`. The production gate is recorded
+in `research/2026-10-05-sports-slice-e-production-verification.md`.
+
+The only remaining Slice E check is observation of the first scheduled
+08:25/09:25 lifecycle. It is an operational verification gate, not a pending
+code or merge blocker.
