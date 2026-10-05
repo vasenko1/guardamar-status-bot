@@ -75,12 +75,15 @@ class CompleteEventSectionTests(unittest.TestCase):
     def test_complete_renderer_fails_when_essential_blocks_still_do_not_fit(self):
         events = tuple(
             Event(
-                title=f"Событие {index} " + ("X" * 700),
+                title=f"Событие {index}",
                 starts_at=datetime(
                     2026, 10, 10, 12, 0, tzinfo=GUARDAMAR_TIMEZONE
                 ),
                 place="Polideportivo Municipal",
-                details=("Регулярный чемпионат · группа 8 · 5-й тур",),
+                details=(
+                    "Регулярный чемпионат · группа 8 · 5-й тур · "
+                    + ("важный контекст " * 45),
+                ),
                 sport="chess",
             )
             for index in range(8)
