@@ -81,6 +81,13 @@ async def _load_source(
             name,
             required_snapshot_day,
         )
+        if diagnostics is not None:
+            try:
+                await load()
+            except errors as exc:
+                diagnostics.append(
+                    source_error(diagnostic_prefix, name, exc)
+                )
         return ()
     try:
         return await load()
