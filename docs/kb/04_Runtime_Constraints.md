@@ -121,12 +121,20 @@ is allowed.
 For this workflow only, Termux `pdftotext -layout` is approved under these
 hard bounds: exact `federacionpescacv.com` HTTPS link, `application/pdf`,
 `%PDF-` magic, at most 1 MiB PDF bytes, one extraction attempt, at most
-10 seconds extraction time, and at most 64 KiB non-empty UTF-8 text. Raw PDF
-bytes and extracted text are process-local and discarded after normalization.
-The existing strict `state/pesca_cv_events.json` schema is not extended;
-FEPyC authority and FPCV details use separate bounded rollback-safe state files.
-A details/PDF failure must not invalidate a successfully refreshed base fishing
-calendar. See ADR 0101.
+10 seconds extraction time, and at most 64 KiB non-empty UTF-8 text. At most
+four relevant FPCV detail records and four explicit FEPyC authority records may
+exist. Relevant FPCV PDF bytes may be checked once on a successful daily
+details refresh; SHA-256 prevents repeat `pdftotext` work when the index row
+and PDF content are unchanged. Raw PDF bytes and extracted text are
+process-local and discarded after normalization.
+
+Accepted authority/details override or enrich the base fishing Event only for
+36 hours after their source-backed observation; future timestamps and older
+last-good records are ignored. The existing strict
+`state/pesca_cv_events.json` schema is not extended; FEPyC authority and FPCV
+details use separate bounded rollback-safe state files. A details/PDF failure
+must not invalidate a successfully refreshed base fishing calendar. See
+ADR 0101.
 
 The CONVEGA one-off registration slice runs only as short-lived one-shots at
 12:47 and 13:47 Europe/Madrid. The first wrapper invocation performs at most one
