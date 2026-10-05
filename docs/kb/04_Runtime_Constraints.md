@@ -111,6 +111,18 @@ also acquires the legacy Weekend lock, so a process from the previous release
 cannot overlap delivery during deployment. No source request, cron row,
 dependency, daemon or queue is added by this delivery hardening.
 
+Sports Today is one short-lived local-snapshot publication at 08:25
+Europe/Madrid with one 09:25 recovery. It performs no source HTTP and no AI:
+the shared planning loader accepts only same-day fresh local snapshots, then
+Telegram is the only outbound operation in the send path. Delivery uses the
+shared bounded dated-state primitive at `state/sports_today.json`; a confirmed
+or uncertain send blocks recovery, while no qualifying sport writes no marker.
+Its wrapper rotates `state/sports-today.log` at 512 KiB. Both cron rows belong
+to the existing event-planning/weekend managed block; there is no per-sport
+installer, daemon, queue, database or runtime source lock. Morning sport
+exclusion is deployed in the same release so the current-day publication
+replaces, rather than adds to, the Morning repetition.
+
 The Sports Slice C fishing enrichment remains inside the existing short-lived
 05:10 fishing preparation lifecycle. It may read one bounded FPCV convocatoria
 index, a small bounded set of first-party FEPyC national-authority pages, and
