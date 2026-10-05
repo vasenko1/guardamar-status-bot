@@ -1829,3 +1829,35 @@ Measured contracts:
 Production source state and working tree remained unchanged. ADR 0101 now
 authorizes only this bounded source/PDF class. Runtime implementation remains
 blocked until the documentation-only ADR/KB consistency review is PASS.
+
+
+## Implementation checkpoint — Slice C
+
+Slice B is production-verified.
+
+Slice C implementation now provides the source-correctness and rich fishing
+facts required before sports publication activation:
+
+- FEPyC `26MC26` is the exact national occurrence authority for the reviewed
+  Mar-costa Dúos conflict;
+- FPCV convocatoria details are normalized once in the existing 05:10 fishing
+  lifecycle;
+- the strict existing fishing calendar state remains rollback-compatible;
+- authority/details use separate bounded state files;
+- relevant PDF bytes are content-hashed daily and `pdftotext` runs only when
+  row/content identity changed;
+- source enrichment is projection-eligible for 36 hours;
+- FPCV details are capped at four and no new cron/source lifecycle exists;
+- the national Event preserves Campeonato de España / Dúos context;
+- the provincial reviewed Event preserves qualification, schedule, duration and
+  venue context.
+
+The implementation went through repeated fix/test/review cycles; detailed
+findings are recorded in
+`research/2026-10-05-sports-slice-c-implementation-review.md`.
+
+The last runtime-only verification before final documentation synchronization
+passed 76 focused and 1635 full-suite tests.
+
+Slice D remains blocked until the final branch-head run, temporary workflow
+cleanup, merge and production verification of Slice C.
