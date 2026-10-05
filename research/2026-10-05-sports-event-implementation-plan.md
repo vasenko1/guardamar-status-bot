@@ -1117,6 +1117,11 @@ Time-sensitive provider probes remain in `research/`.
 
 Every implementation PR must run focused tests plus the full repository suite.
 
+Every new source probe must also measure expected retained cardinality against
+existing structural bounds (64 event-access records, 16 options per access
+record, 128 triggers per record) and presentation bounds (EventAccessRecord
+details <= 8). Raise no bound without an explicit reviewed reason.
+
 Required focused areas:
 
 - `test_event_contract.py`;
@@ -1137,12 +1142,17 @@ Required focused areas:
 
 Before each production deployment:
 
-1. `python -m compileall` on changed modules;
-2. focused suite;
-3. full suite;
-4. production preview/read-only probe where source/runtime-specific behavior is
+1. re-fetch current `origin/main` and confirm the reviewed target commit is
+   still based on the expected main;
+2. compare any main changes since plan/PR review for event/runtime impact;
+3. confirm no affected one-shot process is currently active;
+4. `python -m compileall` on changed modules;
+5. focused suite;
+6. full suite;
+7. production preview/read-only probe where source/runtime-specific behavior is
    involved;
-5. no Telegram/state mutation during preview.
+8. record relevant state/crontab checksums before mutation;
+9. no Telegram/state mutation during preview.
 
 ---
 
@@ -1169,12 +1179,30 @@ output may remain unchanged until Slice E.
 
 Slices D + E.
 
-Atomic operational requirements:
+Use a safe local deployment window **after that day's 07:30 Morning Digest has
+completed**. This avoids a partial rollout where Morning starts excluding sport
+before the new Sports Today schedule is installed.
+
+Operational order:
+
+1. confirm no relevant one-shot event/Weekend/Tomorrow process is active;
+2. record production SHA, current crontab and relevant state checksums;
+3. deploy reviewed code;
+4. run Sports Today/Tomorrow/Weekend previews with no Telegram/state mutation;
+5. install the managed cron update containing Sports Today primary/recovery;
+6. read back the entire managed block and verify unrelated jobs are unchanged;
+7. verify Sports Today state path/permissions;
+8. if cron installation cannot be completed, roll back the code **before the
+   next 07:30** so Morning does not enter the sport-exclusion path without the
+   replacement publication;
+9. allow evening planning to use sports sections only after previews pass.
+
+Atomic product requirements:
 
 - Sports Today command and state present;
 - chosen cron primary/recovery installed and verified;
 - Tomorrow/Weekend sports sections preview correctly;
-- Morning sport exclusion becomes active only now;
+- Morning sport exclusion becomes active only in this deployment;
 - no source network added by Sports Today.
 
 ## Deployment 4 — generic Event Access completion
@@ -1188,6 +1216,23 @@ Do not add Pesca access until photo/date/wording behavior is fully tested.
 Slice G.
 
 Requires live crontab preflight and FPCV PDF/source production probe.
+
+Prefer installing the moved event-access cron **after the old day's 13:47
+recovery has completed** (or before the first new early checkpoint, with the
+old rows removed in the same managed-block replacement). Never leave old and
+new access schedules active for the same local day.
+
+Before enabling the new source:
+
+1. refresh/probe FPCV access state read-only;
+2. run event-access preview and record every root/reply that would be due;
+3. verify total retained v2 record cardinality remains below structural bounds;
+4. confirm event-access state has `uncertain=null`;
+5. install/verify the new shared checkpoint rows;
+6. let the next scheduled run publish through the normal crash-safe lifecycle.
+
+Do not silently baseline an already-open high-value registration merely to avoid
+a first root; the preview is the operator gate for the expected publication.
 
 ## Deployments 6+
 
@@ -1255,6 +1300,16 @@ Then select exact minute slots and record them in ADR/KB/README/tests.
 
 No plan revision may add a new recurring source job merely to solve minute
 placement.
+
+The final cron patch must also update installer tests so they prove:
+
+- managed-block replacement removes obsolete old access rows;
+- exactly two Sports Today rows exist;
+- exactly two shared event-access rows exist;
+- no old+new access schedule survives together;
+- installer remains idempotent;
+- unrelated cron rows are preserved;
+- service startup preflight behavior remains unchanged.
 
 ---
 
@@ -1400,3 +1455,37 @@ These findings strengthen, but do not replace, Termux production probes.
 No unresolved source-authority contradiction remains in the plan. Root
 time/place corrections are now an explicit enablement gate instead of an
 untracked risk.
+
+
+---
+
+## Plan review cycle 4 — operational sequencing / limits / cron
+
+### Findings
+
+1. **Deployment 3 was not operationally atomic.** Code and cron are separate
+   mutations. Deploying before 07:30 could let Morning exclude sport while a
+   failed cron install leaves no Sports Today replacement.
+2. **Access schedule migration could double-run one day** if old 12:47/13:47
+   rows survive while new early rows are added. The plan now requires one
+   managed-block replacement in a safe window.
+3. New access sources must be checked against existing structural bounds before
+   enablement; the plan previously relied on tests but did not make cardinality
+   an explicit production gate.
+4. Main can move between planning and implementation. Every deploy now starts
+   with a fresh ancestor/delta review rather than assuming this plan's
+   `d6380775...` base is still current.
+5. New/old Weekend implementations could race during deploy if an existing
+   process is active. Process absence is now a preflight requirement.
+
+### Corrections made
+
+- Defined a post-07:30 deployment window and rollback deadline for the Sports
+  Today/Morning handoff.
+- Defined a no-double-schedule window for event-access cron migration.
+- Added cardinality/presentation bounds to source gates.
+- Strengthened cron installer assertions and current-main/process preflight.
+
+### Result
+
+No remaining operational-order or cron-migration blocker found in this review.
