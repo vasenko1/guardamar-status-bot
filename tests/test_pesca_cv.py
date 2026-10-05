@@ -185,6 +185,7 @@ class PescaCvParserTests(unittest.TestCase):
                 "bases-prov-mar-costa-captura-y-suelta-2026.pdf"
             ),
             "document_identity": "a" * 64,
+            "content_sha256": "c" * 64,
             "competition_context": (
                 "Провинциальный чемпионат Аликанте · "
                 "отбор на Comunidad Valenciana 2027"
@@ -260,6 +261,7 @@ class PescaCvParserTests(unittest.TestCase):
             "cancelled": True,
             "source_url": None,
             "document_identity": "b" * 64,
+            "content_sha256": None,
             "competition_context": None,
             "details": [],
             "starts_at": None,
