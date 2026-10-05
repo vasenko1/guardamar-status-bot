@@ -166,10 +166,15 @@ publication activation:
 - `Event.sport` exists;
 - FACV/Pesca preserve their explicit sport identity;
 - merge semantics protect different sports;
-- Russian sport label/icon metadata is deterministic.
+- Russian sport label/icon metadata is deterministic;
+- fishing national dates/details are source-corrected before planning;
+- Tomorrow/Weekend now share one fresh local planning loader;
+- planning has a complete-render path that cannot silently drop tail events and
+  can remove optional teaser prose before failing closed.
 
-No sports subsection/current-day publication is enabled by this foundation
-alone, so existing resident output remains unchanged.
+No sports subsection, Sports Today publication or Morning sport exclusion is
+enabled by these foundations alone, so the dedicated resident sports product is
+still not active.
 
 ## One-off event registration notices
 
