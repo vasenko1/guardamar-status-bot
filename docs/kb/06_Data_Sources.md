@@ -39,7 +39,7 @@ official endpoints and lightweight access methods are validated.
 | Biblioteca Pública Municipal de Guardamar agenda | Library exhibitions, films and other library activities | High; first-party library agenda | One bounded 05:10 list refresh; details only for new, visibly changed, or previously failed cards | Yes |
 | Agrupación Musical Guardamar WordPress posts | Its future public musical events in Guardamar | High for its own published events | One bounded 05:10 REST list refresh of twelve recent posts; changed posts only are extracted. The same request may embed one validated official featured-media URL for optional next-day presentation; no image bytes are stored. | Yes, ADR 0058 / 0080 |
 | BOE, DOGV, and official Guardamar holiday calendar | Official national, regional, and local days off applicable in Guardamar; Wednesday-market holiday moves | High; legally authoritative annual publications | Small reviewed annual in-code calendar; no morning request | Yes |
-| `@AlcaldeGuardamar` public channel | Explicit market exceptions, bathing-status transitions, Fiestas de Barrio, and complete invited same-day municipal announcements | Operational municipal channel; text must be mechanically grounded | One bounded morning event check, market check when relevant, or one check after SafeBeach retries | Yes, narrow role |
+| `@AlcaldeGuardamar` public channel | Explicit market exceptions, bathing-status transitions, Fiestas de Barrio, and complete invited same-day municipal announcements | Operational municipal channel; text must be mechanically grounded | One bounded morning event check, a conditional previous-evening market check only when tomorrow is a scheduled La Redonda market, or one check after SafeBeach retries | Yes, narrow role |
 | Colegio Oficial de Farmacéuticos de Alicante | Legally authoritative on-call pharmacy rota | High; the provincial college responsible for the service | One weekly bounded fetch of the linked annual XLSX with compressed and uncompressed size bounds; normalized 45-day catalog for Guardamar's complete published service zone `61`, including duties assigned in San Fulgencio; no morning request | Yes, ADR 0038 |
 | Campo de Guardamar market website | Sunday market at Camino del Raso, 15 | Operator-published schedule; no authoritative cancellation feed found | Local Sunday rule, `07:00–16:00` | Yes, explicit product exception |
 | Euro Weekly News / News from Spain RSS | Discovery only for resident-impact candidates; never factual evidence | Editorial discovery only; every public claim requires a linked approved first-party page | One bounded RSS read at 11:11/15:11/18:11; selected EWN HTML is read only to extract direct first-party links | Yes, discovery-only (ADR 0087) |
@@ -460,11 +460,15 @@ the rest of the year. It also states that a market falling on a holiday
 Wednesday moves to the preceding Tuesday. The bot applies that rule using a
 small annually reviewed official Guardamar holiday calendar; it makes no
 runtime calendar request. Unsupported years omit the market rather than guess.
-On the resulting Tuesday or Wednesday market date, the bot checks only fresh
-timestamped text from `@AlcaldeGuardamar`. The market is
-hidden only for an explicit, exactly dated cancellation or move whose source
-quotation passes deterministic validation. If this check is unavailable, the
-market is omitted for that day.
+When the resulting Tuesday or Wednesday market date is about to be asserted,
+the bot checks only fresh timestamped text from `@AlcaldeGuardamar`. This
+covers both the same-day Morning Digest and the previous evening's
+`Завтра в Гуардамаре` planning message. Source freshness uses the actual
+observation time even when the classified market date is tomorrow. A move from
+the target date suppresses it; a move to the target date does not. The market
+is hidden only for an explicit, exactly dated exception whose exact source
+quotation passes validation. If the check is unavailable or classifier output
+fails validation, only the market is omitted.
 
 ## Campo de Guardamar Sunday market
 
