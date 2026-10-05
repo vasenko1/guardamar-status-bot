@@ -178,10 +178,29 @@ Expected ERROR lines in the full suite remain deliberate negative-path tests.
 - no pagination, database, queue, daemon or generic provider framework was
   introduced.
 
+## Final documentation branch-head run
+
+After the durable ADR/KB/research checkpoint was added, the branch head was
+verified again:
+
+- compileall: PASS;
+- focused Slice D suite: **146 tests, OK**;
+- full repository suite: **1653 tests, OK**.
+
+Expected ERROR log lines are deliberate negative-path tests; unittest completed
+OK.
+
 ## Gate status
 
-**PASS pending final documentation branch-head compile/focused/full run and
-temporary verification-workflow cleanup.**
+**PASS**
+
+No unresolved freshness, merge-order, recurring-event, renderer-completeness,
+aggregate-compaction, multi-distance, rollback, source-cost or regression-test
+objection remains for Slice D.
+
+The temporary branch-only verification workflow is cleanup-only and must be
+removed before the final PR diff. Removing it does not alter the tested
+application tree.
 
 Slice E remains blocked until Slice D is merged, deployed and production
 verified.
