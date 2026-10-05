@@ -85,6 +85,10 @@ from .municipal_agenda import (
 )
 from .event_translations import prepare_translations
 from .facv import FacvSourceError, facv_translation_items
+from .fishing_enrichment import (
+    DEFAULT_FEPYC_AUTHORITY_STATE_PATH,
+    DEFAULT_FPCV_DETAILS_STATE_PATH,
+)
 from .pesca_cv import PescaCvSourceError, pesca_cv_translation_items
 from .convega import ConvegaSourceError, convega_translation_items
 from .hidraqua import (
@@ -691,6 +695,14 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
     ))
     pesca_cv_path = Path(os.environ.get(
         "PESCA_CV_EVENTS_STATE_PATH", DEFAULT_PESCA_CV_EVENTS_STATE_PATH
+    ))
+    fepyc_authority_path = Path(os.environ.get(
+        "FEPYC_FISHING_AUTHORITY_STATE_PATH",
+        DEFAULT_FEPYC_AUTHORITY_STATE_PATH,
+    ))
+    pesca_cv_details_path = Path(os.environ.get(
+        "PESCA_CV_DETAILS_STATE_PATH",
+        DEFAULT_FPCV_DETAILS_STATE_PATH,
     ))
     convega_path = Path(os.environ.get(
         "CONVEGA_STATE_PATH", DEFAULT_CONVEGA_STATE_PATH
@@ -1516,6 +1528,8 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             am_guardamar_state_path=am_guardamar_path,
             facv_state_path=facv_path,
             pesca_cv_state_path=pesca_cv_path,
+            fepyc_authority_state_path=fepyc_authority_path,
+            pesca_cv_details_state_path=pesca_cv_details_path,
             convega_state_path=convega_path,
             translation_cache_path=translations_path,
         )
@@ -1729,6 +1743,8 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 am_guardamar_state_path=am_guardamar_path,
                 facv_state_path=facv_path,
                 pesca_cv_state_path=pesca_cv_path,
+                fepyc_authority_state_path=fepyc_authority_path,
+                pesca_cv_details_state_path=pesca_cv_details_path,
                 convega_state_path=convega_path,
                 translation_cache_path=translations_path,
                 diagnostics=diagnostics,
@@ -1779,6 +1795,8 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                 am_guardamar_state_path=am_guardamar_path,
                 facv_state_path=facv_path,
                 pesca_cv_state_path=pesca_cv_path,
+                fepyc_authority_state_path=fepyc_authority_path,
+                pesca_cv_details_state_path=pesca_cv_details_path,
                 convega_state_path=convega_path,
                 translation_cache_path=translations_path,
             )
