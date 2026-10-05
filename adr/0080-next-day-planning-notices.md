@@ -156,3 +156,28 @@ how sporting events are presented once that implementation is deployed:
 - Morning stops repeating sport only when that current-day path is operational;
 - the planning delivery path must fail closed rather than silently truncate
   eligible sport events.
+
+
+## Implementation refinement: shared dated planning delivery
+
+On 2026-10-05 the crash-safe date-target state used by Tomorrow was extracted
+into one small internal primitive without changing
+`state/tomorrow_events.json` or its schema.
+
+Friday Weekend now uses the same reservation semantics in a separate
+`state/weekend_delivery.json`:
+
+- reserve `uncertain` before a new Telegram send;
+- retry automatically only explicit rate-limit rejection;
+- keep timeout/network/5xx ambiguity uncertain so the 20:15 recovery cannot
+  duplicate;
+- clear deterministic unsent failure for a safe later recovery;
+- on confirmed send, preserve the existing `state/weekend.json` target
+  marker for rollback to the previous runtime and then confirm the new message
+  ID.
+
+Weekend acquires both the legacy and new delivery locks during publication so
+old/new runtime overlap at a deployment boundary cannot create concurrent sends.
+
+This hardening adds no source request, scheduler, dependency or resident
+process.
