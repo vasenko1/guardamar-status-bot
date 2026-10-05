@@ -9,7 +9,6 @@ from zoneinfo import ZoneInfo
 
 from telegrambot.__main__ import (
     _cams_cycle_is_current,
-    _cams_monitor_checkpoint,
     _cams_update_checkpoint,
     _current_morning_message_id,
     _refresh_event_catalogs_once,
@@ -174,7 +173,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
         )
         sent.assert_not_awaited()
 
-    def test_cams_refresh_uses_one_early_checkpoint_then_normal_monitoring(self):
+    def test_cams_refresh_uses_one_early_checkpoint(self):
         self.assertFalse(_cams_update_checkpoint(
             datetime(2026, 9, 11, 10, 10, tzinfo=MADRID)
         ))
@@ -187,9 +186,6 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(_cams_update_checkpoint(
             datetime(2026, 9, 11, 10, 45, tzinfo=MADRID)
         ))
-        self.assertTrue(_cams_monitor_checkpoint(MonitorRun(1, False)))
-        self.assertTrue(_cams_monitor_checkpoint(MonitorRun(None, True)))
-        self.assertFalse(_cams_monitor_checkpoint(MonitorRun(2, False)))
 
     def test_safebeach_initial_cycle_has_exact_1040_boundary(self):
         self.assertTrue(_safebeach_initial_checkpoint(
@@ -266,7 +262,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 ),
                 patch(
                     "telegrambot.__main__.scheduled_run",
-                    return_value=MonitorRun(None, True),
+                    return_value=MonitorRun(None, False, True),
                 ),
                 patch("telegrambot.__main__.send_message", new=sent),
             ):
@@ -457,8 +453,11 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                     new=AsyncMock(return_value="no_update"),
                 ),
                 patch(
-                    "telegrambot.__main__._cams_monitor_checkpoint",
-                    return_value=False,
+                    "telegrambot.__main__.scheduled_run",
+                    side_effect=[
+                        MonitorRun(1, False, False),
+                        MonitorRun(2, False, False),
+                    ],
                 ),
                 patch(
                     "telegrambot.__main__.load_snapshot",
@@ -543,8 +542,11 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                     new=AsyncMock(return_value="no_update"),
                 ),
                 patch(
-                    "telegrambot.__main__._cams_monitor_checkpoint",
-                    return_value=False,
+                    "telegrambot.__main__.scheduled_run",
+                    side_effect=[
+                        MonitorRun(1, False, False),
+                        MonitorRun(2, False, False),
+                    ],
                 ),
                 patch(
                     "telegrambot.__main__.load_snapshot",
@@ -665,8 +667,11 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                     new=AsyncMock(return_value="no_update"),
                 ),
                 patch(
-                    "telegrambot.__main__._cams_monitor_checkpoint",
-                    return_value=False,
+                    "telegrambot.__main__.scheduled_run",
+                    side_effect=[
+                        MonitorRun(1, False, False),
+                        MonitorRun(2, False, False),
+                    ],
                 ),
                 patch(
                     "telegrambot.__main__.load_snapshot",
