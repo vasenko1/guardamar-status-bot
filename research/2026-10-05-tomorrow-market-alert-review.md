@@ -47,19 +47,21 @@ the earlier draft.
 A separate market message, scheduler, state file or event pipeline would
 duplicate delivery logic and create another public-message lifecycle.
 
-Decision: keep one `Завтра в Гуардамаре` publication and let its existing
-Event stream include the reviewed recurring rule.
+Decision: keep one `Завтра в Гуардамаре` publication and merge the reviewed
+La Redonda occurrence into its existing Event stream after verification.
 
 ### 2. Do not leak the Sunday Campo market into this change
 
-The Friday/Saturday Tomorrow runs are deliberately absent because Friday owns
-the weekend digest. Therefore the Sunday-through-Thursday Tomorrow schedule
-targets only Monday through Friday. Enabling recurring events on this surface
-can reach the La Redonda Tuesday/Wednesday rule, but cannot target the separate
-Sunday Campo market.
+An initial implementation enabled generic recurring events in the shared
+Tomorrow loader and relied on the production Sunday-through-Thursday schedule
+to avoid a Sunday target. Focused tests exposed the hidden flaw: the producer
+and preview can be invoked directly on Saturday, in which case generic recurring
+events would add the separate Sunday Campo market and silently broaden scope.
 
-Decision: use `include_recurring=True` in the shared loader; do not create a
-new Campo-specific exception or broaden the Weekend behavior.
+Decision: keep `include_recurring=False` for Tomorrow's shared local loader.
+Derive only the reviewed La Redonda occurrence with the existing market rule,
+verify it, then merge that single event into the planning stream. Campo remains
+owned by the Weekend/Morning behavior and is untouched.
 
 ### 3. Keep the shared planning loader local-only
 
@@ -67,9 +69,9 @@ The new shared loader explicitly promises no source HTTP or AI. Moving the
 Mayor check into that helper would contaminate Weekend and future planning
 surfaces with a source dependency.
 
-Decision: load and merge local planning facts first. Apply the narrow Mayor
-market-exception verification only in `tomorrow_events.py` after the shared
-loader returns.
+Decision: load and merge local planning facts first with generic recurring
+events disabled. Apply the narrow La Redonda rule and Mayor exception
+verification only in `tomorrow_events.py` after the shared loader returns.
 
 ### 4. Avoid a stale positive claim
 
