@@ -97,6 +97,17 @@ background process. The market is another verified event unit in the existing
 planning publication. A Tuesday market moved by a holiday receives a compact
 schedule note explaining the Wednesday holiday.
 
+## Residual freshness boundary
+
+A cancellation published after the evening planning post can make that post
+stale before the next morning. The existing Morning Digest performs a fresh
+market-exception check, so it will not repeat a cancelled market, but this
+change does not add an overnight watcher or edit an already sent planning
+message. Closing that last window would require new monitoring/edit state for a
+rare exception and is intentionally outside this minimal change. The accepted
+boundary is therefore: verify immediately before the evening assertion, then
+verify again on the market morning.
+
 ## Expected 2026-10-05 behaviour
 
 At the Monday 5 October evening run, target day is Tuesday 6 October.
