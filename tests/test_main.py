@@ -1659,6 +1659,33 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
             sent.assert_not_awaited()
             self.assertFalse(delivery_path.exists())
 
+    async def test_weekend_respects_legacy_runtime_lock(self):
+        now = datetime(2026, 10, 9, 19, 15, tzinfo=MADRID)
+        with tempfile.TemporaryDirectory() as directory:
+            legacy_path = Path(directory) / "weekend.json"
+            delivery_path = Path(directory) / "weekend_delivery.json"
+            sent = AsyncMock(return_value=501)
+            with PublicationState(legacy_path).exclusive_run():
+                with (
+                    patch.dict(os.environ, {
+                        "TELEGRAM_BOT_TOKEN": "token",
+                        "TELEGRAM_CHAT_ID": "@chat",
+                        "WEEKEND_STATE_PATH": str(legacy_path),
+                        "WEEKEND_DELIVERY_STATE_PATH": str(delivery_path),
+                    }, clear=True),
+                    patch("telegrambot.__main__.datetime") as clock,
+                    patch(
+                        "telegrambot.__main__.produce_weekend_message",
+                        new=AsyncMock(return_value="афиша"),
+                    ),
+                    patch("telegrambot.__main__.send_message", new=sent),
+                ):
+                    clock.now.return_value = now
+                    with self.assertRaises(StateError):
+                        await _run_command("weekend")
+
+            sent.assert_not_awaited()
+
     async def test_weekend_sent_delivery_repairs_missing_legacy_marker(self):
         now = datetime(2026, 10, 9, 19, 15, tzinfo=MADRID)
         saturday = datetime(2026, 10, 10, tzinfo=MADRID).date()
