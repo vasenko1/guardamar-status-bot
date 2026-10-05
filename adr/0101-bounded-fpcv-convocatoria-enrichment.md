@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-05
-- Implementation: Pending in Sports Slice C
+- Implementation: Complete in Sports Slice C; production verification pending
 - Refines: ADR 0100
 - Research: `research/2026-10-05-sports-slice-c-source-contract-recon.md`
 
@@ -120,12 +120,15 @@ One 05:10 fishing preparation run may make at most:
 - one FEPyC authority request for each explicitly retained relevant national
   competition, bounded by the normalized event set;
 - one FPCV convocatoria-index request;
-- PDF reads only for relevant Guardamar convocatorias whose normalized document
-  identity is not already represented by accepted unchanged details.
+- one bounded PDF byte-read for each relevant Guardamar convocatoria on a
+  successful daily details refresh, capped at **four** relevant detail records;
+- `pdftotext` only when the exact index identity or PDF SHA-256 differs from
+  the accepted normalized record.
 
-The implementation must impose a small explicit maximum on FEPyC authority
-pages and relevant convocatoria documents before rollout. It must not devolve
-into N-per-team/category polling.
+The current FEPyC authority set is explicit and contains one reviewed event
+(`26MC26`), with a structural maximum of four authority records. The FPCV
+details set has a structural maximum of four relevant records. The adapter must
+not devolve into N-per-team/category polling.
 
 ### Separate rollback-safe normalized state
 
@@ -160,8 +163,12 @@ publication remains deferred to Sports Slice G.
 ### Failure semantics
 
 - Base FPCV calendar success is independent of details enrichment success.
-- Valid last-good authority/details may be retained under their own freshness
-  rules.
+- Valid last-good authority/details may be retained, but they are eligible to
+  override/enrich the base Event for at most **36 hours** after their
+  source-backed `observed_at`; future timestamps are ineligible.
+- One missed daily refresh may therefore reuse last-good enrichment, while a
+  second prolonged outage causes national authority to fail closed and ordinary
+  events to drop stale detail/cancellation overrides.
 - Stale or mismatched authority/details never override the current base event.
 - Known ambiguous national FPCV dates fail closed when authoritative FEPyC
   occurrence evidence is unavailable.
@@ -205,3 +212,46 @@ Rejected. The responsible national federation explicitly publishes 26-29.
 
 Rejected. The measured need is one bounded FPCV text-PDF contract; broad
 abstraction would add complexity without another implemented use.
+
+
+## Implementation checkpoint
+
+Sports Slice C implements this ADR inside the existing
+`python -m telegrambot.pesca_cv` one-shot.
+
+Implemented source artifacts:
+
+- `state/fepyc_fishing_authority.json`;
+- `state/pesca_cv_details.json`.
+
+The existing `state/pesca_cv_events.json` schema is unchanged.
+
+The accepted 2026 national authority record preserves the exact FEPyC
+competition name, category and 26-29 November dates. The Event projection
+renders the source-backed context as
+`Чемпионат Испании · категория дуэты`.
+
+The reviewed 17 October FPCV convocatoria normalizes:
+
+- provincial Alicante / qualification context;
+- two three-hour heats;
+- 16:00 concentration;
+- 18:00-21:00 and 22:30-01:30 competition windows;
+- source-backed beach venue;
+- club-mediated registration deadline/fee for later Event Access use.
+
+Daily FPCV PDF bytes are SHA-256 checked because the publisher may replace a
+document at the same URL. Text extraction is skipped when both the index
+identity and PDF content hash are unchanged.
+
+Implementation review discovered and corrected:
+
+- non-date service rows in the annual index;
+- province validation;
+- authority joins without date-overlap evidence;
+- stale last-good authority/cancellation overrides;
+- same-URL changed PDF content;
+- an overly generous eight-document upper bound.
+
+The final source-specific bounds are intentionally small and no generic
+document framework, new cron, daemon or Event Access fetch path was introduced.
