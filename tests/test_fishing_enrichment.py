@@ -66,15 +66,15 @@ def _fepyc_html():
     <html><body>
     <div>Id: 26MC26</div>
     <div>Especialidad: Lanzado Mar Costa</div>
-    <div>CategorÃ­a: DÃºos</div>
+    <div>Categor&iacute;a: D&uacute;os</div>
     <div>Fecha: Del 26 al 29 de Noviembre de 2026</div>
-    <div>Tipo CompeticiÃ³n: Nacional</div>
+    <div>Tipo Competici&oacute;n: Nacional</div>
     <div>Lugar: Guardamar del Segura (Alicante)</div>
     </body></html>
     """
 
 
-def _index_html(venue="Playas la Roqueta y Centro â Guardamar (Alicante)"):
+def _index_html(venue="Playas la Roqueta y Centro – Guardamar (Alicante)"):
     venue_bytes = venue.encode("utf-8") if isinstance(venue, str) else venue
     return (
         b"<html><body><table>"
