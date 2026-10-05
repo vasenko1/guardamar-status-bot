@@ -91,7 +91,7 @@ class SportsTodayPublicationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("♟ Шахматы — Open Dama", publication.message)
         self.assertIn("Начало в 10:00", publication.message)
         self.assertIn("🎣 Спортивная рыбалка — Mar Costa", publication.message)
-        self.assertIn("Идёт сейчас · до 09:00", publication.message)
+        self.assertIn("Началось в 07:00 · окончание в 09:00", publication.message)
         self.assertIn("Сегодня с 07:30", publication.message)
         self.assertIn("Competición de jornada completa", publication.message)
         self.assertNotIn("Ya terminó", publication.message)
