@@ -113,6 +113,17 @@ Each implementation slice has a verification gate. A later slice starts only
 after focused tests, the full suite and architecture/code review leave no
 unresolved defect for the current stage.
 
+### Sports foundation implementation checkpoint
+
+The shared Event model now has an optional source-owned `sport` field.
+Existing federation projections preserve FACV=`chess` and
+Pesca CV=`fishing`; event merge protects differing known sports from fuzzy
+deduplication and preserves a known sport when the matching alias has none.
+
+This is **foundation only**. Morning/Tomorrow/Weekend behavior remains
+unchanged until the later sports-publication slice. The deterministic sport
+presentation helper is not yet wired into resident output.
+
 ## Logical areas
 
 ### Morning Digest
