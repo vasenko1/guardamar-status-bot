@@ -4,9 +4,9 @@
 
 Slice D is production-verified.
 
-Slice E is the first resident-facing sports publication slice. The code portion
-implemented so far covers E1-E5 and E7. Exact E6 cron minutes are deliberately
-not committed until live Termux duration evidence is reviewed.
+Slice E is the first resident-facing sports publication slice. E1-E7 are now
+implemented. E6 cron minutes were committed only after the required live
+Termux schedule/duration read confirmed safe staggering.
 
 The work was rebased onto current main
 `8ebb57948b07f3f6c11e46fe7880a1bbd5c9fdf9`, which concurrently added the
@@ -136,28 +136,85 @@ After conservative started-event wording:
 
 No unresolved code-level objection remains for E1-E5/E7 at this checkpoint.
 
-## E6 schedule gate — still open by design
+### Rebased cycle 4 — cron + compatibility hardening
 
-The accepted implementation plan forbids hardcoding the previously discussed
+After the live E6 gate, the existing planning cron installer gained 08:25 and
+09:25 Sports Today rows and its focused Termux regression coverage. That head
+passed:
+
+- focused: **262 tests, OK**;
+- full: **1688 tests, OK**.
+
+A subsequent red-team review found one compatibility gap that green behavior
+tests had not exposed. Slice B had appended `Event.sport` specifically to
+preserve existing positional construction, but the initial E7 patch inserted
+`occurrence_status` immediately before it. Any caller using the already
+introduced positional sport slot could therefore be silently reinterpreted as
+a status.
+
+The fix keeps `sport` on its established slot and appends the new
+`occurrence_status` field after it. All current status emission remains
+keyword-based, so runtime semantics are unchanged. The field-order regression
+now protects the compatibility property rather than requiring `sport` to stay
+the final field forever.
+
+After this fix:
+
+- compileall: PASS;
+- focused: **261 tests, OK**;
+- full: **1687 tests, OK**.
+
+The one-test count reduction is intentional: two overlapping field-order tests
+were replaced by one compatibility-focused invariant.
+
+## E6 schedule gate — resolved from live production evidence
+
+The accepted implementation plan forbade hardcoding the previously discussed
 08:25 / 09:25 candidate slots before checking live production schedule and
-recent duration evidence.
+recent duration evidence. The production read was performed on clean
+`main=8ebb57948b07f3f6c11e46fe7880a1bbd5c9fdf9` before Slice E activation.
 
-Known current neighboring rows are:
+Observed neighboring jobs:
 
-- SUMA 08:05;
-- transport notices 08:42;
-- guide sync 09:02;
-- course notifications 09:42 and 11:42.
+- SUMA starts 08:05 and recent completion log lines are around 08:05:02-03;
+- transport notices start 08:42 and recent completion lines are around
+  08:42:01;
+- guide sync starts 09:02 and recent runs completed between about 09:06:31 and
+  09:07:40;
+- course notifications start 09:42 and 11:42 and complete around the scheduled
+  minute;
+- resident news starts 11:11;
+- the full crontab also retains its established hourly lightweight monitors,
+  but neither selected Sports Today minute is an exact start-time collision.
 
-The exact Sports Today primary/recovery minutes remain uncommitted until recent
-Termux logs for these jobs are reviewed. No sports cron row has been added yet.
+The chosen schedule is therefore:
+
+- primary: **08:25 Europe/Madrid**;
+- recovery: **09:25 Europe/Madrid**.
+
+08:25 is 20 minutes after SUMA and 17 minutes before transport. 09:25 is at
+least 17 minutes after the observed guide-sync completion range and 17 minutes
+before the 09:42 course run. Sports Today itself performs no source HTTP or AI;
+it reads bounded local snapshots and only the Telegram send is outbound.
+
+Both rows are added to the existing event-planning/weekend managed cron block.
+No new installer, daemon, scheduler or per-sport cron block is introduced.
+Installer tests verify one primary row, one recovery row, Europe/Madrid and
+idempotent preservation of unrelated jobs.
 
 ## Gate status
 
-**E1-E5/E7 code: PASS**
+**E1-E7 implementation: PASS**
 
-**E6 schedule: PENDING live read-only duration evidence**
+**E6 live scheduling gate: PASS — 08:25 primary / 09:25 recovery**
 
-No merge or production deployment is allowed until E6 is resolved, the cron
-installer/tests are patched, the complete branch is reviewed again, and
-focused/full tests pass on the final branch head.
+**Architecture / overengineering review: PASS** — the rollout reuses the Event
+model, shared planning loader, dated-delivery primitive and existing managed
+cron block. No second sports subsystem, source lifecycle, scheduler, daemon,
+queue, database or generic status framework was added.
+
+**Gap/risk review: PASS after one fix** — the Event positional compatibility
+gap described above was corrected before merge.
+
+Merge remains blocked only until the documentation head receives the same
+focused/full CI verification and the temporary branch-only workflow is removed.
