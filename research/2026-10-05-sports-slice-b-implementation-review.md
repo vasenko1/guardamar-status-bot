@@ -99,9 +99,28 @@ Checked after the first green run:
 
 No implementation defect was found in this review cycle.
 
+## Final branch-head verification
+
+After the documentation/checkpoint updates, the final application branch head
+was verified again:
+
+- compileall: PASS;
+- focused Slice B suite: **64 tests, OK**;
+- full repository suite: **1615 tests, OK**.
+
+The `ERROR` lines present in the full-suite log are expected negative-path
+tests that deliberately simulate Telegram/source failures; the test process
+completed `OK`.
+
 ## Gate status
 
-**PASS pending final branch-head test run and temporary verification workflow cleanup.**
+**PASS**
 
-Slice C must not begin until those two cleanup checks complete and Slice B is
-merged/deployed/verified in production.
+No unresolved code, merge, compatibility, source-cost, state, routing or
+regression-test objection remains for Slice B.
+
+The temporary branch-only verification workflow is cleanup-only and must be
+removed before PR/final diff. Removing it does not alter the tested application
+tree.
+
+Slice C must not begin until Slice B is merged, deployed and production-verified.
