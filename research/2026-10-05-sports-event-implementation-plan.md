@@ -810,7 +810,7 @@ Probe:
 
 Choose explicit max documents/bytes/time from measured source behavior.
 
-## G3. Preserve rollback by keeping the existing Pesca event snapshot unchanged
+## G3. Preserve rollback and isolate optional access enrichment
 
 Current `valid_pesca_cv_snapshot()` requires the **exact** existing event keys.
 If new access fields are written into `state/pesca_cv_events.json`, the
@@ -829,6 +829,11 @@ Therefore:
 - validate/write it atomically and independently so an access parse failure
   preserves the last-good access snapshot without corrupting the event
   calendar;
+- treat access enrichment failure as an isolated warning when the base Pesca
+  calendar refresh itself succeeded; do not make a convocatoria/PDF failure
+  invalidate or delete the usable competition calendar;
+- event-access publication applies its own source-specific freshness gate to
+  the access snapshot and fails closed when that evidence is too old;
 - previous code simply ignores the new access file, so rollback remains safe.
 
 This extra file is a source-normalization artifact, not a second sports state
@@ -971,6 +976,8 @@ publication authority.
 Same architecture as FVBCV:
 
 - bounded official adapter;
+- prefer one central fixture/jornada read or another small explicitly bounded
+  request set; reject an N-per-team/N-per-category crawl;
 - existing pre-morning refresh;
 - exact local team aliases preserving A/B/category identity;
 - `sport="football"` or `futsal` according to source;
@@ -1015,6 +1022,11 @@ An explicitly delegated registration/timing provider may supply only reviewed:
 - deadline;
 - price;
 - capacity/availability.
+
+Automated provider facts still require a bounded browserless contract. If the
+delegated provider cannot be read safely without JavaScript/browser
+automation, keep the official event/action link and omit unsupported live
+price/status facts rather than adding a browser.
 
 The commercial provider never becomes an independent event-discovery feed or
 second Telegram root.
@@ -1139,6 +1151,53 @@ Required focused areas:
 - `test_pesca_cv.py`;
 - future source-specific tests;
 - Telegram delivery-policy tests.
+
+## Cross-surface scenario tests
+
+In addition to module-focused tests, maintain a small deterministic scenario
+suite using local fixtures only. It must exercise the product as a lifecycle,
+not just individual functions.
+
+Required scenarios:
+
+1. **Mass participation event**
+   - current access opens -> one detailed root;
+   - photo success/fallback behavior;
+   - closing-tomorrow;
+   - closing-today before deadline;
+   - appears in Tomorrow/Weekend planning;
+   - appears again in Sports Today;
+   - absent from Morning;
+   - planning/current-day posts remain standalone, not replies to the access
+     root.
+
+2. **Ordinary home team match without advance access**
+   - no event-access record/root;
+   - source-backed league/group/round context;
+   - appears in planning and Sports Today only;
+   - away/unknown-venue match is not accepted as Guardamar-local.
+
+3. **Late cancellation/postponement**
+   - Friday Weekend contains the verified Sunday fixture;
+   - current-day fresh source exposes cancellation/move;
+   - Sports Today publishes the explicit correction rather than silently
+     omitting or calling it upcoming.
+
+4. **Fishing source authority**
+   - FPCV operational rows include 23-29 November;
+   - FEPyC authoritative championship occurrence is 26-29;
+   - no sports surface emits 23-25 as championship days.
+
+5. **Ambiguous Telegram delivery**
+   - primary send may have succeeded;
+   - recovery cannot duplicate Weekend/Sports Today/Event Access.
+
+6. **Mixed municipal programme**
+   - sport and non-sport children share a programme;
+   - general and sports sections do not duplicate the programme parent or lose
+     either child.
+
+These scenarios must run without web access, Telegram access or AI.
 
 Before each production deployment:
 
@@ -1489,3 +1548,32 @@ untracked risk.
 ### Result
 
 No remaining operational-order or cron-migration blocker found in this review.
+
+
+---
+
+## Plan review cycle 5 — integration tests / overengineering / source cost
+
+### Findings
+
+1. Module-level tests alone could all pass while the same event behaves
+   incorrectly across Event Access, Tomorrow, Morning and Sports Today.
+   Cross-surface lifecycle scenarios are now mandatory.
+2. Optional FPCV PDF/access failure must not poison the base fishing calendar.
+   The plan now treats the access snapshot as an independently validated
+   last-good output of the same 05:10 process.
+3. Future federation adapters must not turn a visually simple competition page
+   into N-per-team/category crawling. Central/bounded fixture access is now an
+   explicit source gate.
+4. Delegated registration providers remain browserless-only for automated
+   facts. A JavaScript-only provider does not justify Playwright; the bot may
+   retain the official delegated link while omitting unverified live state.
+5. The review found no justification for a new Competition model, sports DB,
+   generic provider registry, message queue, pagination protocol or per-sport
+   schedule. All proposed abstractions still correspond to at least two real
+   existing uses.
+
+### Result
+
+No remaining integration-test or obvious overengineering objection found in
+this review.
