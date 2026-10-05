@@ -20,8 +20,9 @@ national, regional, or Guardamar holiday without another source request.
   Russian name and legal scope for each date.
 - Apply the ordinance deterministically: omit the market on a holiday
   Wednesday and show it on the preceding Tuesday.
-- Check the Mayor channel for an explicit exception on the resulting market
-  date, whether Tuesday or Wednesday.
+- Check the Mayor channel for an explicit exception whenever the resulting
+  Tuesday or Wednesday market date is about to be asserted, including the
+  previous evening's next-day planning notice.
 - Omit the recurring market when the current year's calendar has not been
   reviewed.
 - Add the next official calendar once per year; do not add a dependency,
@@ -41,6 +42,8 @@ holiday publication (DOGV, 14 November 2025). Guardamar's local holidays are
 
 ## Consequences
 
-Holiday moves and the user-facing block are correct and cost no network
-request. Annual review is an explicit maintenance task. If it is missed,
-silence is preferred to publishing a holiday or market on an unverified date.
+Holiday moves and their schedule are computed locally and cost no calendar
+request. The next-day planning notice may reuse the already approved bounded
+Mayor exception check before asserting tomorrow's market. Annual review is an
+explicit maintenance task. If it is missed, silence is preferred to publishing
+a holiday or market on an unverified date.

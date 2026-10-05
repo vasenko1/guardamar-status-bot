@@ -41,10 +41,15 @@ active dates and unchanged street names; each Russian line is capped at 180
 characters and the digest displays at most two. The application omits the
 entire traffic section on any validation failure.
 
-The reviewed Wednesday-market rule also permits one bounded Gemini call only
-when fresh Mayor-channel posts explicitly mention the market. Deterministic
-validation requires an exact quotation, cancellation wording, and the target
-local date; otherwise the recurring market is omitted rather than guessed.
+The reviewed municipal-market rule also permits one bounded Gemini call only
+when fresh Mayor-channel posts explicitly mention the market. The classifier
+must answer whether the market will **not** occur on the target date: an
+explicit cancellation or move away from that date is positive, while a move to
+that date is negative. A positive result requires an exact quotation,
+exception wording, and the exact target local date. Every negative result must
+use empty evidence and a null event date. Any non-canonical or ungrounded
+result is a source failure and the recurring market is omitted rather than
+guessed.
 
 Do not send secrets, personal data, unrelated private content, or another
 model's output. Do not use Gemini for AEMET, SafeBeach, delivery, scheduling,
