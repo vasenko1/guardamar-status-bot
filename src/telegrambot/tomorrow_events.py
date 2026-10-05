@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Awaitable, Callable, Optional, Sequence
 from zoneinfo import ZoneInfo
 
-from .agenda import AgendaError, fetch_today_events
+from .agenda import AgendaError, fetch_today_events, municipal_market_event
 from .am_guardamar import AmGuardamarError, fetch_today_am_guardamar_events
 from .branding import with_footer
 from .digest import MONTHS_GENITIVE, build_event_section
@@ -19,6 +19,8 @@ from .dated_publication import DatedPublicationState
 from .facv import FacvSourceError, fetch_today_facv_events
 from .convega import ConvegaSourceError, fetch_today_convega_events
 from .library_agenda import LibraryAgendaError, fetch_today_library_events
+from .holidays import official_holidays_on
+from .mayor import MayorChannelError, market_is_cancelled
 from .models import Event
 from .morning import _merge_events, _prefer_agenda_guardamar_venues
 from .municipal_agenda import MunicipalAgendaError, fetch_today_municipal_events
@@ -175,6 +177,56 @@ def _unit_image_url(unit: Sequence[Event]) -> Optional[str]:
     return next(iter(values)) if len(values) == 1 else None
 
 
+def _moved_market_schedule_note(target_day: date) -> Optional[str]:
+    """Explain the ordinance-driven Tuesday move without another source."""
+
+    if target_day.weekday() != 1:
+        return None
+    holidays = official_holidays_on(target_day + timedelta(days=1))
+    if not holidays:
+        return None
+    holiday = holidays[0]
+    return (
+        "Перенесён со среды: "
+        f"{holiday.date.day} {MONTHS_GENITIVE[holiday.date.month]} — "
+        f"{holiday.name}"
+    )
+
+
+async def _verified_tomorrow_market(
+    now: datetime,
+    target_day: date,
+    gemini_api_key: str,
+) -> tuple[Event, ...]:
+    """Return only a scheduled municipal market that survives exception check."""
+
+    market = municipal_market_event(target_day)
+    if market is None:
+        return ()
+    try:
+        if await market_is_cancelled(
+            now,
+            gemini_api_key,
+            market_day=target_day,
+        ):
+            LOGGER.info(
+                "Tomorrow events omit explicitly cancelled market for %s",
+                target_day,
+            )
+            return ()
+    except MayorChannelError as exc:
+        LOGGER.warning(
+            "Tomorrow events omit municipal market; Mayor check unavailable: %s",
+            exc,
+        )
+        return ()
+
+    note = _moved_market_schedule_note(target_day)
+    if note is not None:
+        market = replace(market, schedule_note=note)
+    return (market,)
+
+
 def _render_message(
     events: Sequence[Event],
     unit_count: int,
@@ -214,8 +266,9 @@ async def produce_tomorrow_event_publication(
     pesca_cv_state_path: Path,
     convega_state_path: Path = Path("state/convega_events.json"),
     translation_cache_path: Path,
+    gemini_api_key: str = "",
 ) -> Optional[TomorrowEventPublication]:
-    """Build tomorrow's proactive announcement with no source network I/O."""
+    """Build tomorrow's proactive announcement from reviewed local facts."""
 
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
     target_day = local_day + timedelta(days=1)
@@ -309,6 +362,12 @@ async def produce_tomorrow_event_publication(
         errors=(ConvegaSourceError,),
     )
 
+    market = await _verified_tomorrow_market(
+        now,
+        target_day,
+        gemini_api_key,
+    )
+
     municipal = _prefer_agenda_guardamar_venues(municipal, agenda)
     merged = _merge_events(
         municipal,
@@ -318,6 +377,7 @@ async def produce_tomorrow_event_publication(
         chess,
         fishing,
         convega,
+        market,
     )
     eligible = tuple(
         event
