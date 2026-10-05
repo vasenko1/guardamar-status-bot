@@ -2,10 +2,10 @@
 
 ## Status
 
-Web/source recon complete. **Termux production probe pending.**
+**PASS — web/source recon and Termux production contract probe complete.**
 
-Do not implement Slice C source/runtime changes until the production probe below
-confirms the same contracts from the actual Android environment.
+The actual Android/Termux environment confirmed the same contracts without
+mutating source state, cron, Telegram or the working tree.
 
 ## FEPyC national occurrence authority
 
@@ -137,9 +137,32 @@ The actual Termux device must verify, read-only:
 
 No source/state file, cron or Telegram operation may be mutated by this probe.
 
+## Termux production probe result
+
+Production revision:
+`0c01686545ee90236a2ab33a433b6f24a17d789f`.
+
+Observed on 2026-10-05:
+
+- existing normalized FPCV national conflict still present: 23-29 November;
+- `pdftotext` available at
+  `/data/data/com.termux/files/usr/bin/pdftotext`, version 26.02.0;
+- FEPyC `26MC26`: HTTP 200, `text/html`, 33,826 bytes, 0.326 s,
+  all expected semantic markers present;
+- FPCV convocatoria index: HTTP 200, `text/html`, 161,072 bytes,
+  2.465 s, exact 17 October Guardamar row and one exact PDF link present;
+- exact FPCV PDF: HTTP 200, `application/pdf`, 609,280 bytes, 1.474 s;
+- `pdftotext -layout`: exit 0, 8,442 text bytes, 0.088 s,
+  all reviewed competition/deadline/programme markers present;
+- pre/post `state/pesca_cv_events.json` SHA-256 unchanged:
+  `08a882681c4c3f2848c0ba53c43577aa56319f8766f7b2cf164a162fffc4e346`;
+- working tree unchanged;
+- no Telegram call, cron mutation or production state write.
+
 ## Gate
 
-**PENDING TERMUX PROBE**
+**PASS**
 
-Implementation of FEPyC authority/details snapshots remains blocked until the
-production output is reviewed.
+The source contract is approved for the narrow ADR 0101 runtime amendment.
+Python implementation may begin only after the documentation-only ADR/KB change
+passes its own consistency review.
