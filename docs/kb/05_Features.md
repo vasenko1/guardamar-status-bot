@@ -128,6 +128,36 @@ date. A definite Telegram failure clears that date for retry; an ambiguous send
 keeps it to prevent an automatic duplicate. No browser, PDF, AI, database,
 daemon, queue or generic notification framework is involved.
 
+## Sports event presentation target
+
+ADR 0100 accepts a dedicated sports presentation on the shared Event pipeline.
+This section describes the **approved target**, not current production behavior
+until its staged implementation is complete.
+
+Sporting events remain ordinary normalized events with one optional canonical
+sport code. The same accepted event facts feed:
+
+- the existing next-day/weekend planning message, under a dedicated sports
+  subsection;
+- one standalone current-day sports message;
+- the existing event-access lifecycle when advance registration, reservation or
+  ticket action exists.
+
+The current-day message is intentionally separate from the previous planning
+mention: it answers what can be attended today and may surface an explicit
+source-backed cancellation/postponement. After it is operational, sport is
+omitted from Morning Digest to avoid a third repetition.
+
+Published sports copy is written for a resident rather than exposing raw
+federation rows. When the responsible source provides the facts, it names the
+sport, participants, competition/division, group, round or explicit knockout /
+qualifying / friendly stage, meaningful team category, schedule and venue.
+Missing facts are omitted rather than inferred.
+
+No separate evening sports-tomorrow message, sports database, keyword
+classifier, generic competition framework, browser worker or per-sport cron is
+approved.
+
 ## One-off event registration notices
 
 Official one-off events may publish a compact registration lifecycle before
@@ -170,12 +200,27 @@ verified events omits its heading; a weekend with no verified events sends
 no message. Missing weekend title translations are prepared inline through
 the same bounded cache; a provider outage degrades titles to normalized
 Spanish. Publication runs Friday at `19:15` after that best-effort refresh, with
-one delivery-only retry at `20:15`, guarded by one atomic success marker in
-`state/weekend.json` keyed to the target Saturday. A successful first send
-makes the retry a no-op. Only the publishing command fills missing weekend
-translations; `weekend-preview` reads the existing cache and prints
-the message without
-Telegram or state changes. See ADR 0035.
+one delivery-only recovery at `20:15`.
+
+Weekend delivery now uses the same small crash-safe dated-state shape as
+Tomorrow: before a non-idempotent Telegram send it writes
+`state/weekend_delivery.json` as `uncertain`; confirmed success stores the
+Telegram message ID, while timeout/network/5xx ambiguity remains uncertain and
+blocks the recovery send. Automatic retries are limited to explicit Telegram
+rate-limit rejection. A deterministic rejection clears the reservation so the
+later recovery may retry safely.
+
+The existing `state/weekend.json` successful-target marker is still written
+after confirmed Telegram delivery and checked first. It is retained as a
+rollback-compatible marker for the previous runtime; the new Weekend process
+also acquires its legacy lock so an old and new runtime cannot publish
+concurrently across a deployment boundary. A previously confirmed
+`weekend_delivery.json` state can repair a missing legacy marker without
+sending another Telegram message.
+
+Only the publishing command fills missing weekend translations;
+`weekend-preview` reads the existing cache and prints the message without
+Telegram or either publication-state mutation. See ADR 0035 and ADR 0080.
 
 ## Next-day electricity prices
 

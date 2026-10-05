@@ -76,12 +76,42 @@ no message.
 | Electricity | 20:30/20:35/20:45/21:00/21:20 attempts | One next-day PVPC table reply after the first complete official dataset. |
 | Resident-impact news | 11:11/15:11/18:11 daily | One bounded EWN discovery read; one batch AI classification; at most one first-party-grounded Russian Telegram note. |
 | Next-day events | Sunday–Thursday 19:25, recovery 20:25 | Reads only fresh same-day local event catalogs; one editorial unit may be rich with one official image URL, while multiple units stay in one text planning post. The recovery reuses the same state, so a confirmed or uncertain first delivery cannot duplicate. No evening source fetch or AI. |
-| Weekend digest | Friday 19:15, retry 20:15 | One weekend-events digest when verified events exist. |
+| Weekend digest | Friday 19:15, recovery 20:15 | One weekend-events digest when verified events exist. Delivery reserves a crash-safe dated `uncertain` marker before Telegram send; confirmed/uncertain delivery blocks recovery duplicates. The legacy `state/weekend.json` success marker remains current for rollback compatibility while `state/weekend_delivery.json` owns ambiguous-delivery safety. |
 | Pharmacy catalogue | Sunday 05:50 | Source refresh only; consumed by Morning Digest. |
 | Bathing-zone control | 19:35 daily 01 Jun–15 Sep; PDF only for a new report identity | A fresh first or later official weekly report produces one 🧪 group notice with actual sample dates, laboratory water quality by beach and only non-excellent visual water/sand exceptions; stale first report becomes baseline. |
 | Event/translation/AEMET preparation | Pre-morning one-shots | Source preparation only; no independent public notification. |
 | Municipal Wi-Fi source watch | Inside guide sync | A changed official municipal PDF is parsed fail-closed; only a semantic point/SSID/password change updates the existing card and, after reconciliation, produces one public group notice linking to that card. |
 | OCI capacity search | Independent GitHub Actions | Infrastructure only; no Telegram city publication. |
+
+## Accepted sports-event target architecture
+
+ADR 0100 accepts a dedicated sports presentation layer on the existing event
+pipeline. It is **implementation pending** until the staged rollout completes;
+the runtime lifecycle inventory above continues to describe current production.
+
+The accepted target keeps one normalized `Event` stream and adds one optional
+source-owned `sport` fact. Sports do not get a second database, collector,
+scheduler or registration lifecycle.
+
+Once implemented:
+
+- `Завтра в Гуардамаре` and Friday `Афиша выходных` include a separate
+  sports subsection;
+- one standalone local-snapshot-only `Спортивные мероприятия сегодня`
+  publication serves the current-day reminder/correction;
+- Morning omits sport after that current-day publication is operational;
+- advance registration/reservation/ticket information continues through the
+  event-access lifecycle in ADRs 0090-0092;
+- source-specific authority and locality checks happen before generic Event
+  merge; no global sports ownership/precedence framework is introduced.
+
+Sports copy must preserve source-backed competition context such as league,
+group, round/stage, category, schedule and venue when available. Explicit
+same-day cancellation/postponement is a correction, not a silent omission.
+
+Each implementation slice has a verification gate. A later slice starts only
+after focused tests, the full suite and architecture/code review leave no
+unresolved defect for the current stage.
 
 ## Logical areas
 

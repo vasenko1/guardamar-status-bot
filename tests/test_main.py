@@ -19,6 +19,7 @@ from telegrambot.__main__ import (
 )
 from telegrambot.agenda import AgendaError
 from telegrambot.diagnostics import SourceDiagnostic
+from telegrambot.dated_publication import DatedPublicationState
 from telegrambot.environment import EnvironmentError
 from telegrambot.hidraqua import HidraquaDeliveryUncertain
 from telegrambot.models import (
@@ -1472,6 +1473,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as directory:
             translations = Path(directory) / "translations.json"
             weekend_state = Path(directory) / "weekend.json"
+            weekend_delivery = Path(directory) / "weekend_delivery.json"
             with (
                 patch("telegrambot.__main__.prepare_translations", new=prepared),
                 patch(
@@ -1482,6 +1484,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 patch.dict(os.environ, {
                     "EVENT_TRANSLATIONS_PATH": str(translations),
                     "WEEKEND_STATE_PATH": str(weekend_state),
+                    "WEEKEND_DELIVERY_STATE_PATH": str(weekend_delivery),
                     "GEMINI_API_KEY": "configured-key",
                     "TELEGRAM_BOT_TOKEN": "token",
                     "TELEGRAM_CHAT_ID": "@chat",
@@ -1494,6 +1497,259 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
             sent.assert_not_awaited()
             self.assertFalse(translations.exists())
             self.assertFalse(weekend_state.exists())
+            self.assertFalse(weekend_delivery.exists())
+
+
+    async def test_weekend_confirmed_send_writes_legacy_and_delivery_state(self):
+        now = datetime(2026, 10, 9, 19, 15, tzinfo=MADRID)
+        saturday = datetime(2026, 10, 10, tzinfo=MADRID).date()
+        with tempfile.TemporaryDirectory() as directory:
+            legacy_path = Path(directory) / "weekend.json"
+            delivery_path = Path(directory) / "weekend_delivery.json"
+            sent = AsyncMock(return_value=501)
+            with (
+                patch.dict(os.environ, {
+                    "TELEGRAM_BOT_TOKEN": "token",
+                    "TELEGRAM_CHAT_ID": "@chat",
+                    "WEEKEND_STATE_PATH": str(legacy_path),
+                    "WEEKEND_DELIVERY_STATE_PATH": str(delivery_path),
+                }, clear=True),
+                patch("telegrambot.__main__.datetime") as clock,
+                patch(
+                    "telegrambot.__main__.produce_weekend_message",
+                    new=AsyncMock(return_value="афиша"),
+                ),
+                patch("telegrambot.__main__.send_message", new=sent),
+            ):
+                clock.now.return_value = now
+                self.assertEqual(await _run_command("weekend"), 0)
+
+            sent.assert_awaited_once_with(
+                "token",
+                "@chat",
+                "афиша",
+                disable_notification=False,
+                retry_only_rate_limits=True,
+            )
+            self.assertTrue(PublicationState(legacy_path).is_published(saturday))
+            self.assertEqual(
+                DatedPublicationState(delivery_path).status(saturday),
+                "sent",
+            )
+
+    async def test_weekend_ambiguous_send_blocks_recovery_duplicate(self):
+        now = datetime(2026, 10, 9, 19, 15, tzinfo=MADRID)
+        saturday = datetime(2026, 10, 10, tzinfo=MADRID).date()
+        ambiguous = TelegramError(
+            "timeout",
+            retryable=True,
+            code="TIMEOUT",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            legacy_path = Path(directory) / "weekend.json"
+            delivery_path = Path(directory) / "weekend_delivery.json"
+            first_send = AsyncMock(side_effect=ambiguous)
+            with (
+                patch.dict(os.environ, {
+                    "TELEGRAM_BOT_TOKEN": "token",
+                    "TELEGRAM_CHAT_ID": "@chat",
+                    "WEEKEND_STATE_PATH": str(legacy_path),
+                    "WEEKEND_DELIVERY_STATE_PATH": str(delivery_path),
+                }, clear=True),
+                patch("telegrambot.__main__.datetime") as clock,
+                patch(
+                    "telegrambot.__main__.produce_weekend_message",
+                    new=AsyncMock(return_value="афиша"),
+                ),
+                patch("telegrambot.__main__.send_message", new=first_send),
+            ):
+                clock.now.return_value = now
+                self.assertEqual(await _run_command("weekend"), 0)
+
+            self.assertFalse(legacy_path.exists())
+            self.assertEqual(
+                DatedPublicationState(delivery_path).status(saturday),
+                "uncertain",
+            )
+
+            recovery_send = AsyncMock(return_value=777)
+            recovery_build = AsyncMock(return_value="афиша")
+            with (
+                patch.dict(os.environ, {
+                    "TELEGRAM_BOT_TOKEN": "token",
+                    "TELEGRAM_CHAT_ID": "@chat",
+                    "WEEKEND_STATE_PATH": str(legacy_path),
+                    "WEEKEND_DELIVERY_STATE_PATH": str(delivery_path),
+                }, clear=True),
+                patch("telegrambot.__main__.datetime") as clock,
+                patch(
+                    "telegrambot.__main__.produce_weekend_message",
+                    new=recovery_build,
+                ),
+                patch("telegrambot.__main__.send_message", new=recovery_send),
+            ):
+                clock.now.return_value = now.replace(hour=20)
+                self.assertEqual(await _run_command("weekend"), 0)
+
+            recovery_build.assert_not_awaited()
+            recovery_send.assert_not_awaited()
+
+    async def test_weekend_deterministic_send_failure_clears_reservation(self):
+        now = datetime(2026, 10, 9, 19, 15, tzinfo=MADRID)
+        saturday = datetime(2026, 10, 10, tzinfo=MADRID).date()
+        rejected = TelegramError(
+            "bad request",
+            retryable=False,
+            code="HTTP-400",
+            status=400,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            legacy_path = Path(directory) / "weekend.json"
+            delivery_path = Path(directory) / "weekend_delivery.json"
+            with (
+                patch.dict(os.environ, {
+                    "TELEGRAM_BOT_TOKEN": "token",
+                    "TELEGRAM_CHAT_ID": "@chat",
+                    "WEEKEND_STATE_PATH": str(legacy_path),
+                    "WEEKEND_DELIVERY_STATE_PATH": str(delivery_path),
+                }, clear=True),
+                patch("telegrambot.__main__.datetime") as clock,
+                patch(
+                    "telegrambot.__main__.produce_weekend_message",
+                    new=AsyncMock(return_value="афиша"),
+                ),
+                patch(
+                    "telegrambot.__main__.send_message",
+                    new=AsyncMock(side_effect=rejected),
+                ),
+            ):
+                clock.now.return_value = now
+                with self.assertRaises(TelegramError):
+                    await _run_command("weekend")
+
+            self.assertFalse(legacy_path.exists())
+            self.assertIsNone(
+                DatedPublicationState(delivery_path).status(saturday)
+            )
+
+    async def test_weekend_legacy_marker_still_blocks_delivery(self):
+        now = datetime(2026, 10, 9, 19, 15, tzinfo=MADRID)
+        saturday = datetime(2026, 10, 10, tzinfo=MADRID).date()
+        with tempfile.TemporaryDirectory() as directory:
+            legacy_path = Path(directory) / "weekend.json"
+            delivery_path = Path(directory) / "weekend_delivery.json"
+            PublicationState(legacy_path).mark_published(saturday)
+            built = AsyncMock(return_value="афиша")
+            sent = AsyncMock(return_value=501)
+            with (
+                patch.dict(os.environ, {
+                    "TELEGRAM_BOT_TOKEN": "token",
+                    "TELEGRAM_CHAT_ID": "@chat",
+                    "WEEKEND_STATE_PATH": str(legacy_path),
+                    "WEEKEND_DELIVERY_STATE_PATH": str(delivery_path),
+                }, clear=True),
+                patch("telegrambot.__main__.datetime") as clock,
+                patch("telegrambot.__main__.produce_weekend_message", new=built),
+                patch("telegrambot.__main__.send_message", new=sent),
+            ):
+                clock.now.return_value = now
+                self.assertEqual(await _run_command("weekend"), 0)
+
+            built.assert_not_awaited()
+            sent.assert_not_awaited()
+            self.assertFalse(delivery_path.exists())
+
+    async def test_weekend_respects_legacy_runtime_lock(self):
+        now = datetime(2026, 10, 9, 19, 15, tzinfo=MADRID)
+        with tempfile.TemporaryDirectory() as directory:
+            legacy_path = Path(directory) / "weekend.json"
+            delivery_path = Path(directory) / "weekend_delivery.json"
+            sent = AsyncMock(return_value=501)
+            with PublicationState(legacy_path).exclusive_run():
+                with (
+                    patch.dict(os.environ, {
+                        "TELEGRAM_BOT_TOKEN": "token",
+                        "TELEGRAM_CHAT_ID": "@chat",
+                        "WEEKEND_STATE_PATH": str(legacy_path),
+                        "WEEKEND_DELIVERY_STATE_PATH": str(delivery_path),
+                    }, clear=True),
+                    patch("telegrambot.__main__.datetime") as clock,
+                    patch(
+                        "telegrambot.__main__.produce_weekend_message",
+                        new=AsyncMock(return_value="афиша"),
+                    ),
+                    patch("telegrambot.__main__.send_message", new=sent),
+                ):
+                    clock.now.return_value = now
+                    with self.assertRaises(StateError):
+                        await _run_command("weekend")
+
+            sent.assert_not_awaited()
+
+    async def test_weekend_sent_delivery_repairs_missing_legacy_marker(self):
+        now = datetime(2026, 10, 9, 19, 15, tzinfo=MADRID)
+        saturday = datetime(2026, 10, 10, tzinfo=MADRID).date()
+        with tempfile.TemporaryDirectory() as directory:
+            legacy_path = Path(directory) / "weekend.json"
+            delivery_path = Path(directory) / "weekend_delivery.json"
+            delivery = DatedPublicationState(delivery_path)
+            delivery.mark_uncertain(saturday)
+            delivery.mark_sent(saturday, 432)
+            sent = AsyncMock(return_value=501)
+            with (
+                patch.dict(os.environ, {
+                    "TELEGRAM_BOT_TOKEN": "token",
+                    "TELEGRAM_CHAT_ID": "@chat",
+                    "WEEKEND_STATE_PATH": str(legacy_path),
+                    "WEEKEND_DELIVERY_STATE_PATH": str(delivery_path),
+                }, clear=True),
+                patch("telegrambot.__main__.datetime") as clock,
+                patch(
+                    "telegrambot.__main__.produce_weekend_message",
+                    new=AsyncMock(return_value="афиша"),
+                ),
+                patch("telegrambot.__main__.send_message", new=sent),
+            ):
+                clock.now.return_value = now
+                self.assertEqual(await _run_command("weekend"), 0)
+
+            sent.assert_not_awaited()
+            self.assertTrue(PublicationState(legacy_path).is_published(saturday))
+
+    async def test_weekend_legacy_write_failure_leaves_delivery_uncertain(self):
+        now = datetime(2026, 10, 9, 19, 15, tzinfo=MADRID)
+        saturday = datetime(2026, 10, 10, tzinfo=MADRID).date()
+        with tempfile.TemporaryDirectory() as directory:
+            legacy_path = Path(directory) / "weekend.json"
+            delivery_path = Path(directory) / "weekend_delivery.json"
+            sent = AsyncMock(return_value=501)
+            with (
+                patch.dict(os.environ, {
+                    "TELEGRAM_BOT_TOKEN": "token",
+                    "TELEGRAM_CHAT_ID": "@chat",
+                    "WEEKEND_STATE_PATH": str(legacy_path),
+                    "WEEKEND_DELIVERY_STATE_PATH": str(delivery_path),
+                }, clear=True),
+                patch("telegrambot.__main__.datetime") as clock,
+                patch(
+                    "telegrambot.__main__.produce_weekend_message",
+                    new=AsyncMock(return_value="афиша"),
+                ),
+                patch("telegrambot.__main__.send_message", new=sent),
+                patch.object(
+                    PublicationState,
+                    "mark_published",
+                    side_effect=OSError("disk full"),
+                ),
+            ):
+                clock.now.return_value = now
+                with self.assertRaisesRegex(OSError, "disk full"):
+                    await _run_command("weekend")
+
+            self.assertEqual(
+                DatedPublicationState(delivery_path).status(saturday),
+                "uncertain",
+            )
 
     async def test_preview_uses_both_configured_event_catalogs(self):
         captured = {}

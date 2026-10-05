@@ -86,6 +86,25 @@ class TomorrowEventStateTests(unittest.TestCase):
             self.assertIn('"message_id": 321', path.read_text(encoding="utf-8"))
 
 
+    def test_existing_v1_tomorrow_state_remains_byte_schema_compatible(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "tomorrow.json"
+            path.write_text(
+                '{"message_id": 321, "status": "sent", '
+                '"target_date": "2026-09-25", "version": 1}\n',
+                encoding="utf-8",
+            )
+            state = TomorrowEventState(path)
+            target = date(2026, 9, 25)
+
+            self.assertEqual(state.status(target), "sent")
+            state.clear(target)
+            self.assertEqual(
+                path.read_text(encoding="utf-8"),
+                '{"version": 1}\n',
+            )
+
+
 class TomorrowEventPublicationTests(unittest.IsolatedAsyncioTestCase):
     async def test_fresh_convega_catalog_contributes_to_tomorrow(self):
         now = datetime(2026, 10, 3, 19, 25, tzinfo=TZ)
