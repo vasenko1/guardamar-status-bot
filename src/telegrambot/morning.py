@@ -75,6 +75,12 @@ def _is_routine_event(event) -> bool:
     return _normalized_event_title(event.title) in _ROUTINE_EVENT_TITLES
 
 
+def _morning_events_without_sport(events):
+    """Keep sports out only after the dedicated current-day surface exists."""
+
+    return tuple(event for event in events if event.sport is None)
+
+
 def _prefer_agenda_guardamar_venues(
     municipal_events,
     agenda_events,
@@ -988,6 +994,21 @@ async def produce_message(
             exc.diagnostic_code,
         )
 
+    morning_events = _morning_events_without_sport(
+        _merge_events(
+            weekly_events,
+            mayor_events,
+            municipal_events,
+            events,
+            library_events,
+            am_guardamar_events,
+            facv_events,
+            pesca_cv_events,
+            convega_events,
+            blood_donation_events,
+        )
+    )
+
     return build_message(
         replace(
             digest,
@@ -998,18 +1019,7 @@ async def produce_message(
             celebrations=celebrations_on(
                 now.astimezone(GUARDAMAR_TIMEZONE).date()
             ),
-            events=_merge_events(
-                weekly_events,
-                mayor_events,
-                municipal_events,
-                events,
-                library_events,
-                am_guardamar_events,
-                facv_events,
-                pesca_cv_events,
-                convega_events,
-                blood_donation_events,
-            ),
+            events=morning_events,
             heat_health_risk=heat_health_risk,
             cold_health_risk=cold_health_risk,
             air_quality=air_quality,
