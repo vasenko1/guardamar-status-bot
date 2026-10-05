@@ -262,7 +262,7 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 ),
                 patch(
                     "telegrambot.__main__.scheduled_run",
-                    return_value=MonitorRun(None, True),
+                    return_value=MonitorRun(None, False, True),
                 ),
                 patch("telegrambot.__main__.send_message", new=sent),
             ):
