@@ -14,6 +14,7 @@ from telegrambot.agenda import (
     _load_agenda_snapshot,
     _write_agenda_snapshot,
     normalize_event_pages,
+    municipal_market_event,
     recurring_events,
     requires_market_exception_check,
 )
@@ -632,6 +633,10 @@ class AgendaNormalizationTests(unittest.TestCase):
             ),
             (),
         )
+
+    def test_municipal_market_helper_excludes_campo_sunday_market(self):
+        self.assertIsNotNone(municipal_market_event(date(2026, 10, 6)))
+        self.assertIsNone(municipal_market_event(date(2026, 8, 2)))
 
     def test_omits_market_when_annual_calendar_is_not_reviewed(self):
         timezone = ZoneInfo("Europe/Madrid")
