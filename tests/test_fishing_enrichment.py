@@ -92,6 +92,10 @@ def _index_html(venue="Playas la Roqueta y Centro – Guardamar (Alicante)"):
     )
 
 
+def _pdf_bytes():
+    return b"%PDF-1.7\nreviewed-fixture"
+
+
 def _pdf_text():
     return """
     CAMPEONATO PROVINCIAL DE ALICANTE
@@ -213,6 +217,7 @@ class FishingEnrichmentTests(unittest.TestCase):
         record = parse_fpcv_convocatoria_text(
             _pdf_text(),
             descriptor=descriptor,
+            content_sha256="c" * 64,
             observed_at=NOW,
         )
 
@@ -349,7 +354,7 @@ class FishingEnrichmentTests(unittest.TestCase):
             saved = json.loads(state.read_text(encoding="utf-8"))
             self.assertEqual(saved["records"][0]["observed_at"], NOW.isoformat())
 
-    def test_unchanged_index_identity_reuses_pdf_details_without_refetch(self):
+    def test_unchanged_pdf_bytes_are_refetched_but_not_reextracted(self):
         descriptor = parse_fpcv_index_html(
             _index_html(),
             local_day=NOW.date(),
@@ -357,7 +362,8 @@ class FishingEnrichmentTests(unittest.TestCase):
         )[0]
         with tempfile.TemporaryDirectory() as directory:
             state = Path(directory) / "details.json"
-            fetch_pdf = AsyncMock(return_value=_pdf_text())
+            fetch_pdf = AsyncMock(return_value=_pdf_bytes())
+            extract = Mock(return_value=_pdf_text())
 
             with (
                 patch(
@@ -365,8 +371,12 @@ class FishingEnrichmentTests(unittest.TestCase):
                     new=AsyncMock(return_value=(descriptor,)),
                 ),
                 patch(
-                    "telegrambot.fishing_enrichment._fetch_fpcv_pdf_text",
+                    "telegrambot.fishing_enrichment._fetch_fpcv_pdf_bytes",
                     new=fetch_pdf,
+                ),
+                patch(
+                    "telegrambot.fishing_enrichment.extract_fpcv_pdf_text",
+                    new=extract,
                 ),
             ):
                 first = asyncio.run(
@@ -384,11 +394,61 @@ class FishingEnrichmentTests(unittest.TestCase):
                     )
                 )
 
-            self.assertEqual(fetch_pdf.await_count, 1)
+            self.assertEqual(fetch_pdf.await_count, 2)
+            self.assertEqual(extract.call_count, 1)
+            self.assertEqual(first[0]["content_sha256"], second[0]["content_sha256"])
             self.assertEqual(first[0]["document_identity"], second[0]["document_identity"])
             self.assertEqual(
                 second[0]["observed_at"],
                 (NOW + timedelta(days=1)).isoformat(),
+            )
+
+    def test_same_url_changed_pdf_bytes_are_reparsed(self):
+        descriptor = parse_fpcv_index_html(
+            _index_html(),
+            local_day=NOW.date(),
+            base_events=(_provincial_base(),),
+        )[0]
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "details.json"
+            fetch_pdf = AsyncMock(
+                side_effect=[
+                    b"%PDF-1.7\nversion-one",
+                    b"%PDF-1.7\nversion-two",
+                ]
+            )
+            extract = Mock(side_effect=[_pdf_text(), _pdf_text()])
+
+            with (
+                patch(
+                    "telegrambot.fishing_enrichment._fetch_fpcv_index",
+                    new=AsyncMock(return_value=(descriptor,)),
+                ),
+                patch(
+                    "telegrambot.fishing_enrichment._fetch_fpcv_pdf_bytes",
+                    new=fetch_pdf,
+                ),
+                patch(
+                    "telegrambot.fishing_enrichment.extract_fpcv_pdf_text",
+                    new=extract,
+                ),
+            ):
+                first = asyncio.run(
+                    refresh_fpcv_details(NOW, (_provincial_base(),), state)
+                )
+                second = asyncio.run(
+                    refresh_fpcv_details(
+                        NOW + timedelta(days=1),
+                        (_provincial_base(),),
+                        state,
+                    )
+                )
+
+            self.assertEqual(fetch_pdf.await_count, 2)
+            self.assertEqual(extract.call_count, 2)
+            self.assertNotEqual(
+                first[0]["content_sha256"],
+                second[0]["content_sha256"],
             )
 
     def test_pdf_failure_preserves_last_good_detail(self):
@@ -408,8 +468,12 @@ class FishingEnrichmentTests(unittest.TestCase):
                     new=AsyncMock(return_value=(descriptor,)),
                 ),
                 patch(
-                    "telegrambot.fishing_enrichment._fetch_fpcv_pdf_text",
-                    new=AsyncMock(return_value=_pdf_text()),
+                    "telegrambot.fishing_enrichment._fetch_fpcv_pdf_bytes",
+                    new=AsyncMock(return_value=_pdf_bytes()),
+                ),
+                patch(
+                    "telegrambot.fishing_enrichment.extract_fpcv_pdf_text",
+                    new=Mock(return_value=_pdf_text()),
                 ),
             ):
                 first = asyncio.run(
@@ -426,7 +490,7 @@ class FishingEnrichmentTests(unittest.TestCase):
                     new=AsyncMock(return_value=(changed,)),
                 ),
                 patch(
-                    "telegrambot.fishing_enrichment._fetch_fpcv_pdf_text",
+                    "telegrambot.fishing_enrichment._fetch_fpcv_pdf_bytes",
                     new=AsyncMock(
                         side_effect=FishingEnrichmentError(
                             "bad pdf",
