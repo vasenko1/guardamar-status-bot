@@ -180,6 +180,19 @@ class FishingEnrichmentTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["index_date"], "2026-10-17")
 
+    def test_index_rejects_guardamar_row_with_wrong_province(self):
+        payload = _index_html().replace(
+            b"<td>Alicante</td><td><a href=",
+            b"<td>Valencia</td><td><a href=",
+        )
+        rows = parse_fpcv_index_html(
+            payload,
+            local_day=NOW.date(),
+            base_events=(_provincial_base(),),
+        )
+
+        self.assertEqual(rows, ())
+
     def test_index_marks_matching_cancelled_row_without_pdf_semantics(self):
         rows = parse_fpcv_index_html(
             _index_html("CANCELADO"),
