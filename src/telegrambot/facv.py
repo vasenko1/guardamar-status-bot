@@ -316,6 +316,7 @@ async def fetch_today_facv_events(
                 active_from=start if start != end else None,
                 category="event",
                 is_final_day=start != end and local_day == end,
+                sport="chess",
             )
         )
     return tuple(result)
