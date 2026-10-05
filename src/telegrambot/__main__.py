@@ -1518,6 +1518,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             pesca_cv_state_path=pesca_cv_path,
             convega_state_path=convega_path,
             translation_cache_path=translations_path,
+            gemini_api_key=os.environ.get("GEMINI_API_KEY", "").strip(),
         )
         if command == "tomorrow-events-preview":
             if publication is None:
