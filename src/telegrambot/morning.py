@@ -20,6 +20,7 @@ from .agenda import (
 from .aemet import AemetError, fetch_morning_digest
 from .digest import build_message
 from .celebrations import celebrations_on
+from .clock_change import clock_change_on
 from .diagnostics import SourceDiagnostic, source_error
 from .event_urls import normalize_ticket_url
 from .holidays import official_holidays_on
@@ -1009,16 +1010,14 @@ async def produce_message(
         )
     )
 
+    local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
     return build_message(
         replace(
             digest,
             pharmacies=pharmacies,
-            holidays=official_holidays_on(
-                now.astimezone(GUARDAMAR_TIMEZONE).date()
-            ),
-            celebrations=celebrations_on(
-                now.astimezone(GUARDAMAR_TIMEZONE).date()
-            ),
+            holidays=official_holidays_on(local_day),
+            celebrations=celebrations_on(local_day),
+            clock_change=clock_change_on(local_day),
             events=morning_events,
             heat_health_risk=heat_health_risk,
             cold_health_risk=cold_health_risk,
