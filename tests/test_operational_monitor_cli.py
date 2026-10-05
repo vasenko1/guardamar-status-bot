@@ -177,10 +177,6 @@ class OperationalMonitorCliTests(unittest.IsolatedAsyncioTestCase):
                     new=AsyncMock(return_value="no_update"),
                 ),
                 patch(
-                    "telegrambot.__main__.check_late_environment",
-                    new=AsyncMock(),
-                ),
-                patch(
                     "telegrambot.__main__.fetch_beach_status",
                     fetch_beach,
                 ),
