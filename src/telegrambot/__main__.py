@@ -2530,6 +2530,7 @@ def main() -> None:
             "celebration-alert", "celebration-alert-preview",
             "weekend", "weekend-preview",
             "tomorrow-events", "tomorrow-events-preview",
+            "sports-today", "sports-today-preview",
             "product-awards", "product-awards-force", "product-awards-preview",
             "resident-news",
             "poll",
