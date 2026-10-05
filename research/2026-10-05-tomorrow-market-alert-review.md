@@ -97,6 +97,19 @@ background process. The market is another verified event unit in the existing
 planning publication. A Tuesday market moved by a holiday receives a compact
 schedule note explaining the Wednesday holiday.
 
+### 7. Avoid duplicate recovery source cost
+
+Tomorrow Events historically constructed its publication before reading delivery
+state. That was harmless while construction was local-only, but after adding a
+conditional Mayor check it would make the 20:25 recovery repeat the source/model
+work even after a successful 19:25 send.
+
+Decision: preflight the existing target-date delivery state before publication
+construction for the real send command. A terminal `sent` or `uncertain`
+state exits before source work. The existing second state check remains under
+the exclusive delivery lock immediately before send, so this optimization does
+not weaken race protection. Preview remains state-free.
+
 ## Residual freshness boundary
 
 A cancellation published after the evening planning post can make that post
