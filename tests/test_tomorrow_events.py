@@ -5,6 +5,7 @@ from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from telegrambot.models import Event
 from telegrambot.municipal_agenda import (
     SourceEvent,
     _snapshot_data,
