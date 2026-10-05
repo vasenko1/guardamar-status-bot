@@ -166,9 +166,14 @@ publication remains deferred to Sports Slice G.
 - Valid last-good authority/details may be retained, but they are eligible to
   override/enrich the base Event for at most **36 hours** after their
   source-backed `observed_at`; future timestamps are ineligible.
-- One missed daily refresh may therefore reuse last-good enrichment, while a
-  second prolonged outage causes national authority to fail closed and ordinary
-  events to drop stale detail/cancellation overrides.
+- One missed daily refresh may therefore reuse last-good enrichment when the
+  same reviewed document cannot be fetched, while a second prolonged outage
+  causes national authority to fail closed and ordinary events to drop stale
+  detail/cancellation overrides.
+- If the index identity changes, or the same URL returns changed PDF bytes, the
+  previous semantic detail is immediately ineligible unless the changed
+  document parses and validates successfully. The 36-hour allowance never
+  authorizes a known-superseded document.
 - Stale or mismatched authority/details never override the current base event.
 - Known ambiguous national FPCV dates fail closed when authoritative FEPyC
   occurrence evidence is unavailable.
