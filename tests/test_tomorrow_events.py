@@ -225,6 +225,96 @@ class TomorrowEventPublicationTests(unittest.IsolatedAsyncioTestCase):
                         **paths,
                     )
 
+    async def test_sports_render_in_dedicated_subsection(self):
+        events = (
+            Event(
+                "Концерт",
+                datetime(2026, 9, 25, 18, 0, tzinfo=TZ),
+                place="Casa de Cultura",
+            ),
+            Event(
+                "Open Dama",
+                datetime(2026, 9, 25, 19, 0, tzinfo=TZ),
+                place="Centro Social",
+                details=("Чемпионат провинции · 5-й тур",),
+                sport="chess",
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            paths = _paths(directory)
+            with patch(
+                "telegrambot.tomorrow_events.load_local_planning_events",
+                new=AsyncMock(return_value=events),
+            ):
+                publication = await produce_tomorrow_event_publication(
+                    NOW,
+                    **paths,
+                )
+
+        self.assertIsNotNone(publication)
+        self.assertEqual(publication.unit_count, 2)
+        self.assertIsNone(publication.image_url)
+        self.assertIn("Концерт", publication.message)
+        self.assertIn("🏅 <b>Спортивные мероприятия</b>", publication.message)
+        self.assertIn("♟ Шахматы — Open Dama", publication.message)
+        self.assertIn("Чемпионат провинции · 5-й тур", publication.message)
+        self.assertLess(
+            publication.message.index("Концерт"),
+            publication.message.index("Спортивные мероприятия"),
+        )
+
+    async def test_mixed_programme_parent_is_rendered_once(self):
+        programme = "Fiestas del Barrio"
+        events = (
+            Event(
+                "Concierto",
+                datetime(2026, 9, 25, 18, 0, tzinfo=TZ),
+                programme_title=programme,
+                programme_order=1,
+            ),
+            Event(
+                "Carrera",
+                datetime(2026, 9, 25, 19, 0, tzinfo=TZ),
+                programme_title=programme,
+                programme_order=2,
+                sport="chess",
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            paths = _paths(directory)
+            with patch(
+                "telegrambot.tomorrow_events.load_local_planning_events",
+                new=AsyncMock(return_value=events),
+            ):
+                publication = await produce_tomorrow_event_publication(
+                    NOW,
+                    **paths,
+                )
+
+        self.assertIsNotNone(publication)
+        self.assertEqual(publication.message.count(programme), 1)
+        self.assertIn("♟ Шахматы — Carrera", publication.message)
+
+    async def test_cancelled_sport_is_not_republished_as_tomorrow_plan(self):
+        event = Event(
+            "Mar Costa",
+            datetime(2026, 9, 25, 18, 0, tzinfo=TZ),
+            occurrence_status="cancelled",
+            sport="fishing",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            paths = _paths(directory)
+            with patch(
+                "telegrambot.tomorrow_events.load_local_planning_events",
+                new=AsyncMock(return_value=(event,)),
+            ):
+                publication = await produce_tomorrow_event_publication(
+                    NOW,
+                    **paths,
+                )
+
+        self.assertIsNone(publication)
+
     async def test_stale_catalog_cannot_make_tomorrow_claim(self):
         with tempfile.TemporaryDirectory() as directory:
             paths = _paths(directory)
