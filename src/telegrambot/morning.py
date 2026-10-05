@@ -579,6 +579,10 @@ def _merge_events(*groups):
                     image_url=current.image_url or event.image_url,
                     programme_title=programme_title,
                     programme_display_title=programme_display_title,
+                    occurrence_status=(
+                        current.occurrence_status
+                        or event.occurrence_status
+                    ),
                     programme_order=(
                         current.programme_order
                         if current.programme_order is not None
