@@ -14,6 +14,7 @@ from telegrambot.fishing_enrichment import (
     parse_fepyc_authority_html,
     parse_fpcv_convocatoria_text,
     parse_fpcv_index_html,
+    matching_authority,
     refresh_fepyc_authority,
     refresh_fpcv_details,
     valid_fepyc_authority_state,
@@ -282,6 +283,25 @@ class FishingEnrichmentTests(unittest.TestCase):
             text = extract_fpcv_pdf_text(b"%PDF-1.7\nsmall")
         self.assertEqual(text, "valid extracted text")
         self.assertEqual(called.call_args.kwargs["timeout"], 10.0)
+
+    def test_authority_join_requires_source_range_overlap(self):
+        record = parse_fepyc_authority_html(
+            _fepyc_html(),
+            observed_at=NOW,
+            spec={
+                "source_id": "26MC26",
+                "url": FEPYC_26MC26_URL,
+                "match_title": "Mar Costa Dúos",
+            },
+        )
+        state = {"version": 1, "records": [record]}
+
+        self.assertIsNotNone(matching_authority(_national_base(), state))
+
+        unrelated = dict(_national_base())
+        unrelated["start"] = "2026-12-10"
+        unrelated["end"] = "2026-12-12"
+        self.assertIsNone(matching_authority(unrelated, state))
 
     def test_refresh_fepyc_preserves_last_good_on_network_failure(self):
         with tempfile.TemporaryDirectory() as directory:
