@@ -1812,3 +1812,92 @@ Detailed gate:
 The final branch-head run is green (64 focused / 1615 full tests). Slice B
 implementation gate is PASS. Slice C remains blocked until temporary workflow
 cleanup, merge and production verification of Slice B.
+
+
+## Implementation checkpoint — Slice C source-contract gate
+
+The Termux production source probe for Slice C is PASS on
+`0c01686545ee90236a2ab33a433b6f24a17d789f`.
+
+Measured contracts:
+
+- FEPyC authority page: 33,826 bytes / 0.326 s;
+- FPCV convocatoria index: 161,072 bytes / 2.465 s;
+- exact FPCV PDF: 609,280 bytes / 1.474 s;
+- `pdftotext -layout`: 8,442 bytes / 0.088 s.
+
+Production source state and working tree remained unchanged. ADR 0101 now
+authorizes only this bounded source/PDF class. Runtime implementation remains
+blocked until the documentation-only ADR/KB consistency review is PASS.
+
+
+## Implementation checkpoint — Slice C
+
+Slice B is production-verified.
+
+Slice C implementation now provides the source-correctness and rich fishing
+facts required before sports publication activation:
+
+- FEPyC `26MC26` is the exact national occurrence authority for the reviewed
+  Mar-costa Dúos conflict;
+- FPCV convocatoria details are normalized once in the existing 05:10 fishing
+  lifecycle;
+- the strict existing fishing calendar state remains rollback-compatible;
+- authority/details use separate bounded state files;
+- relevant PDF bytes are content-hashed daily and `pdftotext` runs only when
+  row/content identity changed;
+- source enrichment is projection-eligible for 36 hours;
+- FPCV details are capped at four and no new cron/source lifecycle exists;
+- the national Event preserves Campeonato de España / Dúos context;
+- the provincial reviewed Event preserves qualification, schedule, duration and
+  venue context.
+
+The implementation went through repeated fix/test/review cycles; detailed
+findings are recorded in
+`research/2026-10-05-sports-slice-c-implementation-review.md`.
+
+The latest application-head verification before the final review update passed
+80 focused and 1639 full-suite tests. Additional regression coverage confirms
+that changed index/PDF content fails closed instead of serving mismatched
+last-good details, while an unchanged document may survive a transient fetch
+failure within the 36-hour freshness window.
+
+The final branch-head run is green (80 focused / 1639 full tests). Slice C
+implementation gate is PASS. The temporary verification workflow has been
+removed and the cleanup delta changes no application code. Slice D remains
+blocked until merge and production verification of Slice C.
+
+
+## Implementation checkpoint — Slice C final red-team cycle
+
+After an initially green implementation, manual review found and fixed two
+additional fail-closed gaps:
+
+- a known-changed FPCV document could temporarily retain superseded details if
+  replacement parsing failed;
+- declared two-by-three-hour heats were not cross-checked against programme
+  intervals.
+
+The corrected runtime now preserves last-good only for an unavailable fetch of
+the same document, withholds known-superseded invalid details immediately, and
+validates the heat schedule against the declared duration.
+
+Post-fix verification:
+
+- focused Slice C suite: 80 tests OK;
+- full repository suite: 1639 tests OK.
+
+The final documentation branch-head run and temporary-workflow cleanup are
+complete. Slice C is ready for PR merge and remains blocked from Slice D until
+production verification.
+
+
+## Implementation checkpoint — Slice C gate
+
+The final documentation branch head passed compileall, 80 focused tests and
+1639 full-suite tests. Slice C implementation gate is **PASS**.
+
+No new cron, resident-facing sports publication, Event Access source, browser,
+OCR, runtime AI or dependency is introduced by Slice C. The temporary
+verification workflow has been removed; Slice D stays blocked until Slice C is
+merged and production-verified.

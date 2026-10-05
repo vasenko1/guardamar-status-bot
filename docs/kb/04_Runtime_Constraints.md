@@ -111,6 +111,34 @@ also acquires the legacy Weekend lock, so a process from the previous release
 cannot overlap delivery during deployment. No source request, cron row,
 dependency, daemon or queue is added by this delivery hardening.
 
+The Sports Slice C fishing enrichment remains inside the existing short-lived
+05:10 fishing preparation lifecycle. It may read one bounded FPCV convocatoria
+index, a small bounded set of first-party FEPyC national-authority pages, and
+only exact FPCV convocatoria PDFs linked from accepted current/future Guardamar
+rows. No new cron, daemon, browser, OCR, JavaScript runtime or Python dependency
+is allowed.
+
+For this workflow only, Termux `pdftotext -layout` is approved under these
+hard bounds: exact `federacionpescacv.com` HTTPS link, `application/pdf`,
+`%PDF-` magic, at most 1 MiB PDF bytes, one extraction attempt, at most
+10 seconds extraction time, and at most 64 KiB non-empty UTF-8 text. At most
+four relevant FPCV detail records and four explicit FEPyC authority records may
+exist. Relevant FPCV PDF bytes may be checked once on a successful daily
+details refresh; SHA-256 prevents repeat `pdftotext` work when the index row
+and PDF content are unchanged. A changed index identity or changed PDF SHA
+invalidates the old semantic detail immediately if the replacement cannot be
+parsed; only an unavailable fetch of the same reviewed document may reuse
+last-good within the freshness window. Raw PDF bytes and extracted text are
+process-local and discarded after normalization.
+
+Accepted authority/details override or enrich the base fishing Event only for
+36 hours after their source-backed observation; future timestamps and older
+last-good records are ignored. The existing strict
+`state/pesca_cv_events.json` schema is not extended; FEPyC authority and FPCV
+details use separate bounded rollback-safe state files. A details/PDF failure
+must not invalidate a successfully refreshed base fishing calendar. See
+ADR 0101.
+
 The CONVEGA one-off registration slice runs only as short-lived one-shots at
 12:47 and 13:47 Europe/Madrid. The first wrapper invocation performs at most one
 bounded WordPress REST refresh when a valid same-day snapshot is absent. The
@@ -351,7 +379,8 @@ allowed for the guide.
 - Python `tzdata` package because some Termux builds do not expose the Android
   timezone database to `zoneinfo`
 - Termux `poppler` utilities only for changed one-page municipal timetable PDFs,
-  changed Bus Sigüenza tariff PDFs, and bounded in-memory text extraction from
+  changed Bus Sigüenza tariff PDFs, the exact bounded FPCV Guardamar convocatoria
+  PDFs approved by ADR 0101, and bounded in-memory text extraction from
   the current CCE bulletin used by the 112 watcher
 - Termux `openssl-tool` command only to read the Bus Sigüenza leaf AIA after
   the documented missing-issuer verification failure

@@ -95,7 +95,15 @@ them only with `CONVEGA_STATE_PATH` and `EVENT_REGISTRATION_STATE_PATH`
 when isolation is required. Weekend keeps its rollback marker in
 `state/weekend.json` and its crash-safe delivery reservation in
 `state/weekend_delivery.json`; the latter may be isolated with
-`WEEKEND_DELIVERY_STATE_PATH`. Secrets must not be committed.
+`WEEKEND_DELIVERY_STATE_PATH`.
+
+Fishing keeps the rollback-compatible base calendar in
+`state/pesca_cv_events.json`. Sports Slice C adds only separate normalized
+source artifacts: `state/fepyc_fishing_authority.json` and
+`state/pesca_cv_details.json`, overrideable for isolation with
+`FEPYC_FISHING_AUTHORITY_STATE_PATH` and `PESCA_CV_DETAILS_STATE_PATH`.
+The same existing 05:10 `telegrambot.pesca_cv` invocation prepares all three;
+no new cron is required. Secrets must not be committed.
 
 `CAMS_DATA_URL` and `CAMS_CACHE_PATH` have the defaults shown above and normally
 need not be configured. The phone never receives an ADS credential. Invalid,
