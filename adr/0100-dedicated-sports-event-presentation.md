@@ -321,3 +321,30 @@ Slice B adds only the normalized sport-identity foundation:
 This checkpoint intentionally does **not** change Morning, Tomorrow or Weekend
 routing and does not add Sports Today. Resident-facing sports activation remains
 Slice E after the source-correctness/rendering prerequisites.
+
+
+## Implementation checkpoint: Slice D planning/read/render foundation
+
+Slices A-C are production-verified.
+
+Slice D implements only the shared planning infrastructure required before
+resident-facing sports activation:
+
+- Tomorrow and Weekend share one explicit local-snapshot planning loader;
+- proactive planning claims require the expected current observation day for
+  base snapshots;
+- Weekend alone opts into existing recurring rules;
+- FEPyC/Pesca-detail supplemental freshness remains source-owned by the Pesca
+  adapter;
+- Tomorrow and Weekend use a complete event-section render path that removes
+  optional teaser prose before failing closed, never silently dropping a tail;
+- Weekend applies that optional-prose fallback across the complete two-day
+  aggregate without refetching sources;
+- labelled race-distance details remain independent facts.
+
+The legacy truncating event-section helper remains available to unrelated
+existing callers.
+
+This checkpoint intentionally enables **no** sports subsection, Sports Today,
+Morning sport exclusion, new cron, Telegram lifecycle, source HTTP or Event
+Access behavior. Those user-visible changes remain Slice E or later.
