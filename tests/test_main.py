@@ -16,6 +16,7 @@ from telegrambot.__main__ import (
     _send_operational_update,
     _produce_message,
     _run_command,
+    main as cli_main,
 )
 from telegrambot.agenda import AgendaError
 from telegrambot.diagnostics import SourceDiagnostic
@@ -1809,6 +1810,23 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
             "municipal": Path("state/municipal-test.json"),
             "agenda": Path("state/agenda-test.json"),
         })
+
+
+
+class SportsTodayCliParserTests(unittest.TestCase):
+    def test_parser_accepts_sports_today_commands(self):
+        for command in ("sports-today", "sports-today-preview"):
+            with self.subTest(command=command):
+                run = AsyncMock(return_value=0)
+                with (
+                    patch("sys.argv", ["telegrambot", command]),
+                    patch("telegrambot.__main__._run_command", new=run),
+                    self.assertRaises(SystemExit) as raised,
+                ):
+                    cli_main()
+
+                self.assertEqual(raised.exception.code, 0)
+                run.assert_awaited_once_with(command, ())
 
 
 
