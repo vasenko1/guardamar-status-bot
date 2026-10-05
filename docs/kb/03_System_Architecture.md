@@ -61,8 +61,8 @@ no message.
 
 | Lifecycle | Trigger | Resident-facing effect |
 | --- | --- | --- |
-| Morning Digest | 07:30 daily | One immutable daily message; pharmacy, events, holidays/markets, AEMET weather/sea/UV, locally computed sunrise/sunset, CAMS/Meteosalud baseline and fresh CCE hydrology contribute here without becoming separate morning processes. |
-| SUMA tax reminders | 08:05 daily one-shot | Independent one-shot cross-checks two official HTML pages and may publish at most one exact-date tax/debit reminder; separate state, no daemon or resident scheduler. |
+| Morning Digest | 07:30 daily | One immutable daily message; pharmacy, non-sport events, holidays/markets, AEMET weather/sea/UV, locally computed sunrise/sunset, CAMS/Meteosalud baseline and fresh CCE hydrology contribute here without becoming separate morning processes. Sport is intentionally omitted once the same release activates Sports Today. |
+| SUMA tax reminders | 08:05 daily one-shot | Independent one-shot cross-checks two official HTML pages and may publish at most one exact-date tax/debit reminder; separate state, no daemon or resident scheduler. |\n| Sports Today | 08:25 daily, recovery 09:25 | Reads only fresh accepted same-day local event snapshots through the shared planning loader; no source HTTP or AI. Sends one crash-safe current-day sports reminder/correction when qualifying sport exists; sent/uncertain state blocks recovery duplicates, while no sport creates no delivery marker. |
 | SafeBeach + Mayor bathing status | 10:10–10:40 in season, then bounded operational checks | Separate daily beach root, live early edits, later confirmed replies; explicit Mayor bathing restrictions remain an independent safety signal. |
 | AEMET operational warnings | Hourly at `:51` from 07:51 through 23:51 | One bounded CAP-only check; material warning changes reply to the Morning Digest. |
 | CAMS / Meteosalud late environment | 10:40 CAMS early check plus existing operational recovery; Meteosalud on operational checkpoints | Material air-quality, pollen, heat or cold changes reply to the Morning Digest. |
@@ -75,8 +75,8 @@ no message.
 | One-off event access | 12:47 daily, recovery 13:47 | ADRs 0090–0092 define the event-centric v2 runtime: one text root per event, source-proven access options, and strict threaded replies. The first implementation enables only CONVEGA and remains inert on legacy v1 state until the operator runs the explicit migration. |
 | Electricity | 20:30/20:35/20:45/21:00/21:20 attempts | One next-day PVPC table reply after the first complete official dataset. |
 | Resident-impact news | 11:11/15:11/18:11 daily | One bounded EWN discovery read; one batch AI classification; at most one first-party-grounded Russian Telegram note. |
-| Next-day events | Sunday–Thursday 19:25, recovery 20:25 | Reads fresh same-day local event catalogs through the shared local-only planning loader and includes reviewed recurring rules. Only when tomorrow is a scheduled La Redonda market may the surface reuse the bounded Mayor-channel exception check; AI is called only if fresh market-related text exists. One editorial unit may be rich with one official image URL, while multiple units stay in one text planning post. A terminal delivery state is checked before publication construction, so recovery does not repeat market verification after a sent/uncertain first run. |
-| Weekend digest | Friday 19:15, recovery 20:15 | One weekend-events digest when verified events exist. Delivery reserves a crash-safe dated `uncertain` marker before Telegram send; confirmed/uncertain delivery blocks recovery duplicates. The legacy `state/weekend.json` success marker remains current for rollback compatibility while `state/weekend_delivery.json` owns ambiguous-delivery safety. |
+| Next-day events | Sunday–Thursday 19:25, recovery 20:25 | Reads fresh same-day local event catalogs through the shared local-only planning loader and includes reviewed recurring rules. Verified sport is separated into a dedicated sports subsection after merge. Only when tomorrow is a scheduled La Redonda market may the surface reuse the bounded Mayor-channel exception check; AI is called only if fresh market-related text exists. One editorial unit may be rich with one official image URL, while multiple units stay in one text planning post. A terminal delivery state is checked before publication construction, so recovery does not repeat market verification after a sent/uncertain first run. |
+| Weekend digest | Friday 19:15, recovery 20:15 | One weekend-events digest when verified events exist, with verified sport separated inside each day into a dedicated sports subsection. Delivery reserves a crash-safe dated `uncertain` marker before Telegram send; confirmed/uncertain delivery blocks recovery duplicates. The legacy `state/weekend.json` success marker remains current for rollback compatibility while `state/weekend_delivery.json` owns ambiguous-delivery safety. |
 | Pharmacy catalogue | Sunday 05:50 | Source refresh only; consumed by Morning Digest. |
 | Bathing-zone control | 19:35 daily 01 Jun–15 Sep; PDF only for a new report identity | A fresh first or later official weekly report produces one 🧪 group notice with actual sample dates, laboratory water quality by beach and only non-excellent visual water/sand exceptions; stale first report becomes baseline. |
 | Event/translation/AEMET preparation | Pre-morning one-shots | Source preparation only; no independent public notification. |
@@ -85,15 +85,15 @@ no message.
 
 ## Accepted sports-event target architecture
 
-ADR 0100 accepts a dedicated sports presentation layer on the existing event
-pipeline. It is **implementation pending** until the staged rollout completes;
-the runtime lifecycle inventory above continues to describe current production.
+ADR 0100 defines a dedicated sports presentation layer on the existing event
+pipeline. Sports Slice E activates the first resident-facing layer while later
+source expansion and Event Access integration remain staged.
 
-The accepted target keeps one normalized `Event` stream and adds one optional
-source-owned `sport` fact. Sports do not get a second database, collector,
-scheduler or registration lifecycle.
+The implementation keeps one normalized `Event` stream with optional
+source-owned `sport` and narrowly source-proven occurrence status. Sports do
+not get a second database, collector, scheduler or registration lifecycle.
 
-Once implemented:
+The active publication contract is:
 
 - `Завтра в Гуардамаре` and Friday `Афиша выходных` include a separate
   sports subsection;
@@ -112,6 +112,28 @@ same-day cancellation/postponement is a correction, not a silent omission.
 Each implementation slice has a verification gate. A later slice starts only
 after focused tests, the full suite and architecture/code review leave no
 unresolved defect for the current stage.
+
+### Resident sports publication activation checkpoint
+
+Sports Slice E wires the existing corrected local sources into resident output:
+
+- Tomorrow and Friday Weekend render verified sport in dedicated subsections
+  without changing their existing publication schedules;
+- Sports Today runs as one local-snapshot-only one-shot at 08:25 Europe/Madrid
+  with one 09:25 recovery;
+- `state/sports_today.json` uses the shared crash-safe dated-delivery shape:
+  confirmed or uncertain delivery blocks the recovery, while no eligible sport
+  creates no marker;
+- Morning excludes `sport is not None` in the same release, avoiding a third
+  same-day repetition;
+- fresh source-proven FPCV cancellation is retained as the minimal
+  `occurrence_status="cancelled"` correction, suppressed from proactive
+  Tomorrow/Weekend planning and rendered explicitly by Sports Today;
+- Sports Today performs no source HTTP and no AI; all source collection remains
+  in the existing preparation lifecycles.
+
+The cron rows live in the existing event-planning/weekend managed block. No
+per-sport installer, daemon, queue, database or new source lifecycle is added.
 
 ### Planning read/render implementation checkpoint
 
