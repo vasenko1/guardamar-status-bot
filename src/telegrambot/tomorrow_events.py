@@ -1,4 +1,4 @@
-"""Lightweight next-day event announcement from fresh local catalogs."""
+"""Lightweight next-day planning from fresh catalogs and reviewed local rules."""
 
 from __future__ import annotations
 
