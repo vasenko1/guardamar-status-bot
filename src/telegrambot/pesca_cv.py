@@ -433,7 +433,7 @@ async def fetch_today_pesca_cv_events(
         raw_end = date.fromisoformat(raw["end"])
 
         if _fold(raw["level"]) == "nacional":
-            authority = matching_authority(raw, authority_state)
+            authority = matching_authority(raw, authority_state, now)
             if authority is None:
                 logging.warning(
                     "Pesca CV national event withheld without FEPyC authority: %s",
@@ -449,7 +449,7 @@ async def fetch_today_pesca_cv_events(
         if not start <= local_day <= end:
             continue
 
-        detail = matching_detail(raw, details_state)
+        detail = matching_detail(raw, details_state, now)
         if detail is not None and detail["cancelled"]:
             logging.info(
                 "Pesca CV event omitted because FPCV marks it cancelled: %s",
