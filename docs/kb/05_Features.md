@@ -200,12 +200,27 @@ verified events omits its heading; a weekend with no verified events sends
 no message. Missing weekend title translations are prepared inline through
 the same bounded cache; a provider outage degrades titles to normalized
 Spanish. Publication runs Friday at `19:15` after that best-effort refresh, with
-one delivery-only retry at `20:15`, guarded by one atomic success marker in
-`state/weekend.json` keyed to the target Saturday. A successful first send
-makes the retry a no-op. Only the publishing command fills missing weekend
-translations; `weekend-preview` reads the existing cache and prints
-the message without
-Telegram or state changes. See ADR 0035.
+one delivery-only recovery at `20:15`.
+
+Weekend delivery now uses the same small crash-safe dated-state shape as
+Tomorrow: before a non-idempotent Telegram send it writes
+`state/weekend_delivery.json` as `uncertain`; confirmed success stores the
+Telegram message ID, while timeout/network/5xx ambiguity remains uncertain and
+blocks the recovery send. Automatic retries are limited to explicit Telegram
+rate-limit rejection. A deterministic rejection clears the reservation so the
+later recovery may retry safely.
+
+The existing `state/weekend.json` successful-target marker is still written
+after confirmed Telegram delivery and checked first. It is retained as a
+rollback-compatible marker for the previous runtime; the new Weekend process
+also acquires its legacy lock so an old and new runtime cannot publish
+concurrently across a deployment boundary. A previously confirmed
+`weekend_delivery.json` state can repair a missing legacy marker without
+sending another Telegram message.
+
+Only the publishing command fills missing weekend translations;
+`weekend-preview` reads the existing cache and prints the message without
+Telegram or either publication-state mutation. See ADR 0035 and ADR 0080.
 
 ## Next-day electricity prices
 
