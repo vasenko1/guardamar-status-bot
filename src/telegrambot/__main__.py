@@ -160,6 +160,7 @@ from .tomorrow_events import (
     produce_tomorrow_event_publication,
     tomorrow_notice_due,
 )
+from .sports_today import produce_sports_today_publication
 from .product_awards import (
     ProductAwardError,
     ProductAwardPublication,
@@ -212,6 +213,7 @@ DEFAULT_OPERATIONAL_UPDATE_STATE_PATH = "state/operational_updates.json"
 DEFAULT_WEEKEND_STATE_PATH = "state/weekend.json"
 DEFAULT_WEEKEND_DELIVERY_STATE_PATH = "state/weekend_delivery.json"
 DEFAULT_TOMORROW_EVENTS_STATE_PATH = "state/tomorrow_events.json"
+DEFAULT_SPORTS_TODAY_STATE_PATH = "state/sports_today.json"
 DEFAULT_PRODUCT_AWARDS_STATE_PATH = "state/product_awards.json"
 DEFAULT_RESIDENT_NEWS_STATE_PATH = "state/resident_news.json"
 DEFAULT_PHARMACY_STATE_PATH = "state/pharmacy.json"
@@ -1634,6 +1636,92 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             )
             return 0
 
+    if command in {"sports-today", "sports-today-preview"}:
+        diagnostics = [] if command == "sports-today-preview" else None
+        publication = await produce_sports_today_publication(
+            now,
+            municipal_agenda_state_path=municipal_path,
+            agenda_state_path=agenda_path,
+            library_agenda_state_path=library_path,
+            am_guardamar_state_path=am_guardamar_path,
+            facv_state_path=facv_path,
+            pesca_cv_state_path=pesca_cv_path,
+            fepyc_authority_state_path=fepyc_authority_path,
+            pesca_cv_details_state_path=pesca_cv_details_path,
+            convega_state_path=convega_path,
+            translation_cache_path=translations_path,
+            diagnostics=diagnostics,
+        )
+
+        if command == "sports-today-preview":
+            print(
+                (
+                    publication.message
+                    if publication is not None
+                    else "No verified current-day sports are eligible"
+                )
+                + render_diagnostics(diagnostics or [])
+            )
+            return 0
+
+        if publication is None:
+            logging.info("SKIP: no verified current-day sports are eligible")
+            return 0
+
+        bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
+        chat_id = _required_environment("TELEGRAM_CHAT_ID")
+        sports_state = DatedPublicationState(
+            Path(os.environ.get(
+                "SPORTS_TODAY_STATE_PATH",
+                DEFAULT_SPORTS_TODAY_STATE_PATH,
+            )),
+            label="sports-today",
+        )
+
+        with sports_state.exclusive_run():
+            delivery_status = sports_state.status(publication.target_date)
+            if delivery_status == "sent":
+                logging.info(
+                    "SKIP: Sports Today already published for %s",
+                    publication.target_date,
+                )
+                return 0
+            if delivery_status == "uncertain":
+                logging.warning(
+                    "SKIP: Sports Today delivery remains uncertain for %s",
+                    publication.target_date,
+                )
+                return 0
+
+            sports_state.mark_uncertain(publication.target_date)
+            try:
+                message_id = await send_message(
+                    bot_token,
+                    chat_id,
+                    publication.message,
+                    disable_notification=False,
+                    retry_only_rate_limits=True,
+                )
+            except TelegramError as exc:
+                if is_ambiguous_send_failure(exc):
+                    logging.warning(
+                        "Sports Today delivery uncertain for %s "
+                        "[TELEGRAM-%s]; automatic resend disabled",
+                        publication.target_date,
+                        exc.diagnostic_code,
+                    )
+                    return 0
+                sports_state.clear(publication.target_date)
+                raise
+
+            sports_state.mark_sent(publication.target_date, message_id)
+            logging.info(
+                "SUCCESS: Sports Today delivered for %s (%d events)",
+                publication.target_date,
+                len(publication.events),
+            )
+            return 0
+
     if command == "resident-news":
         resident_state = ResidentNewsState(Path(os.environ.get(
             "RESIDENT_NEWS_STATE_PATH", DEFAULT_RESIDENT_NEWS_STATE_PATH
@@ -2400,6 +2488,7 @@ def main() -> None:
             "celebration-alert", "celebration-alert-preview",
             "weekend", "weekend-preview",
             "tomorrow-events", "tomorrow-events-preview",
+            "sports-today", "sports-today-preview",
             "product-awards", "product-awards-force", "product-awards-preview",
             "resident-news",
             "poll",
