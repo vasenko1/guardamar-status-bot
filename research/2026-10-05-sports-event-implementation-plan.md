@@ -1863,8 +1863,9 @@ last-good details, while an unchanged document may survive a transient fetch
 failure within the 36-hour freshness window.
 
 The final branch-head run is green (80 focused / 1639 full tests). Slice C
-implementation gate is PASS. Slice D remains blocked until temporary workflow
-cleanup, merge and production verification of Slice C.
+implementation gate is PASS. The temporary verification workflow has been
+removed and the cleanup delta changes no application code. Slice D remains
+blocked until merge and production verification of Slice C.
 
 
 ## Implementation checkpoint — Slice C final red-team cycle
@@ -1886,8 +1887,9 @@ Post-fix verification:
 - focused Slice C suite: 80 tests OK;
 - full repository suite: 1639 tests OK.
 
-Slice C remains blocked from merge/deploy until the final documentation
-branch-head run and temporary-workflow cleanup are complete.
+The final documentation branch-head run and temporary-workflow cleanup are
+complete. Slice C is ready for PR merge and remains blocked from Slice D until
+production verification.
 
 
 ## Implementation checkpoint — Slice C gate
@@ -1897,5 +1899,5 @@ The final documentation branch head passed compileall, 80 focused tests and
 
 No new cron, resident-facing sports publication, Event Access source, browser,
 OCR, runtime AI or dependency is introduced by Slice C. The temporary
-verification workflow remains cleanup-only; Slice D stays blocked until Slice C
-is merged and production-verified.
+verification workflow has been removed; Slice D stays blocked until Slice C is
+merged and production-verified.
