@@ -828,7 +828,7 @@ def _suppress_reviewed_rosario_2026_10_06_todo_conflict(
     programme_events: Tuple[SourceEvent, ...],
     todo_events: Tuple[SourceEvent, ...],
 ) -> Tuple[SourceEvent, ...]:
-    """Suppress one verified stale Todo row only when the primary pair exists."""
+    """Suppress one verified conflicting Todo row only when the primary pair exists."""
 
     target_day = date(2026, 10, 6)
     has_official_rosario = any(
@@ -852,7 +852,7 @@ def _suppress_reviewed_rosario_2026_10_06_todo_conflict(
 
     # Reviewed 5 Oct 2026 against the current Ayuntamiento programme:
     # the primary poster has Rosario at 19:00 and Mass at 20:00, while
-    # Todo Cultura reproduces an older 19:30 Rosario row.  Keep this exact
+    # Todo Cultura has a conflicting 19:30 Rosario row.  Keep this exact
     # conflict evidence-bound instead of weakening generic time matching.
     return tuple(
         event
