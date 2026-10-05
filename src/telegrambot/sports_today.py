@@ -89,7 +89,10 @@ def _current_day_event(
         if starts_at > local_now:
             time_fact = f"Начало в {starts_at:%H:%M}"
         elif ends_at is not None:
-            time_fact = f"Идёт сейчас · до {ends_at:%H:%M}"
+            time_fact = (
+                f"Началось в {starts_at:%H:%M} · "
+                f"окончание в {ends_at:%H:%M}"
+            )
         else:
             time_fact = f"Сегодня с {starts_at:%H:%M}"
 
