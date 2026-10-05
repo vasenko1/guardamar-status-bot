@@ -62,11 +62,15 @@ def _paths(directory):
     }
 
 
-def _write_municipal(path, events):
+def _write_municipal(
+    path,
+    events,
+    fetched_at=datetime(2026, 8, 14, 5, 10, tzinfo=TZ),
+):
     _write_snapshot(path, _snapshot_data(
         POSTER_URL,
         "hash",
-        datetime(2026, 8, 14, 5, 10, tzinfo=TZ),
+        fetched_at,
         events,
     ))
 
@@ -174,7 +178,7 @@ class WeekendMessageTests(unittest.IsolatedAsyncioTestCase):
                         "intercambios-musicals.html"
                     ),
                 ),
-            ))
+            ), fetched_at=now)
 
             message = await produce_weekend_message(
                 now, "", paths["municipal_agenda_state_path"],
