@@ -1,6 +1,7 @@
 """Build the Friday-evening weekend events digest from local catalogs."""
 
 import logging
+from dataclasses import replace
 from datetime import datetime, time, timedelta
 from pathlib import Path
 from typing import List, Optional
@@ -88,16 +89,17 @@ async def produce_weekend_message(
 ) -> Optional[str]:
     """Return the weekend digest, or None when no verified event exists."""
 
-    lines: List[str] = [HEADER]
+    required_snapshot_day = now.astimezone(
+        GUARDAMAR_TIMEZONE
+    ).date()
+    day_events = []
     for day in weekend_dates(now):
         day_moment = datetime.combine(
             day, time(12, 0), GUARDAMAR_TIMEZONE
         )
         events = await _day_events(
             day_moment,
-            required_snapshot_day=now.astimezone(
-                GUARDAMAR_TIMEZONE
-            ).date(),
+            required_snapshot_day=required_snapshot_day,
             municipal_agenda_state_path=municipal_agenda_state_path,
             agenda_state_path=agenda_state_path,
             library_agenda_state_path=library_agenda_state_path,
@@ -110,17 +112,38 @@ async def produce_weekend_message(
             translation_cache_path=translation_cache_path,
             diagnostics=diagnostics,
         )
-        if not events:
-            continue
-        heading = (
-            f"📅 <b>{DAY_LABELS[day.weekday()]}, "
-            f"{day.day} {MONTHS_GENITIVE[day.month]}:</b>"
-        )
-        lines.extend(build_complete_event_section(
-            events,
-            heading,
-            prefix_length=len("\n".join(lines)),
-        ))
-    if len(lines) == 1:
+        if events:
+            day_events.append((day, events))
+
+    if not day_events:
         return None
+
+    def render(*, compact_teasers: bool) -> List[str]:
+        lines: List[str] = [HEADER]
+        for day, events in day_events:
+            render_events = (
+                tuple(
+                    replace(event, teaser=None)
+                    if event.teaser is not None
+                    else event
+                    for event in events
+                )
+                if compact_teasers
+                else events
+            )
+            heading = (
+                f"📅 <b>{DAY_LABELS[day.weekday()]}, "
+                f"{day.day} {MONTHS_GENITIVE[day.month]}:</b>"
+            )
+            lines.extend(build_complete_event_section(
+                render_events,
+                heading,
+                prefix_length=len("\n".join(lines)),
+            ))
+        return lines
+
+    try:
+        lines = render(compact_teasers=False)
+    except ValueError:
+        lines = render(compact_teasers=True)
     return with_footer("\n".join(lines))
