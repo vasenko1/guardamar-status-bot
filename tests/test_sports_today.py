@@ -205,6 +205,7 @@ class SportsTodayDeliveryTests(unittest.IsolatedAsyncioTestCase):
                 label="sports-today",
             ).mark_sent(NOW.date(), 44)
             send = AsyncMock(return_value=55)
+            build = AsyncMock(return_value=self._publication())
 
             with (
                 patch.dict(os.environ, {
@@ -215,7 +216,7 @@ class SportsTodayDeliveryTests(unittest.IsolatedAsyncioTestCase):
                 patch("telegrambot.__main__.datetime") as clock,
                 patch(
                     "telegrambot.__main__.produce_sports_today_publication",
-                    new=AsyncMock(return_value=self._publication()),
+                    new=build,
                 ),
                 patch("telegrambot.__main__.send_message", new=send),
             ):
@@ -224,6 +225,7 @@ class SportsTodayDeliveryTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result, 0)
         send.assert_not_awaited()
+        build.assert_not_awaited()
 
     async def test_uncertain_delivery_blocks_recovery(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -252,6 +254,7 @@ class SportsTodayDeliveryTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result, 0)
         send.assert_not_awaited()
+        build.assert_not_awaited()
 
     async def test_success_marks_sent(self):
         with tempfile.TemporaryDirectory() as directory:
