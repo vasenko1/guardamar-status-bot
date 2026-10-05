@@ -824,6 +824,49 @@ def _canonicalize_todo_programme_aliases(
     return tuple(rewritten)
 
 
+def _apply_reviewed_todo_conflicts(
+    programme_events: Tuple[SourceEvent, ...],
+    todo_events: Tuple[SourceEvent, ...],
+) -> Tuple[SourceEvent, ...]:
+    """Suppress one verified stale Todo row only when the primary pair exists."""
+
+    target_day = date(2026, 10, 6)
+    has_official_rosario = any(
+        AYUNTAMIENTO_PROGRAMME_SOURCE in event.sources
+        and event.start_date == target_day
+        and event.end_date == target_day
+        and event.start_time == "19:00"
+        and "rosario" in normalized_title(event.title_es)
+        for event in programme_events
+    )
+    has_official_mass = any(
+        AYUNTAMIENTO_PROGRAMME_SOURCE in event.sources
+        and event.start_date == target_day
+        and event.end_date == target_day
+        and event.start_time == "20:00"
+        and "misa" in normalized_title(event.title_es)
+        for event in programme_events
+    )
+    if not (has_official_rosario and has_official_mass):
+        return todo_events
+
+    # Reviewed 5 Oct 2026 against the current Ayuntamiento programme:
+    # the primary poster has Rosario at 19:00 and Mass at 20:00, while
+    # Todo Cultura reproduces an older 19:30 Rosario row.  Keep this exact
+    # conflict evidence-bound instead of weakening generic time matching.
+    return tuple(
+        event
+        for event in todo_events
+        if not (
+            "todo_cultura" in event.sources
+            and event.start_date == target_day
+            and event.end_date == target_day
+            and event.start_time == "19:30"
+            and "rosario" in normalized_title(event.title_es)
+        )
+    )
+
+
 def _session_source_plan(
     events: Tuple[SourceEvent, ...],
 ) -> Tuple[Tuple[str, Optional[str]], ...]:
@@ -5023,6 +5066,7 @@ async def refresh_municipal_catalog(
             todo_events,
             todo_explicit_rows,
         )
+        todo_events = _apply_reviewed_todo_conflicts(events, todo_events)
         events = merge_text_and_poster_events(events, todo_events)
         events = merge_text_and_poster_events(events, facebook_events)
         events = _normalize_exhibition_opening_times(events)
