@@ -1937,3 +1937,14 @@ Detailed review:
 No sports subsection, Sports Today, Morning exclusion or cron change is part of
 Slice D. Slice E remains blocked until the final documentation run, workflow
 cleanup, merge and production verification.
+
+
+## Implementation checkpoint — Slice D gate
+
+The final documentation branch head passed compileall, **146 focused tests**
+and **1653 full-suite tests**. Slice D implementation gate is **PASS**.
+
+The temporary verification workflow remains cleanup-only. No resident-facing
+sports activation, Sports Today, Morning sport exclusion or cron change has
+landed in Slice D. Slice E stays blocked until workflow cleanup, merge and
+production verification.
