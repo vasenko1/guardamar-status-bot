@@ -33,6 +33,8 @@ def _paths(root):
         "am_guardamar_state_path": root / "am.json",
         "facv_state_path": root / "facv.json",
         "pesca_cv_state_path": root / "pesca.json",
+        "fepyc_authority_state_path": root / "fepyc.json",
+        "pesca_cv_details_state_path": root / "pesca-details.json",
         "convega_state_path": root / "convega.json",
         "translation_cache_path": root / "translations.json",
     }
