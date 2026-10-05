@@ -269,6 +269,7 @@ class FishingEnrichmentTests(unittest.TestCase):
             parse_fpcv_convocatoria_text(
                 _pdf_text(),
                 descriptor=descriptor,
+                content_sha256="d" * 64,
                 observed_at=NOW,
             )
 
