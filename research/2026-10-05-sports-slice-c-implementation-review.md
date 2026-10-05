@@ -273,10 +273,29 @@ changing the product architecture.
 - PDF text extraction remains under ADR 0101 bounds;
 - no browser/OCR/runtime AI/new dependency.
 
+## Final documentation branch-head run
+
+After synchronizing ADR/KB/research with the Cycle 8 fixes, the final branch
+head was verified again:
+
+- compileall: PASS;
+- focused Slice C suite: **80 tests, OK**;
+- full repository suite: **1639 tests, OK**.
+
+The ERROR log lines in the full suite are expected negative-path tests that
+deliberately simulate Telegram/source failures; unittest completed OK.
+
 ## Gate status
 
-**PASS pending final documentation branch-head compile/focused/full run and
-temporary verification-workflow cleanup.**
+**PASS**
+
+No unresolved source-contract, parser, freshness, rollback, request-bound,
+state-schema, Event-projection, runtime-cost or regression-test objection
+remains for Slice C.
+
+The temporary branch-only verification workflow is cleanup-only and must be
+removed before the PR/final diff. Removing it does not alter the tested
+application tree.
 
 Slice D remains blocked until Slice C is merged, deployed and
 production-verified.
