@@ -763,7 +763,7 @@ def extract_fpcv_pdf_text(payload: bytes) -> str:
         ) from exc
 
 
-async def _fetch_fpcv_pdf_text(url: str) -> str:
+async def _fetch_fpcv_pdf_bytes(url: str) -> bytes:
     if not _allowed_fpcv_pdf_url(url):
         raise FishingEnrichmentError(
             "FPCV convocatoria URL is outside policy", code="URL-POLICY"
@@ -782,7 +782,11 @@ async def _fetch_fpcv_pdf_text(url: str) -> str:
         raise FishingEnrichmentError(
             "FPCV convocatoria PDF request failed", code=exc.code
         ) from exc
-    return await asyncio.to_thread(extract_fpcv_pdf_text, payload)
+    if not payload.startswith(b"%PDF-"):
+        raise FishingEnrichmentError(
+            "FPCV convocatoria is not a PDF", code="PDF"
+        )
+    return payload
 
 
 def _parse_clock(value: str) -> time:
@@ -805,6 +809,7 @@ def parse_fpcv_convocatoria_text(
     text: str,
     *,
     descriptor: dict,
+    content_sha256: str,
     observed_at: datetime,
 ) -> dict:
     folded = _fold(text)
@@ -937,6 +942,7 @@ def parse_fpcv_convocatoria_text(
         "cancelled": False,
         "source_url": descriptor["pdf_url"],
         "document_identity": descriptor["document_identity"],
+        "content_sha256": content_sha256,
         "competition_context": details[0],
         "details": details,
         "starts_at": start_at.isoformat(),
@@ -963,6 +969,7 @@ _DETAILS_KEYS = {
     "cancelled",
     "source_url",
     "document_identity",
+    "content_sha256",
     "competition_context",
     "details",
     "starts_at",
@@ -986,6 +993,13 @@ def _details_record_valid(record: Any) -> bool:
     if (
         not isinstance(record["document_identity"], str)
         or not re.fullmatch(r"[0-9a-f]{64}", record["document_identity"])
+        or (
+            record["content_sha256"] is not None
+            and (
+                not isinstance(record["content_sha256"], str)
+                or not re.fullmatch(r"[0-9a-f]{64}", record["content_sha256"])
+            )
+        )
     ):
         return False
     try:
@@ -1006,6 +1020,7 @@ def _details_record_valid(record: Any) -> bool:
             record[key] is None or record[key] == []
             for key in (
                 "source_url",
+                "content_sha256",
                 "competition_context",
                 "details",
                 "starts_at",
@@ -1093,6 +1108,7 @@ def _cancelled_record(descriptor: dict, observed_at: datetime) -> dict:
         "cancelled": True,
         "source_url": None,
         "document_identity": descriptor["document_identity"],
+        "content_sha256": None,
         "competition_context": None,
         "details": [],
         "starts_at": None,
@@ -1138,23 +1154,27 @@ async def refresh_fpcv_details(
         if descriptor["cancelled"]:
             records.append(_cancelled_record(descriptor, now))
             continue
-        if (
-            old is not None
-            and not old["cancelled"]
-            and old["document_identity"] == descriptor["document_identity"]
-        ):
-            records.append(_reuse_current_record(old, now))
-            continue
         if descriptor["pdf_url"] is None:
             logging.warning(
                 "FPCV detail row has no eligible PDF; omitting %s", key
             )
             continue
         try:
-            text = await _fetch_fpcv_pdf_text(descriptor["pdf_url"])
+            payload = await _fetch_fpcv_pdf_bytes(descriptor["pdf_url"])
+            content_sha256 = hashlib.sha256(payload).hexdigest()
+            if (
+                old is not None
+                and not old["cancelled"]
+                and old["document_identity"] == descriptor["document_identity"]
+                and old["content_sha256"] == content_sha256
+            ):
+                records.append(_reuse_current_record(old, now))
+                continue
+            text = await asyncio.to_thread(extract_fpcv_pdf_text, payload)
             record = parse_fpcv_convocatoria_text(
                 text,
                 descriptor=descriptor,
+                content_sha256=content_sha256,
                 observed_at=now,
             )
         except FishingEnrichmentError as exc:
