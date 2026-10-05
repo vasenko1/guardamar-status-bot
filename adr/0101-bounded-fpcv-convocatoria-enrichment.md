@@ -163,6 +163,12 @@ publication remains deferred to Sports Slice G.
 ### Failure semantics
 
 - Base FPCV calendar success is independent of details enrichment success.
+- A temporary PDF fetch failure may preserve last-good details only when the
+  current index identity still proves the same document. If the index identity
+  changed, old details are withheld.
+- If current PDF bytes are successfully fetched and their SHA-256 changed but
+  the new text no longer satisfies the reviewed schema, old details are
+  withheld rather than served against a changed document.
 - Valid last-good authority/details may be retained, but they are eligible to
   override/enrich the base Event for at most **36 hours** after their
   source-backed `observed_at`; future timestamps are ineligible.
@@ -260,3 +266,9 @@ Implementation review discovered and corrected:
 
 The final source-specific bounds are intentionally small and no generic
 document framework, new cron, daemon or Event Access fetch path was introduced.
+
+
+The reviewed provincial parser also cross-checks the programme against the
+declared two three-hour heats. A changed heat count/duration or programme whose
+two competition windows do not each equal three hours is rejected rather than
+partially normalized.
