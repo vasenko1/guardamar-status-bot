@@ -249,7 +249,7 @@ class PescaCvParserTests(unittest.TestCase):
         )
         self.assertEqual(event.sport, "fishing")
 
-    def test_cancelled_fpcv_detail_suppresses_normal_event_projection(self):
+    def test_cancelled_fpcv_detail_projects_explicit_current_day_correction(self):
         observed = datetime(2026, 10, 5, 5, 11, tzinfo=MADRID)
         snapshot = parse_pesca_cv_html(
             _html(
@@ -300,7 +300,10 @@ class PescaCvParserTests(unittest.TestCase):
                 details_state_path=details_state,
             ))
 
-        self.assertEqual(events, ())
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].sport, "fishing")
+        self.assertEqual(events[0].occurrence_status, "cancelled")
+        self.assertIn("Mar Costa", events[0].title)
 
     def test_stale_cancelled_detail_does_not_hide_current_base_event(self):
         observed = datetime(2026, 10, 5, 5, 11, tzinfo=MADRID)
@@ -353,6 +356,7 @@ class PescaCvParserTests(unittest.TestCase):
 
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0].sport, "fishing")
+        self.assertIsNone(events[0].occurrence_status)
 
     def test_validator_rejects_non_guardamar_place(self):
         observed = datetime(2026, 9, 17, 5, 10, tzinfo=MADRID)

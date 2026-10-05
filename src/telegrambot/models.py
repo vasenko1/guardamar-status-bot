@@ -84,6 +84,7 @@ class Event:
     image_url: Optional[str] = None
     programme_display_title: Optional[str] = None
     sport: Optional[str] = None
+    occurrence_status: Optional[str] = None
 
 
 @dataclass(frozen=True)

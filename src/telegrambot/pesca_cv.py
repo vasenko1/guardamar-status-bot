@@ -453,12 +453,9 @@ async def fetch_today_pesca_cv_events(
             continue
 
         detail = matching_detail(raw, details_state, now)
-        if detail is not None and detail["cancelled"]:
-            logging.info(
-                "Pesca CV event omitted because FPCV marks it cancelled: %s",
-                raw["title"],
-            )
-            continue
+        cancelled = bool(
+            detail is not None and detail["cancelled"]
+        )
 
         starts_at = None
         ends_at = None
@@ -494,6 +491,9 @@ async def fetch_today_pesca_cv_events(
                 is_final_day=start != end and local_day == end,
                 details=details,
                 schedule_note=schedule_note,
+                occurrence_status=(
+                    "cancelled" if cancelled else None
+                ),
                 sport="fishing",
             )
         )

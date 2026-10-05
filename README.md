@@ -95,7 +95,9 @@ them only with `CONVEGA_STATE_PATH` and `EVENT_REGISTRATION_STATE_PATH`
 when isolation is required. Weekend keeps its rollback marker in
 `state/weekend.json` and its crash-safe delivery reservation in
 `state/weekend_delivery.json`; the latter may be isolated with
-`WEEKEND_DELIVERY_STATE_PATH`.
+`WEEKEND_DELIVERY_STATE_PATH`. Sports Today keeps its independent crash-safe
+dated delivery state in `state/sports_today.json`, overrideable with
+`SPORTS_TODAY_STATE_PATH`.
 
 Fishing keeps the rollback-compatible base calendar in
 `state/pesca_cv_events.json`. Sports Slice C adds only separate normalized
@@ -135,6 +137,8 @@ CRON_TZ=Europe/Madrid
 15 7 * * * /path/to/TelegramBot/termux/prepare-aemet.sh
 30 7 * * * /path/to/TelegramBot/termux/run-daily.sh
 5 8 * * * /usr/bin/sh /path/to/TelegramBot/termux/run-suma.sh
+25 8 * * * /usr/bin/sh /path/to/TelegramBot/termux/run-sports-today.sh
+25 9 * * * /usr/bin/sh /path/to/TelegramBot/termux/run-sports-today.sh
 10-40/5 10 * * * /path/to/TelegramBot/termux/update-daily.sh
 51 7-23 * * * /path/to/TelegramBot/termux/monitor-updates.sh
 0,5,10 11,13,15,17,19 * 7,8 * /path/to/TelegramBot/termux/monitor-updates.sh
@@ -175,9 +179,12 @@ The validated Android deployment uses the scripts in `termux/`:
   reconcile the shared linked guide; `publish-transport-notifications.sh` runs
   at 08:42 and reads only accepted local state;
 - `termux/run-daily.sh` at 07:30 publishes a Morning Digest with no
-  SafeBeach dependency. `termux/run-suma.sh` is an independent 08:05 one-shot
-  for exact-date SUMA tax reminders, deliberately staggered from the Morning
-  Digest and neighboring device jobs. `termux/update-daily.sh` runs every five minutes
+  SafeBeach dependency; sports are omitted once Slice E is deployed.
+  `termux/run-suma.sh` is an independent 08:05 one-shot for exact-date SUMA
+  tax reminders. `termux/run-sports-today.sh` runs from the existing
+  event-planning managed cron block at 08:25 with one 09:25 recovery and reads
+  only fresh local event snapshots before Telegram delivery.
+  `termux/update-daily.sh` runs every five minutes
   from 10:10 through 10:40; from 1 June through 15 October its first valid
   SafeBeach response creates the separate beach root immediately and later
   responses edit that root in place. From 16 October through 31 May these

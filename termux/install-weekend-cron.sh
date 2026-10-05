@@ -8,6 +8,7 @@ PROJECT_DIR=$(dirname "$SCRIPT_DIR")
 WEEKEND="$PROJECT_DIR/termux/run-weekend.sh"
 TOMORROW="$PROJECT_DIR/termux/run-tomorrow-events.sh"
 REGISTRATION="$PROJECT_DIR/termux/run-event-registration.sh"
+SPORTS_TODAY="$PROJECT_DIR/termux/run-sports-today.sh"
 SH_BIN=$(command -v sh)
 TERMUX_PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 CROND_SVDIR="${SVDIR:-$TERMUX_PREFIX/var/service}"
@@ -35,6 +36,10 @@ if [ ! -f "$TOMORROW" ]; then
 fi
 if [ ! -f "$REGISTRATION" ]; then
     echo "ОШИБКА: run-event-registration.sh не найден" >&2
+    exit 1
+fi
+if [ ! -f "$SPORTS_TODAY" ]; then
+    echo "ОШИБКА: run-sports-today.sh не найден" >&2
     exit 1
 fi
 
@@ -73,6 +78,8 @@ printf '%s\n' \
     "15 20 * * 5 $WEEKEND" \
     "47 12 * * * $SH_BIN $REGISTRATION" \
     "47 13 * * * $SH_BIN $REGISTRATION" \
+    "25 8 * * * $SH_BIN $SPORTS_TODAY" \
+    "25 9 * * * $SH_BIN $SPORTS_TODAY" \
     "25 19 * * 0-4 $SH_BIN $TOMORROW" \
     "25 20 * * 0-4 $SH_BIN $TOMORROW" \
     >"$JOBS"

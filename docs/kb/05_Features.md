@@ -128,11 +128,12 @@ date. A definite Telegram failure clears that date for retry; an ambiguous send
 keeps it to prevent an automatic duplicate. No browser, PDF, AI, database,
 daemon, queue or generic notification framework is involved.
 
-## Sports event presentation target
+## Sports event presentation
 
-ADR 0100 accepts a dedicated sports presentation on the shared Event pipeline.
-This section describes the **approved target**, not current production behavior
-until its staged implementation is complete.
+ADR 0100 defines dedicated sports presentation on the shared Event pipeline.
+Sports Slice E activates the first resident-facing publication layer from the
+already accepted local sources; later league-source and Event Access expansion
+remain staged.
 
 Sporting events remain ordinary normalized events with one optional canonical
 sport code. The same accepted event facts feed:
@@ -144,9 +145,12 @@ sport code. The same accepted event facts feed:
   ticket action exists.
 
 The current-day message is intentionally separate from the previous planning
-mention: it answers what can be attended today and may surface an explicit
-source-backed cancellation/postponement. After it is operational, sport is
-omitted from Morning Digest to avoid a third repetition.
+mention: it answers what can still be attended today and may surface an
+explicit source-backed cancellation. It runs at 08:25 Europe/Madrid with one
+09:25 recovery, reads only fresh accepted same-day local snapshots, performs no
+source HTTP or AI, and uses `state/sports_today.json` for crash-safe dated
+delivery. No qualifying sport creates no message and no delivery marker.
+Morning omits sport in the same release to avoid a third repetition.
 
 Published sports copy is written for a resident rather than exposing raw
 federation rows. When the responsible source provides the facts, it names the
@@ -158,23 +162,29 @@ No separate evening sports-tomorrow message, sports database, keyword
 classifier, generic competition framework, browser worker or per-sport cron is
 approved.
 
-### Sports target implementation status
+### Sports implementation status
 
-The low-level sport identity foundation is implemented separately from
-publication activation:
+The first resident-facing slice is active in the implementation:
 
-- `Event.sport` exists;
-- FACV/Pesca preserve their explicit sport identity;
-- merge semantics protect different sports;
+- `Event.sport` remains on its previously introduced positional slot and the
+  new source-proven `occurrence_status` field is appended after it;
+- FACV/Pesca preserve their explicit sport identity and merge semantics protect
+  different known sports;
 - Russian sport label/icon metadata is deterministic;
 - fishing national dates/details are source-corrected before planning;
-- Tomorrow/Weekend now share one fresh local planning loader;
-- planning has a complete-render path that cannot silently drop tail events and
-  can remove optional teaser prose before failing closed.
+- Tomorrow/Weekend share one fresh local planning loader and render dedicated
+  sports subsections without changing their publication schedules;
+- Sports Today uses the same local loader, time-aware current-day eligibility,
+  complete fail-closed rendering and crash-safe delivery;
+- a fresh matching FPCV cancellation is retained explicitly, suppressed from
+  proactive Tomorrow/Weekend planning and rendered as a correction by Sports
+  Today;
+- Morning excludes sports in the same release;
+- complete planning rendering cannot silently drop a sport and removes optional
+  teaser prose before failing closed.
 
-No sports subsection, Sports Today publication or Morning sport exclusion is
-enabled by these foundations alone, so the dedicated resident sports product is
-still not active.
+No separate evening sports message, sports database, per-sport scheduler,
+browser worker or generic status framework is introduced.
 
 ## One-off event registration notices
 
