@@ -510,14 +510,12 @@ class FishingEnrichmentTests(unittest.TestCase):
                 second[0]["content_sha256"],
             )
 
-    def test_pdf_failure_preserves_last_good_detail(self):
+    def test_same_document_fetch_failure_preserves_last_good_detail(self):
         descriptor = parse_fpcv_index_html(
             _index_html(),
             local_day=NOW.date(),
             base_events=(_provincial_base(),),
         )[0]
-        changed = dict(descriptor)
-        changed["document_identity"] = "f" * 64
 
         with tempfile.TemporaryDirectory() as directory:
             state = Path(directory) / "details.json"
@@ -546,21 +544,21 @@ class FishingEnrichmentTests(unittest.TestCase):
             with (
                 patch(
                     "telegrambot.fishing_enrichment._fetch_fpcv_index",
-                    new=AsyncMock(return_value=(changed,)),
+                    new=AsyncMock(return_value=(descriptor,)),
                 ),
                 patch(
                     "telegrambot.fishing_enrichment._fetch_fpcv_pdf_bytes",
                     new=AsyncMock(
                         side_effect=FishingEnrichmentError(
-                            "bad pdf",
-                            code="PDF-PARSE",
+                            "network down",
+                            code="NETWORK",
                         )
                     ),
                 ),
             ):
                 second = asyncio.run(
                     refresh_fpcv_details(
-                        NOW + timedelta(days=1),
+                        NOW + timedelta(hours=12),
                         (_provincial_base(),),
                         state,
                     )
@@ -570,6 +568,176 @@ class FishingEnrichmentTests(unittest.TestCase):
             self.assertEqual(
                 json.loads(state.read_text(encoding="utf-8"))["records"][0],
                 first[0],
+            )
+
+    def test_changed_document_fetch_failure_withholds_old_detail(self):
+        descriptor = parse_fpcv_index_html(
+            _index_html(),
+            local_day=NOW.date(),
+            base_events=(_provincial_base(),),
+        )[0]
+        changed = dict(descriptor)
+        changed["document_identity"] = "f" * 64
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "details.json"
+            with (
+                patch(
+                    "telegrambot.fishing_enrichment._fetch_fpcv_index",
+                    new=AsyncMock(return_value=(descriptor,)),
+                ),
+                patch(
+                    "telegrambot.fishing_enrichment._fetch_fpcv_pdf_bytes",
+                    new=AsyncMock(return_value=_pdf_bytes()),
+                ),
+                patch(
+                    "telegrambot.fishing_enrichment.extract_fpcv_pdf_text",
+                    new=Mock(return_value=_pdf_text()),
+                ),
+            ):
+                asyncio.run(
+                    refresh_fpcv_details(
+                        NOW,
+                        (_provincial_base(),),
+                        state,
+                    )
+                )
+
+            with (
+                patch(
+                    "telegrambot.fishing_enrichment._fetch_fpcv_index",
+                    new=AsyncMock(return_value=(changed,)),
+                ),
+                patch(
+                    "telegrambot.fishing_enrichment._fetch_fpcv_pdf_bytes",
+                    new=AsyncMock(
+                        side_effect=FishingEnrichmentError(
+                            "network down",
+                            code="NETWORK",
+                        )
+                    ),
+                ),
+            ):
+                second = asyncio.run(
+                    refresh_fpcv_details(
+                        NOW + timedelta(hours=12),
+                        (_provincial_base(),),
+                        state,
+                    )
+                )
+
+            self.assertEqual(second, ())
+            self.assertEqual(
+                json.loads(state.read_text(encoding="utf-8")),
+                {"version": 1, "records": []},
+            )
+
+    def test_changed_pdf_bytes_with_parse_failure_withhold_old_detail(self):
+        descriptor = parse_fpcv_index_html(
+            _index_html(),
+            local_day=NOW.date(),
+            base_events=(_provincial_base(),),
+        )[0]
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "details.json"
+            with (
+                patch(
+                    "telegrambot.fishing_enrichment._fetch_fpcv_index",
+                    new=AsyncMock(return_value=(descriptor,)),
+                ),
+                patch(
+                    "telegrambot.fishing_enrichment._fetch_fpcv_pdf_bytes",
+                    new=AsyncMock(return_value=b"%PDF-1.7\nversion-one"),
+                ),
+                patch(
+                    "telegrambot.fishing_enrichment.extract_fpcv_pdf_text",
+                    new=Mock(return_value=_pdf_text()),
+                ),
+            ):
+                asyncio.run(
+                    refresh_fpcv_details(
+                        NOW,
+                        (_provincial_base(),),
+                        state,
+                    )
+                )
+
+            with (
+                patch(
+                    "telegrambot.fishing_enrichment._fetch_fpcv_index",
+                    new=AsyncMock(return_value=(descriptor,)),
+                ),
+                patch(
+                    "telegrambot.fishing_enrichment._fetch_fpcv_pdf_bytes",
+                    new=AsyncMock(return_value=b"%PDF-1.7\nversion-two"),
+                ),
+                patch(
+                    "telegrambot.fishing_enrichment.extract_fpcv_pdf_text",
+                    new=Mock(
+                        side_effect=FishingEnrichmentError(
+                            "schema changed",
+                            code="PDF-SCHEMA",
+                        )
+                    ),
+                ),
+            ):
+                second = asyncio.run(
+                    refresh_fpcv_details(
+                        NOW + timedelta(hours=12),
+                        (_provincial_base(),),
+                        state,
+                    )
+                )
+
+            self.assertEqual(second, ())
+            self.assertEqual(
+                json.loads(state.read_text(encoding="utf-8")),
+                {"version": 1, "records": []},
+            )
+
+    def test_pdf_programme_must_match_declared_heat_duration(self):
+        descriptor = parse_fpcv_index_html(
+            _index_html(),
+            local_day=NOW.date(),
+            base_events=(_provincial_base(),),
+        )[0]
+        inconsistent = _pdf_text().replace(
+            "21:00 h. Fin de la primera manga.",
+            "20:30 h. Fin de la primera manga.",
+        )
+
+        with self.assertRaisesRegex(
+            FishingEnrichmentError,
+            "programme disagrees",
+        ):
+            parse_fpcv_convocatoria_text(
+                inconsistent,
+                descriptor=descriptor,
+                content_sha256="e" * 64,
+                observed_at=NOW,
+            )
+
+    def test_pdf_reviewed_heat_count_change_fails_closed(self):
+        descriptor = parse_fpcv_index_html(
+            _index_html(),
+            local_day=NOW.date(),
+            base_events=(_provincial_base(),),
+        )[0]
+        changed = _pdf_text().replace(
+            "2 mangas de 3 horas",
+            "3 mangas de 3 horas",
+        )
+
+        with self.assertRaisesRegex(
+            FishingEnrichmentError,
+            "reviewed heat contract changed",
+        ):
+            parse_fpcv_convocatoria_text(
+                changed,
+                descriptor=descriptor,
+                content_sha256="f" * 64,
+                observed_at=NOW,
             )
 
 
