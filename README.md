@@ -152,6 +152,7 @@ CRON_TZ=Europe/Madrid
 45 19 14 6 * /path/to/TelegramBot/termux/sync-guide.sh
 45 19 15 9 * /path/to/TelegramBot/termux/sync-guide.sh
 42 9,11 * * * /path/to/TelegramBot/termux/publish-course-notifications.sh
+0 18 * * * /path/to/TelegramBot/termux/publish-celebration-alert.sh
 30,35,45 20 * * * /path/to/TelegramBot/termux/run-electricity.sh
 0,20 21 * * * /path/to/TelegramBot/termux/run-electricity.sh
 15 19 * * 5 /path/to/TelegramBot/termux/run-weekend.sh --fresh
@@ -213,7 +214,9 @@ The validated Android deployment uses the scripts in `termux/`:
   15 September to verify the live ORA schedule before a due next-day Zona Azul
   transition notice; `publish-course-notifications.sh` runs at 09:42 with an
   11:42 same-day retry opportunity and groups verified registration openings or
-  closings that occur tomorrow;
+  closings that occur tomorrow. `publish-celebration-alert.sh` runs daily at
+  18:00 and also carries a local Europe/Madrid clock-change reminder when
+  tomorrow contains a transition;
 - `termux/run-event-registration.sh` at 12:47 with a 13:47 recovery checks
   official one-off registration lifecycles. It first accepts a same-day,
   non-future local CONVEGA snapshot; only when that snapshot is absent does it
@@ -295,6 +298,7 @@ CRON_TZ=Europe/Madrid
 45 19 14 6 * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-guide.sh
 45 19 15 9 * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-guide.sh
 42 9,11 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/publish-course-notifications.sh
+0 18 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/publish-celebration-alert.sh
 30,35,45 20 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity.sh
 0,20 21 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity.sh
 15 19 * * 5 /data/data/com.termux/files/home/bots/guardamar-status/termux/run-weekend.sh --fresh
