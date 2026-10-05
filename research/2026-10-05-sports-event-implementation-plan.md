@@ -366,6 +366,11 @@ Record the probe in `research/`.
 
 ## C2. Preferred implementation
 
+The 2026-10-05 public-web recheck still exposes a first-party FEPyC event page
+with stable ID `26MC26`, category `Dúos`, competition type `Nacional`,
+Guardamar location and exact 26-29 November 2026 dates. This makes a bounded
+official contract likely, but the Termux production probe remains mandatory.
+
 If one stable bounded official HTML contract exists:
 
 - add one small FEPyC national competition source;
@@ -723,7 +728,36 @@ Do not introduce generic cancellation state until an enabled source proves the
 contract. The core must be designed so the first such source can produce one
 root correction without a second lifecycle.
 
-## F5. Tests
+## F5. Material time/place correction gate
+
+A detailed long-lived root may also contain event time and place. Current v2
+state does not retain those facts, so it cannot detect a later correction or a
+reversion.
+
+Do **not** bump event-access state speculatively in Slice F.
+
+Before enabling any rooted sports source whose authoritative contract allows
+time/place to change:
+
+1. classify which root facts are genuinely mutable and source-observable;
+2. if current v2 date correction is sufficient, keep state v2;
+3. if time/place changes must be detected, write a narrow ADR refinement and
+   introduce the smallest explicit semantic comparison state needed (likely a
+   v3 migration or equivalent reviewed current-context keys);
+4. preserve the existing root ID/options/triggers exactly through migration;
+5. require `uncertain == null` before migration;
+6. create a private v2 backup and define the same pre-first-publication rollback
+   boundary used by ADR 0092;
+7. emit one compact correction reply from current accepted presentation facts;
+8. never edit the old root or create a second lifecycle.
+
+A source is **not eligible for rooted rollout** while a known mutable root fact
+would be left silently stale.
+
+This closes the root-consistency gap without forcing a schema change before a
+real source proves it is needed.
+
+## F6. Tests
 
 Add:
 
@@ -877,6 +911,10 @@ plan.
 
 ## Gate
 
+A 2026-10-05 web recheck still shows server-rendered FVBCV competition/jornada
+tables with explicit competition hierarchy and Guardamar team rows. That
+supports the adapter direction but is not a production contract by itself.
+
 Do not implement before a production read-only probe proves:
 
 - official browserless HTML/JSON endpoint;
@@ -944,6 +982,11 @@ Same architecture as FVBCV:
 # Slice J — Turismo mass participation sport + delegated registration
 
 ## Gate
+
+The 2026-10-05 official Turismo page for Media Maratón remains under an
+`Actividades deportivas` surface and exposes event-specific race facts. This
+is strong evidence for source-backed sports classification, but implementation
+still begins with a production probe of the reusable discovery contract.
 
 Probe an official Turismo/Ayuntamiento sports discovery contract:
 
@@ -1231,18 +1274,21 @@ The initiative is complete when all of the following are true:
 8. event-access handles registration/reservation/tickets with correct wording;
 9. event-access roots may use one safe official event image;
 10. access date changes reply to the existing root;
-11. explicit source-backed cancellation/postponement is surfaced in the
+11. no enabled rooted sports source can leave a known mutable time/place fact
+    silently stale; either its contract does not require tracking or the
+    reviewed context-correction state is implemented;
+12. explicit source-backed cancellation/postponement is surfaced in the
     appropriate current-day/root correction path;
-12. the 12:47 deadline gap is removed by one shared earlier event-access window;
-13. FPCV national dates cannot override authoritative FEPyC championship dates;
-14. FPCV convocatoria access uses bounded approved text-PDF extraction only;
-15. FVBCV/FFCV are enabled only after current live source contracts prove
+13. the 12:47 deadline gap is removed by one shared earlier event-access window;
+14. FPCV national dates cannot override authoritative FEPyC championship dates;
+15. FPCV convocatoria access uses bounded approved text-PDF extraction only;
+16. FVBCV/FFCV are enabled only after current live source contracts prove
     locality and status semantics;
-16. no browser, new daemon, database, queue, generic sports framework or
+17. no browser, new daemon, database, queue, generic sports framework or
     per-sport cron exists;
-17. every source addition has focused tests, full-suite pass and documented
+18. every source addition has focused tests, full-suite pass and documented
     source/runtime contract;
-18. production deploy and rollback procedures are documented and tested.
+19. production deploy and rollback procedures are documented and tested.
 
 
 
@@ -1313,3 +1359,44 @@ No remaining dependency-cycle or rollback blocker found in this review.
 
 No remaining persistent-state schema blocker found in this review. Slices A-G
 can preserve rollback at the file/schema level.
+
+
+---
+
+## Plan review cycle 3 — source contracts / root consistency
+
+### Current-source recheck
+
+A fresh 2026-10-05 web review still supports the research assumptions:
+
+- FEPyC exposes `26MC26` with exact 26-29 November 2026 Guardamar dates,
+  national type and Dúos category;
+- FVBCV exposes server-rendered current competition/jornada tables and explicit
+  senior competition hierarchy;
+- Turismo's Media Maratón page remains an official sports-category surface with
+  start, distances, time limits and event-specific context.
+
+These findings strengthen, but do not replace, Termux production probes.
+
+### Findings
+
+1. **Canonical access-root consistency extended beyond date.** A root may
+   include time/place, while v2 state cannot detect their change. The plan now
+   has a mandatory per-source gate rather than falsely declaring the problem
+   solved by date correction alone.
+2. A speculative state-v3 migration would be overengineering. The plan delays
+   it until an enabled rooted source proves mutable time/place semantics, then
+   requires the minimal reviewed comparison state before source activation.
+3. Moving Sports Today after the 10:10-10:40 late event refresh would harm
+   early events (the official 2026 Media Maratón started at 09:30). The plan
+   therefore keeps Sports Today in the morning after pre-morning snapshots;
+   no late sports polling is added generically.
+4. Future mutable league adapters may be added to an existing bounded shared
+   event-refresh opportunity only if their measured contract justifies it;
+   that is a source-specific optimization, not a prerequisite or new cron.
+
+### Result
+
+No unresolved source-authority contradiction remains in the plan. Root
+time/place corrections are now an explicit enablement gate instead of an
+untracked risk.
