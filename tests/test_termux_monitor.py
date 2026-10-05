@@ -26,6 +26,7 @@ class OperationalMonitorTermuxTests(unittest.TestCase):
             commands.mkdir()
             crontab_state = root / "crontab"
             crontab_state.write_text(initial, encoding="utf-8")
+            installed_marker = root / "crontab-installed"
 
             shell = shutil.which("sh")
             self.assertIsNotNone(shell)
@@ -38,15 +39,17 @@ class OperationalMonitorTermuxTests(unittest.TestCase):
                 "    echo \"$LIST_ERROR\" >&2\n"
                 "    exit 2\n"
                 "  fi\n"
-                "  if [ \"${NO_CRONTAB-}\" = 1 ]; then\n"
+                "  if [ \"${NO_CRONTAB-}\" = 1 ] && [ ! -f \"$FAKE_INSTALLED\" ]; then\n"
                 "    echo \"no crontab for test\" >&2\n"
                 "    exit 1\n"
                 "  fi\n"
                 "  cat \"$FAKE_CRONTAB\"\n"
                 "elif [ \"$#\" -eq 1 ]; then\n"
                 "  cat \"$1\" >\"$FAKE_CRONTAB\"\n"
+                "  touch \"$FAKE_INSTALLED\"\n"
                 "else\n"
                 "  cat >\"$FAKE_CRONTAB\"\n"
+                "  touch \"$FAKE_INSTALLED\"\n"
                 "fi\n",
                 encoding="utf-8",
             )
@@ -83,8 +86,10 @@ class OperationalMonitorTermuxTests(unittest.TestCase):
             environment.update({
                 "HOME": str(root / "home"),
                 "PREFIX": str(prefix),
+                "SVDIR": str(prefix / "var" / "service"),
                 "PATH": f"{commands}:{os.environ.get('PATH', '')}",
                 "FAKE_CRONTAB": str(crontab_state),
+                "FAKE_INSTALLED": str(installed_marker),
                 "LIST_ERROR": list_error or "",
                 "NO_CRONTAB": "1" if no_crontab else "",
                 "CROND_STATE": str(crond_state),
