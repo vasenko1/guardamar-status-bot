@@ -872,3 +872,19 @@ entries are removed from the production registry because the award is
 innovation-first. This is a source-semantics decision, not a negative judgment
 about the products themselves.
 
+## Calendar notices
+
+The existing daily 18:00 celebration/holiday publisher also carries a
+next-day Europe/Madrid clock-change notice when the local timezone data contains
+a transition tomorrow. The 07:30 Morning Digest receives the same locally
+computed fact for the transition day. The feature uses no remote source, AI,
+new cron or new state; it reuses the existing crash-safe calendar-alert
+delivery state. Exact wall-clock jumps come from installed timezone data rather
+than an annually hardcoded date table.
+
+Municipal programme precedence remains conservative. Todo Cultura is
+supplemental. A reviewed source conflict may suppress a Todo row only through a
+narrow evidence-bound correction; the 6 October 2026 Rosario correction
+requires the exact Todo date/time/title plus the verified Ayuntamiento 19:00
+Rosario and 20:00 Mass pair. Generic duplicate thresholds are unchanged.
+
