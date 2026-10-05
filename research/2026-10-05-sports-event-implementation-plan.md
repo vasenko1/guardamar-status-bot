@@ -1901,3 +1901,39 @@ No new cron, resident-facing sports publication, Event Access source, browser,
 OCR, runtime AI or dependency is introduced by Slice C. The temporary
 verification workflow has been removed; Slice D stays blocked until Slice C is
 merged and production-verified.
+
+
+## Implementation checkpoint — Slice D
+
+Slice C is production-verified.
+
+Slice D now implements the shared local planning read and complete-render
+foundation:
+
+- one explicit fresh local loader for Tomorrow/Weekend/future Sports Today;
+- preserved source order, venue preference, merge semantics and Weekend
+  recurring rules;
+- explicit FEPyC/Pesca-detail path propagation;
+- no network/AI in the planning loader;
+- complete event-section rendering for Tomorrow/Weekend with optional-teaser
+  compaction and fail-closed essential overflow;
+- whole-Weekend aggregate compaction without duplicate source reads;
+- labelled multi-distance facts remain distinct.
+
+The implementation/review cycle found one real runtime defect after an initial
+green run: optional prose on Saturday could make Sunday overflow although the
+whole message would fit after aggregate compaction. That was fixed and
+regression-tested.
+
+The last runtime branch head before documentation synchronization passed:
+
+- compileall: PASS;
+- focused Slice D suite: **146 tests, OK**;
+- full repository suite: **1653 tests, OK**.
+
+Detailed review:
+`research/2026-10-05-sports-slice-d-implementation-review.md`.
+
+No sports subsection, Sports Today, Morning exclusion or cron change is part of
+Slice D. Slice E remains blocked until the final documentation run, workflow
+cleanup, merge and production verification.
