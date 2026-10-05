@@ -1750,7 +1750,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             )),
             label="weekend-delivery",
         )
-        with weekend_delivery.exclusive_run():
+        with weekend_state.exclusive_run(), weekend_delivery.exclusive_run():
             if weekend_state.is_published(saturday):
                 logging.info("SKIP: weekend digest already published for %s", saturday)
                 return 0
