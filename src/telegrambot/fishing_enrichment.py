@@ -44,6 +44,7 @@ _FPCV_PDF_LIMIT_BYTES = 1024 * 1024
 _FPCV_PDF_TEXT_LIMIT_BYTES = 64 * 1024
 _REQUEST_TIMEOUT_SECONDS = 15.0
 _PDF_PARSE_TIMEOUT_SECONDS = 10.0
+_ENRICHMENT_FRESHNESS = timedelta(hours=36)
 _MAX_FEPYC_AUTHORITIES = 4
 _MAX_FPCV_DETAILS = 8
 _STATE_VERSION = 1
@@ -1208,7 +1209,21 @@ async def refresh_fpcv_details(
     return tuple(records)
 
 
-def matching_authority(raw: dict, state: Optional[dict]) -> Optional[dict]:
+def _record_is_fresh(record: dict, now: datetime) -> bool:
+    try:
+        observed = datetime.fromisoformat(record["observed_at"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    if observed.tzinfo is None or observed.utcoffset() is None:
+        return False
+    return timedelta(0) <= now - observed <= _ENRICHMENT_FRESHNESS
+
+
+def matching_authority(
+    raw: dict,
+    state: Optional[dict],
+    now: datetime,
+) -> Optional[dict]:
     if _fold(str(raw.get("level", ""))) != "nacional":
         return None
     try:
@@ -1217,6 +1232,8 @@ def matching_authority(raw: dict, state: Optional[dict]) -> Optional[dict]:
     except (KeyError, TypeError, ValueError):
         return None
     for record in (state or {}).get("records", []):
+        if not _record_is_fresh(record, now):
+            continue
         if _fold(record["match_title"]) != _fold(str(raw.get("title", ""))):
             continue
         authority_start = date.fromisoformat(record["start"])
@@ -1226,9 +1243,13 @@ def matching_authority(raw: dict, state: Optional[dict]) -> Optional[dict]:
     return None
 
 
-def matching_detail(raw: dict, state: Optional[dict]) -> Optional[dict]:
+def matching_detail(
+    raw: dict,
+    state: Optional[dict],
+    now: datetime,
+) -> Optional[dict]:
     key = _join_key(raw)
     for record in (state or {}).get("records", []):
-        if record["join_key"] == key:
+        if record["join_key"] == key and _record_is_fresh(record, now):
             return record
     return None
