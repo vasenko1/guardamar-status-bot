@@ -1812,3 +1812,20 @@ Detailed gate:
 The final branch-head run is green (64 focused / 1615 full tests). Slice B
 implementation gate is PASS. Slice C remains blocked until temporary workflow
 cleanup, merge and production verification of Slice B.
+
+
+## Implementation checkpoint — Slice C source-contract gate
+
+The Termux production source probe for Slice C is PASS on
+`0c01686545ee90236a2ab33a433b6f24a17d789f`.
+
+Measured contracts:
+
+- FEPyC authority page: 33,826 bytes / 0.326 s;
+- FPCV convocatoria index: 161,072 bytes / 2.465 s;
+- exact FPCV PDF: 609,280 bytes / 1.474 s;
+- `pdftotext -layout`: 8,442 bytes / 0.088 s.
+
+Production source state and working tree remained unchanged. ADR 0101 now
+authorizes only this bounded source/PDF class. Runtime implementation remains
+blocked until the documentation-only ADR/KB consistency review is PASS.
