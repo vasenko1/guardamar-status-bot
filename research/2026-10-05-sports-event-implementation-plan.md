@@ -1861,3 +1861,26 @@ passed 76 focused and 1635 full-suite tests.
 
 Slice D remains blocked until the final branch-head run, temporary workflow
 cleanup, merge and production verification of Slice C.
+
+
+## Implementation checkpoint — Slice C final red-team cycle
+
+After an initially green implementation, manual review found and fixed two
+additional fail-closed gaps:
+
+- a known-changed FPCV document could temporarily retain superseded details if
+  replacement parsing failed;
+- declared two-by-three-hour heats were not cross-checked against programme
+  intervals.
+
+The corrected runtime now preserves last-good only for an unavailable fetch of
+the same document, withholds known-superseded invalid details immediately, and
+validates the heat schedule against the declared duration.
+
+Post-fix verification:
+
+- focused Slice C suite: 80 tests OK;
+- full repository suite: 1639 tests OK.
+
+Slice C remains blocked from merge/deploy until the final documentation
+branch-head run and temporary-workflow cleanup are complete.
