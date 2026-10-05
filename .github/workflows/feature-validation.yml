@@ -1,0 +1,45 @@
+name: Feature validation
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Compile
+        run: python -m compileall -q src
+
+      - name: Focused clock-change tests
+        run: python -m unittest discover -s tests -p 'test_clock_change.py'
+
+      - name: Focused celebration tests
+        run: python -m unittest discover -s tests -p 'test_celebrations.py'
+
+      - name: Focused municipal agenda tests
+        run: python -m unittest discover -s tests -p 'test_municipal_agenda.py'
+
+      - name: Full test suite
+        run: python -m unittest discover -s tests
+
+      - name: Diff check
+        run: git diff --check origin/main...HEAD
