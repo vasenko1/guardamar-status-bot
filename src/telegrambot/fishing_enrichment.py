@@ -887,9 +887,9 @@ def parse_fpcv_convocatoria_text(
         )
     heat_count = int(heat_match.group(1))
     heat_hours = int(heat_match.group(2))
-    if heat_count <= 0 or heat_hours <= 0:
+    if heat_count != 2 or heat_hours != 3:
         raise FishingEnrichmentError(
-            "FPCV heat duration is invalid", code="PDF-SCHEMA"
+            "FPCV reviewed heat contract changed", code="PDF-SCHEMA"
         )
 
     programme_patterns = {
@@ -910,15 +910,35 @@ def parse_fpcv_convocatoria_text(
         labels[key] = match.group(1)
         clocks[key] = _parse_clock(match.group(1))
 
-    start_at = _datetime_on(event_day, clocks["first_start"])
-    end_day = event_day
-    if clocks["second_end"] <= clocks["first_start"]:
-        end_day += timedelta(days=1)
-    end_at = _datetime_on(end_day, clocks["second_end"])
-    if end_at <= start_at:
+    concentration_at = _datetime_on(event_day, clocks["concentration"])
+    first_start = _datetime_on(event_day, clocks["first_start"])
+    first_end_day = event_day
+    if clocks["first_end"] <= clocks["first_start"]:
+        first_end_day += timedelta(days=1)
+    first_end = _datetime_on(first_end_day, clocks["first_end"])
+
+    second_start_day = event_day
+    if clocks["second_start"] <= clocks["first_end"]:
+        second_start_day += timedelta(days=1)
+    second_start = _datetime_on(second_start_day, clocks["second_start"])
+    second_end_day = second_start_day
+    if clocks["second_end"] <= clocks["second_start"]:
+        second_end_day += timedelta(days=1)
+    second_end = _datetime_on(second_end_day, clocks["second_end"])
+
+    expected_heat = timedelta(hours=heat_hours)
+    if (
+        concentration_at > first_start
+        or first_end - first_start != expected_heat
+        or second_start < first_end
+        or second_end - second_start != expected_heat
+    ):
         raise FishingEnrichmentError(
-            "FPCV programme end is not after start", code="PDF-SCHEMA"
+            "FPCV programme disagrees with heat duration", code="PDF-SCHEMA"
         )
+
+    start_at = first_start
+    end_at = second_end
 
     fee_match = re.search(
         r"cada\s+participante\s+debera\s+abonar\s+(\d+)\s*€\s+por\s+su\s+inscripcion",
@@ -1177,17 +1197,39 @@ async def refresh_fpcv_details(
                 "FPCV detail row has no eligible PDF; omitting %s", key
             )
             continue
+        old_matches_descriptor = (
+            old is not None
+            and not old["cancelled"]
+            and old["document_identity"] == descriptor["document_identity"]
+        )
         try:
             payload = await _fetch_fpcv_pdf_bytes(descriptor["pdf_url"])
-            content_sha256 = hashlib.sha256(payload).hexdigest()
-            if (
-                old is not None
-                and not old["cancelled"]
-                and old["document_identity"] == descriptor["document_identity"]
-                and old["content_sha256"] == content_sha256
-            ):
-                records.append(_reuse_current_record(old, now))
-                continue
+        except FishingEnrichmentError as exc:
+            if old_matches_descriptor:
+                logging.warning(
+                    "FPCV detail fetch failed [%s]; preserving same-document "
+                    "last-good %s",
+                    exc.diagnostic_code,
+                    key,
+                )
+                records.append(old)
+            else:
+                logging.warning(
+                    "FPCV detail fetch failed [%s]; no matching last-good %s",
+                    exc.diagnostic_code,
+                    key,
+                )
+            continue
+
+        content_sha256 = hashlib.sha256(payload).hexdigest()
+        if (
+            old_matches_descriptor
+            and old["content_sha256"] == content_sha256
+        ):
+            records.append(_reuse_current_record(old, now))
+            continue
+
+        try:
             text = await asyncio.to_thread(extract_fpcv_pdf_text, payload)
             record = parse_fpcv_convocatoria_text(
                 text,
@@ -1196,16 +1238,11 @@ async def refresh_fpcv_details(
                 observed_at=now,
             )
         except FishingEnrichmentError as exc:
-            if old is not None:
-                logging.warning(
-                    "FPCV detail refresh failed [%s]; preserving last-good %s",
-                    exc.diagnostic_code,
-                    key,
-                )
-                records.append(old)
-                continue
+            # We obtained bytes proving that this document is new/changed.
+            # Continuing to serve the previous semantic details would be a
+            # stale contradiction, so fail closed for this record.
             logging.warning(
-                "FPCV detail refresh failed [%s]; no last-good %s",
+                "FPCV changed detail rejected [%s]; withholding %s",
                 exc.diagnostic_code,
                 key,
             )
