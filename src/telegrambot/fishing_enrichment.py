@@ -46,7 +46,7 @@ _REQUEST_TIMEOUT_SECONDS = 15.0
 _PDF_PARSE_TIMEOUT_SECONDS = 10.0
 _ENRICHMENT_FRESHNESS = timedelta(hours=36)
 _MAX_FEPYC_AUTHORITIES = 4
-_MAX_FPCV_DETAILS = 8
+_MAX_FPCV_DETAILS = 4
 _STATE_VERSION = 1
 
 _FEPYC_SPECS = (
@@ -54,6 +54,7 @@ _FEPYC_SPECS = (
         "source_id": "26MC26",
         "url": FEPYC_26MC26_URL,
         "match_title": "Mar Costa Dúos",
+        "competition_name": "XVI Campeonato de España Mar-costa Dúos",
     },
 )
 
@@ -271,6 +272,7 @@ def _authority_record_valid(record: Any) -> bool:
     required = {
         "source_id",
         "match_title",
+        "competition_name",
         "specialty",
         "category",
         "competition_type",
@@ -304,6 +306,7 @@ def _authority_record_valid(record: Any) -> bool:
             isinstance(record[key], str) and record[key]
             for key in (
                 "match_title",
+                "competition_name",
                 "specialty",
                 "category",
                 "place",
@@ -349,6 +352,10 @@ def parse_fepyc_authority_html(
     source_id = spec["source_id"]
     if not re.search(rf"\bid\s*:\s*{re.escape(_fold(source_id))}\b", visible):
         raise FishingEnrichmentError("FEPyC event ID changed", code="SCHEMA")
+    if _fold(spec["competition_name"]) not in visible:
+        raise FishingEnrichmentError(
+            "FEPyC competition name changed", code="SCHEMA"
+        )
 
     required_markers = {
         "specialty": "especialidad: lanzado mar costa",
@@ -377,6 +384,7 @@ def parse_fepyc_authority_html(
     return {
         "source_id": source_id,
         "match_title": spec["match_title"],
+        "competition_name": spec["competition_name"],
         "specialty": "Lanzado Mar Costa",
         "category": "Dúos",
         "competition_type": "Nacional",
@@ -1141,6 +1149,10 @@ async def refresh_fpcv_details(
 ) -> tuple[dict, ...]:
     if now.tzinfo is None or now.utcoffset() is None:
         raise ValueError("FPCV details time must be timezone-aware")
+    if not base_events:
+        empty = {"version": _STATE_VERSION, "records": []}
+        await asyncio.to_thread(_write_json, state_path, empty)
+        return ()
 
     previous = None
     try:
@@ -1241,6 +1253,18 @@ def matching_authority(
         if raw_start <= authority_end and authority_start <= raw_end:
             return record
     return None
+
+
+def authority_event_details(record: dict) -> tuple[str, ...]:
+    if (
+        record.get("source_id") == "26MC26"
+        and _fold(str(record.get("category", ""))) == "duos"
+        and "campeonato de espana" in _fold(
+            str(record.get("competition_name", ""))
+        )
+    ):
+        return ("Чемпионат Испании · категория дуэты",)
+    return ()
 
 
 def matching_detail(
