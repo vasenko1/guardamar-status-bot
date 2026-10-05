@@ -157,6 +157,75 @@ class PlanningLocalLoaderTests(unittest.IsolatedAsyncioTestCase):
                 paths["pesca_cv_details_state_path"],
             )
 
+    async def test_shared_loader_preserves_existing_cross_source_merge_semantics(self):
+        with tempfile.TemporaryDirectory() as directory:
+            paths = _paths(directory)
+            for key, field in (
+                ("municipal_agenda_state_path", "fetched_at"),
+                ("agenda_state_path", "fetched_at"),
+                ("library_agenda_state_path", "fetched_at"),
+                ("am_guardamar_state_path", "fetched_at"),
+                ("facv_state_path", "observed_at"),
+                ("pesca_cv_state_path", "observed_at"),
+                ("convega_state_path", "observed_at"),
+            ):
+                _write_observed(paths[key], field, OBSERVED)
+
+            municipal_event = Event(
+                "Concierto Guardamar",
+                TARGET,
+                place="Casa de Cultura",
+            )
+            agenda_event = Event(
+                "Concierto Guardamar",
+                TARGET,
+                ends_at=datetime(2026, 10, 10, 14, 0, tzinfo=TZ),
+                place="Casa de Cultura",
+                ticket_price_cents=500,
+            )
+
+            with (
+                patch(
+                    "telegrambot.planning_events.fetch_today_municipal_events",
+                    new=AsyncMock(return_value=(municipal_event,)),
+                ),
+                patch(
+                    "telegrambot.planning_events.fetch_today_events",
+                    new=AsyncMock(return_value=(agenda_event,)),
+                ),
+                patch(
+                    "telegrambot.planning_events.fetch_today_library_events",
+                    new=AsyncMock(return_value=()),
+                ),
+                patch(
+                    "telegrambot.planning_events.fetch_today_am_guardamar_events",
+                    new=AsyncMock(return_value=()),
+                ),
+                patch(
+                    "telegrambot.planning_events.fetch_today_facv_events",
+                    new=AsyncMock(return_value=()),
+                ),
+                patch(
+                    "telegrambot.planning_events.fetch_today_pesca_cv_events",
+                    new=AsyncMock(return_value=()),
+                ),
+                patch(
+                    "telegrambot.planning_events.fetch_today_convega_events",
+                    new=AsyncMock(return_value=()),
+                ),
+            ):
+                events = await load_local_planning_events(
+                    TARGET,
+                    required_snapshot_day=OBSERVED.date(),
+                    include_recurring=False,
+                    **paths,
+                )
+
+            self.assertEqual(len(events), 1)
+            self.assertEqual(events[0].title, "Concierto Guardamar")
+            self.assertEqual(events[0].ends_at.hour, 14)
+            self.assertEqual(events[0].ticket_price_cents, 500)
+
     async def test_stale_source_is_omitted_without_calling_reader(self):
         with tempfile.TemporaryDirectory() as directory:
             paths = _paths(directory)
