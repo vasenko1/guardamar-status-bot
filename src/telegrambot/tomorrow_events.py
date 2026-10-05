@@ -18,6 +18,11 @@ from .fishing_enrichment import (
 )
 from .models import Event
 from .planning_events import load_local_planning_events
+from .sports_presentation import (
+    SPORTS_SECTION_HEADING,
+    split_sport_events,
+    sport_is_plannable,
+)
 
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 _DUE_WEEKDAYS = frozenset({0, 1, 2, 3, 6})  # Sunday through Thursday.
@@ -141,22 +146,39 @@ def _render_message(
 ) -> str:
     render_events = tuple(events)
     if unit_count > 1:
-        # A multi-event planning post is scan-first; full prose stays for a
-        # standalone event and in the next morning digest.
+        # A multi-event planning post is scan-first; optional prose is not
+        # allowed to crowd out another verified planning item.
         render_events = tuple(
             replace(event, teaser=None)
             for event in render_events
         )
-    section = build_complete_event_section(
-        render_events,
-        (
-            "📅 <b>Завтра в Гуардамаре — "
-            f"{target_day.day} {MONTHS_GENITIVE[target_day.month]}</b>"
-        ),
+
+    ordinary, sports = split_sport_events(render_events)
+    heading = (
+        "📅 <b>Завтра в Гуардамаре — "
+        f"{target_day.day} {MONTHS_GENITIVE[target_day.month]}</b>"
     )
-    if not section:
+
+    lines: list[str] = []
+    if ordinary:
+        section = build_complete_event_section(
+            ordinary,
+            heading,
+        )
+        lines.extend(section[1:])
+    else:
+        lines.append(heading)
+
+    if sports:
+        lines.extend(build_complete_event_section(
+            sports,
+            SPORTS_SECTION_HEADING,
+            prefix_length=len("\n".join(lines)),
+        ))
+
+    if not ordinary and not sports:
         raise ValueError("tomorrow event section is empty")
-    message = with_footer("\n".join(section[1:]))
+    message = with_footer("\n".join(lines))
     if len(message) > 4096:
         raise ValueError("tomorrow event message exceeds Telegram limit")
     return message
@@ -205,12 +227,19 @@ async def produce_tomorrow_event_publication(
     eligible = tuple(
         event
         for event in merged
-        if _eligible_tomorrow_event(event, target_day)
+        if (
+            sport_is_plannable(event)
+            and _eligible_tomorrow_event(event, target_day)
+        )
     )
     if not eligible:
         return None
 
-    units = _editorial_units(eligible)
+    ordinary, sports = split_sport_events(eligible)
+    units = (
+        *_editorial_units(ordinary),
+        *_editorial_units(sports),
+    )
     if not units:
         return None
     image_url = _unit_image_url(units[0]) if len(units) == 1 else None
