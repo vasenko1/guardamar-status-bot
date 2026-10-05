@@ -293,9 +293,9 @@ No unresolved source-contract, parser, freshness, rollback, request-bound,
 state-schema, Event-projection, runtime-cost or regression-test objection
 remains for Slice C.
 
-The temporary branch-only verification workflow is cleanup-only and must be
-removed before the PR/final diff. Removing it does not alter the tested
-application tree.
+The temporary branch-only verification workflow has been removed. The cleanup
+commit changed only that workflow file and did not alter the tested application
+tree.
 
 Slice D remains blocked until Slice C is merged, deployed and
 production-verified.
