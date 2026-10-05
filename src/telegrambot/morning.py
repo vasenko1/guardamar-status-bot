@@ -460,6 +460,12 @@ def _merge_events(*groups):
             event_booking = agenda_booking_identity(event.ticket_url)
             duplicate_index = None
             for index, current in enumerate(result):
+                if (
+                    current.sport is not None
+                    and event.sport is not None
+                    and current.sport != event.sport
+                ):
+                    continue
                 current_booking = agenda_booking_identity(current.ticket_url)
                 if (
                     current_booking is not None
@@ -579,6 +585,7 @@ def _merge_events(*groups):
                         else event.programme_order
                     ),
                     session_group_key=session_group_key,
+                    sport=current.sport or event.sport,
                 )
                 continue
             result.append(event)
