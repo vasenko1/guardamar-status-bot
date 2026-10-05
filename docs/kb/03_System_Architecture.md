@@ -83,6 +83,36 @@ no message.
 | Municipal Wi-Fi source watch | Inside guide sync | A changed official municipal PDF is parsed fail-closed; only a semantic point/SSID/password change updates the existing card and, after reconciliation, produces one public group notice linking to that card. |
 | OCI capacity search | Independent GitHub Actions | Infrastructure only; no Telegram city publication. |
 
+## Accepted sports-event target architecture
+
+ADR 0100 accepts a dedicated sports presentation layer on the existing event
+pipeline. It is **implementation pending** until the staged rollout completes;
+the runtime lifecycle inventory above continues to describe current production.
+
+The accepted target keeps one normalized `Event` stream and adds one optional
+source-owned `sport` fact. Sports do not get a second database, collector,
+scheduler or registration lifecycle.
+
+Once implemented:
+
+- `Завтра в Гуардамаре` and Friday `Афиша выходных` include a separate
+  sports subsection;
+- one standalone local-snapshot-only `Спортивные мероприятия сегодня`
+  publication serves the current-day reminder/correction;
+- Morning omits sport after that current-day publication is operational;
+- advance registration/reservation/ticket information continues through the
+  event-access lifecycle in ADRs 0090-0092;
+- source-specific authority and locality checks happen before generic Event
+  merge; no global sports ownership/precedence framework is introduced.
+
+Sports copy must preserve source-backed competition context such as league,
+group, round/stage, category, schedule and venue when available. Explicit
+same-day cancellation/postponement is a correction, not a silent omission.
+
+Each implementation slice has a verification gate. A later slice starts only
+after focused tests, the full suite and architecture/code review leave no
+unresolved defect for the current stage.
+
 ## Logical areas
 
 ### Morning Digest
