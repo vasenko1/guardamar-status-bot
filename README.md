@@ -214,8 +214,8 @@ The validated Android deployment uses the scripts in `termux/`:
   delivery uses a separate lifecycle lock and ambiguous delivery is never
   automatically resent;
 - `termux/run-tomorrow-events.sh` at 19:25 Sunday–Thursday reads fresh
-  same-day local event catalogs plus reviewed recurring rules. Only when
-  tomorrow is a scheduled La Redonda market does it reuse the bounded
+  same-day local event catalogs plus the reviewed La Redonda market rule. Only
+  when tomorrow is a scheduled La Redonda market does it reuse the bounded
   Mayor-channel exception check; Gemini is called only if fresh market-related
   text exists. It sends at most one next-day planning post and lets Telegram
   fetch an optional validated official event image by URL;
