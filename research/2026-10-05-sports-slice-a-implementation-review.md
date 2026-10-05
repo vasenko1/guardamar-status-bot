@@ -140,9 +140,27 @@ It is not part of the feature architecture and must be deleted from the branch
 after the final post-report verification. The tested implementation remains
 unchanged when that workflow file is removed.
 
+## Verification cycle 4 — post-report final run
+
+The branch-head verification after adding this gate record also passed:
+
+- compileall: PASS;
+- focused suite: **77 tests, OK**;
+- full repository suite: **1608 tests, OK**.
+
+No runtime code changed between verification cycle 3 and cycle 4; the intervening
+commits updated only this review/checkpoint documentation.
+
 ## Gate status
 
-**PASS, pending only the final post-report verification run and removal of the
-temporary verification workflow.**
+**PASS**
 
-Slice B must not start until those two cleanup checks are complete.
+The Slice A implementation itself has no unresolved code, state, delivery,
+rollback, runtime-cost or regression-test objection.
+
+The temporary branch-only verification workflow is cleanup-only and must be
+removed before PR/final diff. Removing that workflow does not change the tested
+application tree.
+
+Slice B may begin only after that cleanup and one final branch diff/main-delta
+check.
