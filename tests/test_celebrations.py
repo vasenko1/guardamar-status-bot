@@ -229,7 +229,7 @@ class CelebrationAlertTests(unittest.TestCase):
         self.assertIn("🎉 <b>Завтра в Гуардамаре:</b>", publication.message)
         self.assertIn("Страстная неделя (Semana Santa)", publication.message)
         self.assertIn("⏰ <b>Завтра — переход на летнее время</b>", publication.message)
-        self.assertEqual(publication.message.count("🔔"), 1)
+        self.assertEqual(publication.message.count("обЪявления Гуардамар"), 1)
 
     def test_day_without_start_official_holiday_or_clock_change_has_no_alert(self):
         now = datetime(2026, 9, 24, 18, 0, tzinfo=GUARDAMAR_TIMEZONE)
