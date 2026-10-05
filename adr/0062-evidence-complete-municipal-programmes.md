@@ -300,3 +300,23 @@ Failure or ambiguity is fail-open: the events remain separate. Generic
 limits, model budgets, and runtime scheduling are unchanged. This prevents the
 28 September 20:00 Rosario Mass alias from rendering twice without introducing
 programme-specific vocabulary or broad fuzzy merging.
+
+## 5 October 2026 amendment: reviewed primary-source conflict
+
+A 6 October Rosario preview exposed a case that the exact-time alias bridge
+must intentionally leave unresolved: the verified Ayuntamiento programme has
+Rosario at 19:00 and Mass at 20:00, while the supplemental Todo Cultura copy
+contains a conflicting 19:30 Rosario row.
+
+Generic occurrence matching remains unchanged. The Todo alias bridge still
+requires exact same-date/same-time evidence. Instead, one reviewed conflict is
+suppressed before Todo merge only when all of these facts hold: the supplemental
+source is Todo Cultura, the occurrence is 6 October 2026 at 19:30 and names
+Rosario, and the already verified Ayuntamiento programme contains both the
+19:00 Rosario and 20:00 Mass for that date.
+
+If the primary pair is incomplete, the correction fails open and keeps the
+Todo row. An unrelated Todo event at 19:30 also remains. This adds no fuzzy
+time tolerance, programme vocabulary, source request, model call, state,
+dependency or scheduler work.
+
