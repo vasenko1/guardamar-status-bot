@@ -2,8 +2,12 @@
 
 ## Status
 
-Draft v1. This plan is intentionally implementation-free and will be revised
-through adversarial review cycles before it is considered ready.
+**Stabilized after eight adversarial plan-review cycles. Ready for ADR/implementation work.**
+
+This document remains implementation-free: no production code, cron or runtime
+state is changed by the planning branch. Any later change to a dependency,
+source contract or current main requires a targeted delta review before the
+affected slice begins.
 
 Base production architecture reviewed at:
 
@@ -1694,3 +1698,52 @@ requirement. No new consistency objection remains after this correction.
 
 No remaining source-identity or correction-thread break was found after these
 changes.
+
+
+---
+
+## Plan review cycle 8 — final red-team audit
+
+### Checks
+
+- current `main` re-read at `d63807751fab0c08656748714ec1ab78d3739765`;
+- planning branch merge-base is exactly that current main;
+- branch diff contains only:
+  - stabilized architecture research;
+  - this implementation plan;
+- no production Python, shell, cron, ADR, KB or state file has been changed;
+- slice dependency graph is acyclic;
+- FEPyC/FPCV correctness and rich facts precede sports publication;
+- Weekend crash-safety precedes Weekend sports content;
+- Sports Today and Morning exclusion share one controlled deployment boundary;
+- Event Access generic completion precedes FPCV access rollout;
+- mutable root identity survives date/time/place/action changes;
+- source snapshot additions remain rollback-safe;
+- exact cron minutes remain a production-preflight decision rather than an
+  architectural assumption;
+- new source adapters remain individually gated and cannot force a generic
+  framework/browser/per-sport scheduler;
+- cross-surface scenario tests cover the resident lifecycle rather than only
+  isolated modules;
+- all discovered research gaps are represented either as a concrete required
+  work item or an explicit source-enablement gate.
+
+### Findings
+
+No new architecture, sequencing, state, source, delivery, runtime-cost,
+rollback or test-coverage objection was found.
+
+### Final judgment
+
+The plan is now internally consistent, ordered by real dependencies and
+sufficiently conservative for the current Termux architecture.
+
+The next phase is **not** more planning discovery by default. It is:
+
+1. create/accept ADR 0100 and the documented refinements required by Slice A/C;
+2. implement Slice A;
+3. review/test/deploy Slice A;
+4. proceed slice-by-slice only after each preceding gate passes.
+
+If `main` or an official source contract changes before a slice starts, run a
+targeted delta review for that slice rather than reopening the entire plan.
