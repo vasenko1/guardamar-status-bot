@@ -155,6 +155,7 @@ class FishingEnrichmentTests(unittest.TestCase):
                     "source_id": "26MC26",
                     "url": FEPYC_26MC26_URL,
                     "match_title": "Mar Costa Dúos",
+                    "competition_name": "XVI Campeonato de España Mar-costa Dúos",
                 },
             )
 
