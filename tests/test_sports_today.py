@@ -235,6 +235,7 @@ class SportsTodayDeliveryTests(unittest.IsolatedAsyncioTestCase):
                 label="sports-today",
             ).mark_uncertain(NOW.date())
             send = AsyncMock(return_value=55)
+            build = AsyncMock(return_value=self._publication())
 
             with (
                 patch.dict(os.environ, {
@@ -245,7 +246,7 @@ class SportsTodayDeliveryTests(unittest.IsolatedAsyncioTestCase):
                 patch("telegrambot.__main__.datetime") as clock,
                 patch(
                     "telegrambot.__main__.produce_sports_today_publication",
-                    new=AsyncMock(return_value=self._publication()),
+                    new=build,
                 ),
                 patch("telegrambot.__main__.send_message", new=send),
             ):
