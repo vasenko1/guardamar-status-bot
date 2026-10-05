@@ -149,6 +149,7 @@ from .celebrations import (
     build_celebration_alert,
 )
 from .weekend import produce_weekend_message, weekend_dates
+from .dated_publication import DatedPublicationState
 from .tomorrow_events import (
     TomorrowEventState,
     TomorrowEventStateError,
@@ -205,6 +206,7 @@ DEFAULT_EVENT_TRANSLATIONS_PATH = "state/event_translations.json"
 DEFAULT_AEMET_SNAPSHOT_PATH = "state/aemet.json"
 DEFAULT_OPERATIONAL_UPDATE_STATE_PATH = "state/operational_updates.json"
 DEFAULT_WEEKEND_STATE_PATH = "state/weekend.json"
+DEFAULT_WEEKEND_DELIVERY_STATE_PATH = "state/weekend_delivery.json"
 DEFAULT_TOMORROW_EVENTS_STATE_PATH = "state/tomorrow_events.json"
 DEFAULT_PRODUCT_AWARDS_STATE_PATH = "state/product_awards.json"
 DEFAULT_RESIDENT_NEWS_STATE_PATH = "state/resident_news.json"
@@ -1741,10 +1743,32 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         weekend_state = PublicationState(Path(os.environ.get(
             "WEEKEND_STATE_PATH", DEFAULT_WEEKEND_STATE_PATH
         )))
-        with weekend_state.exclusive_run():
+        weekend_delivery = DatedPublicationState(
+            Path(os.environ.get(
+                "WEEKEND_DELIVERY_STATE_PATH",
+                DEFAULT_WEEKEND_DELIVERY_STATE_PATH,
+            )),
+            label="weekend-delivery",
+        )
+        with weekend_delivery.exclusive_run():
             if weekend_state.is_published(saturday):
                 logging.info("SKIP: weekend digest already published for %s", saturday)
                 return 0
+
+            delivery_status = weekend_delivery.status(saturday)
+            if delivery_status == "sent":
+                # Restore the legacy rollback marker if it was lost after a
+                # previously confirmed crash-safe delivery.
+                weekend_state.mark_published(saturday)
+                logging.info("SKIP: weekend digest already delivered for %s", saturday)
+                return 0
+            if delivery_status == "uncertain":
+                logging.warning(
+                    "SKIP: weekend digest delivery remains uncertain for %s",
+                    saturday,
+                )
+                return 0
+
             await prepare_weekend_titles()
             message = await produce_weekend_message(
                 now,
@@ -1761,8 +1785,33 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             if message is None:
                 logging.info("SKIP: no verified weekend events for %s", saturday)
                 return 0
-            await send_message(bot_token, chat_id, message, disable_notification=False)
+
+            weekend_delivery.mark_uncertain(saturday)
+            try:
+                message_id = await send_message(
+                    bot_token,
+                    chat_id,
+                    message,
+                    disable_notification=False,
+                    retry_only_rate_limits=True,
+                )
+            except TelegramError as exc:
+                if is_ambiguous_send_failure(exc):
+                    logging.warning(
+                        "Weekend digest delivery uncertain for %s "
+                        "[TELEGRAM-%s]; automatic resend disabled",
+                        saturday,
+                        exc.diagnostic_code,
+                    )
+                    return 0
+                weekend_delivery.clear(saturday)
+                raise
+
+            # Keep the old marker current for rollback to the previous runtime.
+            # If this write fails, leave the new delivery state uncertain so
+            # recovery cannot resend a message Telegram already confirmed.
             weekend_state.mark_published(saturday)
+            weekend_delivery.mark_sent(saturday, message_id)
             logging.info("SUCCESS: weekend digest delivered for %s", saturday)
             return 0
 
