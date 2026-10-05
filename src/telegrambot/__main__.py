@@ -1660,6 +1660,30 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             return 0
 
     if command in {"sports-today", "sports-today-preview"}:
+        sports_state = None
+        target_date = now.astimezone(GUARDAMAR_TIMEZONE).date()
+        if command == "sports-today":
+            sports_state = DatedPublicationState(
+                Path(os.environ.get(
+                    "SPORTS_TODAY_STATE_PATH",
+                    DEFAULT_SPORTS_TODAY_STATE_PATH,
+                )),
+                label="sports-today",
+            )
+            delivery_status = sports_state.status(target_date)
+            if delivery_status == "sent":
+                logging.info(
+                    "SKIP: Sports Today already published for %s",
+                    target_date,
+                )
+                return 0
+            if delivery_status == "uncertain":
+                logging.warning(
+                    "SKIP: Sports Today delivery remains uncertain for %s",
+                    target_date,
+                )
+                return 0
+
         diagnostics = [] if command == "sports-today-preview" else None
         publication = await produce_sports_today_publication(
             now,
@@ -1690,16 +1714,11 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         if publication is None:
             logging.info("SKIP: no verified current-day sports are eligible")
             return 0
+        if sports_state is None:
+            raise RuntimeError("Sports Today state is unavailable")
 
         bot_token = _required_environment("TELEGRAM_BOT_TOKEN")
         chat_id = _required_environment("TELEGRAM_CHAT_ID")
-        sports_state = DatedPublicationState(
-            Path(os.environ.get(
-                "SPORTS_TODAY_STATE_PATH",
-                DEFAULT_SPORTS_TODAY_STATE_PATH,
-            )),
-            label="sports-today",
-        )
 
         with sports_state.exclusive_run():
             delivery_status = sports_state.status(publication.target_date)
