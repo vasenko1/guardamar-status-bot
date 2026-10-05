@@ -17,6 +17,17 @@ from zoneinfo import ZoneInfo
 
 from ._transport import BoundedFetchError, fetch_bounded
 from .event_translations import cached_title
+from .fishing_enrichment import (
+    DEFAULT_FEPYC_AUTHORITY_STATE_PATH,
+    DEFAULT_FPCV_DETAILS_STATE_PATH,
+    FishingEnrichmentError,
+    load_fepyc_authority_state,
+    load_fpcv_details_state,
+    matching_authority,
+    matching_detail,
+    refresh_fepyc_authority,
+    refresh_fpcv_details,
+)
 from .models import Event
 
 PESCA_CV_URL = "https://federacionpescacv.com/competiciones-de-nuestros-clubes/"
@@ -381,17 +392,85 @@ async def fetch_today_pesca_cv_events(
     now: datetime,
     state_path: Path = Path(DEFAULT_STATE_PATH),
     translation_cache_path: Path = Path("state/event_translations.json"),
+    *,
+    fepyc_authority_state_path: Path = Path(
+        DEFAULT_FEPYC_AUTHORITY_STATE_PATH
+    ),
+    details_state_path: Path = Path(DEFAULT_FPCV_DETAILS_STATE_PATH),
 ) -> tuple[Event, ...]:
     """Return today's Pesca CV rows from local state with no network access."""
 
     snapshot = await asyncio.to_thread(_load_snapshot, state_path)
     if snapshot is None:
         return ()
+
+    authority_state = None
+    try:
+        authority_state = await asyncio.to_thread(
+            load_fepyc_authority_state,
+            fepyc_authority_state_path,
+        )
+    except FishingEnrichmentError as exc:
+        logging.warning(
+            "FEPyC fishing authority ignored [%s]", exc.diagnostic_code
+        )
+
+    details_state = None
+    try:
+        details_state = await asyncio.to_thread(
+            load_fpcv_details_state,
+            details_state_path,
+        )
+    except FishingEnrichmentError as exc:
+        logging.warning(
+            "FPCV fishing details ignored [%s]", exc.diagnostic_code
+        )
+
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
     result = []
-    for raw in _usable_events(snapshot, local_day, active_only=True):
-        start = date.fromisoformat(raw["start"])
-        end = date.fromisoformat(raw["end"])
+    for raw in snapshot["events"]:
+        raw_start = date.fromisoformat(raw["start"])
+        raw_end = date.fromisoformat(raw["end"])
+
+        if _fold(raw["level"]) == "nacional":
+            authority = matching_authority(raw, authority_state)
+            if authority is None:
+                logging.warning(
+                    "Pesca CV national event withheld without FEPyC authority: %s",
+                    raw["title"],
+                )
+                continue
+            start = date.fromisoformat(authority["start"])
+            end = date.fromisoformat(authority["end"])
+        else:
+            start = raw_start
+            end = raw_end
+
+        if not start <= local_day <= end:
+            continue
+
+        detail = matching_detail(raw, details_state)
+        if detail is not None and detail["cancelled"]:
+            logging.info(
+                "Pesca CV event omitted because FPCV marks it cancelled: %s",
+                raw["title"],
+            )
+            continue
+
+        starts_at = None
+        ends_at = None
+        place = raw["place"]
+        details: tuple[str, ...] = ()
+        schedule_note = None
+        if detail is not None:
+            if detail["starts_at"] is not None:
+                starts_at = datetime.fromisoformat(detail["starts_at"])
+            if detail["ends_at"] is not None:
+                ends_at = datetime.fromisoformat(detail["ends_at"])
+            place = detail["place"] or place
+            details = tuple(detail["details"])
+            schedule_note = detail["schedule_note"]
+
         translated_title = cached_title(
             translation_cache_path, "pesca_cv", raw["title"]
         )
@@ -401,12 +480,15 @@ async def fetch_today_pesca_cv_events(
                     f"{_LEVEL_LABELS_RU[_fold(raw['level'])]} — "
                     f"{translated_title}"
                 ),
-                starts_at=None,
-                place=raw["place"],
+                starts_at=starts_at,
+                ends_at=ends_at,
+                place=place,
                 active_until=end if start != end else None,
                 active_from=start if start != end else None,
                 category="event",
                 is_final_day=start != end and local_day == end,
+                details=details,
+                schedule_note=schedule_note,
                 sport="fishing",
             )
         )
@@ -437,7 +519,47 @@ def main() -> None:
     except (PescaCvSourceError, ValueError) as exc:
         print(f"Command failed: {exc}", file=os.sys.stderr)
         raise SystemExit(2) from exc
-    logging.info("Pesca CV event catalog synchronized: %d facts", len(events))
+
+    authority_path = Path(
+        os.environ.get(
+            "FEPYC_FISHING_AUTHORITY_STATE_PATH",
+            DEFAULT_FEPYC_AUTHORITY_STATE_PATH,
+        )
+    )
+    details_path = Path(
+        os.environ.get(
+            "PESCA_CV_DETAILS_STATE_PATH",
+            DEFAULT_FPCV_DETAILS_STATE_PATH,
+        )
+    )
+    try:
+        authority = asyncio.run(
+            refresh_fepyc_authority(now, tuple(events), authority_path)
+        )
+    except (FishingEnrichmentError, ValueError) as exc:
+        logging.warning(
+            "FEPyC fishing authority refresh failed [%s]",
+            getattr(exc, "diagnostic_code", "INVALID"),
+        )
+        authority = ()
+    try:
+        details = asyncio.run(
+            refresh_fpcv_details(now, tuple(events), details_path)
+        )
+    except (FishingEnrichmentError, ValueError) as exc:
+        logging.warning(
+            "FPCV fishing details refresh failed [%s]",
+            getattr(exc, "diagnostic_code", "INVALID"),
+        )
+        details = ()
+
+    logging.info(
+        "Pesca CV event catalog synchronized: %d facts; "
+        "FEPyC authority: %d; FPCV details: %d",
+        len(events),
+        len(authority),
+        len(details),
+    )
 
 
 if __name__ == "__main__":
