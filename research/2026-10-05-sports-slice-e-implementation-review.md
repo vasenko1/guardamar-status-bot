@@ -202,6 +202,35 @@ No new installer, daemon, scheduler or per-sport cron block is introduced.
 Installer tests verify one primary row, one recovery row, Europe/Madrid and
 idempotent preservation of unrelated jobs.
 
+## Post-merge pre-production CLI gate
+
+The Slice E squash merge itself was not deployed immediately. During the
+post-merge production-script review, the actual wrapper-to-CLI path exposed one
+release blocker that the earlier unit-level command tests had not covered:
+`_run_command()` supported `sports-today` and `sports-today-preview`, but
+the top-level argparse `choices` did not.
+
+Therefore `termux/run-sports-today.sh` would have failed at argument parsing
+before reaching the reviewed handler. Production was still on the pre-Slice-E
+main at discovery time, so no resident-facing omission or duplicate occurred.
+
+The minimal hotfix:
+
+- adds `sports-today` and `sports-today-preview` to the existing CLI choices;
+- adds a regression that invokes `main()` through argparse for both commands
+  and proves dispatch to `_run_command`;
+- changes no sports semantics, source access, state shape, schedule or
+  architecture.
+
+Hotfix verification before merge:
+
+- focused CLI/sports/Termux suite: **75 tests, OK**;
+- full suite: **1688 tests, OK**.
+
+This is also a deployment-gate lesson for this slice: the production check must
+exercise `python -m telegrambot sports-today-preview`, not only call internal
+builders or `_run_command` directly.
+
 ## Gate status
 
 **E1-E7 implementation: PASS**
@@ -213,8 +242,10 @@ model, shared planning loader, dated-delivery primitive and existing managed
 cron block. No second sports subsystem, source lifecycle, scheduler, daemon,
 queue, database or generic status framework was added.
 
-**Gap/risk review: PASS after one fix** — the Event positional compatibility
-gap described above was corrected before merge.
+**Gap/risk review: PASS after two pre-production fixes** — the Event positional
+compatibility gap was corrected before the Slice E merge, and the missing
+top-level Sports Today CLI choices were caught after merge but before any
+production activation and fixed in the follow-up hotfix.
 
 Merge remains blocked only until the documentation head receives the same
 focused/full CI verification and the temporary branch-only workflow is removed.
