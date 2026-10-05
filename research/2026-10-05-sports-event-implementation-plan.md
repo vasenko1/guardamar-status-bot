@@ -74,6 +74,9 @@ The implementation must preserve all of these:
     title, details or image URL.
 13. Python 3.9 compatibility and current standard-library-first constraints
     remain mandatory.
+14. Any lifecycle/root `record_id` must survive changes to date, time, venue,
+    action URL and display title. Never derive root identity from mutable
+    scheduling/presentation facts.
 
 ---
 
@@ -410,10 +413,14 @@ Do not silently broaden generic PDF permission.
 
 If the production probe confirms the current stable contract:
 
-- add one small FEPyC national competition source;
-- refresh inside the existing 05:10 event-source wrapper;
+- add one small FEPyC national authority snapshot;
+- refresh it inside the existing 05:10 event-source wrapper;
 - retain only current/future Guardamar national facts;
-- use source-owned identity and exact dates;
+- use source-owned identity (for example the stable competition ID) and exact
+  dates;
+- consume that snapshot as a **source-specific authority input inside the
+  fishing projection**, not as a second parallel generic Event that must later
+  be fuzzy-merged;
 - deterministically suppress/replace only matching FPCV `NACIONAL`
   occurrence dates;
 - keep FPCV local/regional organization/details available for enrichment.
@@ -429,8 +436,8 @@ No generic source-priority system.
 Keep the existing strict `state/pesca_cv_events.json` unchanged so old code
 can still read it.
 
-From the **same** existing 05:10 `telegrambot.pesca_cv` invocation, write one
-new bounded normalized file, for example:
+From the **same** existing 05:10 fishing preparation flow, write one new
+bounded normalized file, for example:
 
 `state/pesca_cv_details.json`
 
@@ -455,9 +462,14 @@ Calendar success and details/PDF success are independent:
 
 ## C5. Enrich the normal Event projection now
 
-Before sports publication is activated, use a deterministic source-specific
-join between `pesca_cv_events.json`, FEPyC date authority and
-`pesca_cv_details.json` to make the Event human-readable.
+Before sports publication is activated, make
+`fetch_today_pesca_cv_events(...)` (or one equally narrow fishing projection)
+accept/read the FEPyC authority snapshot and `pesca_cv_details.json` through
+backward-compatible optional paths, then perform one deterministic
+source-specific join.
+
+Do not emit FEPyC and FPCV as two independent generic Events and ask
+`_merge_events()` to decide authority later.
 
 For the reviewed 17 October case, preserve source-backed context equivalent to:
 
@@ -513,7 +525,7 @@ It must support:
 - target datetime/day;
 - required snapshot observation day for proactive/current claims;
 - current paths for Municipal, Agenda, Library, AM Guardamar, FACV, Pesca,
-  CONVEGA;
+  FEPyC fishing authority, Pesca details and CONVEGA;
 - existing source-specific error handling;
 - `_prefer_agenda_guardamar_venues`;
 - existing `_merge_events`.
@@ -864,7 +876,8 @@ Project the same accepted `pesca_cv_details.json` facts into
 
 For the reviewed 17 October case preserve:
 
-- stable source-owned record identity;
+- stable source-owned record identity that does **not** include mutable
+  date/time/place/action URL;
 - access kind = registration;
 - event dates from the corrected occurrence;
 - club-mediated audience/action wording;
@@ -1093,12 +1106,14 @@ Every new adapter must pass the same acceptance checklist:
 2. official/responsible source;
 3. browserless bounded contract;
 4. stable occurrence identity;
-5. date/time;
-6. venue/locality;
-7. competition context;
-8. cancellation/postponement behavior where applicable;
-9. access ownership when registration/tickets exist;
-10. no new per-sport daemon/cron/database.
+5. when a Telegram lifecycle root is possible, stable root identity must not
+   depend on mutable date/time/place/action/display-title facts;
+6. date/time;
+7. venue/locality;
+8. competition context;
+9. cancellation/postponement behavior where applicable;
+10. access ownership when registration/tickets exist;
+11. no new per-sport daemon/cron/database.
 
 Do not create a generic provider framework in anticipation of these sources.
 
@@ -1648,3 +1663,34 @@ this review.
 The same FPCV document is now collected/normalized once and reused twice, and
 the first resident sports release already meets the descriptive-quality
 requirement. No new consistency objection remains after this correction.
+
+
+---
+
+## Plan review cycle 7 — identity stability / source-join boundary
+
+### Findings
+
+1. **Root identity must survive correction.** If a source-derived
+   `record_id` contains mutable date/time/place/action data, a reschedule would
+   create a second event/root and make the planned correction logic useless.
+2. FEPyC should not become a parallel generic fishing Event merely to override
+   FPCV dates. That would push an authority decision back into fuzzy global
+   merge. It is cleaner and safer as a source-specific authority input to the
+   fishing projection.
+3. The shared planning loader must pass/read the new FEPyC authority and Pesca
+   details paths explicitly so all planning surfaces use the same corrected
+   fishing projection.
+
+### Corrections made
+
+- Added a global stable-root-identity invariant and onboarding gate.
+- Required FPCV access IDs to exclude mutable schedule/presentation facts.
+- Clarified FEPyC as a fishing authority snapshot consumed before generic Event
+  merge.
+- Added FEPyC/Pesca-details paths to the explicit local planning read contract.
+
+### Result
+
+No remaining source-identity or correction-thread break was found after these
+changes.
