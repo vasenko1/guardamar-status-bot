@@ -43,9 +43,27 @@ The Termux production gate completed successfully:
 
 The read-only Sports Today preview logged that the Agenda Guardamar snapshot was
 stale/missing for local observation day 2026-10-05 and therefore omitted that
-single source. This is the intended fail-closed freshness behavior of the shared
-planning loader, not a fallback to stale facts. The preview still completed
-normally and returned no eligible current-day sport.
+single source. The shared planning loader behaved correctly by failing closed,
+but a later source-health audit showed that the underlying production snapshot
+had been overwritten with an old 2026-09-11 copy after a successful 2026-10-05
+05:30 source sync.
+
+The stale file was preserved for forensics, then repaired through the canonical
+`sync-agenda-events` lifecycle at 22:21 Europe/Madrid. Repair verification:
+
+- new `fetched_at=2026-10-05T22:21:58.925312+02:00`;
+- 12 Agenda Guardamar facts;
+- fresh same-day snapshot;
+- source log recorded a successful 12-fact sync;
+- a subsequent `sports-today-preview` returned no eligible current-day sport;
+- `state/sports_today.json` remained absent before and after the preview;
+- no Telegram publication occurred;
+- production worktree remained clean on
+  `c1b303b356f33fc28ad2e8154ccbc448b27e236b`.
+
+The exact writer that restored the stale Agenda snapshot at 19:35 could not be
+proven retrospectively. It is tracked separately as an operator/source-state
+incident and is not attributed to Slice E runtime code.
 
 ## Remaining first-run observation gate
 
