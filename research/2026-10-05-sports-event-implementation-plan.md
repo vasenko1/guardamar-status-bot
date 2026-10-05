@@ -255,9 +255,15 @@ Production verification:
 - preview creates no state;
 - no Telegram post is sent during deploy;
 - verify old Friday state is still readable;
-- on the next real Friday, inspect the new delivery state after publication.
+- a controlled non-sending/state unit probe must exercise sent/uncertain
+  transitions immediately;
+- before Slice E relies on Weekend for sports, verify at least one normal
+  Friday publication or an equivalent production-safe delivery simulation.
 
-Rollback remains safe because old code still sees the legacy marker.
+Rollback remains safe because old code still sees the legacy marker. If a
+confirmed Telegram send is followed by a legacy-marker write failure, do not
+roll back until that marker has been reconciled manually; the new uncertain
+state prevents an automatic duplicate in the meantime.
 
 ---
 
@@ -410,10 +416,17 @@ planning incapable of silently dropping tail events.
 ## D1. Extract only the common local read needed
 
 Create a small explicit helper for **local snapshot -> merged events for one
-target day**, shared by Tomorrow and Sports Today.
+target day**, shared by Tomorrow, Weekend and Sports Today.
 
-It should retain explicit arguments/source calls rather than a generic plugin
-registry.
+This is justified not only by reuse but by freshness safety: the Friday
+`run-weekend.sh --fresh` wrapper refreshes Municipal/FACV/Pesca, Agenda and
+CONVEGA before the 19:15 primary run, while the 20:15 recovery intentionally
+reuses those local snapshots. The renderer must verify the Friday observation
+date rather than blindly turning an older last-good sports snapshot into a
+current weekend claim.
+
+The helper should retain explicit arguments/source calls rather than a generic
+plugin registry.
 
 It must support:
 
@@ -427,9 +440,13 @@ It must support:
 
 No network and no AI.
 
-Weekend may keep its existing collector initially because it has different
-Friday refresh/recurring-event semantics. Do not refactor all event loading
-merely for symmetry.
+Weekend passes `include_recurring=True` (or an equally small explicit
+parameter) so its existing recurring market/Campo behavior is preserved.
+Tomorrow/Sports Today do not gain unrelated recurring facts merely because the
+loader is shared.
+
+The helper must preserve source-specific timestamp fields and diagnostics.
+Do not turn the explicit source list into a registry/plugin framework.
 
 ## D2. Complete-section rendering
 
@@ -1206,3 +1223,36 @@ The initiative is complete when all of the following are true:
     source/runtime contract;
 18. production deploy and rollback procedures are documented and tested.
 
+
+
+---
+
+## Plan review cycle 1 — dependency / freshness / rollback
+
+### Findings
+
+1. **Weekend freshness was underspecified.** The real 19:15 wrapper runs
+   `sync-municipal-events.sh`, `sync-agenda-events.sh` and
+   `sync-convega.sh`, but the current Weekend reader itself does not enforce
+   same-Friday freshness. Rich sports planning must not publish an older
+   last-good fixture as if it were freshly verified.
+2. **The FEPyC/Pesca gate applies to every planning surface**, not only Sports
+   Today. Tomorrow/Weekend could otherwise publish the same known 23-25
+   November false national occurrence.
+3. Waiting a full week after Slice A is not a code dependency. The plan now
+   requires immediate controlled state/delivery verification and a real or
+   equivalent production-safe Weekend validation before Slice E relies on it.
+4. Weekend rollback safety requires retaining the legacy marker. A rare
+   post-send legacy-marker write failure explicitly blocks rollback until
+   operator reconciliation.
+
+### Corrections made
+
+- Slice D now shares the explicit fresh local loader with Weekend too, while
+  preserving recurring-event semantics.
+- Slice C is now an explicit prerequisite for all sports planning output.
+- Slice A verification/rollback wording is tightened.
+
+### Result
+
+No remaining dependency-cycle or rollback blocker found in this review.
