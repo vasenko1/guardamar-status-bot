@@ -195,16 +195,44 @@ Two subsequent focused runs exposed old test fixtures that had not yet carried
 the newly required FEPyC competition-name field / UTF-8 fixture shape. Both
 were test-only and were corrected before rerunning the full gate.
 
-## Current test result before final documentation run
+### Cycle 8
 
-On the final runtime implementation head before documentation synchronization:
+A further fail-closed review found two semantic gaps despite the green suite:
+
+1. if the index identity or PDF content had demonstrably changed but the
+   replacement parse failed, the old detail could still remain projection-
+   eligible for its remaining 36-hour freshness window;
+2. the PDF parser trusted the declared `2 mangas de 3 horas` separately from
+   the extracted programme times and therefore could normalize contradictory
+   schedule facts.
+
+Fix:
+
+- preserve last-good only when fetching the **same** reviewed document fails
+  before new bytes are observed;
+- once index identity or PDF SHA changes, withhold the old detail unless the
+  replacement parses successfully;
+- require the reviewed two-heat/three-hour contract and verify both programme
+  intervals equal the declared duration.
+
+New regressions cover same-document network fallback, changed-identity failure,
+same-URL changed-byte parse failure, declared heat-count drift and programme
+duration disagreement.
+
+After these fixes:
 
 - compileall: PASS;
-- focused Slice C suite: **76 tests, OK**;
-- full repository suite: **1635 tests, OK**.
+- focused Slice C suite: **80 tests, OK**;
+- full repository suite: **1639 tests, OK**.
 
 Expected ERROR log lines in the full suite are deliberate negative-path
 Telegram/source tests; the unittest process completed OK.
+
+## Current test result before final documentation run
+
+The final runtime implementation head is
+`24f7b7e61db400491b55a8d0161fcc78135c8ed1` with **80 focused / 1639 full
+tests OK**.
 
 ## Overengineering review
 
@@ -239,13 +267,16 @@ changing the product architecture.
 - national unsafe dates fail closed;
 - stale authority/details cannot override the base Event;
 - same-URL PDF replacement is detected by content hash;
+- a known-changed/invalid replacement cannot keep serving the superseded
+  detail;
+- declared heat duration is checked against the extracted programme;
 - PDF text extraction remains under ADR 0101 bounds;
 - no browser/OCR/runtime AI/new dependency.
 
 ## Gate status
 
-**PASS pending final branch-head compile/focused/full run and temporary
-verification-workflow cleanup.**
+**PASS pending final documentation branch-head compile/focused/full run and
+temporary verification-workflow cleanup.**
 
 Slice D remains blocked until Slice C is merged, deployed and
 production-verified.
