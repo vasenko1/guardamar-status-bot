@@ -1033,6 +1033,11 @@ def _details_record_valid(record: Any) -> bool:
             )
         )
 
+    if (
+        not isinstance(record["content_sha256"], str)
+        or not re.fullmatch(r"[0-9a-f]{64}", record["content_sha256"])
+    ):
+        return False
     if not isinstance(record["source_url"], str) or not _allowed_fpcv_pdf_url(
         record["source_url"]
     ):
