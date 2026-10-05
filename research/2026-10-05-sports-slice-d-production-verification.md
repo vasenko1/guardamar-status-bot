@@ -25,17 +25,53 @@ The Termux production gate completed successfully:
   `Рынок Campo de Guardamar`;
 - the same target with `include_recurring=False` did not gain that recurring
   market;
-- all monitored production state files were byte-identical before/after the
-  verification;
+- all state files listed by the verification manifest were byte-identical
+  before/after the verification;
 - the existing cron rows remained unchanged;
 - no Sports Today cron or state existed;
 - `guardamar-preview` restarted and remained running;
 - no Telegram publication was triggered.
 
-The live previews also demonstrated the intended freshness behavior: the absent
-`state/agenda.json` was omitted as stale/missing rather than converted into a
-current planning claim, while the remaining accepted sources still produced
-valid Tomorrow and Weekend output.
+The live previews demonstrated fail-closed freshness behavior for the path they
+were explicitly given by the operator smoke test. A later audit found that the
+production verification used the wrong Agenda Guardamar path in both the state
+manifest and the direct-loader smoke: `state/agenda.json` instead of the actual
+runtime default `state/agenda_guardamar.json`.
+
+## Post-verification correction — Agenda Guardamar path
+
+This is a defect in the operator production-gate script, not in Slice D runtime
+code.
+
+Consequences:
+
+- the "all monitored production state files were byte-identical" statement did
+  not include the real Agenda Guardamar snapshot;
+- the direct-loader smoke intentionally omitted an absent `state/agenda.json`
+  and therefore did not exercise the live Agenda Guardamar snapshot;
+- the core Slice D code/tests, Tomorrow/Weekend previews, recurring rules and
+  fail-closed loader behavior remain valid, but the Agenda-state immutability
+  sub-gate was incomplete.
+
+A later production audit on 2026-10-05 found the real
+`state/agenda_guardamar.json` with `fetched_at=2026-09-11T10:10:00+02:00`
+despite successful daily Agenda sync log entries through 2026-10-05. Its file
+mtime was 2026-10-05 19:35:03 Europe/Madrid, proving that the live snapshot had
+been overwritten after the successful 05:30 sync. The exact local writer could
+not be established retrospectively.
+
+The investigated direct Agenda writer tests use temporary directories, and no
+reviewed deployment/verification script was found to copy, move or restore
+`state/agenda_guardamar.json`. Therefore the overwrite cause is recorded as
+**unknown local overwrite** rather than attributed to the full test suite.
+
+Operational correction:
+
+- preserve the stale snapshot as forensic evidence;
+- refresh only through the canonical `sync-agenda-events` source lifecycle;
+- future production tests run off the production path;
+- production state manifests must resolve the same runtime path/defaults used
+  by the application instead of duplicating guessed filenames.
 
 ## Gate result
 
