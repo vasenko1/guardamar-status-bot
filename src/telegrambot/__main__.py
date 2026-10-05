@@ -1456,13 +1456,13 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         publication = build_celebration_alert(now)
         if command == "celebration-alert-preview":
             if publication is None:
-                print("No reviewed next-day celebration or official holiday")
+                print("No next-day celebration, official holiday, or clock change")
             else:
                 print(publication.message)
             return 0
         if publication is None:
             logging.info(
-                "SKIP: no reviewed next-day celebration or official holiday"
+                "SKIP: no next-day celebration, official holiday, or clock change"
             )
             return 0
 

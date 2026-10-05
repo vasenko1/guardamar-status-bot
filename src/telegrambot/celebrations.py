@@ -8,6 +8,7 @@ from typing import Dict, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from .branding import with_footer
+from .clock_change import clock_change_notice_lines, clock_change_on
 from .holidays import official_holidays_on
 from .models import Celebration, Holiday
 
@@ -178,7 +179,7 @@ class CelebrationAlertPublication:
 
 
 def build_celebration_alert(now: datetime) -> Optional[CelebrationAlertPublication]:
-    """Build one next-day festive notice from reviewed local data only."""
+    """Build one next-day calendar notice without remote collection."""
 
     local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
     target_day = local_day + timedelta(days=1)
@@ -196,34 +197,42 @@ def build_celebration_alert(now: datetime) -> Optional[CelebrationAlertPublicati
         for holiday in official_holidays_on(target_day)
         if holiday.scope in _SCOPE_LABELS
     )
-    if not relevant and not holidays:
+    clock_change = clock_change_on(target_day)
+    if not relevant and not holidays and clock_change is None:
         return None
 
     linked_holiday = _linked_single_holiday(holidays, relevant, target_day)
     visible_holidays = () if linked_holiday is not None else holidays
 
-    lines = ["🎉 <b>Завтра в Гуардамаре:</b>"]
-    for celebration in relevant:
-        if celebration.start_date == target_day:
-            if celebration.start_date == celebration.end_date:
-                suffix = "завтра"
+    lines = []
+    if relevant or holidays:
+        lines.append("🎉 <b>Завтра в Гуардамаре:</b>")
+        for celebration in relevant:
+            if celebration.start_date == target_day:
+                if celebration.start_date == celebration.end_date:
+                    suffix = "завтра"
+                else:
+                    suffix = _range_label(celebration)
+            elif celebration.end_date == target_day:
+                suffix = "последний день"
             else:
-                suffix = _range_label(celebration)
-        elif celebration.end_date == target_day:
-            suffix = "последний день"
-        else:
-            suffix = f"до {_date_label(celebration.end_date)}"
-        lines.append(f"• {celebration.name} · {suffix}")
+                suffix = f"до {_date_label(celebration.end_date)}"
+            lines.append(f"• {celebration.name} · {suffix}")
 
-    for holiday in visible_holidays:
-        lines.append(f"• {holiday.name} — {_SCOPE_LABELS[holiday.scope]}")
+        for holiday in visible_holidays:
+            lines.append(f"• {holiday.name} — {_SCOPE_LABELS[holiday.scope]}")
 
-    if linked_holiday is not None:
-        lines.append("")
-        lines.append(_holiday_status_line(linked_holiday, target_day))
-    elif holidays and target_day.weekday() < 5:
-        lines.append("")
-        lines.append("🏛️ Официальный выходной день.")
+        if linked_holiday is not None:
+            lines.append("")
+            lines.append(_holiday_status_line(linked_holiday, target_day))
+        elif holidays and target_day.weekday() < 5:
+            lines.append("")
+            lines.append("🏛️ Официальный выходной день.")
+
+    if clock_change is not None:
+        if lines:
+            lines.append("")
+        lines.extend(clock_change_notice_lines(clock_change, tomorrow=True))
 
     return CelebrationAlertPublication(
         target_date=target_day,

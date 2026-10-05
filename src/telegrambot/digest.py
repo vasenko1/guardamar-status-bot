@@ -11,6 +11,7 @@ from typing import List, Optional, Sequence
 from zoneinfo import ZoneInfo
 
 from .branding import with_footer
+from .clock_change import clock_change_notice_lines
 from .event_places import (
     canonical_event_place, event_place_is_map_safe, same_event_place,
 )
@@ -1036,6 +1037,12 @@ def build_message(
             )
         if ordered_holidays[0].date.weekday() < 5:
             lines.append("  🏛️ Официальный выходной день.")
+
+    if digest.clock_change is not None:
+        lines.append("")
+        lines.extend(
+            clock_change_notice_lines(digest.clock_change, tomorrow=False)
+        )
 
     if digest.events:
         event_lines = build_event_section(

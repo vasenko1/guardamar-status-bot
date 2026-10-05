@@ -15,6 +15,7 @@ from telegrambot.municipal_agenda import (
     _ayuntamiento_programme_candidates_from_html,
     _ayuntamiento_programme_events,
     _ayuntamiento_programme_image_url,
+    _suppress_reviewed_rosario_2026_10_06_todo_conflict,
     _cached_current_events,
     _canonicalize_todo_programme_aliases,
     _current_events,
@@ -493,6 +494,90 @@ class MunicipalProgrammeDisplayTranslationTests(
         self.assertEqual(
             set(merged[0].sources),
             {AYUNTAMIENTO_PROGRAMME_SOURCE, "todo_cultura"},
+        )
+
+    def test_reviewed_conflict_suppresses_stale_rosario_only_with_primary_pair(self):
+        day = date(2026, 10, 6)
+        parent = "FIESTAS EN HONOR A LA VIRGEN DEL ROSARIO 2026"
+        official = (
+            SourceEvent(
+                "Rezo del Rosario meditado y cantado",
+                day, day, "19:00", None, None, "event",
+                (AYUNTAMIENTO_PROGRAMME_SOURCE,),
+                programme_title=parent, programme_order=20,
+            ),
+            SourceEvent(
+                "Santa Misa con Homilía",
+                day, day, "20:00", None,
+                "Iglesia parroquial San Jaime Apóstol", "event",
+                (AYUNTAMIENTO_PROGRAMME_SOURCE,),
+                programme_title=parent, programme_order=30,
+            ),
+        )
+        stale = SourceEvent(
+            "Rosario y misa con homilía y oración por los enfermos",
+            day, day, "19:30", None,
+            "Iglesia parroquial San Jaime Apóstol", "event",
+            ("todo_cultura",),
+        )
+        distinct = SourceEvent(
+            "Concierto de órgano",
+            day, day, "19:30", None,
+            "Iglesia parroquial San Jaime Apóstol", "event",
+            ("todo_cultura",),
+        )
+
+        filtered = _suppress_reviewed_rosario_2026_10_06_todo_conflict(
+            official,
+            (stale, distinct),
+        )
+
+        self.assertEqual(filtered, (distinct,))
+
+    def test_reviewed_conflict_fails_open_without_complete_primary_pair(self):
+        day = date(2026, 10, 6)
+        official = (
+            SourceEvent(
+                "Rezo del Rosario meditado y cantado",
+                day, day, "19:00", None, None, "event",
+                (AYUNTAMIENTO_PROGRAMME_SOURCE,),
+            ),
+        )
+        stale = SourceEvent(
+            "Rosario",
+            day, day, "19:30", None, None, "event",
+            ("todo_cultura",),
+        )
+
+        self.assertEqual(
+            _suppress_reviewed_rosario_2026_10_06_todo_conflict(official, (stale,)),
+            (stale,),
+        )
+
+    def test_reviewed_conflict_is_bounded_to_exact_date_and_time(self):
+        official_day = date(2026, 10, 6)
+        other_day = date(2026, 10, 5)
+        official = (
+            SourceEvent(
+                "Rezo del Rosario meditado y cantado",
+                official_day, official_day, "19:00", None, None, "event",
+                (AYUNTAMIENTO_PROGRAMME_SOURCE,),
+            ),
+            SourceEvent(
+                "Santa Misa con Homilía",
+                official_day, official_day, "20:00", None, None, "event",
+                (AYUNTAMIENTO_PROGRAMME_SOURCE,),
+            ),
+        )
+        other = SourceEvent(
+            "Rosario",
+            other_day, other_day, "19:30", None, None, "event",
+            ("todo_cultura",),
+        )
+
+        self.assertEqual(
+            _suppress_reviewed_rosario_2026_10_06_todo_conflict(official, (other,)),
+            (other,),
         )
 
     def test_todo_raw_row_keeps_different_same_time_act_separate(self):

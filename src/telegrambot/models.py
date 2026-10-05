@@ -107,6 +107,16 @@ class Celebration:
 
 
 @dataclass(frozen=True)
+class ClockChange:
+    """One actual Europe/Madrid wall-clock transition."""
+
+    date: date
+    from_time: time
+    to_time: time
+    delta_minutes: int
+
+
+@dataclass(frozen=True)
 class PharmacyDuty:
     """One on-call pharmacy row from the official provincial rota."""
 
@@ -179,3 +189,4 @@ class MorningDigest:
     fire_risk_level: Optional[int] = None
     dry_thunderstorm_risk_level: Optional[int] = None
     hydrology_state: Optional[str] = None
+    clock_change: Optional[ClockChange] = None
