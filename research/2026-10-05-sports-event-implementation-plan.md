@@ -1887,3 +1887,14 @@ Post-fix verification:
 
 Slice C remains blocked from merge/deploy until the final documentation
 branch-head run and temporary-workflow cleanup are complete.
+
+
+## Implementation checkpoint — Slice C gate
+
+The final documentation branch head passed compileall, 80 focused tests and
+1639 full-suite tests. Slice C implementation gate is **PASS**.
+
+No new cron, resident-facing sports publication, Event Access source, browser,
+OCR, runtime AI or dependency is introduced by Slice C. The temporary
+verification workflow remains cleanup-only; Slice D stays blocked until Slice C
+is merged and production-verified.
