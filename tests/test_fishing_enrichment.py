@@ -302,12 +302,39 @@ class FishingEnrichmentTests(unittest.TestCase):
         )
         state = {"version": 1, "records": [record]}
 
-        self.assertIsNotNone(matching_authority(_national_base(), state))
+        self.assertIsNotNone(matching_authority(_national_base(), state, NOW))
 
         unrelated = dict(_national_base())
         unrelated["start"] = "2026-12-10"
         unrelated["end"] = "2026-12-12"
-        self.assertIsNone(matching_authority(unrelated, state))
+        self.assertIsNone(matching_authority(unrelated, state, NOW))
+
+    def test_authority_join_rejects_stale_or_future_observation(self):
+        record = parse_fepyc_authority_html(
+            _fepyc_html(),
+            observed_at=NOW,
+            spec={
+                "source_id": "26MC26",
+                "url": FEPYC_26MC26_URL,
+                "match_title": "Mar Costa Dúos",
+            },
+        )
+        state = {"version": 1, "records": [record]}
+
+        self.assertIsNone(
+            matching_authority(
+                _national_base(),
+                state,
+                NOW + timedelta(hours=37),
+            )
+        )
+        self.assertIsNone(
+            matching_authority(
+                _national_base(),
+                state,
+                NOW - timedelta(seconds=1),
+            )
+        )
 
     def test_refresh_fepyc_preserves_last_good_on_network_failure(self):
         with tempfile.TemporaryDirectory() as directory:
