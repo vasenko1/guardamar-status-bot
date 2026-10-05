@@ -162,6 +162,24 @@ class FishingEnrichmentTests(unittest.TestCase):
         self.assertEqual(row["pdf_url"], PDF_URL)
         self.assertEqual(len(row["document_identity"]), 64)
 
+    def test_index_ignores_non_date_service_row(self):
+        payload = _index_html().replace(
+            b"<tr><td>17/10/2026</td>",
+            (
+                b"<tr><td>error</td><td></td><td></td><td></td>"
+                b"<td></td><td></td><td></td></tr>"
+                b"<tr><td>17/10/2026</td>"
+            ),
+        )
+        rows = parse_fpcv_index_html(
+            payload,
+            local_day=NOW.date(),
+            base_events=(_provincial_base(),),
+        )
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["index_date"], "2026-10-17")
+
     def test_index_marks_matching_cancelled_row_without_pdf_semantics(self):
         rows = parse_fpcv_index_html(
             _index_html("CANCELADO"),
