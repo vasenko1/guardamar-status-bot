@@ -319,4 +319,3 @@ If the primary pair is incomplete, the correction fails open and keeps the
 Todo row. An unrelated Todo event at 19:30 also remains. This adds no fuzzy
 time tolerance, programme vocabulary, source request, model call, state,
 dependency or scheduler work.
-
