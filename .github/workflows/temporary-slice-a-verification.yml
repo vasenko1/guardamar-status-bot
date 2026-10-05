@@ -1,0 +1,31 @@
+name: Temporary Slice A verification
+
+on:
+  push:
+    branches:
+      - feat/sports-foundation-slice-a
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install project
+        run: python -m pip install -e .
+      - name: Compile
+        run: python -m compileall -q src
+      - name: Focused Slice A tests
+        env:
+          PYTHONPATH: src
+        run: python -m unittest tests.test_tomorrow_events tests.test_main tests.test_termux_weekend
+      - name: Full test suite
+        env:
+          PYTHONPATH: src
+        run: python -m unittest discover -s tests
