@@ -18,17 +18,16 @@ WHEN = datetime(2026, 10, 17, 18, 0, tzinfo=MADRID)
 
 
 class SportsFoundationTests(unittest.TestCase):
-    def test_sport_is_last_optional_event_field(self):
+    def test_slice_e_appends_status_after_existing_sport_slot(self):
         event = Event("Событие", WHEN)
+        field_names = [field.name for field in fields(Event)]
 
-        self.assertEqual(fields(Event)[-1].name, "sport")
+        self.assertEqual(
+            field_names.index("sport"),
+            field_names.index("programme_display_title") + 1,
+        )
+        self.assertEqual(field_names[-1], "occurrence_status")
         self.assertIsNone(event.sport)
-
-    def test_occurrence_status_precedes_sport_and_defaults_empty(self):
-        event = Event("Событие", WHEN)
-
-        self.assertEqual(fields(Event)[-2].name, "occurrence_status")
-        self.assertEqual(fields(Event)[-1].name, "sport")
         self.assertIsNone(event.occurrence_status)
 
     def test_merge_preserves_source_proven_occurrence_status(self):
