@@ -1862,7 +1862,8 @@ that changed index/PDF content fails closed instead of serving mismatched
 last-good details, while an unchanged document may survive a transient fetch
 failure within the 36-hour freshness window.
 
-Slice D remains blocked until the final branch-head run, temporary workflow
+The final branch-head run is green (80 focused / 1639 full tests). Slice C
+implementation gate is PASS. Slice D remains blocked until temporary workflow
 cleanup, merge and production verification of Slice C.
 
 
