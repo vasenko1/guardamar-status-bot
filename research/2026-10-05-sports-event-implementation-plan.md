@@ -1856,8 +1856,11 @@ The implementation went through repeated fix/test/review cycles; detailed
 findings are recorded in
 `research/2026-10-05-sports-slice-c-implementation-review.md`.
 
-The last runtime-only verification before final documentation synchronization
-passed 76 focused and 1635 full-suite tests.
+The latest application-head verification before the final review update passed
+80 focused and 1639 full-suite tests. Additional regression coverage confirms
+that changed index/PDF content fails closed instead of serving mismatched
+last-good details, while an unchanged document may survive a transient fetch
+failure within the 36-hour freshness window.
 
 Slice D remains blocked until the final branch-head run, temporary workflow
 cleanup, merge and production verification of Slice C.
