@@ -100,7 +100,9 @@ class PescaCvParserTests(unittest.TestCase):
                 "end": "2026-11-29",
                 "place": "Guardamar del Segura (Alicante)",
                 "source_url": "https://www.fepyc.es/26MC26",
-                "observed_at": observed.isoformat(),
+                "observed_at": datetime(
+                    2026, 11, 26, 5, 10, tzinfo=MADRID
+                ).isoformat(),
             }],
         }
         with tempfile.TemporaryDirectory() as directory:
@@ -209,7 +211,9 @@ class PescaCvParserTests(unittest.TestCase):
             "registration_method": "clubs",
             "registration_deadline": "2026-10-13T12:00:00+02:00",
             "registration_fee_cents": 2000,
-            "observed_at": observed.isoformat(),
+            "observed_at": datetime(
+                2026, 10, 17, 5, 10, tzinfo=MADRID
+            ).isoformat(),
         }
         with tempfile.TemporaryDirectory() as directory:
             state = Path(directory) / "pesca.json"
@@ -271,7 +275,9 @@ class PescaCvParserTests(unittest.TestCase):
             "registration_method": None,
             "registration_deadline": None,
             "registration_fee_cents": None,
-            "observed_at": observed.isoformat(),
+            "observed_at": datetime(
+                2026, 10, 17, 5, 10, tzinfo=MADRID
+            ).isoformat(),
         }
         with tempfile.TemporaryDirectory() as directory:
             state = Path(directory) / "pesca.json"
@@ -290,6 +296,58 @@ class PescaCvParserTests(unittest.TestCase):
             ))
 
         self.assertEqual(events, ())
+
+    def test_stale_cancelled_detail_does_not_hide_current_base_event(self):
+        observed = datetime(2026, 10, 5, 5, 11, tzinfo=MADRID)
+        snapshot = parse_pesca_cv_html(
+            _html(
+                "<tr><td>17/10/2026</td><td>0</td>"
+                "<td>DELEGACIÓN ALICANTE</td><td>PROVINCIAL</td>"
+                "<td>MAR COSTA</td><td>GUARDAMAR</td>"
+                "<td>ALICANTE</td><td>PLAYA</td></tr>"
+            ),
+            observed.date(),
+            observed,
+        )
+        stale = {
+            "join_key": "2026-10-17|provincial|mar costa",
+            "base_start": "2026-10-17",
+            "base_level": "PROVINCIAL",
+            "base_title": "Mar Costa",
+            "index_date": "2026-10-17",
+            "cancelled": True,
+            "source_url": None,
+            "document_identity": "e" * 64,
+            "content_sha256": None,
+            "competition_context": None,
+            "details": [],
+            "starts_at": None,
+            "ends_at": None,
+            "place": None,
+            "schedule_note": None,
+            "registration_method": None,
+            "registration_deadline": None,
+            "registration_fee_cents": None,
+            "observed_at": observed.isoformat(),
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "pesca.json"
+            details_state = Path(directory) / "details.json"
+            state.write_text(json.dumps(snapshot), encoding="utf-8")
+            details_state.write_text(
+                json.dumps({"version": 1, "records": [stale]}),
+                encoding="utf-8",
+            )
+            events = asyncio.run(fetch_today_pesca_cv_events(
+                datetime(2026, 10, 17, 7, 30, tzinfo=MADRID),
+                state,
+                Path(directory) / "translations.json",
+                fepyc_authority_state_path=Path(directory) / "missing-authority.json",
+                details_state_path=details_state,
+            ))
+
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].sport, "fishing")
 
     def test_validator_rejects_non_guardamar_place(self):
         observed = datetime(2026, 9, 17, 5, 10, tzinfo=MADRID)
