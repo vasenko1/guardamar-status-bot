@@ -338,6 +338,13 @@ allowed for the guide.
   stale before classification so they consume no AI budget. The first valid
   feed seeds silently. State is capped at 128 compact records; raw pages are
   never stored.
+- A next-day La Redonda market assertion may add one bounded Mayor-channel
+  HTML read only when the reviewed calendar says tomorrow is a market day.
+  Gemini/Groq market classification is attempted only when that fresh page
+  contains market-related text. A terminal next-day delivery state is checked
+  before publication construction, so the 20:25 recovery does not repeat this
+  source/model work after a confirmed or uncertain 19:25 delivery. No raw page,
+  classifier output, additional retry loop or market-specific state is stored.
 - Explicit Mayor-channel events reuse the existing bounded morning page read;
   they add no request, model call, raw-response cache or background process.
 - Do not make digest delivery depend on every source succeeding.
