@@ -104,6 +104,7 @@ class FacvParserTests(unittest.TestCase):
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0].title, "Festival Guardamar")
         self.assertEqual(events[0].active_until, date(2026, 9, 20))
+        self.assertEqual(events[0].sport, "chess")
         self.assertEqual(
             items,
             (("facv", "Festival Guardamar"), ("facv", "Open futuro")),

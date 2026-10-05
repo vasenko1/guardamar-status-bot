@@ -302,3 +302,22 @@ those components.
 
 Rejected. The current overlaps are few and have deterministic source-specific
 authority/ownership rules.
+
+
+## Implementation checkpoint: Slice B sport identity foundation
+
+Slice A is deployed in production.
+
+Slice B adds only the normalized sport-identity foundation:
+
+- `Event.sport` is appended as the final optional dataclass field;
+- FACV projects `sport="chess"`;
+- Pesca CV projects `sport="fishing"`;
+- global event merge refuses to fuzzy-merge two different known sports;
+- a known sport survives an otherwise valid sport/unknown merge;
+- a small deterministic presentation helper maps only currently accepted sport
+  codes to Russian label/icon metadata.
+
+This checkpoint intentionally does **not** change Morning, Tomorrow or Weekend
+routing and does not add Sports Today. Resident-facing sports activation remains
+Slice E after the source-correctness/rendering prerequisites.

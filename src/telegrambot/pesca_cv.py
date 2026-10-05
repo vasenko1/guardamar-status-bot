@@ -407,6 +407,7 @@ async def fetch_today_pesca_cv_events(
                 active_from=start if start != end else None,
                 category="event",
                 is_final_day=start != end and local_day == end,
+                sport="fishing",
             )
         )
     return tuple(result)

@@ -104,6 +104,7 @@ class PescaCvParserTests(unittest.TestCase):
             "Национальные соревнования — Mar Costa Dúos",
         )
         self.assertEqual(events[0].active_until, date(2026, 11, 29))
+        self.assertEqual(events[0].sport, "fishing")
         self.assertEqual(items, (("pesca_cv", "Mar Costa Dúos"),))
 
     def test_validator_rejects_non_guardamar_place(self):

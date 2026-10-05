@@ -158,6 +158,19 @@ No separate evening sports-tomorrow message, sports database, keyword
 classifier, generic competition framework, browser worker or per-sport cron is
 approved.
 
+### Sports target implementation status
+
+The low-level sport identity foundation is implemented separately from
+publication activation:
+
+- `Event.sport` exists;
+- FACV/Pesca preserve their explicit sport identity;
+- merge semantics protect different sports;
+- Russian sport label/icon metadata is deterministic.
+
+No sports subsection/current-day publication is enabled by this foundation
+alone, so existing resident output remains unchanged.
+
 ## One-off event registration notices
 
 Official one-off events may publish a compact registration lifecycle before

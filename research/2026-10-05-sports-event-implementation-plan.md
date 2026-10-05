@@ -1785,3 +1785,30 @@ The final post-report run is green (77 focused / 1608 full tests). Slice A is
 PASS. Slice B remains blocked only until the temporary branch-only verification
 workflow is removed and the final branch diff/main-delta check confirms that no
 untested application change was introduced.
+
+
+## Implementation checkpoint — Slice B
+
+Slice A is deployed and production-verified.
+
+Slice B implementation is complete on the implementation branch:
+
+- `Event.sport` appended without positional migration;
+- FACV/Pesca preserve chess/fishing identity;
+- merge protects conflicting known sports and preserves known sport through
+  valid alias merges;
+- deterministic presentation metadata added for currently accepted sport codes;
+- no resident routing/source/cron/state behavior changed.
+
+First verification cycle passed:
+
+- focused suite: 64 tests OK;
+- full repository suite: 1615 tests OK;
+- manual code review found no additional defect.
+
+Detailed gate:
+`research/2026-10-05-sports-slice-b-implementation-review.md`.
+
+The final branch-head run is green (64 focused / 1615 full tests). Slice B
+implementation gate is PASS. Slice C remains blocked until temporary workflow
+cleanup, merge and production verification of Slice B.
