@@ -1,9 +1,11 @@
 import tempfile
 import unittest
+from unittest.mock import AsyncMock, patch
 from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from telegrambot.models import Event
 from telegrambot.municipal_agenda import (
     SourceEvent,
     _snapshot_data,
@@ -33,6 +35,8 @@ def _paths(root):
         "am_guardamar_state_path": root / "am.json",
         "facv_state_path": root / "facv.json",
         "pesca_cv_state_path": root / "pesca.json",
+        "fepyc_authority_state_path": root / "fepyc.json",
+        "pesca_cv_details_state_path": root / "pesca-details.json",
         "convega_state_path": root / "convega.json",
         "translation_cache_path": root / "translations.json",
     }
@@ -189,6 +193,37 @@ class TomorrowEventPublicationTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertIsNone(publication)
+
+    async def test_essential_overflow_fails_closed_instead_of_dropping_tail(self):
+        events = tuple(
+            Event(
+                title=f"Спортивное событие {index}",
+                starts_at=datetime(
+                    2026, 9, 25, 12, 0, tzinfo=TZ
+                ),
+                place="Polideportivo Municipal",
+                details=(
+                    "Регулярный чемпионат · "
+                    + ("важный контекст " * 45),
+                ),
+                sport="chess",
+            )
+            for index in range(8)
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            paths = _paths(directory)
+            with patch(
+                "telegrambot.tomorrow_events.load_local_planning_events",
+                new=AsyncMock(return_value=events),
+            ):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "complete event section exceeds Telegram planning limit",
+                ):
+                    await produce_tomorrow_event_publication(
+                        NOW,
+                        **paths,
+                    )
 
     async def test_stale_catalog_cannot_make_tomorrow_claim(self):
         with tempfile.TemporaryDirectory() as directory:

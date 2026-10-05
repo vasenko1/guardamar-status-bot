@@ -2,29 +2,23 @@
 
 from __future__ import annotations
 
-import json
-import logging
 import urllib.parse
 from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
-from typing import Awaitable, Callable, Optional, Sequence
+from typing import Optional, Sequence
 from zoneinfo import ZoneInfo
 
-from .agenda import AgendaError, fetch_today_events
-from .am_guardamar import AmGuardamarError, fetch_today_am_guardamar_events
 from .branding import with_footer
-from .digest import MONTHS_GENITIVE, build_event_section
+from .digest import MONTHS_GENITIVE, build_complete_event_section
 from .dated_publication import DatedPublicationState
-from .facv import FacvSourceError, fetch_today_facv_events
-from .convega import ConvegaSourceError, fetch_today_convega_events
-from .library_agenda import LibraryAgendaError, fetch_today_library_events
+from .fishing_enrichment import (
+    DEFAULT_FEPYC_AUTHORITY_STATE_PATH,
+    DEFAULT_FPCV_DETAILS_STATE_PATH,
+)
 from .models import Event
-from .morning import _merge_events, _prefer_agenda_guardamar_venues
-from .municipal_agenda import MunicipalAgendaError, fetch_today_municipal_events
-from .pesca_cv import PescaCvSourceError, fetch_today_pesca_cv_events
+from .planning_events import load_local_planning_events
 
-LOGGER = logging.getLogger(__name__)
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 _DUE_WEEKDAYS = frozenset({0, 1, 2, 3, 6})  # Sunday through Thursday.
 _IMAGE_HOSTS = frozenset({
@@ -64,41 +58,6 @@ def tomorrow_notice_due(now: datetime) -> bool:
 
     local = now.astimezone(GUARDAMAR_TIMEZONE)
     return local.weekday() in _DUE_WEEKDAYS
-
-
-def _fresh_snapshot(path: Path, field: str, local_day: date) -> bool:
-    """Accept proactive claims only from a snapshot observed today."""
-
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-        raw = value.get(field)
-        if not isinstance(raw, str):
-            return False
-        observed = datetime.fromisoformat(raw)
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, AttributeError):
-        return False
-    if observed.tzinfo is None or observed.utcoffset() is None:
-        return False
-    return observed.astimezone(GUARDAMAR_TIMEZONE).date() == local_day
-
-
-async def _load_if_fresh(
-    *,
-    name: str,
-    path: Path,
-    timestamp_field: str,
-    local_day: date,
-    load: Callable[[], Awaitable[tuple[Event, ...]]],
-    errors: tuple[type[Exception], ...],
-) -> tuple[Event, ...]:
-    if not _fresh_snapshot(path, timestamp_field, local_day):
-        LOGGER.info("Tomorrow events omit stale/missing %s snapshot", name)
-        return ()
-    try:
-        return await load()
-    except errors as exc:
-        LOGGER.warning("Tomorrow events omit invalid %s snapshot: %s", name, exc)
-        return ()
 
 
 def _eligible_tomorrow_event(event: Event, target_day: date) -> bool:
@@ -188,7 +147,7 @@ def _render_message(
             replace(event, teaser=None)
             for event in render_events
         )
-    section = build_event_section(
+    section = build_complete_event_section(
         render_events,
         (
             "📅 <b>Завтра в Гуардамаре — "
@@ -212,6 +171,12 @@ async def produce_tomorrow_event_publication(
     am_guardamar_state_path: Path,
     facv_state_path: Path,
     pesca_cv_state_path: Path,
+    fepyc_authority_state_path: Path = Path(
+        DEFAULT_FEPYC_AUTHORITY_STATE_PATH
+    ),
+    pesca_cv_details_state_path: Path = Path(
+        DEFAULT_FPCV_DETAILS_STATE_PATH
+    ),
     convega_state_path: Path = Path("state/convega_events.json"),
     translation_cache_path: Path,
 ) -> Optional[TomorrowEventPublication]:
@@ -221,103 +186,21 @@ async def produce_tomorrow_event_publication(
     target_day = local_day + timedelta(days=1)
     target = datetime.combine(target_day, time(12, 0), GUARDAMAR_TIMEZONE)
 
-    municipal = await _load_if_fresh(
-        name="municipal agenda",
-        path=municipal_agenda_state_path,
-        timestamp_field="fetched_at",
-        local_day=local_day,
-        load=lambda: fetch_today_municipal_events(
-            target,
-            "",
-            municipal_agenda_state_path,
-            translation_cache_path=translation_cache_path,
-        ),
-        errors=(MunicipalAgendaError,),
-    )
-    agenda = await _load_if_fresh(
-        name="Agenda Guardamar",
-        path=agenda_state_path,
-        timestamp_field="fetched_at",
-        local_day=local_day,
-        load=lambda: fetch_today_events(
-            target,
-            "",
-            agenda_state_path,
-            translation_cache_path,
-        ),
-        errors=(AgendaError,),
-    )
-    library = await _load_if_fresh(
-        name="library agenda",
-        path=library_agenda_state_path,
-        timestamp_field="fetched_at",
-        local_day=local_day,
-        load=lambda: fetch_today_library_events(
-            target,
-            library_agenda_state_path,
-            translation_cache_path,
-        ),
-        errors=(LibraryAgendaError,),
-    )
-    music = await _load_if_fresh(
-        name="AM Guardamar",
-        path=am_guardamar_state_path,
-        timestamp_field="fetched_at",
-        local_day=local_day,
-        load=lambda: fetch_today_am_guardamar_events(
-            target,
-            am_guardamar_state_path,
-            translation_cache_path,
-        ),
-        errors=(AmGuardamarError,),
-    )
-    chess = await _load_if_fresh(
-        name="FACV",
-        path=facv_state_path,
-        timestamp_field="observed_at",
-        local_day=local_day,
-        load=lambda: fetch_today_facv_events(
-            target,
-            facv_state_path,
-            translation_cache_path,
-        ),
-        errors=(FacvSourceError,),
-    )
-    fishing = await _load_if_fresh(
-        name="Pesca CV",
-        path=pesca_cv_state_path,
-        timestamp_field="observed_at",
-        local_day=local_day,
-        load=lambda: fetch_today_pesca_cv_events(
-            target,
-            pesca_cv_state_path,
-            translation_cache_path,
-        ),
-        errors=(PescaCvSourceError,),
-    )
-
-    convega = await _load_if_fresh(
-        name="CONVEGA",
-        path=convega_state_path,
-        timestamp_field="observed_at",
-        local_day=local_day,
-        load=lambda: fetch_today_convega_events(
-            target,
-            convega_state_path,
-            translation_cache_path,
-        ),
-        errors=(ConvegaSourceError,),
-    )
-
-    municipal = _prefer_agenda_guardamar_venues(municipal, agenda)
-    merged = _merge_events(
-        municipal,
-        agenda,
-        library,
-        music,
-        chess,
-        fishing,
-        convega,
+    merged = await load_local_planning_events(
+        target,
+        required_snapshot_day=local_day,
+        include_recurring=False,
+        municipal_agenda_state_path=municipal_agenda_state_path,
+        agenda_state_path=agenda_state_path,
+        library_agenda_state_path=library_agenda_state_path,
+        am_guardamar_state_path=am_guardamar_state_path,
+        facv_state_path=facv_state_path,
+        pesca_cv_state_path=pesca_cv_state_path,
+        fepyc_authority_state_path=fepyc_authority_state_path,
+        pesca_cv_details_state_path=pesca_cv_details_state_path,
+        convega_state_path=convega_state_path,
+        translation_cache_path=translation_cache_path,
+        surface="Tomorrow events",
     )
     eligible = tuple(
         event

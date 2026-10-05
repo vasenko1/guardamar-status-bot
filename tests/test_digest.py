@@ -5,6 +5,8 @@ from telegrambot.digest import (
     GUARDAMAR_TIMEZONE,
     _event_teaser_is_redundant,
     _warning_text,
+    build_complete_event_section,
+    build_event_section,
     build_message,
 )
 from telegrambot.models import (
@@ -21,6 +23,111 @@ from telegrambot.models import (
     AirQualitySummary,
     PollenSummary,
 )
+
+
+class CompleteEventSectionTests(unittest.TestCase):
+    def test_legacy_renderer_still_truncates_instead_of_raising(self):
+        events = tuple(
+            Event(
+                title=f"Событие {index}",
+                starts_at=datetime(
+                    2026, 10, 10, 12, 0, tzinfo=GUARDAMAR_TIMEZONE
+                ),
+                teaser="Длинное описание " * 80,
+            )
+            for index in range(8)
+        )
+
+        lines = build_event_section(events, "📅 <b>События:</b>")
+
+        rendered = "\n".join(lines)
+        self.assertIn("Событие 0", rendered)
+        self.assertNotIn("Событие 7", rendered)
+
+    def test_complete_renderer_compacts_teasers_but_preserves_every_event(self):
+        events = tuple(
+            Event(
+                title=f"Спорт {index}",
+                starts_at=datetime(
+                    2026, 10, 10, 12 + index, 0,
+                    tzinfo=GUARDAMAR_TIMEZONE,
+                ),
+                place="Polideportivo Municipal",
+                details=(f"Лига · {index + 1}-й тур",),
+                teaser="Необязательное длинное описание " * 20,
+                sport="chess",
+            )
+            for index in range(6)
+        )
+
+        lines = build_complete_event_section(
+            events,
+            "🏅 <b>Спортивные мероприятия</b>",
+        )
+        rendered = "\n".join(lines)
+
+        for index in range(6):
+            self.assertIn(f"Спорт {index}", rendered)
+            self.assertIn(f"Лига · {index + 1}-й тур", rendered)
+        self.assertIn("Polideportivo Municipal", rendered)
+        self.assertNotIn("Необязательное длинное описание", rendered)
+
+    def test_complete_renderer_fails_when_essential_blocks_still_do_not_fit(self):
+        events = tuple(
+            Event(
+                title=f"Событие {index}",
+                starts_at=datetime(
+                    2026, 10, 10, 12, 0, tzinfo=GUARDAMAR_TIMEZONE
+                ),
+                place="Polideportivo Municipal",
+                details=(
+                    "Регулярный чемпионат · группа 8 · 5-й тур · "
+                    + ("важный контекст " * 45),
+                ),
+                sport="chess",
+            )
+            for index in range(8)
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "complete event section exceeds Telegram planning limit",
+        ):
+            build_complete_event_section(
+                events,
+                "🏅 <b>Спортивные мероприятия</b>",
+            )
+
+    def test_labelled_race_distances_remain_distinct(self):
+        event = Event(
+            title="Media Maratón",
+            starts_at=datetime(
+                2026, 10, 10, 9, 30, tzinfo=GUARDAMAR_TIMEZONE
+            ),
+            details=(
+                "Полумарафон: 21,097 км · лимит времени 2 ч 30 мин",
+                "10K: 10,5 км · лимит времени 1 ч 30 мин",
+            ),
+            sport="fishing",
+        )
+
+        rendered = "\n".join(
+            build_complete_event_section(
+                (event,),
+                "🏅 <b>Спортивные мероприятия</b>",
+            )
+        )
+
+        self.assertIn(
+            "Полумарафон: 21,097 км · лимит времени 2 ч 30 мин",
+            rendered,
+        )
+        self.assertIn(
+            "10K: 10,5 км · лимит времени 1 ч 30 мин",
+            rendered,
+        )
+        self.assertNotIn("≈ 21,1 км", rendered)
+
 
 
 class DigestMessageTests(unittest.TestCase):

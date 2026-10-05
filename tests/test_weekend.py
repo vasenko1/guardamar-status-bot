@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from unittest.mock import AsyncMock, patch
 from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -62,11 +63,15 @@ def _paths(directory):
     }
 
 
-def _write_municipal(path, events):
+def _write_municipal(
+    path,
+    events,
+    fetched_at=datetime(2026, 8, 14, 5, 10, tzinfo=TZ),
+):
     _write_snapshot(path, _snapshot_data(
         POSTER_URL,
         "hash",
-        datetime(2026, 8, 14, 5, 10, tzinfo=TZ),
+        fetched_at,
         events,
     ))
 
@@ -174,7 +179,7 @@ class WeekendMessageTests(unittest.IsolatedAsyncioTestCase):
                         "intercambios-musicals.html"
                     ),
                 ),
-            ))
+            ), fetched_at=now)
 
             message = await produce_weekend_message(
                 now, "", paths["municipal_agenda_state_path"],
@@ -217,6 +222,75 @@ class WeekendMessageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Суббота, 15 августа", message)
         # Sunday still renders because of the recurring market.
         self.assertIn("Воскресенье, 16 августа", message)
+        self.assertIn("Рынок Campo de Guardamar", message)
+
+    async def test_aggregate_overflow_compacts_optional_prose_across_both_days(self):
+        now = datetime(2026, 10, 9, 19, 15, tzinfo=TZ)
+        saturday_event = Event(
+            title="Субботний турнир",
+            starts_at=datetime(2026, 10, 10, 12, 0, tzinfo=TZ),
+            place="Polideportivo Municipal",
+            teaser="Необязательное описание " * 130,
+        )
+        sunday_event = Event(
+            title="Воскресный турнир",
+            starts_at=datetime(2026, 10, 11, 12, 0, tzinfo=TZ),
+            place="Polideportivo Municipal",
+            details=("Регулярный чемпионат · " + ("контекст " * 120),),
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            paths = _paths(directory)
+            day_loader = AsyncMock(
+                side_effect=((saturday_event,), (sunday_event,))
+            )
+            with patch(
+                "telegrambot.weekend._day_events",
+                new=day_loader,
+            ):
+                message = await produce_weekend_message(
+                    now,
+                    "",
+                    paths["municipal_agenda_state_path"],
+                    agenda_state_path=paths["agenda_state_path"],
+                    library_agenda_state_path=paths["library_agenda_state_path"],
+                    am_guardamar_state_path=paths["am_guardamar_state_path"],
+                    convega_state_path=paths["convega_state_path"],
+                    translation_cache_path=paths["translation_cache_path"],
+                )
+
+        self.assertIn("Субботний турнир", message)
+        self.assertIn("Воскресный турнир", message)
+        self.assertIn("Регулярный чемпионат", message)
+        self.assertNotIn("Необязательное описание", message)
+        self.assertEqual(day_loader.await_count, 2)
+
+    async def test_stale_friday_catalog_is_omitted_but_recurring_market_survives(self):
+        now = datetime(2026, 8, 14, 18, 0, tzinfo=TZ)
+        with tempfile.TemporaryDirectory() as directory:
+            paths = _paths(directory)
+            _write_agenda_snapshot(
+                paths["agenda_state_path"],
+                datetime(2026, 8, 13, 18, 0, tzinfo=TZ),
+                (Event(
+                    title="Вчерашний каталог",
+                    starts_at=datetime(2026, 8, 15, 20, 0, tzinfo=TZ),
+                    place="Casa de Cultura",
+                ),),
+            )
+
+            message = await produce_weekend_message(
+                now,
+                "",
+                paths["municipal_agenda_state_path"],
+                agenda_state_path=paths["agenda_state_path"],
+                library_agenda_state_path=paths["library_agenda_state_path"],
+                am_guardamar_state_path=paths["am_guardamar_state_path"],
+                convega_state_path=paths["convega_state_path"],
+                translation_cache_path=paths["translation_cache_path"],
+            )
+
+        self.assertNotIn("Вчерашний каталог", message)
         self.assertIn("Рынок Campo de Guardamar", message)
 
     async def test_catalog_failures_degrade_to_recurring_events_only(self):

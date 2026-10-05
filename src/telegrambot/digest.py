@@ -1049,19 +1049,10 @@ def build_message(
     return with_footer("\n".join(lines))
 
 
-def build_event_section(
-    events: Sequence,
-    heading: str,
-    *,
-    prefix_length: int = 0,
-) -> List[str]:
-    """Render one bounded event list shared by every digest variant.
+def _event_section_blocks(events: Sequence) -> List[List[str]]:
+    """Render all logical event blocks without applying a size policy."""
 
-    Returns a leading empty line, the heading, and event bullets, or an
-    empty list when nothing survives the message-size bound.
-    """
-
-    event_lines = ["", heading]
+    blocks: List[List[str]] = []
     rendered_programmes = set()
     rendered_sessions = set()
     for event in events:
@@ -1106,13 +1097,85 @@ def build_event_section(
         else:
             block = [_event_heading(event, "", bullet=True)]
             block.extend(_render_event_details(event, "  "))
+        blocks.append(block)
+    return blocks
+
+
+def _build_event_section_from_blocks(
+    blocks: Sequence[Sequence[str]],
+    heading: str,
+    *,
+    prefix_length: int,
+    fail_on_overflow: bool,
+) -> List[str]:
+    event_lines = ["", heading]
+    for block in blocks:
         separator = [""] if len(event_lines) > 2 else []
-        if prefix_length + 1 + len("\n".join(
-            event_lines + separator + block
-        )) > 3900:
+        candidate = event_lines + separator + list(block)
+        if prefix_length + 1 + len("\n".join(candidate)) > 3900:
+            if fail_on_overflow:
+                raise ValueError(
+                    "complete event section exceeds Telegram planning limit"
+                )
             break
-        event_lines.extend(separator + block)
+        event_lines.extend(separator + list(block))
     return event_lines if len(event_lines) > 2 else []
+
+
+def build_event_section(
+    events: Sequence,
+    heading: str,
+    *,
+    prefix_length: int = 0,
+) -> List[str]:
+    """Render one bounded event list with legacy truncation semantics."""
+
+    return _build_event_section_from_blocks(
+        _event_section_blocks(events),
+        heading,
+        prefix_length=prefix_length,
+        fail_on_overflow=False,
+    )
+
+
+def build_complete_event_section(
+    events: Sequence,
+    heading: str,
+    *,
+    prefix_length: int = 0,
+) -> List[str]:
+    """Render every event block or fail instead of silently dropping a tail.
+
+    Optional teaser prose is removed only when the full section would overflow.
+    Identity, details, schedule, time and place are never compacted here.
+    """
+
+    blocks = _event_section_blocks(events)
+    try:
+        return _build_event_section_from_blocks(
+            blocks,
+            heading,
+            prefix_length=prefix_length,
+            fail_on_overflow=True,
+        )
+    except ValueError:
+        compact_events = tuple(
+            replace(event, teaser=None)
+            if getattr(event, "teaser", None) is not None
+            else event
+            for event in events
+        )
+        if all(
+            compact is original
+            for compact, original in zip(compact_events, events)
+        ):
+            raise
+        return _build_event_section_from_blocks(
+            _event_section_blocks(compact_events),
+            heading,
+            prefix_length=prefix_length,
+            fail_on_overflow=True,
+        )
 
 
 def _event_heading(event, indent: str, *, bullet: bool) -> str:
