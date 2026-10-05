@@ -21,6 +21,7 @@ from .fishing_enrichment import (
     DEFAULT_FEPYC_AUTHORITY_STATE_PATH,
     DEFAULT_FPCV_DETAILS_STATE_PATH,
     FishingEnrichmentError,
+    authority_event_details,
     load_fepyc_authority_state,
     load_fpcv_details_state,
     matching_authority,
@@ -432,6 +433,7 @@ async def fetch_today_pesca_cv_events(
         raw_start = date.fromisoformat(raw["start"])
         raw_end = date.fromisoformat(raw["end"])
 
+        authority_details: tuple[str, ...] = ()
         if _fold(raw["level"]) == "nacional":
             authority = matching_authority(raw, authority_state, now)
             if authority is None:
@@ -442,6 +444,7 @@ async def fetch_today_pesca_cv_events(
                 continue
             start = date.fromisoformat(authority["start"])
             end = date.fromisoformat(authority["end"])
+            authority_details = authority_event_details(authority)
         else:
             start = raw_start
             end = raw_end
@@ -460,7 +463,7 @@ async def fetch_today_pesca_cv_events(
         starts_at = None
         ends_at = None
         place = raw["place"]
-        details: tuple[str, ...] = ()
+        details: tuple[str, ...] = authority_details
         schedule_note = None
         if detail is not None:
             if detail["starts_at"] is not None:
@@ -468,7 +471,9 @@ async def fetch_today_pesca_cv_events(
             if detail["ends_at"] is not None:
                 ends_at = datetime.fromisoformat(detail["ends_at"])
             place = detail["place"] or place
-            details = tuple(detail["details"])
+            details = tuple(dict.fromkeys(
+                (*authority_details, *detail["details"])
+            ))
             schedule_note = detail["schedule_note"]
 
         translated_title = cached_title(
