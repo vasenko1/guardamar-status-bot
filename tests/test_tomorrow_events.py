@@ -202,6 +202,43 @@ class TomorrowEventPublicationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Concierto", publication.message)
         self.assertNotIn("Рынок", publication.message)
 
+    async def test_market_and_other_event_share_one_planning_post(self):
+        now = datetime(2026, 10, 5, 19, 25, tzinfo=TZ)
+        with tempfile.TemporaryDirectory() as directory:
+            paths = _paths(directory)
+            _write_municipal(
+                paths["municipal_agenda_state_path"],
+                now.replace(hour=5, minute=10),
+                [SourceEvent(
+                    "Concierto",
+                    date(2026, 10, 6),
+                    date(2026, 10, 6),
+                    "20:00",
+                    None,
+                    "Casa de Cultura",
+                    "event",
+                    ("turismo_html",),
+                )],
+            )
+            with patch(
+                "telegrambot.tomorrow_events.market_is_cancelled",
+                new=AsyncMock(return_value=False),
+            ):
+                publication = await produce_tomorrow_event_publication(
+                    now,
+                    gemini_api_key="key",
+                    **paths,
+                )
+
+        self.assertIsNotNone(publication)
+        self.assertEqual(publication.unit_count, 2)
+        self.assertIn("Рынок", publication.message)
+        self.assertIn("Concierto", publication.message)
+        self.assertEqual(
+            publication.message.count("Завтра в Гуардамаре"),
+            1,
+        )
+
     async def test_regular_wednesday_market_is_announced_previous_evening(self):
         now = datetime(2026, 10, 13, 19, 25, tzinfo=TZ)
         with tempfile.TemporaryDirectory() as directory:
@@ -412,9 +449,13 @@ class TomorrowEventPublicationTests(unittest.IsolatedAsyncioTestCase):
                     ("turismo_html",),
                 )],
             )
-            publication = await produce_tomorrow_event_publication(
-                now, **paths
-            )
+            with patch(
+                "telegrambot.tomorrow_events._verified_tomorrow_market",
+                new=AsyncMock(return_value=()),
+            ):
+                publication = await produce_tomorrow_event_publication(
+                    now, **paths
+                )
 
         self.assertIsNotNone(publication)
         self.assertIn("Последний день:", publication.message)
@@ -521,9 +562,13 @@ class TomorrowEventPublicationTests(unittest.IsolatedAsyncioTestCase):
                 datetime(2026, 9, 29, 5, 10, tzinfo=TZ),
                 events,
             )
-            publication = await produce_tomorrow_event_publication(
-                now, **paths
-            )
+            with patch(
+                "telegrambot.tomorrow_events._verified_tomorrow_market",
+                new=AsyncMock(return_value=()),
+            ):
+                publication = await produce_tomorrow_event_publication(
+                    now, **paths
+                )
 
         self.assertIsNotNone(publication)
         self.assertEqual(publication.target_date, date(2026, 9, 30))
