@@ -113,6 +113,29 @@ Each implementation slice has a verification gate. A later slice starts only
 after focused tests, the full suite and architecture/code review leave no
 unresolved defect for the current stage.
 
+### Planning read/render implementation checkpoint
+
+Sports Slice D introduces one explicit local-only planning loader shared by
+Tomorrow and Weekend and reserved for later Sports Today reuse. It retains the
+existing source list, venue preference and merge order; it is not a provider
+registry.
+
+Base snapshots used for proactive/current planning must have the requested
+local observation day. Friday Weekend primary/recovery therefore use Friday
+snapshots; Weekend alone preserves the existing recurring market rules.
+FEPyC/Pesca-detail enrichment continues to use its source-specific freshness
+inside the Pesca adapter.
+
+Planning rendering now has a complete fail-closed path: Tomorrow and Weekend
+must preserve every eligible event, retry without optional teaser prose when
+needed, and raise rather than silently lose a tail when essential content still
+cannot fit. Weekend performs this fallback across the whole two-day aggregate
+without another source read. The legacy truncating renderer remains unchanged
+for unrelated callers.
+
+This checkpoint is infrastructure only: no sports subsection, Sports Today,
+Morning sport exclusion, cron or Telegram lifecycle is enabled yet.
+
 ### Fishing source-correctness implementation checkpoint
 
 Sports Slice C extends only the existing 05:10 fishing source-preparation
