@@ -150,10 +150,22 @@ class WeekendTermuxTests(unittest.TestCase):
         self.assertEqual(installed.count("25 20 * * 0-4"), 1)
         self.assertEqual(installed.count("run-tomorrow-events.sh"), 2)
         self.assertEqual(installed.count("run-event-registration.sh"), 2)
+        self.assertEqual(installed.count("run-sports-today.sh"), 2)
+        self.assertEqual(installed.count("25 8 * * *"), 1)
+        self.assertEqual(installed.count("25 9 * * *"), 1)
         self.assertIn("47 12 * * *", installed)
         self.assertIn("47 13 * * *", installed)
         self.assertNotIn("0,20 18 * * 5", installed)
         self.assertIn("# BEGIN guardamar-status weekend digest", installed)
+
+    def test_installer_adds_sports_today_primary_and_recovery(self):
+        result, installed, _ = self._install("")
+
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(installed.count("25 8 * * *"), 1)
+        self.assertEqual(installed.count("25 9 * * *"), 1)
+        self.assertEqual(installed.count("run-sports-today.sh"), 2)
+        self.assertIn("CRON_TZ=Europe/Madrid", installed)
 
     def test_installer_sets_explicit_svdir_in_noninteractive_shell(self):
         result, installed, sv_log = self._install(
