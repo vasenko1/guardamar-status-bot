@@ -6,20 +6,14 @@ from pathlib import Path
 from typing import List, Optional
 from zoneinfo import ZoneInfo
 
-from .agenda import AgendaError, fetch_today_events, recurring_events
 from .branding import with_footer
-from .digest import MONTHS_GENITIVE, build_event_section
-from .diagnostics import SourceDiagnostic, source_error
-from .morning import _merge_events, _prefer_agenda_guardamar_venues
-from .municipal_agenda import (
-    MunicipalAgendaError,
-    fetch_today_municipal_events,
+from .digest import MONTHS_GENITIVE, build_complete_event_section
+from .diagnostics import SourceDiagnostic
+from .fishing_enrichment import (
+    DEFAULT_FEPYC_AUTHORITY_STATE_PATH,
+    DEFAULT_FPCV_DETAILS_STATE_PATH,
 )
-from .library_agenda import LibraryAgendaError, fetch_today_library_events
-from .am_guardamar import AmGuardamarError, fetch_today_am_guardamar_events
-from .facv import FacvSourceError, fetch_today_facv_events
-from .convega import ConvegaSourceError, fetch_today_convega_events
-from .pesca_cv import PescaCvSourceError, fetch_today_pesca_cv_events
+from .planning_events import load_local_planning_events
 
 LOGGER = logging.getLogger(__name__)
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
@@ -37,124 +31,38 @@ def weekend_dates(now: datetime):
 
 async def _day_events(
     day: datetime,
-    gemini_api_key: str,
+    *,
+    required_snapshot_day,
     municipal_agenda_state_path: Path,
     agenda_state_path: Path,
     library_agenda_state_path: Path,
     am_guardamar_state_path: Path,
     facv_state_path: Path,
     pesca_cv_state_path: Path,
+    fepyc_authority_state_path: Path,
+    pesca_cv_details_state_path: Path,
     convega_state_path: Path,
     translation_cache_path: Path,
     diagnostics: Optional[List[SourceDiagnostic]] = None,
 ):
-    """Collect one weekend day from local catalogs and recurring rules."""
+    """Collect one weekend day from fresh local catalogs and recurring rules."""
 
-    try:
-        agenda_events = await fetch_today_events(
-            day,
-            gemini_api_key,
-            agenda_state_path,
-            translation_cache_path,
-        )
-    except AgendaError as exc:
-        LOGGER.warning(
-            "Agenda Guardamar unavailable for %s; omitting: %s",
-            day.date(),
-            exc,
-        )
-        if diagnostics is not None:
-            diagnostics.append(source_error(
-                "AGENDA", "Agenda Guardamar", exc
-            ))
-        agenda_events = ()
-    try:
-        municipal_events = await fetch_today_municipal_events(
-            day,
-            gemini_api_key,
-            municipal_agenda_state_path,
-            translation_cache_path=translation_cache_path,
-            diagnostics=diagnostics,
-        )
-    except MunicipalAgendaError as exc:
-        LOGGER.warning(
-            "Municipal agenda unavailable for %s; omitting: %s",
-            day.date(),
-            exc,
-        )
-        if diagnostics is not None:
-            diagnostics.append(source_error(
-                "MUNI-AGENDA", "Agenda municipal", exc
-            ))
-        municipal_events = ()
-    try:
-        library_events = await fetch_today_library_events(
-            day, library_agenda_state_path, translation_cache_path
-        )
-    except LibraryAgendaError as exc:
-        LOGGER.warning("Library agenda unavailable for %s; omitting: %s", day.date(), exc)
-        if diagnostics is not None:
-            diagnostics.append(source_error(
-                "LIBRARY", "Biblioteca Municipal", exc
-            ))
-        library_events = ()
-    try:
-        am_guardamar_events = await fetch_today_am_guardamar_events(
-            day, am_guardamar_state_path, translation_cache_path
-        )
-    except AmGuardamarError as exc:
-        LOGGER.warning("AM Guardamar unavailable for %s; omitting: %s", day.date(), exc)
-        if diagnostics is not None:
-            diagnostics.append(source_error(
-                "AM-GUARDAMAR", "AM Guardamar", exc
-            ))
-        am_guardamar_events = ()
-    try:
-        facv_events = await fetch_today_facv_events(
-            day,
-            facv_state_path,
-            translation_cache_path,
-        )
-    except FacvSourceError as exc:
-        LOGGER.warning("FACV catalog unavailable for %s; omitting: %s", day.date(), exc)
-        if diagnostics is not None:
-            diagnostics.append(source_error("FACV", "FACV", exc))
-        facv_events = ()
-    try:
-        pesca_cv_events = await fetch_today_pesca_cv_events(
-            day,
-            pesca_cv_state_path,
-            translation_cache_path,
-        )
-    except PescaCvSourceError as exc:
-        LOGGER.warning("Pesca CV catalog unavailable for %s; omitting: %s", day.date(), exc)
-        if diagnostics is not None:
-            diagnostics.append(source_error("PESCA-CV", "Federación Pesca CV", exc))
-        pesca_cv_events = ()
-    try:
-        convega_events = await fetch_today_convega_events(
-            day,
-            convega_state_path,
-            translation_cache_path,
-        )
-    except ConvegaSourceError as exc:
-        LOGGER.warning("CONVEGA catalog unavailable for %s; omitting: %s", day.date(), exc)
-        if diagnostics is not None:
-            diagnostics.append(source_error("CONVEGA", "CONVEGA", exc))
-        convega_events = ()
-    municipal_events = _prefer_agenda_guardamar_venues(
-        municipal_events,
-        agenda_events,
-    )
-    return _merge_events(
-        recurring_events(day),
-        municipal_events,
-        agenda_events,
-        library_events,
-        am_guardamar_events,
-        facv_events,
-        pesca_cv_events,
-        convega_events,
+    return await load_local_planning_events(
+        day,
+        required_snapshot_day=required_snapshot_day,
+        include_recurring=True,
+        municipal_agenda_state_path=municipal_agenda_state_path,
+        agenda_state_path=agenda_state_path,
+        library_agenda_state_path=library_agenda_state_path,
+        am_guardamar_state_path=am_guardamar_state_path,
+        facv_state_path=facv_state_path,
+        pesca_cv_state_path=pesca_cv_state_path,
+        fepyc_authority_state_path=fepyc_authority_state_path,
+        pesca_cv_details_state_path=pesca_cv_details_state_path,
+        convega_state_path=convega_state_path,
+        translation_cache_path=translation_cache_path,
+        diagnostics=diagnostics,
+        surface="Weekend",
     )
 
 
@@ -168,6 +76,12 @@ async def produce_weekend_message(
     am_guardamar_state_path: Path = Path("state/am_guardamar.json"),
     facv_state_path: Path = Path("state/facv_events.json"),
     pesca_cv_state_path: Path = Path("state/pesca_cv_events.json"),
+    fepyc_authority_state_path: Path = Path(
+        DEFAULT_FEPYC_AUTHORITY_STATE_PATH
+    ),
+    pesca_cv_details_state_path: Path = Path(
+        DEFAULT_FPCV_DETAILS_STATE_PATH
+    ),
     convega_state_path: Path = Path("state/convega_events.json"),
     translation_cache_path: Path = Path("state/event_translations.json"),
     diagnostics: Optional[List[SourceDiagnostic]] = None,
@@ -181,16 +95,20 @@ async def produce_weekend_message(
         )
         events = await _day_events(
             day_moment,
-            gemini_api_key,
-            municipal_agenda_state_path,
-            agenda_state_path,
-            library_agenda_state_path,
-            am_guardamar_state_path,
-            facv_state_path,
-            pesca_cv_state_path,
-            convega_state_path,
-            translation_cache_path,
-            diagnostics,
+            required_snapshot_day=now.astimezone(
+                GUARDAMAR_TIMEZONE
+            ).date(),
+            municipal_agenda_state_path=municipal_agenda_state_path,
+            agenda_state_path=agenda_state_path,
+            library_agenda_state_path=library_agenda_state_path,
+            am_guardamar_state_path=am_guardamar_state_path,
+            facv_state_path=facv_state_path,
+            pesca_cv_state_path=pesca_cv_state_path,
+            fepyc_authority_state_path=fepyc_authority_state_path,
+            pesca_cv_details_state_path=pesca_cv_details_state_path,
+            convega_state_path=convega_state_path,
+            translation_cache_path=translation_cache_path,
+            diagnostics=diagnostics,
         )
         if not events:
             continue
@@ -198,7 +116,7 @@ async def produce_weekend_message(
             f"📅 <b>{DAY_LABELS[day.weekday()]}, "
             f"{day.day} {MONTHS_GENITIVE[day.month]}:</b>"
         )
-        lines.extend(build_event_section(
+        lines.extend(build_complete_event_section(
             events,
             heading,
             prefix_length=len("\n".join(lines)),
