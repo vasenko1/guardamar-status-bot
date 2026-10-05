@@ -92,7 +92,10 @@ baseline defaults to `state/guide.json`. CONVEGA's normalized event source
 defaults to `state/convega_events.json`, and one-off registration lifecycle
 state defaults to `state/event_registration_notifications.json`. Override
 them only with `CONVEGA_STATE_PATH` and `EVENT_REGISTRATION_STATE_PATH`
-when isolation is required. Secrets must not be committed.
+when isolation is required. Weekend keeps its rollback marker in
+`state/weekend.json` and its crash-safe delivery reservation in
+`state/weekend_delivery.json`; the latter may be isolated with
+`WEEKEND_DELIVERY_STATE_PATH`. Secrets must not be committed.
 
 `CAMS_DATA_URL` and `CAMS_CACHE_PATH` have the defaults shown above and normally
 need not be configured. The phone never receives an ADS credential. Invalid,
@@ -308,11 +311,15 @@ cd ~/bots/guardamar-status
 
 The installer retains unrelated cron entries and owns only its marked event-
 planning block. It schedules one-off event-registration checks at 12:47 and
-13:47, the Friday Weekend publication at 19:15 with its existing 20:15
-recovery, and next-day planning at 19:25 with a 20:25 recovery. The registration
-wrapper refreshes CONVEGA only when today's successful snapshot is absent, so a
-normal 13:47 recovery performs no source HTTP. Next-day rendering itself remains
-local-state only and does not refresh sources in the evening.
+13:47, the Friday Weekend publication at 19:15 with a 20:15
+delivery-only recovery, and next-day planning at 19:25 with a 20:25 recovery.
+Weekend now reserves crash-safe `uncertain/sent` delivery state before Telegram
+send while continuing to write the legacy target-Saturday success marker for
+rollback compatibility; ambiguous delivery cannot be resent by the recovery.
+The registration wrapper refreshes CONVEGA only when today's successful snapshot
+is absent, so a normal 13:47 recovery performs no source HTTP. Next-day
+rendering itself remains local-state only and does not refresh sources in the
+evening.
 
 The installer saves the original crontab once as
 `~/.cache/crontab/crontab.before-monitor`, preserves unrelated lines, and owns
