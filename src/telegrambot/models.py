@@ -107,6 +107,16 @@ class Celebration:
 
 
 @dataclass(frozen=True)
+class ClockChange:
+    """One actual Europe/Madrid wall-clock transition."""
+
+    date: date
+    from_time: time
+    to_time: time
+    delta_minutes: int
+
+
+@dataclass(frozen=True)
 class PharmacyDuty:
     """One on-call pharmacy row from the official provincial rota."""
 
@@ -169,6 +179,7 @@ class MorningDigest:
     forecast_later_sea_state: Optional[str] = None
     holidays: Tuple[Holiday, ...] = ()
     celebrations: Tuple[Celebration, ...] = ()
+    clock_change: Optional[ClockChange] = None
     events: Tuple[Event, ...] = ()
     beach_notice: Optional[BeachNotice] = None
     pharmacies: Tuple[PharmacyDuty, ...] = ()
