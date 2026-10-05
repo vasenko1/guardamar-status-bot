@@ -125,7 +125,10 @@ hard bounds: exact `federacionpescacv.com` HTTPS link, `application/pdf`,
 four relevant FPCV detail records and four explicit FEPyC authority records may
 exist. Relevant FPCV PDF bytes may be checked once on a successful daily
 details refresh; SHA-256 prevents repeat `pdftotext` work when the index row
-and PDF content are unchanged. Raw PDF bytes and extracted text are
+and PDF content are unchanged. A changed index identity or changed PDF SHA
+invalidates the old semantic detail immediately if the replacement cannot be
+parsed; only an unavailable fetch of the same reviewed document may reuse
+last-good within the freshness window. Raw PDF bytes and extracted text are
 process-local and discarded after normalization.
 
 Accepted authority/details override or enrich the base fishing Event only for
