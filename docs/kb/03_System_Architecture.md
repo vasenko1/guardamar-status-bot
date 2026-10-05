@@ -113,6 +113,22 @@ Each implementation slice has a verification gate. A later slice starts only
 after focused tests, the full suite and architecture/code review leave no
 unresolved defect for the current stage.
 
+### Fishing source-correctness implementation checkpoint
+
+Sports Slice C extends only the existing 05:10 fishing source-preparation
+one-shot. The strict FPCV calendar remains the base event list; separate bounded
+FEPyC authority and FPCV convocatoria detail snapshots may correct/enrich that
+list before generic Event merge.
+
+National Mar-costa Dúos uses FEPyC's 26-29 November occurrence instead of the
+known-unsafe 23-29 FPCV operational range. FPCV rich details are joined
+deterministically, capped at four records, content-hashed and source-fresh for
+36 hours. A stale authority cannot change dates and a stale cancellation cannot
+hide the base event.
+
+No resident-facing sports section, new cron or Event Access source is enabled
+by this checkpoint.
+
 ### Sports foundation implementation checkpoint
 
 The shared Event model now has an optional source-owned `sport` field.
