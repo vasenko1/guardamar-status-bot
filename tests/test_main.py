@@ -2,7 +2,7 @@ import json
 import os
 import tempfile
 import unittest
-from datetime import datetime, time, timezone
+from datetime import date, datetime, time, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, call, patch
 from zoneinfo import ZoneInfo
@@ -1379,6 +1379,37 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
             sent.assert_not_awaited()
             photo.assert_not_awaited()
             self.assertFalse(state_path.exists())
+
+    async def test_terminal_tomorrow_state_skips_publication_build(self):
+        now = datetime(2026, 9, 24, 20, 25, tzinfo=MADRID)
+        target = date(2026, 9, 25)
+
+        for status in ("sent", "uncertain"):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as directory:
+                state_path = Path(directory) / "tomorrow.json"
+                state = TomorrowEventState(state_path)
+                state.mark_uncertain(target)
+                if status == "sent":
+                    state.mark_sent(target, 321)
+
+                producer = AsyncMock()
+                with (
+                    patch.dict(os.environ, {
+                        "TOMORROW_EVENTS_STATE_PATH": str(state_path),
+                    }),
+                    patch("telegrambot.__main__.datetime") as clock,
+                    patch(
+                        "telegrambot.__main__.produce_tomorrow_event_publication",
+                        new=producer,
+                    ),
+                ):
+                    clock.now.return_value = now
+                    self.assertEqual(
+                        await _run_command("tomorrow-events"),
+                        0,
+                    )
+
+                producer.assert_not_awaited()
 
     async def test_tomorrow_photo_rejection_falls_back_to_text_once(self):
         now = datetime(2026, 9, 24, 19, 25, tzinfo=MADRID)
