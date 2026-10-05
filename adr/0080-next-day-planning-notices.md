@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-09-24
+- Refined by: ADR 0100 for dedicated sports presentation on the shared event pipeline
 
 ## Context
 
@@ -140,3 +141,18 @@ Very late source publications may miss the evening notice. That is an accepted
 tradeoff: the next morning's normal source refresh and Morning Digest remain
 the recovery path, which is cheaper and safer than a second daily full event
 sync.
+
+
+## Refinement: sports planning
+
+ADR 0100 keeps this ADR's scheduling and one-message planning model but changes
+how sporting events are presented once that implementation is deployed:
+
+- sport remains part of the same normalized Event pipeline;
+- Tomorrow and Friday Weekend render sport in a clearly separated subsection;
+- no additional evening `sport tomorrow` message or scheduler is added;
+- a separate current-day sports publication handles the same-day resident
+  reminder/correction;
+- Morning stops repeating sport only when that current-day path is operational;
+- the planning delivery path must fail closed rather than silently truncate
+  eligible sport events.
