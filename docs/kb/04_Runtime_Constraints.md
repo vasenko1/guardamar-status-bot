@@ -100,6 +100,17 @@ preflight the expected Termux service directory, invoke `sv` with an explicit
 service root, and verify the daemon after startup. It must not start a second
 `crond` merely because service-manager environment is absent.
 
+The Friday Weekend publication remains one short-lived 19:15 one-shot plus one
+20:15 recovery. It uses one bounded atomic dated-delivery file
+(`state/weekend_delivery.json`) and retains the prior
+`state/weekend.json` success marker only for rollback compatibility.
+Before a non-idempotent send it reserves `uncertain`; ambiguous
+timeout/network/5xx delivery is never automatically resent. Only explicit
+Telegram rate-limit rejection may be retried inside the send. The new runtime
+also acquires the legacy Weekend lock, so a process from the previous release
+cannot overlap delivery during deployment. No source request, cron row,
+dependency, daemon or queue is added by this delivery hardening.
+
 The CONVEGA one-off registration slice runs only as short-lived one-shots at
 12:47 and 13:47 Europe/Madrid. The first wrapper invocation performs at most one
 bounded WordPress REST refresh when a valid same-day snapshot is absent. The
