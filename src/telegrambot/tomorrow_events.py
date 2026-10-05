@@ -155,13 +155,17 @@ def _scheduled_market(target: datetime) -> Optional[Event]:
 
 
 def _is_scheduled_market(event: Event, scheduled: Event) -> bool:
-    """Match the recurring market even if merge enriched its generic title."""
+    """Match the weekly market even if a catalog enriched its title/place."""
 
+    title = event.title.casefold()
     return (
         event.starts_at == scheduled.starts_at
-        and event.ends_at == scheduled.ends_at
-        and event.place == scheduled.place
-        and event.title.casefold().startswith(scheduled.title.casefold())
+        and ("рынок" in title or "mercad" in title)
+        and (
+            event.place is None
+            or "redonda" in event.place.casefold()
+            or event.place == scheduled.place
+        )
     )
 
 
