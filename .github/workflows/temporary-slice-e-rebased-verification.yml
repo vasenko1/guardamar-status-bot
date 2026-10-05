@@ -33,6 +33,7 @@ jobs:
             tests.test_tomorrow_events \
             tests.test_weekend \
             tests.test_sports_today \
+            tests.test_termux_weekend \
             tests.test_digest \
             tests.test_main \
             tests.test_mayor \
