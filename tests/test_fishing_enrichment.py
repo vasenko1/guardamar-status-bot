@@ -63,17 +63,17 @@ def _provincial_base():
 
 
 def _fepyc_html():
-    return b"""
+    return """
     <html><body>
     <div>Id: 26MC26</div>
     <div>XVI Campeonato de España Mar-costa Dúos</div>
     <div>Especialidad: Lanzado Mar Costa</div>
-    <div>Categor&iacute;a: D&uacute;os</div>
+    <div>Categoría: Dúos</div>
     <div>Fecha: Del 26 al 29 de Noviembre de 2026</div>
-    <div>Tipo Competici&oacute;n: Nacional</div>
+    <div>Tipo Competición: Nacional</div>
     <div>Lugar: Guardamar del Segura (Alicante)</div>
     </body></html>
-    """
+    """.encode("utf-8")
 
 
 def _index_html(venue="Playas la Roqueta y Centro – Guardamar (Alicante)"):
