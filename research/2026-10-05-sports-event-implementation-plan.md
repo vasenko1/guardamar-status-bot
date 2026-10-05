@@ -2,7 +2,7 @@
 
 ## Status
 
-**Stabilized after eight adversarial plan-review cycles. Ready for ADR/implementation work.**
+**Stabilized after eight adversarial plan-review cycles. ADR 0100 is now accepted on the implementation branch; Slice A is the next implementation stage.**
 
 This document remains implementation-free: no production code, cron or runtime
 state is changed by the planning branch. Any later change to a dependency,
@@ -1738,12 +1738,26 @@ rollback or test-coverage objection was found.
 The plan is now internally consistent, ordered by real dependencies and
 sufficiently conservative for the current Termux architecture.
 
-The next phase is **not** more planning discovery by default. It is:
+Architecture fixation completed with ADR 0100 before runtime implementation.
+The next phase is:
 
-1. create/accept ADR 0100 and the documented refinements required by Slice A/C;
-2. implement Slice A;
-3. review/test/deploy Slice A;
-4. proceed slice-by-slice only after each preceding gate passes.
+1. implement Slice A;
+2. review/test/deploy Slice A;
+3. proceed slice-by-slice only after each preceding gate passes.
+
+The Slice C runtime/PDF refinement remains intentionally deferred until Slice C
+starts.
 
 If `main` or an official source contract changes before a slice starts, run a
 targeted delta review for that slice rather than reopening the entire plan.
+
+
+## Implementation checkpoint — architecture fixation
+
+On 2026-10-05 the accepted target architecture was recorded in
+`adr/0100-dedicated-sports-event-presentation.md` and summarized in the KB and
+decision log.
+
+This checkpoint changes documentation only. Slice A begins only after the
+architecture-fixation review confirms no runtime/source/state file changed and
+no contradiction remains between ADR 0100 and this plan.
