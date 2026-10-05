@@ -891,6 +891,33 @@ async def agenda_translation_items(
     )
 
 
+def municipal_market_event(local_day: date) -> Optional[Event]:
+    """Return the scheduled La Redonda market for one reviewed local date."""
+
+    if not is_market_day(local_day):
+        return None
+    opening_hour = 7 if 6 <= local_day.month <= 9 else 8
+    return Event(
+        title="Рынок",
+        starts_at=datetime(
+            local_day.year,
+            local_day.month,
+            local_day.day,
+            opening_hour,
+            tzinfo=GUARDAMAR_TIMEZONE,
+        ),
+        ends_at=datetime(
+            local_day.year,
+            local_day.month,
+            local_day.day,
+            13,
+            30,
+            tzinfo=GUARDAMAR_TIMEZONE,
+        ),
+        place="парковка La Redonda",
+    )
+
+
 def recurring_events(now: datetime) -> Tuple[Event, ...]:
     """Return official recurring events determined only by the local date."""
 
@@ -916,30 +943,8 @@ def recurring_events(now: datetime) -> Tuple[Event, ...]:
                 place="Camino del Raso, 15",
             ),
         )
-    if not is_market_day(local_day):
-        return ()
-    opening_hour = 7 if 6 <= local_day.month <= 9 else 8
-    return (
-        Event(
-            title="Рынок",
-            starts_at=datetime(
-                local_day.year,
-                local_day.month,
-                local_day.day,
-                opening_hour,
-                tzinfo=GUARDAMAR_TIMEZONE,
-            ),
-            ends_at=datetime(
-                local_day.year,
-                local_day.month,
-                local_day.day,
-                13,
-                30,
-                tzinfo=GUARDAMAR_TIMEZONE,
-            ),
-            place="парковка La Redonda",
-        ),
-    )
+    market = municipal_market_event(local_day)
+    return (market,) if market is not None else ()
 
 
 def requires_market_exception_check(now: datetime) -> bool:
