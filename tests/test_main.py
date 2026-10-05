@@ -2,7 +2,7 @@ import json
 import os
 import tempfile
 import unittest
-from datetime import datetime, time, timezone
+from datetime import date, datetime, time, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, call, patch
 from zoneinfo import ZoneInfo
