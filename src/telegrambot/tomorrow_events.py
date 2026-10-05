@@ -185,14 +185,26 @@ def _moved_market_schedule_note(target_day: date) -> Optional[str]:
     )
 
 
-async def _apply_market_exception(
+def _sort_events(events: Sequence[Event]) -> tuple[Event, ...]:
+    return tuple(sorted(
+        events,
+        key=lambda event: (
+            event.starts_at is None,
+            event.starts_at
+            or datetime.max.replace(tzinfo=GUARDAMAR_TIMEZONE),
+            event.title.casefold(),
+        ),
+    ))
+
+
+async def _merge_verified_market(
     events: Sequence[Event],
     *,
     now: datetime,
     target: datetime,
     gemini_api_key: str,
 ) -> tuple[Event, ...]:
-    """Verify the scheduled municipal market and keep unrelated events intact."""
+    """Add only the verified La Redonda market to the local planning stream."""
 
     scheduled = _scheduled_market(target)
     if scheduled is None:
@@ -219,14 +231,23 @@ async def _apply_market_exception(
         )
 
     note = _moved_market_schedule_note(target.date())
-    if note is None:
-        return tuple(events)
-    return tuple(
-        replace(event, schedule_note=note)
-        if _is_scheduled_market(event, scheduled)
-        else event
-        for event in events
-    )
+    result = []
+    matched = False
+    for event in events:
+        if not _is_scheduled_market(event, scheduled):
+            result.append(event)
+            continue
+        matched = True
+        result.append(
+            replace(event, schedule_note=note)
+            if note is not None else event
+        )
+    if not matched:
+        result.append(
+            replace(scheduled, schedule_note=note)
+            if note is not None else scheduled
+        )
+    return _sort_events(result)
 
 
 def _render_message(
@@ -285,7 +306,7 @@ async def produce_tomorrow_event_publication(
     merged = await load_local_planning_events(
         target,
         required_snapshot_day=local_day,
-        include_recurring=True,
+        include_recurring=False,
         municipal_agenda_state_path=municipal_agenda_state_path,
         agenda_state_path=agenda_state_path,
         library_agenda_state_path=library_agenda_state_path,
@@ -298,7 +319,7 @@ async def produce_tomorrow_event_publication(
         translation_cache_path=translation_cache_path,
         surface="Tomorrow events",
     )
-    merged = await _apply_market_exception(
+    merged = await _merge_verified_market(
         merged,
         now=now,
         target=target,
