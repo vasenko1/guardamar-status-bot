@@ -83,6 +83,7 @@ class Event:
     admission_evidence: Optional[str] = None
     image_url: Optional[str] = None
     programme_display_title: Optional[str] = None
+    occurrence_status: Optional[str] = None
     sport: Optional[str] = None
 
 
