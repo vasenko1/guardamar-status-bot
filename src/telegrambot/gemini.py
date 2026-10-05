@@ -1133,8 +1133,9 @@ def _request_market_status(
         "date means cancelled=false. Do not treat unrelated markets, past "
         "dates, weather warnings, or mere schedule descriptions as "
         "cancellation. evidence_es must be one exact contiguous quotation "
-        "from SOURCE. Set cancelled=false with empty evidence_es and null "
-        "event_date unless the statement and exact target date are explicit.\n\n"
+        "from SOURCE for cancelled=true only. Whenever cancelled=false, "
+        "including a move TO TARGET_DATE, return empty evidence_es and null "
+        "event_date.\n\n"
         f"TARGET_DATE: {local_day.isoformat()}\n"
         f"SOURCE:\n{source_text[:MAX_SOURCE_CHARACTERS]}"
     )
