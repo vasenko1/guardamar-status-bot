@@ -179,7 +179,6 @@ class MorningDigest:
     forecast_later_sea_state: Optional[str] = None
     holidays: Tuple[Holiday, ...] = ()
     celebrations: Tuple[Celebration, ...] = ()
-    clock_change: Optional[ClockChange] = None
     events: Tuple[Event, ...] = ()
     beach_notice: Optional[BeachNotice] = None
     pharmacies: Tuple[PharmacyDuty, ...] = ()
@@ -190,3 +189,4 @@ class MorningDigest:
     fire_risk_level: Optional[int] = None
     dry_thunderstorm_risk_level: Optional[int] = None
     hydrology_state: Optional[str] = None
+    clock_change: Optional[ClockChange] = None
