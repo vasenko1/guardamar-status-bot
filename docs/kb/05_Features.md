@@ -128,6 +128,36 @@ date. A definite Telegram failure clears that date for retry; an ambiguous send
 keeps it to prevent an automatic duplicate. No browser, PDF, AI, database,
 daemon, queue or generic notification framework is involved.
 
+## Sports event presentation target
+
+ADR 0100 accepts a dedicated sports presentation on the shared Event pipeline.
+This section describes the **approved target**, not current production behavior
+until its staged implementation is complete.
+
+Sporting events remain ordinary normalized events with one optional canonical
+sport code. The same accepted event facts feed:
+
+- the existing next-day/weekend planning message, under a dedicated sports
+  subsection;
+- one standalone current-day sports message;
+- the existing event-access lifecycle when advance registration, reservation or
+  ticket action exists.
+
+The current-day message is intentionally separate from the previous planning
+mention: it answers what can be attended today and may surface an explicit
+source-backed cancellation/postponement. After it is operational, sport is
+omitted from Morning Digest to avoid a third repetition.
+
+Published sports copy is written for a resident rather than exposing raw
+federation rows. When the responsible source provides the facts, it names the
+sport, participants, competition/division, group, round or explicit knockout /
+qualifying / friendly stage, meaningful team category, schedule and venue.
+Missing facts are omitted rather than inferred.
+
+No separate evening sports-tomorrow message, sports database, keyword
+classifier, generic competition framework, browser worker or per-sport cron is
+approved.
+
 ## One-off event registration notices
 
 Official one-off events may publish a compact registration lifecycle before
