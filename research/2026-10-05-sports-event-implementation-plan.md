@@ -1761,3 +1761,25 @@ decision log.
 This checkpoint changes documentation only. Slice A begins only after the
 architecture-fixation review confirms no runtime/source/state file changed and
 no contradiction remains between ADR 0100 and this plan.
+
+
+## Implementation checkpoint — Slice A
+
+Slice A implementation is complete on the implementation branch and has passed
+its iterative code-review/test cycle:
+
+- shared dated-publication state extracted;
+- Tomorrow state/schema preserved without migration;
+- Weekend ambiguous-delivery duplicate risk closed with a separate crash-safe
+  delivery state plus the legacy rollback marker;
+- manual review found an old/new-runtime lock mismatch;
+- that defect was fixed by holding both legacy and new Weekend locks;
+- focused suite: 77 tests OK;
+- full repository suite: 1608 tests OK;
+- no cron/source/sports-content behavior changed.
+
+The detailed gate record is
+`research/2026-10-05-sports-slice-a-implementation-review.md`.
+
+Slice B remains blocked until the final post-report test run is green and the
+temporary branch-only verification workflow is removed.
