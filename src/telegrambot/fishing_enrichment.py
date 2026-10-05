@@ -1186,8 +1186,17 @@ async def refresh_fpcv_details(
 def matching_authority(raw: dict, state: Optional[dict]) -> Optional[dict]:
     if _fold(str(raw.get("level", ""))) != "nacional":
         return None
+    try:
+        raw_start = date.fromisoformat(str(raw["start"]))
+        raw_end = date.fromisoformat(str(raw["end"]))
+    except (KeyError, TypeError, ValueError):
+        return None
     for record in (state or {}).get("records", []):
-        if _fold(record["match_title"]) == _fold(str(raw.get("title", ""))):
+        if _fold(record["match_title"]) != _fold(str(raw.get("title", ""))):
+            continue
+        authority_start = date.fromisoformat(record["start"])
+        authority_end = date.fromisoformat(record["end"])
+        if raw_start <= authority_end and authority_start <= raw_end:
             return record
     return None
 
