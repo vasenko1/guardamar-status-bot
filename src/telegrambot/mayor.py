@@ -547,16 +547,16 @@ def validate_market_status(
 async def market_is_cancelled(
     now: datetime,
     gemini_api_key: str,
+    *,
+    market_day: Optional[date] = None,
 ) -> bool:
-    """Check a scheduled market cancellation from fresh channel text only."""
+    """Check one scheduled market date against fresh channel text only."""
 
-    local_day = now.astimezone(GUARDAMAR_TIMEZONE).date()
-    if not gemini_api_key:
-        raise MayorChannelError(
-            "Gemini key is required for market cancellation checks",
-            code="CONFIG",
-            description="не настроен ключ Gemini для проверки рынка",
-        )
+    target_day = (
+        market_day
+        if market_day is not None
+        else now.astimezone(GUARDAMAR_TIMEZONE).date()
+    )
     payload = await asyncio.to_thread(_read_page)
     posts = extract_recent_posts(payload, now)
     relevant = [
@@ -566,12 +566,18 @@ async def market_is_cancelled(
     ]
     if not relevant:
         return False
+    if not gemini_api_key:
+        raise MayorChannelError(
+            "Gemini key is required for relevant market-status text",
+            code="CONFIG",
+            description="не настроен ключ Gemini для проверки рынка",
+        )
     source_text = "\n".join(relevant)
     try:
         candidate = await extract_market_status(
             gemini_api_key,
             source_text,
-            local_day,
+            target_day,
         )
     except GeminiError as exc:
         raise MayorChannelError(
@@ -580,4 +586,22 @@ async def market_is_cancelled(
             status=exc.server_status,
             description=exc.safe_description,
         ) from exc
-    return validate_market_status(candidate, source_text, local_day)
+
+    if candidate.get("cancelled") is False:
+        if (
+            candidate.get("evidence_es") == ""
+            and candidate.get("event_date") is None
+        ):
+            return False
+        raise MayorChannelError(
+            "Market status negative result failed validation",
+            code="INVALID-MARKET-STATUS",
+            description="ответ классификатора рынка не прошёл проверку",
+        )
+    if validate_market_status(candidate, source_text, target_day):
+        return True
+    raise MayorChannelError(
+        "Market cancellation result failed validation",
+        code="INVALID-MARKET-STATUS",
+        description="ответ классификатора рынка не прошёл проверку",
+    )
