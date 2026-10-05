@@ -15,7 +15,7 @@ from telegrambot.municipal_agenda import (
     _ayuntamiento_programme_candidates_from_html,
     _ayuntamiento_programme_events,
     _ayuntamiento_programme_image_url,
-    _apply_reviewed_todo_conflicts,
+    _suppress_reviewed_rosario_2026_10_06_todo_conflict,
     _cached_current_events,
     _canonicalize_todo_programme_aliases,
     _current_events,
@@ -527,7 +527,7 @@ class MunicipalProgrammeDisplayTranslationTests(
             ("todo_cultura",),
         )
 
-        filtered = _apply_reviewed_todo_conflicts(
+        filtered = _suppress_reviewed_rosario_2026_10_06_todo_conflict(
             official,
             (stale, distinct),
         )
@@ -550,7 +550,7 @@ class MunicipalProgrammeDisplayTranslationTests(
         )
 
         self.assertEqual(
-            _apply_reviewed_todo_conflicts(official, (stale,)),
+            _suppress_reviewed_rosario_2026_10_06_todo_conflict(official, (stale,)),
             (stale,),
         )
 
@@ -576,7 +576,7 @@ class MunicipalProgrammeDisplayTranslationTests(
         )
 
         self.assertEqual(
-            _apply_reviewed_todo_conflicts(official, (other,)),
+            _suppress_reviewed_rosario_2026_10_06_todo_conflict(official, (other,)),
             (other,),
         )
 
