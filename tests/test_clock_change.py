@@ -10,8 +10,15 @@ from telegrambot.models import ClockChange, MorningDigest
 
 
 class ClockChangeFactsTests(unittest.TestCase):
-    def test_ordinary_day_has_no_transition(self):
-        self.assertIsNone(clock_change_on(date(2026, 10, 24)))
+    def test_days_around_transitions_do_not_false_positive(self):
+        for local_day in (
+            date(2026, 3, 28),
+            date(2026, 3, 30),
+            date(2026, 10, 24),
+            date(2026, 10, 26),
+        ):
+            with self.subTest(local_day=local_day):
+                self.assertIsNone(clock_change_on(local_day))
 
     def test_2026_spring_transition_comes_from_europe_madrid(self):
         change = clock_change_on(date(2026, 3, 29))
