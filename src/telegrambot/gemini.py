@@ -1127,13 +1127,14 @@ def _request_market_status(
     local_day: date,
 ) -> Dict[str, Any]:
     prompt = (
-        "Check official municipal Telegram posts for an explicit cancellation "
-        "or move of Guardamar's regular Wednesday market on TARGET_DATE. "
-        "Do not treat unrelated markets, past dates, weather warnings, or mere "
-        "schedule descriptions as cancellation. evidence_es must be one exact "
-        "contiguous quotation from SOURCE. Set cancelled=false with empty "
-        "evidence_es and null event_date unless the statement and exact date "
-        "are explicit.\n\n"
+        "Decide whether Guardamar's regular municipal market will NOT take "
+        "place on TARGET_DATE. A cancellation or a move FROM TARGET_DATE to "
+        "another date means cancelled=true. A move TO TARGET_DATE from another "
+        "date means cancelled=false. Do not treat unrelated markets, past "
+        "dates, weather warnings, or mere schedule descriptions as "
+        "cancellation. evidence_es must be one exact contiguous quotation "
+        "from SOURCE. Set cancelled=false with empty evidence_es and null "
+        "event_date unless the statement and exact target date are explicit.\n\n"
         f"TARGET_DATE: {local_day.isoformat()}\n"
         f"SOURCE:\n{source_text[:MAX_SOURCE_CHARACTERS]}"
     )
