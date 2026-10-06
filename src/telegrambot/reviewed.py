@@ -35,6 +35,7 @@ _SET_FIELDS = {
     "ticket_price_cents": int,
     "participation_note": str,
     "registration_contact": str,
+    "schedule_note": str,
     "capacity_limited": bool,
 }
 
