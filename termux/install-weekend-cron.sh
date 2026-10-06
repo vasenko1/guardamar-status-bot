@@ -76,8 +76,8 @@ fi
 printf '%s\n' \
     "15 19 * * 5 $WEEKEND --fresh" \
     "15 20 * * 5 $WEEKEND" \
-    "47 12 * * * $SH_BIN $REGISTRATION" \
-    "47 13 * * * $SH_BIN $REGISTRATION" \
+    "47 10 * * * $SH_BIN $REGISTRATION" \
+    "47 11 * * * $SH_BIN $REGISTRATION" \
     "25 8 * * * $SH_BIN $SPORTS_TODAY" \
     "25 9 * * * $SH_BIN $SPORTS_TODAY" \
     "25 19 * * 0-4 $SH_BIN $TOMORROW" \

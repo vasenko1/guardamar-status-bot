@@ -19,6 +19,7 @@ from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 from ._transport import BoundedFetchError, fetch_bounded
+from .event_access import AccessOption, EventAccessRecord
 
 
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
@@ -47,7 +48,8 @@ _PDF_PARSE_TIMEOUT_SECONDS = 10.0
 _ENRICHMENT_FRESHNESS = timedelta(hours=36)
 _MAX_FEPYC_AUTHORITIES = 4
 _MAX_FPCV_DETAILS = 4
-_STATE_VERSION = 1
+_FEPYC_STATE_VERSION = 1
+_FPCV_DETAILS_STATE_VERSION = 2
 
 _FEPYC_SPECS = (
     {
@@ -318,7 +320,7 @@ def _authority_record_valid(record: Any) -> bool:
 def valid_fepyc_authority_state(value: Any) -> bool:
     if not isinstance(value, dict) or set(value) != {"version", "records"}:
         return False
-    if value.get("version") != _STATE_VERSION:
+    if value.get("version") != _FEPYC_STATE_VERSION:
         return False
     records = value.get("records")
     return (
@@ -475,7 +477,7 @@ async def refresh_fepyc_authority(
             record = old
         records.append(record)
 
-    state = {"version": _STATE_VERSION, "records": records}
+    state = {"version": _FEPYC_STATE_VERSION, "records": records}
     if not valid_fepyc_authority_state(state):
         raise FishingEnrichmentError(
             "FEPyC authority state failed validation", code="STATE"
@@ -856,6 +858,32 @@ def parse_fpcv_convocatoria_text(
             "FPCV PDF date disagrees with convocatoria index", code="PDF-SCHEMA"
         )
 
+    source_id_marker = re.search(r"\bnumero\b", folded)
+    source_id_matches = []
+    if source_id_marker is not None:
+        source_id_window = folded[
+            source_id_marker.end() : source_id_marker.end() + 120
+        ]
+        source_id_matches = list(
+            re.finditer(
+                r"(?<!\d)(\d{1,3})\s*/\s*(\d{2})(?!\d)",
+                source_id_window,
+            )
+        )
+    if len(source_id_matches) != 1:
+        raise FishingEnrichmentError(
+            "FPCV convocatoria number changed", code="PDF-SCHEMA"
+        )
+    source_id_match = source_id_matches[0]
+    if int(source_id_match.group(2)) != event_day.year % 100:
+        raise FishingEnrichmentError(
+            "FPCV convocatoria number year disagrees with event",
+            code="PDF-SCHEMA",
+        )
+    source_id = (
+        f"{int(source_id_match.group(1))}/{source_id_match.group(2)}"
+    )
+
     deadline_match = re.search(
         r"inscripciones\s+se\s+realizaran\s+por\s+los\s+clubes\s+hasta\s+el\s+"
         r"(\d{1,2})\s+de\s+([a-z]+)\s+a\s+las\s+(\d{1,2})(?::(\d{2}))?\s*h",
@@ -963,6 +991,7 @@ def parse_fpcv_convocatoria_text(
     ]
 
     return {
+        "source_id": source_id,
         "join_key": descriptor["join_key"],
         "base_start": descriptor["base_start"],
         "base_level": descriptor["base_level"],
@@ -989,7 +1018,7 @@ def parse_fpcv_convocatoria_text(
     }
 
 
-_DETAILS_KEYS = {
+_DETAILS_V1_KEYS = {
     "join_key",
     "base_start",
     "base_level",
@@ -1010,10 +1039,26 @@ _DETAILS_KEYS = {
     "registration_fee_cents",
     "observed_at",
 }
+_DETAILS_V2_KEYS = _DETAILS_V1_KEYS | {"source_id"}
 
 
 def _details_record_valid(record: Any) -> bool:
-    if not isinstance(record, dict) or set(record) != _DETAILS_KEYS:
+    if not isinstance(record, dict):
+        return False
+    keys = set(record)
+    if keys == _DETAILS_V1_KEYS:
+        source_id = None
+    elif keys == _DETAILS_V2_KEYS:
+        source_id = record["source_id"]
+        if (
+            source_id is not None
+            and (
+                not isinstance(source_id, str)
+                or re.fullmatch(r"\d{1,3}/\d{2}", source_id) is None
+            )
+        ):
+            return False
+    else:
         return False
     if not isinstance(record["join_key"], str) or not record["join_key"]:
         return False
@@ -1062,6 +1107,8 @@ def _details_record_valid(record: Any) -> bool:
             )
         )
 
+    if keys == _DETAILS_V2_KEYS and source_id is None:
+        return False
     if (
         not isinstance(record["content_sha256"], str)
         or not re.fullmatch(r"[0-9a-f]{64}", record["content_sha256"])
@@ -1115,13 +1162,24 @@ def _details_record_valid(record: Any) -> bool:
 def valid_fpcv_details_state(value: Any) -> bool:
     if not isinstance(value, dict) or set(value) != {"version", "records"}:
         return False
-    if value.get("version") != _STATE_VERSION:
+    version = value.get("version")
+    if version not in {1, _FPCV_DETAILS_STATE_VERSION}:
         return False
     records = value.get("records")
+    expected_keys = (
+        _DETAILS_V1_KEYS
+        if version == 1
+        else _DETAILS_V2_KEYS
+    )
     if (
         not isinstance(records, list)
         or len(records) > _MAX_FPCV_DETAILS
-        or not all(_details_record_valid(record) for record in records)
+        or not all(
+            isinstance(record, dict)
+            and set(record) == expected_keys
+            and _details_record_valid(record)
+            for record in records
+        )
     ):
         return False
     keys = [record["join_key"] for record in records]
@@ -1132,8 +1190,13 @@ def load_fpcv_details_state(path: Path) -> Optional[dict]:
     return _load_json(path, valid_fpcv_details_state, "FPCV details")
 
 
-def _cancelled_record(descriptor: dict, observed_at: datetime) -> dict:
+def _cancelled_record(
+    descriptor: dict,
+    observed_at: datetime,
+    source_id: Optional[str] = None,
+) -> dict:
     return {
+        "source_id": source_id,
         "join_key": descriptor["join_key"],
         "base_start": descriptor["base_start"],
         "base_level": descriptor["base_level"],
@@ -1170,7 +1233,7 @@ async def refresh_fpcv_details(
     if now.tzinfo is None or now.utcoffset() is None:
         raise ValueError("FPCV details time must be timezone-aware")
     if not base_events:
-        empty = {"version": _STATE_VERSION, "records": []}
+        empty = {"version": _FPCV_DETAILS_STATE_VERSION, "records": []}
         await asyncio.to_thread(_write_json, state_path, empty)
         return ()
 
@@ -1190,7 +1253,11 @@ async def refresh_fpcv_details(
         key = descriptor["join_key"]
         old = previous_by_key.get(key)
         if descriptor["cancelled"]:
-            records.append(_cancelled_record(descriptor, now))
+            records.append(_cancelled_record(
+                descriptor,
+                now,
+                source_id=(old or {}).get("source_id"),
+            ))
             continue
         if descriptor["pdf_url"] is None:
             logging.warning(
@@ -1225,6 +1292,7 @@ async def refresh_fpcv_details(
         if (
             old_matches_descriptor
             and old["content_sha256"] == content_sha256
+            and old.get("source_id") is not None
         ):
             records.append(_reuse_current_record(old, now))
             continue
@@ -1249,7 +1317,10 @@ async def refresh_fpcv_details(
             continue
         records.append(record)
 
-    state = {"version": _STATE_VERSION, "records": records}
+    state = {
+        "version": _FPCV_DETAILS_STATE_VERSION,
+        "records": records,
+    }
     if not valid_fpcv_details_state(state):
         raise FishingEnrichmentError(
             "FPCV details state failed validation", code="STATE"
@@ -1266,6 +1337,157 @@ def _record_is_fresh(record: dict, now: datetime) -> bool:
     if observed.tzinfo is None or observed.utcoffset() is None:
         return False
     return timedelta(0) <= now - observed <= _ENRICHMENT_FRESHNESS
+
+
+def _record_is_access_fresh(record: dict, now: datetime) -> bool:
+    """Require a non-future observation from the same Madrid local date."""
+
+    try:
+        observed = datetime.fromisoformat(record["observed_at"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    if observed.tzinfo is None or observed.utcoffset() is None:
+        return False
+    if observed > now:
+        return False
+    return (
+        observed.astimezone(GUARDAMAR_TIMEZONE).date()
+        == now.astimezone(GUARDAMAR_TIMEZONE).date()
+    )
+
+
+def fpcv_details_are_access_fresh(
+    now: datetime,
+    state_path: Path = Path(DEFAULT_FPCV_DETAILS_STATE_PATH),
+) -> bool:
+    """Return whether at least one identity-safe FPCV access record is fresh."""
+
+    if now.tzinfo is None or now.utcoffset() is None:
+        raise ValueError("FPCV access time must be timezone-aware")
+    try:
+        state = load_fpcv_details_state(state_path)
+    except FishingEnrichmentError:
+        return False
+    if state is None:
+        return False
+    return any(
+        record.get("source_id") is not None
+        and _record_is_access_fresh(record, now)
+        for record in state["records"]
+    )
+
+
+def fpcv_access_record(
+    raw: dict,
+    now: datetime,
+) -> Optional[EventAccessRecord]:
+    """Project one accepted normalized FPCV detail into Event Access."""
+
+    if not _details_record_valid(raw) or not _record_is_access_fresh(raw, now):
+        return None
+    source_id = raw.get("source_id")
+    if (
+        not isinstance(source_id, str)
+        or re.fullmatch(r"\d{1,3}/\d{2}", source_id) is None
+    ):
+        return None
+
+    try:
+        event_day = date.fromisoformat(raw["index_date"])
+    except (TypeError, ValueError):
+        return None
+
+    cancelled = bool(raw["cancelled"])
+    deadline = None
+    if not cancelled:
+        try:
+            deadline = datetime.fromisoformat(raw["registration_deadline"])
+        except (TypeError, ValueError):
+            return None
+        if deadline.tzinfo is None or deadline.utcoffset() is None:
+            return None
+
+    context = str(raw.get("competition_context") or "").strip()
+    base_title = str(raw["base_title"]).strip()
+    title = (
+        context.split(" · ", 1)[0] + " — " + base_title
+        if context
+        else base_title
+    )
+
+    details = list(raw.get("details") or ())
+    if context and details and details[0] == context:
+        details = details[1:]
+    fee_cents = raw.get("registration_fee_cents")
+    if isinstance(fee_cents, int) and not isinstance(fee_cents, bool):
+        euros, cents = divmod(fee_cents, 100)
+        amount = str(euros) if cents == 0 else f"{euros},{cents:02d}"
+        details.append(f"Взнос участника: {amount} €")
+
+    option = AccessOption(
+        option_id="club-registration",
+        status=(
+            "unknown"
+            if cancelled
+            else "open"
+            if now < deadline
+            else "closed"
+        ),
+        closes_on=deadline.date() if deadline is not None else None,
+        closes_time=(
+            deadline.timetz().replace(tzinfo=None)
+            if deadline is not None
+            else None
+        ),
+        action_text=(
+            "Регистрация проводится через рыболовный клуб участника"
+            if not cancelled
+            else None
+        ),
+    )
+
+    source_url = raw.get("source_url") or FPCV_INDEX_URL
+    try:
+        return EventAccessRecord(
+            record_id=(
+                "fpcv:convocatoria:" + source_id.replace("/", "-")
+            ),
+            source="fpcv",
+            source_url=source_url,
+            access_kind="registration",
+            title=title,
+            event_start_date=event_day,
+            place=raw.get("place"),
+            details=tuple(details),
+            schedule_note=raw.get("schedule_note"),
+            occurrence_status="cancelled" if cancelled else "scheduled",
+            options=(option,),
+        )
+    except (TypeError, ValueError):
+        return None
+
+
+async def load_fpcv_access_records(
+    now: datetime,
+    state_path: Path = Path(DEFAULT_FPCV_DETAILS_STATE_PATH),
+) -> tuple[EventAccessRecord, ...]:
+    """Read FPCV access facts from the local normalized details snapshot only."""
+
+    try:
+        state = await asyncio.to_thread(load_fpcv_details_state, state_path)
+    except FishingEnrichmentError:
+        return ()
+    if state is None:
+        return ()
+    records = tuple(
+        record
+        for raw in state["records"]
+        if (record := fpcv_access_record(raw, now)) is not None
+    )
+    return tuple(sorted(
+        records,
+        key=lambda item: (item.event_start_date, item.record_id),
+    ))
 
 
 def matching_authority(

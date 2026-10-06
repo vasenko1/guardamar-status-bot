@@ -110,8 +110,8 @@ class WeekendTermuxTests(unittest.TestCase):
         self.assertIn("25 20 * * 0-4", installed)
         self.assertEqual(installed.count("run-tomorrow-events.sh"), 2)
         self.assertEqual(installed.count("run-event-registration.sh"), 2)
-        self.assertIn("47 12 * * *", installed)
-        self.assertIn("47 13 * * *", installed)
+        self.assertIn("47 10 * * *", installed)
+        self.assertIn("47 11 * * *", installed)
 
     def test_installer_upgrades_existing_managed_tomorrow_job(self):
         weekend = ROOT / "termux" / "run-weekend.sh"
@@ -132,8 +132,8 @@ class WeekendTermuxTests(unittest.TestCase):
         self.assertEqual(installed.count("25 20 * * 0-4"), 1)
         self.assertEqual(installed.count("run-tomorrow-events.sh"), 2)
         self.assertEqual(installed.count("run-event-registration.sh"), 2)
-        self.assertIn("47 12 * * *", installed)
-        self.assertIn("47 13 * * *", installed)
+        self.assertIn("47 10 * * *", installed)
+        self.assertIn("47 11 * * *", installed)
 
     def test_installer_is_idempotent_and_preserves_other_jobs(self):
         unrelated = "12 3 * * * /other/bot.sh\n"
@@ -153,10 +153,29 @@ class WeekendTermuxTests(unittest.TestCase):
         self.assertEqual(installed.count("run-sports-today.sh"), 2)
         self.assertEqual(installed.count("25 8 * * *"), 1)
         self.assertEqual(installed.count("25 9 * * *"), 1)
-        self.assertIn("47 12 * * *", installed)
-        self.assertIn("47 13 * * *", installed)
+        self.assertIn("47 10 * * *", installed)
+        self.assertIn("47 11 * * *", installed)
         self.assertNotIn("0,20 18 * * 5", installed)
         self.assertIn("# BEGIN guardamar-status weekend digest", installed)
+
+    def test_installer_replaces_old_event_access_checkpoints(self):
+        registration = ROOT / "termux" / "run-event-registration.sh"
+        initial = (
+            "# BEGIN guardamar-status weekend digest\n"
+            "CRON_TZ=Europe/Madrid\n"
+            f"47 12 * * * /bin/sh {registration}\n"
+            f"47 13 * * * /bin/sh {registration}\n"
+            "# END guardamar-status weekend digest\n"
+        )
+
+        result, installed, _ = self._install(initial)
+
+        self.assertEqual(result.returncode, 0)
+        self.assertNotIn("47 12 * * *", installed)
+        self.assertNotIn("47 13 * * *", installed)
+        self.assertEqual(installed.count("47 10 * * *"), 1)
+        self.assertEqual(installed.count("47 11 * * *"), 1)
+        self.assertEqual(installed.count("run-event-registration.sh"), 2)
 
     def test_installer_adds_sports_today_primary_and_recovery(self):
         result, installed, _ = self._install("")
@@ -175,7 +194,7 @@ class WeekendTermuxTests(unittest.TestCase):
         )
 
         self.assertEqual(result.returncode, 0)
-        self.assertIn("47 12 * * *", installed)
+        self.assertIn("47 10 * * *", installed)
         self.assertIn("up crond", sv_log)
         self.assertIn("/var/service", sv_log)
 
@@ -215,7 +234,7 @@ class WeekendTermuxTests(unittest.TestCase):
         )
 
         self.assertEqual(result.returncode, 0)
-        self.assertIn("47 12 * * *", installed)
+        self.assertIn("47 10 * * *", installed)
         self.assertEqual(sv_log, "")
         self.assertIn("crond: running", result.stdout)
 
