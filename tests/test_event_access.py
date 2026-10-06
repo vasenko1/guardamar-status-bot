@@ -11,6 +11,7 @@ from telegrambot.event_access import (
     candidate_record_state,
     empty_state,
     migrate_v1_state,
+    migrate_v2_state,
     plan_event_access_record,
     prune_records,
     temporally_consistent,
@@ -64,6 +65,37 @@ def committed(decision, root_id=100):
     return value
 
 
+def v2_state(*, audience_known=True, root_message_id=100):
+    return {
+        "version": 2,
+        "records": {
+            "convega:post-1:stage-21": {
+                "source": "convega",
+                "access_kind": "registration",
+                "event_start_date": "2026-10-04",
+                "event_end_date": None,
+                "options": {
+                    "default": {
+                        "status": "unknown",
+                        "last_explicit_status": None,
+                        "opens_on": None,
+                        "opens_time": None,
+                        "closes_on": None,
+                        "closes_time": None,
+                        "until_full": False,
+                        "action_url": None,
+                        "action_text": None,
+                    }
+                },
+                "audience_known": audience_known,
+                "root_message_id": root_message_id,
+                "sent_triggers": [],
+            }
+        },
+        "uncertain": None,
+    }
+
+
 def legacy_state(**changes):
     baseline = {
         "convega:post-42197:stage-21": {
@@ -99,13 +131,14 @@ class EventAccessMigrationTests(unittest.TestCase):
     def test_production_like_v1_migrates_to_event_centric_state(self):
         migrated = migrate_v1_state(legacy_state())
 
-        self.assertEqual(migrated["version"], 2)
+        self.assertEqual(migrated["version"], 3)
         self.assertIsNone(migrated["uncertain"])
         item = migrated["records"]["convega:post-42197:stage-21"]
         self.assertEqual(item["source"], "convega")
         self.assertEqual(item["access_kind"], "registration")
         self.assertFalse(item["audience_known"])
         self.assertIsNone(item["root_message_id"])
+        self.assertFalse(item["context_known"])
         self.assertEqual(item["options"]["default"]["status"], "full")
         self.assertEqual(
             item["options"]["default"]["last_explicit_status"],
@@ -145,6 +178,53 @@ class EventAccessMigrationTests(unittest.TestCase):
 
         with self.assertRaises(EventAccessStateError):
             migrate_v1_state(value)
+
+    def test_v2_migration_baselines_material_context_without_guessing(self):
+        migrated = migrate_v2_state(v2_state())
+
+        self.assertEqual(migrated["version"], 3)
+        item = migrated["records"]["convega:post-1:stage-21"]
+        self.assertFalse(item["context_known"])
+        self.assertIsNone(item["place"])
+        self.assertIsNone(item["schedule_note"])
+
+        decision = plan_event_access_record(
+            record(),
+            item,
+            NOW,
+        )
+
+        self.assertNotIn(
+            "event-details-changed",
+            [notice.kind for notice in decision.notices],
+        )
+        self.assertTrue(decision.candidate_record["context_known"])
+        self.assertEqual(
+            decision.candidate_record["place"],
+            "Guardamar del Segura",
+        )
+
+    def test_v2_migration_preserves_historical_deadline_after_event_move(self):
+        value = v2_state()
+        value["records"]["convega:post-1:stage-21"][
+            "options"
+        ]["default"]["closes_on"] = "2026-10-10"
+
+        migrated = migrate_v2_state(value)
+
+        self.assertEqual(
+            migrated["records"]["convega:post-1:stage-21"][
+                "options"
+            ]["default"]["closes_on"],
+            "2026-10-10",
+        )
+
+    def test_v2_uncertain_blocks_migration(self):
+        value = v2_state()
+        value["uncertain"] = {"pending": True}
+
+        with self.assertRaises(EventAccessStateError):
+            migrate_v2_state(value)
 
     def test_v1_uncertain_blocks_migration(self):
         value = legacy_state(uncertain={"legacy": True})
@@ -557,7 +637,8 @@ class EventAccessPlannerTests(unittest.TestCase):
                 option(
                     status="open",
                     action_url="https://example.com/register",
-                )
+                ),
+                event_start_date=date(2026, 10, 20),
             ),
             None,
             NOW,
@@ -570,7 +651,8 @@ class EventAccessPlannerTests(unittest.TestCase):
                     status="open",
                     closes_on=date(2026, 10, 10),
                     action_url="https://example.com/register",
-                )
+                ),
+                event_start_date=date(2026, 10, 20),
             ),
             previous,
             NOW,
@@ -585,7 +667,8 @@ class EventAccessPlannerTests(unittest.TestCase):
                     status="open",
                     closes_on=date(2026, 10, 11),
                     action_url="https://example.com/register",
-                )
+                ),
+                event_start_date=date(2026, 10, 20),
             ),
             previous_known,
             NOW,
@@ -616,7 +699,8 @@ class EventAccessPlannerTests(unittest.TestCase):
                     status="open",
                     closes_on=date(2026, 10, 10),
                     action_url="https://example.com/old",
-                )
+                ),
+                event_start_date=date(2026, 10, 20),
             ),
             None,
         )
@@ -629,7 +713,8 @@ class EventAccessPlannerTests(unittest.TestCase):
                     status="open",
                     closes_on=date(2026, 10, 11),
                     action_url="https://example.com/new",
-                )
+                ),
+                event_start_date=date(2026, 10, 20),
             ),
             previous,
             NOW,
@@ -693,6 +778,271 @@ class EventAccessPlannerTests(unittest.TestCase):
         )
 
         self.assertIn("x", kept)
+
+
+    def test_access_boundary_cannot_extend_past_event_end(self):
+        with self.assertRaises(ValueError):
+            candidate_record_state(
+                record(
+                    option(
+                        closes_on=date(2026, 10, 5),
+                    )
+                ),
+                None,
+            )
+
+    def test_historical_deadline_survives_earlier_event_correction(self):
+        previous = candidate_record_state(
+            record(
+                option(
+                    status="open",
+                    closes_on=date(2026, 10, 10),
+                    action_url="https://example.com/register",
+                ),
+                event_start_date=date(2026, 10, 20),
+            ),
+            None,
+        )
+        previous["audience_known"] = True
+        previous["root_message_id"] = 100
+
+        decision = plan_event_access_record(
+            record(
+                option(
+                    status="open",
+                    action_url="https://example.com/register",
+                ),
+                event_start_date=date(2026, 10, 5),
+            ),
+            previous,
+            NOW,
+        )
+
+        self.assertEqual(
+            [notice.kind for notice in decision.notices],
+            ["event-date-changed"],
+        )
+        self.assertEqual(
+            decision.candidate_record["options"]["default"]["closes_on"],
+            "2026-10-10",
+        )
+
+    def test_open_access_after_event_day_is_temporally_inconsistent(self):
+        item = record(
+            option(
+                status="open",
+                action_url="https://example.com/register",
+            ),
+            event_start_date=date(2026, 10, 1),
+        )
+
+        self.assertFalse(temporally_consistent(item, NOW))
+
+    def test_event_date_change_is_one_rooted_notice(self):
+        previous = candidate_record_state(record(), None)
+        previous["audience_known"] = True
+        previous["root_message_id"] = 100
+
+        decision = plan_event_access_record(
+            record(event_start_date=date(2026, 10, 5)),
+            previous,
+            NOW,
+        )
+
+        self.assertEqual(decision.operation, "reply")
+        self.assertEqual(
+            [notice.kind for notice in decision.notices],
+            ["event-date-changed"],
+        )
+        self.assertEqual(decision.reply_to_message_id, 100)
+
+    def test_material_context_change_is_notified_after_baseline(self):
+        previous = candidate_record_state(
+            record(place="Centro Social", schedule_note="Старт 10:00"),
+            None,
+        )
+        previous["audience_known"] = True
+        previous["root_message_id"] = 100
+
+        decision = plan_event_access_record(
+            record(place="Palau Sant Jaume", schedule_note="Старт 11:00"),
+            previous,
+            NOW,
+        )
+
+        self.assertEqual(
+            [notice.kind for notice in decision.notices],
+            ["event-details-changed"],
+        )
+
+    def test_missing_context_does_not_erase_last_proven_fact(self):
+        previous = candidate_record_state(
+            record(place="Centro Social"),
+            None,
+        )
+        previous["audience_known"] = True
+        previous["root_message_id"] = 100
+
+        decision = plan_event_access_record(
+            record(place=None),
+            previous,
+            NOW,
+        )
+
+        self.assertEqual(
+            decision.candidate_record["place"],
+            "Centro Social",
+        )
+        self.assertNotIn(
+            "event-details-changed",
+            [notice.kind for notice in decision.notices],
+        )
+
+    def test_cancellation_suppresses_secondary_access_notices(self):
+        previous = candidate_record_state(
+            record(
+                option(
+                    status="open",
+                    closes_on=date(2026, 10, 4),
+                    action_url="https://example.com/register",
+                )
+            ),
+            None,
+        )
+        previous["audience_known"] = True
+        previous["root_message_id"] = 100
+
+        decision = plan_event_access_record(
+            record(
+                option(
+                    status="closed",
+                    closes_on=date(2026, 10, 3),
+                ),
+                occurrence_status="cancelled",
+            ),
+            previous,
+            NOW,
+        )
+
+        self.assertEqual(
+            [notice.kind for notice in decision.notices],
+            ["event-cancelled"],
+        )
+
+    def test_explicit_cancellation_is_notified_on_existing_root(self):
+        previous = candidate_record_state(record(), None)
+        previous["audience_known"] = True
+        previous["root_message_id"] = 100
+
+        decision = plan_event_access_record(
+            record(occurrence_status="cancelled"),
+            previous,
+            NOW,
+        )
+
+        self.assertEqual(
+            [notice.kind for notice in decision.notices],
+            ["event-cancelled"],
+        )
+
+    def test_missing_status_does_not_clear_prior_cancellation(self):
+        previous = candidate_record_state(
+            record(occurrence_status="cancelled"),
+            None,
+        )
+        previous["audience_known"] = True
+        previous["root_message_id"] = 100
+
+        decision = plan_event_access_record(
+            record(occurrence_status=None),
+            previous,
+            NOW,
+        )
+
+        self.assertEqual(
+            decision.candidate_record["occurrence_status"],
+            "cancelled",
+        )
+        self.assertNotIn(
+            "event-restored",
+            [notice.kind for notice in decision.notices],
+        )
+
+    def test_explicit_scheduled_status_restores_cancelled_event(self):
+        previous = candidate_record_state(
+            record(occurrence_status="cancelled"),
+            None,
+        )
+        previous["audience_known"] = True
+        previous["root_message_id"] = 100
+
+        decision = plan_event_access_record(
+            record(occurrence_status="scheduled"),
+            previous,
+            NOW,
+        )
+
+        self.assertEqual(
+            [notice.kind for notice in decision.notices],
+            ["event-restored"],
+        )
+        self.assertEqual(
+            decision.candidate_record["occurrence_status"],
+            "scheduled",
+        )
+
+    def test_title_only_change_is_not_material_event_notice(self):
+        previous = candidate_record_state(
+            record(title="Open Guardamar"),
+            None,
+        )
+        previous["audience_known"] = True
+        previous["root_message_id"] = 100
+
+        decision = plan_event_access_record(
+            record(title="Open Guardamar 2026"),
+            previous,
+            NOW,
+        )
+
+        self.assertNotIn(
+            "event-details-changed",
+            [notice.kind for notice in decision.notices],
+        )
+
+    def test_prior_cancelled_state_rejects_implicit_open_revival(self):
+        previous = candidate_record_state(
+            record(occurrence_status="cancelled"),
+            None,
+        )
+        previous["audience_known"] = True
+        previous["root_message_id"] = 100
+
+        with self.assertRaises(EventAccessStateError):
+            plan_event_access_record(
+                record(
+                    option(
+                        status="open",
+                        action_url="https://example.com/register",
+                    ),
+                    occurrence_status=None,
+                ),
+                previous,
+                NOW,
+            )
+
+    def test_cancelled_event_cannot_keep_open_access(self):
+        with self.assertRaises(ValueError):
+            candidate_record_state(
+                record(
+                    option(
+                        status="open",
+                        action_url="https://example.com/register",
+                    ),
+                    occurrence_status="cancelled",
+                ),
+                None,
+            )
 
 
 if __name__ == "__main__":

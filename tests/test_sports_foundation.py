@@ -87,9 +87,27 @@ class SportsFoundationTests(unittest.TestCase):
         self.assertEqual(len(merged), 2)
         self.assertEqual({event.sport for event in merged}, {"chess", "fishing"})
 
-    def test_merge_still_joins_same_sport_duplicates(self):
+    def test_merge_does_not_fuzzy_join_distinct_same_sport_events(self):
         first = Event(
-            "Open Dama",
+            "Guardamar против Callosa",
+            WHEN,
+            place="Palau Sant Jaume",
+            sport="chess",
+        )
+        second = Event(
+            "Guardamar против Santa Pola",
+            WHEN,
+            place="Palau Sant Jaume",
+            sport="chess",
+        )
+
+        merged = _merge_events((first,), (second,))
+
+        self.assertEqual(len(merged), 2)
+
+    def test_merge_still_joins_exact_same_sport_duplicates(self):
+        first = Event(
+            "Open Dama Guardamar",
             WHEN,
             place="Centro Social",
             sport="chess",

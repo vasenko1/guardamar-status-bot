@@ -12,12 +12,15 @@ from telegrambot.event_access import (
     AccessOption,
     EventAccessDecision,
     EventAccessRecord,
+    candidate_record_state,
+    empty_state,
 )
 from telegrambot.event_registration_notifications import (
     RegistrationDeliveryUncertain,
     RegistrationNotificationState,
     EventAccessStateError,
     _run_cli,
+    _status_summary,
     render_reply,
     render_root,
     run_registration_notifications,
@@ -83,113 +86,11 @@ def legacy_state():
     }
 
 
-class MigrationStateTests(unittest.TestCase):
-    def test_missing_state_migrates_to_empty_v2(self):
-        with tempfile.TemporaryDirectory() as directory:
-            state = RegistrationNotificationState(
-                Path(directory) / "state.json"
-            )
-
-            result = state.migrate()
-            saved = state.read()
-
-        self.assertEqual(result, "created_v2")
-        self.assertEqual(
-            saved,
-            {"version": 2, "records": {}, "uncertain": None},
-        )
-
-    def test_explicit_migration_writes_backup_and_v2(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "state.json"
-            path.write_text(json.dumps(legacy_state()), encoding="utf-8")
-            state = RegistrationNotificationState(path)
-
-            result = state.migrate()
-            saved = state.read()
-            backup = json.loads(
-                state.backup_path.read_text(encoding="utf-8")
-            )
-
-        self.assertEqual(result, "migrated_v1_to_v2")
-        self.assertEqual(saved["version"], 2)
-        self.assertEqual(backup, legacy_state())
-
-    def test_migration_is_idempotent_after_v2(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "state.json"
-            path.write_text(json.dumps(legacy_state()), encoding="utf-8")
-            state = RegistrationNotificationState(path)
-
-            state.migrate()
-            before = path.read_bytes()
-            result = state.migrate()
-            after = path.read_bytes()
-
-        self.assertEqual(result, "already_v2")
-        self.assertEqual(before, after)
-
-    def test_backup_collision_mismatch_fails_closed(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "state.json"
-            path.write_text(json.dumps(legacy_state()), encoding="utf-8")
-            state = RegistrationNotificationState(path)
-            state.backup_path.write_text('{"different":true}', encoding="utf-8")
-
-            with self.assertRaises(EventAccessStateError):
-                state.migrate()
-
-    def test_root_resolution_requires_message_id(self):
-        with tempfile.TemporaryDirectory() as directory:
-            state = RegistrationNotificationState(
-                Path(directory) / "state.json"
-            )
-            state.write({
-                "version": 2,
-                "records": {},
-                "uncertain": None,
-            })
-            current = state.read()
-            candidate = {
-                "source": "convega",
-                "access_kind": "registration",
-                "event_start_date": "2026-10-04",
-                "event_end_date": None,
-                "options": {
-                    "default": {
-                        "status": "open",
-                        "last_explicit_status": "open",
-                        "opens_on": None,
-                        "opens_time": None,
-                        "closes_on": None,
-                        "closes_time": None,
-                        "until_full": True,
-                        "action_url": "https://convega.com/register",
-                        "action_text": None,
-                    }
-                },
-                "audience_known": True,
-                "root_message_id": None,
-                "sent_triggers": [],
-            }
-            state.reserve(
-                current,
-                "convega:post-1:stage-21",
-                "root",
-                "message",
-                candidate,
-                NOW,
-            )
-
-            with self.assertRaises(EventAccessStateError):
-                state.confirm_uncertain()
-
-    def test_ambiguous_reply_resolution_needs_no_reply_message_id(self):
-        with tempfile.TemporaryDirectory() as directory:
-            state = RegistrationNotificationState(
-                Path(directory) / "state.json"
-            )
-            committed = {
+def v2_state():
+    return {
+        "version": 2,
+        "records": {
+            "convega:post-1:stage-21": {
                 "source": "convega",
                 "access_kind": "registration",
                 "event_start_date": "2026-10-04",
@@ -211,8 +112,123 @@ class MigrationStateTests(unittest.TestCase):
                 "root_message_id": 321,
                 "sent_triggers": [],
             }
+        },
+        "uncertain": None,
+    }
+
+
+class MigrationStateTests(unittest.TestCase):
+    def test_missing_state_migrates_to_empty_v3(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = RegistrationNotificationState(
+                Path(directory) / "state.json"
+            )
+
+            result = state.migrate()
+            saved = state.read()
+
+        self.assertEqual(result, "created_v3")
+        self.assertEqual(saved, empty_state())
+
+    def test_explicit_v1_migration_writes_backup_and_v3(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            path.write_text(json.dumps(legacy_state()), encoding="utf-8")
+            state = RegistrationNotificationState(path)
+
+            result = state.migrate()
+            saved = state.read()
+            backup = json.loads(
+                state.backup_path.read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(result, "migrated_v1_to_v3")
+        self.assertEqual(saved["version"], 3)
+        self.assertEqual(backup, legacy_state())
+
+    def test_migration_is_idempotent_after_v3(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            path.write_text(json.dumps(legacy_state()), encoding="utf-8")
+            state = RegistrationNotificationState(path)
+
+            state.migrate()
+            before = path.read_bytes()
+            result = state.migrate()
+            after = path.read_bytes()
+
+        self.assertEqual(result, "already_v3")
+        self.assertEqual(before, after)
+
+    def test_v2_migration_writes_separate_backup_and_v3(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            original = v2_state()
+            path.write_text(json.dumps(original), encoding="utf-8")
+            state = RegistrationNotificationState(path)
+
+            result = state.migrate()
+            saved = state.read()
+            backup = json.loads(
+                state.v2_backup_path.read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(result, "migrated_v2_to_v3")
+        self.assertEqual(saved["version"], 3)
+        item = saved["records"]["convega:post-1:stage-21"]
+        self.assertFalse(item["context_known"])
+        self.assertEqual(item["root_message_id"], 321)
+        self.assertEqual(backup, original)
+
+    def test_status_reports_v2_as_migration_required(self):
+        summary = json.loads(_status_summary(v2_state()))
+
+        self.assertEqual(summary["version"], 2)
+        self.assertTrue(summary["migration_required"])
+        self.assertEqual(summary["records"], 1)
+        self.assertEqual(summary["root_records"], 1)
+
+    def test_backup_collision_mismatch_fails_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            path.write_text(json.dumps(legacy_state()), encoding="utf-8")
+            state = RegistrationNotificationState(path)
+            state.backup_path.write_text('{"different":true}', encoding="utf-8")
+
+            with self.assertRaises(EventAccessStateError):
+                state.migrate()
+
+    def test_root_resolution_requires_message_id(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = RegistrationNotificationState(
+                Path(directory) / "state.json"
+            )
+            state.write(empty_state())
+            current = state.read()
+            candidate = candidate_record_state(record(), None)
+            candidate["audience_known"] = True
+            state.reserve(
+                current,
+                "convega:post-1:stage-21",
+                "root",
+                "message",
+                candidate,
+                NOW,
+            )
+
+            with self.assertRaises(EventAccessStateError):
+                state.confirm_uncertain()
+
+    def test_ambiguous_reply_resolution_needs_no_reply_message_id(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = RegistrationNotificationState(
+                Path(directory) / "state.json"
+            )
+            committed = candidate_record_state(record(), None)
+            committed["audience_known"] = True
+            committed["root_message_id"] = 321
             state.write({
-                "version": 2,
+                "version": 3,
                 "records": {"convega:post-1:stage-21": committed},
                 "uncertain": None,
             })
@@ -306,16 +322,130 @@ class RenderingTests(unittest.TestCase):
         self.assertIn("Места ограничены", message)
 
 
+    def test_reservation_root_uses_reservation_wording(self):
+        from telegrambot.event_access import plan_event_access_record
+
+        item = record(access_kind="reservation")
+        decision = plan_event_access_record(item, None, NOW)
+
+        message = render_root(item, decision)
+
+        self.assertIn("Открыто бронирование", message)
+        self.assertIn("Забронировать", message)
+        self.assertNotIn("Открыта регистрация", message)
+
+    def test_ticket_root_uses_ticket_wording(self):
+        from telegrambot.event_access import plan_event_access_record
+
+        item = record(access_kind="ticket")
+        decision = plan_event_access_record(item, None, NOW)
+
+        message = render_root(item, decision)
+
+        self.assertIn("Билеты доступны", message)
+        self.assertIn("Получить билет", message)
+        self.assertNotIn("Открыта регистрация", message)
+
+    def test_multi_option_root_labels_each_action(self):
+        from telegrambot.event_access import plan_event_access_record
+
+        item = record(
+            options=(
+                AccessOption(
+                    option_id="adult",
+                    label="Взрослый забег",
+                    status="open",
+                    action_url="https://example.com/adult",
+                ),
+                AccessOption(
+                    option_id="kids",
+                    label="Детский забег",
+                    status="open",
+                    action_url="https://example.com/kids",
+                ),
+            )
+        )
+        decision = plan_event_access_record(item, None, NOW)
+
+        message = render_root(item, decision)
+
+        self.assertIn("Взрослый забег", message)
+        self.assertIn("Детский забег", message)
+
+    def test_event_date_correction_reply_is_explicit(self):
+        item = record(event_start_date=date(2026, 10, 5))
+        decision = EventAccessDecision(
+            candidate_record={},
+            notices=(AccessNotice("event-date-changed"),),
+            operation="reply",
+            reply_to_message_id=100,
+        )
+
+        message = render_reply(item, decision)
+
+        self.assertIn("Дата события изменилась", message)
+        self.assertIn("5 октября", message)
+
+    def test_event_details_correction_reply_shows_current_facts(self):
+        item = record(
+            place="Palau Sant Jaume",
+            schedule_note="Старт 11:00",
+        )
+        decision = EventAccessDecision(
+            candidate_record={},
+            notices=(AccessNotice("event-details-changed"),),
+            operation="reply",
+            reply_to_message_id=100,
+        )
+
+        message = render_reply(item, decision)
+
+        self.assertIn("Изменились данные события", message)
+        self.assertIn("Palau Sant Jaume", message)
+        self.assertIn("Старт 11:00", message)
+
+    def test_restored_event_reply_is_explicit(self):
+        item = record(occurrence_status="scheduled")
+        decision = EventAccessDecision(
+            candidate_record={},
+            notices=(AccessNotice("event-restored"),),
+            operation="reply",
+            reply_to_message_id=100,
+        )
+
+        message = render_reply(item, decision)
+
+        self.assertIn("Событие снова подтверждено", message)
+
+    def test_explicit_cancellation_reply_is_not_registration_worded(self):
+        item = record(
+            occurrence_status="cancelled",
+            options=(
+                AccessOption(
+                    option_id="default",
+                    status="unknown",
+                ),
+            ),
+        )
+        decision = EventAccessDecision(
+            candidate_record={},
+            notices=(AccessNotice("event-cancelled"),),
+            operation="reply",
+            reply_to_message_id=100,
+        )
+
+        message = render_reply(item, decision)
+
+        self.assertIn("Событие отменено", message)
+        self.assertNotIn("Регистрация", message)
+
+
 class DeliveryPolicyTests(unittest.IsolatedAsyncioTestCase):
     async def test_cli_enables_only_rate_limit_retry_for_new_messages(self):
         with tempfile.TemporaryDirectory() as directory:
             state_path = Path(directory) / "notify.json"
             state = RegistrationNotificationState(state_path)
-            state.write({
-                "version": 2,
-                "records": {},
-                "uncertain": None,
-            })
+            state.write(empty_state())
 
             async def fake_run(
                 _now,
@@ -323,7 +453,9 @@ class DeliveryPolicyTests(unittest.IsolatedAsyncioTestCase):
                 publish,
                 *,
                 source_state_path,
+                publish_photo,
             ):
+                self.assertIsNotNone(publish_photo)
                 self.assertEqual(
                     source_state_path,
                     Path(directory) / "convega.json",
@@ -368,8 +500,76 @@ class DeliveryPolicyTests(unittest.IsolatedAsyncioTestCase):
         )
 
 
+    async def test_cli_photo_root_is_not_silent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "notify.json"
+            state = RegistrationNotificationState(state_path)
+            state.write(empty_state())
+
+            async def fake_run(
+                _now,
+                _state,
+                _publish,
+                *,
+                source_state_path,
+                publish_photo,
+            ):
+                self.assertEqual(
+                    source_state_path,
+                    Path(directory) / "convega.json",
+                )
+                message_id = await publish_photo(
+                    "https://example.com/poster.jpg",
+                    "caption",
+                )
+                self.assertEqual(message_id, 88)
+                return "sent"
+
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "EVENT_REGISTRATION_STATE_PATH": str(state_path),
+                        "CONVEGA_STATE_PATH": str(
+                            Path(directory) / "convega.json"
+                        ),
+                        "TELEGRAM_BOT_TOKEN": "token",
+                        "TELEGRAM_CHAT_ID": "-100123",
+                    },
+                    clear=False,
+                ),
+                patch(
+                    "telegrambot.event_registration_notifications."
+                    "run_registration_notifications",
+                    new=fake_run,
+                ),
+                patch(
+                    "telegrambot.event_registration_notifications."
+                    "send_photo_url",
+                    new=AsyncMock(return_value=(88, "file-id")),
+                ) as send_photo,
+            ):
+                code = await _run_cli("run")
+
+        self.assertEqual(code, 0)
+        send_photo.assert_awaited_once_with(
+            "token",
+            "-100123",
+            "https://example.com/poster.jpg",
+            "caption",
+            disable_notification=False,
+        )
+
+
 class DeliveryTests(unittest.IsolatedAsyncioTestCase):
-    async def run_with(self, records, publish, state=None):
+    async def run_with(
+        self,
+        records,
+        publish,
+        state=None,
+        *,
+        publish_photo=None,
+    ):
         if state is None:
             temp = tempfile.TemporaryDirectory()
             self.addCleanup(temp.cleanup)
@@ -394,6 +594,152 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
                 state,
                 publish,
                 source_state_path=Path("unused.json"),
+                publish_photo=publish_photo,
+            )
+
+    async def test_photo_root_stores_photo_message_id(self):
+        async def publish(_message, _reply_to):
+            raise AssertionError("text root must not be used")
+
+        async def publish_photo(photo_url, caption):
+            self.assertEqual(photo_url, "https://example.com/poster.jpg")
+            self.assertIn("Открыта регистрация", caption)
+            return 345
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = RegistrationNotificationState(
+                Path(directory) / "notify.json"
+            )
+            result = await self.run_with(
+                (record(image_url="https://example.com/poster.jpg"),),
+                publish,
+                state,
+                publish_photo=publish_photo,
+            )
+            saved = state.read()
+
+        self.assertEqual(result, "sent")
+        self.assertEqual(
+            saved["records"][
+                "convega:post-1:stage-21"
+            ]["root_message_id"],
+            345,
+        )
+        self.assertIsNone(saved["uncertain"])
+
+    async def test_remote_media_rejection_falls_back_to_text_root(self):
+        calls = []
+
+        async def publish(message, reply_to):
+            calls.append(("text", reply_to, message))
+            return 456
+
+        async def publish_photo(_photo_url, _caption):
+            calls.append(("photo", None, None))
+            raise TelegramError(
+                "remote media rejected",
+                retryable=False,
+                code="REMOTE-MEDIA",
+                status=400,
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = RegistrationNotificationState(
+                Path(directory) / "notify.json"
+            )
+            result = await self.run_with(
+                (record(image_url="https://example.com/poster.jpg"),),
+                publish,
+                state,
+                publish_photo=publish_photo,
+            )
+            saved = state.read()
+
+        self.assertEqual(result, "sent")
+        self.assertEqual([item[0] for item in calls], ["photo", "text"])
+        self.assertEqual(calls[1][1], None)
+        self.assertEqual(
+            saved["records"][
+                "convega:post-1:stage-21"
+            ]["root_message_id"],
+            456,
+        )
+        self.assertIsNone(saved["uncertain"])
+
+    async def test_ambiguous_photo_failure_never_falls_back_to_text(self):
+        text_calls = 0
+
+        async def publish(_message, _reply_to):
+            nonlocal text_calls
+            text_calls += 1
+            return 999
+
+        async def publish_photo(_photo_url, _caption):
+            raise TelegramError(
+                "timeout",
+                retryable=True,
+                code="TIMEOUT",
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = RegistrationNotificationState(
+                Path(directory) / "notify.json"
+            )
+            with self.assertRaises(RegistrationDeliveryUncertain):
+                await self.run_with(
+                    (record(image_url="https://example.com/poster.jpg"),),
+                    publish,
+                    state,
+                    publish_photo=publish_photo,
+                )
+            saved = state.read()
+
+        self.assertEqual(text_calls, 0)
+        self.assertIsNotNone(saved["uncertain"])
+        self.assertEqual(saved["uncertain"]["operation"], "root")
+
+    async def test_long_root_uses_text_instead_of_photo(self):
+        photo_calls = 0
+
+        async def publish(message, reply_to):
+            self.assertGreater(len(message), 1024)
+            self.assertIsNone(reply_to)
+            return 567
+
+        async def publish_photo(_photo_url, _caption):
+            nonlocal photo_calls
+            photo_calls += 1
+            return 999
+
+        item = record(
+            title="Событие " + "А" * 950,
+            image_url="https://example.com/poster.jpg",
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = RegistrationNotificationState(
+                Path(directory) / "notify.json"
+            )
+            result = await self.run_with(
+                (item,),
+                publish,
+                state,
+                publish_photo=publish_photo,
+            )
+
+        self.assertEqual(result, "sent")
+        self.assertEqual(photo_calls, 0)
+
+    async def test_duplicate_record_ids_fail_before_delivery(self):
+        async def publish(_message, _reply_to):
+            raise AssertionError("duplicate records must not publish")
+
+        duplicate = record("convega:duplicate")
+
+        with self.assertRaises(EventAccessStateError):
+            await self.run_with(
+                (duplicate, duplicate),
+                publish,
             )
 
     async def test_confirmed_root_stores_returned_message_id(self):
@@ -465,6 +811,53 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
             "convega:post-1:stage-21",
         )
         self.assertEqual(calls, 1)
+
+    async def test_replies_never_repeat_root_photo(self):
+        text_calls = []
+        photo_calls = 0
+
+        async def publish(message, reply_to):
+            text_calls.append((message, reply_to))
+            return 222
+
+        async def publish_photo(_photo_url, _caption):
+            nonlocal photo_calls
+            photo_calls += 1
+            return 222
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = RegistrationNotificationState(
+                Path(directory) / "notify.json"
+            )
+            item = record(image_url="https://example.com/poster.jpg")
+            await self.run_with(
+                (item,),
+                publish,
+                state,
+                publish_photo=publish_photo,
+            )
+
+            full = record(
+                image_url="https://example.com/poster.jpg",
+                options=(
+                    AccessOption(
+                        option_id="default",
+                        status="full",
+                        until_full=True,
+                    ),
+                ),
+            )
+            await self.run_with(
+                (full,),
+                publish,
+                state,
+                publish_photo=publish_photo,
+            )
+
+        self.assertEqual(photo_calls, 1)
+        self.assertEqual(len(text_calls), 1)
+        self.assertEqual(text_calls[0][1], 222)
+        self.assertIn("Мест больше нет", text_calls[0][0])
 
     async def test_reply_uses_existing_root_id(self):
         calls = []

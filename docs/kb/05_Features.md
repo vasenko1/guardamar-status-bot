@@ -206,13 +206,28 @@ event-date corrections may notify under the bounded rules in ADR 0089.
 Disappearance never means closure or cancellation.
 
 The normal one-shot runs at 12:47 Europe/Madrid with one 13:47 recovery.
-Same-day freshness is mandatory for registration claims. The recovery skips
-source I/O when today's CONVEGA snapshot already exists. At most one Telegram
-message is sent per run, and ambiguous delivery blocks automatic resend.
+Same-day freshness is mandatory for current access claims. Each enabled source
+owns its own freshness check; one stale source is omitted rather than blocking
+fresh independent sources. Records are processed deterministically one at a
+time, so one invocation may send several independent event roots/replies
+sequentially. One ambiguous delivery blocks every later send until operator
+resolution.
 
-The implementation uses bounded WordPress REST plus deterministic parsing only:
-no browser, OCR, source-side AI, database, queue, daemon or generic notification
-framework. See ADR 0089.
+The shared lifecycle uses event-centric state v3. Version 2 is migrated only by
+the explicit operator command with a private non-overwriting backup. V3 adds
+only material root context required to detect date/place/route/schedule
+corrections and explicit occurrence cancellation/postponement; ordinary
+presentation details remain outside state. Registration, reservation and ticket
+copy is access-kind-correct. An exact event poster may be used only for a
+self-contained root that fits the Telegram caption limit; deterministic remote
+media rejection may fall back to the same text root, while ambiguous media
+delivery never does.
+
+The implementation uses bounded source-specific parsing only: no browser,
+source-side AI, database, queue, daemon or generic notification framework.
+CONVEGA remains the only enabled event-access source until another adapter
+passes its exact identity, action/status, correction and freshness gate. See
+ADRs 0089-0092.
 
 ## Weekend events digest
 

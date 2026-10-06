@@ -36,12 +36,18 @@ from .event_access import (
     STATE_VERSION,
     empty_state,
     migrate_v1_state,
+    migrate_v2_state,
     plan_event_access_record,
     prune_records,
     temporally_consistent,
     validate_state,
 )
-from .telegram import TelegramError, is_ambiguous_send_failure, send_message
+from .telegram import (
+    TelegramError,
+    is_ambiguous_send_failure,
+    send_message,
+    send_photo_url,
+)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -65,6 +71,62 @@ class RegistrationNotificationState:
     def backup_path(self) -> Path:
         return self.path.with_name(self.path.stem + ".v1-backup.json")
 
+    @property
+    def v2_backup_path(self) -> Path:
+        return self.path.with_name(self.path.stem + ".v2-backup.json")
+
+    def _write_migration_backup(
+        self,
+        raw: Mapping[str, Any],
+        backup: Path,
+        label: str,
+    ) -> None:
+        if backup.exists():
+            try:
+                existing = json.loads(backup.read_text(encoding="utf-8"))
+            except (
+                OSError,
+                UnicodeDecodeError,
+                json.JSONDecodeError,
+            ) as exc:
+                raise EventAccessStateError(
+                    f"event-access {label} backup is unreadable"
+                ) from exc
+            if existing != raw:
+                raise EventAccessStateError(
+                    f"event-access {label} backup collision"
+                )
+            return
+
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary = tempfile.mkstemp(
+            prefix=f".{backup.name}.",
+            dir=str(backup.parent),
+        )
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+                json.dump(
+                    raw,
+                    output,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
+                output.write("\n")
+                output.flush()
+                os.fsync(output.fileno())
+            os.chmod(temporary, 0o600)
+            os.replace(temporary, backup)
+            directory = os.open(str(backup.parent), os.O_RDONLY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        finally:
+            try:
+                os.unlink(temporary)
+            except FileNotFoundError:
+                pass
+
     def read_raw(self) -> Optional[Dict[str, Any]]:
         if not self.path.exists():
             return None
@@ -84,9 +146,9 @@ class RegistrationNotificationState:
         value = self.read_raw()
         if value is None:
             return empty_state()
-        if value.get("version") == 1:
+        if value.get("version") in {1, 2}:
             raise EventAccessStateError(
-                "event-access state v1 requires migrate-state"
+                "legacy event-access state requires migrate-state"
             )
         return validate_state(value)
 
@@ -140,67 +202,33 @@ class RegistrationNotificationState:
             raw = self.read_raw()
             if raw is None:
                 self._write(empty_state())
-                return "created_v2"
-            if raw.get("version") == STATE_VERSION:
+                return "created_v3"
+            version = raw.get("version")
+            if version == STATE_VERSION:
                 validate_state(raw)
-                return "already_v2"
-            if raw.get("version") != 1:
+                return "already_v3"
+            if version == 1:
+                migrated = migrate_v1_state(raw)
+                self._write_migration_backup(
+                    raw,
+                    self.backup_path,
+                    "v1",
+                )
+                result = "migrated_v1_to_v3"
+            elif version == 2:
+                migrated = migrate_v2_state(raw)
+                self._write_migration_backup(
+                    raw,
+                    self.v2_backup_path,
+                    "v2",
+                )
+                result = "migrated_v2_to_v3"
+            else:
                 raise EventAccessStateError(
                     "event-access state version cannot be migrated"
                 )
-
-            migrated = migrate_v1_state(raw)
-            backup = self.backup_path
-            if backup.exists():
-                try:
-                    existing = json.loads(
-                        backup.read_text(encoding="utf-8")
-                    )
-                except (
-                    OSError,
-                    UnicodeDecodeError,
-                    json.JSONDecodeError,
-                ) as exc:
-                    raise EventAccessStateError(
-                        "event-access v1 backup is unreadable"
-                    ) from exc
-                if existing != raw:
-                    raise EventAccessStateError(
-                        "event-access v1 backup collision"
-                    )
-            else:
-                backup.parent.mkdir(parents=True, exist_ok=True)
-                descriptor, temporary = tempfile.mkstemp(
-                    prefix=f".{backup.name}.",
-                    dir=str(backup.parent),
-                )
-                try:
-                    with os.fdopen(
-                        descriptor, "w", encoding="utf-8"
-                    ) as output:
-                        json.dump(
-                            raw,
-                            output,
-                            ensure_ascii=False,
-                            separators=(",", ":"),
-                        )
-                        output.write("\n")
-                        output.flush()
-                        os.fsync(output.fileno())
-                    os.chmod(temporary, 0o600)
-                    os.replace(temporary, backup)
-                    directory = os.open(str(backup.parent), os.O_RDONLY)
-                    try:
-                        os.fsync(directory)
-                    finally:
-                        os.close(directory)
-                finally:
-                    try:
-                        os.unlink(temporary)
-                    except FileNotFoundError:
-                        pass
             self._write(migrated)
-            return "migrated_v1_to_v2"
+            return result
 
     def reserve(
         self,
@@ -335,21 +363,96 @@ def _deadline_text(record: EventAccessRecord, option_id: str) -> Optional[str]:
     return result
 
 
-def _root_heading(kind: str) -> str:
-    headings = {
+_ACCESS_COPY = {
+    "registration": {
         "active": "📝 <b>Открыта регистрация</b>",
         "open": "📝 <b>Регистрация открыта</b>",
         "reopened": "📝 <b>Регистрация снова открыта</b>",
-        "full": "⛔ <b>Мест больше нет</b>",
         "closed": "📝 <b>Регистрация закрыта</b>",
         "deadline-known": "⏳ <b>Появился срок регистрации</b>",
         "deadline-changed": "⏳ <b>Срок регистрации изменён</b>",
         "opening-tomorrow": "📝 <b>Завтра открывается регистрация</b>",
         "opening-today": "📝 <b>Сегодня открывается регистрация</b>",
         "one-day-tomorrow": "📝 <b>Регистрация только завтра</b>",
-        "option-added": "➕ <b>Добавлен вариант регистрации</b>",
-    }
-    return headings.get(kind, "📝 <b>Обновление регистрации</b>")
+        "closing-tomorrow": "⏳ <b>Завтра заканчивается регистрация</b>",
+        "closing-today": "⏳ <b>Сегодня заканчивается регистрация</b>",
+        "action-changed": "📝 <b>Изменился способ регистрации</b>",
+        "option-added": "➕ <b>Добавлен новый вариант регистрации</b>",
+        "opening-prefix": "Регистрация",
+        "deadline-open-prefix": "Записаться можно до ",
+        "deadline-unknown-prefix": "Указан срок регистрации: до ",
+        "full": "⛔ <b>Мест больше нет</b>",
+    },
+    "reservation": {
+        "active": "📝 <b>Открыто бронирование</b>",
+        "open": "📝 <b>Бронирование открыто</b>",
+        "reopened": "📝 <b>Бронирование снова открыто</b>",
+        "closed": "📝 <b>Бронирование закрыто</b>",
+        "deadline-known": "⏳ <b>Появился срок бронирования</b>",
+        "deadline-changed": "⏳ <b>Срок бронирования изменён</b>",
+        "opening-tomorrow": "📝 <b>Завтра открывается бронирование</b>",
+        "opening-today": "📝 <b>Сегодня открывается бронирование</b>",
+        "one-day-tomorrow": "📝 <b>Бронирование только завтра</b>",
+        "closing-tomorrow": "⏳ <b>Завтра заканчивается бронирование</b>",
+        "closing-today": "⏳ <b>Сегодня заканчивается бронирование</b>",
+        "action-changed": "📝 <b>Изменился способ бронирования</b>",
+        "option-added": "➕ <b>Добавлен новый вариант бронирования</b>",
+        "opening-prefix": "Бронирование",
+        "deadline-open-prefix": "Забронировать можно до ",
+        "deadline-unknown-prefix": "Указан срок бронирования: до ",
+        "full": "⛔ <b>Мест больше нет</b>",
+    },
+    "ticket": {
+        "active": "🎟 <b>Билеты доступны</b>",
+        "open": "🎟 <b>Продажа билетов открыта</b>",
+        "reopened": "🎟 <b>Продажа билетов снова открыта</b>",
+        "closed": "🎟 <b>Продажа билетов закрыта</b>",
+        "deadline-known": "⏳ <b>Появился срок продажи билетов</b>",
+        "deadline-changed": "⏳ <b>Срок продажи билетов изменён</b>",
+        "opening-tomorrow": "🎟 <b>Завтра открывается продажа билетов</b>",
+        "opening-today": "🎟 <b>Сегодня открывается продажа билетов</b>",
+        "one-day-tomorrow": "🎟 <b>Билеты продаются только завтра</b>",
+        "closing-tomorrow": "⏳ <b>Завтра заканчивается продажа билетов</b>",
+        "closing-today": "⏳ <b>Сегодня заканчивается продажа билетов</b>",
+        "action-changed": "🎟 <b>Изменился способ получения билета</b>",
+        "option-added": "➕ <b>Добавлен новый вариант билета</b>",
+        "opening-prefix": "Продажа билетов",
+        "deadline-open-prefix": "Получить билет можно до ",
+        "deadline-unknown-prefix": "Указан срок продажи билетов: до ",
+        "full": "⛔ <b>Билетов больше нет</b>",
+    },
+}
+
+
+def _access_copy(record: EventAccessRecord, key: str) -> str:
+    return _ACCESS_COPY[record.access_kind][key]
+
+
+def _root_heading(record: EventAccessRecord, kind: str) -> str:
+    if kind == "event-date-changed":
+        return "📅 <b>Дата события изменилась</b>"
+    if kind == "event-details-changed":
+        return "ℹ️ <b>Изменились данные события</b>"
+    if kind == "event-cancelled":
+        return "⛔ <b>Событие отменено</b>"
+    if kind == "event-postponed":
+        return "⏸ <b>Событие перенесено</b>"
+    if kind == "event-restored":
+        return "✅ <b>Событие снова подтверждено</b>"
+    return _access_copy(
+        record,
+        kind if kind in _ACCESS_COPY[record.access_kind] else "open",
+    )
+
+
+def _option_label_line(
+    record: EventAccessRecord,
+    option_id: str,
+) -> Optional[str]:
+    option = _option(record, option_id)
+    if len(record.options) <= 1 or not option.label:
+        return None
+    return "▫️ <b>" + html.escape(option.label) + "</b>"
 
 
 def _opening_text(record: EventAccessRecord, option_id: str) -> Optional[str]:
@@ -359,9 +462,10 @@ def _opening_text(record: EventAccessRecord, option_id: str) -> Optional[str]:
     result = _format_date(option.opens_on)
     if option.opens_time is not None:
         result += ", " + option.opens_time.strftime("%H:%M")
+    prefix = _access_copy(record, "opening-prefix")
     if option.closes_on == option.opens_on:
-        return "📝 Регистрация: только " + result
-    return "📝 Регистрация: с " + result
+        return "📝 " + prefix + ": только " + result
+    return "📝 " + prefix + ": с " + result
 
 
 def _event_date_line(record: EventAccessRecord) -> str:
@@ -386,7 +490,7 @@ def render_root(
         raise ValueError("root publication requires a notice")
     first = decision.notices[0]
     lines = [
-        _root_heading(first.kind),
+        _root_heading(record, first.kind),
         "",
         "<b>" + html.escape(record.title) + "</b>",
         _event_date_line(record),
@@ -416,6 +520,9 @@ def render_root(
         action = _action_line(record, option.option_id)
         if action is not None:
             lines.append("")
+            label = _option_label_line(record, option.option_id)
+            if label is not None:
+                lines.append(label)
             lines.append(action)
             deadline = _deadline_text(record, option.option_id)
             if deadline is not None:
@@ -439,84 +546,85 @@ def _reply_block(
     record: EventAccessRecord,
     notice: AccessNotice,
 ) -> Tuple[str, ...]:
+    if notice.kind == "event-date-changed":
+        return (
+            "📅 <b>Дата события изменилась</b>",
+            _event_date_line(record),
+        )
+    if notice.kind == "event-details-changed":
+        lines = [
+            "ℹ️ <b>Изменились данные события</b>",
+            "<b>" + html.escape(record.title) + "</b>",
+        ]
+        if record.route:
+            lines.append("🥾 Маршрут: " + html.escape(record.route))
+        if record.schedule_note:
+            lines.append("🕐 " + html.escape(record.schedule_note))
+        if record.place:
+            lines.append("📍 " + html.escape(record.place))
+        return tuple(lines)
+    if notice.kind == "event-cancelled":
+        return ("⛔ <b>Событие отменено</b>",)
+    if notice.kind == "event-postponed":
+        return ("⏸ <b>Событие перенесено</b>",)
+    if notice.kind == "event-restored":
+        return ("✅ <b>Событие снова подтверждено</b>",)
+
+    if notice.option_id is None:
+        raise ValueError("option notice requires option_id")
     option = _option(record, notice.option_id)
-    if notice.kind == "open":
-        heading = "📝 <b>Регистрация открыта</b>"
-    elif notice.kind == "reopened":
-        heading = "📝 <b>Регистрация снова открыта</b>"
-    elif notice.kind == "full":
-        return ("⛔ <b>Мест больше нет</b>",)
-    elif notice.kind == "closed":
-        return ("📝 <b>Регистрация закрыта</b>",)
-    elif notice.kind == "deadline-known":
+
+    if notice.kind in {"full", "closed"}:
+        return (_access_copy(record, notice.kind),)
+    if notice.kind == "deadline-known":
         deadline = _deadline_text(record, notice.option_id)
-        prefix = (
-            "Записаться можно до "
-            if option.status == "open"
-            else "Указан срок регистрации: до "
+        prefix = _access_copy(
+            record,
+            (
+                "deadline-open-prefix"
+                if option.status == "open"
+                else "deadline-unknown-prefix"
+            ),
         )
         return (
-            "⏳ <b>Появился срок регистрации</b>",
+            _access_copy(record, "deadline-known"),
             prefix + html.escape(deadline or "указанного срока"),
         )
-    elif notice.kind == "deadline-changed":
+    if notice.kind == "deadline-changed":
         deadline = _deadline_text(record, notice.option_id)
         return (
-            "⏳ <b>Срок регистрации изменён</b>",
+            _access_copy(record, "deadline-changed"),
             "Теперь до " + html.escape(deadline or "указанного срока"),
         )
-    elif notice.kind == "closing-tomorrow":
-        heading = "⏳ <b>Завтра заканчивается регистрация</b>"
-    elif notice.kind == "closing-today":
-        heading = "⏳ <b>Сегодня заканчивается регистрация</b>"
-    elif notice.kind == "opening-tomorrow":
+    if notice.kind in {
+        "opening-tomorrow",
+        "opening-today",
+        "one-day-tomorrow",
+    }:
         opening = _opening_text(record, notice.option_id)
         return tuple(
             item for item in (
-                "📝 <b>Завтра открывается регистрация</b>",
+                _access_copy(record, notice.kind),
                 opening,
             )
             if item is not None
         )
-    elif notice.kind == "opening-today":
-        opening = _opening_text(record, notice.option_id)
-        return tuple(
-            item for item in (
-                "📝 <b>Сегодня открывается регистрация</b>",
-                opening,
-            )
-            if item is not None
-        )
-    elif notice.kind == "one-day-tomorrow":
-        opening = _opening_text(record, notice.option_id)
-        return tuple(
-            item for item in (
-                "📝 <b>Регистрация только завтра</b>",
-                opening,
-            )
-            if item is not None
-        )
-    elif notice.kind == "action-changed":
-        heading = "📝 <b>Изменился способ регистрации</b>"
-    elif notice.kind == "option-added":
-        heading = "➕ <b>Добавлен новый вариант регистрации</b>"
-    else:
-        heading = "📝 <b>Обновление регистрации</b>"
 
+    heading = _access_copy(
+        record,
+        notice.kind if notice.kind in _ACCESS_COPY[record.access_kind] else "open",
+    )
     lines = [heading]
+    label = _option_label_line(record, notice.option_id)
+    if label is not None:
+        lines.append(label)
     action = _action_line(record, notice.option_id)
     if action is not None:
         lines.append(action)
-    if notice.kind in {"open", "reopened"}:
+    if notice.kind in {"open", "reopened", "closing-tomorrow", "closing-today"}:
         deadline = _deadline_text(record, notice.option_id)
         if deadline is not None:
             lines.append("⏳ до " + html.escape(deadline))
-    if notice.kind in {"closing-tomorrow", "closing-today"}:
-        deadline = _deadline_text(record, notice.option_id)
-        if deadline is not None:
-            lines.append("⏳ до " + html.escape(deadline))
-    if option.label and len(record.options) > 1:
-        lines.insert(1, "⏰ " + html.escape(option.label))
     return tuple(lines)
 
 
@@ -556,6 +664,7 @@ def _status_summary(raw: Optional[Mapping[str, Any]]) -> str:
             "records": 0,
             "uncertain": False,
         }, ensure_ascii=False, sort_keys=True)
+
     version = raw.get("version")
     if version == 1:
         uncertain = raw.get("uncertain")
@@ -567,6 +676,35 @@ def _status_summary(raw: Optional[Mapping[str, Any]]) -> str:
             "sent_triggers": len(raw.get("sent_triggers", [])),
             "uncertain": uncertain is not None,
         }, ensure_ascii=False, sort_keys=True)
+
+    if version == 2:
+        records = raw.get("records", {})
+        uncertain = raw.get("uncertain")
+        if not isinstance(records, dict):
+            raise EventAccessStateError("event-access v2 records are invalid")
+        return json.dumps({
+            "version": 2,
+            "migration_required": True,
+            "records": len(records),
+            "audience_known_records": sum(
+                1
+                for item in records.values()
+                if isinstance(item, dict) and item.get("audience_known")
+            ),
+            "root_records": sum(
+                1
+                for item in records.values()
+                if isinstance(item, dict)
+                and item.get("root_message_id") is not None
+            ),
+            "sent_triggers": sum(
+                len(item.get("sent_triggers", ()))
+                for item in records.values()
+                if isinstance(item, dict)
+            ),
+            "uncertain": uncertain is not None,
+        }, ensure_ascii=False, sort_keys=True)
+
     value = validate_state(dict(raw))
     return json.dumps({
         "version": STATE_VERSION,
@@ -600,17 +738,48 @@ def _status_summary(raw: Optional[Mapping[str, Any]]) -> str:
     }, ensure_ascii=False, sort_keys=True)
 
 
+async def _load_local_event_access_records(
+    now: datetime,
+    source_state_path: Path,
+) -> Tuple[Tuple[EventAccessRecord, ...], int]:
+    """Load accepted access records from fresh local snapshots only.
+
+    Keep this explicit. Future accepted sources are added as bounded branches
+    here rather than through a provider registry or source framework.
+    """
+
+    records = []
+    fresh_sources = 0
+
+    if convega_snapshot_is_access_fresh(now, source_state_path):
+        fresh_sources += 1
+        records.extend(await load_convega_access_records(source_state_path))
+
+    record_ids = [record.record_id for record in records]
+    if len(record_ids) != len(set(record_ids)):
+        raise EventAccessStateError(
+            "duplicate event-access record_id across local sources"
+        )
+
+    return tuple(records), fresh_sources
+
+
 async def run_registration_notifications(
     now: datetime,
     state: RegistrationNotificationState,
     publish: Callable[[str, Optional[int]], Awaitable[int]],
     *,
     source_state_path: Path = DEFAULT_SOURCE_STATE_PATH,
+    publish_photo: Optional[
+        Callable[[str, str], Awaitable[int]]
+    ] = None,
 ) -> str:
-    if not convega_snapshot_is_access_fresh(now, source_state_path):
+    records, fresh_sources = await _load_local_event_access_records(
+        now,
+        source_state_path,
+    )
+    if fresh_sources == 0:
         return "stale_source"
-
-    records = await load_convega_access_records(source_state_path)
     sent_any = False
     with state.exclusive_run():
         current = state.read()
@@ -643,10 +812,30 @@ async def run_registration_notifications(
                 now,
             )
             try:
-                message_id = await publish(
-                    message,
-                    decision.reply_to_message_id,
+                use_photo = (
+                    decision.operation == "root"
+                    and record.image_url is not None
+                    and publish_photo is not None
+                    and len(message) <= 1024
                 )
+                if use_photo:
+                    try:
+                        message_id = await publish_photo(
+                            record.image_url,
+                            message,
+                        )
+                    except TelegramError as exc:
+                        if exc.diagnostic_code not in {
+                            "REMOTE-MEDIA",
+                            "URL-POLICY",
+                        }:
+                            raise
+                        message_id = await publish(message, None)
+                else:
+                    message_id = await publish(
+                        message,
+                        decision.reply_to_message_id,
+                    )
             except TelegramError as exc:
                 if is_ambiguous_send_failure(exc):
                     raise RegistrationDeliveryUncertain() from exc
@@ -672,9 +861,12 @@ async def _preview(
     state: RegistrationNotificationState,
     source_state_path: Path,
 ) -> Tuple[str, ...]:
-    if not convega_snapshot_is_access_fresh(now, source_state_path):
-        return ("No access-fresh CONVEGA snapshot",)
-    records = await load_convega_access_records(source_state_path)
+    records, fresh_sources = await _load_local_event_access_records(
+        now,
+        source_state_path,
+    )
+    if fresh_sources == 0:
+        return ("No access-fresh event source snapshot",)
     current = state.read()
     if current["uncertain"] is not None:
         return (
@@ -779,12 +971,26 @@ async def _run_cli(
             retry_only_rate_limits=True,
         )
 
+    async def publish_photo(
+        photo_url: str,
+        caption: str,
+    ) -> int:
+        message_id, _ = await send_photo_url(
+            bot_token,
+            chat_id,
+            photo_url,
+            caption,
+            disable_notification=False,
+        )
+        return message_id
+
     try:
         result = await run_registration_notifications(
             now,
             state,
             publish,
             source_state_path=source_path,
+            publish_photo=publish_photo,
         )
     except RegistrationDeliveryUncertain:
         LOGGER.warning(

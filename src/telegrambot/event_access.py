@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
-STATE_VERSION = 2
+STATE_VERSION = 3
 MAX_RECORDS = 64
 MAX_OPTIONS_PER_RECORD = 16
 MAX_TRIGGERS_PER_RECORD = 128
@@ -63,13 +63,15 @@ class EventAccessRecord:
     route: Optional[str] = None
     details: Tuple[str, ...] = ()
     schedule_note: Optional[str] = None
+    image_url: Optional[str] = None
+    occurrence_status: Optional[str] = None
     options: Tuple[AccessOption, ...] = ()
 
 
 @dataclass(frozen=True)
 class AccessNotice:
     kind: str
-    option_id: str
+    option_id: Optional[str] = None
     trigger_id: Optional[str] = None
 
 
@@ -145,10 +147,34 @@ def _valid_record(record: EventAccessRecord) -> bool:
         return False
     if not all(_valid_option(item) for item in record.options):
         return False
+    event_last_day = record.event_end_date or record.event_start_date
+    if any(
+        boundary is not None and boundary > event_last_day
+        for option in record.options
+        for boundary in (option.opens_on, option.closes_on)
+    ):
+        return False
+    if record.occurrence_status not in {
+        None,
+        "scheduled",
+        "cancelled",
+        "postponed",
+    }:
+        return False
+    if (
+        record.occurrence_status == "cancelled"
+        and any(option.status == "open" for option in record.options)
+    ):
+        return False
     if any(
         value is not None
         and (not isinstance(value, str) or not value.strip())
-        for value in (record.place, record.route, record.schedule_note)
+        for value in (
+            record.place,
+            record.route,
+            record.schedule_note,
+            record.image_url,
+        )
     ):
         return False
     return (
@@ -170,6 +196,22 @@ _OPTION_FIELDS = frozenset({
     "action_text",
 })
 _RECORD_FIELDS = frozenset({
+    "source",
+    "access_kind",
+    "event_start_date",
+    "event_end_date",
+    "place",
+    "route",
+    "schedule_note",
+    "context_known",
+    "occurrence_status",
+    "options",
+    "audience_known",
+    "root_message_id",
+    "sent_triggers",
+})
+
+_V2_RECORD_FIELDS = frozenset({
     "source",
     "access_kind",
     "event_start_date",
@@ -225,6 +267,74 @@ def _valid_option_state(value: Any) -> bool:
 
 def _valid_record_state(value: Any) -> bool:
     if not isinstance(value, dict) or set(value) != _RECORD_FIELDS:
+        return False
+    if (
+        not isinstance(value.get("source"), str)
+        or not value["source"]
+        or value.get("access_kind") not in ACCESS_KINDS
+        or not isinstance(value.get("context_known"), bool)
+        or value.get("occurrence_status") not in {
+            None,
+            "scheduled",
+            "cancelled",
+            "postponed",
+        }
+        or not isinstance(value.get("audience_known"), bool)
+    ):
+        return False
+    try:
+        start = date.fromisoformat(value["event_start_date"])
+        end = _date(value.get("event_end_date"))
+    except (KeyError, TypeError, ValueError):
+        return False
+    if end is not None and end < start:
+        return False
+    if any(
+        value.get(field) is not None
+        and (
+            not isinstance(value[field], str)
+            or not value[field].strip()
+        )
+        for field in ("place", "route", "schedule_note")
+    ):
+        return False
+    options = value.get("options")
+    if (
+        not isinstance(options, dict)
+        or not 1 <= len(options) <= MAX_OPTIONS_PER_RECORD
+        or any(
+            not isinstance(key, str)
+            or not key
+            or not _valid_option_state(item)
+            for key, item in options.items()
+        )
+    ):
+        return False
+    if (
+        value.get("occurrence_status") == "cancelled"
+        and any(item.get("status") == "open" for item in options.values())
+    ):
+        return False
+    root = value.get("root_message_id")
+    if root is not None and (
+        not isinstance(root, int)
+        or isinstance(root, bool)
+        or root <= 0
+        or not value["audience_known"]
+    ):
+        return False
+    triggers = value.get("sent_triggers")
+    return (
+        isinstance(triggers, list)
+        and len(triggers) <= MAX_TRIGGERS_PER_RECORD
+        and len(triggers) == len(set(triggers))
+        and all(isinstance(item, str) and item for item in triggers)
+    )
+
+
+
+def _valid_v2_record_state(value: Any) -> bool:
+    if not isinstance(value, dict) or set(value) != _V2_RECORD_FIELDS:
         return False
     if (
         not isinstance(value.get("source"), str)
@@ -389,12 +499,27 @@ def candidate_record_state(
             option,
             prior_options.get(option.option_id),
         )
+    def keep_context(field: str, current: Optional[str]) -> Optional[str]:
+        current = _text(current)
+        if current is not None:
+            return current
+        return _text(previous.get(field)) if previous else None
+
     candidate = {
         "source": record.source,
         "access_kind": record.access_kind,
         "event_start_date": record.event_start_date.isoformat(),
         "event_end_date": (
             record.event_end_date.isoformat() if record.event_end_date else None
+        ),
+        "place": keep_context("place", record.place),
+        "route": keep_context("route", record.route),
+        "schedule_note": keep_context("schedule_note", record.schedule_note),
+        "context_known": True,
+        "occurrence_status": (
+            record.occurrence_status
+            if record.occurrence_status is not None
+            else previous.get("occurrence_status") if previous else None
         ),
         "options": options,
         "audience_known": bool(previous and previous.get("audience_known")),
@@ -541,10 +666,14 @@ def temporally_consistent(
     record: EventAccessRecord,
     now: datetime,
 ) -> bool:
-    """Reject only explicit open states impossible at the current local time."""
+    """Reject explicit open states impossible at the current local time."""
 
     local = now.astimezone(GUARDAMAR_TIMEZONE)
     today = local.date()
+    event_last_day = record.event_end_date or record.event_start_date
+    if any(option.status == "open" for option in record.options):
+        if today > event_last_day:
+            return False
     local_time = local.time().replace(tzinfo=None)
     for option in record.options:
         if option.status != "open":
@@ -568,6 +697,45 @@ def temporally_consistent(
             ):
                 return False
     return True
+
+
+def _event_notices(
+    record: EventAccessRecord,
+    candidate: Mapping[str, Any],
+    previous: Optional[Mapping[str, Any]],
+    audience_known: bool,
+) -> Tuple[AccessNotice, ...]:
+    if not audience_known or previous is None:
+        return ()
+
+    notices = []
+    current_dates = (
+        candidate["event_start_date"],
+        candidate["event_end_date"],
+    )
+    previous_dates = (
+        previous.get("event_start_date"),
+        previous.get("event_end_date"),
+    )
+    if current_dates != previous_dates:
+        notices.append(AccessNotice("event-date-changed"))
+
+    if previous.get("context_known"):
+        fields = ("place", "route", "schedule_note")
+        if any(candidate.get(field) != previous.get(field) for field in fields):
+            notices.append(AccessNotice("event-details-changed"))
+
+    old_status = previous.get("occurrence_status")
+    new_status = candidate.get("occurrence_status")
+    if new_status in {"cancelled", "postponed"} and new_status != old_status:
+        notices.append(AccessNotice("event-" + new_status))
+    elif (
+        new_status == "scheduled"
+        and old_status in {"cancelled", "postponed"}
+    ):
+        notices.append(AccessNotice("event-restored"))
+
+    return tuple(notices)
 
 
 def plan_event_access_record(
@@ -610,7 +778,26 @@ def plan_event_access_record(
         candidate["sent_triggers"] = sent_order
         return EventAccessDecision(candidate, (root_notice,), "root", None)
 
-    notices = []
+    notices = list(_event_notices(
+        record,
+        candidate,
+        previous,
+        audience_known,
+    ))
+    cancelled_now = any(
+        notice.kind == "event-cancelled"
+        for notice in notices
+    )
+    if cancelled_now:
+        candidate["sent_triggers"] = sent_order
+        operation = "reply" if root_id is not None else "root"
+        return EventAccessDecision(
+            candidate,
+            tuple(notices),
+            operation,
+            root_id if operation == "reply" else None,
+        )
+
     for option in record.options:
         old = prior_options.get(option.option_id)
         if old is None:
@@ -758,6 +945,49 @@ def _legacy_trigger(trigger: str, record_ids: Sequence[str]) -> Tuple[str, str]:
     return matches[0]
 
 
+def migrate_v2_state(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != {
+        "version", "records", "uncertain"
+    }:
+        raise EventAccessStateError("event-access v2 state has unexpected fields")
+    if value.get("version") != 2:
+        raise EventAccessStateError("event-access v2 state version is unsupported")
+    if value.get("uncertain") is not None:
+        raise EventAccessStateError(
+            "event-access v2 uncertain delivery must be resolved before migration"
+        )
+
+    records = value.get("records")
+    if (
+        not isinstance(records, dict)
+        or len(records) > MAX_RECORDS
+        or any(
+            not isinstance(key, str)
+            or not key
+            or not _valid_v2_record_state(item)
+            for key, item in records.items()
+        )
+    ):
+        raise EventAccessStateError("event-access v2 records are invalid")
+
+    migrated = {}
+    for record_id, item in records.items():
+        migrated[record_id] = {
+            **dict(item),
+            "place": None,
+            "route": None,
+            "schedule_note": None,
+            "context_known": False,
+            "occurrence_status": None,
+        }
+
+    return validate_state({
+        "version": STATE_VERSION,
+        "records": migrated,
+        "uncertain": None,
+    })
+
+
 def migrate_v1_state(value: Any) -> Dict[str, Any]:
     if not isinstance(value, dict) or set(value) != {
         "version",
@@ -805,6 +1035,11 @@ def migrate_v1_state(value: Any) -> Dict[str, Any]:
             "access_kind": "registration",
             "event_start_date": item["event_start_date"],
             "event_end_date": item["event_end_date"],
+            "place": None,
+            "route": None,
+            "schedule_note": None,
+            "context_known": False,
+            "occurrence_status": None,
             "options": {
                 "default": {
                     "status": item["status"],
