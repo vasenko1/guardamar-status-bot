@@ -776,6 +776,42 @@ class EventAccessPlannerTests(unittest.TestCase):
                 None,
             )
 
+    def test_historical_deadline_survives_earlier_event_correction(self):
+        previous = candidate_record_state(
+            record(
+                option(
+                    status="open",
+                    closes_on=date(2026, 10, 10),
+                    action_url="https://example.com/register",
+                ),
+                event_start_date=date(2026, 10, 20),
+            ),
+            None,
+        )
+        previous["audience_known"] = True
+        previous["root_message_id"] = 100
+
+        decision = plan_event_access_record(
+            record(
+                option(
+                    status="open",
+                    action_url="https://example.com/register",
+                ),
+                event_start_date=date(2026, 10, 5),
+            ),
+            previous,
+            NOW,
+        )
+
+        self.assertEqual(
+            [notice.kind for notice in decision.notices],
+            ["event-date-changed"],
+        )
+        self.assertEqual(
+            decision.candidate_record["options"]["default"]["closes_on"],
+            "2026-10-10",
+        )
+
     def test_open_access_after_event_day_is_temporally_inconsistent(self):
         item = record(
             option(
