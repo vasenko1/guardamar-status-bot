@@ -112,18 +112,24 @@ advanced independently. The latest gate has
 main commits touch Hidraqua and SafeBeach research only; they do not modify an
 FPCV/EventAccess application file.
 
-After review tightened proactive FPCV access from the 36-hour enrichment
-horizon to same-Europe/Madrid-day freshness, the complete gate was repeated on
-workflow commit `13b1d27e04408d6ca2b83da5b7af0c94c700646f`:
+Production read-only probing then exposed one real PDF-layout issue:
+Termux `pdftotext -layout` renders the first-page header as
+`Número ... francis@federacionpescacv.com ... 43/26`, so a regex requiring
+the number immediately after `Número` rejected the unchanged source facts.
+The parser was narrowed to one bounded 120-character post-marker window and
+requires exactly one `N/YY` token inside that window. A second token remains
+ambiguous and fails closed. No other PDF semantic check was relaxed.
+
+After that live-layout fix, the complete gate was repeated on workflow commit
+`569c8f0b206368bad9c0b518bf8250fbd2d0becc`:
 
 - Python 3.12 compile: PASS;
 - `git diff --check 3b04925... HEAD`: PASS;
-- focused FPCV/Pesca/EventAccess/Sports suite: **146 tests PASS**;
-- full repository `unittest discover`: **1743 tests PASS**.
+- focused FPCV/Pesca/EventAccess/Sports suite: **148 tests PASS**;
+- full repository `unittest discover`: **1745 tests PASS**.
 
-The earlier pre-integration application gate also passed 146 focused and 1741
-full-suite tests. The temporary validation workflow was removed after the
-successful latest run; no application or test file changed afterwards.
+The temporary validation workflow was removed after the successful run; no
+application or test file changed afterwards.
 
 ## Remaining production gates
 
@@ -131,11 +137,17 @@ Code activation and schedule changes are deliberately separated.
 
 Before deploying this slice:
 
-1. rehearse the exact final feature tree under production Termux Python in a
-   detached worktree;
-2. inspect current production `pesca_cv_details.json` read-only;
-3. prove production state remains EventAccess v3 with no uncertain delivery;
-4. verify current `main` has not moved without review.
+1. production Termux already passed the pre-fix focused suite and proved
+   EventAccess v3 with `uncertain=null`;
+2. production read-only inspection proved the current FPCV source snapshot is
+   legacy details v1 for the 17 October event, with club registration, exact
+   13 October 12:00 deadline and €20 participant fee;
+3. repeat only the live FPCV temp refresh/projection after the layout fix and
+   verify `source_id=43/26`, details v2 and the exact EventAccess preview;
+4. capture the full live crontab and neighboring runtimes before choosing the
+   replacement shared EventAccess checkpoints;
+5. verify current `main` has not moved without review immediately before
+   merge/deploy.
 
 After code deployment, run the existing Pesca CV source refresh once with
 production-safe guards or wait for the normal 05:10 lifecycle. That refresh may
