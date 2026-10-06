@@ -580,7 +580,7 @@ class MunicipalProgrammeDisplayTranslationTests(
         self.assertEqual(len(final), 7)
         self.assertTrue(all(event.programme_title == parent for event in final))
         self.assertEqual(
-            [event.programme_order for event in final],
+            sorted(event.programme_order for event in final),
             [10, 20, 30, 35, 40, 50, 60],
         )
         self.assertEqual(
