@@ -52,6 +52,7 @@ RETAIL_NAVIGATION_HEADERS = {
 COOLDOWN_DAYS = 3
 STATE_SCHEMA_VERSION = 1
 MAX_HISTORY = 128
+ROLLBACK_SAFE_CURSOR_SLOTS = 7
 CONSUM_MEDIA_HOSTS = frozenset({"cdn-consum.aktiosdigitalservices.com"})
 MASYMAS_MEDIA_HOSTS = frozenset({"cdn-fornes.aktiosdigitalservices.com"})
 ALDI_MEDIA_HOSTS = frozenset({"s7g10.scene7.com"})
@@ -1667,25 +1668,24 @@ CATEGORIES: tuple[ReviewedCategory, ...] = (
         "spirits_anis",
         (
             ReviewedSource(
-                "MAPA spirits 2026",
+                "MAPA spirits 2026 via BOE",
                 1,
                 (
                     ReviewedCandidate(
                         category_key="spirits_anis",
                         selection_key="spirits_anis:2026",
                         event_id="spirits_anis:mapa-2026:chinchon-dulce",
-                        source_name="MAPA",
+                        source_name="BOE",
                         source_kind="mapa",
                         source_url=(
-                            "https://www.mapa.gob.es/es/alimentacion/temas/"
-                            "promo-alimentos/premios-alimentos/"
-                            "galardonados-bebidas-espirituosas"
+                            "https://www.boe.es/diario_boe/txt.php"
+                            "?id=BOE-A-2026-16080"
                         ),
-                        source_hosts=frozenset({"www.mapa.gob.es"}),
+                        source_hosts=frozenset({"www.boe.es"}),
                         source_markers=(
-                            "Galardonado 2026",
+                            "Orden APA/744/2026",
                             "Anís Chinchón de la Alcoholera Dulce",
-                            "GONZALEZ BYASS DISTRIBUCION",
+                            "Gonzalez Byass Distribucion",
                         ),
                         retailer="DIA",
                         retailer_kind="dia",
@@ -1930,7 +1930,7 @@ CATEGORIES: tuple[ReviewedCategory, ...] = (
                         product_id=50952,
                         expected_ean="8480000509529",
                         retailer_title="Queso añejo tostado mezcla Hacendado",
-                        package_label="кусок ≈370 г, переменный вес",
+                        package_label="кусок, переменный вес",
                         country_label="Испания",
                         producer_label="Queserías Entrepinares S.A.U.",
                         headline_award=(
@@ -1996,7 +1996,7 @@ class ProductAwardState:
             or not isinstance(cursor, int)
             or isinstance(cursor, bool)
             or cursor < 0
-            or cursor >= len(CATEGORIES)
+            or cursor >= min(len(CATEGORIES), ROLLBACK_SAFE_CURSOR_SLOTS)
             or (last_day is not None and not isinstance(last_day, str))
             or (uncertain is not None and not isinstance(uncertain, str))
         ):
@@ -2087,7 +2087,9 @@ class ProductAwardState:
             selections.append(selection_key)
         value["published_selections"] = selections
         value["last_delivery_day"] = local_day.isoformat()
-        value["category_cursor"] = (category_index + 1) % len(CATEGORIES)
+        value["category_cursor"] = (
+            category_index + 1
+        ) % min(len(CATEGORIES), ROLLBACK_SAFE_CURSOR_SLOTS)
         value["uncertain_event"] = None
         self._write(value)
 
