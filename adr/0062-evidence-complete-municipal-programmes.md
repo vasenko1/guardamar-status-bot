@@ -379,9 +379,11 @@ venue rendering remain unchanged.
 
 ## 6 October 2026 editorial wording follow-up
 
-The official 7 October programme names `Rosario de la Aurora Nuestra Señora del
-Rosario`, the Vegamanía `pasacalles`, and a `Gran Castillo de Fuegos
-Artificiales`.  Operator review replaces unstable machine transliterations
+The accepted 7 October production snapshot exposes the exact display keys
+`Rosario de la Aurora de Nuestra Señora del Rosario`,
+`Pasacalles de la Asociación Músico-Cultural Vegamania`, and
+`GRAN CASTILLO DE FUEGOS ARTIFICIALES`.  Operator review replaces unstable
+machine transliterations
 with exact resident-facing Russian titles through the existing reviewed
 translation table, so the same wording is used by both Tomorrow Events and the
 next morning digest even when an older translation-cache entry exists.

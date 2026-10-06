@@ -83,8 +83,8 @@ class MunicipalReviewedRosarioEditorialTests(unittest.IsolatedAsyncioTestCase):
     async def test_reviewed_rosario_titles_override_stale_cache_and_add_fireworks_note(self):
         day = date(2026, 10, 7)
         parent = "FIESTAS EN HONOR A LA VIRGEN DEL ROSARIO 2026"
-        aurora = "Rosario de la Aurora Nuestra Señora del Rosario"
-        pasacalles = "Pasacalles de la Asociación Músico-Cultural Vegamanía"
+        aurora = "Rosario de la Aurora de Nuestra Señora del Rosario"
+        pasacalles = "Pasacalles de la Asociación Músico-Cultural Vegamania"
         fireworks = "Gran Castillo de Fuegos Artificiales"
         source_events = (
             SourceEvent(
@@ -583,7 +583,7 @@ class MunicipalProgrammeDisplayTranslationTests(
         plaza = "Plaza de la Constitución"
         official = (
             SourceEvent(
-                "Rosario de la Aurora Nuestra Señora del Rosario",
+                "Rosario de la Aurora de Nuestra Señora del Rosario",
                 day, day, "08:00", None, iglesia, "event",
                 (AYUNTAMIENTO_PROGRAMME_SOURCE,),
                 programme_title=parent, programme_order=10,
@@ -595,7 +595,7 @@ class MunicipalProgrammeDisplayTranslationTests(
                 programme_title=parent, programme_order=20,
             ),
             SourceEvent(
-                "Pasacalles de la Asociación Músico-Cultural Vegamanía",
+                "Pasacalles de la Asociación Músico-Cultural Vegamania",
                 day, day, "12:00", None, None, "event",
                 (AYUNTAMIENTO_PROGRAMME_SOURCE,),
                 programme_title=parent, programme_order=30,
