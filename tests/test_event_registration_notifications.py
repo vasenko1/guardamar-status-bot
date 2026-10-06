@@ -404,6 +404,19 @@ class RenderingTests(unittest.TestCase):
         self.assertIn("Palau Sant Jaume", message)
         self.assertIn("Старт 11:00", message)
 
+    def test_restored_event_reply_is_explicit(self):
+        item = record(occurrence_status="scheduled")
+        decision = EventAccessDecision(
+            candidate_record={},
+            notices=(AccessNotice("event-restored"),),
+            operation="reply",
+            reply_to_message_id=100,
+        )
+
+        message = render_reply(item, decision)
+
+        self.assertIn("Событие снова подтверждено", message)
+
     def test_explicit_cancellation_reply_is_not_registration_worded(self):
         item = record(
             occurrence_status="cancelled",
@@ -717,6 +730,18 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, "sent")
         self.assertEqual(photo_calls, 0)
 
+    async def test_duplicate_record_ids_fail_before_delivery(self):
+        async def publish(_message, _reply_to):
+            raise AssertionError("duplicate records must not publish")
+
+        duplicate = record("convega:duplicate")
+
+        with self.assertRaises(EventAccessStateError):
+            await self.run_with(
+                (duplicate, duplicate),
+                publish,
+            )
+
     async def test_confirmed_root_stores_returned_message_id(self):
         async def publish(message, reply_to):
             self.assertIsNone(reply_to)
@@ -786,6 +811,53 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
             "convega:post-1:stage-21",
         )
         self.assertEqual(calls, 1)
+
+    async def test_replies_never_repeat_root_photo(self):
+        text_calls = []
+        photo_calls = 0
+
+        async def publish(message, reply_to):
+            text_calls.append((message, reply_to))
+            return 222
+
+        async def publish_photo(_photo_url, _caption):
+            nonlocal photo_calls
+            photo_calls += 1
+            return 222
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = RegistrationNotificationState(
+                Path(directory) / "notify.json"
+            )
+            item = record(image_url="https://example.com/poster.jpg")
+            await self.run_with(
+                (item,),
+                publish,
+                state,
+                publish_photo=publish_photo,
+            )
+
+            full = record(
+                image_url="https://example.com/poster.jpg",
+                options=(
+                    AccessOption(
+                        option_id="default",
+                        status="full",
+                        until_full=True,
+                    ),
+                ),
+            )
+            await self.run_with(
+                (full,),
+                publish,
+                state,
+                publish_photo=publish_photo,
+            )
+
+        self.assertEqual(photo_calls, 1)
+        self.assertEqual(len(text_calls), 1)
+        self.assertEqual(text_calls[0][1], 222)
+        self.assertIn("Мест больше нет", text_calls[0][0])
 
     async def test_reply_uses_existing_root_id(self):
         calls = []
