@@ -252,6 +252,20 @@ class HidraquaFormattingTests(unittest.TestCase):
         self.assertIn("Calle &lt;x&gt;&amp; &quot;7&quot;", unsafe)
         self.assertIn("A&amp;B", unsafe)
 
+    def test_verified_maps_alias_preserves_source_label(self):
+        text = format_event(event(address="Camí del Dos, 03140, Guardamar del Segura", streets=None))
+        self.assertIn("<b>Camí del Dos</b>", text)
+        self.assertIn(
+            "query=Camino+del+Dos%2C+03140+Guardamar+del+Segura%2C+Alicante",
+            text,
+        )
+        self.assertNotIn("query=Cam%C3%AD+del+Dos", text)
+
+    def test_unreviewed_valencian_street_is_not_translated_for_maps(self):
+        text = format_event(event(address="Carrer Pere de Bonvilar", streets=None))
+        self.assertIn("<b>Carrer Pere de Bonvilar</b>", text)
+        self.assertIn("query=Carrer+Pere+de+Bonvilar", text)
+
     def test_urbanization_with_unnumbered_street_uses_na_not_district(self):
         text = format_event(event(
             address="Avenida de Argentina, Guardamar del Segura (Urbanización El Raso)",
