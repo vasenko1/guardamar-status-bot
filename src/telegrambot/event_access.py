@@ -155,6 +155,11 @@ def _valid_record(record: EventAccessRecord) -> bool:
         return False
     if record.occurrence_status not in {None, "cancelled", "postponed"}:
         return False
+    if (
+        record.occurrence_status == "cancelled"
+        and any(option.status == "open" for option in record.options)
+    ):
+        return False
     if any(
         value is not None
         and (not isinstance(value, str) or not value.strip())
