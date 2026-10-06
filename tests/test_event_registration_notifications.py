@@ -454,12 +454,17 @@ class DeliveryPolicyTests(unittest.IsolatedAsyncioTestCase):
                 publish,
                 *,
                 source_state_path,
+                fpcv_details_state_path,
                 publish_photo,
             ):
                 self.assertIsNotNone(publish_photo)
                 self.assertEqual(
                     source_state_path,
                     Path(directory) / "convega.json",
+                )
+                self.assertEqual(
+                    fpcv_details_state_path,
+                    Path(directory) / "fpcv.json",
                 )
                 message_id = await publish("hello", None)
                 self.assertEqual(message_id, 77)
@@ -472,6 +477,9 @@ class DeliveryPolicyTests(unittest.IsolatedAsyncioTestCase):
                         "EVENT_REGISTRATION_STATE_PATH": str(state_path),
                         "CONVEGA_STATE_PATH": str(
                             Path(directory) / "convega.json"
+                        ),
+                        "PESCA_CV_DETAILS_STATE_PATH": str(
+                            Path(directory) / "fpcv.json"
                         ),
                         "TELEGRAM_BOT_TOKEN": "token",
                         "TELEGRAM_CHAT_ID": "-100123",
@@ -513,11 +521,16 @@ class DeliveryPolicyTests(unittest.IsolatedAsyncioTestCase):
                 _publish,
                 *,
                 source_state_path,
+                fpcv_details_state_path,
                 publish_photo,
             ):
                 self.assertEqual(
                     source_state_path,
                     Path(directory) / "convega.json",
+                )
+                self.assertEqual(
+                    fpcv_details_state_path,
+                    Path(directory) / "fpcv.json",
                 )
                 message_id = await publish_photo(
                     "https://example.com/poster.jpg",
@@ -533,6 +546,9 @@ class DeliveryPolicyTests(unittest.IsolatedAsyncioTestCase):
                         "EVENT_REGISTRATION_STATE_PATH": str(state_path),
                         "CONVEGA_STATE_PATH": str(
                             Path(directory) / "convega.json"
+                        ),
+                        "PESCA_CV_DETAILS_STATE_PATH": str(
+                            Path(directory) / "fpcv.json"
                         ),
                         "TELEGRAM_BOT_TOKEN": "token",
                         "TELEGRAM_CHAT_ID": "-100123",
