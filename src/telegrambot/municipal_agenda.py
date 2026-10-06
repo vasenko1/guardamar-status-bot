@@ -866,6 +866,52 @@ def _canonicalize_official_programme_aliases(
     return tuple(rewritten)
 
 
+def _todo_mass_eucharist_alias(
+    candidate: SourceEvent,
+    todo_event: SourceEvent,
+    row: str,
+) -> bool:
+    """Bridge only the exact misa/eucaristía synonym at a matching place."""
+
+    candidate_words = _claim_words(candidate.title_es)
+    todo_words = _claim_words(todo_event.title_es)
+    row_words = _claim_words(row)
+    eucharist_words = {"eucaristia", "eucaristía"}
+    candidate_forms = candidate_words & (eucharist_words | {"misa"})
+    supplemental_forms = (todo_words | row_words) & (eucharist_words | {"misa"})
+    if not candidate_forms or not supplemental_forms:
+        return False
+    if not (
+        (
+            bool(candidate_forms & eucharist_words)
+            and "misa" in supplemental_forms
+        )
+        or (
+            "misa" in candidate_forms
+            and bool(supplemental_forms & eucharist_words)
+        )
+    ):
+        return False
+    if (
+        candidate.place is None
+        or todo_event.place is None
+        or _word_overlap(candidate.place, todo_event.place) < 0.5
+    ):
+        return False
+
+    candidate_semantic = {
+        "misa" if word in eucharist_words else word
+        for word in candidate_words
+    }
+    row_semantic = {
+        "misa" if word in eucharist_words else word
+        for word in row_words
+    }
+    return len(candidate_semantic & row_semantic) / min(
+        len(candidate_semantic), len(row_semantic)
+    ) >= 0.5
+
+
 def _canonicalize_todo_programme_aliases(
     programme_events: Tuple[SourceEvent, ...],
     todo_events: Tuple[SourceEvent, ...],
