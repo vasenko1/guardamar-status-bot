@@ -63,6 +63,7 @@ class EventAccessRecord:
     route: Optional[str] = None
     details: Tuple[str, ...] = ()
     schedule_note: Optional[str] = None
+    image_url: Optional[str] = None
     occurrence_status: Optional[str] = None
     options: Tuple[AccessOption, ...] = ()
 
@@ -163,7 +164,12 @@ def _valid_record(record: EventAccessRecord) -> bool:
     if any(
         value is not None
         and (not isinstance(value, str) or not value.strip())
-        for value in (record.place, record.route, record.schedule_note)
+        for value in (
+            record.place,
+            record.route,
+            record.schedule_note,
+            record.image_url,
+        )
     ):
         return False
     return (
