@@ -394,7 +394,8 @@ class EventAccessPlannerTests(unittest.TestCase):
                 option(
                     status="open",
                     action_url="https://example.com/register",
-                )
+                ),
+                event_start_date=date(2026, 10, 20),
             ),
             None,
             NOW,
