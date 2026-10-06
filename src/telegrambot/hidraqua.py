@@ -28,6 +28,11 @@ RETENTION = timedelta(days=180)
 MAX_TELEGRAM_MESSAGE_LENGTH = 4096
 MADRID = ZoneInfo("Europe/Madrid")
 
+# Keep source-backed labels unchanged; only use aliases verified for Maps lookup.
+_MAPS_QUERY_ALIASES = {
+    "camí del dos": "Camino del Dos",
+}
+
 
 class HidraquaError(RuntimeError):
     """The source response cannot safely drive a notice."""
@@ -148,6 +153,16 @@ def _maps_link(label: str, query: str) -> str:
     return f'📍 <a href="{html.escape(url, quote=True)}"><b>{html.escape(label)}</b></a>'
 
 
+def _maps_query_place(value: str) -> str:
+    """Use a reviewed Maps-only alias while preserving the source label."""
+    match = re.fullmatch(r"(.+?)(,\s*\d+[A-Za-z]?)?", value)
+    if not match:
+        return value
+    name, suffix = match.groups()
+    alias = _MAPS_QUERY_ALIASES.get(name.casefold())
+    return f"{alias}{suffix or ''}" if alias else value
+
+
 def _address_parts(address: Optional[str]) -> tuple[Optional[str], Optional[str]]:
     if not address:
         return None, None
@@ -180,7 +195,7 @@ def _location(event: HidraquaEvent) -> str:
     address, urbanization = _address_parts(event.address)
     if not address:
         return "в Гуардамаре"
-    query_parts = [address]
+    query_parts = [_maps_query_place(address)]
     if urbanization:
         query_parts.append(urbanization)
     query_parts.extend(("03140 Guardamar del Segura", "Alicante"))
@@ -199,7 +214,7 @@ def _other_streets(event: HidraquaEvent) -> str:
     _, urbanization = _address_parts(event.address)
     places = []
     for street in streets:
-        query = [street]
+        query = [_maps_query_place(street)]
         if urbanization:
             query.append(urbanization)
         query.extend(("Guardamar del Segura", "Alicante"))
