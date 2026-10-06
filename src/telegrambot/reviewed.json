@@ -50,7 +50,10 @@
     "participarán la escuela chari candela, retropop, dj y hora loca, además de gamburrino para mayores de edad y gamburrino juvenil para participantes de 11 a 17 años.": "Школа танца Chari Candela, ретропоп, DJ и Hora Loca; игра Gamburrino для взрослых и подростков 11–17 лет.",
     "chocolate con mona de madrugada": "Ночное угощение шоколадом с моной",
     "despertá": "Праздничная побудка Despertà",
-    "charanga": "Завершение праздника с уличным оркестром"
+    "charanga": "Завершение праздника с уличным оркестром",
+    "rosario de la aurora nuestra señora del rosario": "Утренняя молитва Розария в честь Богоматери Розария",
+    "pasacalles de la asociación músico-cultural vegamanía": "Музыкальное шествие ассоциации «Вегамания»",
+    "gran castillo de fuegos artificiales": "Большой фейерверк"
   },
   "posters": {
     "mupi-agosto-2026-scaled.jpg": {
@@ -362,6 +365,13 @@
         "participation_note": "с собой: спортивная обувь, вода и фонарик",
         "registration_contact": "633 14 57 75",
         "capacity_limited": true
+      }
+    },
+    {
+      "match": ["gran castillo de fuegos artificiales"],
+      "requires": {"start_date": "2026-10-07", "end_date": "2026-10-07"},
+      "set": {
+        "schedule_note": "После окончания процессии"
       }
     }
   ]

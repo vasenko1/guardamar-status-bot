@@ -79,6 +79,81 @@ from telegrambot.todo_cultura import (
 TZ = ZoneInfo("Europe/Madrid")
 
 
+class MunicipalReviewedRosarioEditorialTests(unittest.IsolatedAsyncioTestCase):
+    async def test_reviewed_rosario_titles_override_stale_cache_and_add_fireworks_note(self):
+        day = date(2026, 10, 7)
+        parent = "FIESTAS EN HONOR A LA VIRGEN DEL ROSARIO 2026"
+        aurora = "Rosario de la Aurora Nuestra Señora del Rosario"
+        pasacalles = "Pasacalles de la Asociación Músico-Cultural Vegamanía"
+        fireworks = "Gran Castillo de Fuegos Artificiales"
+        source_events = (
+            SourceEvent(
+                aurora, day, day, "08:00", None,
+                "Iglesia parroquial San Jaime Apóstol", "event",
+                (AYUNTAMIENTO_PROGRAMME_SOURCE,),
+                programme_title=parent,
+                programme_order=10,
+            ),
+            SourceEvent(
+                pasacalles, day, day, "12:00", None,
+                None, "event",
+                (AYUNTAMIENTO_PROGRAMME_SOURCE,),
+                programme_title=parent,
+                programme_order=20,
+            ),
+            SourceEvent(
+                fireworks, day, day, None, None,
+                "Plaza de la Constitución", "event",
+                (AYUNTAMIENTO_PROGRAMME_SOURCE,),
+                programme_title=parent,
+                programme_order=30,
+            ),
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            snapshot = Path(directory) / "agenda.json"
+            translations = Path(directory) / "translations.json"
+            now = datetime(2026, 10, 7, 7, 30, tzinfo=TZ)
+            _write_snapshot(
+                snapshot,
+                _snapshot_data("", "", now, source_events),
+            )
+            translations.write_text(
+                json.dumps({
+                    "version": 1,
+                    "entries": {
+                        _key("municipal_agenda", aurora): {
+                            "translation": "Старый машинный перевод",
+                        },
+                        _key("municipal_agenda", pasacalles): {
+                            "translation": "Паракальес Вегамания",
+                        },
+                    },
+                }),
+                encoding="utf-8",
+            )
+
+            events = await fetch_today_municipal_events(
+                now,
+                "",
+                snapshot,
+                translation_cache_path=translations,
+            )
+
+        self.assertEqual(
+            [event.title for event in events],
+            [
+                "Утренняя молитва Розария в честь Богоматери Розария",
+                "Музыкальное шествие ассоциации «Вегамания»",
+                "Большой фейерверк",
+            ],
+        )
+        self.assertEqual(
+            events[2].schedule_note,
+            "После окончания процессии",
+        )
+
+
 class MunicipalCinemaTranslationTests(unittest.IsolatedAsyncioTestCase):
     async def test_monday_cinema_uses_one_title_template_for_new_films(self):
         source_title = "Cine de los Lunes: Película nueva"
