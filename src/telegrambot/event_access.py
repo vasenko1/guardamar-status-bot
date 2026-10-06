@@ -307,6 +307,11 @@ def _valid_record_state(value: Any) -> bool:
         )
     ):
         return False
+    if (
+        value.get("occurrence_status") == "cancelled"
+        and any(item.get("status") == "open" for item in options.values())
+    ):
+        return False
     root = value.get("root_message_id")
     if root is not None and (
         not isinstance(root, int)
