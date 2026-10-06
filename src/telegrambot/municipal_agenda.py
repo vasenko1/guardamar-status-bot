@@ -764,6 +764,64 @@ def _annotate_todo_source_sessions(
     return tuple(annotated)
 
 
+_PROGRAMME_IDENTITY_STOP_WORDS = frozenset({
+    "acto", "actos", "del", "fecha", "fechas", "fiesta", "fiestas",
+    "guardamar", "honor", "las", "los", "principal", "principales",
+    "programa", "segura",
+})
+
+
+def _official_programme_identity_words(value: str) -> frozenset[str]:
+    return frozenset(
+        word
+        for word in _normalized_words(value)
+        if word not in _PROGRAMME_IDENTITY_STOP_WORDS and not word.isdigit()
+    )
+
+
+def _canonicalize_official_programme_aliases(
+    ayuntamiento_events: Tuple[SourceEvent, ...],
+    turismo_events: Tuple[SourceEvent, ...],
+) -> Tuple[SourceEvent, ...]:
+    """Bind one uniquely matching official Turismo parent to Ayuntamiento."""
+
+    families: Dict[frozenset[str], Dict[str, List[SourceEvent]]] = {}
+    for event in ayuntamiento_events:
+        if (
+            AYUNTAMIENTO_PROGRAMME_SOURCE not in event.sources
+            or event.programme_title is None
+        ):
+            continue
+        identity = _official_programme_identity_words(event.programme_title)
+        if len(identity) < 2:
+            continue
+        families.setdefault(identity, {}).setdefault(
+            event.programme_title, []
+        ).append(event)
+
+    rewritten = []
+    for event in turismo_events:
+        if (
+            TURISMO_PROGRAMME_TEXT_SOURCE not in event.sources
+            or event.programme_title is None
+        ):
+            rewritten.append(event)
+            continue
+        identity = _official_programme_identity_words(event.programme_title)
+        candidates = families.get(identity)
+        if len(identity) < 2 or not candidates or len(candidates) != 1:
+            rewritten.append(event)
+            continue
+        canonical_title, members = next(iter(candidates.items()))
+        first_day = min(member.start_date for member in members)
+        last_day = max(member.end_date for member in members)
+        if event.end_date < first_day or event.start_date > last_day:
+            rewritten.append(event)
+            continue
+        rewritten.append(replace(event, programme_title=canonical_title))
+    return tuple(rewritten)
+
+
 def _canonicalize_todo_programme_aliases(
     programme_events: Tuple[SourceEvent, ...],
     todo_events: Tuple[SourceEvent, ...],
