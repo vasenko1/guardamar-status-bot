@@ -842,6 +842,37 @@ class EventAccessPlannerTests(unittest.TestCase):
             [notice.kind for notice in decision.notices],
         )
 
+    def test_cancellation_suppresses_secondary_access_notices(self):
+        previous = candidate_record_state(
+            record(
+                option(
+                    status="open",
+                    closes_on=date(2026, 10, 4),
+                    action_url="https://example.com/register",
+                )
+            ),
+            None,
+        )
+        previous["audience_known"] = True
+        previous["root_message_id"] = 100
+
+        decision = plan_event_access_record(
+            record(
+                option(
+                    status="closed",
+                    closes_on=date(2026, 10, 3),
+                ),
+                occurrence_status="cancelled",
+            ),
+            previous,
+            NOW,
+        )
+
+        self.assertEqual(
+            [notice.kind for notice in decision.notices],
+            ["event-cancelled"],
+        )
+
     def test_explicit_cancellation_is_notified_on_existing_root(self):
         previous = candidate_record_state(record(), None)
         previous["audience_known"] = True
