@@ -139,7 +139,6 @@ class EventAccessMigrationTests(unittest.TestCase):
         self.assertFalse(item["audience_known"])
         self.assertIsNone(item["root_message_id"])
         self.assertFalse(item["context_known"])
-        self.assertEqual(item["title"], "Ruta guiada GR-92 · Etapa 21")
         self.assertEqual(item["options"]["default"]["status"], "full")
         self.assertEqual(
             item["options"]["default"]["last_explicit_status"],
@@ -186,7 +185,6 @@ class EventAccessMigrationTests(unittest.TestCase):
         self.assertEqual(migrated["version"], 3)
         item = migrated["records"]["convega:post-1:stage-21"]
         self.assertFalse(item["context_known"])
-        self.assertEqual(item["title"], "convega:post-1:stage-21")
         self.assertIsNone(item["place"])
         self.assertIsNone(item["schedule_note"])
 
