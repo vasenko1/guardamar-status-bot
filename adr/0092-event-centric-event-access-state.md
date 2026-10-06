@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-03
-- Implementation: Final pre-implementation review complete; runtime rollout pending
+- Implementation: v2 deployed; v3 material-context refinement pending validation
 - Refined by: `research/2026-10-03-event-access-final-preimplementation-review.md`
 
 ## Context
@@ -28,6 +28,63 @@ The stronger invariant is:
 Telegram root.**
 
 State should mirror that invariant while remaining one small atomic JSON file.
+
+## 2026-10-06 refinement: version 3 tracks material root context
+
+The deployed v2 layout remains the historical first event-centric rollout.
+Sports-source review exposed one missing lifecycle requirement: once an event
+has a long-lived Telegram root, a responsible source may later correct material
+event facts such as the date, place or schedule. V2 can compare dates but
+cannot compare place/schedule because those facts were intentionally
+presentation-only.
+
+Version 3 therefore adds only the bounded event context required for correction
+detection:
+
+```text
+title
+place?
+route?
+schedule_note?
+context_known
+occurrence_status?   # scheduled | cancelled | postponed
+```
+
+This is not a second event database. `details`, fees, poster URLs, rendered
+copy and other presentation facts remain outside persistent lifecycle state.
+The current title is retained for context, but title-only editorial changes do
+not create a material correction reply.
+
+`context_known=false` is a migration baseline marker. A migrated v2 record
+learns its first fresh v3 place/route/schedule silently; only later
+source-proven changes can notify. Missing current place/route/schedule evidence
+does not erase the last proven value.
+
+An explicit `cancelled` or `postponed` state may notify on an existing root.
+Disappearance of that marker does not restore the event. Restoration requires
+an explicit source-proven `scheduled` observation. A cancelled occurrence
+cannot simultaneously expose current `open` access.
+
+Access opening/closing boundaries may not extend beyond
+`event_end_date or event_start_date`. An explicit `open` status after the event
+has ended is temporally inconsistent and is omitted.
+
+### Version 2 -> version 3 migration
+
+Migration remains an explicit operator action under the same lifecycle lock.
+
+- normal `run` never auto-migrates v2;
+- `status` reports v2 as `migration_required=true`;
+- require `uncertain == null`;
+- validate the complete v2 state before mutation;
+- create a private non-overwriting `.v2-backup.json`;
+- preserve source, access kind, dates, option history, audience knowledge,
+  root message IDs and trigger history;
+- initialize material context with `context_known=false`;
+- validate v3 completely, then atomically replace the production state.
+
+Existing v1 state may migrate directly to v3 through the same explicit command
+and retains the existing v1 backup contract.
 
 ## Decision
 
