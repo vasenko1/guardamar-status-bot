@@ -758,6 +758,12 @@ class TomorrowEventPublicationTests(unittest.IsolatedAsyncioTestCase):
                 programme_order=10,
             ),
             SourceEvent(
+                "Rosario de la Aurora en la iglesia parroquial San Jaime Apóstol",
+                day, day, "08:00", None,
+                "Iglesia parroquial San Jaime Apóstol", "event",
+                ("todo_cultura",),
+            ),
+            SourceEvent(
                 "Pasacalles de la Asociación Músico-Cultural Vegamania",
                 day, day, "12:00", None,
                 None, "event",
@@ -798,6 +804,12 @@ class TomorrowEventPublicationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(
             "Утренняя молитва Розария в честь Богоматери Розария",
             publication.message,
+        )
+        self.assertEqual(
+            publication.message.count(
+                "Утренняя молитва Розария в честь Богоматери Розария"
+            ),
+            1,
         )
         self.assertIn(
             "Музыкальное шествие ассоциации «Вегамания»",
