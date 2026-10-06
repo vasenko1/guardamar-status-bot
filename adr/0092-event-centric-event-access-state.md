@@ -64,9 +64,15 @@ Disappearance of that marker does not restore the event. Restoration requires
 an explicit source-proven `scheduled` observation. A cancelled occurrence
 cannot simultaneously expose current `open` access.
 
-Access opening/closing boundaries may not extend beyond
-`event_end_date or event_start_date`. An explicit `open` status after the event
-has ended is temporally inconsistent and is omitted.
+A **current source observation** may not claim an opening/closing boundary
+after `event_end_date or event_start_date`, and an explicit current `open`
+status after the event has ended is temporally inconsistent and is omitted.
+
+Persisted option state is comparison history, not a claim that every retained
+boundary is still current. If the event is later moved earlier and the source
+omits its former deadline, that last-known boundary may remain in state so a
+future source-proven replacement can be compared correctly. Rendering and
+reminders continue to use only boundaries present in the current observation.
 
 ### Version 2 -> version 3 migration
 
