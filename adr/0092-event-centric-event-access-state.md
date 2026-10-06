@@ -42,7 +42,6 @@ Version 3 therefore adds only the bounded event context required for correction
 detection:
 
 ```text
-title
 place?
 route?
 schedule_note?
@@ -50,10 +49,10 @@ context_known
 occurrence_status?   # scheduled | cancelled | postponed
 ```
 
-This is not a second event database. `details`, fees, poster URLs, rendered
-copy and other presentation facts remain outside persistent lifecycle state.
-The current title is retained for context, but title-only editorial changes do
-not create a material correction reply.
+This is not a second event database. Title, `details`, fees, poster URLs,
+rendered copy and other presentation facts remain outside persistent lifecycle
+state. Title-only editorial changes therefore never create a material
+correction reply.
 
 `context_known=false` is a migration baseline marker. A migrated v2 record
 learns its first fresh v3 place/route/schedule silently; only later
