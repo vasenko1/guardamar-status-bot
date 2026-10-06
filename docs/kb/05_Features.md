@@ -842,20 +842,24 @@ fallback while later categories are checked. A valid winner from another
 retailer is preferred; when none exists, the same-retailer fallback publishes.
 The bot never drops to a lower rank inside a category merely to change store.
 
-ADR 0095 rebuilds the production-reviewed pool around sources that satisfy
-ADR 0083's quality/championship admission rule:
+ADR 0095 established the quality-first production pool; ADR 0104 adds
+only one narrowly qualified WCCC/Mercadona category and moves one existing
+winner to stronger local retail evidence:
 
 - NALTROS Brut / OCU / ALDI;
 - Realfooding Gazpacho / OCU / Carrefour;
 - Oleoestepa DOP Estepa / OCU / Carrefour;
 - AROM'ARTE Intenso / OCU / DIA;
-- Anís Chinchón Dulce / MAPA / Carrefour;
+- Anís Chinchón Dulce / MAPA / DIA;
 - Ambar Especial / World Beer Awards / Consum;
-- Mahou Sin Filtrar / World Beer Awards / Masymas.
+- Mahou Sin Filtrar / World Beer Awards / Masymas;
+- Queso añejo tostado mezcla Hacendado / WCCC / Mercadona.
 
 Producto del Año and Sabor del Año remain discovery sources rather than
-production category rankings. Mercadona and Lidl remain active research targets,
-but no product is inserted merely to satisfy retailer diversity.
+production category rankings. WCCC does not open a generic class-winner path:
+the reviewed Mercadona candidate is admitted only by the narrower Class 114
+winner + Championship Round/Top-20 contract. Lidl remains an active research
+target, but no product is inserted merely to satisfy retailer diversity.
 
 Public Product Awards posts are photo-first. The normal article includes an
 exact reviewed photo of the selected product. The bot makes bounded best-effort
@@ -880,9 +884,11 @@ the product name, award/result, score/rank, retailer, price, sample count or
 candidate highlight already present in the article body. OCU methodology is
 category-specific because cava, gazpacho, AOVE and coffee capsules use different
 test procedures. World Beer Awards may share one reviewed judging-process text
-across beer styles; MAPA spirits uses its own reviewed selection procedure. A
-new source/category without reviewed methodology fails closed instead of using
-generic filler prose.
+across beer styles; MAPA spirits uses its own reviewed selection procedure.
+WCCC uses its reviewed technical-judging method: a 100-point starting score,
+defect deductions and class medals, without repeating the candidate's Top-20
+result. A new source/category without reviewed methodology fails closed instead
+of using generic filler prose.
 
 Consum's current JSON uses working numbered `media[]` assets while its base
 `productData.imageURL` values may 404. ALDI NALTROS currently fails closed
