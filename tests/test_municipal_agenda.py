@@ -163,8 +163,12 @@ class MunicipalReviewedRosarioEditorialTests(unittest.IsolatedAsyncioTestCase):
                 "Большой фейерверк",
             ],
         )
+        fireworks_event = next(
+            event for event in events
+            if event.title == "Большой фейерверк"
+        )
         self.assertEqual(
-            events[2].schedule_note,
+            fireworks_event.schedule_note,
             "После окончания процессии",
         )
 
