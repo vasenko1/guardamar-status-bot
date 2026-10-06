@@ -19,6 +19,7 @@ from telegrambot.event_registration_notifications import (
     RegistrationDeliveryUncertain,
     RegistrationNotificationState,
     EventAccessStateError,
+    _load_local_event_access_records,
     _run_cli,
     _status_summary,
     render_reply,
@@ -453,12 +454,17 @@ class DeliveryPolicyTests(unittest.IsolatedAsyncioTestCase):
                 publish,
                 *,
                 source_state_path,
+                fpcv_details_state_path,
                 publish_photo,
             ):
                 self.assertIsNotNone(publish_photo)
                 self.assertEqual(
                     source_state_path,
                     Path(directory) / "convega.json",
+                )
+                self.assertEqual(
+                    fpcv_details_state_path,
+                    Path(directory) / "fpcv.json",
                 )
                 message_id = await publish("hello", None)
                 self.assertEqual(message_id, 77)
@@ -471,6 +477,9 @@ class DeliveryPolicyTests(unittest.IsolatedAsyncioTestCase):
                         "EVENT_REGISTRATION_STATE_PATH": str(state_path),
                         "CONVEGA_STATE_PATH": str(
                             Path(directory) / "convega.json"
+                        ),
+                        "PESCA_CV_DETAILS_STATE_PATH": str(
+                            Path(directory) / "fpcv.json"
                         ),
                         "TELEGRAM_BOT_TOKEN": "token",
                         "TELEGRAM_CHAT_ID": "-100123",
@@ -512,11 +521,16 @@ class DeliveryPolicyTests(unittest.IsolatedAsyncioTestCase):
                 _publish,
                 *,
                 source_state_path,
+                fpcv_details_state_path,
                 publish_photo,
             ):
                 self.assertEqual(
                     source_state_path,
                     Path(directory) / "convega.json",
+                )
+                self.assertEqual(
+                    fpcv_details_state_path,
+                    Path(directory) / "fpcv.json",
                 )
                 message_id = await publish_photo(
                     "https://example.com/poster.jpg",
@@ -532,6 +546,9 @@ class DeliveryPolicyTests(unittest.IsolatedAsyncioTestCase):
                         "EVENT_REGISTRATION_STATE_PATH": str(state_path),
                         "CONVEGA_STATE_PATH": str(
                             Path(directory) / "convega.json"
+                        ),
+                        "PESCA_CV_DETAILS_STATE_PATH": str(
+                            Path(directory) / "fpcv.json"
                         ),
                         "TELEGRAM_BOT_TOKEN": "token",
                         "TELEGRAM_CHAT_ID": "-100123",
@@ -587,6 +604,11 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
                 "telegrambot.event_registration_notifications."
                 "load_convega_access_records",
                 new=AsyncMock(return_value=tuple(records)),
+            ),
+            patch(
+                "telegrambot.event_registration_notifications."
+                "fpcv_details_are_access_fresh",
+                return_value=False,
             ),
         ):
             return await run_registration_notifications(
@@ -1049,6 +1071,174 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
             "convega:post-2:stage-22",
         )
 
+    async def test_local_loader_combines_convega_and_fpcv_deterministically(self):
+        convega = record("convega:post-1:stage-21")
+        fpcv = record(
+            "fpcv:convocatoria:43-26",
+            source="fpcv",
+            source_url="https://federacionpescacv.com/example.pdf",
+            title="Провинциальный чемпионат Аликанте — Mar Costa",
+            event_start_date=date(2026, 10, 17),
+            place="Playas La Roqueta y Centro",
+            route=None,
+            details=("2 тура по 3 часа",),
+            schedule_note=None,
+            options=(
+                AccessOption(
+                    option_id="club-registration",
+                    status="open",
+                    closes_on=date(2026, 10, 13),
+                    action_text="Регистрация через рыболовный клуб участника",
+                ),
+            ),
+        )
+        with (
+            patch(
+                "telegrambot.event_registration_notifications."
+                "convega_snapshot_is_access_fresh",
+                return_value=True,
+            ),
+            patch(
+                "telegrambot.event_registration_notifications."
+                "load_convega_access_records",
+                new=AsyncMock(return_value=(convega,)),
+            ),
+            patch(
+                "telegrambot.event_registration_notifications."
+                "fpcv_details_are_access_fresh",
+                return_value=True,
+            ),
+            patch(
+                "telegrambot.event_registration_notifications."
+                "load_fpcv_access_records",
+                new=AsyncMock(return_value=(fpcv,)),
+            ),
+        ):
+            records, fresh_sources = await _load_local_event_access_records(
+                NOW,
+                Path("convega.json"),
+                Path("fpcv.json"),
+            )
+
+        self.assertEqual(fresh_sources, 2)
+        self.assertEqual(
+            [item.record_id for item in records],
+            [
+                "convega:post-1:stage-21",
+                "fpcv:convocatoria:43-26",
+            ],
+        )
+
+    async def test_fpcv_remains_available_when_convega_is_stale(self):
+        fpcv = record(
+            "fpcv:convocatoria:43-26",
+            source="fpcv",
+            source_url="https://federacionpescacv.com/example.pdf",
+            title="Провинциальный чемпионат Аликанте — Mar Costa",
+            event_start_date=date(2026, 10, 17),
+            place="Playas La Roqueta y Centro",
+            route=None,
+            details=("2 тура по 3 часа",),
+            schedule_note=None,
+            options=(
+                AccessOption(
+                    option_id="club-registration",
+                    status="open",
+                    closes_on=date(2026, 10, 13),
+                    action_text="Регистрация через рыболовный клуб участника",
+                ),
+            ),
+        )
+        sent = []
+
+        async def publish(message, reply_to):
+            sent.append((message, reply_to))
+            return 444
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = RegistrationNotificationState(
+                Path(directory) / "notify.json"
+            )
+            with (
+                patch(
+                    "telegrambot.event_registration_notifications."
+                    "convega_snapshot_is_access_fresh",
+                    return_value=False,
+                ),
+                patch(
+                    "telegrambot.event_registration_notifications."
+                    "load_convega_access_records",
+                    new=AsyncMock(
+                        side_effect=AssertionError("stale CONVEGA must not load")
+                    ),
+                ),
+                patch(
+                    "telegrambot.event_registration_notifications."
+                    "fpcv_details_are_access_fresh",
+                    return_value=True,
+                ),
+                patch(
+                    "telegrambot.event_registration_notifications."
+                    "load_fpcv_access_records",
+                    new=AsyncMock(return_value=(fpcv,)),
+                ),
+            ):
+                result = await run_registration_notifications(
+                    NOW,
+                    state,
+                    publish,
+                    source_state_path=Path("convega.json"),
+                    fpcv_details_state_path=Path("fpcv.json"),
+                )
+            saved = state.read()
+
+        self.assertEqual(result, "sent")
+        self.assertEqual(len(sent), 1)
+        self.assertIn("Открыта регистрация", sent[0][0])
+        self.assertEqual(
+            saved["records"]["fpcv:convocatoria:43-26"]["root_message_id"],
+            444,
+        )
+
+    async def test_duplicate_record_id_across_sources_fails_closed(self):
+        duplicate = record("shared-id")
+        fpcv_duplicate = record(
+            "shared-id",
+            source="fpcv",
+            source_url="https://federacionpescacv.com/example.pdf",
+        )
+        with (
+            patch(
+                "telegrambot.event_registration_notifications."
+                "convega_snapshot_is_access_fresh",
+                return_value=True,
+            ),
+            patch(
+                "telegrambot.event_registration_notifications."
+                "load_convega_access_records",
+                new=AsyncMock(return_value=(duplicate,)),
+            ),
+            patch(
+                "telegrambot.event_registration_notifications."
+                "fpcv_details_are_access_fresh",
+                return_value=True,
+            ),
+            patch(
+                "telegrambot.event_registration_notifications."
+                "load_fpcv_access_records",
+                new=AsyncMock(return_value=(fpcv_duplicate,)),
+            ),
+        ):
+            with self.assertRaisesRegex(
+                EventAccessStateError,
+                "duplicate event-access record_id",
+            ):
+                await _load_local_event_access_records(
+                    NOW,
+                    Path("convega.json"),
+                    Path("fpcv.json"),
+                )
+
     async def test_stale_source_skips_before_loading_records(self):
         async def publish(_message, _reply_to):
             raise AssertionError
@@ -1070,12 +1260,25 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
                         side_effect=AssertionError("must not load stale")
                     ),
                 ),
+                patch(
+                    "telegrambot.event_registration_notifications."
+                    "fpcv_details_are_access_fresh",
+                    return_value=False,
+                ),
+                patch(
+                    "telegrambot.event_registration_notifications."
+                    "load_fpcv_access_records",
+                    new=AsyncMock(
+                        side_effect=AssertionError("must not load stale")
+                    ),
+                ),
             ):
                 result = await run_registration_notifications(
                     NOW,
                     state,
                     publish,
                     source_state_path=Path("unused.json"),
+                    fpcv_details_state_path=Path("unused-fpcv.json"),
                 )
 
         self.assertEqual(result, "stale_source")

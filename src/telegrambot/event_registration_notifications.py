@@ -42,6 +42,11 @@ from .event_access import (
     temporally_consistent,
     validate_state,
 )
+from .fishing_enrichment import (
+    DEFAULT_FPCV_DETAILS_STATE_PATH,
+    fpcv_details_are_access_fresh,
+    load_fpcv_access_records,
+)
 from .telegram import (
     TelegramError,
     is_ambiguous_send_failure,
@@ -741,6 +746,7 @@ def _status_summary(raw: Optional[Mapping[str, Any]]) -> str:
 async def _load_local_event_access_records(
     now: datetime,
     source_state_path: Path,
+    fpcv_details_state_path: Path = Path(DEFAULT_FPCV_DETAILS_STATE_PATH),
 ) -> Tuple[Tuple[EventAccessRecord, ...], int]:
     """Load accepted access records from fresh local snapshots only.
 
@@ -755,6 +761,20 @@ async def _load_local_event_access_records(
         fresh_sources += 1
         records.extend(await load_convega_access_records(source_state_path))
 
+    if fpcv_details_are_access_fresh(now, fpcv_details_state_path):
+        fresh_sources += 1
+        records.extend(await load_fpcv_access_records(
+            now,
+            fpcv_details_state_path,
+        ))
+
+    records.sort(
+        key=lambda item: (
+            item.event_start_date,
+            item.source,
+            item.record_id,
+        )
+    )
     record_ids = [record.record_id for record in records]
     if len(record_ids) != len(set(record_ids)):
         raise EventAccessStateError(
@@ -770,6 +790,7 @@ async def run_registration_notifications(
     publish: Callable[[str, Optional[int]], Awaitable[int]],
     *,
     source_state_path: Path = DEFAULT_SOURCE_STATE_PATH,
+    fpcv_details_state_path: Path = Path(DEFAULT_FPCV_DETAILS_STATE_PATH),
     publish_photo: Optional[
         Callable[[str, str], Awaitable[int]]
     ] = None,
@@ -777,6 +798,7 @@ async def run_registration_notifications(
     records, fresh_sources = await _load_local_event_access_records(
         now,
         source_state_path,
+        fpcv_details_state_path,
     )
     if fresh_sources == 0:
         return "stale_source"
@@ -860,10 +882,12 @@ async def _preview(
     now: datetime,
     state: RegistrationNotificationState,
     source_state_path: Path,
+    fpcv_details_state_path: Path = Path(DEFAULT_FPCV_DETAILS_STATE_PATH),
 ) -> Tuple[str, ...]:
     records, fresh_sources = await _load_local_event_access_records(
         now,
         source_state_path,
+        fpcv_details_state_path,
     )
     if fresh_sources == 0:
         return ("No access-fresh event source snapshot",)
@@ -906,6 +930,10 @@ async def _run_cli(
     source_path = Path(os.environ.get(
         "CONVEGA_STATE_PATH", str(DEFAULT_SOURCE_STATE_PATH)
     ))
+    fpcv_details_path = Path(os.environ.get(
+        "PESCA_CV_DETAILS_STATE_PATH",
+        DEFAULT_FPCV_DETAILS_STATE_PATH,
+    ))
     state = RegistrationNotificationState(Path(os.environ.get(
         "EVENT_REGISTRATION_STATE_PATH", str(DEFAULT_STATE_PATH)
     )))
@@ -944,7 +972,12 @@ async def _run_cli(
         return 0
 
     if command == "preview":
-        for message in await _preview(now, state, source_path):
+        for message in await _preview(
+            now,
+            state,
+            source_path,
+            fpcv_details_path,
+        ):
             print(message)
         return 0
 
@@ -990,6 +1023,7 @@ async def _run_cli(
             state,
             publish,
             source_state_path=source_path,
+            fpcv_details_state_path=fpcv_details_path,
             publish_photo=publish_photo,
         )
     except RegistrationDeliveryUncertain:
