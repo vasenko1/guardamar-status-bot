@@ -45,6 +45,37 @@ class ShippedDataTests(unittest.TestCase):
             translations["actuación musical del grupo 40 duros y cierre"],
             "Концерт группы 40 Duros и закрытие торговой ярмарки",
         )
+        self.assertEqual(
+            translations[
+                "rosario de la aurora nuestra señora del rosario"
+            ],
+            "Утренняя молитва Розария в честь Богоматери Розария",
+        )
+        self.assertEqual(
+            translations[
+                "pasacalles de la asociación músico-cultural vegamanía"
+            ],
+            "Музыкальное шествие ассоциации «Вегамания»",
+        )
+        self.assertEqual(
+            translations["gran castillo de fuegos artificiales"],
+            "Большой фейерверк",
+        )
+        fireworks_rule = next(
+            rule for rule in rules
+            if "gran castillo de fuegos artificiales" in rule.match
+        )
+        self.assertEqual(
+            fireworks_rule.requires,
+            {
+                "start_date": "2026-10-07",
+                "end_date": "2026-10-07",
+            },
+        )
+        self.assertEqual(
+            fireworks_rule.set_fields["schedule_note"],
+            "После окончания процессии",
+        )
         self.assertTrue(rules)
         self.assertIsNotNone(reviewed_poster("MUPI-AGOSTO-2026-scaled.jpg"))
         for rule in rules:
