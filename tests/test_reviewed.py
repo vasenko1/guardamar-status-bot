@@ -47,13 +47,13 @@ class ShippedDataTests(unittest.TestCase):
         )
         self.assertEqual(
             translations[
-                "rosario de la aurora nuestra señora del rosario"
+                "rosario de la aurora de nuestra señora del rosario"
             ],
             "Утренняя молитва Розария в честь Богоматери Розария",
         )
         self.assertEqual(
             translations[
-                "pasacalles de la asociación músico-cultural vegamanía"
+                "pasacalles de la asociación músico-cultural vegamania"
             ],
             "Музыкальное шествие ассоциации «Вегамания»",
         )
