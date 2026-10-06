@@ -256,3 +256,126 @@ If this product direction is approved, the smallest implementation should be:
 
 A separate per-beach-conditions model is explicitly deferred until source
 evidence demonstrates a need.
+
+
+## Production read-only schema probe — 2026-10-06 15:33 CEST
+
+A one-request read-only probe was run against the municipality-linked Guardamar
+SafeBeach page from the production Termux device. It did not invoke Telegram,
+write application state, persist the raw response, change cron, or modify the
+production checkout.
+
+The response was current for 2026-10-06, about 90 KiB, and contained exactly
+six top-level markers / six recognized Guardamar beach records.
+
+### Observed public item schema
+
+Every Guardamar item exposed these 16 keys:
+
+- `af`;
+- `airTemp`;
+- `beachName`;
+- `colorBandera`;
+- `hasActividad`;
+- `hora`;
+- `medusas`;
+- `oleaje`;
+- `serviceEnded`;
+- `texto`;
+- `textoBandera`;
+- `tramoName`;
+- `uv`;
+- `viento`;
+- `waterTemp`;
+- `windDeg`.
+
+No separate public keys for rip currents, cleanliness, closure, sand state or
+numeric wave height were observed in this Guardamar response.
+
+### New field evidence
+
+The previously unused `af` field is a structured object on every beach.
+For the five currently inactive records it contained an empty/default form:
+
+```json
+{"text":"","pct":"","pctn":0,"bg":"#CCC","fg":"#34495F"}
+```
+
+For Centre / Babilònia it contained:
+
+```json
+{"text":"Baja","pct":"< 25%","pctn":15,"bg":"darkcyan","fg":"#34495F"}
+```
+
+This is strong evidence that `af` represents an occupancy / attendance
+(`afluencia`) status. It is not yet approved for publication because the
+probe occurred after the Centre service had ended, so the value may represent
+the last operational snapshot rather than a current observation.
+
+Two other unused fields were populated only for Centre / Babilònia:
+
+- `airTemp = "24º C"`;
+- `uv = "5"`.
+
+Both duplicate information already supplied by the AEMET morning product and
+therefore remain low-priority for the daily beach root.
+
+### Ended-service snapshot
+
+At 15:33 CEST there were zero active non-ended records, so the production
+normalizer correctly returned `BeachStatus: None`.
+
+Centre / Babilònia still exposed a last-looking operational payload:
+
+- `hasActividad = true`;
+- `serviceEnded = true`;
+- `hora = "14:00"`;
+- `waterTemp = "25º C"`;
+- `oleaje = "Débil"`;
+- `medusas = "No"`;
+- `viento = "1.9 m/s"`;
+- `windDeg = 163.96`;
+- `airTemp = "24º C"`;
+- `uv = "5"`;
+- `af.text = "Baja"`, `af.pct = "< 25%"`, `af.pctn = 15`.
+
+The five other beach records were inactive, with grey flags, empty operational
+fields and `medusas = "No"`.
+
+Because `serviceEnded=true`, none of these Centre values is authorized as a
+current public beach claim. The existing production adapter is correct to
+discard the entire record after service end.
+
+### Product implications
+
+The probe strengthens the existing minimal direction:
+
+- keep SafeBeach water temperature and qualitative sea state as the main
+  candidates for the once-daily root;
+- keep explicit jellyfish state as the only later non-flag change alert;
+- continue omitting SafeBeach wind, air temperature and UV because AEMET
+  already covers them;
+- do not invent numeric wave height: only qualitative `oleaje` was observed;
+- do not add rip-current / cleanliness / closure rows because no corresponding
+  Guardamar public fields were observed.
+
+The one genuinely new candidate is `af` (afluencia / occupancy). It could
+support a compact row such as `👥 Загруженность: низкая (<25%)`, but only
+after an active-service probe confirms that the field is populated and current
+while `hasActividad=true && serviceEnded=false`.
+
+### Required follow-up before implementation
+
+Run one more bounded read-only inventory during the Centre / Babilònia active
+service window, ideally during the existing 10:10-10:40 root lifecycle. The
+follow-up only needs to verify:
+
+1. `hasActividad=true` and `serviceEnded=false`;
+2. current `hora`;
+3. `waterTemp`, `oleaje`, `medusas`;
+4. `af.text`, `af.pct`, `af.pctn`;
+5. whether any other currently empty field becomes populated while service is
+   active.
+
+Do not change the runtime model or message format until that active-service
+evidence exists.
