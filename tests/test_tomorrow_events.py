@@ -750,7 +750,7 @@ class TomorrowEventPublicationTests(unittest.IsolatedAsyncioTestCase):
         parent = "FIESTAS EN HONOR A LA VIRGEN DEL ROSARIO 2026"
         events = [
             SourceEvent(
-                "Rosario de la Aurora Nuestra Señora del Rosario",
+                "Rosario de la Aurora de Nuestra Señora del Rosario",
                 day, day, "08:00", None,
                 "Iglesia parroquial San Jaime Apóstol", "event",
                 ("ayuntamiento_programme",),
@@ -758,7 +758,7 @@ class TomorrowEventPublicationTests(unittest.IsolatedAsyncioTestCase):
                 programme_order=10,
             ),
             SourceEvent(
-                "Pasacalles de la Asociación Músico-Cultural Vegamanía",
+                "Pasacalles de la Asociación Músico-Cultural Vegamania",
                 day, day, "12:00", None,
                 None, "event",
                 ("ayuntamiento_programme",),
