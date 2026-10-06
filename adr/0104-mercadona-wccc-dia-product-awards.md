@@ -27,9 +27,11 @@ state, no active unavailability markers, variable-weight current pricing and
 exact official product photos.
 
 Separately, the already-reviewed MAPA 2026 winner Anís Chinchón Dulce is
-currently represented by exact DIA SKU `275359`. The award belongs to the
-product, not to Carrefour, so this is a retail-evidence move rather than a new
-award candidate.
+currently represented by exact DIA SKU `275359`. Production validation found
+that the MAPA presentation page fails TLS verification in Termux while the
+official BOE award order is healthy and contains the exact order/product/maker
+identity. The award identity is unchanged; BOE becomes the runtime award
+evidence and DIA remains the current retail evidence.
 
 Lidl research did not find a current Spain SKU that simultaneously proves a
 source-native number-one result, exact awarded-product identity and current
@@ -89,16 +91,18 @@ This preserves the positional meaning of every existing `category_cursor`
 value. The new event and selection identities are new and independent; no
 existing category/event key is renamed.
 
-### 4. Move only Anís Chinchón retail evidence from Carrefour to DIA
+### 4. Preserve Anís identity; use BOE award evidence and DIA retail evidence
 
 Keep exactly:
 
 - `selection_key=spirits_anis:2026`;
 - `event_id=spirits_anis:mapa-2026:chinchon-dulce`.
 
-Change only the current retail contract to exact DIA SKU `275359`, requiring
-the exact product title plus González Byass and Spain markers on the current
-product page. The existing González Byass official image contract remains.
+Use official BOE order `APA/744/2026` as the runtime award contract, requiring
+the exact order identifier, `Anís Chinchón de la Alcoholera Dulce` and
+`Gonzalez Byass Distribucion`. Keep the current retail contract on exact DIA
+SKU `275359`, requiring the exact product title plus González Byass and Spain
+markers. The existing González Byass official image contract remains.
 
 ### 5. Preserve runtime semantics
 
@@ -121,9 +125,11 @@ Every new network/identity ambiguity fails closed for that candidate and the
 existing bounded category scan may continue according to ADR 0093.
 
 No state migration is required. Existing cursor values `0..6` keep the same
-category meaning because the eighth category is appended. If the new eighth
-category is later confirmed, its cursor advance wraps to zero; older code also
-accepts that cursor value and ignores unknown historical event IDs.
+category meaning because the eighth category is appended. The persisted cursor
+ring is deliberately capped to the seven rollback-safe slots: category 6 wraps
+to 0 and the appended category 7 advances to 1. The selector still scans all
+eight categories from any valid cursor, but the new code never writes cursor
+`7`, which the previous seven-category reader would reject.
 
 Rolling back therefore requires only reverting code. No Product Awards state
 rewrite, cron change or Telegram repair is inherent to this ADR.
@@ -139,8 +145,10 @@ Before production fast-forward:
   price fail closed;
 - prove WCCC requires the Top-20/Class 114/exact-cheese markers;
 - prove the renderer does not claim a world championship;
-- prove Anís preserves event/selection identity while using DIA SKU 275359;
-- prove the first seven category positions remain unchanged;
+- prove Anís preserves event/selection identity while BOE order APA/744/2026
+  supplies exact award evidence and DIA SKU 275359 supplies current retail;
+- prove the first seven category positions remain unchanged and no confirmation
+  can persist category cursor 7;
 - run a read-only live Product Awards preview on Termux and confirm neither
   Product Awards state nor Telegram is mutated.
 
