@@ -112,8 +112,9 @@ advanced independently. The latest gate has
 main commits touch Hidraqua and SafeBeach research only; they do not modify an
 FPCV/EventAccess application file.
 
-Latest integration validation on workflow commit
-`9217aede8a34947db95656c44d5cffdb5c7242ff`:
+After review tightened proactive FPCV access from the 36-hour enrichment
+horizon to same-Europe/Madrid-day freshness, the complete gate was repeated on
+workflow commit `13b1d27e04408d6ca2b83da5b7af0c94c700646f`:
 
 - Python 3.12 compile: PASS;
 - `git diff --check 3b04925... HEAD`: PASS;
