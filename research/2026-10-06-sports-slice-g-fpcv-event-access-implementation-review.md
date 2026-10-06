@@ -131,23 +131,36 @@ After that live-layout fix, the complete gate was repeated on workflow commit
 The temporary validation workflow was removed after the successful run; no
 application or test file changed afterwards.
 
-## Remaining production gates
+## Production source and schedule gate
 
-Code activation and schedule changes are deliberately separated.
+The final production read-only probe on 2026-10-06 passed all remaining source
+and timing gates:
 
-Before deploying this slice:
+- exact reviewed PR passed 148 focused tests under production Termux Python;
+- the live official PDF parsed successfully after the bounded layout fix;
+- temp-only refresh upgraded FPCV details v1 -> v2 and recovered
+  `source_id=43/26`;
+- the projected lifecycle identity is
+  `fpcv:convocatoria:43-26`;
+- same-Europe/Madrid-day access freshness accepted the fresh live observation;
+- preview produced the expected open-registration root and no Telegram send;
+- every production state/source hash remained unchanged.
 
-1. production Termux already passed the pre-fix focused suite and proved
-   EventAccess v3 with `uncertain=null`;
-2. production read-only inspection proved the current FPCV source snapshot is
-   legacy details v1 for the 17 October event, with club registration, exact
-   13 October 12:00 deadline and €20 participant fee;
-3. repeat only the live FPCV temp refresh/projection after the layout fix and
-   verify `source_id=43/26`, details v2 and the exact EventAccess preview;
-4. capture the full live crontab and neighboring runtimes before choosing the
-   replacement shared EventAccess checkpoints;
-5. verify current `main` has not moved without review immediately before
-   merge/deploy.
+The live crontab/runtime inventory also closes the checkpoint-timing gate. The
+SafeBeach 10:10-10:40 edit window finishes before 10:47; resident-news runs at
+11:11; operational monitoring runs at 10:51/11:51 and earthquake checks at
+10:55/11:55. EventAccess itself completed in under one second in the observed
+12:47/13:47 runs, while the CONVEGA sync took only a few seconds.
+
+Therefore the two existing shared EventAccess rows move together from
+12:47/13:47 to 10:47/11:47. This gives 73 and 13 minutes of lead time before a
+reviewed 12:00 deadline, preserves the existing one-hour primary/recovery
+spacing and keeps the second run inside CONVEGA's <=90-minute freshness window
+when the first refresh succeeds. No third FPCV-specific cron is added.
+
+The only remaining deployment gate is to verify current `main`/PR SHA,
+re-run the final changed-file/test guard and install the reviewed managed cron
+block atomically with deployment.
 
 After code deployment, run the existing Pesca CV source refresh once with
 production-safe guards or wait for the normal 05:10 lifecycle. That refresh may
