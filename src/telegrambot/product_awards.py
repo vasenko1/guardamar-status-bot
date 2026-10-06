@@ -967,6 +967,19 @@ def _mercadona_offer(candidate: ReviewedCandidate) -> RetailOffer:
             code="RETAIL-DRIFT",
         )
 
+    brand = payload.get("brand")
+    if (
+        not isinstance(brand, str)
+        or not any(
+            _fold(marker) == _fold(brand)
+            for marker in candidate.retailer_markers
+        )
+    ):
+        raise ProductAwardError(
+            "Mercadona brand changed",
+            code="RETAIL-DRIFT",
+        )
+
     details = payload.get("details")
     suppliers = details.get("suppliers") if isinstance(details, dict) else None
     identity = json.dumps(
@@ -984,7 +997,10 @@ def _mercadona_offer(candidate: ReviewedCandidate) -> RetailOffer:
         code="RETAIL-DRIFT",
     )
 
-    if payload.get("published") is not True or payload.get("status") not in (None, ""):
+    if (
+        payload.get("published") is not True
+        or payload.get("status") not in (None, "")
+    ):
         raise ProductAwardError(
             "Mercadona product is not current",
             code="RETAIL-UNAVAILABLE",
