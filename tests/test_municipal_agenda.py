@@ -145,7 +145,7 @@ class MunicipalReviewedRosarioEditorialTests(unittest.IsolatedAsyncioTestCase):
             [
                 "Утренняя молитва Розария в честь Богоматери Розария",
                 "Музыкальное шествие ассоциации «Вегамания»",
-                "Gran Castillo de Fuegos Artificiales",
+                "Большой фейерверк",
             ],
         )
         self.assertEqual(
