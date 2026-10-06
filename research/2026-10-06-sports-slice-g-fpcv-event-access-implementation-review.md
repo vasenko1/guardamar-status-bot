@@ -158,9 +158,20 @@ reviewed 12:00 deadline, preserves the existing one-hour primary/recovery
 spacing and keeps the second run inside CONVEGA's <=90-minute freshness window
 when the first refresh succeeds. No third FPCV-specific cron is added.
 
-The only remaining deployment gate is to verify current `main`/PR SHA,
-re-run the final changed-file/test guard and install the reviewed managed cron
-block atomically with deployment.
+A final rollout gate was then repeated after adding the reviewed
+10:47/11:47 managed-cron change and its installer regression:
+
+- Python 3.12 compile: PASS;
+- `git diff --check 3b04925... HEAD`: PASS;
+- focused FPCV/Pesca/EventAccess/Sports/Termux-cron suite:
+  **160 tests PASS**;
+- full repository `unittest discover`: **1746 tests PASS**.
+
+The temporary workflow was removed after the successful run; no application,
+test or cron-installer file changed afterwards.
+
+The only remaining deployment gate is to verify current `main`/PR SHA and
+install the reviewed managed cron block atomically with deployment.
 
 After code deployment, run the existing Pesca CV source refresh once with
 production-safe guards or wait for the normal 05:10 lifecycle. That refresh may
