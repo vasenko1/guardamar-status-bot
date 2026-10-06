@@ -206,8 +206,11 @@ transitions, exact opening/closing boundaries, material deadline changes and
 event-date corrections may notify under the bounded rules in ADR 0089.
 Disappearance never means closure or cancellation.
 
-The normal one-shot runs at 12:47 Europe/Madrid with one 13:47 recovery.
-Same-day freshness is mandatory for current access claims. Each enabled source
+The normal one-shot runs at 10:47 Europe/Madrid with one 11:47 recovery.
+The one-hour spacing keeps the recovery inside CONVEGA's <=90-minute access
+freshness when the primary refresh succeeds, while still providing a second
+pre-noon chance before reviewed 12:00 deadlines. Same-day freshness is
+mandatory for current access claims. Each enabled source
 owns its own freshness check; one stale source is omitted rather than blocking
 fresh independent sources. Records are processed deterministically one at a
 time, so one invocation may send several independent event roots/replies
