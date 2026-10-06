@@ -59,119 +59,41 @@
     "mupi-agosto-2026-scaled.jpg": {
       "upload_path": "/wp-content/uploads/2026/07/",
       "drop_titles": [
-        [
-          "rutas nocturnas"
-        ],
-        [
-          "senderismo",
-          "dinámica"
-        ],
-        [
-          "mediterráneo",
-          "lenguaje del agua"
-        ],
-        [
-          "luz a pesar del dolor"
-        ],
-        [
-          "vira deg"
-        ],
-        [
-          "labores a la fresca"
-        ],
-        [
-          "tendero"
-        ],
-        [
-          "open real villa"
-        ],
-        [
-          "open",
-          "villa de guardamar"
-        ],
-        [
-          "k-pop"
-        ],
-        [
-          "tik tok"
-        ],
-        [
-          "tiktok"
-        ],
-        [
-          "taller de bater"
-        ],
-        [
-          "taller de guitarra"
-        ],
-        [
-          "taller de música electrónica"
-        ],
-        [
-          "taller de musica electronica"
-        ],
-        [
-          "taller de canto"
-        ],
-        [
-          "feria del comercio"
-        ],
-        [
-          "faüla",
-          "dos en vilo"
-        ],
-        [
-          "taller de galletas",
-          "magia en azúcar"
-        ],
-        [
-          "asociación de artistas plásticas"
-        ],
-        [
-          "crea tu propia historia"
-        ],
-        [
-          "clase de velas",
-          "atmósfera"
-        ],
-        [
-          "dj jesús"
-        ],
-        [
-          "ajedrez gigante"
-        ],
-        [
-          "elbox grm"
-        ],
-        [
-          "clase de cerámica",
-          "atmósfera"
-        ],
-        [
-          "dirty piks"
-        ],
-        [
-          "quien canta su mal espanta"
-        ],
-        [
-          "juegos de madera"
-        ],
-        [
-          "desfile de moda"
-        ],
-        [
-          "noelia braceras"
-        ],
-        [
-          "bingo solidario",
-          "virgen del rosario"
-        ],
-        [
-          "40 duros"
-        ],
-        [
-          "trivox"
-        ]
+        ["rutas nocturnas"],
+        ["senderismo", "dinámica"],
+        ["mediterráneo", "lenguaje del agua"],
+        ["luz a pesar del dolor"],
+        ["vira deg"],
+        ["labores a la fresca"],
+        ["tendero"],
+        ["open real villa"],
+        ["open", "villa de guardamar"],
+        ["k-pop"],
+        ["tik tok"],
+        ["tiktok"],
+        ["taller de bater"],
+        ["taller de guitarra"],
+        ["taller de música electrónica"],
+        ["taller de musica electronica"],
+        ["taller de canto"],
+        ["feria del comercio"],
+        ["faüla", "dos en vilo"],
+        ["taller de galletas", "magia en azúcar"],
+        ["asociación de artistas plásticas"],
+        ["crea tu propia historia"],
+        ["clase de velas", "atmósfera"],
+        ["dj jesús"],
+        ["ajedrez gigante"],
+        ["elbox grm"],
+        ["clase de cerámica", "atmósfera"],
+        ["dirty piks"],
+        ["quien canta su mal espanta"],
+        ["juegos de madera"],
+        ["desfile de moda"],
+        ["noelia braceras"],
+        ["bingo solidario", "virgen del rosario"],
+        ["40 duros"],
+        ["trivox"]
       ],
       "events": [
         {
@@ -181,10 +103,7 @@
           "start_time": "22:30",
           "place": "Parque Reina Sofía",
           "category": "event",
-          "sources": [
-            "turismo_html",
-            "todo_cultura_reviewed"
-          ],
+          "sources": ["turismo_html", "todo_cultura_reviewed"],
           "ticket_price_cents": 2000,
           "ticket_url": "https://www.giglon.com/todos?idEvent=concierto-benefico-trivox--guardamar-del-segura-aacc"
         },
@@ -194,9 +113,7 @@
           "end_date": "2026-08-14",
           "place": "Sala de exposiciones Casa de Cultura",
           "category": "exhibition",
-          "sources": [
-            "mupi_reviewed"
-          ]
+          "sources": ["mupi_reviewed"]
         },
         {
           "title_es": "Exposición de pintura «Luz a pesar del dolor» de Vira Degliarenko",
@@ -206,10 +123,7 @@
           "end_time": "14:00",
           "place": "Biblioteca Municipal",
           "category": "exhibition",
-          "sources": [
-            "mupi_reviewed",
-            "todo_cultura_reviewed"
-          ]
+          "sources": ["mupi_reviewed", "todo_cultura_reviewed"]
         },
         {
           "title_es": "Rutas nocturnas: senderismo y dinámica grupal",
@@ -218,9 +132,7 @@
           "start_time": "22:15",
           "end_time": "00:15",
           "category": "event",
-          "sources": [
-            "mupi_reviewed"
-          ]
+          "sources": ["mupi_reviewed"]
         },
         {
           "title_es": "Rutas nocturnas: senderismo y dinámica grupal",
@@ -229,9 +141,7 @@
           "start_time": "22:15",
           "end_time": "00:15",
           "category": "event",
-          "sources": [
-            "mupi_reviewed"
-          ]
+          "sources": ["mupi_reviewed"]
         },
         {
           "title_es": "Rutas nocturnas: senderismo y dinámica grupal",
@@ -240,9 +150,7 @@
           "start_time": "22:15",
           "end_time": "00:15",
           "category": "event",
-          "sources": [
-            "mupi_reviewed"
-          ]
+          "sources": ["mupi_reviewed"]
         },
         {
           "title_es": "Taller de guitarras eléctricas",
@@ -252,10 +160,7 @@
           "end_time": "21:00",
           "place": "Centro Social Juvenil",
           "category": "event",
-          "sources": [
-            "mupi_reviewed",
-            "todo_cultura_reviewed"
-          ],
+          "sources": ["mupi_reviewed", "todo_cultura_reviewed"],
           "participation_note": "для молодёжи 12–30 лет; можно начать с нуля или улучшить технику и игру в группе",
           "registration_contact": "Centro Social Juvenil или WhatsApp 609 00 67 54"
         },
@@ -267,10 +172,7 @@
           "end_time": "21:00",
           "place": "Centro Social Juvenil",
           "category": "event",
-          "sources": [
-            "mupi_reviewed",
-            "todo_cultura_reviewed"
-          ]
+          "sources": ["mupi_reviewed", "todo_cultura_reviewed"]
         },
         {
           "title_es": "Taller de canto",
@@ -280,10 +182,7 @@
           "end_time": "21:00",
           "place": "Centro Social Juvenil",
           "category": "event",
-          "sources": [
-            "mupi_reviewed",
-            "todo_cultura_reviewed"
-          ]
+          "sources": ["mupi_reviewed", "todo_cultura_reviewed"]
         },
         {
           "title_es": "Feria de Comercio 2026: inauguración, talleres, Faüla y DJ Jesús",
@@ -292,10 +191,7 @@
           "start_time": "18:00",
           "place": "Avenida de los Pinos",
           "category": "event",
-          "sources": [
-            "todo_cultura_reviewed",
-            "mayor_reviewed"
-          ]
+          "sources": ["todo_cultura_reviewed", "mayor_reviewed"]
         },
         {
           "title_es": "Feria de Comercio 2026: talleres, ajedrez gigante, ELBOX GRM y Dirty Piks",
@@ -304,9 +200,7 @@
           "start_time": "18:30",
           "place": "Avenida de los Pinos",
           "category": "event",
-          "sources": [
-            "todo_cultura_reviewed"
-          ]
+          "sources": ["todo_cultura_reviewed"]
         },
         {
           "title_es": "Feria de Comercio 2026: cuentos musicales, juegos, desfile de moda y Noelia Braceras",
@@ -315,9 +209,7 @@
           "start_time": "18:30",
           "place": "Avenida de los Pinos",
           "category": "event",
-          "sources": [
-            "todo_cultura_reviewed"
-          ]
+          "sources": ["todo_cultura_reviewed"]
         },
         {
           "title_es": "Taller de galletas a cargo de Magia en azúcar",
@@ -326,9 +218,7 @@
           "start_time": "18:30",
           "place": "Avenida de los Pinos",
           "category": "event",
-          "sources": [
-            "todo_cultura_reviewed"
-          ]
+          "sources": ["todo_cultura_reviewed"]
         },
         {
           "title_es": "Bingo solidario a beneficio del grupo de auroros Virgen del Rosario",
@@ -338,9 +228,7 @@
           "end_time": "21:30",
           "place": "Avenida de los Pinos",
           "category": "event",
-          "sources": [
-            "todo_cultura_reviewed"
-          ]
+          "sources": ["todo_cultura_reviewed"]
         },
         {
           "title_es": "Clase de cerámica a cargo de Atmósfera",
@@ -349,9 +237,7 @@
           "start_time": "19:30",
           "place": "Avenida de los Pinos",
           "category": "event",
-          "sources": [
-            "todo_cultura_reviewed"
-          ]
+          "sources": ["todo_cultura_reviewed"]
         },
         {
           "title_es": "Actuación musical del grupo 40 Duros y cierre",
@@ -360,31 +246,18 @@
           "start_time": "22:00",
           "place": "Avenida de los Pinos",
           "category": "event",
-          "sources": [
-            "todo_cultura_reviewed"
-          ]
+          "sources": ["todo_cultura_reviewed"]
         }
       ]
     }
   },
   "schedules": [
     {
-      "match": [
-        "imborrable"
-      ],
-      "requires": {
-        "start_date": "2026-09-01",
-        "end_date": "2026-10-16"
-      },
+      "match": ["imborrable"],
+      "requires": {"start_date": "2026-09-01", "end_date": "2026-10-16"},
       "weekday_windows": {
-        "weekday": [
-          "10:00",
-          "20:00"
-        ],
-        "saturday": [
-          "10:00",
-          "14:00"
-        ],
+        "weekday": ["10:00", "20:00"],
+        "saturday": ["10:00", "14:00"],
         "sunday": null
       },
       "set": {
@@ -392,18 +265,10 @@
       }
     },
     {
-      "match": [
-        "amigos y conocidos"
-      ],
-      "requires": {
-        "start_date": "2026-09-07",
-        "end_date": "2026-09-23"
-      },
+      "match": ["amigos y conocidos"],
+      "requires": {"start_date": "2026-09-07", "end_date": "2026-09-23"},
       "weekday_windows": {
-        "weekday": [
-          "09:00",
-          "20:00"
-        ],
+        "weekday": ["09:00", "20:00"],
         "saturday": null,
         "sunday": null
       },
@@ -412,18 +277,10 @@
       }
     },
     {
-      "match": [
-        "adimar"
-      ],
-      "requires": {
-        "start_date": "2026-09-25",
-        "end_date": "2026-10-16"
-      },
+      "match": ["adimar"],
+      "requires": {"start_date": "2026-09-25", "end_date": "2026-10-16"},
       "weekday_windows": {
-        "weekday": [
-          "09:00",
-          "20:00"
-        ],
+        "weekday": ["09:00", "20:00"],
         "saturday": null,
         "sunday": null
       },
@@ -432,18 +289,10 @@
       }
     },
     {
-      "match": [
-        "josé luis narbaiza"
-      ],
-      "requires": {
-        "start_date": "2026-09-07",
-        "end_date": "2026-09-23"
-      },
+      "match": ["josé luis narbaiza"],
+      "requires": {"start_date": "2026-09-07", "end_date": "2026-09-23"},
       "weekday_windows": {
-        "weekday": [
-          "09:00",
-          "20:00"
-        ],
+        "weekday": ["09:00", "20:00"],
         "saturday": null,
         "sunday": null
       },
@@ -452,23 +301,11 @@
       }
     },
     {
-      "match": [
-        "mediterráneo",
-        "lenguaje del agua"
-      ],
-      "requires": {
-        "start_date": "2026-06-19",
-        "end_date": "2026-08-14"
-      },
+      "match": ["mediterráneo", "lenguaje del agua"],
+      "requires": {"start_date": "2026-06-19", "end_date": "2026-08-14"},
       "weekday_windows": {
-        "weekday": [
-          "09:00",
-          "20:00"
-        ],
-        "saturday": [
-          "10:00",
-          "14:00"
-        ],
+        "weekday": ["09:00", "20:00"],
+        "saturday": ["10:00", "14:00"],
         "sunday": null
       },
       "set": {
@@ -478,18 +315,10 @@
       }
     },
     {
-      "match": [
-        "vira deg"
-      ],
-      "requires": {
-        "start_date": "2026-07-31",
-        "end_date": "2026-08-21"
-      },
+      "match": ["vira deg"],
+      "requires": {"start_date": "2026-07-31", "end_date": "2026-08-21"},
       "weekday_windows": {
-        "weekday": [
-          "08:00",
-          "14:00"
-        ],
+        "weekday": ["08:00", "14:00"],
         "saturday": null,
         "sunday": null
       },
@@ -500,9 +329,7 @@
       }
     },
     {
-      "match": [
-        "labores a la fresca"
-      ],
+      "match": ["labores a la fresca"],
       "requires": {
         "start_date": "today",
         "start_time": "18:00",
@@ -515,13 +342,8 @@
       }
     },
     {
-      "match": [
-        "ball d'estiu"
-      ],
-      "requires": {
-        "start_date": "today",
-        "start_time": "21:30"
-      },
+      "match": ["ball d'estiu"],
+      "requires": {"start_date": "today", "start_time": "21:30"},
       "set": {
         "title_es": "BALL D’ESTIU",
         "end_time": "23:30",
@@ -530,9 +352,7 @@
       }
     },
     {
-      "match": [
-        "rutas nocturnas"
-      ],
+      "match": ["rutas nocturnas"],
       "requires": {
         "start_date": "today",
         "start_time": "22:15",
@@ -548,13 +368,8 @@
       }
     },
     {
-      "match": [
-        "gran castillo de fuegos artificiales"
-      ],
-      "requires": {
-        "start_date": "2026-10-07",
-        "end_date": "2026-10-07"
-      },
+      "match": ["gran castillo de fuegos artificiales"],
+      "requires": {"start_date": "2026-10-07", "end_date": "2026-10-07"},
       "set": {
         "schedule_note": "После окончания процессии"
       }
