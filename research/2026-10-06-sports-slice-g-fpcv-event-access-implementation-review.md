@@ -103,22 +103,23 @@ boundary from ADR 0092 still applies.
 ## Automated validation
 
 The application changes first passed their feature-branch gate, then were
-rebuilt onto the moving production branch and finally validated with
-`main@3a10decd21c3941650940f2fdf5c6d0c056d3648` as an ancestor. That final
-tree includes both the later Hidraqua runtime change and the SafeBeach research
-commit without modifying any FPCV application file.
+rebuilt onto the moving production branch and revalidated each time `main`
+advanced independently. The latest gate has
+`main@3b04925ce4bf5c026f1245ad960e74f48e9a55a3` as an ancestor. The later
+main commits touch Hidraqua and SafeBeach research only; they do not modify an
+FPCV/EventAccess application file.
 
-Final integration validation on workflow commit
-`e70e73259f918c808b93b79f26672a0c744ff96a`:
+Latest integration validation on workflow commit
+`9217aede8a34947db95656c44d5cffdb5c7242ff`:
 
 - Python 3.12 compile: PASS;
-- `git diff --check 3a10decd... HEAD`: PASS;
+- `git diff --check 3b04925... HEAD`: PASS;
 - focused FPCV/Pesca/EventAccess/Sports suite: **146 tests PASS**;
 - full repository `unittest discover`: **1743 tests PASS**.
 
 The earlier pre-integration application gate also passed 146 focused and 1741
-full-suite tests. The temporary workflow was then removed; no application or
-test file changed after the successful final run.
+full-suite tests. The temporary validation workflow was removed after the
+successful latest run; no application or test file changed afterwards.
 
 ## Remaining production gates
 
