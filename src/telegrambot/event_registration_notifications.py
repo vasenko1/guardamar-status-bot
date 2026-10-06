@@ -36,6 +36,7 @@ from .event_access import (
     STATE_VERSION,
     empty_state,
     migrate_v1_state,
+    migrate_v2_state,
     plan_event_access_record,
     prune_records,
     temporally_consistent,
@@ -65,6 +66,62 @@ class RegistrationNotificationState:
     def backup_path(self) -> Path:
         return self.path.with_name(self.path.stem + ".v1-backup.json")
 
+    @property
+    def v2_backup_path(self) -> Path:
+        return self.path.with_name(self.path.stem + ".v2-backup.json")
+
+    def _write_migration_backup(
+        self,
+        raw: Mapping[str, Any],
+        backup: Path,
+        label: str,
+    ) -> None:
+        if backup.exists():
+            try:
+                existing = json.loads(backup.read_text(encoding="utf-8"))
+            except (
+                OSError,
+                UnicodeDecodeError,
+                json.JSONDecodeError,
+            ) as exc:
+                raise EventAccessStateError(
+                    f"event-access {label} backup is unreadable"
+                ) from exc
+            if existing != raw:
+                raise EventAccessStateError(
+                    f"event-access {label} backup collision"
+                )
+            return
+
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary = tempfile.mkstemp(
+            prefix=f".{backup.name}.",
+            dir=str(backup.parent),
+        )
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+                json.dump(
+                    raw,
+                    output,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
+                output.write("\n")
+                output.flush()
+                os.fsync(output.fileno())
+            os.chmod(temporary, 0o600)
+            os.replace(temporary, backup)
+            directory = os.open(str(backup.parent), os.O_RDONLY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        finally:
+            try:
+                os.unlink(temporary)
+            except FileNotFoundError:
+                pass
+
     def read_raw(self) -> Optional[Dict[str, Any]]:
         if not self.path.exists():
             return None
@@ -84,9 +141,9 @@ class RegistrationNotificationState:
         value = self.read_raw()
         if value is None:
             return empty_state()
-        if value.get("version") == 1:
+        if value.get("version") in {1, 2}:
             raise EventAccessStateError(
-                "event-access state v1 requires migrate-state"
+                "legacy event-access state requires migrate-state"
             )
         return validate_state(value)
 
@@ -140,67 +197,33 @@ class RegistrationNotificationState:
             raw = self.read_raw()
             if raw is None:
                 self._write(empty_state())
-                return "created_v2"
-            if raw.get("version") == STATE_VERSION:
+                return "created_v3"
+            version = raw.get("version")
+            if version == STATE_VERSION:
                 validate_state(raw)
-                return "already_v2"
-            if raw.get("version") != 1:
+                return "already_v3"
+            if version == 1:
+                migrated = migrate_v1_state(raw)
+                self._write_migration_backup(
+                    raw,
+                    self.backup_path,
+                    "v1",
+                )
+                result = "migrated_v1_to_v3"
+            elif version == 2:
+                migrated = migrate_v2_state(raw)
+                self._write_migration_backup(
+                    raw,
+                    self.v2_backup_path,
+                    "v2",
+                )
+                result = "migrated_v2_to_v3"
+            else:
                 raise EventAccessStateError(
                     "event-access state version cannot be migrated"
                 )
-
-            migrated = migrate_v1_state(raw)
-            backup = self.backup_path
-            if backup.exists():
-                try:
-                    existing = json.loads(
-                        backup.read_text(encoding="utf-8")
-                    )
-                except (
-                    OSError,
-                    UnicodeDecodeError,
-                    json.JSONDecodeError,
-                ) as exc:
-                    raise EventAccessStateError(
-                        "event-access v1 backup is unreadable"
-                    ) from exc
-                if existing != raw:
-                    raise EventAccessStateError(
-                        "event-access v1 backup collision"
-                    )
-            else:
-                backup.parent.mkdir(parents=True, exist_ok=True)
-                descriptor, temporary = tempfile.mkstemp(
-                    prefix=f".{backup.name}.",
-                    dir=str(backup.parent),
-                )
-                try:
-                    with os.fdopen(
-                        descriptor, "w", encoding="utf-8"
-                    ) as output:
-                        json.dump(
-                            raw,
-                            output,
-                            ensure_ascii=False,
-                            separators=(",", ":"),
-                        )
-                        output.write("\n")
-                        output.flush()
-                        os.fsync(output.fileno())
-                    os.chmod(temporary, 0o600)
-                    os.replace(temporary, backup)
-                    directory = os.open(str(backup.parent), os.O_RDONLY)
-                    try:
-                        os.fsync(directory)
-                    finally:
-                        os.close(directory)
-                finally:
-                    try:
-                        os.unlink(temporary)
-                    except FileNotFoundError:
-                        pass
             self._write(migrated)
-            return "migrated_v1_to_v2"
+            return result
 
     def reserve(
         self,
@@ -600,6 +623,32 @@ def _status_summary(raw: Optional[Mapping[str, Any]]) -> str:
     }, ensure_ascii=False, sort_keys=True)
 
 
+async def _load_local_event_access_records(
+    now: datetime,
+    source_state_path: Path,
+) -> Tuple[Tuple[EventAccessRecord, ...], int]:
+    """Load accepted access records from fresh local snapshots only.
+
+    Keep this explicit. Future accepted sources are added as bounded branches
+    here rather than through a provider registry or source framework.
+    """
+
+    records = []
+    fresh_sources = 0
+
+    if convega_snapshot_is_access_fresh(now, source_state_path):
+        fresh_sources += 1
+        records.extend(await load_convega_access_records(source_state_path))
+
+    record_ids = [record.record_id for record in records]
+    if len(record_ids) != len(set(record_ids)):
+        raise EventAccessStateError(
+            "duplicate event-access record_id across local sources"
+        )
+
+    return tuple(records), fresh_sources
+
+
 async def run_registration_notifications(
     now: datetime,
     state: RegistrationNotificationState,
@@ -607,10 +656,12 @@ async def run_registration_notifications(
     *,
     source_state_path: Path = DEFAULT_SOURCE_STATE_PATH,
 ) -> str:
-    if not convega_snapshot_is_access_fresh(now, source_state_path):
+    records, fresh_sources = await _load_local_event_access_records(
+        now,
+        source_state_path,
+    )
+    if fresh_sources == 0:
         return "stale_source"
-
-    records = await load_convega_access_records(source_state_path)
     sent_any = False
     with state.exclusive_run():
         current = state.read()
@@ -672,9 +723,12 @@ async def _preview(
     state: RegistrationNotificationState,
     source_state_path: Path,
 ) -> Tuple[str, ...]:
-    if not convega_snapshot_is_access_fresh(now, source_state_path):
-        return ("No access-fresh CONVEGA snapshot",)
-    records = await load_convega_access_records(source_state_path)
+    records, fresh_sources = await _load_local_event_access_records(
+        now,
+        source_state_path,
+    )
+    if fresh_sources == 0:
+        return ("No access-fresh event source snapshot",)
     current = state.read()
     if current["uncertain"] is not None:
         return (
