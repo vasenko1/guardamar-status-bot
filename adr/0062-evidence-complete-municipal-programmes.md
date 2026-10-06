@@ -386,7 +386,11 @@ The accepted 7 October production snapshot exposes the exact display keys
 machine transliterations
 with exact resident-facing Russian titles through the existing reviewed
 translation table, so the same wording is used by both Tomorrow Events and the
-next morning digest even when an older translation-cache entry exists.
+next morning digest even when an older translation-cache entry exists.  The
+production snapshot also contains the supplemental 08:00 identity
+`Rosario de la Aurora en la iglesia parroquial San Jaime Apóstol`; it is
+mapped to the same reviewed Russian title so the existing exact-title/time/place
+final merge collapses the duplicate without any new generic alias rule.
 
 The official poster does not publish a clock time for the fireworks.  It says
 that the fireworks are fired after the procession finishes, so the reviewed
