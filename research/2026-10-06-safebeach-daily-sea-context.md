@@ -379,3 +379,68 @@ follow-up only needs to verify:
 
 Do not change the runtime model or message format until that active-service
 evidence exists.
+
+
+## Targeted production probe — 2026-10-06 16:31 CEST
+
+A second one-request read-only probe targeted the previously unidentified
+`af` field and searched the returned Guardamar SafeBeach HTML for its own
+interface labels.
+
+The source HTML explicitly identified:
+
+- `aflu = "Afluencia personas"`;
+- `aforo = "Aforo"`.
+
+The SafeBeach popup renderer uses:
+
+- `it.af.text` as the displayed attendance label;
+- `it.af.pctn` as the percentage-bar width;
+- `it.af.pct` as the displayed capacity/occupancy percentage text.
+
+This confirms the semantic meaning of `af`: it is the public SafeBeach
+attendance / occupancy field, not an inferred project interpretation.
+
+For Centre / Babilònia the ended-service record still contained:
+
+- `af.text = "Baja"`;
+- `af.pct = "< 25%"`;
+- `af.pctn = 15`.
+
+However, the same record was still `hasActividad=true`,
+`serviceEnded=true`, with `hora=14:00`. The probe therefore does **not**
+authorize publishing `Baja (<25%)` as a current resident-facing fact.
+
+The other five Guardamar records were inactive and carried the empty/default
+`af` object. The page contained no textual evidence for separate current
+fields representing rip currents, beach closure or cleanliness; the targeted
+search found occupancy terminology only.
+
+### Updated decision
+
+The source contract for the **meaning** of `af` is now confirmed. Only its
+active-service freshness contract remains to be observed.
+
+Do not add `af` to production until one live record satisfies all of:
+
+1. `hasActividad=true`;
+2. `serviceEnded=false`;
+3. current same-day `hora`;
+4. populated `af.text` and/or `af.pct` / `af.pctn`.
+
+Once that is observed, the preferred minimal daily-root rendering is a compact
+non-alerting row such as:
+
+```text
+👥 Загруженность: низкая (<25%)
+```
+
+The exact Russian label should follow the source's category semantics. The
+field must remain part of the once-daily/current root context only; occupancy
+changes must not become later Telegram alerts or add extra SafeBeach requests.
+
+The production normalizer correctly returned `BeachStatus: None` during this
+probe because there were zero active non-ended records. This also confirms that
+inactive `medusas="No"` values must never be used for the daily all-clear
+jellyfish row: only jellyfish values attached to the current displayed active
+beach set are eligible.
