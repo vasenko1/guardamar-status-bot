@@ -764,6 +764,156 @@ def _annotate_todo_source_sessions(
     return tuple(annotated)
 
 
+_PROGRAMME_IDENTITY_STOP_WORDS = frozenset({
+    "acto", "actos", "del", "fecha", "fechas", "fiesta", "fiestas",
+    "guardamar", "honor", "las", "los", "principal", "principales",
+    "programa", "segura",
+})
+
+
+def _official_programme_identity_words(value: str) -> frozenset[str]:
+    return frozenset(
+        word
+        for word in _normalized_words(value)
+        if word not in _PROGRAMME_IDENTITY_STOP_WORDS and not word.isdigit()
+    )
+
+
+def _official_programme_alias_order(
+    event: SourceEvent,
+    canonical_members: Tuple[SourceEvent, ...],
+) -> Optional[int]:
+    """Place one recovered timed child between adjacent canonical rows."""
+
+    if event.start_time is None or event.start_date != event.end_date:
+        return event.programme_order
+    timed = sorted(
+        (
+            member
+            for member in canonical_members
+            if (
+                member.start_date == event.start_date
+                and member.end_date == event.end_date
+                and member.start_time is not None
+                and member.programme_order is not None
+            )
+        ),
+        key=lambda member: member.start_time or "",
+    )
+    before = [
+        member for member in timed
+        if member.start_time is not None and member.start_time < event.start_time
+    ]
+    after = [
+        member for member in timed
+        if member.start_time is not None and member.start_time > event.start_time
+    ]
+    if not before or not after:
+        return event.programme_order
+    lower = before[-1].programme_order
+    upper = after[0].programme_order
+    if lower is None or upper is None or upper - lower <= 1:
+        return event.programme_order
+    return lower + (upper - lower) // 2
+
+
+def _canonicalize_official_programme_aliases(
+    ayuntamiento_events: Tuple[SourceEvent, ...],
+    turismo_events: Tuple[SourceEvent, ...],
+) -> Tuple[SourceEvent, ...]:
+    """Bind one uniquely matching official Turismo parent to Ayuntamiento."""
+
+    families: Dict[frozenset[str], Dict[str, List[SourceEvent]]] = {}
+    for event in ayuntamiento_events:
+        if (
+            AYUNTAMIENTO_PROGRAMME_SOURCE not in event.sources
+            or event.programme_title is None
+        ):
+            continue
+        identity = _official_programme_identity_words(event.programme_title)
+        if len(identity) < 2:
+            continue
+        families.setdefault(identity, {}).setdefault(
+            event.programme_title, []
+        ).append(event)
+
+    rewritten = []
+    for event in turismo_events:
+        if (
+            TURISMO_PROGRAMME_TEXT_SOURCE not in event.sources
+            or event.programme_title is None
+        ):
+            rewritten.append(event)
+            continue
+        identity = _official_programme_identity_words(event.programme_title)
+        candidates = families.get(identity)
+        if len(identity) < 2 or not candidates or len(candidates) != 1:
+            rewritten.append(event)
+            continue
+        canonical_title, members = next(iter(candidates.items()))
+        first_day = min(member.start_date for member in members)
+        last_day = max(member.end_date for member in members)
+        if event.end_date < first_day or event.start_date > last_day:
+            rewritten.append(event)
+            continue
+        rewritten.append(replace(
+            event,
+            programme_title=canonical_title,
+            programme_order=_official_programme_alias_order(
+                event, tuple(members)
+            ),
+        ))
+    return tuple(rewritten)
+
+
+def _todo_mass_eucharist_alias(
+    candidate: SourceEvent,
+    todo_event: SourceEvent,
+    row: str,
+) -> bool:
+    """Bridge only the exact misa/eucaristía synonym at a matching place."""
+
+    candidate_words = _claim_words(candidate.title_es)
+    todo_words = _claim_words(todo_event.title_es)
+    row_words = _claim_words(row)
+    eucharist_words = {"eucaristia", "eucaristía"}
+    candidate_forms = candidate_words & (eucharist_words | {"misa"})
+    supplemental_forms = (todo_words | row_words) & (eucharist_words | {"misa"})
+    if not candidate_forms or not supplemental_forms:
+        return False
+    if not (
+        (
+            bool(candidate_forms & eucharist_words)
+            and "misa" in supplemental_forms
+        )
+        or (
+            "misa" in candidate_forms
+            and bool(supplemental_forms & eucharist_words)
+        )
+    ):
+        return False
+    if (
+        candidate.place is None
+        or todo_event.place is None
+        or _word_overlap(candidate.place, todo_event.place) < 0.5
+    ):
+        return False
+
+    candidate_semantic = {
+        "misa" if word in eucharist_words else word
+        for word in candidate_words
+    }
+    row_semantic = {
+        "misa" if word in eucharist_words else word
+        for word in row_words
+    }
+    if not candidate_semantic or not row_semantic:
+        return False
+    return len(candidate_semantic & row_semantic) / min(
+        len(candidate_semantic), len(row_semantic)
+    ) >= 0.5
+
+
 def _canonicalize_todo_programme_aliases(
     programme_events: Tuple[SourceEvent, ...],
     todo_events: Tuple[SourceEvent, ...],
@@ -804,8 +954,11 @@ def _canonicalize_todo_programme_aliases(
                 & _claim_words(row)
             ) - {"con"}
             if (
-                len(shared_claims) >= 2
-                and _word_overlap(candidate.title_es, row) >= 0.5
+                (
+                    len(shared_claims) >= 2
+                    and _word_overlap(candidate.title_es, row) >= 0.5
+                )
+                or _todo_mass_eucharist_alias(candidate, todo_event, row)
             ):
                 candidates.append(candidate)
 
@@ -5059,6 +5212,10 @@ async def refresh_municipal_catalog(
         events = merge_text_and_poster_events(
             events,
             ayuntamiento_programme_events,
+        )
+        programme_text_events = _canonicalize_official_programme_aliases(
+            ayuntamiento_programme_events,
+            programme_text_events,
         )
         events = merge_text_and_poster_events(events, programme_text_events)
         todo_events = _canonicalize_todo_programme_aliases(

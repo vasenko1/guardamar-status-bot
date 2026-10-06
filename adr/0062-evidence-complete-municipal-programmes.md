@@ -319,3 +319,42 @@ If the primary pair is incomplete, the correction fails open and keeps the
 Todo row. An unrelated Todo event at 19:30 also remains. This adds no fuzzy
 time tolerance, programme vocabulary, source request, model call, state,
 dependency or scheduler work.
+
+## 6 October 2026 amendment: reconcile matching official programme parents
+
+The 7 October Virgen del Rosario preview exposed a presentation duplicate that
+was not a source-coverage failure.  The first-party Ayuntamiento poster and the
+first-party Turismo programme article described the same festival, but each
+adapter preserved its own exact source-derived `programme_title`.  Because
+programme grouping correctly uses that identity rather than its translated
+display title, one recovered Turismo child could render under a second parent.
+
+Official programme parent reconciliation is therefore allowed only at the
+source-normalization boundary and remains fail-open:
+
+- only Ayuntamiento programme-poster events may provide the canonical parent,
+  and only Turismo generic programme-text events may adopt it;
+- both source parent titles must reduce to the same identity containing at least
+  two specific words after removing generic programme/festival/location/year
+  vocabulary;
+- the verified occurrence windows must overlap and the reduced identity must
+  identify exactly one Ayuntamiento parent; one-word or ambiguous families
+  remain separate;
+- a newly recovered timed child may receive an intermediate presentation order
+  only when its time falls strictly between two ordered canonical children on
+  the same date.
+
+The same incident also showed one narrow supplemental wording gap:
+`Solemne Eucaristía` versus Todo Cultura's `misa cantada`.  The existing
+Todo raw-row alias bridge may treat `misa` and `eucaristía` as equivalent
+only after its existing exact-date, exact-time and unique-child gates pass, and
+only when both occurrences have a compatible explicit place.  Generic
+`_same_occurrence` thresholds are unchanged, so a different same-time act
+such as an organ concert remains separate.
+
+Programme display titles never become identities.  Per-event venue rendering
+is also unchanged: each verified occurrence continues to show its own location
+rather than moving repeated places to a programme-level block.  This amendment
+adds no request, model call, dependency, state, scheduler or source-specific
+7 October correction.
+

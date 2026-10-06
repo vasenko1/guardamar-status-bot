@@ -17,6 +17,7 @@ from telegrambot.municipal_agenda import (
     _ayuntamiento_programme_image_url,
     _suppress_reviewed_rosario_2026_10_06_todo_conflict,
     _cached_current_events,
+    _canonicalize_official_programme_aliases,
     _canonicalize_todo_programme_aliases,
     _current_events,
     _expand_explicit_todo_dates,
@@ -494,6 +495,161 @@ class MunicipalProgrammeDisplayTranslationTests(
         self.assertEqual(
             set(merged[0].sources),
             {AYUNTAMIENTO_PROGRAMME_SOURCE, "todo_cultura"},
+        )
+
+    def test_october_7_rosario_sources_collapse_to_one_programme(self):
+        day = date(2026, 10, 7)
+        parent = "FIESTAS EN HONOR A LA VIRGEN DEL ROSARIO 2026"
+        turismo_parent = (
+            "Fiestas de la Virgen del Rosario de Guardamar 2026: "
+            "programa, fechas y actos principales"
+        )
+        iglesia = "Iglesia parroquial San Jaime Apóstol"
+        plaza = "Plaza de la Constitución"
+        official = (
+            SourceEvent(
+                "Rosario de la Aurora Nuestra Señora del Rosario",
+                day, day, "08:00", None, iglesia, "event",
+                (AYUNTAMIENTO_PROGRAMME_SOURCE,),
+                programme_title=parent, programme_order=10,
+            ),
+            SourceEvent(
+                "Santa Misa",
+                day, day, "09:00", None, iglesia, "event",
+                (AYUNTAMIENTO_PROGRAMME_SOURCE,),
+                programme_title=parent, programme_order=20,
+            ),
+            SourceEvent(
+                "Pasacalles de la Asociación Músico-Cultural Vegamanía",
+                day, day, "12:00", None, None, "event",
+                (AYUNTAMIENTO_PROGRAMME_SOURCE,),
+                programme_title=parent, programme_order=30,
+            ),
+            SourceEvent(
+                "Solemne Eucaristía",
+                day, day, "19:00", None, plaza, "event",
+                (AYUNTAMIENTO_PROGRAMME_SOURCE,),
+                programme_title=parent, programme_order=40,
+            ),
+            SourceEvent(
+                "Solemne y Triunfal Procesión",
+                day, day, "20:00", None, plaza, "event",
+                (AYUNTAMIENTO_PROGRAMME_SOURCE,),
+                programme_title=parent, programme_order=50,
+            ),
+            SourceEvent(
+                "Gran Castillo de Fuegos Artificiales",
+                day, day, None, None, plaza, "event",
+                (AYUNTAMIENTO_PROGRAMME_SOURCE,),
+                programme_title=parent, programme_order=60,
+            ),
+        )
+        turismo = SourceEvent(
+            "Concierto de toques de campanas de los Campaneros de la Vega Baja",
+            day, day, "13:00", None, None, "event",
+            (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            programme_title=turismo_parent, programme_order=40,
+        )
+
+        canonical_turismo = _canonicalize_official_programme_aliases(
+            official, (turismo,)
+        )
+        self.assertEqual(canonical_turismo[0].programme_title, parent)
+        self.assertEqual(canonical_turismo[0].programme_order, 35)
+        merged = merge_text_and_poster_events(official, canonical_turismo)
+
+        todo = SourceEvent(
+            "Celebración de la misa cantada por la Coral Aromas de Guardamar",
+            day, day, "19:00", None, "plaza de la Constitución", "event",
+            ("todo_cultura",),
+        )
+        rows = ((
+            day,
+            "19:00",
+            (
+                "2026-10-07\n"
+                "– 19:00 h.: Celebración de la misa cantada por la Coral "
+                "Aromas de Guardamar en la Plaza de la Constitución."
+            ),
+        ),)
+        canonical_todo = _canonicalize_todo_programme_aliases(
+            merged, (todo,), rows
+        )
+        final = merge_text_and_poster_events(merged, canonical_todo)
+
+        self.assertEqual(len(final), 7)
+        self.assertTrue(all(event.programme_title == parent for event in final))
+        self.assertEqual(
+            sorted(event.programme_order for event in final),
+            [10, 20, 30, 35, 40, 50, 60],
+        )
+        self.assertEqual(
+            sum(event.start_time == "19:00" for event in final),
+            1,
+        )
+        eucharist = next(
+            event for event in final if event.start_time == "19:00"
+        )
+        self.assertEqual(eucharist.title_es, "Solemne Eucaristía")
+        self.assertIn("todo_cultura", eucharist.sources)
+
+    def test_official_programme_alias_keeps_campo_separate(self):
+        day = date(2026, 10, 7)
+        rosario = SourceEvent(
+            "Solemne Eucaristía",
+            day, day, "19:00", None, "Plaza de la Constitución", "event",
+            (AYUNTAMIENTO_PROGRAMME_SOURCE,),
+            programme_title="FIESTAS EN HONOR A LA VIRGEN DEL ROSARIO 2026",
+            programme_order=40,
+        )
+        campo = SourceEvent(
+            "Pasacalles",
+            day, day, "13:00", None, None, "event",
+            (TURISMO_PROGRAMME_TEXT_SOURCE,),
+            programme_title=(
+                "Fiestas del Campo de Guardamar 2026: programa y actos"
+            ),
+            programme_order=10,
+        )
+
+        self.assertEqual(
+            _canonicalize_official_programme_aliases((rosario,), (campo,)),
+            (campo,),
+        )
+
+    def test_mass_eucharist_alias_requires_matching_place(self):
+        day = date(2026, 10, 7)
+        parent = "FIESTAS EN HONOR A LA VIRGEN DEL ROSARIO 2026"
+        official = SourceEvent(
+            "Solemne Eucaristía",
+            day, day, "19:00", None, "Plaza de la Constitución", "event",
+            (AYUNTAMIENTO_PROGRAMME_SOURCE,),
+            programme_title=parent, programme_order=40,
+        )
+        todo = SourceEvent(
+            "Celebración de la misa cantada por la Coral Aromas de Guardamar",
+            day, day, "19:00", None,
+            "Iglesia parroquial San Jaime Apóstol", "event",
+            ("todo_cultura",),
+        )
+        rows = ((
+            day,
+            "19:00",
+            (
+                "2026-10-07\n"
+                "– 19:00 h.: Celebración de la misa cantada por la Coral "
+                "Aromas de Guardamar en la Iglesia parroquial San Jaime Apóstol."
+            ),
+        ),)
+
+        canonicalized = _canonicalize_todo_programme_aliases(
+            (official,), (todo,), rows
+        )
+
+        self.assertEqual(canonicalized, (todo,))
+        self.assertEqual(
+            len(merge_text_and_poster_events((official,), canonicalized)),
+            2,
         )
 
     def test_reviewed_conflict_suppresses_stale_rosario_only_with_primary_pair(self):
