@@ -204,6 +204,21 @@ class EventAccessMigrationTests(unittest.TestCase):
             "Guardamar del Segura",
         )
 
+    def test_v2_migration_preserves_historical_deadline_after_event_move(self):
+        value = v2_state()
+        value["records"]["convega:post-1:stage-21"][
+            "options"
+        ]["default"]["closes_on"] = "2026-10-10"
+
+        migrated = migrate_v2_state(value)
+
+        self.assertEqual(
+            migrated["records"]["convega:post-1:stage-21"][
+                "options"
+            ]["default"]["closes_on"],
+            "2026-10-10",
+        )
+
     def test_v2_uncertain_blocks_migration(self):
         value = v2_state()
         value["uncertain"] = {"pending": True}
