@@ -62,7 +62,10 @@ Sport identity participates in deduplication:
 
 - known sport + no sport may merge under the existing identity evidence and
   preserves the known sport;
-- the same known sport may continue through existing merge rules;
+- two occurrences with the same known sport may merge only through exact
+  normalized occurrence identity or a source-specific deterministic join;
+  weak title/place overlap is not enough because parallel fixtures can share
+  the same club, sport and venue;
 - two different known sports may not fuzzy-merge as one event.
 
 Source-owned fixture/competition IDs remain in source snapshots; they do not
@@ -348,3 +351,30 @@ existing callers.
 This checkpoint intentionally enables **no** sports subsection, Sports Today,
 Morning sport exclusion, new cron, Telegram lifecycle, source HTTP or Event
 Access behavior. Those user-visible changes remain Slice E or later.
+
+
+## Implementation checkpoint: generic sports-access prerequisites
+
+The 2026-10-06 source-contract review found that adding another access source
+directly to the deployed CONVEGA-only v2 runner would violate this ADR's
+correction and ownership requirements. Before any new sports access adapter is
+enabled, the shared core is refined once:
+
+- state v3 keeps only material root context needed to detect date/place/route/
+  schedule corrections and explicit occurrence cancellation/postponement;
+- v2 -> v3 migration remains explicit, backed up and fail closed;
+- registration/reservation/ticket wording is access-kind-correct;
+- multiple independent options are labelled in the root when they really have
+  distinct actions/lifecycles;
+- exact event posters may use ADR 0090's crash-safe optional photo-root path;
+- event-access records are loaded through one explicit local-only aggregator,
+  while every source retains its own freshness and evidence contract;
+- global record IDs must remain namespaced and unique across enabled sources;
+- two already classified same-sport events cannot be collapsed by weak fuzzy
+  merge.
+
+This is a shared-core hardening step, not a new sports subsystem. It adds no
+source HTTP, cron row, provider registry, queue, database or per-sport state.
+New sources remain capability-gated one at a time after this checkpoint passes
+focused tests, the full suite, architecture review and production-safe state
+migration validation.
