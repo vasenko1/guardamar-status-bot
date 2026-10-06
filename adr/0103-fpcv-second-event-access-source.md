@@ -57,10 +57,15 @@ field and is a regenerable source snapshot rather than lifecycle state.
   SHA checking and `pdftotext` remain only in the existing Pesca CV refresh.
 - Add no provider registry, dynamic discovery, ownership framework, daemon,
   database, queue, per-sport state or new cron.
-- Keep the current 12:47/13:47 shared EventAccess schedule in this code slice.
-  Because a reviewed FPCV deadline is 12:00, moving the shared checkpoints
-  earlier is a separate operational change gated by a live full-crontab and
-  neighboring-runtime probe; do not add a third sports-specific checkpoint.
+- Move the two existing shared EventAccess checkpoints from 12:47/13:47 to
+  10:47/11:47 Europe/Madrid. The live production crontab/runtime probe showed
+  the SafeBeach edit window ends by 10:40, resident-news runs at 11:11,
+  operational monitoring runs at 10:51/11:51 and earthquake checks at
+  10:55/11:55. The selected :47 slots avoid those jobs, give 73 and 13 minutes
+  of lead time before a reviewed 12:00 deadline, preserve the one-hour
+  primary/recovery spacing, and keep the recovery inside CONVEGA's <=90-minute
+  access-freshness window so it normally reuses the primary snapshot. Do not
+  add a third sports-specific checkpoint.
 
 ## Failure and rollback behaviour
 
