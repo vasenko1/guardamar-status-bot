@@ -440,7 +440,9 @@ class DeliveryPolicyTests(unittest.IsolatedAsyncioTestCase):
                 publish,
                 *,
                 source_state_path,
+                publish_photo,
             ):
+                self.assertIsNotNone(publish_photo)
                 self.assertEqual(
                     source_state_path,
                     Path(directory) / "convega.json",
@@ -486,7 +488,14 @@ class DeliveryPolicyTests(unittest.IsolatedAsyncioTestCase):
 
 
 class DeliveryTests(unittest.IsolatedAsyncioTestCase):
-    async def run_with(self, records, publish, state=None):
+    async def run_with(
+        self,
+        records,
+        publish,
+        state=None,
+        *,
+        publish_photo=None,
+    ):
         if state is None:
             temp = tempfile.TemporaryDirectory()
             self.addCleanup(temp.cleanup)
@@ -511,7 +520,141 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
                 state,
                 publish,
                 source_state_path=Path("unused.json"),
+                publish_photo=publish_photo,
             )
+
+    async def test_photo_root_stores_photo_message_id(self):
+        async def publish(_message, _reply_to):
+            raise AssertionError("text root must not be used")
+
+        async def publish_photo(photo_url, caption):
+            self.assertEqual(photo_url, "https://example.com/poster.jpg")
+            self.assertIn("Открыта регистрация", caption)
+            return 345
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = RegistrationNotificationState(
+                Path(directory) / "notify.json"
+            )
+            result = await self.run_with(
+                (record(image_url="https://example.com/poster.jpg"),),
+                publish,
+                state,
+                publish_photo=publish_photo,
+            )
+            saved = state.read()
+
+        self.assertEqual(result, "sent")
+        self.assertEqual(
+            saved["records"][
+                "convega:post-1:stage-21"
+            ]["root_message_id"],
+            345,
+        )
+        self.assertIsNone(saved["uncertain"])
+
+    async def test_remote_media_rejection_falls_back_to_text_root(self):
+        calls = []
+
+        async def publish(message, reply_to):
+            calls.append(("text", reply_to, message))
+            return 456
+
+        async def publish_photo(_photo_url, _caption):
+            calls.append(("photo", None, None))
+            raise TelegramError(
+                "remote media rejected",
+                retryable=False,
+                code="REMOTE-MEDIA",
+                status=400,
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = RegistrationNotificationState(
+                Path(directory) / "notify.json"
+            )
+            result = await self.run_with(
+                (record(image_url="https://example.com/poster.jpg"),),
+                publish,
+                state,
+                publish_photo=publish_photo,
+            )
+            saved = state.read()
+
+        self.assertEqual(result, "sent")
+        self.assertEqual([item[0] for item in calls], ["photo", "text"])
+        self.assertEqual(calls[1][1], None)
+        self.assertEqual(
+            saved["records"][
+                "convega:post-1:stage-21"
+            ]["root_message_id"],
+            456,
+        )
+        self.assertIsNone(saved["uncertain"])
+
+    async def test_ambiguous_photo_failure_never_falls_back_to_text(self):
+        text_calls = 0
+
+        async def publish(_message, _reply_to):
+            nonlocal text_calls
+            text_calls += 1
+            return 999
+
+        async def publish_photo(_photo_url, _caption):
+            raise TelegramError(
+                "timeout",
+                retryable=True,
+                code="TIMEOUT",
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = RegistrationNotificationState(
+                Path(directory) / "notify.json"
+            )
+            with self.assertRaises(RegistrationDeliveryUncertain):
+                await self.run_with(
+                    (record(image_url="https://example.com/poster.jpg"),),
+                    publish,
+                    state,
+                    publish_photo=publish_photo,
+                )
+            saved = state.read()
+
+        self.assertEqual(text_calls, 0)
+        self.assertIsNotNone(saved["uncertain"])
+        self.assertEqual(saved["uncertain"]["operation"], "root")
+
+    async def test_long_root_uses_text_instead_of_photo(self):
+        photo_calls = 0
+
+        async def publish(message, reply_to):
+            self.assertGreater(len(message), 1024)
+            self.assertIsNone(reply_to)
+            return 567
+
+        async def publish_photo(_photo_url, _caption):
+            nonlocal photo_calls
+            photo_calls += 1
+            return 999
+
+        item = record(
+            title="Событие " + "А" * 950,
+            image_url="https://example.com/poster.jpg",
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = RegistrationNotificationState(
+                Path(directory) / "notify.json"
+            )
+            result = await self.run_with(
+                (item,),
+                publish,
+                state,
+                publish_photo=publish_photo,
+            )
+
+        self.assertEqual(result, "sent")
+        self.assertEqual(photo_calls, 0)
 
     async def test_confirmed_root_stores_returned_message_id(self):
         async def publish(message, reply_to):
