@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-03
-- Implementation: Final pre-implementation review complete; first rollout text-root only
+- Implementation: v2 text-root rollout deployed; optional photo-root refinement pending validation
 - State layout: refined by ADR 0092
 
 ## Context
@@ -214,6 +214,30 @@ The implementation therefore sends:
 Photo roots, caption branching and deterministic photo-to-text fallback remain
 accepted future presentation behavior below, but are implemented only when a
 ready source with a uniquely attributable poster actually needs them.
+
+### 2026-10-06 photo-root implementation checkpoint
+
+The generic lifecycle now supports an optional source-proven `image_url` on
+the current `EventAccessRecord`. The image URL remains presentation-only and
+is not persisted in lifecycle state.
+
+Root delivery follows the already accepted crash-safe media contract:
+
+- use a photo root only when an exact event-specific image exists and the full
+  self-contained root fits Telegram's 1024-character caption limit;
+- call the existing `send_photo_url()` path with
+  `disable_notification=false`;
+- reserve the exact root transaction before either media or text delivery;
+- a reviewed deterministic `REMOTE-MEDIA` or local `URL-POLICY` rejection
+  may fall back to the equivalent text root under the same reservation;
+- timeout, network failure, invalid success structure or any other ambiguous
+  photo outcome never falls back to text and leaves the root uncertain;
+- later replies are text-only and never repeat the poster;
+- a long root that cannot fit a caption uses the existing text-root path
+  directly.
+
+No media kind, file ID, image URL, cache, downloader or second transaction is
+added to persistent event-access state.
 
 ### Media and caption policy
 
