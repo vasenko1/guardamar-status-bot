@@ -19,6 +19,7 @@ from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 from ._transport import BoundedFetchError, fetch_bounded
+from .event_access import AccessOption, EventAccessRecord
 
 
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
@@ -1308,6 +1309,139 @@ def _record_is_fresh(record: dict, now: datetime) -> bool:
     if observed.tzinfo is None or observed.utcoffset() is None:
         return False
     return timedelta(0) <= now - observed <= _ENRICHMENT_FRESHNESS
+
+
+def fpcv_details_are_access_fresh(
+    now: datetime,
+    state_path: Path = Path(DEFAULT_FPCV_DETAILS_STATE_PATH),
+) -> bool:
+    """Return whether at least one identity-safe FPCV access record is fresh."""
+
+    if now.tzinfo is None or now.utcoffset() is None:
+        raise ValueError("FPCV access time must be timezone-aware")
+    try:
+        state = load_fpcv_details_state(state_path)
+    except FishingEnrichmentError:
+        return False
+    if state is None:
+        return False
+    return any(
+        record.get("source_id") is not None and _record_is_fresh(record, now)
+        for record in state["records"]
+    )
+
+
+def fpcv_access_record(
+    raw: dict,
+    now: datetime,
+) -> Optional[EventAccessRecord]:
+    """Project one accepted normalized FPCV detail into Event Access."""
+
+    if not _details_record_valid(raw) or not _record_is_fresh(raw, now):
+        return None
+    source_id = raw.get("source_id")
+    if (
+        not isinstance(source_id, str)
+        or re.fullmatch(r"\d{1,3}/\d{2}", source_id) is None
+    ):
+        return None
+
+    try:
+        event_day = date.fromisoformat(raw["index_date"])
+    except (TypeError, ValueError):
+        return None
+
+    cancelled = bool(raw["cancelled"])
+    deadline = None
+    if not cancelled:
+        try:
+            deadline = datetime.fromisoformat(raw["registration_deadline"])
+        except (TypeError, ValueError):
+            return None
+        if deadline.tzinfo is None or deadline.utcoffset() is None:
+            return None
+
+    context = str(raw.get("competition_context") or "").strip()
+    base_title = str(raw["base_title"]).strip()
+    title = (
+        context.split(" · ", 1)[0] + " — " + base_title
+        if context
+        else base_title
+    )
+
+    details = list(raw.get("details") or ())
+    if context and details and details[0] == context:
+        details = details[1:]
+    fee_cents = raw.get("registration_fee_cents")
+    if isinstance(fee_cents, int) and not isinstance(fee_cents, bool):
+        euros, cents = divmod(fee_cents, 100)
+        amount = str(euros) if cents == 0 else f"{euros},{cents:02d}"
+        details.append(f"Взнос участника: {amount} €")
+
+    option = AccessOption(
+        option_id="club-registration",
+        status=(
+            "unknown"
+            if cancelled
+            else "open"
+            if now < deadline
+            else "closed"
+        ),
+        closes_on=deadline.date() if deadline is not None else None,
+        closes_time=(
+            deadline.timetz().replace(tzinfo=None)
+            if deadline is not None
+            else None
+        ),
+        action_text=(
+            "Регистрация проводится через рыболовный клуб участника"
+            if not cancelled
+            else None
+        ),
+    )
+
+    source_url = raw.get("source_url") or FPCV_INDEX_URL
+    try:
+        return EventAccessRecord(
+            record_id=(
+                "fpcv:convocatoria:" + source_id.replace("/", "-")
+            ),
+            source="fpcv",
+            source_url=source_url,
+            access_kind="registration",
+            title=title,
+            event_start_date=event_day,
+            place=raw.get("place"),
+            details=tuple(details),
+            schedule_note=raw.get("schedule_note"),
+            occurrence_status="cancelled" if cancelled else "scheduled",
+            options=(option,),
+        )
+    except (TypeError, ValueError):
+        return None
+
+
+async def load_fpcv_access_records(
+    now: datetime,
+    state_path: Path = Path(DEFAULT_FPCV_DETAILS_STATE_PATH),
+) -> tuple[EventAccessRecord, ...]:
+    """Read FPCV access facts from the local normalized details snapshot only."""
+
+    try:
+        state = await asyncio.to_thread(load_fpcv_details_state, state_path)
+    except FishingEnrichmentError:
+        return ()
+    if state is None:
+        return ()
+    records = tuple(
+        record
+        for raw in state["records"]
+        if (record := fpcv_access_record(raw, now)) is not None
+    )
+    return tuple(sorted(
+        records,
+        key=lambda item: (item.event_start_date, item.record_id),
+    ))
 
 
 def matching_authority(
