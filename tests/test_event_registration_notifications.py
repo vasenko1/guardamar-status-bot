@@ -487,6 +487,67 @@ class DeliveryPolicyTests(unittest.IsolatedAsyncioTestCase):
         )
 
 
+    async def test_cli_photo_root_is_not_silent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "notify.json"
+            state = RegistrationNotificationState(state_path)
+            state.write(empty_state())
+
+            async def fake_run(
+                _now,
+                _state,
+                _publish,
+                *,
+                source_state_path,
+                publish_photo,
+            ):
+                self.assertEqual(
+                    source_state_path,
+                    Path(directory) / "convega.json",
+                )
+                message_id = await publish_photo(
+                    "https://example.com/poster.jpg",
+                    "caption",
+                )
+                self.assertEqual(message_id, 88)
+                return "sent"
+
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "EVENT_REGISTRATION_STATE_PATH": str(state_path),
+                        "CONVEGA_STATE_PATH": str(
+                            Path(directory) / "convega.json"
+                        ),
+                        "TELEGRAM_BOT_TOKEN": "token",
+                        "TELEGRAM_CHAT_ID": "-100123",
+                    },
+                    clear=False,
+                ),
+                patch(
+                    "telegrambot.event_registration_notifications."
+                    "run_registration_notifications",
+                    new=fake_run,
+                ),
+                patch(
+                    "telegrambot.event_registration_notifications."
+                    "send_photo_url",
+                    new=AsyncMock(return_value=(88, "file-id")),
+                ) as send_photo,
+            ):
+                code = await _run_cli("run")
+
+        self.assertEqual(code, 0)
+        send_photo.assert_awaited_once_with(
+            "token",
+            "-100123",
+            "https://example.com/poster.jpg",
+            "caption",
+            disable_notification=False,
+        )
+
+
 class DeliveryTests(unittest.IsolatedAsyncioTestCase):
     async def run_with(
         self,
