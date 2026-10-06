@@ -779,6 +779,44 @@ def _official_programme_identity_words(value: str) -> frozenset[str]:
     )
 
 
+def _official_programme_alias_order(
+    event: SourceEvent,
+    canonical_members: Tuple[SourceEvent, ...],
+) -> Optional[int]:
+    """Place one recovered timed child between adjacent canonical rows."""
+
+    if event.start_time is None or event.start_date != event.end_date:
+        return event.programme_order
+    timed = sorted(
+        (
+            member
+            for member in canonical_members
+            if (
+                member.start_date == event.start_date
+                and member.end_date == event.end_date
+                and member.start_time is not None
+                and member.programme_order is not None
+            )
+        ),
+        key=lambda member: member.start_time or "",
+    )
+    before = [
+        member for member in timed
+        if member.start_time is not None and member.start_time < event.start_time
+    ]
+    after = [
+        member for member in timed
+        if member.start_time is not None and member.start_time > event.start_time
+    ]
+    if not before or not after:
+        return event.programme_order
+    lower = before[-1].programme_order
+    upper = after[0].programme_order
+    if lower is None or upper is None or upper - lower <= 1:
+        return event.programme_order
+    return lower + (upper - lower) // 2
+
+
 def _canonicalize_official_programme_aliases(
     ayuntamiento_events: Tuple[SourceEvent, ...],
     turismo_events: Tuple[SourceEvent, ...],
@@ -818,7 +856,13 @@ def _canonicalize_official_programme_aliases(
         if event.end_date < first_day or event.start_date > last_day:
             rewritten.append(event)
             continue
-        rewritten.append(replace(event, programme_title=canonical_title))
+        rewritten.append(replace(
+            event,
+            programme_title=canonical_title,
+            programme_order=_official_programme_alias_order(
+                event, tuple(members)
+            ),
+        ))
     return tuple(rewritten)
 
 
