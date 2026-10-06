@@ -266,6 +266,48 @@ class FishingEnrichmentTests(unittest.TestCase):
             valid_fpcv_details_state({"version": 2, "records": [record]})
         )
 
+    def test_pdf_parser_accepts_live_layout_gap_before_convocatoria_number(self):
+        descriptor = parse_fpcv_index_html(
+            _index_html(),
+            local_day=NOW.date(),
+            base_events=(_provincial_base(),),
+        )[0]
+        live_layout = _pdf_text().replace(
+            "Número 43/26",
+            "Número\nfrancis@federacionpescacv.com\n43/26",
+        )
+
+        record = parse_fpcv_convocatoria_text(
+            live_layout,
+            descriptor=descriptor,
+            content_sha256="f" * 64,
+            observed_at=NOW,
+        )
+
+        self.assertEqual(record["source_id"], "43/26")
+
+    def test_pdf_parser_rejects_ambiguous_convocatoria_number_window(self):
+        descriptor = parse_fpcv_index_html(
+            _index_html(),
+            local_day=NOW.date(),
+            base_events=(_provincial_base(),),
+        )[0]
+        ambiguous = _pdf_text().replace(
+            "Número 43/26",
+            "Número\n43/26\n44/26",
+        )
+
+        with self.assertRaisesRegex(
+            FishingEnrichmentError,
+            "convocatoria number changed",
+        ):
+            parse_fpcv_convocatoria_text(
+                ambiguous,
+                descriptor=descriptor,
+                content_sha256="9" * 64,
+                observed_at=NOW,
+            )
+
     def test_pdf_parser_requires_stable_convocatoria_number(self):
         descriptor = parse_fpcv_index_html(
             _index_html(),
