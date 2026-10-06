@@ -744,6 +744,73 @@ class TomorrowEventPublicationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Шествие музыкальных оркестров", publication.message)
         self.assertIn("Красочный парад", publication.message)
 
+    async def test_rosario_reviewed_wording_and_fireworks_note_render_tomorrow(self):
+        now = datetime(2026, 10, 6, 19, 25, tzinfo=TZ)
+        day = date(2026, 10, 7)
+        parent = "FIESTAS EN HONOR A LA VIRGEN DEL ROSARIO 2026"
+        events = [
+            SourceEvent(
+                "Rosario de la Aurora Nuestra Señora del Rosario",
+                day, day, "08:00", None,
+                "Iglesia parroquial San Jaime Apóstol", "event",
+                ("ayuntamiento_programme",),
+                programme_title=parent,
+                programme_order=10,
+            ),
+            SourceEvent(
+                "Pasacalles de la Asociación Músico-Cultural Vegamanía",
+                day, day, "12:00", None,
+                None, "event",
+                ("ayuntamiento_programme",),
+                programme_title=parent,
+                programme_order=20,
+            ),
+            SourceEvent(
+                "Gran Castillo de Fuegos Artificiales",
+                day, day, None, None,
+                "Plaza de la Constitución", "event",
+                ("ayuntamiento_programme",),
+                programme_title=parent,
+                programme_order=30,
+            ),
+        ]
+
+        with tempfile.TemporaryDirectory() as directory:
+            paths = _paths(directory)
+            _write_municipal(
+                paths["municipal_agenda_state_path"],
+                datetime(2026, 10, 6, 21, 12, tzinfo=TZ),
+                events,
+            )
+            paths["translation_cache_path"].write_text(
+                '{"version":1,"entries":{}}\n',
+                encoding="utf-8",
+            )
+            with patch(
+                "telegrambot.tomorrow_events.market_is_cancelled",
+                new=AsyncMock(return_value=True),
+            ):
+                publication = await produce_tomorrow_event_publication(
+                    now, **paths
+                )
+
+        self.assertIsNotNone(publication)
+        self.assertIn(
+            "Утренняя молитва Розария в честь Богоматери Розария",
+            publication.message,
+        )
+        self.assertIn(
+            "Музыкальное шествие ассоциации «Вегамания»",
+            publication.message,
+        )
+        self.assertIn("Большой фейерверк", publication.message)
+        self.assertIn(
+            "🕐 После окончания процессии",
+            publication.message,
+        )
+        self.assertNotIn("Паракальес", publication.message)
+        self.assertNotIn("Росарио де ла Аурора", publication.message)
+
     async def test_repeated_programme_schedule_shows_explicit_target_date(self):
         parent = "FIESTAS EN HONOR A LA VIRGEN DEL ROSARIO 2026"
         events = []
