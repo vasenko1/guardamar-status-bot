@@ -16,9 +16,20 @@ MADRID = ZoneInfo("Europe/Madrid")
 NOW = datetime(2026, 9, 8, 10, 0, tzinfo=MADRID)
 
 
-def event(identifier=1, motive="AVE", address="Calle Uno", streets="Calle Dos", end=1788861600000):
+def event(
+    identifier=1,
+    motive="AVE",
+    address="Calle Uno",
+    streets="Calle Dos",
+    end=1788861600000,
+    latitude=None,
+    longitude=None,
+):
     ends_at = datetime.fromtimestamp(end / 1000, MADRID) if end else None
-    return HidraquaEvent(identifier, "5EC", motive, address, streets, None, ends_at)
+    return HidraquaEvent(
+        identifier, "5EC", motive, address, streets, None, ends_at,
+        latitude, longitude,
+    )
 
 
 class HidraquaMonitorTests(unittest.IsolatedAsyncioTestCase):
@@ -149,7 +160,7 @@ class HidraquaMonitorTests(unittest.IsolatedAsyncioTestCase):
             state = HidraquaState(Path(directory) / "hidraqua.json")
             state.write({"version": 1, "events": {}})
             rows = tuple(event(index) for index in range(1, 6))
-            groups = format_messages(rows, max_length=1200)
+            groups = format_messages(rows, max_length=650)
             self.assertGreaterEqual(len(groups), 3)
 
             with patch(
@@ -163,7 +174,7 @@ class HidraquaMonitorTests(unittest.IsolatedAsyncioTestCase):
                         AsyncMock(
                             side_effect=[None, HidraquaDeliveryUncertain()]
                         ),
-                        message_limit=1200,
+                        message_limit=650,
                     )
 
             stored = state.read()["events"]
@@ -201,7 +212,7 @@ class HidraquaMonitorTests(unittest.IsolatedAsyncioTestCase):
             rows = (event(1), event(2), event(3, motive="***"))
             with patch("telegrambot.hidraqua.fetch_active_events", new=AsyncMock(return_value=rows)):
                 with self.assertRaises(RuntimeError):
-                    await monitor_once(state, NOW, send, message_limit=1200)
+                    await monitor_once(state, NOW, send, message_limit=650)
             self.assertEqual(set(state.read()["events"]), {"1", "2"})
 
 
@@ -241,16 +252,48 @@ class HidraquaFormattingTests(unittest.TestCase):
         item = event(
             address="Calle Currica 51-51, 03140, Guardamar (Urbanització Bonavista)",
             streets="LA NANSA, COSTABELLA, LA MARINA",
+            latitude=38.089123,
+            longitude=-0.654321,
         )
         text = format_event(item)
         self.assertIn("Urbanització Bonavista", text)
         self.assertIn("Calle Currica, 51", text)
         self.assertIn("Также затронуты улицы", text)
-        self.assertEqual(text.count("https://www.google.com/maps/search/?"), 4)
-        self.assertIn("query=Calle+Currica%2C+51", text)
+        self.assertEqual(text.count("https://www.google.com/maps/search/?"), 1)
+        self.assertIn("query=38.089123%2C-0.654321", text)
+        self.assertNotIn("query=La+Nansa", text)
         unsafe = format_event(event(address='Calle <x>& "7"', streets="A&B"))
         self.assertIn("Calle &lt;x&gt;&amp; &quot;7&quot;", unsafe)
         self.assertIn("A&amp;B", unsafe)
+
+    def test_source_geometry_drives_maps_link_and_preserves_source_label(self):
+        rows = normalize_events({"features": [{"attributes": {
+            "CI_ID": 9,
+            "CI_ESTADO": "5EC",
+            "CI_MOTIVO": "AVE",
+            "COD_MUNI": "03076",
+            "CI_DIRECCION": "Camí del Dos, 03140, Guardamar del Segura",
+        }, "geometry": {"x": -0.6543214, "y": 38.0891234}}]})
+        self.assertEqual(rows[0].latitude, 38.0891234)
+        self.assertEqual(rows[0].longitude, -0.6543214)
+        text = format_event(rows[0])
+        self.assertIn("<b>Camí del Dos</b>", text)
+        self.assertIn("query=38.089123%2C-0.654321", text)
+        self.assertNotIn("query=Cam%C3%AD+del+Dos", text)
+        self.assertNotIn("query=Camino+del+Dos", text)
+
+    def test_missing_or_invalid_geometry_omits_unreliable_maps_search(self):
+        for geometry in (None, {"x": 999, "y": 38.08}, {"x": "bad", "y": 38.08}):
+            rows = normalize_events({"features": [{"attributes": {
+                "CI_ID": 10,
+                "CI_ESTADO": "5EC",
+                "CI_MOTIVO": "AVE",
+                "COD_MUNI": "03076",
+                "CI_DIRECCION": "Carrer Pere de Bonvilar",
+            }, "geometry": geometry}]})
+            text = format_event(rows[0])
+            self.assertIn("📍 <b>Carrer Pere de Bonvilar</b>", text)
+            self.assertNotIn("https://www.google.com/maps/search/?", text)
 
     def test_urbanization_with_unnumbered_street_uses_na_not_district(self):
         text = format_event(event(
@@ -266,6 +309,8 @@ class HidraquaFormattingTests(unittest.TestCase):
         text = format_event(event(
             address="Calle Currica 51-51, Guardamar (Urbanització Bonavista)",
             streets=None,
+            latitude=38.089123,
+            longitude=-0.654321,
         ), grouped=True)
         self.assertIn("Calle Currica, 51</b></a>, произошла авария", text)
 
@@ -277,7 +322,7 @@ class HidraquaFormattingTests(unittest.TestCase):
         self.assertIn("сразу о нескольких", grouped[0][1])
         self.assertIn("⚠️ Возможно временное", grouped[0][1])
         self.assertIn("обЪявления Гуардамар", grouped[0][1])
-        split = format_messages(rows, max_length=1200)
+        split = format_messages(rows, max_length=650)
         self.assertGreater(len(split), 1)
         self.assertEqual(sum((list(ids) for ids, _ in split), []), [1, 2, 3])
         for _, payload in split:
