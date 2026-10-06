@@ -5060,6 +5060,10 @@ async def refresh_municipal_catalog(
             events,
             ayuntamiento_programme_events,
         )
+        programme_text_events = _canonicalize_official_programme_aliases(
+            ayuntamiento_programme_events,
+            programme_text_events,
+        )
         events = merge_text_and_poster_events(events, programme_text_events)
         todo_events = _canonicalize_todo_programme_aliases(
             events,
