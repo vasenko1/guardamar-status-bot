@@ -840,8 +840,11 @@ Current production award-authority contracts are:
 - **OCU coffee capsules 2024:** the reviewed physical result places exact
   AROM'ARTE (DIA) Intenso at 85/100 in the Nespresso-with-caffeine group; the
   exact OCU page must still identify the 20-capsule laboratory-tested product.
-- **MAPA spirits 2026:** the official national winner is Anís Chinchón de la
-  Alcoholera Dulce in Mejor Bebida Espirituosa con Indicación Geográfica.
+- **MAPA spirits 2026 / BOE order APA/744/2026:** the official national
+  winner is Anís Chinchón de la Alcoholera Dulce in Mejor Bebida Espirituosa
+  con Indicación Geográfica. Runtime award verification uses the BOE order
+  because the MAPA presentation page fails TLS verification on production
+  Termux; TLS verification is not weakened.
 - **World Beer Awards 2026:** reviewed result pages provide Ambar Especial and
   Mahou Sin Filtrar gold/country-winner facts.
 - **World Championship Cheese Contest 2026:** the official Top-20 page pins
