@@ -69,15 +69,18 @@ The local FPCV projection uses:
 The €20 amount remains `Взнос участника` presentation detail. It is not
 mapped to spectator ticket pricing.
 
-The FPCV access reader uses the existing 36-hour normalized-detail freshness
-contract. Future observations and stale observations fail closed.
+Ordinary fishing enrichment keeps its existing 36-hour horizon. Proactive FPCV
+EventAccess is stricter: the identity-bearing observation must be from the same
+Europe/Madrid local date and must not be in the future. Yesterday's last-good
+details may still enrich an event but cannot assert current access state.
 
 ### Multi-source orchestration
 
 The existing explicit local EventAccess loader now has two branches:
 
 1. CONVEGA, with its existing same-day/90-minute access freshness;
-2. FPCV normalized details, with its existing 36-hour enrichment freshness.
+2. FPCV normalized details, with same-Europe/Madrid-day access freshness over
+   the existing daily 05:10 observation.
 
 A stale source is omitted independently. Records are sorted deterministically
 by event date, source and record ID. Duplicate IDs across sources fail closed.
