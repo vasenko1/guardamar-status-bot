@@ -28,11 +28,6 @@ RETENTION = timedelta(days=180)
 MAX_TELEGRAM_MESSAGE_LENGTH = 4096
 MADRID = ZoneInfo("Europe/Madrid")
 
-# Keep source-backed labels unchanged; only use aliases verified for Maps lookup.
-_MAPS_QUERY_ALIASES = {
-    "camí del dos": "Camino del Dos",
-}
-
 
 class HidraquaError(RuntimeError):
     """The source response cannot safely drive a notice."""
@@ -54,6 +49,8 @@ class HidraquaEvent:
     streets: Optional[str]
     starts_at: Optional[datetime]
     ends_at: Optional[datetime]
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
 
 def _is_hidraqua_url(url: str) -> bool:
@@ -83,6 +80,24 @@ def _text(value: Any) -> Optional[str]:
     return value
 
 
+def _coordinates(value: Any) -> tuple[Optional[float], Optional[float]]:
+    """Return source geometry as WGS84 latitude/longitude when usable."""
+    if not isinstance(value, dict):
+        return None, None
+    x = value.get("x")
+    y = value.get("y")
+    if (
+        not isinstance(x, (int, float)) or isinstance(x, bool)
+        or not isinstance(y, (int, float)) or isinstance(y, bool)
+    ):
+        return None, None
+    longitude = float(x)
+    latitude = float(y)
+    if not (-180 <= longitude <= 180 and -90 <= latitude <= 90):
+        return None, None
+    return latitude, longitude
+
+
 def normalize_events(payload: Dict[str, Any]) -> tuple[HidraquaEvent, ...]:
     features = payload.get("features")
     if not isinstance(features, list):
@@ -102,11 +117,14 @@ def normalize_events(payload: Dict[str, Any]) -> tuple[HidraquaEvent, ...]:
             or municipality != GUARDAMAR_CODE
         ):
             raise HidraquaError("response has invalid event fields")
+        latitude, longitude = _coordinates(feature.get("geometry"))
         event = HidraquaEvent(
             event_id, status, motive, _text(attributes.get("CI_DIRECCION")),
             _text(attributes.get("CI_CALLES")),
             _epoch(attributes.get("CI_FH_INI_PREV")),
             _epoch(attributes.get("CI_FH_FIN_PREV")),
+            latitude,
+            longitude,
         )
         existing = events.get(event_id)
         if existing is not None and existing != event:
@@ -120,7 +138,7 @@ def _read_active() -> Dict[str, Any]:
     parameters = urllib.parse.urlencode({
         "where": where,
         "outFields": "CI_ID,CI_FH_INI_PREV,CI_FH_FIN_PREV,CI_DIRECCION,CI_CALLES,CI_ESTADO,CI_MOTIVO,COD_MUNI",
-        "returnGeometry": "false", "f": "json",
+        "returnGeometry": "true", "outSR": "4326", "f": "json",
     })
     try:
         data, _, _ = fetch_bounded(
@@ -145,22 +163,20 @@ async def fetch_active_events() -> tuple[HidraquaEvent, ...]:
     return normalize_events(await asyncio.to_thread(_read_active))
 
 
-def _maps_link(label: str, query: str) -> str:
-    """Return one escaped inline Maps search link for a source-backed place."""
+def _maps_link(
+    label: str,
+    latitude: Optional[float],
+    longitude: Optional[float],
+) -> str:
+    """Link the source label by source geometry, never by a guessed street name."""
+    safe_label = html.escape(label)
+    if latitude is None or longitude is None:
+        return f"📍 <b>{safe_label}</b>"
     url = "https://www.google.com/maps/search/?" + urllib.parse.urlencode({
-        "api": "1", "query": query,
+        "api": "1",
+        "query": f"{latitude:.6f},{longitude:.6f}",
     })
-    return f'📍 <a href="{html.escape(url, quote=True)}"><b>{html.escape(label)}</b></a>'
-
-
-def _maps_query_place(value: str) -> str:
-    """Use a reviewed Maps-only alias while preserving the source label."""
-    match = re.fullmatch(r"(.+?)(,\s*\d+[A-Za-z]?)?", value)
-    if not match:
-        return value
-    name, suffix = match.groups()
-    alias = _MAPS_QUERY_ALIASES.get(name.casefold())
-    return f"{alias}{suffix or ''}" if alias else value
+    return f'📍 <a href="{html.escape(url, quote=True)}"><b>{safe_label}</b></a>'
 
 
 def _address_parts(address: Optional[str]) -> tuple[Optional[str], Optional[str]]:
@@ -195,11 +211,7 @@ def _location(event: HidraquaEvent) -> str:
     address, urbanization = _address_parts(event.address)
     if not address:
         return "в Гуардамаре"
-    query_parts = [_maps_query_place(address)]
-    if urbanization:
-        query_parts.append(urbanization)
-    query_parts.extend(("03140 Guardamar del Segura", "Alicante"))
-    linked = _maps_link(address, ", ".join(query_parts))
+    linked = _maps_link(address, event.latitude, event.longitude)
     if urbanization:
         if re.search(r",\s*\d+[A-Za-z]?$", address):
             return f"в <b>{html.escape(urbanization)}</b>, в районе {linked}"
@@ -212,13 +224,7 @@ def _other_streets(event: HidraquaEvent) -> str:
     if not streets:
         return ""
     _, urbanization = _address_parts(event.address)
-    places = []
-    for street in streets:
-        query = [_maps_query_place(street)]
-        if urbanization:
-            query.append(urbanization)
-        query.extend(("Guardamar del Segura", "Alicante"))
-        places.append(_maps_link(street, ", ".join(query)))
+    places = [f"<b>{html.escape(street)}</b>" for street in streets]
     noun = "улица" if len(places) == 1 else "улицы"
     verb = "затронута" if len(places) == 1 else "затронуты"
     return f" Также {verb} {noun} {_russian_join(places)}."
