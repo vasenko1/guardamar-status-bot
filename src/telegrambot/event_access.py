@@ -804,6 +804,20 @@ def plan_event_access_record(
         previous,
         audience_known,
     ))
+    cancelled_now = any(
+        notice.kind == "event-cancelled"
+        for notice in notices
+    )
+    if cancelled_now:
+        candidate["sent_triggers"] = sent_order
+        operation = "reply" if root_id is not None else "root"
+        return EventAccessDecision(
+            candidate,
+            tuple(notices),
+            operation,
+            root_id if operation == "reply" else None,
+        )
+
     for option in record.options:
         old = prior_options.get(option.option_id)
         if old is None:
