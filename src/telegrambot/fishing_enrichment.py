@@ -48,7 +48,8 @@ _PDF_PARSE_TIMEOUT_SECONDS = 10.0
 _ENRICHMENT_FRESHNESS = timedelta(hours=36)
 _MAX_FEPYC_AUTHORITIES = 4
 _MAX_FPCV_DETAILS = 4
-_STATE_VERSION = 1
+_FEPYC_STATE_VERSION = 1
+_FPCV_DETAILS_STATE_VERSION = 2
 
 _FEPYC_SPECS = (
     {
@@ -319,7 +320,7 @@ def _authority_record_valid(record: Any) -> bool:
 def valid_fepyc_authority_state(value: Any) -> bool:
     if not isinstance(value, dict) or set(value) != {"version", "records"}:
         return False
-    if value.get("version") != _STATE_VERSION:
+    if value.get("version") != _FEPYC_STATE_VERSION:
         return False
     records = value.get("records")
     return (
@@ -476,7 +477,7 @@ async def refresh_fepyc_authority(
             record = old
         records.append(record)
 
-    state = {"version": _STATE_VERSION, "records": records}
+    state = {"version": _FEPYC_STATE_VERSION, "records": records}
     if not valid_fepyc_authority_state(state):
         raise FishingEnrichmentError(
             "FEPyC authority state failed validation", code="STATE"
@@ -1008,7 +1009,7 @@ def parse_fpcv_convocatoria_text(
     }
 
 
-_DETAILS_KEYS = {
+_DETAILS_V1_KEYS = {
     "join_key",
     "base_start",
     "base_level",
@@ -1029,24 +1030,26 @@ _DETAILS_KEYS = {
     "registration_fee_cents",
     "observed_at",
 }
+_DETAILS_V2_KEYS = _DETAILS_V1_KEYS | {"source_id"}
 
 
 def _details_record_valid(record: Any) -> bool:
     if not isinstance(record, dict):
         return False
     keys = set(record)
-    if not _DETAILS_KEYS.issubset(keys):
-        return False
-    if keys - (_DETAILS_KEYS | {"source_id"}):
-        return False
-    source_id = record.get("source_id")
-    if (
-        source_id is not None
-        and (
-            not isinstance(source_id, str)
-            or re.fullmatch(r"\d{1,3}/\d{2}", source_id) is None
-        )
-    ):
+    if keys == _DETAILS_V1_KEYS:
+        source_id = None
+    elif keys == _DETAILS_V2_KEYS:
+        source_id = record["source_id"]
+        if (
+            source_id is not None
+            and (
+                not isinstance(source_id, str)
+                or re.fullmatch(r"\d{1,3}/\d{2}", source_id) is None
+            )
+        ):
+            return False
+    else:
         return False
     if not isinstance(record["join_key"], str) or not record["join_key"]:
         return False
@@ -1095,6 +1098,8 @@ def _details_record_valid(record: Any) -> bool:
             )
         )
 
+    if keys == _DETAILS_V2_KEYS and source_id is None:
+        return False
     if (
         not isinstance(record["content_sha256"], str)
         or not re.fullmatch(r"[0-9a-f]{64}", record["content_sha256"])
@@ -1148,13 +1153,24 @@ def _details_record_valid(record: Any) -> bool:
 def valid_fpcv_details_state(value: Any) -> bool:
     if not isinstance(value, dict) or set(value) != {"version", "records"}:
         return False
-    if value.get("version") != _STATE_VERSION:
+    version = value.get("version")
+    if version not in {1, _FPCV_DETAILS_STATE_VERSION}:
         return False
     records = value.get("records")
+    expected_keys = (
+        _DETAILS_V1_KEYS
+        if version == 1
+        else _DETAILS_V2_KEYS
+    )
     if (
         not isinstance(records, list)
         or len(records) > _MAX_FPCV_DETAILS
-        or not all(_details_record_valid(record) for record in records)
+        or not all(
+            isinstance(record, dict)
+            and set(record) == expected_keys
+            and _details_record_valid(record)
+            for record in records
+        )
     ):
         return False
     keys = [record["join_key"] for record in records]
@@ -1208,7 +1224,7 @@ async def refresh_fpcv_details(
     if now.tzinfo is None or now.utcoffset() is None:
         raise ValueError("FPCV details time must be timezone-aware")
     if not base_events:
-        empty = {"version": _STATE_VERSION, "records": []}
+        empty = {"version": _FPCV_DETAILS_STATE_VERSION, "records": []}
         await asyncio.to_thread(_write_json, state_path, empty)
         return ()
 
@@ -1292,7 +1308,10 @@ async def refresh_fpcv_details(
             continue
         records.append(record)
 
-    state = {"version": _STATE_VERSION, "records": records}
+    state = {
+        "version": _FPCV_DETAILS_STATE_VERSION,
+        "records": records,
+    }
     if not valid_fpcv_details_state(state):
         raise FishingEnrichmentError(
             "FPCV details state failed validation", code="STATE"
