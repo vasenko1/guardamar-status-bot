@@ -267,6 +267,12 @@ Implementation review discovered and corrected:
 The final source-specific bounds are intentionally small and no generic
 document framework, new cron, daemon or Event Access fetch path was introduced.
 
+Sports Slice G later evolves only the regenerable FPCV details snapshot to
+version 2 so the same 05:10 parser can retain the official convocatoria number
+needed by ADR 0103 for stable EventAccess identity. The reader remains able to
+consume legacy details v1; no second PDF fetch/parser path or EventAccess state
+migration is added.
+
 
 The reviewed provincial parser also cross-checks the programme against the
 declared two three-hour heats. A changed heat count/duration or programme whose

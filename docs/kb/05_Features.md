@@ -188,10 +188,11 @@ browser worker or generic status framework is introduced.
 
 ## One-off event registration notices
 
-Official one-off events may publish a compact registration lifecycle before
-their event day when the responsible first-party source exposes an actionable
-registration state or exact registration boundary. The first source is
-CONVEGA's guided GR-92 campaign.
+Official one-off events may publish a compact access lifecycle before their
+event day when the responsible first-party source exposes an actionable
+registration, reservation or ticket state/boundary. The enabled sources are
+CONVEGA's guided GR-92 campaign and reviewed FPCV convocatoria details for
+Guardamar fishing.
 
 The source layer keeps one small normalized local catalogue that also projects
 ordinary `Event` rows into Morning, Tomorrow and Weekend. Registration
@@ -225,9 +226,12 @@ delivery never does.
 
 The implementation uses bounded source-specific parsing only: no browser,
 source-side AI, database, queue, daemon or generic notification framework.
-CONVEGA remains the only enabled event-access source until another adapter
-passes its exact identity, action/status, correction and freshness gate. See
-ADRs 0089-0092.
+FPCV is the second enabled source under ADR 0103. Its EventAccess identity is
+the source-assigned convocatoria number (for example `43/26`), while the
+existing Pesca CV refresh remains solely responsible for HTTP/PDF parsing.
+Legacy FPCV details v1 is readable but not proactive-access actionable until a
+normal refresh supplies the identity-bearing v2 observation. See ADRs
+0089-0092 and 0103.
 
 ## Weekend events digest
 
