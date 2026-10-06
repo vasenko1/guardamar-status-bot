@@ -177,10 +177,64 @@ class SourceContractTests(unittest.TestCase):
             if item.event_id == "spirits_anis:mapa-2026:chinchon-dulce"
         )
         self.assertEqual(anis.selection_key, "spirits_anis:2026")
+        self.assertEqual(anis.source_name, "BOE")
+        self.assertEqual(anis.source_hosts, frozenset({"www.boe.es"}))
+        self.assertIn("BOE-A-2026-16080", anis.source_url)
+        self.assertEqual(
+            anis.source_markers,
+            (
+                "Orden APA/744/2026",
+                "Anís Chinchón de la Alcoholera Dulce",
+                "Gonzalez Byass Distribucion",
+            ),
+        )
         self.assertEqual(anis.retailer, "DIA")
         self.assertEqual(anis.retailer_kind, "dia")
         self.assertEqual(anis.product_id, 275359)
         self.assertTrue(anis.retailer_url.endswith("/p/275359"))
+
+        cheese = next(
+            item
+            for item in items
+            if item.event_id
+            == "hard_mixed_milk_cheese:wccc-2026:"
+            "entrepinares-seleccion-tostado"
+        )
+        self.assertEqual(cheese.package_label, "кусок, переменный вес")
+
+    def test_anis_award_uses_exact_boe_order_contract(self):
+        item = next(
+            candidate
+            for category in awards.CATEGORIES
+            for source in category.sources
+            for candidate in source.candidates
+            if candidate.event_id == "spirits_anis:mapa-2026:chinchon-dulce"
+        )
+        valid = (
+            "<html><body>"
+            "Orden APA/744/2026 "
+            "Anís Chinchón de la Alcoholera Dulce "
+            "Gonzalez Byass Distribucion"
+            "</body></html>"
+        )
+        with patch.object(awards, "_fetch_html", return_value=valid):
+            awards._verify_award(item)
+
+        for missing in item.source_markers:
+            with self.subTest(missing=missing):
+                with patch.object(
+                    awards,
+                    "_fetch_html",
+                    return_value=valid.replace(missing, ""),
+                ):
+                    with self.assertRaises(
+                        awards.ProductAwardError
+                    ) as caught:
+                        awards._verify_award(item)
+                self.assertEqual(
+                    caught.exception.diagnostic_code,
+                    "AWARD-DRIFT",
+                )
 
     def test_wccc_award_requires_top20_and_class_identity(self):
         item = next(
@@ -1279,6 +1333,32 @@ class StateTests(unittest.TestCase):
             self.assertIn("event", state.published_events())
             self.assertEqual(state.category_cursor(), 2)
 
+    def test_eighth_category_never_persists_legacy_incompatible_cursor(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = ProductAwardState(Path(directory) / "awards.json")
+
+            state.mark_uncertain("category-six")
+            state.confirm(
+                "category-six",
+                "category-six:2026",
+                6,
+                date(2026, 9, 27),
+            )
+            self.assertEqual(state.category_cursor(), 0)
+
+            state.mark_uncertain("category-seven")
+            state.confirm(
+                "category-seven",
+                "category-seven:2026",
+                7,
+                date(2026, 9, 30),
+            )
+            self.assertEqual(state.category_cursor(), 1)
+            self.assertLess(
+                state.category_cursor(),
+                awards.ROLLBACK_SAFE_CURSOR_SLOTS,
+            )
+            self.assertIn(7, awards._category_order(state.category_cursor()))
 
     def test_current_production_state_shape_is_valid_after_registry_rebuild(self):
         with tempfile.TemporaryDirectory() as directory:
