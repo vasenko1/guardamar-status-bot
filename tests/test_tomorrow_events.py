@@ -6,6 +6,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from telegrambot.mayor import MayorChannelError
+from telegrambot.morning import _merge_events
 from telegrambot.models import Event
 from telegrambot.municipal_agenda import (
     SourceEvent,
@@ -64,6 +65,84 @@ class TomorrowEventScheduleTests(unittest.TestCase):
         self.assertFalse(tomorrow_notice_due(
             datetime(2026, 9, 26, 19, 25, tzinfo=TZ)
         ))
+
+
+class FinalEventMergeLiturgicalAliasTests(unittest.TestCase):
+    def test_rosario_mass_alias_collapses_at_final_event_merge(self):
+        when = datetime(2026, 10, 7, 19, 0, tzinfo=TZ)
+        parent = "FIESTAS EN HONOR A LA VIRGEN DEL ROSARIO 2026"
+        official = Event(
+            title="Торжественная евхаристия",
+            starts_at=when,
+            place="Plaza de la Constitución",
+            programme_title=parent,
+            programme_order=40,
+        )
+        supplemental = Event(
+            title="Месса в исполнении хора «Аромахес-де-Гардамар»",
+            starts_at=when,
+            place="plaza de la Constitución",
+        )
+
+        merged = _merge_events((official,), (supplemental,))
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0].title, official.title)
+        self.assertEqual(merged[0].programme_title, parent)
+        self.assertEqual(merged[0].programme_order, 40)
+
+    def test_liturgical_alias_does_not_merge_different_place(self):
+        when = datetime(2026, 10, 7, 19, 0, tzinfo=TZ)
+        official = Event(
+            title="Торжественная евхаристия",
+            starts_at=when,
+            place="Plaza de la Constitución",
+        )
+        supplemental = Event(
+            title="Месса в исполнении хора «Аромахес-де-Гардамар»",
+            starts_at=when,
+            place="Iglesia parroquial San Jaime Apóstol",
+        )
+
+        self.assertEqual(
+            len(_merge_events((official,), (supplemental,))),
+            2,
+        )
+
+    def test_same_time_place_organ_concert_remains_distinct(self):
+        when = datetime(2026, 10, 7, 19, 0, tzinfo=TZ)
+        official = Event(
+            title="Торжественная евхаристия",
+            starts_at=when,
+            place="Plaza de la Constitución",
+        )
+        distinct = Event(
+            title="Концерт органной музыки",
+            starts_at=when,
+            place="Plaza de la Constitución",
+        )
+
+        self.assertEqual(
+            len(_merge_events((official,), (distinct,))),
+            2,
+        )
+
+    def test_liturgical_alias_does_not_merge_different_time(self):
+        official = Event(
+            title="Торжественная евхаристия",
+            starts_at=datetime(2026, 10, 7, 19, 0, tzinfo=TZ),
+            place="Plaza de la Constitución",
+        )
+        supplemental = Event(
+            title="Месса в исполнении хора «Аромахес-де-Гардамар»",
+            starts_at=datetime(2026, 10, 7, 20, 0, tzinfo=TZ),
+            place="Plaza de la Constitución",
+        )
+
+        self.assertEqual(
+            len(_merge_events((official,), (supplemental,))),
+            2,
+        )
 
 
 class TomorrowEventStateTests(unittest.TestCase):

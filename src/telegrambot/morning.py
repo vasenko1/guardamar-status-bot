@@ -407,6 +407,32 @@ def _merge_events(*groups):
             len(left_words), len(right_words)
         )
 
+    def same_liturgical_alias(left, right):
+        """Bridge only misa/eucaristía wording at one exact occurrence."""
+
+        if (
+            left.starts_at is None
+            or right.starts_at is None
+            or left.starts_at != right.starts_at
+            or left.place is None
+            or right.place is None
+            or overlap(left.place, right.place) < 0.5
+        ):
+            return False
+
+        left_words = normalized_words(left.title)
+        right_words = normalized_words(right.title)
+        mass_words = {"misa", "месса"}
+        eucharist_words = {"eucaristia", "евхаристия"}
+
+        return (
+            bool(left_words & mass_words)
+            and bool(right_words & eucharist_words)
+        ) or (
+            bool(left_words & eucharist_words)
+            and bool(right_words & mass_words)
+        )
+
     def agenda_booking_identity(value):
         """Return one occurrence-specific Agenda booking identity."""
 
@@ -501,6 +527,7 @@ def _merge_events(*groups):
                 if (
                     exact_title
                     or same_booking
+                    or same_liturgical_alias(current, event)
                     or (
                         not same_known_sport
                         and (
@@ -525,6 +552,7 @@ def _merge_events(*groups):
                 )
                 title_or_place_match = (
                     normalized_title == normalize_title(current.title)
+                    or same_liturgical_alias(current, event)
                     or overlap(current.title, event.title) >= 0.5
                     or (
                         overlap(current.title, event.title) >= 0.2

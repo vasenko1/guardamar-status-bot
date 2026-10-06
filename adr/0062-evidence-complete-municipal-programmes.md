@@ -358,3 +358,22 @@ rather than moving repeated places to a programme-level block.  This amendment
 adds no request, model call, dependency, state, scheduler or source-specific
 7 October correction.
 
+## 6 October 2026 production follow-up: final Event merge alias
+
+The first Rosario repair correctly reconciled source-level programme parents and
+kept the Todo raw-row alias narrow, but the guarded production preview still
+contained two 19:00 Plaza de la Constitución events.  The remaining duplicate
+was not created by source normalization: the final shared Event merge runs
+after local catalogues are converted to resident-facing translated titles.
+There, `Торжественная евхаристия` and
+`Месса в исполнении хора «Аромахес-де-Гардамар»` have no lexical overlap, so
+the ordinary title thresholds cannot prove identity even though the occurrence
+time and place are identical.
+
+The final merger may therefore bridge only the semantic pair
+`misa/месса` ↔ `eucaristía/евхаристия` when both events have the exact same
+non-null start timestamp and compatible explicit places.  It does not add a
+generic same-time or same-place merge and leaves different acts such as an
+organ concert separate.  The earlier source-level constraints and per-event
+venue rendering remain unchanged.
+
