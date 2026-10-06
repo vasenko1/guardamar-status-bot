@@ -28,6 +28,9 @@ jobs:
       - name: Compile source and tests
         run: python -m compileall -q src tests
 
+      - name: Check patch whitespace
+        run: git diff --check origin/main...HEAD
+
       - name: Run focused event-access and sports tests
         run: |
           python -m unittest             tests.test_event_access             tests.test_event_registration_notifications             tests.test_sports_foundation
