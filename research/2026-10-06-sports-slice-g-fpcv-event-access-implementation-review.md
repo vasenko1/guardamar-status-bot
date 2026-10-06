@@ -1,8 +1,8 @@
 # Sports Slice G — FPCV EventAccess implementation review
 
-Date: 2026-10-06  
-Branch: `feat/fpcv-event-access`  
-Base: `e60ddbf75fd3f16c2c0ec88c703e83cdc840716f`
+Date: 2026-10-06
+Branch: `feat/fpcv-event-access-main`
+Base: `946353651fd858bf69ae54b0ff0be727aed2336f`
 
 ## Scope
 
