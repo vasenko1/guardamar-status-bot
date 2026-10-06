@@ -85,9 +85,18 @@ Migration remains an explicit operator action under the same lifecycle lock.
 Existing v1 state may migrate directly to v3 through the same explicit command
 and retains the existing v1 backup contract.
 
+Before the first confirmed v3 root/reply, an operator may roll back the code and
+restore the exact v2 backup. After any confirmed v3 publication, restoring v2
+is unsafe because v2 cannot represent the new material correction/history
+semantics; use a forward fix or explicit reconciliation instead.
+
 ## Decision
 
 ### State version 2 is event-centric and flat per record
+
+This subsection records the deployed historical v2 shape. The 2026-10-06 v3
+refinement above supersedes only the material-context persistence and migration
+parts; the event-centric ownership/bounds remain unchanged.
 
 Use one exact bounded entry per lifecycle record.
 
