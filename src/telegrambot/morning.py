@@ -474,6 +474,11 @@ def _merge_events(*groups):
                 ):
                     continue
                 current_booking = agenda_booking_identity(current.ticket_url)
+                same_known_sport = (
+                    current.sport is not None
+                    and event.sport is not None
+                    and current.sport == event.sport
+                )
                 if (
                     current_booking is not None
                     and event_booking is not None
@@ -486,18 +491,27 @@ def _merge_events(*groups):
                     or current.starts_at == event.starts_at
                 ):
                     continue
-                if (
+                same_booking = (
+                    current_booking is not None
+                    and current_booking == event_booking
+                )
+                exact_title = (
                     normalized_title == normalize_title(current.title)
-                    or overlap(current.title, event.title) >= 0.5
+                )
+                if (
+                    exact_title
+                    or same_booking
                     or (
-                        current_booking is not None
-                        and current_booking == event_booking
-                    )
-                    or (
-                        overlap(current.title, event.title) >= 0.2
-                        and current.place is not None
-                        and event.place is not None
-                        and overlap(current.place, event.place) >= 0.5
+                        not same_known_sport
+                        and (
+                            overlap(current.title, event.title) >= 0.5
+                            or (
+                                overlap(current.title, event.title) >= 0.2
+                                and current.place is not None
+                                and event.place is not None
+                                and overlap(current.place, event.place) >= 0.5
+                            )
+                        )
                     )
                 ):
                     duplicate_index = index
