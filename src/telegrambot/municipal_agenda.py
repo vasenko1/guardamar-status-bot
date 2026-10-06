@@ -952,8 +952,11 @@ def _canonicalize_todo_programme_aliases(
                 & _claim_words(row)
             ) - {"con"}
             if (
-                len(shared_claims) >= 2
-                and _word_overlap(candidate.title_es, row) >= 0.5
+                (
+                    len(shared_claims) >= 2
+                    and _word_overlap(candidate.title_es, row) >= 0.5
+                )
+                or _todo_mass_eucharist_alias(candidate, todo_event, row)
             ):
                 candidates.append(candidate)
 
