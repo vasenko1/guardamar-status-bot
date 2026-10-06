@@ -860,6 +860,92 @@ class EventAccessPlannerTests(unittest.TestCase):
             ["event-cancelled"],
         )
 
+    def test_missing_status_does_not_clear_prior_cancellation(self):
+        previous = candidate_record_state(
+            record(occurrence_status="cancelled"),
+            None,
+        )
+        previous["audience_known"] = True
+        previous["root_message_id"] = 100
+
+        decision = plan_event_access_record(
+            record(occurrence_status=None),
+            previous,
+            NOW,
+        )
+
+        self.assertEqual(
+            decision.candidate_record["occurrence_status"],
+            "cancelled",
+        )
+        self.assertNotIn(
+            "event-restored",
+            [notice.kind for notice in decision.notices],
+        )
+
+    def test_explicit_scheduled_status_restores_cancelled_event(self):
+        previous = candidate_record_state(
+            record(occurrence_status="cancelled"),
+            None,
+        )
+        previous["audience_known"] = True
+        previous["root_message_id"] = 100
+
+        decision = plan_event_access_record(
+            record(occurrence_status="scheduled"),
+            previous,
+            NOW,
+        )
+
+        self.assertEqual(
+            [notice.kind for notice in decision.notices],
+            ["event-restored"],
+        )
+        self.assertEqual(
+            decision.candidate_record["occurrence_status"],
+            "scheduled",
+        )
+
+    def test_title_only_change_is_not_material_event_notice(self):
+        previous = candidate_record_state(
+            record(title="Open Guardamar"),
+            None,
+        )
+        previous["audience_known"] = True
+        previous["root_message_id"] = 100
+
+        decision = plan_event_access_record(
+            record(title="Open Guardamar 2026"),
+            previous,
+            NOW,
+        )
+
+        self.assertNotIn(
+            "event-details-changed",
+            [notice.kind for notice in decision.notices],
+        )
+
+    def test_prior_cancelled_state_rejects_implicit_open_revival(self):
+        previous = candidate_record_state(
+            record(occurrence_status="cancelled"),
+            None,
+        )
+        previous["audience_known"] = True
+        previous["root_message_id"] = 100
+
+        with self.assertRaises(EventAccessStateError):
+            plan_event_access_record(
+                record(
+                    option(
+                        status="open",
+                        action_url="https://example.com/register",
+                    ),
+                    occurrence_status=None,
+                ),
+                previous,
+                NOW,
+            )
+
     def test_cancelled_event_cannot_keep_open_access(self):
         with self.assertRaises(ValueError):
             candidate_record_state(
