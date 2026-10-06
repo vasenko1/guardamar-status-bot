@@ -223,7 +223,6 @@ def _other_streets(event: HidraquaEvent) -> str:
     streets = _street_list(event.streets)
     if not streets:
         return ""
-    _, urbanization = _address_parts(event.address)
     places = [f"<b>{html.escape(street)}</b>" for street in streets]
     noun = "улица" if len(places) == 1 else "улицы"
     verb = "затронута" if len(places) == 1 else "затронуты"
