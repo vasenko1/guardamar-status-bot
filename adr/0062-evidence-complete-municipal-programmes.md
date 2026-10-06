@@ -377,3 +377,18 @@ generic same-time or same-place merge and leaves different acts such as an
 organ concert separate.  The earlier source-level constraints and per-event
 venue rendering remain unchanged.
 
+## 6 October 2026 editorial wording follow-up
+
+The official 7 October programme names `Rosario de la Aurora Nuestra Señora del
+Rosario`, the Vegamanía `pasacalles`, and a `Gran Castillo de Fuegos
+Artificiales`.  Operator review replaces unstable machine transliterations
+with exact resident-facing Russian titles through the existing reviewed
+translation table, so the same wording is used by both Tomorrow Events and the
+next morning digest even when an older translation-cache entry exists.
+
+The official poster does not publish a clock time for the fireworks.  It says
+that the fireworks are fired after the procession finishes, so the reviewed
+day-specific schedule rule adds only `После окончания процессии`; it does not
+invent an approximate time.  The rule is bounded to the exact 7 October 2026
+fireworks occurrence and changes no generic programme or translation logic.
+
