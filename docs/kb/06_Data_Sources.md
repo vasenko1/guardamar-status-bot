@@ -820,13 +820,14 @@ For each evaluated source, record:
 Product Awards use a reviewed source catalogue rather than autonomous web
 discovery. Durable category/source/rank rules are in ADR 0083, exact rich
 delivery in ADR 0084, resilience/retailer preference in ADR 0093, the
-quality-first registry rebuild in ADR 0095, and photo-first media sourcing in
-ADR 0096. Dated evidence is in
+quality-first registry rebuild in ADR 0095, photo-first media sourcing in
+ADR 0096, and the Mercadona/WCCC + DIA expansion in ADR 0104. Dated evidence is in
 `research/2026-09-25-supermarket-product-awards.md`,
 `research/2026-10-03-product-awards-publication-gap.md`,
 `research/2026-10-03-product-awards-retailer-balance-audit.md`,
-`research/2026-10-03-product-awards-quality-pool-rebuild.md` and
-`research/2026-10-04-product-awards-methodology-copy-review.md`.
+`research/2026-10-03-product-awards-quality-pool-rebuild.md`,
+`research/2026-10-04-product-awards-methodology-copy-review.md` and
+`research/2026-10-06-product-awards-mercadona-wccc-dia.md`.
 
 Current production award-authority contracts are:
 
@@ -843,11 +844,16 @@ Current production award-authority contracts are:
   Alcoholera Dulce in Mejor Bebida Espirituosa con Indicación Geográfica.
 - **World Beer Awards 2026:** reviewed result pages provide Ambar Especial and
   Mahou Sin Filtrar gold/country-winner facts.
+- **World Championship Cheese Contest 2026:** the official Top-20 page pins
+  Class 114, `Seleccion Tostado Mixed Milk Cheese Extra Aged` and Queserías
+  Entrepinares. Production admission is deliberately narrower than ordinary
+  class medals: reviewed class winner plus Championship Round/Top-20.
 
 Methodology copy is a separate reviewed source contract. OCU uses distinct
 procedure text for cava, gazpacho, AOVE and coffee capsules; the common World
 Beer Awards judging ladder is shared across the two reviewed beer styles; MAPA
-spirits uses the 2026 competition's sensory-plus-jury procedure. The public
+spirits uses the 2026 competition's sensory-plus-jury procedure; WCCC uses the
+reviewed technical 100-point defect-deduction procedure and class-medal rule. The public
 methodology quote describes only the testing/selection process and deliberately
 omits candidate identity, result, score/rank, retailer, price, sample count and
 highlight. Unknown source/category methodology is a configuration failure, not
@@ -862,13 +868,18 @@ Current exact-retail contracts are source-specific:
 
 - **ALDI / NALTROS:** healthy exact Next.js product payload required; the
   current `hasError=true` state fails closed as `RETAIL-PAGE-ERROR`.
-- **Carrefour / Realfooding, Oleoestepa, Anís Chinchón:** use the exact public
-  supermarket product page with the reviewed navigation header profile, exact
-  identity markers and price scoped to the exact title card ending at
-  `Añadir`. Marketplace cards are not accepted.
-- **DIA / AROM'ARTE Intenso:** same bounded SSR contract; exact SKU/title,
-  Toscaf and Nespresso markers are required. Header/cart `0,00 €` must never
-  be mistaken for the product-card price.
+- **Carrefour / Realfooding, Oleoestepa:** use the exact public supermarket
+  product page with the reviewed navigation header profile, exact identity
+  markers and price scoped to the exact title card ending at `Añadir`.
+  Marketplace cards are not accepted.
+- **DIA / AROM'ARTE Intenso, Anís Chinchón:** use the same bounded SSR contract.
+  AROM'ARTE pins its exact SKU/title, Toscaf and Nespresso markers; Anís pins
+  exact SKU 275359/title plus González Byass and Spain markers. Header/cart
+  `0,00 €` must never be mistaken for the product-card price.
+- **Mercadona / Entrepinares:** one exact JSON GET for SKU 50952 at warehouse
+  `alc1`; require exact ID/EAN/title/brand/supplier, current published state,
+  no active unavailability and positive approximate variable-weight piece/kg
+  pricing. No catalogue search or postcode discovery is part of publication.
 - **Consum / Ambar:** exact JSON EAN/name/current-price contract; official
   `media[]` is preferred over stale base image fields.
 - **Masymas / Mahou:** exact JSON EAN/name/current-price contract; existing
@@ -894,7 +905,9 @@ Current primary image contracts are:
 - **Ambar Especial:** official Ambar Especial page and reviewed product-image
   alt;
 - **Mahou Sin Filtrar:** exact Mahou San Miguel product page and exact product
-  image alt.
+  image alt;
+- **Entrepinares/Hacendado:** exact Mercadona SKU 50952 `photos[]` asset on
+  the allowlisted `prod-mercadona.imgix.net` host.
 
 NALTROS currently has no second primary photo source because its exact ALDI
 product page itself remains unavailable. When that backend becomes healthy,
@@ -908,8 +921,9 @@ current retail evidence.
 
 Retailer diversity remains best-effort. It never authorizes a lower-ranked
 source result or weaker identity match, and it never suppresses the only valid
-product. Mercadona and Lidl remain research targets until a qualifying
-source-native category result also has an exact current retail match.
+product. Mercadona is represented only by the reviewed WCCC exception above;
+Lidl remains a research target until a qualifying source-native number-one
+result also has an exact current Spain retail match.
 
 ### CONVEGA one-off guided routes
 

@@ -75,6 +75,40 @@ def offer(
     )
 
 
+def mercadona_payload() -> dict:
+    return {
+        "id": "50952",
+        "ean": "8480000509529",
+        "display_name": "Queso añejo tostado mezcla Hacendado",
+        "brand": "Hacendado",
+        "published": True,
+        "status": None,
+        "is_variable_weight": True,
+        "unavailable_from": None,
+        "unavailable_weekdays": [],
+        "price_instructions": {
+            "approx_size": True,
+            "unit_price": "6.19",
+            "bulk_price": "16.74",
+            "unit_size": 0.37,
+            "size_format": "kg",
+        },
+        "details": {
+            "suppliers": [
+                {"name": "Queserías Entrepinares S.A.U."},
+            ],
+        },
+        "photos": [
+            {
+                "regular": (
+                    "https://prod-mercadona.imgix.net/images/exact.jpg"
+                    "?fit=crop&h=600&w=600"
+                ),
+            },
+        ],
+    }
+
+
 class SourceContractTests(unittest.TestCase):
     def test_award_fetch_keeps_lightweight_headers(self):
         item = candidate("award")
@@ -101,7 +135,7 @@ class SourceContractTests(unittest.TestCase):
             for item in source.candidates
         ]
 
-        self.assertEqual(len(awards.CATEGORIES), 7)
+        self.assertEqual(len(awards.CATEGORIES), 8)
         self.assertFalse(any(item.source_kind == "producto_del_ano" for item in items))
         self.assertEqual(
             {item.category_key for item in items},
@@ -113,12 +147,81 @@ class SourceContractTests(unittest.TestCase):
                 "spirits_anis",
                 "international_lager",
                 "classic_pilsener",
+                "hard_mixed_milk_cheese",
             },
         )
         self.assertEqual(
             {item.retailer_kind for item in items},
-            {"aldi", "carrefour", "dia", "consum", "masymas"},
+            {"aldi", "carrefour", "dia", "consum", "masymas", "mercadona"},
         )
+        self.assertEqual(
+            tuple(category.key for category in awards.CATEGORIES[:7]),
+            (
+                "sparkling_cava",
+                "gazpacho",
+                "aove",
+                "coffee_capsules",
+                "spirits_anis",
+                "international_lager",
+                "classic_pilsener",
+            ),
+        )
+        self.assertEqual(
+            awards.CATEGORIES[-1].key,
+            "hard_mixed_milk_cheese",
+        )
+
+        anis = next(
+            item
+            for item in items
+            if item.event_id == "spirits_anis:mapa-2026:chinchon-dulce"
+        )
+        self.assertEqual(anis.selection_key, "spirits_anis:2026")
+        self.assertEqual(anis.retailer, "DIA")
+        self.assertEqual(anis.retailer_kind, "dia")
+        self.assertEqual(anis.product_id, 275359)
+        self.assertTrue(anis.retailer_url.endswith("/p/275359"))
+
+    def test_wccc_award_requires_top20_and_class_identity(self):
+        item = next(
+            candidate
+            for category in awards.CATEGORIES
+            if category.key == "hard_mixed_milk_cheese"
+            for source in category.sources
+            for candidate in source.candidates
+        )
+        valid = (
+            "<html><body>"
+            "2026 WCCC Top 20 Finalists "
+            "20 cheeses in the running for the top prize "
+            "Class #: 114 — Hard Mixed Milk Cheeses "
+            "Seleccion Tostado Mixed Milk Cheese Extra Aged "
+            "Queserías Entrepinares S.A.U."
+            "</body></html>"
+        )
+        with patch.object(awards, "_fetch_html", return_value=valid):
+            awards._verify_award(item)
+
+        for missing in (
+            "2026 WCCC Top 20 Finalists",
+            "Class #: 114",
+            "Seleccion Tostado Mixed Milk Cheese Extra Aged",
+        ):
+            with self.subTest(missing=missing):
+                drifted = valid.replace(missing, "")
+                with patch.object(
+                    awards,
+                    "_fetch_html",
+                    return_value=drifted,
+                ):
+                    with self.assertRaises(
+                        awards.ProductAwardError
+                    ) as caught:
+                        awards._verify_award(item)
+                self.assertEqual(
+                    caught.exception.diagnostic_code,
+                    "AWARD-DRIFT",
+                )
 
     def test_registry_identifiers_and_ordering_are_unique(self):
         categories = awards.CATEGORIES
@@ -221,6 +324,122 @@ class SourceContractTests(unittest.TestCase):
                 awards._html_retail_offer(item)
 
         self.assertEqual(caught.exception.diagnostic_code, "RETAIL-DRIFT")
+
+    def test_mercadona_exact_offer_accepts_reviewed_variable_weight_product(self):
+        item = next(
+            candidate
+            for category in awards.CATEGORIES
+            if category.key == "hard_mixed_milk_cheese"
+            for source in category.sources
+            for candidate in source.candidates
+        )
+        with patch.object(
+            awards,
+            "_fetch_json",
+            return_value=mercadona_payload(),
+        ):
+            result = awards._mercadona_offer(item)
+
+        self.assertEqual(
+            result.price,
+            "≈6,19 € за кусок ≈370 г; 16,74 €/кг",
+        )
+        self.assertEqual(
+            result.image_url,
+            "https://prod-mercadona.imgix.net/images/exact.jpg"
+            "?fit=crop&h=600&w=600",
+        )
+        self.assertEqual(
+            result.product_name,
+            "Queso añejo tostado mezcla Hacendado",
+        )
+
+    def test_mercadona_exact_offer_fails_closed_on_identity_drift(self):
+        item = next(
+            candidate
+            for category in awards.CATEGORIES
+            if category.key == "hard_mixed_milk_cheese"
+            for source in category.sources
+            for candidate in source.candidates
+        )
+        cases = (
+            ("ean", "ean", "999"),
+            ("supplier", "supplier", "Otro proveedor"),
+            ("title", "display_name", "Otro queso Hacendado"),
+            ("brand", "brand", "Otra marca"),
+        )
+        for label, field, value in cases:
+            payload = mercadona_payload()
+            if field == "supplier":
+                payload["details"]["suppliers"][0]["name"] = value
+            else:
+                payload[field] = value
+            with self.subTest(label=label):
+                with (
+                    patch.object(awards, "_fetch_json", return_value=payload),
+                    self.assertRaises(awards.ProductAwardError) as caught,
+                ):
+                    awards._mercadona_offer(item)
+                self.assertEqual(
+                    caught.exception.diagnostic_code,
+                    "RETAIL-DRIFT",
+                )
+
+    def test_mercadona_exact_offer_fails_closed_when_not_current(self):
+        item = next(
+            candidate
+            for category in awards.CATEGORIES
+            if category.key == "hard_mixed_milk_cheese"
+            for source in category.sources
+            for candidate in source.candidates
+        )
+        cases = (
+            ("published", "published", False),
+            ("status", "status", "inactive"),
+            ("unavailable_from", "unavailable_from", "2026-10-07"),
+            ("weekday", "unavailable_weekdays", [2]),
+        )
+        for label, field, value in cases:
+            payload = mercadona_payload()
+            payload[field] = value
+            with self.subTest(label=label):
+                with (
+                    patch.object(awards, "_fetch_json", return_value=payload),
+                    self.assertRaises(awards.ProductAwardError) as caught,
+                ):
+                    awards._mercadona_offer(item)
+                self.assertEqual(
+                    caught.exception.diagnostic_code,
+                    "RETAIL-UNAVAILABLE",
+                )
+
+    def test_mercadona_exact_offer_fails_closed_on_invalid_price_contract(self):
+        item = next(
+            candidate
+            for category in awards.CATEGORIES
+            if category.key == "hard_mixed_milk_cheese"
+            for source in category.sources
+            for candidate in source.candidates
+        )
+        cases = (
+            ("zero-unit-price", "unit_price", "0"),
+            ("zero-bulk-price", "bulk_price", "0"),
+            ("zero-unit-size", "unit_size", 0),
+            ("not-approximate", "approx_size", False),
+        )
+        for label, field, value in cases:
+            payload = mercadona_payload()
+            payload["price_instructions"][field] = value
+            with self.subTest(label=label):
+                with (
+                    patch.object(awards, "_fetch_json", return_value=payload),
+                    self.assertRaises(awards.ProductAwardError) as caught,
+                ):
+                    awards._mercadona_offer(item)
+                self.assertEqual(
+                    caught.exception.diagnostic_code,
+                    "RETAIL-DRIFT",
+                )
 
     def test_product_image_download_uses_resolved_source_hosts(self):
         url = (
@@ -888,6 +1107,17 @@ class RenderingTests(unittest.TestCase):
         self.assertNotIn("Country Winner", beer_methodology)
         self.assertNotIn("золото", beer_methodology.casefold())
 
+        cheese = next(
+            item
+            for item in items
+            if item.category_key == "hard_mixed_milk_cheese"
+        )
+        cheese_methodology = awards._methodology(cheese)
+        self.assertIn("100 возможных баллов", cheese_methodology)
+        self.assertIn("структуру и текстуру", cheese_methodology)
+        self.assertIn("Gold, Silver и Bronze", cheese_methodology)
+        self.assertNotIn("Top-20", cheese_methodology)
+
     def test_unknown_ocu_methodology_fails_closed(self):
         item = candidate(
             "unknown-methodology",
@@ -939,6 +1169,30 @@ class RenderingTests(unittest.TestCase):
         self.assertIn("0,75 €", message)
         self.assertIn("0,89 €", message)
         self.assertNotIn("Ambar Especial - бронзу", message)
+
+    def test_wccc_renderer_uses_class_winner_and_top20_wording_only(self):
+        item = next(
+            candidate
+            for category in awards.CATEGORIES
+            if category.key == "hard_mixed_milk_cheese"
+            for source in category.sources
+            for candidate in source.candidates
+        )
+        current_offer = RetailOffer(
+            retailer="Mercadona",
+            price="≈6,19 € за кусок ≈370 г; 16,74 €/кг",
+            image_url=None,
+            product_name=item.product_name,
+        )
+        message = build_message(item, current_offer)
+
+        self.assertIn("занял первое место в классе", message)
+        self.assertIn("Top-20 финального Championship Round", message)
+        self.assertIn("Mercadona", message)
+        self.assertIn("зависит от фактического веса", message)
+        self.assertIn("16,74 €/кг", message)
+        self.assertNotIn("чемпион мира", message.casefold())
+        self.assertNotIn("world's best", message.casefold())
 
     def test_ocu_sample_count_uses_correct_russian_declension(self):
         item = ReviewedCandidate(
