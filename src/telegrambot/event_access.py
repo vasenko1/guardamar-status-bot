@@ -200,7 +200,6 @@ _RECORD_FIELDS = frozenset({
     "access_kind",
     "event_start_date",
     "event_end_date",
-    "title",
     "place",
     "route",
     "schedule_note",
@@ -273,8 +272,6 @@ def _valid_record_state(value: Any) -> bool:
         not isinstance(value.get("source"), str)
         or not value["source"]
         or value.get("access_kind") not in ACCESS_KINDS
-        or not isinstance(value.get("title"), str)
-        or not value["title"].strip()
         or not isinstance(value.get("context_known"), bool)
         or value.get("occurrence_status") not in {
             None,
@@ -535,7 +532,6 @@ def candidate_record_state(
         "event_end_date": (
             record.event_end_date.isoformat() if record.event_end_date else None
         ),
-        "title": record.title.strip(),
         "place": keep_context("place", record.place),
         "route": keep_context("route", record.route),
         "schedule_note": keep_context("schedule_note", record.schedule_note),
@@ -988,7 +984,6 @@ def migrate_v2_state(value: Any) -> Dict[str, Any]:
     for record_id, item in records.items():
         migrated[record_id] = {
             **dict(item),
-            "title": record_id,
             "place": None,
             "route": None,
             "schedule_note": None,
@@ -1050,7 +1045,6 @@ def migrate_v1_state(value: Any) -> Dict[str, Any]:
             "access_kind": "registration",
             "event_start_date": item["event_start_date"],
             "event_end_date": item["event_end_date"],
-            "title": item["title"],
             "place": None,
             "route": None,
             "schedule_note": None,
