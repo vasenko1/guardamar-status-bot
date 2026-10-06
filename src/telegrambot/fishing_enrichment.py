@@ -1330,6 +1330,23 @@ def _record_is_fresh(record: dict, now: datetime) -> bool:
     return timedelta(0) <= now - observed <= _ENRICHMENT_FRESHNESS
 
 
+def _record_is_access_fresh(record: dict, now: datetime) -> bool:
+    """Require a non-future observation from the same Madrid local date."""
+
+    try:
+        observed = datetime.fromisoformat(record["observed_at"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    if observed.tzinfo is None or observed.utcoffset() is None:
+        return False
+    if observed > now:
+        return False
+    return (
+        observed.astimezone(GUARDAMAR_TIMEZONE).date()
+        == now.astimezone(GUARDAMAR_TIMEZONE).date()
+    )
+
+
 def fpcv_details_are_access_fresh(
     now: datetime,
     state_path: Path = Path(DEFAULT_FPCV_DETAILS_STATE_PATH),
@@ -1345,7 +1362,8 @@ def fpcv_details_are_access_fresh(
     if state is None:
         return False
     return any(
-        record.get("source_id") is not None and _record_is_fresh(record, now)
+        record.get("source_id") is not None
+        and _record_is_access_fresh(record, now)
         for record in state["records"]
     )
 
@@ -1356,7 +1374,7 @@ def fpcv_access_record(
 ) -> Optional[EventAccessRecord]:
     """Project one accepted normalized FPCV detail into Event Access."""
 
-    if not _details_record_valid(raw) or not _record_is_fresh(raw, now):
+    if not _details_record_valid(raw) or not _record_is_access_fresh(raw, now):
         return None
     source_id = raw.get("source_id")
     if (
