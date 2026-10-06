@@ -437,6 +437,8 @@ def _root_heading(record: EventAccessRecord, kind: str) -> str:
         return "⛔ <b>Событие отменено</b>"
     if kind == "event-postponed":
         return "⏸ <b>Событие перенесено</b>"
+    if kind == "event-restored":
+        return "✅ <b>Событие снова подтверждено</b>"
     return _access_copy(
         record,
         kind if kind in _ACCESS_COPY[record.access_kind] else "open",
@@ -565,6 +567,8 @@ def _reply_block(
         return ("⛔ <b>Событие отменено</b>",)
     if notice.kind == "event-postponed":
         return ("⏸ <b>Событие перенесено</b>",)
+    if notice.kind == "event-restored":
+        return ("✅ <b>Событие снова подтверждено</b>",)
 
     if notice.option_id is None:
         raise ValueError("option notice requires option_id")
