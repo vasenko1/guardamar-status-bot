@@ -108,3 +108,26 @@ Implement only:
 
 Do not change selector logic, retailer preference, state schema, cooldown, cron,
 AI/browser dependencies or add a dead Lidl adapter.
+
+
+## Production validation follow-up
+
+A read-only Termux probe on 2026-10-06 proved:
+
+- official BOE order `APA/744/2026` returns HTTP 200 under the production
+  Python/OpenSSL trust store and contains the exact order, Anís product and
+  Gonzalez Byass identity markers;
+- the former MAPA presentation page fails production TLS verification with a
+  self-signed certificate in the presented chain, so runtime must not weaken
+  certificate verification to keep using it;
+- exact DIA SKU 275359 is current at 13,43 €;
+- the WCCC Top-20/Class 114 award contract passes;
+- exact Mercadona Guardamar warehouse SKU 50952 passes identity, availability,
+  variable-weight price and official JPEG media checks at approximately
+  6,19 € per 370 g piece and 16,74 €/kg;
+- the production Product Awards state hash remained unchanged throughout.
+
+The follow-up therefore moves only Anís award evidence to BOE, keeps the same
+event/selection identity and DIA retail object, removes the hard-coded
+approximate cheese weight from static package metadata, and caps persisted
+category cursors to the legacy-safe `0..6` range without changing state schema.
