@@ -263,7 +263,7 @@ class FishingEnrichmentTests(unittest.TestCase):
         self.assertEqual(record["registration_method"], "clubs")
         self.assertEqual(record["registration_fee_cents"], 2000)
         self.assertTrue(
-            valid_fpcv_details_state({"version": 1, "records": [record]})
+            valid_fpcv_details_state({"version": 2, "records": [record]})
         )
 
     def test_pdf_parser_requires_stable_convocatoria_number(self):
@@ -383,7 +383,7 @@ class FishingEnrichmentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "details.json"
             path.write_text(
-                json.dumps({"version": 1, "records": [raw]}),
+                json.dumps({"version": 2, "records": [raw]}),
                 encoding="utf-8",
             )
             self.assertFalse(
@@ -555,7 +555,7 @@ class FishingEnrichmentTests(unittest.TestCase):
             fetch_index.assert_not_awaited()
             self.assertEqual(
                 json.loads(state.read_text(encoding="utf-8")),
-                {"version": 1, "records": []},
+                {"version": 2, "records": []},
             )
 
     def test_legacy_same_document_is_reextracted_once_to_backfill_source_id(self):
@@ -883,7 +883,7 @@ class FishingEnrichmentTests(unittest.TestCase):
             self.assertEqual(second, ())
             self.assertEqual(
                 json.loads(state.read_text(encoding="utf-8")),
-                {"version": 1, "records": []},
+                {"version": 2, "records": []},
             )
 
     def test_changed_pdf_bytes_with_parse_failure_withhold_old_detail(self):
@@ -947,7 +947,7 @@ class FishingEnrichmentTests(unittest.TestCase):
             self.assertEqual(second, ())
             self.assertEqual(
                 json.loads(state.read_text(encoding="utf-8")),
-                {"version": 1, "records": []},
+                {"version": 2, "records": []},
             )
 
     def test_pdf_programme_must_match_declared_heat_duration(self):
