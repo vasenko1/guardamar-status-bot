@@ -102,15 +102,22 @@ boundary from ADR 0092 still applies.
 
 ## Automated validation
 
-Temporary GitHub Actions validation on application commit
-`2cea4ad9124941b9e0b3414f7ceecd646cbaccaa`:
+The application changes first passed their feature-branch gate, then were
+rebuilt on top of current `main@946353651fd858bf69ae54b0ff0be727aed2336f`
+so the final gate exercised the real combined tree, including the later
+Hidraqua main change.
+
+Integration validation on commit
+`593533cd16d659ccec431359d3d919049977de01`:
 
 - Python 3.12 compile: PASS;
-- `git diff --check`: PASS;
+- `git diff --check 946353651... HEAD`: PASS;
 - focused FPCV/Pesca/EventAccess/Sports suite: **146 tests PASS**;
-- full repository `unittest discover`: **1741 tests PASS**.
+- full repository `unittest discover`: **1743 tests PASS**.
 
-The temporary workflow is not part of the intended final branch diff.
+The earlier pre-integration application gate also passed 146 focused and 1741
+full-suite tests. The temporary workflow is not part of the intended final
+branch diff.
 
 ## Remaining production gates
 
