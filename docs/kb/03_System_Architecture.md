@@ -72,7 +72,7 @@ no message.
 | TomTom road/lane closures | Hourly at `:37` | One bounded Guardamar snapshot; strict provider-ID reconciliation preserves the physical closure lifecycle before two-snapshot end confirmation, so source ID churn cannot create false reopen/new-close messages. |
 | Transport | 05:00 sync, 08:42 notification | Owns and repairs the dynamic airport, Alicante, Elche, Orihuela and Zenia Boulevard cards; reconciles transport state and publishes accepted schedule/service/fare changes. |
 | Linked guide + courses | 09:02 sync; course notices 09:42/11:42; two seasonal 19:45 checks | Reconciles guide-owned cards while preserving existing transport-owned cards in the shared Telegram graph; may send pool/Zona Azul seasonal notices and publishes accepted course/programme changes, including grouped fresh-source registration boundaries for tomorrow. |
-| One-off event access | 12:47 daily, recovery 13:47 | ADRs 0090–0092 define the event-centric v2 runtime: one text root per event, source-proven access options, and strict threaded replies. The first implementation enables only CONVEGA and remains inert on legacy v1 state until the operator runs the explicit migration. |
+| One-off event access | 12:47 daily, recovery 13:47 | ADRs 0090–0092 define the event-centric v3 runtime: one root per event, source-proven access options, material date/place/route/schedule corrections, and strict threaded replies. CONVEGA remains the only enabled source; an exact event poster may be used only through the crash-safe optional photo-root path. Legacy v1/v2 state remains inert until the operator runs the explicit migration. |
 | Electricity | 20:30/20:35/20:45/21:00/21:20 attempts | One next-day PVPC table reply after the first complete official dataset. |
 | Resident-impact news | 11:11/15:11/18:11 daily | One bounded EWN discovery read; one batch AI classification; at most one first-party-grounded Russian Telegram note. |
 | Next-day events | Sunday–Thursday 19:25, recovery 20:25 | Reads fresh same-day local event catalogs through the shared local-only planning loader and includes reviewed recurring rules. Verified sport is separated into a dedicated sports subsection after merge. Only when tomorrow is a scheduled La Redonda market may the surface reuse the bounded Mayor-channel exception check; AI is called only if fresh market-related text exists. One editorial unit may be rich with one official image URL, while multiple units stay in one text planning post. A terminal delivery state is checked before publication construction, so recovery does not repeat market verification after a sent/uncertain first run. |
@@ -563,11 +563,11 @@ targets rather than quota-filling registry entries.
 ### One-off event access
 
 ADR 0089 is the legacy CONVEGA registration-only state contract. ADRs 0090-0092
-define the implemented event-centric v2 runtime: registration, reservation and
+define the implemented event-centric v3 runtime: registration, reservation and
 paid/free ticket access share one source-owned lifecycle, one real event owns
-one Telegram root, and source-proven sessions are child options. The first
-rollout activates only CONVEGA, uses text roots/replies, and requires an explicit
-operator migration from v1 before normal scheduled runs can use v2.
+one Telegram root, and source-proven sessions are child options. CONVEGA remains
+the only enabled source. Normal scheduled runs require current v3 state; legacy
+v1/v2 state requires the explicit locked operator migration before publication.
 
 Existing source refreshers remain responsible for network collection and small
 normalized snapshots. Event-access publication consumes only pure local
@@ -575,13 +575,17 @@ source-specific projections grouped as fresh per-source batches; a stale source
 is omitted independently and cannot suppress fresh unrelated sources. Do not
 turn the notification runner into a second multi-source refresh subsystem.
 
-Persistent lifecycle state is event-centric. State v2 keeps one bounded
-`records[record_id]` entry containing semantic option state,
-`audience_known`, one optional `root_message_id`, and record-local trigger
-history. One global uncertain reservation protects exactly one outbound record
-candidate. The planner processes one record at a time and commits only that
-record after confirmed delivery. State migration is an explicit locked
-operator action, never a hidden cron side effect.
+Persistent lifecycle state is event-centric. State v3 keeps one bounded
+`records[record_id]` entry containing semantic option state, only the material
+root context needed for later date/place/route/schedule correction detection,
+explicit occurrence status, `audience_known`, one optional `root_message_id`,
+and record-local trigger history. Migrated v2 records begin with
+`context_known=false` so the first fresh v3 observation baselines material
+context silently. One global uncertain reservation protects exactly one
+outbound record candidate. The planner processes one record at a time and
+commits only that record after confirmed delivery. State migration is an
+explicit locked operator action with a private backup, never a hidden cron side
+effect.
 
 The global `Event` model remains presentation-only for Morning/Tomorrow/Weekend
 and is not replaced by a second general event model. Access truth remains
@@ -597,9 +601,10 @@ for proactive access until their documented identity/action gaps are closed.
 This staged enablement avoids both a generic event scanner and speculative
 source abstractions.
 
-The first state-v2 rollout is intentionally smaller than the eventual
-multi-source shape: CONVEGA only, text roots/replies only, no generic ownership
-resolver and no photo transaction. CONVEGA proactive access requires a
-same-day, non-future observation no more than 90 minutes old; a preserved older
-last-good snapshot may still serve ordinary event presentation but cannot drive
-a current access claim.
+The v3 core remains intentionally smaller than the eventual multi-source shape:
+CONVEGA only, no generic ownership resolver, no provider registry and no new
+source polling. A source-proven exact event poster may be used for a root only
+through ADR 0090's crash-safe optional photo path; replies remain text-only.
+CONVEGA proactive access requires a same-day, non-future observation no more
+than 90 minutes old; a preserved older last-good snapshot may still serve
+ordinary event presentation but cannot drive a current access claim.
