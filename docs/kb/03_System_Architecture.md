@@ -597,8 +597,10 @@ separate presentation rules.
 The 2026-10-03 production probe opened the core implementation gate while
 keeping source rollout capability-gated. CONVEGA is the reference source.
 ADR 0103 adds only the reviewed FPCV convocatoria projection: stable
-source-assigned identity, club-mediated registration, exact deadline and
-source-owned 36-hour freshness from the existing normalized details snapshot.
+source-assigned identity, club-mediated registration, exact deadline and a
+same-Europe/Madrid-day access freshness gate over the existing normalized
+details snapshot. The separate ordinary fishing enrichment may still retain its
+36-hour horizon.
 Municipal/Turismo may expose only explicit reviewed one-off access facts.
 Agenda Guardamar, Biblioteca, FACV and AM Guardamar remain disabled for
 proactive access until their documented identity/action gaps are closed.
