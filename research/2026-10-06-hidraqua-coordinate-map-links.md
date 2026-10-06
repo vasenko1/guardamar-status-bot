@@ -80,3 +80,38 @@ Tests cover:
 3. missing, non-numeric or out-of-range geometry produces no Maps hyperlink;
 4. additional affected streets are not independently text-searched in Maps;
 5. existing event grouping, delivery state and source parsing remain unchanged.
+
+
+## Production read-only verification — 2026-10-06
+
+A read-only probe on the production Termux device at 14:45 CEST confirmed the
+source assumptions without changing application state or the working tree.
+
+Layer metadata reported:
+
+- name: `Puntos`;
+- type: `Feature Layer`;
+- geometry type: `esriGeometryPoint`;
+- native extent spatial reference: Web Mercator (`102100` / latest `3857`);
+- max record count: 2000.
+
+There were no active Guardamar rows at probe time, so the already-finished
+`Camí del Dos` occurrence could not be re-read. A bounded three-row live
+sample from the same layer with `outSR=4326` returned
+`spatialReference.wkid=4326` and point geometries as numeric `x/y` pairs.
+All three sampled coordinates were in valid WGS84 longitude/latitude ranges.
+
+The active Guardamar query returned the same 139-byte empty response with
+geometry disabled and enabled, confirming no material overhead when there are
+no rows. Geometry therefore stays in the existing bounded request; no second
+request is justified.
+
+The production `state/hidraqua.json` SHA-256 was identical before and after
+the probe, and the production Git working tree remained clean.
+
+One diagnostic-script-only issue was also observed: the temporary
+`/tmp/hidraqua-probe-procs.*` redirection was denied by the Termux
+environment, so that particular process-presence check did not execute. It had
+no effect on source validation or state, and the probe ran at 14:45, away from
+the managed `:00/:30` Hidraqua schedule boundary. Future operator scripts
+should use a project-private temporary path or avoid that redirection.
