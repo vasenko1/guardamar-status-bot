@@ -310,16 +310,6 @@ def _valid_record_state(value: Any) -> bool:
         )
     ):
         return False
-    event_last_day = end or start
-    if any(
-        boundary is not None and boundary > event_last_day
-        for item in options.values()
-        for boundary in (
-            _date(item.get("opens_on")),
-            _date(item.get("closes_on")),
-        )
-    ):
-        return False
     if (
         value.get("occurrence_status") == "cancelled"
         and any(item.get("status") == "open" for item in options.values())
@@ -369,16 +359,6 @@ def _valid_v2_record_state(value: Any) -> bool:
             or not key
             or not _valid_option_state(item)
             for key, item in options.items()
-        )
-    ):
-        return False
-    event_last_day = end or start
-    if any(
-        boundary is not None and boundary > event_last_day
-        for item in options.values()
-        for boundary in (
-            _date(item.get("opens_on")),
-            _date(item.get("closes_on")),
         )
     ):
         return False
@@ -936,10 +916,6 @@ def _legacy_record(value: Any) -> bool:
         or opens is not None
         and closes is not None
         and closes < opens
-        or opens is not None
-        and opens > (end or start)
-        or closes is not None
-        and closes > (end or start)
     ):
         return False
     return all(
