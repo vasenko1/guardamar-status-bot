@@ -70,7 +70,7 @@ class EventAccessRecord:
 @dataclass(frozen=True)
 class AccessNotice:
     kind: str
-    option_id: str
+    option_id: Optional[str] = None
     trigger_id: Optional[str] = None
 
 
@@ -292,6 +292,16 @@ def _valid_record_state(value: Any) -> bool:
         )
     ):
         return False
+    event_last_day = end or start
+    if any(
+        boundary is not None and boundary > event_last_day
+        for item in options.values()
+        for boundary in (
+            _date(item.get("opens_on")),
+            _date(item.get("closes_on")),
+        )
+    ):
+        return False
     root = value.get("root_message_id")
     if root is not None and (
         not isinstance(root, int)
@@ -336,6 +346,16 @@ def _valid_v2_record_state(value: Any) -> bool:
             or not key
             or not _valid_option_state(item)
             for key, item in options.items()
+        )
+    ):
+        return False
+    event_last_day = end or start
+    if any(
+        boundary is not None and boundary > event_last_day
+        for item in options.values()
+        for boundary in (
+            _date(item.get("opens_on")),
+            _date(item.get("closes_on")),
         )
     ):
         return False
@@ -875,6 +895,10 @@ def _legacy_record(value: Any) -> bool:
         or opens is not None
         and closes is not None
         and closes < opens
+        or opens is not None
+        and opens > (end or start)
+        or closes is not None
+        and closes > (end or start)
     ):
         return False
     return all(
