@@ -858,14 +858,23 @@ def parse_fpcv_convocatoria_text(
             "FPCV PDF date disagrees with convocatoria index", code="PDF-SCHEMA"
         )
 
-    source_id_match = re.search(
-        r"\bnumero\s+(\d{1,3})\s*/\s*(\d{2})\b",
-        folded,
-    )
-    if source_id_match is None:
+    source_id_marker = re.search(r"\bnumero\b", folded)
+    source_id_matches = []
+    if source_id_marker is not None:
+        source_id_window = folded[
+            source_id_marker.end() : source_id_marker.end() + 120
+        ]
+        source_id_matches = list(
+            re.finditer(
+                r"(?<!\d)(\d{1,3})\s*/\s*(\d{2})(?!\d)",
+                source_id_window,
+            )
+        )
+    if len(source_id_matches) != 1:
         raise FishingEnrichmentError(
             "FPCV convocatoria number changed", code="PDF-SCHEMA"
         )
+    source_id_match = source_id_matches[0]
     if int(source_id_match.group(2)) != event_day.year % 100:
         raise FishingEnrichmentError(
             "FPCV convocatoria number year disagrees with event",
