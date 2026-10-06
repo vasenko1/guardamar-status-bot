@@ -856,6 +856,23 @@ def parse_fpcv_convocatoria_text(
             "FPCV PDF date disagrees with convocatoria index", code="PDF-SCHEMA"
         )
 
+    source_id_match = re.search(
+        r"\bnumero\s+(\d{1,3})\s*/\s*(\d{2})\b",
+        folded,
+    )
+    if source_id_match is None:
+        raise FishingEnrichmentError(
+            "FPCV convocatoria number changed", code="PDF-SCHEMA"
+        )
+    if int(source_id_match.group(2)) != event_day.year % 100:
+        raise FishingEnrichmentError(
+            "FPCV convocatoria number year disagrees with event",
+            code="PDF-SCHEMA",
+        )
+    source_id = (
+        f"{int(source_id_match.group(1))}/{source_id_match.group(2)}"
+    )
+
     deadline_match = re.search(
         r"inscripciones\s+se\s+realizaran\s+por\s+los\s+clubes\s+hasta\s+el\s+"
         r"(\d{1,2})\s+de\s+([a-z]+)\s+a\s+las\s+(\d{1,2})(?::(\d{2}))?\s*h",
@@ -963,6 +980,7 @@ def parse_fpcv_convocatoria_text(
     ]
 
     return {
+        "source_id": source_id,
         "join_key": descriptor["join_key"],
         "base_start": descriptor["base_start"],
         "base_level": descriptor["base_level"],
@@ -1013,7 +1031,21 @@ _DETAILS_KEYS = {
 
 
 def _details_record_valid(record: Any) -> bool:
-    if not isinstance(record, dict) or set(record) != _DETAILS_KEYS:
+    if not isinstance(record, dict):
+        return False
+    keys = set(record)
+    if not _DETAILS_KEYS.issubset(keys):
+        return False
+    if keys - (_DETAILS_KEYS | {"source_id"}):
+        return False
+    source_id = record.get("source_id")
+    if (
+        source_id is not None
+        and (
+            not isinstance(source_id, str)
+            or re.fullmatch(r"\d{1,3}/\d{2}", source_id) is None
+        )
+    ):
         return False
     if not isinstance(record["join_key"], str) or not record["join_key"]:
         return False
@@ -1132,8 +1164,13 @@ def load_fpcv_details_state(path: Path) -> Optional[dict]:
     return _load_json(path, valid_fpcv_details_state, "FPCV details")
 
 
-def _cancelled_record(descriptor: dict, observed_at: datetime) -> dict:
+def _cancelled_record(
+    descriptor: dict,
+    observed_at: datetime,
+    source_id: Optional[str] = None,
+) -> dict:
     return {
+        "source_id": source_id,
         "join_key": descriptor["join_key"],
         "base_start": descriptor["base_start"],
         "base_level": descriptor["base_level"],
@@ -1190,7 +1227,11 @@ async def refresh_fpcv_details(
         key = descriptor["join_key"]
         old = previous_by_key.get(key)
         if descriptor["cancelled"]:
-            records.append(_cancelled_record(descriptor, now))
+            records.append(_cancelled_record(
+                descriptor,
+                now,
+                source_id=(old or {}).get("source_id"),
+            ))
             continue
         if descriptor["pdf_url"] is None:
             logging.warning(
@@ -1225,6 +1266,7 @@ async def refresh_fpcv_details(
         if (
             old_matches_descriptor
             and old["content_sha256"] == content_sha256
+            and old.get("source_id") is not None
         ):
             records.append(_reuse_current_record(old, now))
             continue
