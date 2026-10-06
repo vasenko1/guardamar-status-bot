@@ -1,9 +1,9 @@
 name: Sports access core validation
 
 on:
-  push:
+  pull_request:
     branches:
-      - feat/sports-access-core-prereqs
+      - main
   workflow_dispatch:
 
 permissions:
