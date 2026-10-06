@@ -44,10 +44,11 @@ field and is a regenerable source snapshot rather than lifecycle state.
   public self-registration link.
 - Keep the source-proven participant amount as presentation detail
   (`Взнос участника`), not as a spectator ticket price.
-- Reuse FPCV's existing 36-hour normalized-detail freshness. Future timestamps
-  and older records fail closed for access claims. Source refresh failure may
-  retain last-good bytes, but those bytes cannot remain actionable beyond the
-  same freshness bound.
+- Keep the existing 36-hour horizon only for ordinary fishing enrichment.
+  Proactive FPCV EventAccess requires an identity-safe observation from the same
+  Europe/Madrid local date and rejects future timestamps. A failed current-day
+  details refresh may preserve last-good enrichment bytes, but yesterday's
+  snapshot cannot make a current open/closing/cancelled access claim.
 - Add FPCV to the existing explicit local-only EventAccess loader next to
   CONVEGA. Each source owns its freshness and is omitted independently.
   Deterministic ordering and the single global uncertain-delivery slot remain
