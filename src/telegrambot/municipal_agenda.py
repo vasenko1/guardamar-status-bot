@@ -907,6 +907,8 @@ def _todo_mass_eucharist_alias(
         "misa" if word in eucharist_words else word
         for word in row_words
     }
+    if not candidate_semantic or not row_semantic:
+        return False
     return len(candidate_semantic & row_semantic) / min(
         len(candidate_semantic), len(row_semantic)
     ) >= 0.5
