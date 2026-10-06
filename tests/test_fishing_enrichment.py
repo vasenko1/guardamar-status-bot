@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import tempfile
 import unittest
@@ -11,6 +12,8 @@ from telegrambot.fishing_enrichment import (
     FEPYC_26MC26_URL,
     FishingEnrichmentError,
     extract_fpcv_pdf_text,
+    fpcv_access_record,
+    fpcv_details_are_access_fresh,
     parse_fepyc_authority_html,
     parse_fpcv_convocatoria_text,
     parse_fpcv_index_html,
@@ -100,6 +103,8 @@ def _pdf_bytes():
 def _pdf_text():
     return """
     CAMPEONATO PROVINCIAL DE ALICANTE
+    Fecha 14 Septiembre de 2026
+    Número 43/26
     MAR-COSTA CLASIFICATORIO PARA EL COMUNIDAD VALENCIANA 2027
     Lugar, fecha: 17 de Octubre de 2026
     Se celebrará en la Playas la Roqueta y Centro – Guardamar (Alicante)
@@ -228,6 +233,7 @@ class FishingEnrichmentTests(unittest.TestCase):
             observed_at=NOW,
         )
 
+        self.assertEqual(record["source_id"], "43/26")
         self.assertEqual(
             record["competition_context"],
             (
@@ -259,6 +265,145 @@ class FishingEnrichmentTests(unittest.TestCase):
         self.assertTrue(
             valid_fpcv_details_state({"version": 1, "records": [record]})
         )
+
+    def test_pdf_parser_requires_stable_convocatoria_number(self):
+        descriptor = parse_fpcv_index_html(
+            _index_html(),
+            local_day=NOW.date(),
+            base_events=(_provincial_base(),),
+        )[0]
+
+        with self.assertRaisesRegex(
+            FishingEnrichmentError,
+            "convocatoria number changed",
+        ):
+            parse_fpcv_convocatoria_text(
+                _pdf_text().replace("Número 43/26", ""),
+                descriptor=descriptor,
+                content_sha256="d" * 64,
+                observed_at=NOW,
+            )
+
+        with self.assertRaisesRegex(
+            FishingEnrichmentError,
+            "number year disagrees",
+        ):
+            parse_fpcv_convocatoria_text(
+                _pdf_text().replace("Número 43/26", "Número 43/25"),
+                descriptor=descriptor,
+                content_sha256="e" * 64,
+                observed_at=NOW,
+            )
+
+    def test_legacy_detail_without_source_id_stays_readable_but_not_actionable(self):
+        descriptor = parse_fpcv_index_html(
+            _index_html(),
+            local_day=NOW.date(),
+            base_events=(_provincial_base(),),
+        )[0]
+        record = parse_fpcv_convocatoria_text(
+            _pdf_text(),
+            descriptor=descriptor,
+            content_sha256="a" * 64,
+            observed_at=NOW,
+        )
+        legacy = dict(record)
+        legacy.pop("source_id")
+
+        self.assertTrue(
+            valid_fpcv_details_state({"version": 1, "records": [legacy]})
+        )
+        self.assertIsNone(
+            fpcv_access_record(
+                legacy,
+                datetime(2026, 10, 6, 8, 0, tzinfo=MADRID),
+            )
+        )
+
+    def test_fpcv_access_projection_uses_stable_source_identity(self):
+        descriptor = parse_fpcv_index_html(
+            _index_html(),
+            local_day=NOW.date(),
+            base_events=(_provincial_base(),),
+        )[0]
+        raw = parse_fpcv_convocatoria_text(
+            _pdf_text(),
+            descriptor=descriptor,
+            content_sha256="b" * 64,
+            observed_at=NOW,
+        )
+        now = datetime(2026, 10, 6, 8, 0, tzinfo=MADRID)
+        first = fpcv_access_record(raw, now)
+        self.assertIsNotNone(first)
+        assert first is not None
+        self.assertEqual(first.record_id, "fpcv:convocatoria:43-26")
+        self.assertEqual(first.source, "fpcv")
+        self.assertEqual(first.access_kind, "registration")
+        self.assertEqual(first.event_start_date, date(2026, 10, 17))
+        self.assertEqual(first.options[0].status, "open")
+        self.assertEqual(first.options[0].closes_on, date(2026, 10, 13))
+        self.assertEqual(first.options[0].closes_time.hour, 12)
+        self.assertIsNone(first.options[0].action_url)
+        self.assertEqual(
+            first.options[0].action_text,
+            "Регистрация проводится через рыболовный клуб участника",
+        )
+        self.assertIn("Взнос участника: 20 €", first.details)
+
+        changed = dict(raw)
+        changed.update({
+            "index_date": "2026-10-18",
+            "starts_at": "2026-10-18T18:00:00+02:00",
+            "ends_at": "2026-10-19T01:30:00+02:00",
+            "place": "Playas Centro y La Roqueta",
+            "source_url": (
+                "https://federacionpescacv.com/wp-content/uploads/2026/09/"
+                "revised-convocatoria.pdf"
+            ),
+        })
+        second = fpcv_access_record(changed, now)
+        self.assertIsNotNone(second)
+        assert second is not None
+        self.assertEqual(second.record_id, first.record_id)
+        self.assertEqual(second.event_start_date, date(2026, 10, 18))
+        self.assertEqual(second.place, "Playas Centro y La Roqueta")
+
+    def test_fpcv_access_freshness_rejects_future_and_stale_observations(self):
+        descriptor = parse_fpcv_index_html(
+            _index_html(),
+            local_day=NOW.date(),
+            base_events=(_provincial_base(),),
+        )[0]
+        raw = parse_fpcv_convocatoria_text(
+            _pdf_text(),
+            descriptor=descriptor,
+            content_sha256="c" * 64,
+            observed_at=NOW,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "details.json"
+            path.write_text(
+                json.dumps({"version": 1, "records": [raw]}),
+                encoding="utf-8",
+            )
+            self.assertFalse(
+                fpcv_details_are_access_fresh(
+                    NOW - timedelta(seconds=1),
+                    path,
+                )
+            )
+            self.assertTrue(
+                fpcv_details_are_access_fresh(
+                    NOW + timedelta(hours=35),
+                    path,
+                )
+            )
+            self.assertFalse(
+                fpcv_details_are_access_fresh(
+                    NOW + timedelta(hours=37),
+                    path,
+                )
+            )
 
     def test_pdf_parser_rejects_index_date_disagreement(self):
         descriptor = parse_fpcv_index_html(
@@ -412,6 +557,115 @@ class FishingEnrichmentTests(unittest.TestCase):
                 json.loads(state.read_text(encoding="utf-8")),
                 {"version": 1, "records": []},
             )
+
+    def test_legacy_same_document_is_reextracted_once_to_backfill_source_id(self):
+        descriptor = parse_fpcv_index_html(
+            _index_html(),
+            local_day=NOW.date(),
+            base_events=(_provincial_base(),),
+        )[0]
+        content_sha = hashlib.sha256(_pdf_bytes()).hexdigest()
+        legacy = parse_fpcv_convocatoria_text(
+            _pdf_text(),
+            descriptor=descriptor,
+            content_sha256=content_sha,
+            observed_at=NOW,
+        )
+        legacy.pop("source_id")
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "details.json"
+            state.write_text(
+                json.dumps({"version": 1, "records": [legacy]}),
+                encoding="utf-8",
+            )
+            extract = Mock(return_value=_pdf_text())
+            with (
+                patch(
+                    "telegrambot.fishing_enrichment._fetch_fpcv_index",
+                    new=AsyncMock(return_value=(descriptor,)),
+                ),
+                patch(
+                    "telegrambot.fishing_enrichment._fetch_fpcv_pdf_bytes",
+                    new=AsyncMock(return_value=_pdf_bytes()),
+                ),
+                patch(
+                    "telegrambot.fishing_enrichment.extract_fpcv_pdf_text",
+                    new=extract,
+                ),
+            ):
+                result = asyncio.run(
+                    refresh_fpcv_details(
+                        NOW + timedelta(hours=1),
+                        (_provincial_base(),),
+                        state,
+                    )
+                )
+
+        extract.assert_called_once()
+        self.assertEqual(result[0]["source_id"], "43/26")
+
+    def test_cancelled_refresh_preserves_known_convocatoria_identity(self):
+        active = parse_fpcv_index_html(
+            _index_html(),
+            local_day=NOW.date(),
+            base_events=(_provincial_base(),),
+        )[0]
+        cancelled = parse_fpcv_index_html(
+            _index_html("CANCELADO"),
+            local_day=NOW.date(),
+            base_events=(_provincial_base(),),
+        )[0]
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "details.json"
+            with (
+                patch(
+                    "telegrambot.fishing_enrichment._fetch_fpcv_index",
+                    new=AsyncMock(return_value=(active,)),
+                ),
+                patch(
+                    "telegrambot.fishing_enrichment._fetch_fpcv_pdf_bytes",
+                    new=AsyncMock(return_value=_pdf_bytes()),
+                ),
+                patch(
+                    "telegrambot.fishing_enrichment.extract_fpcv_pdf_text",
+                    new=Mock(return_value=_pdf_text()),
+                ),
+            ):
+                first = asyncio.run(
+                    refresh_fpcv_details(
+                        NOW,
+                        (_provincial_base(),),
+                        state,
+                    )
+                )
+
+            fetch_pdf = AsyncMock(
+                side_effect=AssertionError("cancelled row must not fetch PDF")
+            )
+            with (
+                patch(
+                    "telegrambot.fishing_enrichment._fetch_fpcv_index",
+                    new=AsyncMock(return_value=(cancelled,)),
+                ),
+                patch(
+                    "telegrambot.fishing_enrichment._fetch_fpcv_pdf_bytes",
+                    new=fetch_pdf,
+                ),
+            ):
+                second = asyncio.run(
+                    refresh_fpcv_details(
+                        NOW + timedelta(hours=1),
+                        (_provincial_base(),),
+                        state,
+                    )
+                )
+
+        self.assertEqual(first[0]["source_id"], "43/26")
+        self.assertTrue(second[0]["cancelled"])
+        self.assertEqual(second[0]["source_id"], "43/26")
+        fetch_pdf.assert_not_awaited()
 
     def test_unchanged_pdf_bytes_are_refetched_but_not_reextracted(self):
         descriptor = parse_fpcv_index_html(
