@@ -635,7 +635,8 @@ class EventAccessPlannerTests(unittest.TestCase):
                     status="open",
                     closes_on=date(2026, 10, 10),
                     action_url="https://example.com/register",
-                )
+                ),
+                event_start_date=date(2026, 10, 20),
             ),
             previous,
             NOW,
@@ -650,7 +651,8 @@ class EventAccessPlannerTests(unittest.TestCase):
                     status="open",
                     closes_on=date(2026, 10, 11),
                     action_url="https://example.com/register",
-                )
+                ),
+                event_start_date=date(2026, 10, 20),
             ),
             previous_known,
             NOW,
@@ -681,7 +683,8 @@ class EventAccessPlannerTests(unittest.TestCase):
                     status="open",
                     closes_on=date(2026, 10, 10),
                     action_url="https://example.com/old",
-                )
+                ),
+                event_start_date=date(2026, 10, 20),
             ),
             None,
         )
@@ -694,7 +697,8 @@ class EventAccessPlannerTests(unittest.TestCase):
                     status="open",
                     closes_on=date(2026, 10, 11),
                     action_url="https://example.com/new",
-                )
+                ),
+                event_start_date=date(2026, 10, 20),
             ),
             previous,
             NOW,
