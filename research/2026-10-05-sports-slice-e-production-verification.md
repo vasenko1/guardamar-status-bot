@@ -65,31 +65,59 @@ The exact writer that restored the stale Agenda snapshot at 19:35 could not be
 proven retrospectively. It is tracked separately as an operator/source-state
 incident and is not attributed to Slice E runtime code.
 
-## Remaining first-run observation gate
+## First scheduled-run observation — 2026-10-06
 
-Activation is complete, but the first scheduled daily lifecycle has not yet
-been observed because deployment happened after the day's 08:25/09:25 window.
+The first real automatic Sports Today lifecycle was observed after both cron
+windows on production `main=3a918380af5726bf339d6ce221f0810b12eb4499`.
 
-The next operational verification should inspect, without manual delivery:
+That production revision is a descendant of the reviewed Slice E runtime. Its
+post-Slice-E changes cover local clock-change/calendar notices and a bounded
+Rosario municipal-source correction; the Sports Today producer, shared planning
+loader, Sports Today wrapper and Sports Today cron rows were unchanged.
 
-- same-day freshness of the accepted local event snapshots before 08:25;
-- the 08:25 Sports Today wrapper log;
-- whether a terminal `sports_today.json` state exists only if Telegram
-  delivery was actually attempted;
-- the 09:25 recovery behavior;
-- absence of duplicate delivery or unexpected source/network work.
+Observed source freshness for local day 2026-10-06:
 
-A stale or missing optional source alone is not a release failure. A source
-freshness pattern that removes the only authoritative sport source for a known
-current-day sport, a CLI/wrapper failure, an unexpected state mutation, or a
-duplicate recovery send would fail the first-run gate.
+- Agenda Guardamar: fresh;
+- Municipal agenda: fresh;
+- Library: fresh;
+- AM Guardamar: fresh;
+- FACV: fresh, zero current rows;
+- Pesca CV: fresh, two future rows;
+- CONVEGA: stale/missing at 08:25/09:25 because its normal refresh runs later,
+  at 12:47; it was fresh when inspected after that refresh.
+
+The CONVEGA timing mismatch is not a Slice E failure because CONVEGA does not
+currently assign `Event.sport`; the authoritative sport-identity sources FACV
+and Pesca CV were both fresh before the Sports Today primary run. If CONVEGA or
+another later-refreshing source becomes an authoritative sport source in a
+future slice, its refresh timing must be revisited before relying on it for
+08:25 current-day publication.
+
+Automatic lifecycle evidence:
+
+- exact 08:25 Sports Today cron row present once;
+- exact 09:25 recovery row present once;
+- `crond` running;
+- 08:25 executed and logged
+  `SKIP: no verified current-day sports are eligible`;
+- 09:25 executed and logged the same no-event skip;
+- no runtime error or traceback;
+- no Telegram delivery was attempted;
+- `state/sports_today.json` remained absent;
+- no uncertain-delivery state existed;
+- production worktree remained clean;
+- resident `telegrambot listen` service remained running.
+
+This is the expected no-event branch of the reviewed lifecycle: both automatic
+runs execute, no resident-facing post is created, and no delivery state is
+created merely because the day has no eligible sport.
 
 ## Gate result
 
-**PASS — production activation**
+**PASS — production activation and first scheduled lifecycle**
 
-Sports Slice E is active on production.
+Sports Slice E is fully production-verified.
 
-The remaining observation is an operational first-scheduled-run check, not a
-code/deployment blocker. Slice F and later source/access expansion should remain
-separate from this observation and should not change Slice E runtime semantics.
+Slice F and later sports source/access expansion remain separate work and should
+not change the verified Slice E delivery semantics without their own review and
+production gate.
