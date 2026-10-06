@@ -358,21 +358,94 @@ def _deadline_text(record: EventAccessRecord, option_id: str) -> Optional[str]:
     return result
 
 
-def _root_heading(kind: str) -> str:
-    headings = {
+_ACCESS_COPY = {
+    "registration": {
         "active": "📝 <b>Открыта регистрация</b>",
         "open": "📝 <b>Регистрация открыта</b>",
         "reopened": "📝 <b>Регистрация снова открыта</b>",
-        "full": "⛔ <b>Мест больше нет</b>",
         "closed": "📝 <b>Регистрация закрыта</b>",
         "deadline-known": "⏳ <b>Появился срок регистрации</b>",
         "deadline-changed": "⏳ <b>Срок регистрации изменён</b>",
         "opening-tomorrow": "📝 <b>Завтра открывается регистрация</b>",
         "opening-today": "📝 <b>Сегодня открывается регистрация</b>",
         "one-day-tomorrow": "📝 <b>Регистрация только завтра</b>",
-        "option-added": "➕ <b>Добавлен вариант регистрации</b>",
-    }
-    return headings.get(kind, "📝 <b>Обновление регистрации</b>")
+        "closing-tomorrow": "⏳ <b>Завтра заканчивается регистрация</b>",
+        "closing-today": "⏳ <b>Сегодня заканчивается регистрация</b>",
+        "action-changed": "📝 <b>Изменился способ регистрации</b>",
+        "option-added": "➕ <b>Добавлен новый вариант регистрации</b>",
+        "opening-prefix": "Регистрация",
+        "deadline-open-prefix": "Записаться можно до ",
+        "deadline-unknown-prefix": "Указан срок регистрации: до ",
+        "full": "⛔ <b>Мест больше нет</b>",
+    },
+    "reservation": {
+        "active": "📝 <b>Открыто бронирование</b>",
+        "open": "📝 <b>Бронирование открыто</b>",
+        "reopened": "📝 <b>Бронирование снова открыто</b>",
+        "closed": "📝 <b>Бронирование закрыто</b>",
+        "deadline-known": "⏳ <b>Появился срок бронирования</b>",
+        "deadline-changed": "⏳ <b>Срок бронирования изменён</b>",
+        "opening-tomorrow": "📝 <b>Завтра открывается бронирование</b>",
+        "opening-today": "📝 <b>Сегодня открывается бронирование</b>",
+        "one-day-tomorrow": "📝 <b>Бронирование только завтра</b>",
+        "closing-tomorrow": "⏳ <b>Завтра заканчивается бронирование</b>",
+        "closing-today": "⏳ <b>Сегодня заканчивается бронирование</b>",
+        "action-changed": "📝 <b>Изменился способ бронирования</b>",
+        "option-added": "➕ <b>Добавлен новый вариант бронирования</b>",
+        "opening-prefix": "Бронирование",
+        "deadline-open-prefix": "Забронировать можно до ",
+        "deadline-unknown-prefix": "Указан срок бронирования: до ",
+        "full": "⛔ <b>Мест больше нет</b>",
+    },
+    "ticket": {
+        "active": "🎟 <b>Билеты доступны</b>",
+        "open": "🎟 <b>Продажа билетов открыта</b>",
+        "reopened": "🎟 <b>Продажа билетов снова открыта</b>",
+        "closed": "🎟 <b>Продажа билетов закрыта</b>",
+        "deadline-known": "⏳ <b>Появился срок продажи билетов</b>",
+        "deadline-changed": "⏳ <b>Срок продажи билетов изменён</b>",
+        "opening-tomorrow": "🎟 <b>Завтра открывается продажа билетов</b>",
+        "opening-today": "🎟 <b>Сегодня открывается продажа билетов</b>",
+        "one-day-tomorrow": "🎟 <b>Билеты продаются только завтра</b>",
+        "closing-tomorrow": "⏳ <b>Завтра заканчивается продажа билетов</b>",
+        "closing-today": "⏳ <b>Сегодня заканчивается продажа билетов</b>",
+        "action-changed": "🎟 <b>Изменился способ получения билета</b>",
+        "option-added": "➕ <b>Добавлен новый вариант билета</b>",
+        "opening-prefix": "Продажа билетов",
+        "deadline-open-prefix": "Получить билет можно до ",
+        "deadline-unknown-prefix": "Указан срок продажи билетов: до ",
+        "full": "⛔ <b>Билетов больше нет</b>",
+    },
+}
+
+
+def _access_copy(record: EventAccessRecord, key: str) -> str:
+    return _ACCESS_COPY[record.access_kind][key]
+
+
+def _root_heading(record: EventAccessRecord, kind: str) -> str:
+    if kind == "event-date-changed":
+        return "📅 <b>Дата события изменилась</b>"
+    if kind == "event-details-changed":
+        return "ℹ️ <b>Изменились данные события</b>"
+    if kind == "event-cancelled":
+        return "⛔ <b>Событие отменено</b>"
+    if kind == "event-postponed":
+        return "⏸ <b>Событие перенесено</b>"
+    return _access_copy(
+        record,
+        kind if kind in _ACCESS_COPY[record.access_kind] else "open",
+    )
+
+
+def _option_label_line(
+    record: EventAccessRecord,
+    option_id: str,
+) -> Optional[str]:
+    option = _option(record, option_id)
+    if len(record.options) <= 1 or not option.label:
+        return None
+    return "▫️ <b>" + html.escape(option.label) + "</b>"
 
 
 def _opening_text(record: EventAccessRecord, option_id: str) -> Optional[str]:
@@ -382,9 +455,10 @@ def _opening_text(record: EventAccessRecord, option_id: str) -> Optional[str]:
     result = _format_date(option.opens_on)
     if option.opens_time is not None:
         result += ", " + option.opens_time.strftime("%H:%M")
+    prefix = _access_copy(record, "opening-prefix")
     if option.closes_on == option.opens_on:
-        return "📝 Регистрация: только " + result
-    return "📝 Регистрация: с " + result
+        return "📝 " + prefix + ": только " + result
+    return "📝 " + prefix + ": с " + result
 
 
 def _event_date_line(record: EventAccessRecord) -> str:
@@ -409,7 +483,7 @@ def render_root(
         raise ValueError("root publication requires a notice")
     first = decision.notices[0]
     lines = [
-        _root_heading(first.kind),
+        _root_heading(record, first.kind),
         "",
         "<b>" + html.escape(record.title) + "</b>",
         _event_date_line(record),
@@ -439,6 +513,9 @@ def render_root(
         action = _action_line(record, option.option_id)
         if action is not None:
             lines.append("")
+            label = _option_label_line(record, option.option_id)
+            if label is not None:
+                lines.append(label)
             lines.append(action)
             deadline = _deadline_text(record, option.option_id)
             if deadline is not None:
@@ -462,86 +539,84 @@ def _reply_block(
     record: EventAccessRecord,
     notice: AccessNotice,
 ) -> Tuple[str, ...]:
+    if notice.kind == "event-date-changed":
+        return (
+            "📅 <b>Дата события изменилась</b>",
+            _event_date_line(record),
+        )
+    if notice.kind == "event-details-changed":
+        lines = [
+            "ℹ️ <b>Изменились данные события</b>",
+            "<b>" + html.escape(record.title) + "</b>",
+        ]
+        if record.route:
+            lines.append("🥾 Маршрут: " + html.escape(record.route))
+        if record.schedule_note:
+            lines.append("🕐 " + html.escape(record.schedule_note))
+        if record.place:
+            lines.append("📍 " + html.escape(record.place))
+        return tuple(lines)
+    if notice.kind == "event-cancelled":
+        return ("⛔ <b>Событие отменено</b>",)
+    if notice.kind == "event-postponed":
+        return ("⏸ <b>Событие перенесено</b>",)
+
+    if notice.option_id is None:
+        raise ValueError("option notice requires option_id")
     option = _option(record, notice.option_id)
-    if notice.kind == "open":
-        heading = "📝 <b>Регистрация открыта</b>"
-    elif notice.kind == "reopened":
-        heading = "📝 <b>Регистрация снова открыта</b>"
-    elif notice.kind == "full":
-        return ("⛔ <b>Мест больше нет</b>",)
-    elif notice.kind == "closed":
-        return ("📝 <b>Регистрация закрыта</b>",)
-    elif notice.kind == "deadline-known":
+
+    if notice.kind in {"full", "closed"}:
+        return (_access_copy(record, notice.kind),)
+    if notice.kind == "deadline-known":
         deadline = _deadline_text(record, notice.option_id)
-        prefix = (
-            "Записаться можно до "
-            if option.status == "open"
-            else "Указан срок регистрации: до "
+        prefix = _access_copy(
+            record,
+            (
+                "deadline-open-prefix"
+                if option.status == "open"
+                else "deadline-unknown-prefix"
+            ),
         )
         return (
-            "⏳ <b>Появился срок регистрации</b>",
+            _access_copy(record, "deadline-known"),
             prefix + html.escape(deadline or "указанного срока"),
         )
-    elif notice.kind == "deadline-changed":
+    if notice.kind == "deadline-changed":
         deadline = _deadline_text(record, notice.option_id)
         return (
-            "⏳ <b>Срок регистрации изменён</b>",
+            _access_copy(record, "deadline-changed"),
             "Теперь до " + html.escape(deadline or "указанного срока"),
         )
-    elif notice.kind == "closing-tomorrow":
-        heading = "⏳ <b>Завтра заканчивается регистрация</b>"
-    elif notice.kind == "closing-today":
-        heading = "⏳ <b>Сегодня заканчивается регистрация</b>"
-    elif notice.kind == "opening-tomorrow":
+    if notice.kind in {
+        "opening-tomorrow",
+        "opening-today",
+        "one-day-tomorrow",
+    }:
         opening = _opening_text(record, notice.option_id)
         return tuple(
             item for item in (
-                "📝 <b>Завтра открывается регистрация</b>",
+                _access_copy(record, notice.kind),
                 opening,
             )
             if item is not None
         )
-    elif notice.kind == "opening-today":
-        opening = _opening_text(record, notice.option_id)
-        return tuple(
-            item for item in (
-                "📝 <b>Сегодня открывается регистрация</b>",
-                opening,
-            )
-            if item is not None
-        )
-    elif notice.kind == "one-day-tomorrow":
-        opening = _opening_text(record, notice.option_id)
-        return tuple(
-            item for item in (
-                "📝 <b>Регистрация только завтра</b>",
-                opening,
-            )
-            if item is not None
-        )
-    elif notice.kind == "action-changed":
-        heading = "📝 <b>Изменился способ регистрации</b>"
-    elif notice.kind == "option-added":
-        heading = "➕ <b>Добавлен новый вариант регистрации</b>"
-    else:
-        heading = "📝 <b>Обновление регистрации</b>"
 
+    heading = _access_copy(
+        record,
+        notice.kind if notice.kind in _ACCESS_COPY[record.access_kind] else "open",
+    )
     lines = [heading]
+    label = _option_label_line(record, notice.option_id)
+    if label is not None:
+        lines.append(label)
     action = _action_line(record, notice.option_id)
     if action is not None:
         lines.append(action)
-    if notice.kind in {"open", "reopened"}:
+    if notice.kind in {"open", "reopened", "closing-tomorrow", "closing-today"}:
         deadline = _deadline_text(record, notice.option_id)
         if deadline is not None:
             lines.append("⏳ до " + html.escape(deadline))
-    if notice.kind in {"closing-tomorrow", "closing-today"}:
-        deadline = _deadline_text(record, notice.option_id)
-        if deadline is not None:
-            lines.append("⏳ до " + html.escape(deadline))
-    if option.label and len(record.options) > 1:
-        lines.insert(1, "⏰ " + html.escape(option.label))
     return tuple(lines)
-
 
 def render_reply(
     record: EventAccessRecord,
@@ -579,6 +654,7 @@ def _status_summary(raw: Optional[Mapping[str, Any]]) -> str:
             "records": 0,
             "uncertain": False,
         }, ensure_ascii=False, sort_keys=True)
+
     version = raw.get("version")
     if version == 1:
         uncertain = raw.get("uncertain")
@@ -590,6 +666,35 @@ def _status_summary(raw: Optional[Mapping[str, Any]]) -> str:
             "sent_triggers": len(raw.get("sent_triggers", [])),
             "uncertain": uncertain is not None,
         }, ensure_ascii=False, sort_keys=True)
+
+    if version == 2:
+        records = raw.get("records", {})
+        uncertain = raw.get("uncertain")
+        if not isinstance(records, dict):
+            raise EventAccessStateError("event-access v2 records are invalid")
+        return json.dumps({
+            "version": 2,
+            "migration_required": True,
+            "records": len(records),
+            "audience_known_records": sum(
+                1
+                for item in records.values()
+                if isinstance(item, dict) and item.get("audience_known")
+            ),
+            "root_records": sum(
+                1
+                for item in records.values()
+                if isinstance(item, dict)
+                and item.get("root_message_id") is not None
+            ),
+            "sent_triggers": sum(
+                len(item.get("sent_triggers", ()))
+                for item in records.values()
+                if isinstance(item, dict)
+            ),
+            "uncertain": uncertain is not None,
+        }, ensure_ascii=False, sort_keys=True)
+
     value = validate_state(dict(raw))
     return json.dumps({
         "version": STATE_VERSION,
