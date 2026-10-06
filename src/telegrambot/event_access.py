@@ -154,7 +154,12 @@ def _valid_record(record: EventAccessRecord) -> bool:
         for boundary in (option.opens_on, option.closes_on)
     ):
         return False
-    if record.occurrence_status not in {None, "cancelled", "postponed"}:
+    if record.occurrence_status not in {
+        None,
+        "scheduled",
+        "cancelled",
+        "postponed",
+    }:
         return False
     if (
         record.occurrence_status == "cancelled"
@@ -271,7 +276,12 @@ def _valid_record_state(value: Any) -> bool:
         or not isinstance(value.get("title"), str)
         or not value["title"].strip()
         or not isinstance(value.get("context_known"), bool)
-        or value.get("occurrence_status") not in {None, "cancelled", "postponed"}
+        or value.get("occurrence_status") not in {
+            None,
+            "scheduled",
+            "cancelled",
+            "postponed",
+        }
         or not isinstance(value.get("audience_known"), bool)
     ):
         return False
@@ -735,7 +745,7 @@ def _event_notices(
         notices.append(AccessNotice("event-date-changed"))
 
     if previous.get("context_known"):
-        fields = ("title", "place", "route", "schedule_note")
+        fields = ("place", "route", "schedule_note")
         if any(candidate.get(field) != previous.get(field) for field in fields):
             notices.append(AccessNotice("event-details-changed"))
 
@@ -743,6 +753,11 @@ def _event_notices(
     new_status = candidate.get("occurrence_status")
     if new_status in {"cancelled", "postponed"} and new_status != old_status:
         notices.append(AccessNotice("event-" + new_status))
+    elif (
+        new_status == "scheduled"
+        and old_status in {"cancelled", "postponed"}
+    ):
+        notices.append(AccessNotice("event-restored"))
 
     return tuple(notices)
 
