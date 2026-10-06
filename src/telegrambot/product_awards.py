@@ -55,6 +55,7 @@ MAX_HISTORY = 128
 CONSUM_MEDIA_HOSTS = frozenset({"cdn-consum.aktiosdigitalservices.com"})
 MASYMAS_MEDIA_HOSTS = frozenset({"cdn-fornes.aktiosdigitalservices.com"})
 ALDI_MEDIA_HOSTS = frozenset({"s7g10.scene7.com"})
+MERCADONA_MEDIA_HOSTS = frozenset({"prod-mercadona.imgix.net"})
 
 
 class ProductAwardError(RuntimeError):
@@ -538,6 +539,7 @@ def _retailer_image(
         "consum": CONSUM_MEDIA_HOSTS,
         "masymas": MASYMAS_MEDIA_HOSTS,
         "aldi": ALDI_MEDIA_HOSTS,
+        "mercadona": MERCADONA_MEDIA_HOSTS,
     }.get(candidate.retailer_kind, frozenset())
     hosts = candidate.retailer_hosts | media_hosts
     image_url = _remote_image(offer.image_url, hosts)
@@ -937,6 +939,129 @@ def _aldi_offer(candidate: ReviewedCandidate, source: str) -> RetailOffer:
     )
 
 
+def _mercadona_offer(candidate: ReviewedCandidate) -> RetailOffer:
+    payload = _fetch_json(candidate.retailer_url, candidate.retailer_hosts)
+
+    if str(payload.get("id") or "") != str(candidate.product_id):
+        raise ProductAwardError(
+            "Mercadona product ID changed",
+            code="RETAIL-DRIFT",
+        )
+    if (
+        candidate.expected_ean is None
+        or str(payload.get("ean") or "") != candidate.expected_ean
+    ):
+        raise ProductAwardError(
+            "Mercadona EAN changed",
+            code="RETAIL-DRIFT",
+        )
+
+    display_name = payload.get("display_name")
+    if (
+        not isinstance(display_name, str)
+        or candidate.retailer_title is None
+        or _fold(display_name) != _fold(candidate.retailer_title)
+    ):
+        raise ProductAwardError(
+            "Mercadona exact product title changed",
+            code="RETAIL-DRIFT",
+        )
+
+    details = payload.get("details")
+    suppliers = details.get("suppliers") if isinstance(details, dict) else None
+    identity = json.dumps(
+        {
+            "brand": payload.get("brand"),
+            "display_name": display_name,
+            "suppliers": suppliers,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    _require_markers(
+        identity,
+        candidate.retailer_markers,
+        code="RETAIL-DRIFT",
+    )
+
+    if payload.get("published") is not True or payload.get("status") not in (None, ""):
+        raise ProductAwardError(
+            "Mercadona product is not current",
+            code="RETAIL-UNAVAILABLE",
+        )
+    if payload.get("unavailable_from") is not None:
+        raise ProductAwardError(
+            "Mercadona product has an active unavailability marker",
+            code="RETAIL-UNAVAILABLE",
+        )
+    weekdays = payload.get("unavailable_weekdays")
+    if not isinstance(weekdays, list) or weekdays:
+        raise ProductAwardError(
+            "Mercadona product has unavailable weekdays",
+            code="RETAIL-UNAVAILABLE",
+        )
+    if payload.get("is_variable_weight") is not True:
+        raise ProductAwardError(
+            "Mercadona variable-weight contract changed",
+            code="RETAIL-DRIFT",
+        )
+
+    prices = payload.get("price_instructions")
+    if not isinstance(prices, dict) or prices.get("approx_size") is not True:
+        raise ProductAwardError(
+            "Mercadona approximate-price contract changed",
+            code="RETAIL-DRIFT",
+        )
+    unit_price = _decimal_price(prices.get("unit_price"))
+    bulk_price = _decimal_price(prices.get("bulk_price"))
+    unit_size = prices.get("unit_size")
+    if (
+        unit_price is None
+        or bulk_price is None
+        or isinstance(unit_size, bool)
+        or not isinstance(unit_size, (int, float))
+        or unit_size <= 0
+        or _fold(str(prices.get("size_format") or "")) != "kg"
+    ):
+        raise ProductAwardError(
+            "Mercadona current variable-weight price is invalid",
+            code="RETAIL-DRIFT",
+        )
+
+    grams = round(float(unit_size) * 1000)
+    if grams <= 0:
+        raise ProductAwardError(
+            "Mercadona approximate unit size is invalid",
+            code="RETAIL-DRIFT",
+        )
+
+    image_url = None
+    photos = payload.get("photos")
+    if isinstance(photos, list):
+        for photo in photos:
+            if not isinstance(photo, dict):
+                continue
+            for key in ("regular", "zoom", "thumbnail"):
+                image_url = _remote_image(
+                    photo.get(key),
+                    MERCADONA_MEDIA_HOSTS,
+                )
+                if image_url is not None:
+                    break
+            if image_url is not None:
+                break
+
+    return RetailOffer(
+        retailer=candidate.retailer,
+        price=(
+            f"≈{unit_price} за кусок ≈{grams} г; "
+            f"{bulk_price}/кг"
+        ),
+        image_url=image_url,
+        product_name=display_name,
+    )
+
+
 def _verify_award(candidate: ReviewedCandidate) -> None:
     text = _visible_text(_fetch_html(candidate.source_url, candidate.source_hosts))
     _require_markers(text, candidate.source_markers, code="AWARD-DRIFT")
@@ -950,6 +1075,8 @@ def _refresh_offer(candidate: ReviewedCandidate) -> RetailOffer:
         return _aldi_offer(candidate, source)
     if candidate.retailer_kind in {"carrefour", "dia"}:
         return _html_retail_offer(candidate)
+    if candidate.retailer_kind == "mercadona":
+        return _mercadona_offer(candidate)
     raise ProductAwardError(
         "unknown retailer adapter",
         code="CONFIG",
@@ -984,6 +1111,12 @@ def _price_sentence(
         if offer.regular_price is not None
         else None
     )
+
+    if candidate.retailer_kind == "mercadona":
+        return (
+            "В Mercadona цена зависит от фактического веса: "
+            f"<b>{current}</b>."
+        )
 
     if candidate.retailer_kind == "carrefour":
         subject = (
@@ -1079,6 +1212,18 @@ _METHODOLOGIES: dict[
             "горечь, терпкость, тело кофе и наличие вкусовых дефектов.",
         ),
     ),
+    ("wccc", None): (
+        "Как проходит World Championship Cheese Contest",
+        (
+            "Сыры оценивает международная команда технических судей. Каждый "
+            "образец начинает со 100 возможных баллов, после чего судьи "
+            "снижают оценку за выявленные дефекты.",
+            "Проверяют вкус, структуру и текстуру, соль, цвет, финиш, "
+            "упаковку и другие характеристики, уместные для конкретного "
+            "класса. Три образца с наивысшими баллами в каждом классе "
+            "получают Gold, Silver и Bronze.",
+        ),
+    ),
     ("mapa", "spirits_anis"): (
         "Как выбирают победителя премии MAPA",
         (
@@ -1132,6 +1277,7 @@ def build_message(
         "world_beer_awards": f"World Beer Awards {candidate.award_year}",
         "ocu": f"OCU {candidate.award_year}",
         "mapa": f"Premio Alimentos de España {candidate.award_year}",
+        "wccc": f"World Championship Cheese Contest {candidate.award_year}",
     }
     headline_award = html.escape(
         candidate.headline_award
@@ -1160,6 +1306,12 @@ def build_message(
         first = (
             "Министерство сельского хозяйства Испании назвало "
             f"<b>{name}</b> победителем в категории {category}."
+        )
+    elif candidate.source_kind == "wccc":
+        first = (
+            f"На World Championship Cheese Contest {candidate.award_year} "
+            f"<b>{name}</b> занял первое место в классе {category} и "
+            "вошёл в Top-20 финального Championship Round."
         )
     else:
         raise ProductAwardError(
@@ -1519,18 +1671,17 @@ CATEGORIES: tuple[ReviewedCategory, ...] = (
                             "Anís Chinchón de la Alcoholera Dulce",
                             "GONZALEZ BYASS DISTRIBUCION",
                         ),
-                        retailer="Carrefour",
-                        retailer_kind="carrefour",
+                        retailer="DIA",
+                        retailer_kind="dia",
                         retailer_url=(
-                            "https://www.carrefour.es/supermercado/"
-                            "anis-chinchon-dulce-1-l/R-538001406/p"
+                            "https://www.dia.es/cervezas-vinos-y-licores/"
+                            "cremas-licores-y-brandy/p/275359"
                         ),
-                        retailer_hosts=frozenset({"www.carrefour.es"}),
+                        retailer_hosts=frozenset({"www.dia.es"}),
                         retailer_markers=(
-                            "Anís Chinchón dulce 1 l",
-                            "35",
-                            "I.G.P. Chinchón",
-                            "González Byass",
+                            "Anís dulce Chinchon 1 L",
+                            "González Byass S.A.",
+                            "España",
                         ),
                         product_name="Anís Chinchón Dulce",
                         award_year=2026,
@@ -1539,9 +1690,9 @@ CATEGORIES: tuple[ReviewedCategory, ...] = (
                         ),
                         award_scope="exact_product",
                         award_result="Galardonado 2026",
-                        product_id=538001406,
+                        product_id=275359,
                         expected_ean=None,
-                        retailer_title="Anís Chinchón dulce 1 l",
+                        retailer_title="Anís dulce Chinchon 1 L",
                         package_label="1 л, 35% об.",
                         country_label="Испания",
                         producer_label="González Byass S.A.",
@@ -1705,6 +1856,73 @@ CATEGORIES: tuple[ReviewedCategory, ...] = (
                                     "Mahou Cinco Estrellas Sin Filtrar",
                                 ),
                             ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    ),
+    ReviewedCategory(
+        "hard_mixed_milk_cheese",
+        (
+            ReviewedSource(
+                "World Championship Cheese Contest 2026",
+                1,
+                (
+                    ReviewedCandidate(
+                        category_key="hard_mixed_milk_cheese",
+                        selection_key="hard_mixed_milk_cheese:2026",
+                        event_id=(
+                            "hard_mixed_milk_cheese:wccc-2026:"
+                            "entrepinares-seleccion-tostado"
+                        ),
+                        source_name="World Championship Cheese Contest",
+                        source_kind="wccc",
+                        source_url=(
+                            "https://worldchampioncheese.org/"
+                            "2026-wccc-top-20-finalists/"
+                        ),
+                        source_hosts=frozenset({
+                            "worldchampioncheese.org",
+                            "www.worldchampioncheese.org",
+                        }),
+                        source_markers=(
+                            "2026 WCCC Top 20 Finalists",
+                            "20 cheeses in the running for the top prize",
+                            "Class #: 114",
+                            "Hard Mixed Milk Cheeses",
+                            "Seleccion Tostado Mixed Milk Cheese Extra Aged",
+                            "Queserías Entrepinares S.A.U.",
+                        ),
+                        retailer="Mercadona",
+                        retailer_kind="mercadona",
+                        retailer_url=(
+                            "https://tienda.mercadona.es/api/products/"
+                            "50952/?lang=es&wh=alc1"
+                        ),
+                        retailer_hosts=frozenset({"tienda.mercadona.es"}),
+                        retailer_markers=(
+                            "Queso añejo tostado mezcla Hacendado",
+                            "Hacendado",
+                            "Queserías Entrepinares S.A.U.",
+                        ),
+                        product_name="Queso añejo tostado mezcla Hacendado",
+                        award_year=2026,
+                        source_category="114 — Hard Mixed Milk Cheeses",
+                        award_scope="best_of_class_top20",
+                        award_result="class_winner_top20",
+                        product_id=50952,
+                        expected_ean="8480000509529",
+                        retailer_title="Queso añejo tostado mezcla Hacendado",
+                        package_label="кусок ≈370 г, переменный вес",
+                        country_label="Испания",
+                        producer_label="Queserías Entrepinares S.A.U.",
+                        headline_award=(
+                            "World Championship Cheese Contest 2026"
+                        ),
+                        highlight=(
+                            "Победитель класса 114 Hard Mixed Milk Cheeses "
+                            "и один из 20 финалистов Championship Round."
                         ),
                     ),
                 ),
