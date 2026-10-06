@@ -42,7 +42,12 @@ from .event_access import (
     temporally_consistent,
     validate_state,
 )
-from .telegram import TelegramError, is_ambiguous_send_failure, send_message
+from .telegram import (
+    TelegramError,
+    is_ambiguous_send_failure,
+    send_message,
+    send_photo_url,
+)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -618,6 +623,7 @@ def _reply_block(
             lines.append("⏳ до " + html.escape(deadline))
     return tuple(lines)
 
+
 def render_reply(
     record: EventAccessRecord,
     decision: EventAccessDecision,
@@ -760,6 +766,9 @@ async def run_registration_notifications(
     publish: Callable[[str, Optional[int]], Awaitable[int]],
     *,
     source_state_path: Path = DEFAULT_SOURCE_STATE_PATH,
+    publish_photo: Optional[
+        Callable[[str, str], Awaitable[int]]
+    ] = None,
 ) -> str:
     records, fresh_sources = await _load_local_event_access_records(
         now,
@@ -799,10 +808,30 @@ async def run_registration_notifications(
                 now,
             )
             try:
-                message_id = await publish(
-                    message,
-                    decision.reply_to_message_id,
+                use_photo = (
+                    decision.operation == "root"
+                    and record.image_url is not None
+                    and publish_photo is not None
+                    and len(message) <= 1024
                 )
+                if use_photo:
+                    try:
+                        message_id = await publish_photo(
+                            record.image_url,
+                            message,
+                        )
+                    except TelegramError as exc:
+                        if exc.diagnostic_code not in {
+                            "REMOTE-MEDIA",
+                            "URL-POLICY",
+                        }:
+                            raise
+                        message_id = await publish(message, None)
+                else:
+                    message_id = await publish(
+                        message,
+                        decision.reply_to_message_id,
+                    )
             except TelegramError as exc:
                 if is_ambiguous_send_failure(exc):
                     raise RegistrationDeliveryUncertain() from exc
@@ -938,12 +967,26 @@ async def _run_cli(
             retry_only_rate_limits=True,
         )
 
+    async def publish_photo(
+        photo_url: str,
+        caption: str,
+    ) -> int:
+        message_id, _ = await send_photo_url(
+            bot_token,
+            chat_id,
+            photo_url,
+            caption,
+            disable_notification=False,
+        )
+        return message_id
+
     try:
         result = await run_registration_notifications(
             now,
             state,
             publish,
             source_state_path=source_path,
+            publish_photo=publish_photo,
         )
     except RegistrationDeliveryUncertain:
         LOGGER.warning(
