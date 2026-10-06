@@ -86,6 +86,9 @@ class MunicipalReviewedRosarioEditorialTests(unittest.IsolatedAsyncioTestCase):
         aurora = "Rosario de la Aurora de Nuestra Señora del Rosario"
         pasacalles = "Pasacalles de la Asociación Músico-Cultural Vegamania"
         fireworks = "Gran Castillo de Fuegos Artificiales"
+        secondary_aurora = (
+            "Rosario de la Aurora en la iglesia parroquial San Jaime Apóstol"
+        )
         source_events = (
             SourceEvent(
                 aurora, day, day, "08:00", None,
@@ -93,6 +96,11 @@ class MunicipalReviewedRosarioEditorialTests(unittest.IsolatedAsyncioTestCase):
                 (AYUNTAMIENTO_PROGRAMME_SOURCE,),
                 programme_title=parent,
                 programme_order=10,
+            ),
+            SourceEvent(
+                secondary_aurora, day, day, "08:00", None,
+                "Iglesia parroquial San Jaime Apóstol", "event",
+                ("todo_cultura",),
             ),
             SourceEvent(
                 pasacalles, day, day, "12:00", None,
@@ -125,6 +133,12 @@ class MunicipalReviewedRosarioEditorialTests(unittest.IsolatedAsyncioTestCase):
                         _key("municipal_agenda", aurora): {
                             "translation": "Старый машинный перевод",
                         },
+                        _key("municipal_agenda", secondary_aurora): {
+                            "translation": (
+                                "Росарио де ла Аурора в приходской церкви "
+                                "Святого апостола Иакова"
+                            ),
+                        },
                         _key("municipal_agenda", pasacalles): {
                             "translation": "Паракальес Вегамания",
                         },
@@ -143,6 +157,7 @@ class MunicipalReviewedRosarioEditorialTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             [event.title for event in events],
             [
+                "Утренняя молитва Розария в честь Богоматери Розария",
                 "Утренняя молитва Розария в честь Богоматери Розария",
                 "Музыкальное шествие ассоциации «Вегамания»",
                 "Большой фейерверк",
