@@ -182,6 +182,47 @@ class SourceContractTests(unittest.TestCase):
         self.assertEqual(anis.product_id, 275359)
         self.assertTrue(anis.retailer_url.endswith("/p/275359"))
 
+    def test_wccc_award_requires_top20_and_class_identity(self):
+        item = next(
+            candidate
+            for category in awards.CATEGORIES
+            if category.key == "hard_mixed_milk_cheese"
+            for source in category.sources
+            for candidate in source.candidates
+        )
+        valid = (
+            "<html><body>"
+            "2026 WCCC Top 20 Finalists "
+            "20 cheeses in the running for the top prize "
+            "Class #: 114 — Hard Mixed Milk Cheeses "
+            "Seleccion Tostado Mixed Milk Cheese Extra Aged "
+            "Queserías Entrepinares S.A.U."
+            "</body></html>"
+        )
+        with patch.object(awards, "_fetch_html", return_value=valid):
+            awards._verify_award(item)
+
+        for missing in (
+            "2026 WCCC Top 20 Finalists",
+            "Class #: 114",
+            "Seleccion Tostado Mixed Milk Cheese Extra Aged",
+        ):
+            with self.subTest(missing=missing):
+                drifted = valid.replace(missing, "")
+                with patch.object(
+                    awards,
+                    "_fetch_html",
+                    return_value=drifted,
+                ):
+                    with self.assertRaises(
+                        awards.ProductAwardError
+                    ) as caught:
+                        awards._verify_award(item)
+                self.assertEqual(
+                    caught.exception.diagnostic_code,
+                    "AWARD-DRIFT",
+                )
+
     def test_registry_identifiers_and_ordering_are_unique(self):
         categories = awards.CATEGORIES
         self.assertEqual(
