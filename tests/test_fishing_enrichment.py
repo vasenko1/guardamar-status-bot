@@ -332,7 +332,7 @@ class FishingEnrichmentTests(unittest.TestCase):
             content_sha256="b" * 64,
             observed_at=NOW,
         )
-        now = datetime(2026, 10, 6, 8, 0, tzinfo=MADRID)
+        now = datetime(2026, 10, 5, 8, 0, tzinfo=MADRID)
         first = fpcv_access_record(raw, now)
         self.assertIsNotNone(first)
         assert first is not None
@@ -368,7 +368,7 @@ class FishingEnrichmentTests(unittest.TestCase):
         self.assertEqual(second.event_start_date, date(2026, 10, 18))
         self.assertEqual(second.place, "Playas Centro y La Roqueta")
 
-    def test_fpcv_access_freshness_rejects_future_and_stale_observations(self):
+    def test_fpcv_access_freshness_requires_same_local_day(self):
         descriptor = parse_fpcv_index_html(
             _index_html(),
             local_day=NOW.date(),
@@ -394,16 +394,15 @@ class FishingEnrichmentTests(unittest.TestCase):
             )
             self.assertTrue(
                 fpcv_details_are_access_fresh(
-                    NOW + timedelta(hours=35),
+                    NOW + timedelta(hours=18),
                     path,
                 )
             )
+            next_day = datetime(2026, 10, 6, 0, 1, tzinfo=MADRID)
             self.assertFalse(
-                fpcv_details_are_access_fresh(
-                    NOW + timedelta(hours=37),
-                    path,
-                )
+                fpcv_details_are_access_fresh(next_day, path)
             )
+            self.assertIsNone(fpcv_access_record(raw, next_day))
 
     def test_pdf_parser_rejects_index_date_disagreement(self):
         descriptor = parse_fpcv_index_html(
