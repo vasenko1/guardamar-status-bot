@@ -123,12 +123,12 @@ def sha256(payload: bytes) -> str:
 
 def redact(value: str) -> str:
     value = re.sub(
-        r"(?i)([?&](?:api[_-]?key|apikey|token|access[_-]?token|auth|authorization|client[_-]?secret|secret|password)=)[^&#\s]+",
+        r"(?i)((?:api[_-]?key|apikey|token|access[_-]?token|authorization|client[_-]?secret|secret|password)\s*[:=]\s*['\"]?)(?!\[REDACTED\])[^'\"&\s,}\]]+",
         r"\1[REDACTED]",
         value,
     )
     value = re.sub(
-        r"(?i)((?:api[_-]?key|apikey|token|access[_-]?token|authorization|client[_-]?secret|secret|password)\s*[:=]\s*['\"]?)[^'\"&\s,}\]]+",
+        r"(?i)([?&](?:api[_-]?key|apikey|token|access[_-]?token|auth|authorization|client[_-]?secret|secret|password)=)(?!\[REDACTED\])[^&#\s]+",
         r"\1[REDACTED]",
         value,
     )
