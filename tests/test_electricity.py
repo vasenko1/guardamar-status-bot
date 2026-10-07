@@ -456,6 +456,46 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("Энергоёмкие дела лучше запланировать", message)
         self.assertEqual(send.await_args.kwargs["reply_to_message_id"], 101)
 
+    async def test_evening_next_day_publish_still_runs_after_current_day_success(self):
+        now = datetime(2026, 8, 1, 20, 30, tzinfo=TIMEZONE)
+        tomorrow = now.date() + timedelta(days=1)
+        data = DailyPrices(tomorrow, _daily().hours)
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "electricity.json"
+            PublicationState(state_path).mark_electricity_published(now.date())
+            environment = {
+                "ELECTRICITY_STATE_PATH": str(state_path),
+                "ELECTRICITY_SNAPSHOT_PATH": str(
+                    Path(directory) / "electricity_prices.json"
+                ),
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_CHAT_ID": "chat",
+            }
+            with patch.dict(os.environ, environment, clear=False), patch(
+                "telegrambot.__main__.datetime"
+            ) as clock, patch(
+                "telegrambot.__main__.load_or_fetch_prices",
+                new_callable=AsyncMock,
+                return_value=data,
+            ) as collect, patch(
+                "telegrambot.__main__.send_message",
+                new_callable=AsyncMock,
+                return_value=103,
+            ) as send:
+                clock.now.return_value = now
+                result = await _run_command("electricity")
+
+            state = PublicationState(state_path)
+
+        self.assertEqual(result, 0)
+        collect.assert_awaited_once()
+        self.assertTrue(state.is_published(tomorrow))
+        self.assertEqual(send.await_count, 2)
+        self.assertIn(
+            "Цены на электричество завтра",
+            send.await_args_list[1].args[2],
+        )
+
     async def test_current_day_recovery_refuses_late_manual_run(self):
         now = datetime(2026, 8, 1, 6, 0, tzinfo=TIMEZONE)
         with patch("telegrambot.__main__.datetime") as clock, patch(
