@@ -16,6 +16,7 @@ from telegrambot.traffic import (
     TrafficLocation,
     TrafficState,
     build_alert_message,
+    build_batch_alert_message,
     fallback_body,
     location_label,
     monitor_traffic,
@@ -388,6 +389,72 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
             fetcher=fetcher,
             locator=locator,
         )
+
+    def test_batch_copy_shows_segment_boundaries_and_deduplicates_reverse_direction(self):
+        plaza = "Plaza de la Constitución / Calle del Ingeniero Mira"
+        blasco = "Avenida País Valenciano / Carrer Blasco Ibáñez"
+        items = [
+            (
+                incident(
+                    provider_id="TTI-país-a",
+                    from_place=plaza,
+                    to_place=blasco,
+                ),
+                location(street="Avenida del País Valenciano"),
+                "new_present",
+            ),
+            (
+                incident(
+                    provider_id="TTI-plaza",
+                    from_place="Calle de Valencia",
+                    to_place="Avenida del País Valenciano / Calle del Ingeniero Mira",
+                ),
+                location(street="Plaza de la Constitución"),
+                "new_present",
+            ),
+            (
+                incident(
+                    provider_id="TTI-país-b",
+                    from_place=blasco,
+                    to_place=plaza,
+                ),
+                location(street="Avenida del País Valenciano"),
+                "new_present",
+            ),
+            (
+                incident(
+                    provider_id="TTI-mayor",
+                    from_place="Avenida del País Valenciano / Calle del Ingeniero Mira",
+                    to_place="Avenida de las Dunas",
+                ),
+                location(street="Calle Mayor"),
+                "new_present",
+            ),
+            (
+                incident(
+                    provider_id="TTI-mediterraneo",
+                    from_place="Calle Miguel Hernández",
+                    to_place="Avenida del País Valenciano",
+                ),
+                location(street="Avenida del Mediterráneo"),
+                "new_present",
+            ),
+        ]
+
+        message = build_batch_alert_message(items)
+
+        self.assertIn("Актуальных участков с ограничением: <b>4</b>", message)
+        self.assertEqual(message.count("<b>Avenida del País Valenciano</b>"), 1)
+        self.assertIn(f"↳ от {plaza}", message)
+        self.assertIn(f"↳ до {blasco}", message)
+        self.assertIn("<b>Plaza de la Constitución</b>", message)
+        self.assertIn("<b>Calle Mayor</b>", message)
+        self.assertIn("<b>Avenida del Mediterráneo</b>", message)
+        self.assertIn("↳ от Calle Miguel Hernández", message)
+        self.assertIn("↳ до Avenida del País Valenciano", message)
+        self.assertNotIn(" — между ", message)
+        self.assertEqual(message.count("⛔ Проезд перекрыт"), 4)
+        self.assertEqual(message.count(">Карта</a>"), 4)
 
     async def test_simultaneous_new_restrictions_are_one_batch_message(self):
         first = incident(provider_id="TTI-a")
