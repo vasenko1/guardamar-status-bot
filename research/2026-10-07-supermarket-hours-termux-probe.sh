@@ -44,8 +44,8 @@ PRODUCTION_BRANCH="$(git -C "$ROOT" branch --show-current)" || exit 1
 printf 'Repo: %s\n' "$ROOT"
 printf 'Branch: %s\n' "$PRODUCTION_BRANCH"
 printf 'HEAD: %s\n' "$PRODUCTION_HEAD"
-printf 'Git status before:\n'
-git -C "$ROOT" status --short || true
+STATUS_BEFORE="$(git -C "$ROOT" status --porcelain=v1)" || exit 1
+printf 'Git status before:\n%s\n' "$STATUS_BEFORE"
 
 cat > "$PYPROBE" <<'PY'
 from __future__ import annotations
@@ -326,11 +326,16 @@ def inspect_scripts(
         if total >= MAX_ASSET_BYTES_PER_RETAILER:
             break
 
+        remaining = MAX_ASSET_BYTES_PER_RETAILER - total
+        if remaining <= 0:
+            break
+        request_limit = min(ASSET_LIMIT, remaining)
+
         result = fetch(
             f"{label} asset {fetched + 1}",
             url,
             (host,),
-            limit=ASSET_LIMIT,
+            limit=request_limit,
             types=ASSET_TYPES,
             headers=ASSET_HEADERS,
         )
@@ -637,11 +642,14 @@ PY
 
 section "2. Probe syntax preflight"
 
-python -m py_compile "$PYPROBE" || {
-  echo "STOP: embedded Python probe has a syntax error."
-  exit 1
-}
-echo "OK: embedded Python probe compiles."
+python - "$PYPROBE" <<'PY'
+import ast
+from pathlib import Path
+import sys
+
+ast.parse(Path(sys.argv[1]).read_text(encoding="utf-8"))
+print("OK: embedded Python probe parses.")
+PY
 
 section "3. Run source audit"
 
@@ -660,8 +668,8 @@ printf 'Branch before: %s\n' "$PRODUCTION_BRANCH"
 printf 'Branch after:  %s\n' "$BRANCH_AFTER"
 printf 'HEAD before:   %s\n' "$PRODUCTION_HEAD"
 printf 'HEAD after:    %s\n' "$HEAD_AFTER"
-printf 'Git status after:\n'
-git -C "$ROOT" status --short || true
+STATUS_AFTER="$(git -C "$ROOT" status --porcelain=v1)" || exit 1
+printf 'Git status after:\n%s\n' "$STATUS_AFTER"
 
 if [ "$HEAD_AFTER" != "$PRODUCTION_HEAD" ]; then
   echo "ERROR: production HEAD changed during read-only probe."
@@ -670,6 +678,11 @@ fi
 
 if [ "$BRANCH_AFTER" != "$PRODUCTION_BRANCH" ]; then
   echo "ERROR: production branch changed during read-only probe."
+  exit 2
+fi
+
+if [ "$STATUS_AFTER" != "$STATUS_BEFORE" ]; then
+  echo "ERROR: production working tree changed during read-only probe."
   exit 2
 fi
 
