@@ -134,7 +134,7 @@ ENDPOINT_NEEDLES = (
 SECRET_VALUE_RE = re.compile(
     r"""(?ix)
     (
-        (?:api[_-]?key|token|secret|authorization|client[_-]?secret)
+        (?:api[_-]?key|token|secret|authorization|client[_-]?secret|keygooglemaps)
         \s*[:=]\s*
         [\"']?
     )
@@ -143,7 +143,7 @@ SECRET_VALUE_RE = re.compile(
 )
 QUERY_SECRET_RE = re.compile(
     r"""(?ix)
-    ([?&](?:api[_-]?key|token|secret|access[_-]?token)=)
+    ([?&](?:api[_-]?key|token|secret|access[_-]?token|key)=)
     ([^&#\s]+)
     """
 )
