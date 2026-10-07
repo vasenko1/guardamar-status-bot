@@ -498,8 +498,10 @@ def render_root(
         _root_heading(record, first.kind),
         "",
         "<b>" + html.escape(record.title) + "</b>",
-        _event_date_line(record),
     ]
+    if record.presentation_note:
+        lines.append(html.escape(record.presentation_note))
+    lines.append(_event_date_line(record))
     if first.kind in {
         "opening-tomorrow",
         "opening-today",

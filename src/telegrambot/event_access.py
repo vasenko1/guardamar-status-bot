@@ -66,6 +66,7 @@ class EventAccessRecord:
     image_url: Optional[str] = None
     occurrence_status: Optional[str] = None
     options: Tuple[AccessOption, ...] = ()
+    presentation_note: Optional[str] = None
 
 
 @dataclass(frozen=True)
