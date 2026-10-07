@@ -518,6 +518,63 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Avenida del Mediterráneo", sent[-1][0])
         self.assertIn("Calle Mayor", sent[-1][0])
 
+    async def test_simultaneous_tomorrow_restrictions_are_one_batch(self):
+        tomorrow = NOW + timedelta(days=1)
+        first = incident(
+            provider_id="TTI-a",
+            validity="future",
+            starts_at=tomorrow.replace(hour=9, minute=0),
+        )
+        second = incident(
+            provider_id="TTI-b",
+            validity="future",
+            starts_at=tomorrow.replace(hour=11, minute=30),
+            from_place="Calle Mayor",
+            to_place="Calle Norte",
+            coordinates=(
+                (-0.6500000, 38.0800000),
+                (-0.6503000, 38.0803000),
+                (-0.6506000, 38.0806000),
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+
+            async def fetcher(_key):
+                return (first, second)
+
+            async def locator(item, _key):
+                return location(
+                    street=(
+                        "Avenida del Mediterráneo"
+                        if item.provider_id == "TTI-a"
+                        else "Calle Mayor"
+                    )
+                )
+
+            async def composer(_facts):
+                return None
+
+            async def publish(message, reply_to):
+                sent.append((message, reply_to))
+                return 850
+
+            delivered = await monitor_traffic(
+                state,
+                NOW,
+                "key",
+                composer,
+                publish,
+                fetcher=fetcher,
+                locator=locator,
+            )
+
+        self.assertEqual(delivered, 1)
+        self.assertEqual(len(sent), 1)
+        self.assertIn("запланировано на завтра с 09:00", sent[0][0])
+        self.assertIn("запланировано на завтра с 11:30", sent[0][0])
+
     async def test_failed_batch_rolls_back_every_delivery_marker(self):
         first = incident(provider_id="TTI-a")
         second = incident(
