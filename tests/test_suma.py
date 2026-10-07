@@ -204,7 +204,7 @@ class SumaMonitorTests(unittest.TestCase):
                 "published",
             )
             self.assertEqual(len(calls), 1)
-            self.assertIn("Открыт период оплаты SUMA", calls[0])
+            self.assertIn("Открыт срок оплаты SUMA", calls[0])
             self.assertIn("8 октября", calls[0])
             self.assertIn("IBI urbana", calls[0])
             self.assertIn("IAE", calls[0])
