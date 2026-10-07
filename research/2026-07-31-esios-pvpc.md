@@ -45,3 +45,25 @@ References:
 - ESIOS indicator 1001 describes the active-energy PVPC billing term and
   publishes D+1 daily around 20:20:
   <https://www.esios.ree.es/es/analisis/1001>
+
+
+## Post-midnight recovery invariant
+
+A delayed D+1 PVPC can cross the Europe/Madrid calendar boundary. The normal
+`electricity` command always targets tomorrow, so after midnight it must not
+be used to repair the just-started day: it would correctly switch to the
+following date.
+
+The dedicated `electricity-current-recovery` command instead targets
+`now.date()` and is permitted only from 00:00 through 05:59 Europe/Madrid.
+It uses the same ESIOS -> REData collection and validation path and the same
+publication state. If today's PVPC was already published the previous evening,
+the local state short-circuits before any price API request. If it was not,
+a late official publication can be recovered after midnight. The current-day
+Telegram table says «сегодня» and omits the future-planning recommendation so
+elapsed cheap hours are not presented as advice.
+
+The scheduled post-midnight recovery points are 00:05, 00:20, 00:40, 01:00,
+01:30, 02:00, 02:30, 03:00, 04:00 and 05:00. The command itself rejects later
+execution, which also prevents an evening next-day publication marker from
+being mistaken for evidence that today's table was never sent.
