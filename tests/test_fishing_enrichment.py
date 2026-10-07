@@ -381,6 +381,11 @@ class FishingEnrichmentTests(unittest.TestCase):
         self.assertEqual(first.record_id, "fpcv:convocatoria:43-26")
         self.assertEqual(first.source, "fpcv")
         self.assertEqual(first.access_kind, "registration")
+        self.assertEqual(
+            first.title,
+            "Провинциальный чемпионат Аликанте "
+            "по спортивной рыбалке — Mar Costa",
+        )
         self.assertEqual(first.event_start_date, date(2026, 10, 17))
         self.assertEqual(first.options[0].status, "open")
         self.assertEqual(first.options[0].closes_on, date(2026, 10, 13))
