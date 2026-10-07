@@ -453,7 +453,7 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("↳ от Calle Miguel Hernández", message)
         self.assertIn("↳ до Avenida del País Valenciano", message)
         self.assertNotIn(" — между ", message)
-        self.assertEqual(message.count("⛔ Проезд перекрыт"), 4)
+        self.assertEqual(message.count("⛔ проезд перекрыт"), 4)
         self.assertEqual(message.count(">Карта</a>"), 4)
 
     async def test_simultaneous_new_restrictions_are_one_batch_message(self):
