@@ -699,3 +699,123 @@ The gate verified:
 At this point no additional pre-device defect is known. The remaining unknowns
 are empirical source contracts and can only be closed by the read-only Termux
 probe.
+
+
+## First production probe results — 2026-10-07 20:30 CEST
+
+The reviewed broad discovery probe completed successfully on the production
+Termux device. It started and ended on production `main`
+`b907b069fe6bba499b31ca129a818ebe2263bacb`, with an unchanged clean working
+tree and exit code 0.
+
+This run materially narrows the source problem.
+
+### Mercadona
+
+The official locator was directly reachable through the production Python/TLS
+stack:
+
+- HTTP success;
+- `text/html`;
+- about 41 KiB;
+- no redirect.
+
+The HTML itself publishes the retailer's schedule semantics, including
+`Próximos festivos`, `Horario supermercado`, and codes including
+`C: Festivo Cerrado` and `FA: Festivo abierto ...`.
+
+More importantly, the page publishes the current data source:
+
+`https://storage.googleapis.com/pro-bucket-wcorp-files/json/data.js?... `
+
+plus a separate `data_total.js`.
+
+The exploratory `?s=03140` request returned essentially the same page shell;
+it is therefore not an accepted store-search API contract.
+
+Next gate: read the page-linked exact `data.js` object, identify the Guardamar
+record and prove its date/holiday schema. The Google Storage host is acceptable
+only for the exact Mercadona-linked bucket/path discovered from the official
+Mercadona page; it must not become a generic storage allowlist.
+
+### masymas
+
+The base official locator already proves the exact physical Guardamar point
+without any third-party source:
+
+- coordinates `38.09703600,-0.65669190`;
+- address `AVDA. PUERTO, 18 Y 20`;
+- locality `GUARDAMAR DEL SEGURA-ALICANTE`;
+- phone `966727946`.
+
+The locator's initial GET does not expose the reviewed
+`propiedadestienda.php?Id=...` store identifier near that map record and does
+not expose a useful date-specific exception schedule.
+
+The HTML form explicitly POSTs `IdProvincia`. The next narrow probe should
+therefore follow that existing first-party form contract for Alicante, discover
+the Guardamar selector value deterministically, then read only the resulting
+Guardamar row/detail. No numeric ID scan is justified.
+
+### DIA
+
+The exact store page for official store `36111` was directly reachable:
+
+- HTTP success;
+- `text/html`;
+- about 29 KiB;
+- no redirect.
+
+This run disproves the earlier Next.js hypothesis. `__NEXT_DATA__` is absent.
+
+The page template exposes exactly the concepts needed by the product:
+
+- `horariosTienda2` for ordinary store hours;
+- `festivosTienda` for special dates;
+- `horariosAperturaFestivo` for holiday opening hours;
+- an empty holiday-hours value renders `Cerrado`;
+- `fechaApertura`, `inicioCierreTemp` and `finCierreTemp` model temporary
+  closure/reopening state.
+
+The same exact official page also publishes:
+
+- `/tiendas/js/shopFinder.js?5.146.0`;
+- `https://www.dia.es/clubdia/ES/tiendas.v2753.json.gz`.
+
+The broad probe intentionally stopped after eight generic assets and therefore
+did not fetch the more relevant `shopFinder.js`. This is now treated as a
+discovery-budget limitation, not evidence that the contract is absent.
+
+Next gate: fetch only the page-discovered `shopFinder.js` and versioned gzip
+dataset, then extract exact store `36111` and the schedule/holiday fields.
+
+### Probe-redaction correction
+
+The broad probe's diagnostic redaction was narrower than its research note
+claimed: a client-visible Google Maps browser key present in Mercadona HTML was
+printed because the variable/query naming did not match the original
+token-pattern allowlist.
+
+This was not a bot credential and came from public client-side HTML, but the
+research probe has nevertheless been hardened so a repeat run redacts
+`keyGoogleMaps` and generic query `key=` values. The narrow exact-source
+probe avoids printing the Mercadona page body at all.
+
+### Architecture impact
+
+The first production run makes the proposed architecture simpler, not more
+complex:
+
+- do not scrape rendered maps;
+- do not execute JavaScript;
+- do not retain the broad discovery asset walk in production;
+- do not use Mercadona's `?s=03140` shell as a schedule source;
+- do not use DIA Next.js machinery;
+- do not brute-force masymas IDs.
+
+The companion narrow probe is:
+
+`research/2026-10-07-supermarket-hours-exact-source-probe.sh`
+
+It tests only the three now-evidenced first-party contracts and remains
+read-only. Production implementation is still gated on that probe.
