@@ -53,6 +53,13 @@ to affect normal local movement.
 ## Publication lifecycle
 
 - A newly observed eligible `present` closure publishes immediately.
+- When one successful hourly snapshot would otherwise produce two or more
+  standalone notifications (new active restrictions, next-day planned
+  restrictions, or daily ongoing reminders), combine them into one traffic
+  summary instead of sending a burst of per-street messages. Each included
+  incident keeps its own lifecycle markers and stores the same Telegram message
+  ID as its reply anchor. Reply-based category changes and confirmed endings
+  remain per incident.
 - An eligible `future` closure publishes once on the local calendar day before
   its start: "tomorrow ...".
 - When that planned incident actually becomes `present`, publish the normal

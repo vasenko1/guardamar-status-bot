@@ -78,6 +78,39 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
             normalize_prices(_payload(missing=7), TARGET)
         self.assertEqual(raised.exception.diagnostic_code, "INCOMPLETE")
 
+    def test_rejects_all_zero_api_day_as_provisional(self):
+        payload = json.loads(_payload())
+        for item in payload["indicator"]["values"]:
+            if item["geo_name"] == "Península":
+                item["value"] = 0
+        with self.assertRaises(ElectricityError) as raised:
+            normalize_prices(json.dumps(payload).encode(), TARGET)
+        self.assertEqual(raised.exception.diagnostic_code, "ZERO-DAY")
+        self.assertTrue(raised.exception.retryable)
+
+    def test_rejects_cached_all_zero_day(self):
+        zero_day = DailyPrices(
+            TARGET,
+            tuple(HourlyPrice(hour, Decimal("0")) for hour in range(24)),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "electricity_prices.json"
+            document = {
+                "version": 1,
+                "source": "ESIOS / Red Eléctrica",
+                "indicator_id": 1001,
+                "geo_name": "Península",
+                "local_date": TARGET.isoformat(),
+                "hours": [
+                    {"hour": item.hour, "eur_kwh": str(item.eur_kwh)}
+                    for item in zero_day.hours
+                ],
+            }
+            path.write_text(json.dumps(document), encoding="utf-8")
+            with self.assertRaises(ElectricityError) as raised:
+                _load_price_snapshot(path, TARGET)
+        self.assertEqual(raised.exception.diagnostic_code, "ZERO-DAY")
+
     def test_non_finite_price_is_rejected_without_decimal_crash(self):
         payload = json.loads(_payload())
         payload["indicator"]["values"][0]["value"] = "NaN"

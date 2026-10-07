@@ -590,6 +590,55 @@ def build_alert_message(
     )
 
 
+
+def build_batch_alert_message(
+    items: list[tuple[TrafficIncident, TrafficLocation, str]],
+) -> str:
+    """Combine simultaneous standalone traffic alerts into one message."""
+
+    if len(items) < 2:
+        raise TrafficError("traffic batch requires at least two incidents")
+
+    rows = []
+    for incident, location, mode in items:
+        label = html.escape(location_label(incident, location))
+        if mode == "future_tomorrow":
+            status = (
+                "полное перекрытие запланировано на завтра"
+                if incident.category == "roadClosed"
+                else "перекрытие полосы запланировано на завтра"
+            )
+            if incident.starts_at is not None:
+                status += (
+                    " с "
+                    + incident.starts_at.astimezone(GUARDAMAR_TIMEZONE).strftime("%H:%M")
+                )
+        elif incident.category == "roadClosed":
+            status = (
+                "проезд остаётся перекрыт"
+                if mode == "ongoing"
+                else "проезд перекрыт"
+            )
+        else:
+            status = (
+                "полоса движения остаётся перекрыта"
+                if mode == "ongoing"
+                else "перекрыта полоса движения"
+            )
+        rows.append(
+            f'• <b>{label}</b> — {status}. '
+            f'<a href="{html.escape(_map_url(location), quote=True)}">Карта</a>'
+        )
+
+    return with_footer(
+        "🚧 <b>Ограничения движения в Гуардамаре</b>\n\n"
+        "Одновременно обнаружено несколько актуальных ограничений. "
+        "Чтобы не отправлять отдельное уведомление по каждой улице, "
+        "они собраны в одном сообщении:\n\n"
+        + "\n".join(rows)
+    )
+
+
 def _record_incident(record: dict) -> TrafficIncident:
     if not isinstance(record, dict):
         raise TrafficError("traffic state event is invalid", code="STATE")
@@ -1146,6 +1195,82 @@ async def _deliver(
     return 1
 
 
+
+async def _deliver_batch(
+    state: TrafficState,
+    value: dict,
+    entries: list[tuple[dict, str, str, Optional[dict[str, Any]]]],
+    *,
+    message: str,
+    publish: Callable[[str, Optional[int]], Awaitable[int]],
+) -> int:
+    """Crash-safely deliver one Telegram message for multiple lifecycles."""
+
+    if len(entries) < 2:
+        raise TrafficError("traffic batch delivery requires at least two records")
+
+    missing = object()
+    previous = []
+    pending_at = datetime.now(GUARDAMAR_TIMEZONE).isoformat()
+    for record, marker, marker_value, remember in entries:
+        previous.append((
+            record,
+            marker,
+            record.get(marker, missing),
+            record.get("pending_delivery", missing),
+            {
+                key: record.get(key, missing)
+                for key in (remember or {})
+            },
+        ))
+        record[marker] = marker_value
+        for key, remembered_value in (remember or {}).items():
+            record[key] = remembered_value
+        record["pending_delivery"] = {
+            "at": pending_at,
+            "marker": marker,
+            "value": marker_value,
+        }
+
+    state.write(value)
+    try:
+        message_id = await publish(message, None)
+    except TrafficDeliveryUncertain:
+        logging.warning(
+            "Traffic batch delivery uncertain; automatic resend suppressed"
+        )
+        raise
+    except Exception:
+        for (
+            record,
+            marker,
+            previous_marker,
+            previous_pending,
+            previous_remember,
+        ) in previous:
+            if previous_marker is missing:
+                record.pop(marker, None)
+            else:
+                record[marker] = previous_marker
+            if previous_pending is missing:
+                record.pop("pending_delivery", None)
+            else:
+                record["pending_delivery"] = previous_pending
+            for key, previous_value in previous_remember.items():
+                if previous_value is missing:
+                    record.pop(key, None)
+                else:
+                    record[key] = previous_value
+        state.write(value)
+        raise
+
+    for record, _, _, _ in entries:
+        record["last_message_id"] = message_id
+        record.pop("pending_delivery", None)
+    state.write(value)
+    return 1
+
+
 async def monitor_traffic(
     state: TrafficState,
     now: datetime,
@@ -1163,6 +1288,7 @@ async def monitor_traffic(
     incidents = await fetcher(tomtom_api_key)
     raw_ids = {incident.provider_id for incident in incidents}
     delivered = 0
+    standalone_alerts = []
 
     with state.exclusive_run():
         value = state.read()
@@ -1434,6 +1560,21 @@ async def monitor_traffic(
                 {"last_alert_category": incident.category}
                 if incident.validity == "present" else None
             )
+            if reply_to is None and mode in {
+                "new_present", "ongoing", "future_tomorrow"
+            }:
+                standalone_alerts.append((
+                    incident,
+                    location,
+                    mode,
+                    record,
+                    message,
+                    marker,
+                    marker_value,
+                    remember,
+                ))
+                continue
+
             delivered += await _deliver(
                 state,
                 value,
@@ -1444,6 +1585,53 @@ async def monitor_traffic(
                 marker=marker,
                 marker_value=marker_value,
                 remember=remember,
+            )
+
+        if len(standalone_alerts) == 1:
+            (
+                _incident,
+                _location,
+                _mode,
+                record,
+                message,
+                marker,
+                marker_value,
+                remember,
+            ) = standalone_alerts[0]
+            delivered += await _deliver(
+                state,
+                value,
+                record,
+                message=message,
+                publish=publish,
+                reply_to=None,
+                marker=marker,
+                marker_value=marker_value,
+                remember=remember,
+            )
+        elif len(standalone_alerts) > 1:
+            message = build_batch_alert_message([
+                (incident, location, mode)
+                for incident, location, mode, *_ in standalone_alerts
+            ])
+            delivered += await _deliver_batch(
+                state,
+                value,
+                [
+                    (record, marker, marker_value, remember)
+                    for (
+                        _incident,
+                        _location,
+                        _mode,
+                        record,
+                        _message,
+                        marker,
+                        marker_value,
+                        remember,
+                    ) in standalone_alerts
+                ],
+                message=message,
+                publish=publish,
             )
 
         state.write(value)
