@@ -54,13 +54,14 @@ including 7 October and 9 October.
 Therefore this supermarket feature must **not add another scheduled network
 request merely to learn Guardamar holidays**.
 
-The holiday calendar can identify dates worth extra attention. It cannot prove
-that a supermarket is closed.
+The holiday calendar can explain a verified closure and can identify dates
+worth extra attention. It must **not** gate retailer collection because the
+requested feature also covers exceptional closures for non-holiday reasons.
 
 Runtime precedence must remain:
 
-    reviewed Guardamar calendar -> candidate/context only
     exact retailer store source -> factual open/closed state
+    reviewed Guardamar calendar -> optional reason/context only
 
 A legal holiday, ZGAT period, or legally permitted commercial Sunday is never
 itself evidence that a particular store opens or closes.
@@ -529,7 +530,9 @@ The implementation must later prove at least:
 - exact host allowlists;
 - bounded response sizes and timeouts;
 - no network holiday lookup when the reviewed local calendar already covers
-  the needed date context.
+  the needed date context;
+- retailer collection is not gated by holidays, so non-holiday exceptional
+  closures remain discoverable.
 
 
 ## Repeated pre-device audit — 2026-10-07
