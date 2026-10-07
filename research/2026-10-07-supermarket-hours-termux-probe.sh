@@ -57,7 +57,7 @@ from telegrambot.holidays import official_holidays_on
 
 SERVICE_HEADERS = {
     "Accept-Language": "es-ES,es;q=0.9,en;q=0.5",
-    "User-Agent": "GuardamarMorningDigest/0.14 supermarket-source-probe",
+    "User-Agent": "GuardamarMorningDigest/0.14",
 }
 NAVIGATION_HEADERS = {
     "User-Agent": (
@@ -79,6 +79,7 @@ SCRIPT_TYPES = frozenset({
     "application/javascript",
     "text/javascript",
     "application/x-javascript",
+    "text/plain",
 })
 
 NETWORK_REQUESTS = 0
@@ -244,6 +245,8 @@ def endpoint_strings(text: str, *, cap: int = 140) -> list[str]:
         .replace(r"\/", "/")
         .replace(r"\u002F", "/")
         .replace(r"\u002f", "/")
+        .replace(r"\x2F", "/")
+        .replace(r"\x2f", "/")
     )
     needles = (
         "api", "graphql", "store", "stores", "shop", "tienda", "tiendas",
@@ -377,7 +380,7 @@ def inspect_scripts(
             accepted_types=SCRIPT_TYPES,
             limit=1_000_000,
             accept="application/javascript,text/javascript",
-            navigation=True,
+            navigation_fallback=True,
         )
         text = decode_text(observation)
         if text is None:
