@@ -2577,7 +2577,7 @@ def main() -> None:
         exit_code = asyncio.run(_run_command(arguments.command, tuple(arguments.extra)))
     except ElectricityError as exc:
         print(
-            f"Command failed [ESIOS-{exc.diagnostic_code}]: {exc}",
+            f"Command failed [PVPC-{exc.diagnostic_code}]: {exc}",
             file=sys.stderr,
         )
         raise SystemExit(2) from exc
