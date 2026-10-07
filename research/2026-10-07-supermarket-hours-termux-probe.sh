@@ -8,10 +8,12 @@ CACHE_BASE="${HOME}/.cache/guardamar-supermarket-hours-probe"
 STAMP="$(date '+%Y%m%d-%H%M%S')"
 REPORT="${CACHE_BASE}/report-${STAMP}.txt"
 
-if ! command -v python >/dev/null 2>&1; then
-  echo "ERROR: python is required." >&2
-  exit 1
-fi
+for command_name in python git tee date; do
+  if ! command -v "$command_name" >/dev/null 2>&1; then
+    printf 'ERROR: required command is missing: %s\n' "$command_name" >&2
+    exit 1
+  fi
+done
 if [ ! -d "$ROOT/.git" ]; then
   echo "ERROR: production repository not found at $ROOT" >&2
   exit 1
@@ -119,6 +121,20 @@ def sha256(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def redact(value: str) -> str:
+    value = re.sub(
+        r"(?i)([?&](?:api[_-]?key|apikey|token|access[_-]?token|auth|authorization|client[_-]?secret|secret|password)=)[^&#\\s]+",
+        r"\\1[REDACTED]",
+        value,
+    )
+    value = re.sub(
+        r"(?i)((?:api[_-]?key|apikey|token|access[_-]?token|authorization|client[_-]?secret|secret|password)\\s*[:=]\\s*['\\\"]?)[^'\\\"&\\s,}\\]]+",
+        r"\\1[REDACTED]",
+        value,
+    )
+    return value
+
+
 def fetch(
     label: str,
     url: str,
@@ -147,7 +163,7 @@ def fetch(
         NETWORK_REQUESTS += 1
         started = time.monotonic()
         print(f"\n--- {label} [{profile_name}] ---")
-        print("URL:", url)
+        print("URL:", redact(url))
         try:
             payload, final_url, content_type = fetch_bounded(
                 url,
@@ -181,7 +197,7 @@ def fetch(
 
         print("RESULT: OK")
         print("profile:", profile_name)
-        print("final_url:", final_url)
+        print("final_url:", redact(final_url))
         print("content_type:", content_type)
         print("bytes:", len(payload))
         print("sha256:", sha256(payload))
@@ -231,7 +247,7 @@ def snippets(text: str, *keywords: str, cap: int = 80) -> None:
             key = value.casefold()
             if key not in seen:
                 seen.add(key)
-                print(f"[{raw_keyword}] {value}")
+                print(f"[{raw_keyword}] {redact(value)}")
                 shown += 1
             start = index + max(1, len(keyword))
 
@@ -272,7 +288,7 @@ def endpoint_strings(text: str, *, cap: int = 140) -> list[str]:
             if value in seen:
                 continue
             seen.add(value)
-            values.append(value[:900])
+            values.append(redact(value[:900]))
             if len(values) >= cap:
                 return values
     return values
@@ -366,11 +382,11 @@ def inspect_scripts(
     )
     print("prioritized first-party scripts:")
     for _, url in first_party[:20]:
-        print(url)
+        print(redact(url))
     if external:
         print("external scripts (listed only, never fetched automatically):")
         for url in external[:20]:
-            print(url)
+            print(redact(url))
 
     for number, (_, url) in enumerate(first_party[:max_assets], start=1):
         observation = fetch(
@@ -417,12 +433,18 @@ class FormParser(HTMLParser):
             )
             self.emit(f"FORM {method} {action}")
         elif tag == "input":
+            input_type = str(values.get("type") or "").casefold()
+            input_value = values.get("value")
+            if input_type in {"hidden", "password"}:
+                input_value = "[OMITTED]"
+            elif isinstance(input_value, str):
+                input_value = redact(input_value)
             self.emit(
                 "INPUT "
                 + repr((
                     values.get("name"),
                     values.get("type"),
-                    values.get("value"),
+                    input_value,
                 ))
             )
         elif tag == "select":
