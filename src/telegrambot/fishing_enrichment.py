@@ -1414,10 +1414,11 @@ def fpcv_access_record(
         if context
         else "Соревнование"
     )
-    title = (
-        competition_title
-        + " по спортивной рыбалке — "
-        + base_title
+    title = competition_title + " по спортивной рыбалке"
+    presentation_note = (
+        "🎣 Mar-Costa — ловля с берега, «поймал-отпустил»"
+        if _fold(base_title) == "mar costa"
+        else "🎣 Дисциплина: " + base_title
     )
 
     details = list(raw.get("details") or ())
@@ -1467,6 +1468,7 @@ def fpcv_access_record(
             schedule_note=raw.get("schedule_note"),
             occurrence_status="cancelled" if cancelled else "scheduled",
             options=(option,),
+            presentation_note=presentation_note,
         )
     except (TypeError, ValueError):
         return None
