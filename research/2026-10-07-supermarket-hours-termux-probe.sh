@@ -63,17 +63,22 @@ from telegrambot._transport import BoundedFetchError, fetch_bounded
 from telegrambot.holidays import official_holidays_on
 
 
+SERVICE_HEADERS = {
+    "User-Agent": "GuardamarMorningDigest/0.14",
+    "Accept": (
+        "text/html,application/xhtml+xml,application/json,"
+        "application/javascript,text/javascript,text/plain"
+    ),
+    "Accept-Language": "es-ES,es;q=0.9,en;q=0.5",
+}
 NAV_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Linux; Android 14; Mobile) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/140.0.0.0 Mobile Safari/537.36"
     ),
-    "Accept": (
-        "text/html,application/xhtml+xml,application/json,"
-        "application/javascript,text/javascript,text/plain"
-    ),
-    "Accept-Language": "es-ES,es;q=0.9,en;q=0.5",
+    "Accept": SERVICE_HEADERS["Accept"],
+    "Accept-Language": SERVICE_HEADERS["Accept-Language"],
     "Upgrade-Insecure-Requests": "1",
     "Sec-Fetch-Site": "none",
     "Sec-Fetch-Mode": "navigate",
@@ -81,12 +86,12 @@ NAV_HEADERS = {
     "Sec-Fetch-Dest": "document",
 }
 ASSET_HEADERS = {
-    "User-Agent": NAV_HEADERS["User-Agent"],
+    "User-Agent": SERVICE_HEADERS["User-Agent"],
     "Accept": (
         "application/json,application/javascript,text/javascript,"
         "text/plain,text/html"
     ),
-    "Accept-Language": NAV_HEADERS["Accept-Language"],
+    "Accept-Language": SERVICE_HEADERS["Accept-Language"],
 }
 
 PAGE_TYPES = frozenset({
@@ -125,6 +130,31 @@ ENDPOINT_NEEDLES = (
 )
 
 
+SECRET_VALUE_RE = re.compile(
+    r"""(?ix)
+    (
+        (?:api[_-]?key|token|secret|authorization|client[_-]?secret)
+        \s*[:=]\s*
+        [\"']?
+    )
+    ([A-Za-z0-9._~+\/-]{8,})
+    """
+)
+QUERY_SECRET_RE = re.compile(
+    r"""(?ix)
+    ([?&](?:api[_-]?key|token|secret|access[_-]?token)=)
+    ([^&#\s]+)
+    """
+)
+
+
+def safe_output(value: object) -> str:
+    text = str(value)
+    text = SECRET_VALUE_RE.sub(r"\1<redacted>", text)
+    text = QUERY_SECRET_RE.sub(r"\1<redacted>", text)
+    return text
+
+
 def section(title: str) -> None:
     print()
     print("=" * 60)
@@ -161,10 +191,11 @@ def fetch(
     limit: int,
     types: frozenset[str],
     headers: dict[str, str],
+    navigation_fallback: bool = False,
 ) -> tuple[bytes, str, str] | None:
     print()
     print(f"--- {label} ---")
-    print("url:", url)
+    print("url:", safe_output(url))
     print("allowed_hosts:", ",".join(hosts))
     print("limit_bytes:", limit)
 
@@ -181,10 +212,28 @@ def fetch(
         print("result: FAIL")
         print("code:", exc.code)
         print("status:", exc.status)
+        if (
+            navigation_fallback
+            and headers is SERVICE_HEADERS
+            and exc.status in {403, 406}
+        ):
+            print(
+                "navigation_fallback: one reviewed retry after explicit "
+                f"HTTP {exc.status}"
+            )
+            return fetch(
+                label + " navigation fallback",
+                url,
+                hosts,
+                limit=limit,
+                types=types,
+                headers=NAV_HEADERS,
+                navigation_fallback=False,
+            )
         return None
 
     print("result: OK")
-    print("final_url:", final_url)
+    print("final_url:", safe_output(final_url))
     print("content_type:", content_type)
     print("size_bytes:", len(payload))
     print("redirected:", final_url != url)
@@ -213,7 +262,7 @@ def marker_scan(text: str, *needles: str, limit: int = 40) -> None:
             key = snippet.casefold()
             if key not in seen:
                 seen.add(key)
-                print(f"[{needle}] {snippet}")
+                print(f"[{needle}] {safe_output(snippet)}")
             start = index + max(1, len(target))
 
     if not seen:
@@ -239,7 +288,7 @@ def endpoint_scan(text: str, limit: int = 100) -> None:
             if value in seen:
                 continue
             seen.add(value)
-            print(value[:900])
+            print(safe_output(value[:900]))
             if len(seen) >= limit:
                 return
 
@@ -316,7 +365,7 @@ def inspect_scripts(
     print("same_host_script_count:", len(same))
     print("external_script_count:", len(parser.external))
     for url in parser.external[:12]:
-        print("external_script_not_fetched:", url)
+        print("external_script_not_fetched:", safe_output(url))
 
     total = 0
     fetched = 0
@@ -518,14 +567,15 @@ for day in (
 
 section("3. Mercadona Guardamar")
 
-mercadona_url = "https://info.mercadona.es/es/supermercados?s=03140"
+mercadona_url = "https://info.mercadona.es/es/supermercados"
 result = fetch(
-    "Mercadona official locator 03140",
+    "Mercadona official locator",
     mercadona_url,
     ("info.mercadona.es",),
     limit=PAGE_LIMIT,
     types=PAGE_TYPES,
-    headers=NAV_HEADERS,
+    headers=SERVICE_HEADERS,
+    navigation_fallback=True,
 )
 if result is not None:
     payload, final_url, _ = result
@@ -564,7 +614,8 @@ result = fetch(
     ("www.masymas.com",),
     limit=PAGE_LIMIT,
     types=PAGE_TYPES,
-    headers=NAV_HEADERS,
+    headers=SERVICE_HEADERS,
+    navigation_fallback=True,
 )
 if result is not None:
     payload, final_url, _ = result
@@ -604,7 +655,8 @@ result = fetch(
     ("www.dia.es",),
     limit=PAGE_LIMIT,
     types=PAGE_TYPES,
-    headers=NAV_HEADERS,
+    headers=SERVICE_HEADERS,
+    navigation_fallback=True,
 )
 if result is not None:
     payload, final_url, _ = result
