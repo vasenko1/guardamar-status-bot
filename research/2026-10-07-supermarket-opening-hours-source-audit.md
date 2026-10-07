@@ -5,433 +5,525 @@
 This investigation evaluates a narrow resident-facing supermarket-closure
 feature for **Guardamar del Segura only**.
 
-Physical stores in scope:
+Final physical-store scope:
 
-1. Mercadona — Av. del Mediterrani / Avinguda del Mediterrani, Guardamar;
-2. masymas — Av. del Puerto, Guardamar;
-3. DIA — CL La Redonda, 40, Guardamar, official store ID `36111`.
+1. Mercadona — Av. del Mediterrani, Guardamar del Segura;
+2. masymas — Av. del Puerto, Guardamar del Segura;
+3. DIA — CL La Redonda, Guardamar del Segura.
 
-San Fulgencio is deliberately **out of scope**. It is a separate municipality,
-and the feature should remain a Guardamar city-information feature rather than
-grow into nearby-store recommendations.
+San Fulgencio is deliberately out of scope. It is a separate municipality even
+though its Mercadona is geographically close. The feature should remain about
+Guardamar businesses and should not turn into a nearby-shopping directory.
 
-The user-facing product is closure-first:
+The requested product behavior is closure-first:
 
-- announce a non-routine closure only when the exact Guardamar store is
-  first-party-confirmed closed on a date on which it would normally be open;
-- announce a verified seasonal change when the store's recurring Sunday regime
-  changes;
+- announce only a verified non-routine **full closure** on a date when the
+  store would normally be open;
 - do not announce routine weekly days off;
-- do not announce shortened opening hours when the store remains open;
-- group stores when the same date affects more than one;
-- provide a beginning-of-week heads-up, a day-before reminder, and a same-day
-  reminder without creating duplicate messages for the same run;
-- never infer store state from a legal holiday/opening calendar alone.
+- do not announce ordinary shortened hours merely because a holiday changes the
+  timetable;
+- announce a verified seasonal transition once when the recurring Sunday
+  open/closed regime changes;
+- group stores when they share the same exceptional closure;
+- use a first-party retailer source for the factual store schedule.
 
-No production implementation is approved by this file. Source contracts must be
-proved on the production Termux TLS/network stack first.
+Desired reminder lifecycle for one verified exceptional closure:
 
-## Existing project facts that should be reused
+- near the beginning of the week;
+- the day before;
+- the day itself.
 
-The repository already contains a manually reviewed annual Guardamar holiday
-calendar in `src/telegrambot/holidays.py`.
+These phases must collapse when they fall on the same local day. There must
+never be two supermarket messages on one day saying essentially the same thing.
 
-For 2026 it already knows, among other dates:
+No production implementation is approved by this research file yet. Source
+contracts must first pass the read-only Termux probe.
 
-- 7 October — local Virgen del Rosario holiday;
-- 9 October — Comunitat Valenciana holiday;
-- 12 October — Spain national holiday.
+## Existing project assets that must be reused
 
-Therefore the supermarket workflow must **not add another daily/weekly network
-request merely to re-fetch public-holiday dates**. The existing reviewed local
-calendar may be used as explanatory/candidate context.
+### Guardamar holiday calendar
 
-Even that calendar is not an authority for store state. It may explain that a
-date is a holiday, but the factual claim "Mercadona/DIA/masymas is closed" must
-come from the retailer's own exact-store schedule.
+The project already has an annually reviewed deterministic Guardamar holiday
+calendar in:
 
-A closure and a holiday occurring on the same date do not, by themselves, prove
-causation. Unless the retailer explicitly says so, resident-facing copy should
-prefer:
+`src/telegrambot/holidays.py`
 
-"Сегодня местный праздник ...; по опубликованному графику магазин закрыт."
+For 2026 it includes the national, regional and local Guardamar holidays,
+including 7 October and 9 October.
 
-over:
+Therefore this supermarket feature must **not add another scheduled network
+request merely to learn Guardamar holidays**.
 
-"Магазин закрыт из-за праздника."
+The holiday calendar can identify dates worth extra attention. It cannot prove
+that a supermarket is closed.
 
-## Exact physical stores
+Runtime precedence must remain:
+
+    reviewed Guardamar calendar -> candidate/context only
+    exact retailer store source -> factual open/closed state
+
+A legal holiday, ZGAT period, or legally permitted commercial Sunday is never
+itself evidence that a particular store opens or closes.
+
+### Shared bounded HTTP transport
+
+Production code should reuse:
+
+`src/telegrambot/_transport.py::fetch_bounded`
+
+Each retailer adapter must still define its own exact HTTPS host policy,
+content-type allowlist, size limit, timeout and identity markers.
+
+No new HTTP dependency is justified.
+
+## Physical stores in scope
 
 ### Mercadona — Guardamar del Segura
 
-Retailer: Mercadona.
+Reviewed identity:
 
-Official store-locator surface:
+- municipality: Guardamar del Segura;
+- postal code: 03140;
+- address: Av. / Avinguda del Mediterrani, 14;
+- retailer: Mercadona.
+
+Official locator surface:
+
 https://info.mercadona.es/es/supermercados
 
-The project already has a healthy first-party Mercadona JSON product API under
-`tienda.mercadona.es/api/`, but that API is warehouse/product oriented and
-cannot be treated as evidence of physical-store hours.
-
-The store locator itself must be probed. Do not assume an undocumented query
-parameter such as `?s=03140` is the store-search contract until the locator
-HTML/JavaScript proves it.
+The existing Product Awards feature proves that Mercadona has lightweight
+first-party JSON for the ecommerce catalogue, but the reviewed
+`tienda.mercadona.es/api/products/...` contract is warehouse/product data and
+must not be repurposed as evidence of physical-store opening hours.
 
 ### masymas — Guardamar del Segura
 
-Retailer: Juan Fornés / masymas.
+Reviewed identity:
+
+- municipality: Guardamar del Segura;
+- postal code: 03140;
+- address: Av. del Puerto, 20;
+- retailer: masymas / Juan Fornés.
 
 Official locator:
+
 https://www.masymas.com/localizadordetiendas/localizador.php
 
-A reviewed official control endpoint exists:
+A small first-party detail route exists:
 
-`https://www.masymas.com/localizadordetiendas/propiedadestienda.php?Id=13`
+https://www.masymas.com/localizadordetiendas/propiedadestienda.php?Id=...
 
-It returns a compact server-side store detail record including normal
-`Horario`. ID 13 is Alcora, not Guardamar; it proves the route shape only.
-The Guardamar ID must be discovered from the official locator contract rather
-than brute-forced.
+The Guardamar ID must be discovered from the official locator contract, not by
+brute-force numeric scanning.
 
-The official FAQ says opening hours on bridges and public holidays depend on
-the locality and dates and advises customers to call. That is a warning that
-the ordinary locator timetable may be **normal hours only**. If so, it is not
-enough by itself for automatic holiday-closure publication.
+The project already uses the separate first-party masymas ecommerce API for an
+exact Product Awards SKU:
 
-Official FAQ:
-https://www.masymas.com/es/atencion-al-cliente/preguntas-frecuentes.html
+`https://tienda.masymas.com/api/rest/V1.0/catalog/product/<id>`
 
-The project also knows a separate first-party ecommerce JSON API at
-`tienda.masymas.com/api/rest/V1.0/` for exact products. That proves the
-retailer has structured public interfaces, but no store-hours route may be
-assumed from the product API.
+That proves a lightweight first-party API style exists, but the product API is
+not evidence of store opening hours.
+
+The official masymas FAQ says holiday/bridge opening depends on locality and
+date. Therefore a static normal timetable is insufficient unless the exact
+store source also carries the date-specific exception.
 
 ### DIA — Guardamar del Segura
 
-Official store ID: `36111`.
+Reviewed identity:
 
-Official stable path:
+- official store ID: `36111`;
+- address: CL LA REDONDA, 40;
+- postal code: 03140;
+- municipality: Guardamar del Segura;
+- retailer: DIA.
+
+Official stable store path:
+
 https://www.dia.es/tiendas/buscador-tiendas/alicante/guardamar-del-segura/03140/36111
 
-The first-party page and provincial locator reliably expose the exact store
-identity and current leaflet period. The crawler-visible SSR text does not
-currently expose opening hours. A read-only probe must inspect embedded
-Next.js data and the first-party route bundle to discover whether schedule data
-comes from a compact JSON/API request.
+The server-rendered/search representation exposes the exact physical-store
+identity but not enough opening-hour data in plain visible text. The read-only
+probe therefore inspects embedded Next.js data and only the same-host assets
+needed to discover the first-party store-hours request.
 
-The project already has a reviewed plain-HTTP browser-navigation header profile
-for exact DIA product pages. That is evidence that a browser runtime is not
-automatically needed; it is not permission to reuse product-page assumptions
-for store hours without a separate contract.
+The existing Product Awards feature already proves that DIA pages can be read
+browser-free with bounded navigation-style HTTP headers. That does not prove
+the store-hours contract, but it means browser automation is not justified
+before the direct HTTP path has been exhausted.
 
-## Source ranking
+## Source acceptance hierarchy
 
-### Tier A — preferred production source
+### Tier A — preferred
 
-A first-party retailer JSON/API/AJAX response for the exact physical store that
-contains date-aware hours.
+A first-party retailer JSON/API/AJAX endpoint returning:
 
-Ideal contract fields include some combination of:
+- exact physical-store identity;
+- a current/future date-aware schedule;
+- explicit closed/open state or unambiguous intervals;
+- enough horizon to support the beginning-of-week reminder.
 
-- stable physical-store ID;
-- exact address/municipality;
-- regular opening hours;
-- date-specific special/holiday hours;
-- explicit closed dates;
-- future horizon of at least the current week;
-- explicit effective dates for a seasonal schedule.
+Desired properties:
+
+- exact allowlisted HTTPS host;
+- stable store identifier;
+- no login;
+- no JavaScript execution;
+- no browser;
+- no cookie session if avoidable;
+- small response;
+- deterministic contract markers.
 
 ### Tier B — acceptable
 
-A first-party exact-store HTML page that directly contains the same date-aware
-information and can be parsed deterministically with strict identity markers.
+A first-party exact-store HTML page that itself contains the required
+date-aware schedule. Parse only reviewed identity/date/hour markers.
 
-### Tier C — research oracle only
+### Not acceptable for publication facts
 
-Google/Maps/search engines/business directories and third-party opening-hours
-sites. They can reveal expected test vectors and expose adapter mistakes, but
-must never independently create a public closure claim.
+- Google/Maps;
+- directories;
+- search snippets;
+- community reports;
+- third-party timetable sites.
 
-## Critical distinction: routine vs exceptional closure
+They may be used only as research/test oracles to detect an obviously broken
+first-party parser.
 
-A date-specific `closed` value is not sufficient on its own. The feature must
-also know whether that closure is routine.
-
-Preferred evidence order:
-
-1. retailer source explicitly separates regular hours and special/date-specific
-   hours;
-2. retailer source explicitly labels a date as a special closure;
-3. a reviewed current-season retailer baseline proves that weekday is normally
-   open and the exact date is now closed.
-
-Do not infer a permanent seasonal regime from a single Sunday. If the source
-does not explicitly publish a seasonal effective range, a one-off Sunday
-difference may be described only as that specific Sunday's schedule.
-
-A resident-facing "магазин переходит на зимний/летний график" message is allowed
-only when the first-party source makes the recurring transition sufficiently
-clear. Otherwise publish only the exact date, or stay silent.
-
-## Research validation vectors
-
-External structured listings are useful only as independent oracles during
-research.
-
-The important current vector is Wednesday 7 October 2026, an official local
-Guardamar holiday. A fresh structured-business cross-check on 2026-10-07 shows
-ordinary hours for adjacent weekdays but no Wednesday hours for all three exact
-Guardamar physical stores:
-
-- Mercadona, Av. del Mediterrani 14;
-- masymas, Av. del Puerto 20;
-- DIA, La Redonda 40.
-
-This independently corroborates "closed today" for research, but it remains a
-Tier-C oracle and cannot publish anything. The production feature must reproduce
-the result only from retailer first-party schedule data.
-
-The fresh official DIA Alicante locator independently confirms exact store
-`36111` at La Redonda 40 and the current 7–13 October leaflet period, while
-its crawler-visible text still does not expose store opening hours. That makes
-the hidden/embedded first-party schedule contract the correct technical target,
-not the leaflet itself.
-
-Other useful 2026 Guardamar dates already present in `holidays.py`:
-
-- 9 October;
-- 12 October;
-- 8 December;
-- 25 December.
-
-They are useful for testing that different retailers may make different
-decisions on the same legal holiday.
-
-## Retailer-specific questions the Termux probe must answer
+## Current technical questions
 
 ### Mercadona
 
-1. Can the base official locator be fetched with the production TLS stack?
-2. Which first-party bundle/API supplies physical-store results?
-3. What stable ID represents the Guardamar store?
-4. Does the exact-store response include regular hours, special hours or
-   future dated closures?
-5. Does it expose a useful future horizon for weekly and next-day notices?
-6. Can the accepted request be reproduced with one bounded HTTP GET and no
-   cookie/browser session?
+The production probe must establish:
+
+1. whether the official locator is reachable under the production
+   Python/OpenSSL stack;
+2. the exact first-party request that supplies the Guardamar physical store;
+3. the physical-store identifier;
+4. whether the returned hours are date-aware rather than only a static weekly
+   template;
+5. whether future dates are available far enough ahead for the weekly notice.
 
 ### masymas
 
-1. What exact official store ID represents Guardamar?
-2. Is `propiedadestienda.php?Id=<guardamar>` only a normal timetable?
-3. Is there a separate first-party AJAX/schedule route for holiday exceptions?
-4. Does any structured ecommerce/store endpoint expose date-aware physical-store
-   hours?
-5. If no date-aware first-party source exists, the automatic holiday feature
-   must fail closed for masymas rather than combine a static timetable with a
-   public holiday and guess.
+The production probe must establish:
+
+1. the exact official Guardamar store ID;
+2. whether the small per-store route carries exceptional/holiday hours;
+3. whether another same-host AJAX request carries those exceptions;
+4. whether the response horizon is sufficient for early-week warning.
+
+No numeric ID crawl is allowed.
 
 ### DIA
 
-1. Does store 36111 embed schedule data in SSR/Next.js state?
-2. Is there a `/_next/data/`, app-router/Flight, REST or GraphQL request that
-   returns the exact store's hours?
-3. Are regular and exceptional hours distinguishable?
-4. What future horizon is available?
-5. Can it be reproduced directly without JavaScript execution or cookies?
+The production probe must establish:
 
-## Correct runtime shape if source contracts succeed
+1. whether exact store 36111 embeds schedule data in `__NEXT_DATA__`;
+2. whether a page-specific Next.js data/API route supplies the hours;
+3. whether direct HTTP works without cookies/browser execution;
+4. whether future dates are available;
+5. the size and MIME of the smallest usable first-party response.
 
-Do not create three workflows. Use one supermarket-hours workflow and one small
-state file.
+## Exceptional-closure semantics
 
-### Do not optimize request cadence before measuring the endpoints
+The feature must not equate `closed in returned schedule` with
+`exceptional closure` until it has a reviewed concept of the store's normal
+recurring schedule.
 
-The first research draft proposed one weekly refresh plus event-driven
-revalidation. That can itself become overengineering.
+Preferred evidence, strongest first:
 
-If the final contracts are small exact-store responses, the simplest and more
-reliable design is likely:
+1. the retailer explicitly labels a date as special/holiday/exceptional;
+2. the first-party source exposes both recurring normal hours and date-specific
+   overrides;
+3. a small reviewed normal weekly baseline is stored/configured for the current
+   operating season and exact-date retailer data is compared with it.
 
-- one short-lived daily one-shot;
-- at most one exact first-party request per store;
-- three requests total on an ordinary day;
-- deterministic normalization/comparison;
-- at most one grouped resident-facing message;
-- exit.
+Do not infer a normal baseline from one unusual week.
 
-Three small GETs per day are operationally trivial compared with the existing
-project and catch late schedule changes and non-holiday published closures that
-a weekly-only design could miss.
+If the accepted retailer source cannot distinguish a normal weekly closure from
+an exception and no safe reviewed baseline exists, that retailer is not ready
+for automatic publication.
 
-Only if a proven retailer source is materially heavy should the implementation
-introduce a lower cadence plus targeted revalidation. The production design
-must be chosen from measured response sizes and request counts, not speculative
-micro-optimization.
+A shortened opening day is not a closure. Under the requested product policy it
+remains silent.
 
-### Public-holiday/calendar use
+## Seasonal-transition semantics
 
-`holidays.py` may:
+Ordinary recurring Sundays stay silent.
 
-- enrich copy with the known holiday name;
-- provide useful test/candidate context;
-- help explain why a closure is practically important.
+A seasonal transition may produce one notice because it changes the resident's
+recurring expectation. Both directions may be useful:
 
-It must not:
+- Sundays become open for the summer regime;
+- Sundays return to being closed outside that regime.
 
-- mark a store closed;
-- mark a store open;
-- override the exact retailer schedule.
+However, a single Sunday difference must never automatically be called a
+seasonal transition.
 
-The GVA commercial-opening calendar is similarly advisory/legal context only.
-It should not become a recurring runtime dependency unless a later approved
-feature genuinely requires it.
+Accept a seasonal transition only when one of these is true:
 
-### One-run publication policy
+1. the retailer explicitly publishes the seasonal period/boundary;
+2. the exact-store source exposes multiple future recurring Sundays proving a
+   clear pattern boundary;
+3. another reviewed first-party retailer publication explicitly defines the
+   store's seasonal regime.
 
-A single invocation should produce at most one supermarket message.
+Otherwise describe only an exact-date closure/opening if that exact date itself
+is eligible; do not invent a season.
 
-When several triggers coincide, combine them instead of sending multiple posts.
-For example, a Monday weekly heads-up and a Tuesday "tomorrow" reminder can be
-rendered as one message that says both "на этой неделе" and "уже завтра".
+## Notification collapse and grouping rules
 
-The exact schedule/time is deliberately deferred until source contracts are
-known. A separate short-lived one-shot is preferred over adding retailer
-network dependencies to the 07:30 Morning Digest. A retailer timeout should
-never delay the primary digest.
+The desired three-phase lifecycle is useful, but must not create repetitive
+messages.
 
-### Correction rule
+### Beginning-of-week
 
-Every public future-closure claim must remain correct after later successful
-observations.
+One grouped message may list all already verified exceptional closures still
+ahead in the current Monday–Sunday week.
 
-If a fresh first-party schedule later changes a previously announced future
-closure to open, moves the closure date, or removes one store from a grouped
-closure, silence is not sufficient: the bot created the stale expectation.
-Publish at most one compact correction for that changed public claim (or use a
-single idempotent edit only if the final Telegram design can guarantee that the
-correction remains visible enough). A source failure is not evidence of a
-reopening and must never trigger a correction.
+Do not include:
 
-This correction path is narrowly scoped to supermarket claims already made by
-the bot. It is not a generic notification framework and requires no continuous
-polling.
+- routine Sunday closures;
+- shortened-hours-only changes;
+- already elapsed dates.
 
-### State
+### Day before
 
-Persist normalized facts only. No raw retailer HTML/JSON and no long history.
+One grouped message for stores verified closed tomorrow.
 
-Likely state responsibilities:
+### Same day
 
-- source contract/version;
-- latest accepted exact-store schedule horizon;
-- current reviewed/derived routine weekly baseline when safely known;
-- bounded sent trigger keys for week/tomorrow/today/season;
-- last successful observation timestamp per store;
-- optional uncertain-delivery marker if a standalone Telegram send is used.
+One grouped message for stores verified closed today.
 
-Do not add SQLite, a queue, a generic notification engine or retailer-specific
-state files.
+### Phase collapse
+
+At most one supermarket closure message per local calendar day.
+
+Examples:
+
+- exceptional closure on Monday: send only the same-day message; do not also
+  send a separate "this week" message;
+- exceptional closure on Tuesday: Monday's beginning-of-week message already
+  naturally says "tomorrow"; do not send a second Monday reminder for the same
+  Tuesday closure;
+- two stores closed on the same target date: one message, not two;
+- two different exceptional closure dates in the same week: one beginning-of-
+  week overview may list both; later reminders are date-specific.
+
+This is a product rule, not a generic notification framework.
+
+## Cadence: do not optimize before measuring response cost
+
+The earlier draft assumed that one weekly refresh plus event-driven
+revalidation was automatically best. That is not yet justified.
+
+If the final contracts are tiny JSON responses, the simplest reliable runtime
+may be one daily one-shot making at most one request per retailer:
+
+- three source requests per successful day;
+- about 90 requests in a 30-day month;
+- no resident process;
+- no internal retry storm;
+- immediate visibility of a mid-week schedule change.
+
+That is likely simpler and safer than a complex request-suppression state
+machine.
+
+If one accepted source is a large HTML page, a lower cadence may be justified:
+
+- refresh near the beginning of the week;
+- revalidate an affected store before a due tomorrow/today reminder;
+- preserve last-good normalized schedule only for bounded comparison.
+
+The production cadence must therefore be chosen **after** the probe records the
+smallest usable response size and horizon for each retailer.
+
+Do not optimize request count at the cost of more state, more branches, or a
+higher chance of missing a new closure.
+
+## Candidate normalized state
+
+One small atomic JSON file should be enough for the entire feature.
+
+Only normalized facts and delivery keys are eligible. No raw retailer
+HTML/JSON history.
+
+Illustrative shape only:
+
+```json
+{
+  "version": 1,
+  "observed_at": "2026-10-07T...",
+  "stores": {
+    "mercadona_guardamar": {
+      "source_id": "...",
+      "normal_signature": "...",
+      "days": {
+        "2026-10-07": {"open": false, "intervals": []}
+      }
+    }
+  },
+  "sent": [
+    "week:2026-W41:<semantic-key>",
+    "tomorrow:2026-10-09:<semantic-key>",
+    "today:2026-10-09:<semantic-key>",
+    "season:mercadona_guardamar:<semantic-key>"
+  ]
+}
+```
+
+The final schema should be smaller if the accepted source contract permits it.
 
 ## Failure model
 
-For each store independently:
+Retailers fail independently.
 
-- TLS/network timeout -> observation unavailable;
-- non-success HTTP -> unavailable;
-- redirect outside approved exact host set -> reject;
+- timeout -> no fresh observation for that store;
+- non-200 -> no fresh observation;
+- redirect outside exact allowlist -> reject;
 - wrong MIME -> reject;
-- oversized payload -> reject;
-- exact store identity/address missing -> contract drift;
-- requested date absent -> no claim for that date;
-- malformed/ambiguous hours -> reject that store;
-- static normal timetable with no exceptional-date evidence -> insufficient for
-  a holiday closure claim;
-- holiday calendar says holiday but retailer says open -> retailer state wins;
-- retailer source unavailable -> calendar alone cannot create a closure claim.
+- exact store identity missing -> contract drift;
+- requested/future date missing -> do not infer;
+- malformed hours -> reject that store/date;
+- calendar says holiday but retailer source says open -> retailer source wins;
+- calendar says holiday but retailer source is unavailable -> no new closure
+  claim;
+- stale last-good data may support diagnostics but must not create a fresh
+  today/tomorrow claim beyond its reviewed freshness window.
 
-One retailer failure must not block valid observations for the other two.
+One broken retailer must not suppress valid notices for another.
 
-## Overengineering gate
+## User-facing copy rules
 
-Reject:
-
-- Playwright/Selenium/Chromium;
-- JavaScript execution in production;
-- browser cookies/session emulation unless an exact minimal HTTP contract proves
-  it is unavoidable and is separately approved;
-- a daemon or resident watcher;
-- per-store cron rows/processes;
-- database/message broker;
-- raw-response archive;
-- Google/Maps scraping;
-- brute-force store-ID discovery;
-- hourly polling;
-- AI classification/generation of opening hours;
-- a generic provider/notification framework for only three fixed stores;
-- a second runtime public-holiday fetch duplicating `holidays.py`.
+Copy should read like a local resident wrote it, not like a database report.
 
 Prefer:
 
-- existing `fetch_bounded`;
-- exact HTTPS host/path allowlists after discovery;
-- standard-library parsers/JSON;
-- one workflow;
-- one daily one-shot if the measured endpoints are small;
-- one small atomic JSON state;
-- deterministic grouped copy;
-- fail-closed contract drift.
+- `В среду Mercadona и DIA будут закрыты — в Гуардамаре местный праздник.`
+- `Завтра Mercadona не работает.`
+- `Сегодня Mercadona, masymas и DIA закрыты.`
 
-## Production probe design review
+When the reason is independently known from the reviewed Guardamar calendar,
+it may be added naturally.
 
-The production probe is research-only and may inspect a bounded subset of
-first-party JavaScript to discover the endpoint. Production code must never do
-that.
+Avoid:
 
-The probe intentionally imports the repository's existing
-`telegrambot._transport.fetch_bounded` and uses the same Python
-`urllib`/OpenSSL stack as production. A curl-only success is not sufficient
-evidence because TLS/WAF behavior can differ between libcurl and Python.
+- `Статус магазина: CLOSED`;
+- legal boilerplate about ZGAT;
+- source/debug wording;
+- repeating ordinary weekly schedules;
+- mentioning shortened hours when the policy is closure-only;
+- claiming `из-за праздника` when the date/source relationship is not
+  actually reviewed.
 
-The probe must:
+Final Russian templates belong in implementation tests once exact source
+semantics are known.
 
-- remain read-only;
-- write only its text report below
-  `~/.cache/guardamar-supermarket-hours-probe`;
-- keep fetched retailer bodies in memory only and persist no raw response;
-- make no Telegram call and touch no project state;
-- fetch the Mercadona base locator before trying an exploratory postal-code URL;
-- fetch only first-party script hosts under the retailer's registrable domain;
-- list external scripts but not download them automatically;
-- prioritize route/page-specific bundles instead of blindly taking the first N;
-- scan the HTML itself for endpoint strings before any JS downloads;
-- understand escaped JavaScript URL strings;
-- bound number, size and duration of every request;
-- report approximate request count and body bytes;
-- check the existing local `holidays.py` rather than download another holiday
-  calendar;
-- leave the production branch/HEAD/worktree unchanged.
+## Overengineering review
 
-## Implementation gate
+Explicitly rejected:
 
-Do not write an ADR or production adapter until the Termux probe proves enough
-for every retailer that is intended to launch.
+- Mercadona San Fulgencio or other nearby-city stores;
+- Playwright/Selenium/Chromium;
+- browser screenshots;
+- per-store cron jobs;
+- a daemon;
+- a database;
+- raw schedule archives;
+- Google/Maps as a production dependency;
+- brute-force store-ID discovery;
+- AI/LLM interpretation of opening hours;
+- a new generic provider or notification framework;
+- a second network holiday-calendar collector;
+- source-specific background workers;
+- hourly polling.
 
-A partial launch with only retailers that have a sound first-party date-aware
-contract may be preferable to weakening the source policy for the remaining
-one.
+Preferred direction if source contracts pass:
 
-After endpoint discovery, run a **second narrow probe** that calls only the
-candidate exact endpoints. That second probe must validate:
+- one narrow `supermarket_hours` workflow;
+- three small source adapters;
+- existing standard-library bounded transport;
+- one compact atomic state;
+- deterministic exact-date comparisons;
+- grouped messages;
+- one external cron entry at most, unless the final design can reuse an
+  existing semantically appropriate one-shot without coupling failures.
 
-- exact store identity;
-- current date;
-- next-day/current-week horizon;
-- regular vs exceptional schedule semantics;
-- 7/9/12 October behavior where still observable;
-- MIME/size/latency;
-- no cookies/browser requirement;
-- failure behavior for wrong store/date;
-- stable deterministic parsing markers.
+## Architecture fit
 
-Only then should implementation architecture and public copy be finalized.
+The feature has genuine local resident value and matches the project's
+`material disruption / closure` principle.
+
+It remains acceptable only if:
+
+- facts come from first-party retailer sources;
+- no heavy dependency is added;
+- source failure is silent/fail-closed;
+- network work is bounded;
+- state is small;
+- no continuous process is introduced;
+- ordinary schedules remain quiet.
+
+Do not implement merely because third-party maps happen to expose good hours.
+
+## Read-only production probe gate
+
+The companion probe:
+
+`research/2026-10-07-supermarket-hours-termux-probe.sh`
+
+must answer, for **only the three Guardamar stores**:
+
+1. smallest viable first-party request;
+2. exact physical-store identity;
+3. status, MIME, response size and redirect behavior;
+4. whether cookies/authentication are required;
+5. exact representation of 2026-10-07;
+6. future schedule horizon;
+7. whether special hours are distinguishable from normal weekly hours;
+8. whether browser execution is unnecessary;
+9. whether the source can support a safe normal-vs-exception comparison;
+10. whether the total runtime cost favors simple daily collection or a lower
+    cadence.
+
+Implementation, ADR, cron and public-message code should wait for that evidence.
+
+## Validation matrix after endpoint discovery
+
+The implementation must later prove at least:
+
+### Positive behavior
+
+- one Guardamar store exceptionally closed on a normal working weekday;
+- two/three stores closed on the same date -> one grouped message;
+- different closure dates in one week -> one weekly overview;
+- tomorrow reminder;
+- today reminder;
+- phase collapse on Monday/Tuesday edge cases;
+- verified seasonal Sunday-open transition;
+- verified seasonal Sunday-closed transition.
+
+### Negative behavior
+
+- routine Sunday closure -> silence;
+- ordinary open weekday -> silence;
+- shortened holiday hours but still open -> silence;
+- public holiday where the retailer chooses to open -> silence;
+- source unavailable -> no guessed closure;
+- malformed one-store payload -> other stores still usable;
+- stale snapshot -> no fresh today/tomorrow claim;
+- one unusual Sunday -> no invented seasonal transition;
+- rerun after confirmed delivery -> no duplicate;
+- ambiguous Telegram delivery -> no automatic duplicate.
+
+### Resource behavior
+
+- no browser process;
+- no AI;
+- no source history;
+- no per-store cron;
+- exact host allowlists;
+- bounded response sizes and timeouts;
+- no network holiday lookup when the reviewed local calendar already covers
+  the needed date context.
