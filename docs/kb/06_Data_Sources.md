@@ -25,7 +25,7 @@ official endpoints and lightweight access methods are validated.
 | Civil protection or emergency authority | Safety warnings | Highest priority | Alert feed or official publication | Yes |
 | CCE — 112 Comunitat Valenciana | Active emergency and hydrological authority state relevant to Guardamar/Segura | Highest priority for authority decisions; complements rather than duplicates AEMET | Public `emergencias.jsf` plus current text-readable CCE PDF, checked by one bounded hourly watcher | Yes, narrow operational monitor |
 | Previfoc / Generalitat Valenciana (VAERSA ArcGIS) | Official zone-6 forest-fire preemergency plus dry-thunderstorm risk for Guardamar | High; responsible regional fire-prevention/emergency source | Tiny structured ArcGIS query for the current operational day; same-day level may be readjusted | Yes, narrow operational monitor |
-| SUMA Gestión Tributaria | Guardamar municipal tax periods, voluntary-payment deadline, direct-debit setup deadline and charge date | High; official Alicante provincial tax-management authority | Two bounded public HTML GETs once in the existing 07:30 daily lifecycle; municipal rows must match the general campaign dates exactly | Yes, four exact-date standalone reminders |
+| SUMA Gestión Tributaria | Guardamar municipal tax periods, voluntary-payment deadline, direct-debit setup deadline and charge date | High; official Alicante provincial tax-management authority | Two bounded public HTML GETs in one independent 08:05 daily one-shot; municipal rows must match the general campaign dates exactly | Yes, four exact-date standalone reminders |
 | Centro de Transfusión de la Comunitat Valenciana | Future Guardamar blood-donation sessions: date, venue and hours | High; official regional blood-donation programme | One bounded Alicante HTML discovery GET only when seven local days elapsed, plus one fresh 16:45 control GET only when the snapshot already knows a session is tomorrow | Yes, ADR 0078 |
 | Instituto Geografico Nacional (IGN) GeoRSS | Nearby recorded earthquakes | High; official Spanish seismic authority | One bounded public XML feed request per hour; deterministic 20 km and magnitude 1.8 filter | Yes, narrow standalone notice |
 | Policía Local Guardamar | Historical reviewed festival restriction only | The reviewed page did not provide a dependable current traffic feed in routine operation | Retired from runtime; no scheduled request and no AI fallback | No |
@@ -77,9 +77,11 @@ general period. Source disagreement, ambiguous labels, malformed dates,
 unexpected HTML, redirects outside the exact SUMA host, or unavailable pages
 fail closed.
 
-Collection is two sequential bounded HTML GETs once per existing daily run.
-No login, cookie state, browser, PDF, OCR, AI, raw-page cache or source history
-is required. The first successful run seeds only semantic trigger dates at or
+Collection is two sequential bounded HTML GETs in the independent 08:05 daily
+one-shot. No login, cookie state, browser, PDF, OCR, AI, raw-page cache or
+source history is required. Accepted tax labels must also have a reviewed
+resident-facing explanation; an unknown label fails closed rather than being
+published as an unexplained tax name. The first successful run seeds only semantic trigger dates at or
 before that local day. Future exact-date triggers remain eligible; a missed
 trigger is never replayed from cached data. Campaign-specific dates and observed
 tax rows belong in the dated SUMA research record rather than this stable KB.

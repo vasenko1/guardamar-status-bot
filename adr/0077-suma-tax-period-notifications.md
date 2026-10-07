@@ -61,6 +61,24 @@ At most one SUMA message is emitted per run. If trigger dates ever collide, the
 higher-value charge/final/debit/opening priority selects one message; the charge
 copy also states the remaining voluntary-payment deadline.
 
+### Resident-facing wording
+
+Russian public copy must explain the payment scope rather than repeat SUMA's
+administrative terminology. Every one of the four reminder types:
+
+- lists every accepted Guardamar tax/fee in the matched campaign;
+- gives a reviewed plain-language explanation of what each item concerns;
+- states the ordinary payment deadline and the relevant direct-debit dates;
+- states that late unpaid amounts may receive the legally applicable
+  surcharges, interest and collection costs;
+- avoids the literal Russian wording "добровольный период" and vague phrases
+  such as "текущий период SUMA".
+
+The reviewed current labels are `IBI urbana`, `IBI rústica`, `IAE` and
+`Vados`. Unknown future municipal tax labels fail closed until their
+resident-facing meaning has been reviewed; the bot must not publish an
+unexplained raw tax name merely to preserve coverage.
+
 ## Scheduling
 
 The original scheduling decision embedded SUMA as a best-effort `finally`
