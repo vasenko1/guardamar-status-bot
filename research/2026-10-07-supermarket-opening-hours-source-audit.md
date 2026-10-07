@@ -179,9 +179,23 @@ External structured listings are useful only as independent oracles during
 research.
 
 The important current vector is Wednesday 7 October 2026, an official local
-Guardamar holiday. External listings indicate all three Guardamar stores are
-closed. The production feature must reproduce that only from retailer
-first-party schedule data.
+Guardamar holiday. A fresh structured-business cross-check on 2026-10-07 shows
+ordinary hours for adjacent weekdays but no Wednesday hours for all three exact
+Guardamar physical stores:
+
+- Mercadona, Av. del Mediterrani 14;
+- masymas, Av. del Puerto 20;
+- DIA, La Redonda 40.
+
+This independently corroborates "closed today" for research, but it remains a
+Tier-C oracle and cannot publish anything. The production feature must reproduce
+the result only from retailer first-party schedule data.
+
+The fresh official DIA Alicante locator independently confirms exact store
+`36111` at La Redonda 40 and the current 7–13 October leaflet period, while
+its crawler-visible text still does not expose store opening hours. That makes
+the hidden/embedded first-party schedule contract the correct technical target,
+not the leaflet itself.
 
 Other useful 2026 Guardamar dates already present in `holidays.py`:
 
