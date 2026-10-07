@@ -245,8 +245,23 @@ def decode(payload: bytes) -> str:
     return payload.decode("utf-8", errors="replace")
 
 
+def normalize_discovery_text(text: str) -> str:
+    return (
+        text
+        .replace(r"\/", "/")
+        .replace(r"\u002F", "/")
+        .replace(r"\u002f", "/")
+        .replace(r"\x2F", "/")
+        .replace(r"\x2f", "/")
+    )
+
+
 def marker_scan(text: str, *needles: str, limit: int = 40) -> None:
-    compact = re.sub(r"\s+", " ", html.unescape(text))
+    compact = re.sub(
+        r"\s+",
+        " ",
+        html.unescape(normalize_discovery_text(text)),
+    )
     folded = compact.casefold()
     seen: set[str] = set()
 
@@ -431,6 +446,43 @@ class NextDataParser(HTMLParser):
             self.parts.append(data)
 
 
+def dia_manifest_asset_urls(text: str) -> tuple[str, ...]:
+    normalized = normalize_discovery_text(text)
+    candidates: list[str] = []
+    positions = [
+        match.start()
+        for match in re.finditer(
+            r"buscador-tiendas|tiendas/buscador",
+            normalized,
+            flags=re.IGNORECASE,
+        )
+    ]
+    for position in positions[:12]:
+        window = normalized[
+            max(0, position - 6000): position + 6000
+        ]
+        for raw in re.findall(
+            r"""(?i)
+            ["'](
+                (?:_next/)?static/
+                [^"'\s]{1,500}?
+                \.js
+            )["']
+            """,
+            window,
+            flags=re.VERBOSE,
+        ):
+            absolute = urllib.parse.urljoin(
+                "https://www.dia.es/",
+                raw.lstrip("/"),
+            )
+            if absolute not in candidates:
+                candidates.append(absolute)
+            if len(candidates) >= 4:
+                return tuple(candidates)
+    return tuple(candidates)
+
+
 def inspect_dia_next_data(html_text: str) -> None:
     parser = NextDataParser()
     parser.feed(html_text)
@@ -521,6 +573,34 @@ def inspect_dia_next_data(html_text: str) -> None:
             limit=40,
         )
         endpoint_scan(text)
+
+        manifest_assets = dia_manifest_asset_urls(text)
+        print(
+            "DIA manifest route asset candidates:",
+            len(manifest_assets),
+        )
+        route_total = 0
+        for index, asset_url in enumerate(manifest_assets, start=1):
+            remaining = (2 * 1024 * 1024) - route_total
+            if remaining <= 0:
+                break
+            route_result = fetch(
+                f"DIA manifest route asset {index}",
+                asset_url,
+                ("www.dia.es",),
+                limit=min(512 * 1024, remaining),
+                types=ASSET_TYPES,
+                headers=ASSET_HEADERS,
+            )
+            if route_result is None:
+                continue
+            route_payload, _, _ = route_result
+            route_total += len(route_payload)
+            endpoint_scan(decode(route_payload), limit=80)
+        print(
+            "DIA manifest route assets accepted bytes:",
+            route_total,
+        )
 
 
 def masymas_guardamar_candidates(text: str) -> None:
