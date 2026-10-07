@@ -153,6 +153,39 @@ browser-free with bounded navigation-style HTTP headers. That does not prove
 the store-hours contract, but it means browser automation is not justified
 before the direct HTTP path has been exhausted.
 
+## Historical / archive evidence
+
+No first-party retailer archive has yet been found that provides a trustworthy
+date-by-date history of opening/closure state for these exact three Guardamar
+stores.
+
+Historical public material is still useful as a **research validation oracle**,
+not as production evidence. In particular, 2026 press coverage identifies the
+Guardamar Mercadona among Alicante coastal stores opening on summer Sundays and
+documents the end of Mercadona's summer regime at the end of August. This is
+useful for testing whether a future first-party adapter can reproduce a known
+past seasonal pattern, but the bot must not publish from press or directory
+archives.
+
+Third-party timetable sites for masymas and DIA expose some dated schedules,
+but their holiday claims are inconsistent across providers and dates. They are
+not a safe fallback.
+
+Do not build a raw daily archive merely to compensate for missing retailer
+history. If seasonal inference later requires local history, retain only a
+bounded normalized **regime-change history**, for example:
+
+- store key;
+- effective date;
+- recurring weekday open/closed signature;
+- first-party source observation timestamp.
+
+Routine identical days do not need another history row. Raw HTML/JSON is never
+archived.
+
+The preferred outcome remains an exact retailer source that publishes enough
+future/special schedule information that historical inference is unnecessary.
+
 ## Source acceptance hierarchy
 
 ### Tier A — preferred
