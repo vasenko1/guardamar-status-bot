@@ -307,7 +307,7 @@ class SumaMonitorTests(unittest.TestCase):
                 self.run_monitor(state, at(2026, 10, 7), campaign(), send),
                 "published",
             )
-            self.assertIn("завтра заканчивается срок оплаты", calls[-1])
+            self.assertIn("завтра последний день оплаты", calls[-1])
             self.assertIn("8 октября", calls[-1])
             self.assertEqual(len(calls), 2)
 
