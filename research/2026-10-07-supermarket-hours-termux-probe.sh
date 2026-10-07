@@ -206,7 +206,7 @@ def fetch(
             is_allowed_url=url_policy(*hosts),
             accepted_types=types,
             limit_bytes=limit,
-            timeout_seconds=20,
+            timeout_seconds=15,
             headers=headers,
         )
     except BoundedFetchError as exc:
