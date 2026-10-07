@@ -102,6 +102,7 @@ PAGE_TYPES = frozenset({
 ASSET_TYPES = frozenset({
     "application/json",
     "application/javascript",
+    "application/x-javascript",
     "text/javascript",
     "text/plain",
     "text/html",
@@ -270,6 +271,8 @@ def marker_scan(text: str, *needles: str, limit: int = 40) -> None:
 
 
 def endpoint_scan(text: str, limit: int = 100) -> None:
+    text = text.replace(r"\/", "/")
+    text = re.sub(r"(?i)\\u002f", "/", text)
     patterns = (
         re.compile(r'''["']([^"'\\]{3,700})["']'''),
         re.compile(
@@ -526,6 +529,28 @@ def masymas_guardamar_candidates(text: str) -> None:
     start = 0
     found = False
 
+    option_pattern = re.compile(
+        r"<option\\b([^>]*)>(.*?)</option>",
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    for attrs, body in option_pattern.findall(text):
+        visible = re.sub(r"<[^>]+>", " ", html.unescape(body))
+        visible = re.sub(r"\\s+", " ", visible).strip()
+        if "guardamar" not in visible.casefold():
+            continue
+        value_match = re.search(
+            r"""(?i)\\bvalue\\s*=\\s*["']?([^"' >]+)""",
+            attrs,
+        )
+        option_value = value_match.group(1) if value_match else "(missing)"
+        print(
+            "Guardamar locator option:",
+            safe_output(visible),
+            "value=",
+            safe_output(option_value),
+        )
+        found = True
+
     while True:
         index = folded.find("guardamar", start)
         if index < 0:
@@ -536,7 +561,10 @@ def masymas_guardamar_candidates(text: str) -> None:
             window,
             flags=re.IGNORECASE,
         )))
-        print("Guardamar nearby locator fragment:", window[:1500])
+        print(
+            "Guardamar nearby locator fragment:",
+            safe_output(window[:1500]),
+        )
         if ids:
             print("candidate_store_ids_near_Guardamar:", ids)
             found = True
@@ -601,6 +629,38 @@ if result is not None:
         final_url,
         "info.mercadona.es",
     )
+
+mercadona_search_url = (
+    "https://info.mercadona.es/es/supermercados?s=03140"
+)
+search_result = fetch(
+    "Mercadona exploratory first-party search 03140",
+    mercadona_search_url,
+    ("info.mercadona.es",),
+    limit=PAGE_LIMIT,
+    types=PAGE_TYPES,
+    headers=SERVICE_HEADERS,
+    navigation_fallback=True,
+)
+if search_result is not None:
+    payload, _, _ = search_result
+    text = decode(payload)
+    marker_scan(
+        text,
+        "Guardamar",
+        "03140",
+        "Mediterrani",
+        "Mediterraneo",
+        "horario",
+        "opening",
+        "hours",
+        "schedule",
+        "supermercado",
+        "api",
+        limit=60,
+    )
+    print("exploratory search endpoint-like strings:")
+    endpoint_scan(text)
 
 
 section("4. masymas Guardamar")
