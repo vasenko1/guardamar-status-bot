@@ -387,6 +387,133 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, 0)
         collect.assert_not_awaited()
 
+    async def test_current_day_recovery_short_circuits_if_already_published(self):
+        now = datetime(2026, 8, 1, 0, 20, tzinfo=TIMEZONE)
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "electricity.json"
+            PublicationState(state_path).mark_electricity_published(now.date())
+            environment = {
+                "ELECTRICITY_STATE_PATH": str(state_path),
+                "ELECTRICITY_SNAPSHOT_PATH": str(
+                    Path(directory) / "electricity_prices.json"
+                ),
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_CHAT_ID": "chat",
+            }
+            with patch.dict(os.environ, environment, clear=False), patch(
+                "telegrambot.__main__.datetime"
+            ) as clock, patch(
+                "telegrambot.__main__.load_or_fetch_prices",
+                new_callable=AsyncMock,
+            ) as collect, patch(
+                "telegrambot.__main__.send_message",
+                new_callable=AsyncMock,
+            ) as send:
+                clock.now.return_value = now
+                result = await _run_command("electricity-current-recovery")
+
+        self.assertEqual(result, 0)
+        collect.assert_not_awaited()
+        send.assert_not_awaited()
+
+    async def test_current_day_recovery_publishes_today_not_tomorrow(self):
+        now = datetime(2026, 8, 1, 0, 20, tzinfo=TIMEZONE)
+        data = DailyPrices(now.date(), _daily().hours)
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "electricity.json"
+            PublicationState(state_path).mark_electricity_explanation(101)
+            environment = {
+                "ELECTRICITY_STATE_PATH": str(state_path),
+                "ELECTRICITY_SNAPSHOT_PATH": str(
+                    Path(directory) / "electricity_prices.json"
+                ),
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_CHAT_ID": "chat",
+            }
+            with patch.dict(os.environ, environment, clear=False), patch(
+                "telegrambot.__main__.datetime"
+            ) as clock, patch(
+                "telegrambot.__main__.load_or_fetch_prices",
+                new_callable=AsyncMock,
+                return_value=data,
+            ) as collect, patch(
+                "telegrambot.__main__.send_message",
+                new_callable=AsyncMock,
+                return_value=102,
+            ) as send:
+                clock.now.return_value = now
+                result = await _run_command("electricity-current-recovery")
+
+            state = PublicationState(state_path)
+            published = state.is_published(now.date())
+
+        self.assertEqual(result, 0)
+        collect.assert_awaited_once()
+        self.assertTrue(published)
+        self.assertEqual(send.await_count, 1)
+        message = send.await_args.args[2]
+        self.assertIn("Цены на электричество сегодня", message)
+        self.assertNotIn("Цены на электричество завтра", message)
+        self.assertNotIn("Энергоёмкие дела лучше запланировать", message)
+        self.assertEqual(send.await_args.kwargs["reply_to_message_id"], 101)
+
+    async def test_evening_next_day_publish_still_runs_after_current_day_success(self):
+        now = datetime(2026, 8, 1, 20, 30, tzinfo=TIMEZONE)
+        tomorrow = now.date() + timedelta(days=1)
+        data = DailyPrices(tomorrow, _daily().hours)
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "electricity.json"
+            PublicationState(state_path).mark_electricity_published(now.date())
+            environment = {
+                "ELECTRICITY_STATE_PATH": str(state_path),
+                "ELECTRICITY_SNAPSHOT_PATH": str(
+                    Path(directory) / "electricity_prices.json"
+                ),
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_CHAT_ID": "chat",
+            }
+            with patch.dict(os.environ, environment, clear=False), patch(
+                "telegrambot.__main__.datetime"
+            ) as clock, patch(
+                "telegrambot.__main__.load_or_fetch_prices",
+                new_callable=AsyncMock,
+                return_value=data,
+            ) as collect, patch(
+                "telegrambot.__main__.send_message",
+                new_callable=AsyncMock,
+                return_value=103,
+            ) as send:
+                clock.now.return_value = now
+                result = await _run_command("electricity")
+
+            state = PublicationState(state_path)
+            published = state.is_published(tomorrow)
+
+        self.assertEqual(result, 0)
+        collect.assert_awaited_once()
+        self.assertTrue(published)
+        self.assertEqual(send.await_count, 2)
+        self.assertIn(
+            "Цены на электричество завтра",
+            send.await_args_list[1].args[2],
+        )
+
+    async def test_current_day_recovery_refuses_late_manual_run(self):
+        now = datetime(2026, 8, 1, 6, 0, tzinfo=TIMEZONE)
+        with patch("telegrambot.__main__.datetime") as clock, patch(
+            "telegrambot.__main__.load_or_fetch_prices",
+            new_callable=AsyncMock,
+        ) as collect, patch(
+            "telegrambot.__main__.send_message",
+            new_callable=AsyncMock,
+        ) as send:
+            clock.now.return_value = now
+            result = await _run_command("electricity-current-recovery")
+
+        self.assertEqual(result, 0)
+        collect.assert_not_awaited()
+        send.assert_not_awaited()
+
     async def test_cli_creates_explanation_then_replies_with_table(self):
         target = (datetime.now(TIMEZONE) + timedelta(days=1)).date()
         with tempfile.TemporaryDirectory() as directory:
@@ -532,6 +659,16 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("Для PVPC", message)
         self.assertNotIn("Источник:", message)
         self.assertNotIn("сегодня", message.casefold())
+
+    def test_current_day_message_is_today_and_omits_future_recommendation(self):
+        message = build_price_message(_daily(), day_context="today")
+        self.assertIn("Цены на электричество сегодня", message)
+        self.assertNotIn("Цены на электричество завтра", message)
+        self.assertNotIn("Энергоёмкие дела лучше запланировать", message)
+
+    def test_invalid_day_context_is_rejected(self):
+        with self.assertRaises(ValueError):
+            build_price_message(_daily(), day_context="later")
 
     def test_colors_use_daily_price_thirds(self):
         colors = _colors(_daily().hours)
