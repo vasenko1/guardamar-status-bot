@@ -384,7 +384,11 @@ class FishingEnrichmentTests(unittest.TestCase):
         self.assertEqual(
             first.title,
             "Провинциальный чемпионат Аликанте "
-            "по спортивной рыбалке — Mar Costa",
+            "по спортивной рыбалке",
+        )
+        self.assertEqual(
+            first.presentation_note,
+            "🎣 Mar-Costa — ловля с берега, «поймал-отпустил»",
         )
         self.assertEqual(first.event_start_date, date(2026, 10, 17))
         self.assertEqual(first.options[0].status, "open")
