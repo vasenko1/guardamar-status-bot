@@ -658,3 +658,44 @@ The final pre-device conclusion is therefore deliberately conservative:
 
 At this gate no production code, cron, state schema, Telegram behavior, ADR or
 stable KB decision has been changed.
+
+
+## Final pre-device consistency gate
+
+After the repeated design/probe review, a machine consistency pass was run
+against the research branch before requesting any production-device execution.
+
+Result: **24/24 checks passed**.
+
+The gate verified:
+
+- exactly three Guardamar stores are in product scope;
+- San Fulgencio is absent from the executable probe;
+- the research branch is based on the reviewed production `main`;
+- the branch changes only files under `research/`;
+- holidays are context only and never gate retailer collection;
+- the existing local `telegrambot.holidays` calendar is reused;
+- the probe makes no holiday-calendar network request;
+- the same production `fetch_bounded` transport is exercised;
+- no curl-specific evidence path is used;
+- no browser automation, AI, Telegram call or project-state write exists;
+- no `/tmp` assumption exists;
+- the service User-Agent is attempted first;
+- the one navigation-style fallback is restricted to explicit HTTP 403/406;
+- HTTPS host policy is exact and redirect-safe;
+- page/asset byte limits are explicit;
+- there is no unbounded retry loop;
+- production branch, HEAD and exact worktree status are compared before/after;
+- embedded Python is parsed before any source audit runs;
+- delivery identity is store + target date + phase;
+- ambiguous delivery is crash-safe and not automatically retried;
+- closures first discovered after Monday have a defined next eligible phase;
+- a later verified reversal of a future closure has a correction path;
+- shortened-but-open days stay silent;
+- routine Sunday closures stay silent;
+- one unusual Sunday cannot manufacture a seasonal transition;
+- any future local history is bounded normalized regime-change history only.
+
+At this point no additional pre-device defect is known. The remaining unknowns
+are empirical source contracts and can only be closed by the read-only Termux
+probe.
