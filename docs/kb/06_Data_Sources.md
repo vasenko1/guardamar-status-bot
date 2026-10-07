@@ -951,3 +951,33 @@ closed. Current accepted 2026-10-02 state is stage 21 `full`, stage 22
 The normal measured source cost is roughly 85 KB/day for category metadata, one
 announcement detail and landing content. The source snapshot is local, atomic
 and last-good preserving. See ADR 0089 and the dated CONVEGA research file.
+
+
+## Supermarket opening-hours sources
+
+Exceptional-closure notifications use only exact first-party physical-store
+contracts validated on production Termux on 7 October 2026.
+
+- **Mercadona / Guardamar, Avinguda del Mediterrani 14** — store id
+  `283185312286`. The official locator supplies the current
+  `storage.googleapis.com/pro-bucket-wcorp-files/json/data.js` URL. Runtime
+  requires same-local-day `fechaCreacion`, the reviewed store identity,
+  seven `in/fi` schedule entries and valid `fs` tokens. Reviewed meanings:
+  `C` closed, `FA` open full day, `FM` open half day, `CR` closed for
+  works. Sunday close rows remain non-notifying in v1.
+- **DIA / Guardamar, C/ La Redonda 40** — public code `36111`, detail id
+  `1003631`. The exact `buscarInformacionTienda` JSON supplies
+  `horariosTienda`, `festivosTienda`, `horariosAperturaFestivo` and
+  temporary-closure fields. Empty holiday hours mean closed; non-empty hours
+  mean open, including shortened opening. V1 still uses only the reviewed
+  Monday-Saturday baseline for closure alerts.
+- **masymas / Guardamar, Av. del Puerto 18-20** — the official locator POST for
+  province ALICANTE and locality `GUARDAMAR DEL SEGURA` must return exactly one
+  matching row. Its reviewed contract exposes `Lun-Sab` normal hours plus
+  dated `Cierra el` / `Abre el` overrides.
+
+The three sources fail independently. Responses are parsed in memory and then
+discarded; no raw schedule archive is maintained. Holiday sources remain
+context-only and third-party opening-hours sites are never publication
+authority. See ADR 0105 and
+`research/2026-10-07-supermarket-opening-hours-source-audit.md`.

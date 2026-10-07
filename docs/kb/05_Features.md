@@ -920,3 +920,38 @@ narrow evidence-bound correction; the 6 October 2026 Rosario correction
 requires the exact Todo date/time/title plus the verified Ayuntamiento 19:00
 Rosario and 20:00 Mass pair. Generic duplicate thresholds are unchanged.
 
+
+
+## Exceptional supermarket closures
+
+One independent 08:15 Europe/Madrid one-shot watches exactly three physical
+Guardamar stores: Mercadona at Avinguda del Mediterrani 14, masymas at
+Av. del Puerto 18-20, and DIA at C/ La Redonda 40.
+
+Only a first-party retailer schedule may establish whether that physical store
+is open or closed. The reviewed Guardamar holiday calendar is optional
+presentation context; it never creates a closure and never overrides an open
+retailer schedule. Routine weekly closing days and shortened-but-open days do
+not create standalone notices.
+
+A verified exceptional closure may be announced early in the current week,
+again tomorrow, and again today, with per-store/date/phase identities even when
+several facts are grouped into one resident-facing message. Monday-known
+Tuesday closures collapse early+tomorrow into one Monday message; missed
+earlier phases are never replayed. At most one supermarket message is delivered
+per local day.
+
+If a fresh first-party schedule explicitly proves open after this bot
+previously confirmed a closure message for that date, one compact correction is
+eligible. Source failure, omission or third-party evidence never counts as
+reopening. Ambiguous Telegram delivery blocks automatic duplication but is not
+treated as a confirmed publication for future corrections.
+
+Public text is deterministic natural Russian: it names the affected stores,
+states plainly that they are closed for the whole day, says today/tomorrow/the
+weekday, names other reviewed stores that are open when useful, and may explain
+a reviewed official Guardamar day off. Internal source codes and state labels
+are never shown.
+
+Seasonal Sunday transition notices are deferred. A single Sunday difference is
+never promoted into a regime-change claim.
