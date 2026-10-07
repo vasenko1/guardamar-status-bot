@@ -376,13 +376,26 @@ Illustrative shape only:
     }
   },
   "sent": [
-    "week:2026-W41:<semantic-key>",
-    "tomorrow:2026-10-09:<semantic-key>",
-    "today:2026-10-09:<semantic-key>",
+    "early:2026-10-09:mercadona_guardamar",
+    "tomorrow:2026-10-09:mercadona_guardamar",
+    "today:2026-10-09:mercadona_guardamar",
     "season:mercadona_guardamar:<semantic-key>"
-  ]
+  ],
+  "uncertain_batch": null
 }
 ```
+
+Delivery identity belongs to **store + target date + phase**, not to the
+rendered group of stores. Grouping is presentation only. If another store is
+confirmed later for the same target date, it can become newly eligible without
+making stores already covered in that phase eligible again.
+
+Before a non-idempotent Telegram send, reserve the whole rendered batch.
+Confirmed success marks every included store/date/phase key sent. Ambiguous
+delivery keeps one bounded `uncertain_batch` and is never retried
+automatically. Deterministic failure may release the reservation for a later
+bounded attempt. Prefer an existing project delivery-state primitive if it
+matches this contract exactly; do not create a generic notification framework.
 
 The final schema should be smaller if the accepted source contract permits it.
 
@@ -518,6 +531,10 @@ The implementation must later prove at least:
 - tomorrow reminder;
 - today reminder;
 - phase collapse on Monday/Tuesday edge cases;
+- a closure first discovered after Monday receives the correct next eligible
+  phase without fabricating a missed Monday message;
+- a store added later to an already-notified target date does not re-notify
+  stores already covered in that phase;
 - verified seasonal Sunday-open transition;
 - verified seasonal Sunday-closed transition.
 
@@ -532,7 +549,9 @@ The implementation must later prove at least:
 - stale snapshot -> no fresh today/tomorrow claim;
 - one unusual Sunday -> no invented seasonal transition;
 - rerun after confirmed delivery -> no duplicate;
-- ambiguous Telegram delivery -> no automatic duplicate.
+- ambiguous Telegram delivery -> no automatic duplicate;
+- a changed grouped-store composition cannot change already-sent per-store
+  phase identity.
 
 ### Resource behavior
 
