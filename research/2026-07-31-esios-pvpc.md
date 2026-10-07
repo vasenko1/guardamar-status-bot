@@ -14,8 +14,7 @@ Checked: 2026-07-31
   green/yellow/orange thresholds: <https://www.esios.ree.es/es/pvpc/>
 
 These statements describe an approximate publication target, not a guaranteed
-API availability SLA. The application therefore starts at 20:30 and makes
-independent recovery attempts at 20:35, 20:45, 21:00 and 21:20.
+API availability SLA. The application therefore starts at 20:30 and makes independent recovery attempts at 20:35, 20:45, 21:00, 21:20, 21:40, 22:00, 22:30, 23:00 and 23:30. Once the target day is published, later invocations short-circuit on local publication state before calling either price API.
 
 
 ## 2026-10-07 incident follow-up
