@@ -630,7 +630,13 @@ def _window_label(windows: Sequence[Tuple[int, int]]) -> str:
     )
 
 
-def build_price_message(data: DailyPrices) -> str:
+def build_price_message(
+    data: DailyPrices,
+    *,
+    day_context: str = "tomorrow",
+) -> str:
+    if day_context not in {"today", "tomorrow"}:
+        raise ValueError("day_context must be today or tomorrow")
     colors = _colors(data.hours)
     cheapest_price, cheapest_windows = _extreme_windows(
         data.hours, cheapest=True
@@ -652,7 +658,7 @@ def build_price_message(data: DailyPrices) -> str:
     months = ("", "января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря")
     table = html.escape("\n".join(rows))
     recommendation = ""
-    if best_window is not None:
+    if day_context == "tomorrow" and best_window is not None:
         best_start, best_end = best_window
         recommendation = (
             "\n\n💡 Энергоёмкие дела лучше запланировать "
@@ -672,8 +678,9 @@ def build_price_message(data: DailyPrices) -> str:
             f"{_window_label(expensive_windows)} · "
             f"{_price(expensive_price)} €/кВт·ч"
         )
+    title_day = "сегодня" if day_context == "today" else "завтра"
     return with_footer(
-        "⚡ <b>Цены на электричество завтра</b>\n"
+        f"⚡ <b>Цены на электричество {title_day}</b>\n"
         f"{weekday.capitalize()}, {data.local_date.day} {months[data.local_date.month]}\n\n"
         "🕐 <b>По часам</b>\n"
         f"<pre>{table}</pre>\n\n"
@@ -715,8 +722,13 @@ async def publish_prices(
     collect: Callable[[], Awaitable[DailyPrices]],
     send_main: Callable[[str, Optional[int]], Awaitable[int]],
     send_explanation: Callable[[str], Awaitable[int]],
+    *,
+    day_context: str = "tomorrow",
 ) -> str:
     """Publish one daily table under one persistent explanation anchor."""
+
+    if day_context not in {"today", "tomorrow"}:
+        raise ValueError("day_context must be today or tomorrow")
 
     with state.exclusive_run():
         if state.is_published(target_date):
@@ -724,7 +736,7 @@ async def publish_prices(
         data = await collect()
         if data.local_date != target_date:
             raise ElectricityError(
-                "ESIOS returned the wrong local date",
+                "official PVPC source returned the wrong local date",
                 code="WRONG-DATE",
                 retryable=True,
             )
@@ -735,7 +747,7 @@ async def publish_prices(
             )
             state.mark_electricity_explanation(explanation_id)
         await send_main(
-            build_price_message(data), explanation_id
+            build_price_message(data, day_context=day_context), explanation_id
         )
         state.mark_electricity_published(target_date)
         return "success"
