@@ -286,8 +286,7 @@ def marker_scan(text: str, *needles: str, limit: int = 40) -> None:
 
 
 def endpoint_scan(text: str, limit: int = 100) -> None:
-    text = text.replace(r"\/", "/")
-    text = re.sub(r"(?i)\\u002f", "/", text)
+    text = normalize_discovery_text(text)
     patterns = (
         re.compile(r'''["']([^"'\\]{3,700})["']'''),
         re.compile(
