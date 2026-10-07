@@ -132,7 +132,7 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
         unusual = DailyPrices(
             TARGET,
             tuple(
-                HourlyPrice(hour, Decimal("0E-100000"))
+                HourlyPrice(hour, Decimal("1E-100000"))
                 for hour in range(24)
             ),
         )
