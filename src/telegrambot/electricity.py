@@ -1,4 +1,4 @@
-"""Official next-day PVPC prices from the lightweight ESIOS API."""
+"""Official next-day PVPC prices from Red Eléctrica APIs."""
 
 import asyncio
 import html
@@ -18,8 +18,13 @@ from ._transport import BoundedFetchError, fetch_bounded
 from .branding import with_footer
 
 ESIOS_HOST = "api.esios.ree.es"
+REDATA_HOST = "apidatos.ree.es"
+ESIOS_SOURCE = "ESIOS / Red Eléctrica"
+REDATA_SOURCE = "REData / Red Eléctrica"
 INDICATOR_ID = 1001
+PENINSULA_GEO_ID = 8741
 PENINSULA_GEO_NAME = "península"
+SNAPSHOT_SOURCES = frozenset({ESIOS_SOURCE, REDATA_SOURCE})
 TIMEZONE = ZoneInfo("Europe/Madrid")
 TIMEOUT_SECONDS = 15
 RESPONSE_LIMIT_BYTES = 1_000_000
@@ -47,6 +52,7 @@ class HourlyPrice:
 class DailyPrices:
     local_date: date
     hours: Tuple[HourlyPrice, ...]
+    source: str = ESIOS_SOURCE
 
 
 def _request_payload(api_key: str, target_date: date) -> bytes:
@@ -90,6 +96,47 @@ def _request_payload(api_key: str, target_date: date) -> bytes:
         raise ElectricityError(
             f"ESIOS request failed: {exc.code}",
             code=exc.code,
+            retryable=retryable,
+        ) from None
+    return payload
+
+
+def _request_redata_payload(target_date: date) -> bytes:
+    query = urllib.parse.urlencode({
+        "start_date": f"{target_date.isoformat()}T00:00",
+        "end_date": f"{target_date.isoformat()}T23:59",
+        "time_trunc": "hour",
+        "geo_trunc": "electric_system",
+        "geo_limit": "peninsular",
+        "geo_ids": str(PENINSULA_GEO_ID),
+    })
+    url = (
+        f"https://{REDATA_HOST}/es/datos/mercados/"
+        f"precios-mercados-tiempo-real?{query}"
+    )
+    try:
+        payload, _, _ = fetch_bounded(
+            url,
+            is_allowed_url=lambda value: (
+                urllib.parse.urlparse(value).hostname == REDATA_HOST
+            ),
+            accepted_types=frozenset({"application/json"}),
+            limit_bytes=RESPONSE_LIMIT_BYTES,
+            timeout_seconds=TIMEOUT_SECONDS,
+            headers={
+                "Accept": "application/json",
+                "User-Agent": USER_AGENT,
+            },
+            follow_redirects=False,
+        )
+    except BoundedFetchError as exc:
+        if exc.status is not None:
+            retryable = exc.status == 429 or 500 <= exc.status <= 599
+        else:
+            retryable = exc.code != "REDIRECT"
+        raise ElectricityError(
+            f"REData request failed: {exc.code}",
+            code=f"REDATA-{exc.code}",
             retryable=retryable,
         ) from None
     return payload
@@ -148,6 +195,91 @@ def normalize_prices(payload: bytes, target_date: date) -> DailyPrices:
     data = DailyPrices(
         target_date,
         tuple(HourlyPrice(hour, by_hour[hour]) for hour in range(24)),
+        ESIOS_SOURCE,
+    )
+    _validate_daily_prices(data)
+    return data
+
+
+def normalize_redata_prices(payload: bytes, target_date: date) -> DailyPrices:
+    try:
+        root = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ElectricityError(
+            "REData returned invalid JSON",
+            code="REDATA-INVALID-JSON",
+            retryable=True,
+        ) from exc
+
+    included = root.get("included") if isinstance(root, dict) else None
+    if not isinstance(included, list):
+        raise ElectricityError(
+            "REData response has no included series",
+            code="REDATA-INVALID-STRUCTURE",
+            retryable=True,
+        )
+
+    candidates = []
+    for item in included:
+        if not isinstance(item, dict) or str(item.get("id")) != str(INDICATOR_ID):
+            continue
+        attributes = item.get("attributes")
+        if not isinstance(attributes, dict):
+            continue
+        label = " ".join(
+            value
+            for value in (item.get("type"), attributes.get("title"))
+            if isinstance(value, str)
+        ).casefold()
+        if "pvpc" not in label:
+            continue
+        candidates.append(attributes)
+
+    if len(candidates) != 1 or not isinstance(candidates[0].get("values"), list):
+        raise ElectricityError(
+            "REData response has no unique PVPC series",
+            code="REDATA-INVALID-STRUCTURE",
+            retryable=True,
+        )
+
+    by_hour: Dict[int, Decimal] = {}
+    for item in candidates[0]["values"]:
+        if not isinstance(item, dict):
+            continue
+        raw_datetime = item.get("datetime")
+        try:
+            moment = datetime.fromisoformat(raw_datetime)
+            if moment.tzinfo is None:
+                raise ValueError("REData datetime has no timezone")
+            moment = moment.astimezone(TIMEZONE)
+            price = Decimal(str(item.get("value"))) / Decimal("1000")
+        except (TypeError, ValueError, InvalidOperation):
+            continue
+        if (
+            moment.date() != target_date
+            or not price.is_finite()
+            or not Decimal("-1") <= price <= Decimal("5")
+        ):
+            continue
+        if moment.minute or moment.second or moment.hour in by_hour:
+            raise ElectricityError(
+                "REData returned duplicate or non-hourly values",
+                code="REDATA-INVALID-HOURS",
+                retryable=True,
+            )
+        by_hour[moment.hour] = price
+
+    if set(by_hour) != set(range(24)):
+        raise ElectricityError(
+            "REData has not published all 24 hours",
+            code="REDATA-INCOMPLETE",
+            retryable=True,
+        )
+
+    data = DailyPrices(
+        target_date,
+        tuple(HourlyPrice(hour, by_hour[hour]) for hour in range(24)),
+        REDATA_SOURCE,
     )
     _validate_daily_prices(data)
     return data
@@ -165,7 +297,20 @@ async def fetch_prices(
     return normalize_prices(payload, target_date)
 
 
+async def fetch_redata_prices(target_date: date) -> DailyPrices:
+    """Fetch the same official PVPC series from REData without a token."""
+
+    payload = await asyncio.to_thread(_request_redata_payload, target_date)
+    return normalize_redata_prices(payload, target_date)
+
+
 def _validate_daily_prices(data: DailyPrices) -> None:
+    if data.source not in SNAPSHOT_SOURCES:
+        raise ElectricityError(
+            "price snapshot source is invalid",
+            code="SNAPSHOT-INVALID",
+            retryable=True,
+        )
     if len(data.hours) != 24:
         raise ElectricityError(
             "price snapshot does not contain 24 hours",
@@ -186,19 +331,19 @@ def _validate_daily_prices(data: DailyPrices) -> None:
         )
     if all(item.eur_kwh == 0 for item in data.hours):
         raise ElectricityError(
-            "ESIOS returned an all-zero day",
+            "official PVPC source returned an all-zero day",
             code="ZERO-DAY",
             retryable=True,
         )
 
 
 def _write_price_snapshot(path: Path, data: DailyPrices) -> None:
-    """Atomically store one complete normalized ESIOS day."""
+    """Atomically store one complete normalized official PVPC day."""
 
     _validate_daily_prices(data)
     document = {
         "version": SNAPSHOT_VERSION,
-        "source": "ESIOS / Red Eléctrica",
+        "source": data.source,
         "indicator_id": INDICATOR_ID,
         "geo_name": "Península",
         "local_date": data.local_date.isoformat(),
@@ -270,7 +415,7 @@ def _load_price_snapshot(
         if (
             not isinstance(document, dict)
             or document.get("version") != SNAPSHOT_VERSION
-            or document.get("source") != "ESIOS / Red Eléctrica"
+            or document.get("source") not in SNAPSHOT_SOURCES
             or document.get("indicator_id") != INDICATOR_ID
             or document.get("geo_name") != "Península"
         ):
@@ -294,7 +439,7 @@ def _load_price_snapshot(
                     Decimal(raw["eur_kwh"]),
                 )
             )
-        data = DailyPrices(snapshot_date, tuple(hours))
+        data = DailyPrices(snapshot_date, tuple(hours), document["source"])
         _validate_daily_prices(data)
     except (
         KeyError,
@@ -327,14 +472,27 @@ async def load_or_fetch_prices(
         )
     except ElectricityError as exc:
         logging.warning(
-            "Ignoring unusable normalized ESIOS snapshot [%s]",
+            "Ignoring unusable normalized PVPC snapshot [%s]",
             exc.diagnostic_code,
         )
         stored = None
     if stored is not None:
         return stored
 
-    collected = await fetch_prices(api_key, target_date)
+    try:
+        collected = await fetch_prices(api_key, target_date)
+    except ElectricityError as primary_error:
+        if not primary_error.retryable:
+            raise
+        logging.warning(
+            "ESIOS PVPC unavailable [%s]; trying official REData fallback",
+            primary_error.diagnostic_code,
+        )
+        collected = await fetch_redata_prices(target_date)
+        logging.info(
+            "Using official REData PVPC fallback after ESIOS [%s]",
+            primary_error.diagnostic_code,
+        )
     await asyncio.to_thread(
         _write_price_snapshot, snapshot_path, collected
     )
@@ -343,7 +501,7 @@ async def load_or_fetch_prices(
     )
     if verified is None:
         raise ElectricityError(
-            "normalized ESIOS snapshot has the wrong date",
+            "normalized PVPC snapshot has the wrong date",
             code="SNAPSHOT-INVALID",
             retryable=True,
         )
@@ -547,7 +705,7 @@ def build_explanation_message() -> str:
         "мощность, налоги и другие платежи.\n\n"
         "Если у вас фиксированный тариф, эти почасовые цены не "
         "применяются.\n\n"
-        "Источник: ESIOS / Red Eléctrica"
+        "Источник: Red Eléctrica (ESIOS / REData)"
     )
 
 

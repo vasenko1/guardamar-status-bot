@@ -12,6 +12,7 @@ from telegrambot.electricity import (
     DailyPrices,
     ElectricityError,
     HourlyPrice,
+    REDATA_SOURCE,
     _best_green_window,
     _colors,
     _load_price_snapshot,
@@ -22,6 +23,7 @@ from telegrambot.electricity import (
     fetch_prices,
     load_or_fetch_prices,
     normalize_prices,
+    normalize_redata_prices,
     publish_prices,
     TIMEZONE,
 )
@@ -48,6 +50,32 @@ def _payload(missing=None):
                 "geo_name": geo_name,
             })
     return json.dumps({"indicator": {"values": values}}).encode()
+
+
+def _redata_payload(missing=None):
+    values = []
+    for hour in range(24):
+        if hour == missing:
+            continue
+        values.append({
+            "value": 49 + hour * 10,
+            "percentage": 1,
+            "datetime": f"2026-08-01T{hour:02d}:00:00.000+02:00",
+        })
+    return json.dumps({
+        "data": {
+            "type": "Precios mercado peninsular en tiempo real",
+            "id": "mer13",
+        },
+        "included": [{
+            "type": "PVPC (€/MWh)",
+            "id": "1001",
+            "attributes": {
+                "title": "PVPC (€/MWh)",
+                "values": values,
+            },
+        }],
+    }).encode()
 
 
 def _daily():
@@ -77,6 +105,38 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ElectricityError) as raised:
             normalize_prices(_payload(missing=7), TARGET)
         self.assertEqual(raised.exception.diagnostic_code, "INCOMPLETE")
+
+    def test_normalizes_redata_pvpc_and_converts_mwh_to_kwh(self):
+        result = normalize_redata_prices(_redata_payload(), TARGET)
+        self.assertEqual(result.source, REDATA_SOURCE)
+        self.assertEqual(len(result.hours), 24)
+        self.assertEqual(result.hours[0].eur_kwh, Decimal("0.049"))
+        self.assertEqual(result.hours[23].eur_kwh, Decimal("0.279"))
+
+    def test_redata_rejects_incomplete_day(self):
+        with self.assertRaises(ElectricityError) as raised:
+            normalize_redata_prices(_redata_payload(missing=7), TARGET)
+        self.assertEqual(
+            raised.exception.diagnostic_code, "REDATA-INCOMPLETE"
+        )
+
+    def test_redata_rejects_wrong_indicator_even_with_values(self):
+        payload = json.loads(_redata_payload())
+        payload["included"][0]["id"] = "9999"
+        with self.assertRaises(ElectricityError) as raised:
+            normalize_redata_prices(json.dumps(payload).encode(), TARGET)
+        self.assertEqual(
+            raised.exception.diagnostic_code, "REDATA-INVALID-STRUCTURE"
+        )
+
+    def test_redata_rejects_all_zero_day(self):
+        payload = json.loads(_redata_payload())
+        for item in payload["included"][0]["attributes"]["values"]:
+            item["value"] = 0
+        with self.assertRaises(ElectricityError) as raised:
+            normalize_redata_prices(json.dumps(payload).encode(), TARGET)
+        self.assertEqual(raised.exception.diagnostic_code, "ZERO-DAY")
+        self.assertTrue(raised.exception.retryable)
 
     def test_rejects_all_zero_api_day_as_provisional(self):
         payload = json.loads(_payload())
@@ -127,6 +187,16 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(loaded, _daily())
         self.assertEqual(mode, 0o600)
+
+    def test_redata_snapshot_round_trip_preserves_source(self):
+        redata = DailyPrices(TARGET, _daily().hours, REDATA_SOURCE)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "electricity_prices.json"
+            _write_price_snapshot(path, redata)
+            loaded = _load_price_snapshot(path, TARGET)
+
+        self.assertEqual(loaded, redata)
+        self.assertEqual(loaded.source, REDATA_SOURCE)
 
     def test_snapshot_decimal_serialization_stays_bounded(self):
         unusual = DailyPrices(
@@ -229,6 +299,50 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(loaded, _daily())
         self.assertEqual(stored, _daily())
         self.assertEqual(fetch.await_count, 1)
+
+    async def test_retryable_esios_failure_uses_official_redata_fallback(self):
+        primary_failure = ElectricityError(
+            "zero", code="ZERO-DAY", retryable=True
+        )
+        redata = DailyPrices(TARGET, _daily().hours, REDATA_SOURCE)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "electricity_prices.json"
+            with patch(
+                "telegrambot.electricity.fetch_prices",
+                new_callable=AsyncMock,
+                side_effect=primary_failure,
+            ) as primary, patch(
+                "telegrambot.electricity.fetch_redata_prices",
+                new_callable=AsyncMock,
+                return_value=redata,
+            ) as fallback:
+                loaded = await load_or_fetch_prices("key", TARGET, path)
+                stored = _load_price_snapshot(path, TARGET)
+
+        self.assertEqual(loaded, redata)
+        self.assertEqual(stored, redata)
+        primary.assert_awaited_once_with("key", TARGET)
+        fallback.assert_awaited_once_with(TARGET)
+
+    async def test_nonretryable_esios_failure_does_not_use_redata(self):
+        primary_failure = ElectricityError(
+            "bad key", code="CONFIG", retryable=False
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "electricity_prices.json"
+            with patch(
+                "telegrambot.electricity.fetch_prices",
+                new_callable=AsyncMock,
+                side_effect=primary_failure,
+            ), patch(
+                "telegrambot.electricity.fetch_redata_prices",
+                new_callable=AsyncMock,
+            ) as fallback:
+                with self.assertRaises(ElectricityError) as raised:
+                    await load_or_fetch_prices("", TARGET, path)
+
+        self.assertIs(raised.exception, primary_failure)
+        fallback.assert_not_awaited()
 
     async def test_snapshot_write_failure_prevents_unstored_publication(self):
         failure = ElectricityError(
@@ -548,7 +662,7 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("почасовые цены не применяются", message)
         self.assertNotIn("индексированном тарифе", message)
         self.assertNotIn("0,10", message)
-        self.assertIn("ESIOS / Red Eléctrica", message)
+        self.assertIn("Red Eléctrica (ESIOS / REData)", message)
 
     async def test_publishes_main_and_reply_once(self):
         sent = []
