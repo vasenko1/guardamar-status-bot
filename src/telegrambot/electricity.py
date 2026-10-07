@@ -34,7 +34,7 @@ USER_AGENT = "GuardamarMorningDigest/0.13"
 
 
 class ElectricityError(RuntimeError):
-    """Safe, classified ESIOS failure."""
+    """Safe, classified official PVPC failure."""
 
     def __init__(self, message: str, *, code: str, retryable: bool) -> None:
         super().__init__(message)
@@ -375,7 +375,7 @@ def _write_price_snapshot(path: Path, data: DailyPrices) -> None:
         os.replace(temporary, path)
     except OSError as exc:
         raise ElectricityError(
-            "normalized ESIOS snapshot could not be saved",
+            "normalized PVPC snapshot could not be saved",
             code="SNAPSHOT-WRITE",
             retryable=True,
         ) from exc
@@ -400,13 +400,13 @@ def _load_price_snapshot(
             payload = source.read(SNAPSHOT_LIMIT_BYTES + 1)
     except OSError as exc:
         raise ElectricityError(
-            "normalized ESIOS snapshot could not be read",
+            "normalized PVPC snapshot could not be read",
             code="SNAPSHOT-READ",
             retryable=True,
         ) from exc
     if len(payload) > SNAPSHOT_LIMIT_BYTES:
         raise ElectricityError(
-            "normalized ESIOS snapshot is too large",
+            "normalized PVPC snapshot is too large",
             code="SNAPSHOT-INVALID",
             retryable=True,
         )
@@ -450,7 +450,7 @@ def _load_price_snapshot(
         InvalidOperation,
     ) as exc:
         raise ElectricityError(
-            "normalized ESIOS snapshot is invalid",
+            "normalized PVPC snapshot is invalid",
             code="SNAPSHOT-INVALID",
             retryable=True,
         ) from exc
@@ -488,7 +488,14 @@ async def load_or_fetch_prices(
             "ESIOS PVPC unavailable [%s]; trying official REData fallback",
             primary_error.diagnostic_code,
         )
-        collected = await fetch_redata_prices(target_date)
+        try:
+            collected = await fetch_redata_prices(target_date)
+        except ElectricityError as fallback_error:
+            logging.warning(
+                "REData PVPC unavailable [%s]",
+                fallback_error.diagnostic_code,
+            )
+            raise
         logging.info(
             "Using official REData PVPC fallback after ESIOS [%s]",
             primary_error.diagnostic_code,
