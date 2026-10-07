@@ -79,11 +79,10 @@ avoid an automatic duplicate because Telegram provides no idempotency key for
 
 ## SUMA tax-period reminders
 
-Once per existing 07:30 daily lifecycle, the same short-lived Python process
-performs a best-effort SUMA final step after the Morning Digest attempt. It
+One independent short-lived SUMA process runs at 08:05 Europe/Madrid. It
 cross-checks the current Guardamar municipal tax rows against SUMA's general
-voluntary-payment period and publishes at most
-one standalone message only on these exact local dates:
+voluntary-payment period and publishes at most one standalone message only on
+these exact local dates:
 
 - the payment-period opening date;
 - seven days before the published direct-debit setup deadline;
@@ -96,13 +95,18 @@ missed date is never replayed later. Concrete campaign dates and bootstrap
 examples belong in the dated research/ADR record, not in this stable feature
 contract.
 
-The message uses only source-backed dates and the tax names found on the
-Guardamar SUMA page. The state is a tiny atomic list of semantic date keys. A
-future official date revision naturally creates a new future key; no history,
-queue or generic notification framework is retained. Definite Telegram failure
-rolls the key back for a same-day manual retry, while an ambiguous send keeps it
-to avoid an automatic duplicate. Source failure or source disagreement is
-silent.
+Every public SUMA message uses plain resident-facing Russian rather than the
+literal administrative term "voluntary period". It lists every accepted tax or
+fee with a reviewed explanation of what it applies to, gives the exact ordinary
+payment deadline and relevant domiciliación dates, and states the possible
+late-payment additions. A tax label without a reviewed resident explanation
+fails closed instead of producing a vague reminder.
+
+The state is a tiny atomic list of semantic date keys. A future official date
+revision naturally creates a new future key; no history, queue or generic
+notification framework is retained. Definite Telegram failure rolls the key
+back for a same-day manual retry, while an ambiguous send keeps it to avoid an
+automatic duplicate. Source failure or source disagreement is silent.
 
 ## Blood-donation alert and same-day event
 
