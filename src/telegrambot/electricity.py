@@ -145,10 +145,12 @@ def normalize_prices(payload: bytes, target_date: date) -> DailyPrices:
             code="INCOMPLETE",
             retryable=True,
         )
-    return DailyPrices(
+    data = DailyPrices(
         target_date,
         tuple(HourlyPrice(hour, by_hour[hour]) for hour in range(24)),
     )
+    _validate_daily_prices(data)
+    return data
 
 
 async def fetch_prices(
@@ -180,6 +182,12 @@ def _validate_daily_prices(data: DailyPrices) -> None:
         raise ElectricityError(
             "price snapshot contains invalid hourly values",
             code="SNAPSHOT-INVALID",
+            retryable=True,
+        )
+    if all(item.eur_kwh == 0 for item in data.hours):
+        raise ElectricityError(
+            "ESIOS returned an all-zero day",
+            code="ZERO-DAY",
             retryable=True,
         )
 
