@@ -240,7 +240,14 @@ Preferred evidence, strongest first:
 3. a small reviewed normal weekly baseline is stored/configured for the current
    operating season and exact-date retailer data is compared with it.
 
-Do not infer a normal baseline from one unusual week.
+Do not infer a normal baseline from one unusual week. Do not hard-code a
+Saturday/Sunday assumption from memory, third-party listings or conversation
+examples; each physical store's recurring baseline must be reviewed against
+first-party evidence and must permit seasonal replacement.
+
+All target-date calculations use `Europe/Madrid`. If the reviewed Guardamar
+holiday calendar for a future year has not yet been added, retailer collection
+still runs; only the optional holiday reason/context is omitted.
 
 If the accepted retailer source cannot distinguish a normal weekly closure from
 an exception and no safe reviewed baseline exists, that retailer is not ready
