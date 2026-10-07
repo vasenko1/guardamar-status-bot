@@ -591,51 +591,127 @@ def build_alert_message(
 
 
 
+def _batch_segment_key(
+    incident: TrafficIncident,
+    location: TrafficLocation,
+    mode: str,
+) -> tuple:
+    """Deduplicate only clearly identical physical segments.
+
+    TomTom can expose the same closure twice with opposite from/to direction.
+    Keep distinct provider records in state, but collapse that mirror duplicate
+    in the public batch copy.
+    """
+
+    street = _clean_text(location.street)
+    from_place = _clean_text(incident.from_place)
+    to_place = _clean_text(incident.to_place)
+    subdivision = _strip_urbanization(location.subdivision)
+    if (
+        street is not None
+        and from_place is not None
+        and to_place is not None
+        and from_place.casefold() != to_place.casefold()
+    ):
+        boundaries = tuple(sorted((from_place.casefold(), to_place.casefold())))
+        return (
+            "segment",
+            (subdivision or "").casefold(),
+            street.casefold(),
+            boundaries,
+            incident.category,
+            mode,
+        )
+    return ("provider", incident.provider_id)
+
+
+def _batch_status(incident: TrafficIncident, mode: str) -> str:
+    if mode == "future_tomorrow":
+        status = (
+            "⏳ полное перекрытие запланировано на завтра"
+            if incident.category == "roadClosed"
+            else "⏳ перекрытие полосы запланировано на завтра"
+        )
+        if incident.starts_at is not None:
+            status += (
+                " с "
+                + incident.starts_at.astimezone(GUARDAMAR_TIMEZONE).strftime("%H:%M")
+            )
+        return status
+    if incident.category == "roadClosed":
+        return (
+            "⛔ проезд остаётся перекрыт"
+            if mode == "ongoing"
+            else "⛔ проезд перекрыт"
+        )
+    return (
+        "⚠️ полоса движения остаётся перекрыта"
+        if mode == "ongoing"
+        else "⚠️ перекрыта полоса движения"
+    )
+
+
+def _batch_segment_block(
+    incident: TrafficIncident,
+    location: TrafficLocation,
+    mode: str,
+) -> str:
+    street = _clean_text(location.street)
+    subdivision = _strip_urbanization(location.subdivision)
+    from_place = _clean_text(incident.from_place)
+    to_place = _clean_text(incident.to_place)
+
+    if subdivision and street:
+        heading = f"{subdivision} — {street}"
+    else:
+        heading = street or subdivision or "Участок дороги в Гуардамаре"
+
+    lines = [f"<b>{html.escape(heading)}</b>"]
+    if (
+        from_place is not None
+        and to_place is not None
+        and from_place.casefold() != to_place.casefold()
+    ):
+        lines.append(f"↳ от {html.escape(from_place)}")
+        lines.append(f"↳ до {html.escape(to_place)}")
+    elif from_place is not None or to_place is not None:
+        lines.append(f"↳ ориентир: {html.escape(from_place or to_place or '')}")
+    elif street is None and subdivision is None:
+        lines[0] = f"<b>{html.escape(location_label(incident, location))}</b>"
+
+    lines.append(
+        f'{_batch_status(incident, mode)} · '
+        f'<a href="{html.escape(_map_url(location), quote=True)}">Карта</a>'
+    )
+    return "\n".join(lines)
+
+
 def build_batch_alert_message(
     items: list[tuple[TrafficIncident, TrafficLocation, str]],
 ) -> str:
-    """Combine simultaneous standalone traffic alerts into one message."""
+    """Combine simultaneous standalone traffic alerts into one readable map list."""
 
     if len(items) < 2:
         raise TrafficError("traffic batch requires at least two incidents")
 
-    rows = []
+    unique: list[tuple[TrafficIncident, TrafficLocation, str]] = []
+    seen = set()
     for incident, location, mode in items:
-        label = html.escape(location_label(incident, location))
-        if mode == "future_tomorrow":
-            status = (
-                "полное перекрытие запланировано на завтра"
-                if incident.category == "roadClosed"
-                else "перекрытие полосы запланировано на завтра"
-            )
-            if incident.starts_at is not None:
-                status += (
-                    " с "
-                    + incident.starts_at.astimezone(GUARDAMAR_TIMEZONE).strftime("%H:%M")
-                )
-        elif incident.category == "roadClosed":
-            status = (
-                "проезд остаётся перекрыт"
-                if mode == "ongoing"
-                else "проезд перекрыт"
-            )
-        else:
-            status = (
-                "полоса движения остаётся перекрыта"
-                if mode == "ongoing"
-                else "перекрыта полоса движения"
-            )
-        rows.append(
-            f'• <b>{label}</b> — {status}. '
-            f'<a href="{html.escape(_map_url(location), quote=True)}">Карта</a>'
-        )
+        key = _batch_segment_key(incident, location, mode)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append((incident, location, mode))
 
+    blocks = [
+        _batch_segment_block(incident, location, mode)
+        for incident, location, mode in unique
+    ]
     return with_footer(
         "🚧 <b>Ограничения движения в Гуардамаре</b>\n\n"
-        "Одновременно обнаружено несколько актуальных ограничений. "
-        "Чтобы не отправлять отдельное уведомление по каждой улице, "
-        "они собраны в одном сообщении:\n\n"
-        + "\n".join(rows)
+        f"Актуальных участков с ограничением: <b>{len(unique)}</b>. "
+        "Ниже указаны границы каждого участка:\n\n"
+        + "\n\n".join(blocks)
     )
 
 
