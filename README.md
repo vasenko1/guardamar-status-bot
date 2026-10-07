@@ -154,7 +154,8 @@ CRON_TZ=Europe/Madrid
 42 9,11 * * * /path/to/TelegramBot/termux/publish-course-notifications.sh
 0 18 * * * /path/to/TelegramBot/termux/publish-celebration-alert.sh
 30,35,45 20 * * * /path/to/TelegramBot/termux/run-electricity.sh
-0,20 21 * * * /path/to/TelegramBot/termux/run-electricity.sh
+0,20,40 21 * * * /path/to/TelegramBot/termux/run-electricity.sh
+0,30 22-23 * * * /path/to/TelegramBot/termux/run-electricity.sh
 15 19 * * 5 /path/to/TelegramBot/termux/run-weekend.sh --fresh
 15 20 * * 5 /path/to/TelegramBot/termux/run-weekend.sh
 47 12 * * * /data/data/com.termux/files/usr/bin/sh /path/to/TelegramBot/termux/run-event-registration.sh
@@ -167,6 +168,8 @@ CRON_TZ=Europe/Madrid
 55 * * * * /path/to/TelegramBot/termux/monitor-earthquakes.sh
 11 11,15,18 * * * /path/to/TelegramBot/termux/run-resident-news.sh
 ```
+
+Electricity retries continue through 23:30 because Red Eléctrica can occasionally publish D+1 PVPC later than its normal evening window. After a successful publication, later invocations exit from local publication state before contacting the price APIs, so the recovery slots do not add normal-day network load.
 
 Keep the Android device timezone set to `Europe/Madrid` as an additional
 safeguard.
@@ -300,7 +303,8 @@ CRON_TZ=Europe/Madrid
 42 9,11 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/publish-course-notifications.sh
 0 18 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/publish-celebration-alert.sh
 30,35,45 20 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity.sh
-0,20 21 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity.sh
+0,20,40 21 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity.sh
+0,30 22-23 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity.sh
 15 19 * * 5 /data/data/com.termux/files/home/bots/guardamar-status/termux/run-weekend.sh --fresh
 15 20 * * 5 /data/data/com.termux/files/home/bots/guardamar-status/termux/run-weekend.sh
 47 12 * * * /data/data/com.termux/files/usr/bin/sh /data/data/com.termux/files/home/bots/guardamar-status/termux/run-event-registration.sh
