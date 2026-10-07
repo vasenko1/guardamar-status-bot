@@ -527,3 +527,66 @@ The implementation must later prove at least:
 - bounded response sizes and timeouts;
 - no network holiday lookup when the reviewed local calendar already covers
   the needed date context.
+
+
+## Repeated pre-device audit — 2026-10-07
+
+The design and research probe were re-reviewed repeatedly before asking the
+operator to run anything on the production phone. The review found and removed
+several real defects from the first draft:
+
+- San Fulgencio was removed completely from product scope after the requirement
+  was clarified. The feature now has exactly three Guardamar physical stores.
+- A second runtime holiday-calendar fetch was removed because the repository
+  already owns the reviewed annual Guardamar calendar in `holidays.py`.
+- The speculative weekly-refresh/event-driven request policy was downgraded
+  from a design decision to a measured choice. If exact responses are small,
+  one three-store daily one-shot is simpler and more robust.
+- The probe no longer assumes Mercadona's exploratory `?s=03140` query is a
+  supported search contract; it inspects the base locator first.
+- Blind "first six JavaScript files" inspection was replaced by bounded,
+  prioritized first-party script inspection, while external scripts are only
+  listed.
+- The probe no longer uses curl as evidence for production compatibility. It
+  imports the same `telegrambot._transport.fetch_bounded` Python/urllib
+  transport used by the application, so TLS, redirects, MIME and byte limits
+  are exercised on the real runtime stack.
+- Fetched retailer bodies are kept only in memory. The only persisted artifact
+  is a text diagnostic report outside project state.
+- The service User-Agent now matches production exactly. JavaScript discovery
+  uses the service profile first and only one already-reviewed navigation
+  header fallback after an explicit 403/406.
+- Escaped URL forms common in minified JavaScript are normalized for discovery,
+  avoiding false negatives without executing JavaScript.
+- The report redacts token/key/secret-shaped values, suppresses hidden/password
+  input values, and applies the same redaction to form actions/options.
+- The public behavior explicitly ignores shortened-but-open days. Only a full
+  exceptional closure is part of the normal reminder lifecycle.
+- A narrow correction rule was added: a later successful first-party
+  observation that reverses an already-published future closure must correct
+  the bot's own stale claim. Source failure can never imply reopening.
+
+A fresh public cross-check on the same date also confirms that DIA's official
+Alicante locator still exposes the exact Guardamar physical store
+`36111`, La Redonda 40, with the 7–13 October 2026 leaflet period. The
+crawler-visible surface still does not expose opening hours, so leaflet dates
+must not be mistaken for store-hour evidence.
+
+A third-party Guardamar masymas listing currently labels 12 October as closed,
+while other public sources observed during the broader investigation have shown
+different holiday/opening patterns at different times. This inconsistency is
+useful only as evidence that third-party hours are unsafe as a production
+fallback.
+
+The final pre-device conclusion is therefore deliberately conservative:
+
+1. discover and prove the retailer's own exact-store schedule contract;
+2. run a second narrow exact-endpoint probe;
+3. only then decide implementation/cadence and write an ADR;
+4. launch only stores whose first-party source can prove date-aware exceptional
+   closures;
+5. leave a retailer silent rather than infer a closure from a holiday calendar,
+   ordinary weekly timetable, or third-party listing.
+
+At this gate no production code, cron, state schema, Telegram behavior, ADR or
+stable KB decision has been changed.
