@@ -445,10 +445,11 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
                 result = await _run_command("electricity-current-recovery")
 
             state = PublicationState(state_path)
+            published = state.is_published(now.date())
 
         self.assertEqual(result, 0)
         collect.assert_awaited_once()
-        self.assertTrue(state.is_published(now.date()))
+        self.assertTrue(published)
         self.assertEqual(send.await_count, 1)
         message = send.await_args.args[2]
         self.assertIn("Цены на электричество сегодня", message)
@@ -486,10 +487,11 @@ class ElectricityTests(unittest.IsolatedAsyncioTestCase):
                 result = await _run_command("electricity")
 
             state = PublicationState(state_path)
+            published = state.is_published(tomorrow)
 
         self.assertEqual(result, 0)
         collect.assert_awaited_once()
-        self.assertTrue(state.is_published(tomorrow))
+        self.assertTrue(published)
         self.assertEqual(send.await_count, 2)
         self.assertIn(
             "Цены на электричество завтра",
