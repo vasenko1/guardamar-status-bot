@@ -431,7 +431,7 @@ class FormParser(HTMLParser):
                 self.base_url,
                 str(values.get("action") or ""),
             )
-            self.emit(f"FORM {method} {action}")
+            self.emit(f"FORM {method} {redact(action)}")
         elif tag == "input":
             input_type = str(values.get("type") or "").casefold()
             input_value = values.get("value")
@@ -462,9 +462,11 @@ class FormParser(HTMLParser):
         tag = tag.casefold()
         if tag == "option" and self.option_value is not None:
             label = " ".join(" ".join(self.option_parts).split())
+            option_value = redact(self.option_value)
+            label = redact(label)
             self.emit(
                 f"OPTION select={self.current_select!r} "
-                f"value={self.option_value!r} label={label!r}"
+                f"value={option_value!r} label={label!r}"
             )
             self.option_value = None
             self.option_parts = []
