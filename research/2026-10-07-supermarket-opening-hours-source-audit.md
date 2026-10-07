@@ -274,73 +274,76 @@ is eligible; do not invent a season.
 
 ## Notification collapse and grouping rules
 
-The desired three-phase lifecycle is useful, but must not create repetitive
-messages.
+The requested lifecycle does **not** require three schedulers. One daily
+morning evaluation can produce every phase and at most one supermarket message
+for that local day.
 
-### Beginning-of-week
+For each successful run, deterministic composition considers:
 
-One grouped message may list all already verified exceptional closures still
-ahead in the current Monday–Sunday week.
+1. verified exceptional closures **today**;
+2. verified exceptional closures **tomorrow**;
+3. on Monday, other verified exceptional closures later in the same
+   Monday–Sunday week;
+4. a newly discovered closure later in the current week only when it was not
+   knowable on Monday and is still at least two days away;
+5. one due verified seasonal-transition notice.
 
-Do not include:
+All due units are merged into one natural resident-facing message. There is no
+second supermarket post on the same day.
 
-- routine Sunday closures;
-- shortened-hours-only changes;
-- already elapsed dates.
+### Edge cases
 
-### Day before
+- closure on Monday: Sunday's run may publish `завтра`; Monday publishes
+  `сегодня`. There is no redundant Monday weekly overview for that same
+  closure;
+- closure on Tuesday: Monday's message naturally serves both the weekly and
+  `завтра` purpose; no second Monday reminder is sent;
+- closure on Wednesday or later and already known on Monday: Monday gives the
+  early-week notice, the preceding day gives `завтра`, and the date itself
+  gives `сегодня`;
+- closure first appears after Monday: the first fresh observation may produce
+  one bounded early notice while it is still two or more days away; otherwise
+  the next eligible phase is `завтра`;
+- two or three stores closed on the same date: one grouped unit;
+- several exceptional closure dates in one week: one early overview may list
+  them, while later reminders stay date-specific;
+- a same-day closure plus another later-week closure: compose one message with
+  the urgent same-day fact first.
 
-One grouped message for stores verified closed tomorrow.
+Routine Sundays and shortened-hours-only differences never enter this
+composer. This remains a narrow product rule, not a generic notification
+framework.
 
-### Same day
-
-One grouped message for stores verified closed today.
-
-### Phase collapse
-
-At most one supermarket closure message per local calendar day.
-
-Examples:
-
-- exceptional closure on Monday: send only the same-day message; do not also
-  send a separate "this week" message;
-- exceptional closure on Tuesday: Monday's beginning-of-week message already
-  naturally says "tomorrow"; do not send a second Monday reminder for the same
-  Tuesday closure;
-- two stores closed on the same target date: one message, not two;
-- two different exceptional closure dates in the same week: one beginning-of-
-  week overview may list both; later reminders are date-specific.
-
-This is a product rule, not a generic notification framework.
-
-## Cadence: do not optimize before measuring response cost
+## Cadence: prefer one daily one-shot if the endpoints are small
 
 The earlier draft assumed that one weekly refresh plus event-driven
-revalidation was automatically best. That is not yet justified.
+revalidation was automatically best. That would add state and branches before
+we know they buy anything.
 
-If the final contracts are tiny JSON responses, the simplest reliable runtime
-may be one daily one-shot making at most one request per retailer:
+If the final contracts are small JSON responses, the preferred design is one
+short daily morning process making at most one schedule request per retailer:
 
-- three source requests per successful day;
+- at most three retailer requests per successful day;
 - about 90 requests in a 30-day month;
+- one scheduler entry, not separate weekly/tomorrow/today jobs;
 - no resident process;
 - no internal retry storm;
-- immediate visibility of a mid-week schedule change.
+- mid-week schedule changes are visible on the next morning run;
+- Sunday can provide the `завтра` warning for an exceptional Monday closure.
 
-That is likely simpler and safer than a complex request-suppression state
-machine.
+The process should run in a free morning slot chosen only after checking the
+existing cron timeline. It should remain independent of Morning Digest, SUMA,
+Sports Today and guide delivery so one workflow cannot suppress another.
 
-If one accepted source is a large HTML page, a lower cadence may be justified:
-
-- refresh near the beginning of the week;
-- revalidate an affected store before a due tomorrow/today reminder;
-- preserve last-good normalized schedule only for bounded comparison.
+If an accepted source proves materially large, a lower collection cadence may
+be justified for that source, but only after measurement. Any request
+suppression must remain simpler than making the request it saves.
 
 The production cadence must therefore be chosen **after** the probe records the
-smallest usable response size and horizon for each retailer.
+smallest usable response size and future horizon for each retailer.
 
-Do not optimize request count at the cost of more state, more branches, or a
-higher chance of missing a new closure.
+Do not optimize request count at the cost of more state, more branches, stale
+today/tomorrow facts, or missed mid-week changes.
 
 ## Candidate normalized state
 
