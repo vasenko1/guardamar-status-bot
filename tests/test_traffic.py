@@ -389,6 +389,265 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
             locator=locator,
         )
 
+    async def test_simultaneous_new_restrictions_are_one_batch_message(self):
+        first = incident(provider_id="TTI-a")
+        second = incident(
+            provider_id="TTI-b",
+            category="laneClosed",
+            starts_at=NOW - timedelta(minutes=10),
+            from_place="Calle Mayor",
+            to_place="Calle Norte",
+            coordinates=(
+                (-0.6500000, 38.0800000),
+                (-0.6503000, 38.0803000),
+                (-0.6506000, 38.0806000),
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+
+            async def fetcher(_key):
+                return (first, second)
+
+            async def locator(item, _key):
+                if item.provider_id == "TTI-a":
+                    return location(street="Avenida del Mediterráneo")
+                return location(street="Calle Mayor")
+
+            async def composer(_facts):
+                return None
+
+            async def publish(message, reply_to):
+                sent.append((message, reply_to, 700))
+                return 700
+
+            delivered = await monitor_traffic(
+                state,
+                NOW,
+                "key",
+                composer,
+                publish,
+                fetcher=fetcher,
+                locator=locator,
+            )
+            value = state.read()
+
+        self.assertEqual(delivered, 1)
+        self.assertEqual(len(sent), 1)
+        self.assertIsNone(sent[0][1])
+        self.assertIn("Ограничения движения в Гуардамаре", sent[0][0])
+        self.assertIn("Avenida del Mediterráneo", sent[0][0])
+        self.assertIn("Calle Mayor", sent[0][0])
+        self.assertEqual(value["events"]["TTI-a"]["last_message_id"], 700)
+        self.assertEqual(value["events"]["TTI-b"]["last_message_id"], 700)
+        self.assertEqual(
+            value["events"]["TTI-a"]["last_present_alert_date"],
+            NOW.date().isoformat(),
+        )
+        self.assertEqual(
+            value["events"]["TTI-b"]["last_present_alert_date"],
+            NOW.date().isoformat(),
+        )
+
+    async def test_simultaneous_ongoing_restrictions_are_one_daily_batch(self):
+        first = incident(provider_id="TTI-a")
+        second = incident(
+            provider_id="TTI-b",
+            starts_at=NOW - timedelta(hours=1),
+            from_place="Calle Mayor",
+            to_place="Calle Norte",
+            coordinates=(
+                (-0.6500000, 38.0800000),
+                (-0.6503000, 38.0803000),
+                (-0.6506000, 38.0806000),
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+
+            async def fetcher(_key):
+                return (first, second)
+
+            async def locator(item, _key):
+                return location(
+                    street=(
+                        "Avenida del Mediterráneo"
+                        if item.provider_id == "TTI-a"
+                        else "Calle Mayor"
+                    )
+                )
+
+            async def composer(_facts):
+                return None
+
+            async def publish(message, reply_to):
+                message_id = 800 + len(sent)
+                sent.append((message, reply_to, message_id))
+                return message_id
+
+            self.assertEqual(
+                await monitor_traffic(
+                    state,
+                    NOW,
+                    "key",
+                    composer,
+                    publish,
+                    fetcher=fetcher,
+                    locator=locator,
+                ),
+                1,
+            )
+            next_day = datetime(2026, 9, 25, 8, 30, tzinfo=MADRID)
+            self.assertEqual(
+                await monitor_traffic(
+                    state,
+                    next_day,
+                    "key",
+                    composer,
+                    publish,
+                    fetcher=fetcher,
+                    locator=locator,
+                ),
+                1,
+            )
+
+        self.assertEqual(len(sent), 2)
+        self.assertIn("проезд остаётся перекрыт", sent[-1][0])
+        self.assertIn("Avenida del Mediterráneo", sent[-1][0])
+        self.assertIn("Calle Mayor", sent[-1][0])
+
+    async def test_failed_batch_rolls_back_every_delivery_marker(self):
+        first = incident(provider_id="TTI-a")
+        second = incident(
+            provider_id="TTI-b",
+            starts_at=NOW - timedelta(minutes=10),
+            from_place="Calle Mayor",
+            to_place="Calle Norte",
+            coordinates=(
+                (-0.6500000, 38.0800000),
+                (-0.6503000, 38.0803000),
+                (-0.6506000, 38.0806000),
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+
+            async def fetcher(_key):
+                return (first, second)
+
+            async def locator(item, _key):
+                return location(
+                    street=(
+                        "Avenida del Mediterráneo"
+                        if item.provider_id == "TTI-a"
+                        else "Calle Mayor"
+                    )
+                )
+
+            async def composer(_facts):
+                return None
+
+            async def failing_publish(_message, _reply_to):
+                raise RuntimeError("telegram rejected")
+
+            with self.assertRaises(RuntimeError):
+                await monitor_traffic(
+                    state,
+                    NOW,
+                    "key",
+                    composer,
+                    failing_publish,
+                    fetcher=fetcher,
+                    locator=locator,
+                )
+            failed = state.read()
+            for provider_id in ("TTI-a", "TTI-b"):
+                self.assertNotIn(
+                    "last_present_alert_date",
+                    failed["events"][provider_id],
+                )
+                self.assertNotIn("pending_delivery", failed["events"][provider_id])
+
+            sent = []
+
+            async def successful_publish(message, reply_to):
+                sent.append((message, reply_to))
+                return 900
+
+            delivered = await monitor_traffic(
+                state,
+                NOW + timedelta(hours=1),
+                "key",
+                composer,
+                successful_publish,
+                fetcher=fetcher,
+                locator=locator,
+            )
+
+        self.assertEqual(delivered, 1)
+        self.assertEqual(len(sent), 1)
+
+    async def test_uncertain_batch_marks_every_record_and_does_not_resend(self):
+        first = incident(provider_id="TTI-a")
+        second = incident(
+            provider_id="TTI-b",
+            starts_at=NOW - timedelta(minutes=10),
+            from_place="Calle Mayor",
+            to_place="Calle Norte",
+            coordinates=(
+                (-0.6500000, 38.0800000),
+                (-0.6503000, 38.0803000),
+                (-0.6506000, 38.0806000),
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+
+            async def fetcher(_key):
+                return (first, second)
+
+            async def locator(item, _key):
+                return location(
+                    street=(
+                        "Avenida del Mediterráneo"
+                        if item.provider_id == "TTI-a"
+                        else "Calle Mayor"
+                    )
+                )
+
+            async def composer(_facts):
+                return None
+
+            calls = 0
+
+            async def uncertain_publish(_message, _reply_to):
+                nonlocal calls
+                calls += 1
+                raise TrafficDeliveryUncertain()
+
+            with self.assertRaises(TrafficDeliveryUncertain):
+                await monitor_traffic(
+                    state,
+                    NOW,
+                    "key",
+                    composer,
+                    uncertain_publish,
+                    fetcher=fetcher,
+                    locator=locator,
+                )
+            value = state.read()
+
+        self.assertEqual(calls, 1)
+        for provider_id in ("TTI-a", "TTI-b"):
+            record = value["events"][provider_id]
+            self.assertEqual(
+                record["last_present_alert_date"],
+                NOW.date().isoformat(),
+            )
+            self.assertIn("pending_delivery", record)
+
     async def test_known_incident_reuses_cached_reverse_geocode(self):
         with tempfile.TemporaryDirectory() as directory:
             state = TrafficState(Path(directory) / "traffic.json")
