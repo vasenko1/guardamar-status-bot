@@ -264,6 +264,8 @@ def parse_campaign(
         expected_start=start,
         expected_end=end,
     )
+    for tax in taxes:
+        _tax_kind(tax)
     return SumaCampaign(
         start,
         end,
@@ -326,39 +328,81 @@ def _ru_date(value: date) -> str:
     return f"{value.day} {_RUSSIAN_MONTHS[value.month]}"
 
 
-def _tax_label(value: str) -> str:
+_TAX_DETAILS = {
+    "ibi_urbana": (
+        "IBI urbana",
+        "налог на недвижимость, которая в кадастре относится к городской: "
+        "например квартиру, дом, гараж, помещение или городской участок",
+    ),
+    "ibi_rustica": (
+        "IBI rústica",
+        "налог на недвижимость, которая в кадастре относится к сельской "
+        "(rústica), например сельский земельный участок",
+    ),
+    "iae": (
+        "IAE",
+        "налог на экономическую деятельность; касается только тех, кому "
+        "выставлена такая квитанция",
+    ),
+    "vados": (
+        "Vados",
+        "муниципальный сбор за разрешённый въезд или выезд транспорта через "
+        "тротуар, например к гаражу",
+    ),
+}
+
+
+def _tax_kind(value: str) -> str:
     folded = _fold(value)
     if "BIENES INMUEBLES URBANA" in folded:
-        return "IBI urbana"
+        return "ibi_urbana"
     if "BIENES INMUEBLES RUSTICA" in folded:
-        return "IBI rústica"
+        return "ibi_rustica"
     if "ACTIVIDADES ECONOMICAS" in folded:
-        return "IAE"
+        return "iae"
     if folded.strip() == "VADOS" or "ENTRADA VEHICULOS" in folded:
         return "vados"
-    return html.escape(value)
+    raise SumaError(
+        "SUMA tax label has no reviewed resident explanation",
+        code="UNKNOWN-TAX",
+    )
 
 
-def _join_russian(items: Sequence[str]) -> str:
-    if len(items) == 1:
-        return items[0]
-    if len(items) == 2:
-        return f"{items[0]} и {items[1]}"
-    return f"{', '.join(items[:-1])} и {items[-1]}"
+def _tax_details(campaign: SumaCampaign) -> str:
+    details = []
+    seen = set()
+    for value in campaign.taxes:
+        kind = _tax_kind(value)
+        if kind in seen:
+            continue
+        seen.add(kind)
+        label, explanation = _TAX_DETAILS[kind]
+        details.append(
+            f"• <b>{html.escape(label)}</b> — {html.escape(explanation)}"
+        )
+    return "<b>Что входит в этот срок оплаты:</b>\n" + "\n".join(details)
 
 
-def _tax_summary(campaign: SumaCampaign) -> str:
-    labels = tuple(dict.fromkeys(_tax_label(value) for value in campaign.taxes))
-    return _join_russian(labels)
+def _late_payment_note(campaign: SumaCampaign) -> str:
+    return (
+        f"Если квитанция не оплачена до <b>{_ru_date(campaign.ends_on)}</b>, "
+        "после окончания обычного срока к неоплаченным суммам могут "
+        "применяться предусмотренные законом доплаты, проценты и расходы."
+    )
 
 
 def _format_opening(campaign: SumaCampaign) -> str:
     return with_footer(
-        "🧾 <b>Открыт период оплаты SUMA</b>\n\n"
-        "В Гуардамаре начался добровольный период оплаты: "
-        f"<b>{_tax_summary(campaign)}</b>.\n\n"
-        "Оплатить без просрочки можно до "
+        "🧾 <b>Открыт срок оплаты SUMA</b>\n\n"
+        f"В Гуардамаре обычный срок оплаты этих квитанций — с "
+        f"<b>{_ru_date(campaign.starts_on)}</b> до "
         f"<b>{_ru_date(campaign.ends_on)}</b>.\n\n"
+        f"{_tax_details(campaign)}\n\n"
+        "Если хотите подключить domiciliación именно для этих квитанций, "
+        f"сделать это можно до <b>{_ru_date(campaign.direct_debit_deadline)}</b>. "
+        "Списание по действующей domiciliación запланировано на "
+        f"<b>{_ru_date(campaign.direct_debit_charge)}</b>.\n\n"
+        f"{_late_payment_note(campaign)}\n\n"
         "Источник: SUMA Gestión Tributaria"
     )
 
@@ -367,11 +411,13 @@ def _format_direct_debit(campaign: SumaCampaign) -> str:
     return with_footer(
         "🧾 <b>SUMA: ещё неделя для оформления автоплатежа</b>\n\n"
         f"До <b>{_ru_date(campaign.direct_debit_deadline)}</b> можно "
-        "оформить domiciliación для квитанций текущего периода SUMA.\n\n"
-        "После этой даты новая domiciliación уже не будет действовать "
-        "для текущего периода.\n\n"
-        "Списание по действующей domiciliación — "
-        f"<b>{_ru_date(campaign.direct_debit_charge)}</b>.\n\n"
+        "оформить domiciliación для перечисленных ниже квитанций SUMA.\n\n"
+        f"{_tax_details(campaign)}\n\n"
+        "Списание по действующей domiciliación запланировано на "
+        f"<b>{_ru_date(campaign.direct_debit_charge)}</b>. "
+        "Без автосписания квитанции можно оплатить обычным способом до "
+        f"<b>{_ru_date(campaign.ends_on)}</b>.\n\n"
+        f"{_late_payment_note(campaign)}\n\n"
         "Источник: SUMA Gestión Tributaria"
     )
 
@@ -380,41 +426,45 @@ def _format_charge(campaign: SumaCampaign, today: date) -> str:
     remaining = (campaign.ends_on - today).days
     if remaining == 0:
         deadline = (
-            "Для остальных <b>сегодня также последний день</b> "
-            "добровольной оплаты."
+            "Для квитанций без domiciliación <b>сегодня также последний день</b> "
+            "обычной оплаты."
         )
     elif remaining == 1:
         deadline = (
-            "Для остальных добровольный срок оплаты заканчивается "
+            "Для квитанций без domiciliación обычный срок оплаты заканчивается "
             f"<b>завтра, {_ru_date(campaign.ends_on)}</b>."
         )
     else:
         deadline = (
-            "Для остальных до конца добровольного периода — "
-            f"<b>{remaining} дней</b>: срок заканчивается "
+            "Для квитанций без domiciliación до конца обычного срока оплаты — "
+            f"<b>{remaining} дней</b>: он заканчивается "
             f"<b>{_ru_date(campaign.ends_on)}</b>."
         )
     return with_footer(
         "🧾 <b>SUMA: сегодня списание по domiciliación</b>\n\n"
-        "Если у вас подключена автоматическая оплата SUMA, "
+        "Если у вас подключена автоматическая оплата, "
         f"<b>сегодня, {_ru_date(today)}</b>, запланировано списание "
-        "по текущему периоду.\n\n"
+        "по перечисленным ниже квитанциям.\n\n"
+        f"{_tax_details(campaign)}\n\n"
         f"{deadline}\n\n"
+        f"{_late_payment_note(campaign)}\n\n"
         "Источник: SUMA Gestión Tributaria"
     )
 
 
 def _format_final(campaign: SumaCampaign) -> str:
     return with_footer(
-        "🧾 <b>SUMA: завтра заканчивается срок оплаты</b>\n\n"
-        f"<b>{_ru_date(campaign.ends_on)}</b> — последний день "
-        "добровольной оплаты текущего периода SUMA в Гуардамаре.\n\n"
-        "Если квитанция ещё не оплачена, лучше сделать это до окончания "
-        "срока. После добровольного периода к неоплаченным суммам могут "
-        "применяться предусмотренные законом доплаты, проценты и расходы.\n\n"
+        "🧾 <b>SUMA: завтра последний день оплаты</b>\n\n"
+        f"<b>{_ru_date(campaign.ends_on)}</b> — последний день обычного "
+        "срока оплаты перечисленных ниже квитанций SUMA в Гуардамаре.\n\n"
+        f"{_tax_details(campaign)}\n\n"
+        "Если у вас подключена domiciliación, списание по этим квитанциям "
+        f"было запланировано на <b>{_ru_date(campaign.direct_debit_charge)}</b>. "
+        "Если квитанция всё ещё не оплачена, лучше сделать это не позднее "
+        f"<b>{_ru_date(campaign.ends_on)}</b>.\n\n"
+        f"{_late_payment_note(campaign)}\n\n"
         "Источник: SUMA Gestión Tributaria"
     )
-
 
 def _trigger_schedule(campaign: SumaCampaign) -> tuple[tuple[str, date], ...]:
     return (
