@@ -323,6 +323,29 @@ class RenderingTests(unittest.TestCase):
         self.assertIn("Места ограничены", message)
 
 
+    def test_root_renders_presentation_note_below_title(self):
+        from telegrambot.event_access import plan_event_access_record
+
+        item = record(
+            title="Провинциальный чемпионат Аликанте по спортивной рыбалке",
+            presentation_note=(
+                "🎣 Mar-Costa — ловля с берега, «поймал-отпустил»"
+            ),
+        )
+        decision = plan_event_access_record(item, None, NOW)
+
+        message = render_root(item, decision)
+
+        title_pos = message.index(
+            "Провинциальный чемпионат Аликанте по спортивной рыбалке"
+        )
+        note_pos = message.index(
+            "🎣 Mar-Costa — ловля с берега, «поймал-отпустил»"
+        )
+        date_pos = message.index("📅 4 октября")
+        self.assertLess(title_pos, note_pos)
+        self.assertLess(note_pos, date_pos)
+
     def test_reservation_root_uses_reservation_wording(self):
         from telegrambot.event_access import plan_event_access_record
 
