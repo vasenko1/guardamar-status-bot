@@ -157,6 +157,9 @@ CRON_TZ=Europe/Madrid
 0,20,40 21 * * * /path/to/TelegramBot/termux/run-electricity.sh
 0,30 22 * * * /path/to/TelegramBot/termux/run-electricity.sh
 0,30,45 23 * * * /path/to/TelegramBot/termux/run-electricity.sh
+5,20,40 0 * * * /data/data/com.termux/files/usr/bin/sh /path/to/TelegramBot/termux/run-electricity-current-recovery.sh
+0,30 1-2 * * * /data/data/com.termux/files/usr/bin/sh /path/to/TelegramBot/termux/run-electricity-current-recovery.sh
+0 3-5 * * * /data/data/com.termux/files/usr/bin/sh /path/to/TelegramBot/termux/run-electricity-current-recovery.sh
 15 19 * * 5 /path/to/TelegramBot/termux/run-weekend.sh --fresh
 15 20 * * 5 /path/to/TelegramBot/termux/run-weekend.sh
 47 12 * * * /data/data/com.termux/files/usr/bin/sh /path/to/TelegramBot/termux/run-event-registration.sh
@@ -170,7 +173,7 @@ CRON_TZ=Europe/Madrid
 11 11,15,18 * * * /path/to/TelegramBot/termux/run-resident-news.sh
 ```
 
-Electricity retries continue through 23:45 because Red Eléctrica can occasionally publish D+1 PVPC later than its normal evening window. After a successful publication, later invocations exit from local publication state before contacting the price APIs, so the recovery slots do not add normal-day network load.
+Electricity next-day retries continue through 23:45 because Red Eléctrica can occasionally publish D+1 PVPC later than its normal evening window. A separate current-day recovery runs only from 00:00 through 05:59: if the same calendar day was already published the previous evening it exits from local publication state before contacting the price APIs; otherwise it can recover a PVPC day that appeared only after midnight and renders the public title as «сегодня», with no recommendation that could point to elapsed hours. The command itself refuses to run at or after 06:00, preventing an evening next-day state from causing an accidental duplicate current-day post.
 
 Keep the Android device timezone set to `Europe/Madrid` as an additional
 safeguard.
@@ -307,6 +310,9 @@ CRON_TZ=Europe/Madrid
 0,20,40 21 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity.sh
 0,30 22 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity.sh
 0,30,45 23 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity.sh
+5,20,40 0 * * * /data/data/com.termux/files/usr/bin/sh /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity-current-recovery.sh
+0,30 1-2 * * * /data/data/com.termux/files/usr/bin/sh /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity-current-recovery.sh
+0 3-5 * * * /data/data/com.termux/files/usr/bin/sh /data/data/com.termux/files/home/bots/guardamar-status/termux/run-electricity-current-recovery.sh
 15 19 * * 5 /data/data/com.termux/files/home/bots/guardamar-status/termux/run-weekend.sh --fresh
 15 20 * * 5 /data/data/com.termux/files/home/bots/guardamar-status/termux/run-weekend.sh
 47 12 * * * /data/data/com.termux/files/usr/bin/sh /data/data/com.termux/files/home/bots/guardamar-status/termux/run-event-registration.sh
@@ -458,9 +464,13 @@ PYTHONPATH=src python -m telegrambot poll "Что добавить в дайдж
   event post from local snapshots only and never sends or writes delivery state.
 - `electricity-preview` prints tomorrow's table and its explanatory reply
   without publishing or changing publication state. It reuses, or creates
-  after one complete ESIOS response, the same private normalized target-day
-  snapshot used by publication. It shares the electricity publication lock,
-  so a simultaneous cron run exits safely instead of duplicating the request.
+  after one complete official ESIOS/REData response, the same private normalized
+  target-day snapshot used by publication. It shares the electricity publication
+  lock, so a simultaneous cron run exits safely instead of duplicating the request.
+- `electricity-current-recovery` is the bounded post-midnight recovery path. It
+  targets the current Europe/Madrid date, publishes only if that target date is
+  still missing from electricity state, labels the table «сегодня», omits the
+  forward-looking recommendation, and refuses execution from 06:00 onward.
 - `refresh-current` is an explicit operator action that rebuilds today's
   digest and edits its one live Telegram message in place. It never creates a
   replacement message and refuses to act without a trusted current-day state.
