@@ -22,6 +22,7 @@ The user-facing product is closure-first:
 - announce a verified seasonal change when the store's recurring Sunday regime
   changes;
 - do not announce routine weekly days off;
+- do not announce shortened opening hours when the store remains open;
 - group stores when the same date affects more than one;
 - provide a beginning-of-week heads-up, a day-before reminder, and a same-day
   reminder without creating duplicate messages for the same run;
@@ -285,6 +286,23 @@ known. A separate short-lived one-shot is preferred over adding retailer
 network dependencies to the 07:30 Morning Digest. A retailer timeout should
 never delay the primary digest.
 
+### Correction rule
+
+Every public future-closure claim must remain correct after later successful
+observations.
+
+If a fresh first-party schedule later changes a previously announced future
+closure to open, moves the closure date, or removes one store from a grouped
+closure, silence is not sufficient: the bot created the stale expectation.
+Publish at most one compact correction for that changed public claim (or use a
+single idempotent edit only if the final Telegram design can guarantee that the
+correction remains visible enough). A source failure is not evidence of a
+reopening and must never trigger a correction.
+
+This correction path is narrowly scoped to supermarket claims already made by
+the bot. It is not a generic notification framework and requires no continuous
+polling.
+
 ### State
 
 Persist normalized facts only. No raw retailer HTML/JSON and no long history.
@@ -356,10 +374,17 @@ The production probe is research-only and may inspect a bounded subset of
 first-party JavaScript to discover the endpoint. Production code must never do
 that.
 
+The probe intentionally imports the repository's existing
+`telegrambot._transport.fetch_bounded` and uses the same Python
+`urllib`/OpenSSL stack as production. A curl-only success is not sufficient
+evidence because TLS/WAF behavior can differ between libcurl and Python.
+
 The probe must:
 
 - remain read-only;
-- write only below `~/.cache/guardamar-supermarket-hours-probe`;
+- write only its text report below
+  `~/.cache/guardamar-supermarket-hours-probe`;
+- keep fetched retailer bodies in memory only and persist no raw response;
 - make no Telegram call and touch no project state;
 - fetch the Mercadona base locator before trying an exploratory postal-code URL;
 - fetch only first-party script hosts under the retailer's registrable domain;
