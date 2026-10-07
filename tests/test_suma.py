@@ -110,6 +110,17 @@ class SumaSourceTests(unittest.TestCase):
         with self.assertRaises(SumaError):
             parse_campaign(MUNICIPAL_HTML, broken)
 
+    def test_unknown_tax_label_fails_closed_without_vague_public_copy(self):
+        municipal = MUNICIPAL_HTML.replace(
+            b"VADOS; Periodo: 2026-ANUAL;",
+            b"TASA NO REVISADA; Periodo: 2026-ANUAL;",
+        )
+
+        with self.assertRaises(SumaError) as captured:
+            parse_campaign(municipal, PERIOD_HTML)
+
+        self.assertEqual(captured.exception.diagnostic_code, "UNKNOWN-TAX")
+
     def test_url_policy_is_exact_and_guardamar_specific(self):
         self.assertTrue(_is_allowed_url(
             "https://www.suma.es/cuerpo_infmunicipal.xhtml?m=76"
@@ -197,6 +208,57 @@ class SumaMonitorTests(unittest.TestCase):
             self.assertIn("8 октября", calls[0])
             self.assertIn("IBI urbana", calls[0])
             self.assertIn("IAE", calls[0])
+
+    def test_every_notice_explains_taxes_dates_and_late_payment_consequences(self):
+        trigger_days = (
+            (2026, 7, 27),
+            (2026, 9, 16),
+            (2026, 10, 1),
+            (2026, 10, 7),
+        )
+
+        for year, month, day in trigger_days:
+            with self.subTest(day=(year, month, day)):
+                with tempfile.TemporaryDirectory() as directory:
+                    state = SumaState(Path(directory) / "suma.json")
+                    calls = []
+
+                    async def send(message):
+                        calls.append(message)
+                        return 1
+
+                    self.run_monitor(
+                        state,
+                        at(2026, 7, 20),
+                        campaign(),
+                        send,
+                    )
+                    self.assertEqual(
+                        self.run_monitor(
+                            state,
+                            at(year, month, day),
+                            campaign(),
+                            send,
+                        ),
+                        "published",
+                    )
+                    self.assertEqual(len(calls), 1)
+                    message = calls[0]
+
+                    self.assertIn("Что входит в этот срок оплаты", message)
+                    self.assertIn("IBI urbana", message)
+                    self.assertIn("квартиру, дом, гараж", message)
+                    self.assertIn("IBI rústica", message)
+                    self.assertIn("сельский земельный участок", message)
+                    self.assertIn("IAE", message)
+                    self.assertIn("экономическую деятельность", message)
+                    self.assertIn("Vados", message)
+                    self.assertIn("въезд или выезд транспорта через тротуар", message)
+                    self.assertIn("1 октября", message)
+                    self.assertIn("8 октября", message)
+                    self.assertIn("доплаты, проценты и расходы", message)
+                    self.assertNotIn("добровольн", message.lower())
+                    self.assertNotIn("текущего периода", message.lower())
 
     def test_direct_debit_reminder_is_exactly_seven_days_before_deadline(self):
         with tempfile.TemporaryDirectory() as directory:
