@@ -1409,10 +1409,15 @@ def fpcv_access_record(
 
     context = str(raw.get("competition_context") or "").strip()
     base_title = str(raw["base_title"]).strip()
-    title = (
-        context.split(" · ", 1)[0] + " — " + base_title
+    competition_title = (
+        context.split(" · ", 1)[0]
         if context
-        else base_title
+        else "Соревнование"
+    )
+    title = (
+        competition_title
+        + " по спортивной рыбалке — "
+        + base_title
     )
 
     details = list(raw.get("details") or ())
