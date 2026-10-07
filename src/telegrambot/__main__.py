@@ -2037,10 +2037,21 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
 
     if command in {
         "electricity",
+        "electricity-current-recovery",
         "electricity-preview",
         "electricity-update-explanation",
     }:
-        target_date = (now + timedelta(days=1)).date()
+        current_day_recovery = command == "electricity-current-recovery"
+        if current_day_recovery and now.hour >= 6:
+            logging.info(
+                "Electricity current-day recovery skipped outside 00:00-05:59"
+            )
+            return 0
+        target_date = (
+            now.date()
+            if current_day_recovery
+            else (now + timedelta(days=1)).date()
+        )
         esios_key = os.environ.get("ESIOS_API_KEY", "").strip()
         snapshot_path = Path(
             os.environ.get("ELECTRICITY_SNAPSHOT_PATH", "").strip()
@@ -2094,6 +2105,7 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             lambda message: send_message(
                 bot_token, chat_id, message, disable_notification=False
             ),
+            day_context="today" if current_day_recovery else "tomorrow",
         )
         logging.info("Electricity publication: %s", result)
         return 0
@@ -2509,7 +2521,7 @@ def main() -> None:
         choices=(
             "run", "morning", "update", "refresh-current", "preview",
             "status", "listen",
-            "electricity", "electricity-preview",
+            "electricity", "electricity-current-recovery", "electricity-preview",
             "electricity-update-explanation",
             "pinned-preview", "pinned-send-preview", "pinned-publish",
             "sync-transport",
