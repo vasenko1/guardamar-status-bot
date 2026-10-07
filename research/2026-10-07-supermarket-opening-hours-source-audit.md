@@ -394,7 +394,13 @@ Retailers fail independently.
 - calendar says holiday but retailer source is unavailable -> no new closure
   claim;
 - stale last-good data may support diagnostics but must not create a fresh
-  today/tomorrow claim beyond its reviewed freshness window.
+  today/tomorrow claim beyond its reviewed freshness window;
+- if the bot already published a future full-closure claim and a later
+  successful first-party observation proves that store open on that same date,
+  publish one compact correction for the bot's own stale claim. A shortened
+  but open interval also counts as a reversal of a prior "closed" claim.
+  Source failure, missing data or third-party evidence can never imply
+  reopening.
 
 One broken retailer must not suppress valid notices for another.
 
@@ -548,8 +554,10 @@ several real defects from the first draft:
 - The speculative weekly-refresh/event-driven request policy was downgraded
   from a design decision to a measured choice. If exact responses are small,
   one three-store daily one-shot is simpler and more robust.
-- The probe no longer assumes Mercadona's exploratory `?s=03140` query is a
-  supported search contract; it inspects the base locator first.
+- The probe does not promote Mercadona's exploratory `?s=03140` query into a
+  production contract. It inspects the base locator first, then uses the
+  postcode query only as a bounded first-party research request for exact
+  Guardamar evidence.
 - Blind "first six JavaScript files" inspection was replaced by bounded,
   prioritized first-party script inspection, while external scripts are only
   listed.
@@ -559,13 +567,14 @@ several real defects from the first draft:
   are exercised on the real runtime stack.
 - Fetched retailer bodies are kept only in memory. The only persisted artifact
   is a text diagnostic report outside project state.
-- The service User-Agent now matches production exactly. JavaScript discovery
-  uses the service profile first and only one already-reviewed navigation
-  header fallback after an explicit 403/406.
+- Retailer pages are tried first with the current project service HTTP
+  profile. Only an explicit HTTP 403/406 permits one already-reviewed
+  navigation-header fallback; JavaScript assets stay on the lightweight
+  service profile.
 - Escaped URL forms common in minified JavaScript are normalized for discovery,
   avoiding false negatives without executing JavaScript.
-- The report redacts token/key/secret-shaped values, suppresses hidden/password
-  input values, and applies the same redaction to form actions/options.
+- Diagnostic snippets and URLs redact token/API-key/secret-shaped values
+  before printing. The probe does not print cookies or authorization headers.
 - The public behavior explicitly ignores shortened-but-open days. Only a full
   exceptional closure is part of the normal reminder lifecycle.
 - A narrow correction rule was added: a later successful first-party
@@ -577,12 +586,6 @@ Alicante locator still exposes the exact Guardamar physical store
 `36111`, La Redonda 40, with the 7–13 October 2026 leaflet period. The
 crawler-visible surface still does not expose opening hours, so leaflet dates
 must not be mistaken for store-hour evidence.
-
-A third-party Guardamar masymas listing currently labels 12 October as closed,
-while other public sources observed during the broader investigation have shown
-different holiday/opening patterns at different times. This inconsistency is
-useful only as evidence that third-party hours are unsafe as a production
-fallback.
 
 The final pre-device conclusion is therefore deliberately conservative:
 
