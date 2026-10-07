@@ -628,9 +628,9 @@ def _batch_segment_key(
 def _batch_status(incident: TrafficIncident, mode: str) -> str:
     if mode == "future_tomorrow":
         status = (
-            "⏳ Полное перекрытие запланировано на завтра"
+            "⏳ полное перекрытие запланировано на завтра"
             if incident.category == "roadClosed"
-            else "⏳ Перекрытие полосы запланировано на завтра"
+            else "⏳ перекрытие полосы запланировано на завтра"
         )
         if incident.starts_at is not None:
             status += (
@@ -640,14 +640,14 @@ def _batch_status(incident: TrafficIncident, mode: str) -> str:
         return status
     if incident.category == "roadClosed":
         return (
-            "⛔ Проезд остаётся перекрыт"
+            "⛔ проезд остаётся перекрыт"
             if mode == "ongoing"
-            else "⛔ Проезд перекрыт"
+            else "⛔ проезд перекрыт"
         )
     return (
-        "⚠️ Полоса движения остаётся перекрыта"
+        "⚠️ полоса движения остаётся перекрыта"
         if mode == "ongoing"
-        else "⚠️ Перекрыта полоса движения"
+        else "⚠️ перекрыта полоса движения"
     )
 
 
