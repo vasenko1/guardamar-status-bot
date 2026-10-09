@@ -563,3 +563,25 @@ Run the standard-library test suite with:
 ```sh
 PYTHONPATH=src python -m unittest discover -s tests -v
 ```
+
+
+## Exceptional supermarket closure notices
+
+The independent supermarket one-shot checks the reviewed Guardamar Mercadona,
+masymas and DIA store schedules at 08:15 Europe/Madrid. Install or refresh only
+its managed cron block without replacing unrelated jobs:
+
+```sh
+cd ~/bots/guardamar-status
+sh ./termux/install-supermarket-closures-cron.sh
+```
+
+Inspect the current due message without Telegram delivery or state mutation:
+
+```sh
+PYTHONPATH=src python -m telegrambot.supermarket_closures --preview
+```
+
+The workflow is closure-first: routine weekly days off and shortened-but-open
+days are silent. Retailer schedules determine open/closed status; the reviewed
+Guardamar holiday calendar is explanatory context only.

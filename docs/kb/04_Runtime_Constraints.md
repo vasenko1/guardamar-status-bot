@@ -504,3 +504,25 @@ the existing `state/product_awards.json` before source access.
 - Product-award logs remain bounded and a due no-publication run records one
   concise final reason.
 
+
+
+## Exceptional supermarket closure one-shot
+
+The supermarket-closure workflow is one independent short-lived Termux process
+at 08:15 Europe/Madrid. It performs only the reviewed first-party Mercadona,
+DIA and masymas requests, sequentially, with exact URL policies, 15-second
+timeouts and bounded bodies. Mercadona uses one locator GET plus one bounded
+current data file; DIA uses one exact detail GET; masymas uses one exact
+Guardamar form POST.
+
+One retailer failure is isolated from the others. No retailer failure, missing
+date or holiday-calendar fact becomes evidence of closure. The process stores
+only a small normalized atomic state, a bounded delivery-key history and one
+possible ambiguous Telegram reservation. It archives no source responses,
+starts no daemon and uses no browser, OCR, AI or database.
+
+The daily public-message cap is one. A deterministic Telegram failure restores
+the complete pre-send state; an ambiguous send remains reserved to prevent an
+automatic duplicate. Sunday regime transitions are not automated until a
+stable first-party boundary contract is proved. The managed cron installer
+uses temporary files only under `$HOME/.cache/crontab`.
