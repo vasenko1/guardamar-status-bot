@@ -78,3 +78,22 @@ Source roles:
 
 **Next milestone:** bounded read-only production probe of current 2026 Cross entry flow and organizer's official posts; inspect links without guessing slugs; verify the real enrollment platform and whether it publishes an actionable HTML state. Check actual organizer registration contact instruction, not generic contacts. Then adapt only source-proven running events using existing local event + EventAccess pipeline; add focused false-positive regression tests for “calendar only”, “price only”, “generic organizer email only”, “closed signup page”, “form pending” and “explicit currently open sign-up process”. Preserve the existing planning/sports-today behavior distinction for events with no access: operator's strict no-publication rule needs a specific scope decision before routing (do not silently apply to all other sports).
 
+
+
+## Milestone 6 — October 2026 coverage check (2026-10-09)
+
+Question: Is there any Guardamar-hosted October 2026 road race, marathon, half-marathon, cross or other sporting occurrence beyond the already announced provincial fishing competition?
+
+**Running result:** no Guardamar-hosted October running event was identified in the municipal October agenda, reviewed race listings, athletics/race provider searches and relevant organizer/calendar research available at this checkpoint. Nearby October runs in Torrevieja, Almoradí, La Marina or Elche must not be attributed to Guardamar. This is an **absence-of-evidence finding, not a proof that no future late announcement can appear**. The next specifically identified Guardamar cross is on 2026-12-06 and its active-registration gate remains unresolved; do not announce an October registration opening.
+
+**Other sports:** the absence claim is false when extended to all sporting events:
+- Official FPCV convocatoria https://federacionpescacv.com/convocatorias-clasificaciones-2026/ confirms the **2026-10-17** Provincial Alicante Mar-Costa Captura y suelta event at Guardamar's La Roqueta and Centro beaches (existing fishing feature; already announced by the operator).
+- Official FFCV 2026/27 Segona FFCV, group 8 PDF https://ffcv.es/wp/wp-content/uploads/2026/08/Segona-FFCV-Grupo-8.pdf shows **Jornada 5 (2026-10-25)**, Guardamar Soccer C.D. "A" versus Sporting Saladar (home-listed). **This PDF only establishes the round/weekend and home designation; the exact game day, kickoff and physical venue are not confirmed by it.** Do not publish without live responsible-source venue/date/time validation. Its registration lifecycle is not the same as participant sign-up for mass races.
+- Official municipality/tourism Rosario programme https://guardamarturismo.com/fiestas-de-la-virgen-del-rosario-de-guardamar-2026/ includes a petanque tournament on **2026-10-03**, already in the past as of this research.
+- Official chess FACV calendar https://www.facv.org/appwebfacv/public/staff/torneos/calendario_oficial.php did not yield an October Guardamar championship in the reviewed 2026 rows.
+- Official FPCV general club fishing calendar https://federacionpescacv.com/competiciones-de-nuestros-clubes/ lists October Guardamar `SOCIAL CLASIF.` club rows (10 and 31 October) that the existing reviewed filtering policy explicitly excludes as ordinary club qualifiers; their presence does not justify a broad new resident notification.
+
+**Publication distinction:** no new confirmed-open **running registration** to announce today; this is not equivalent to “no more sports events to cover in October.” The already rooted fishing announcement should not be repeated absent a material lifecycle change; football can appear on Sports Today/planning only after the responsible fixture source confirms the city's physical venue and live schedule, not as an advance registration root.
+
+**Remaining verification:** no Termux production state inspection was performed. No source-specific running adapter was implemented, no production side effect. Confirm live FFCV venue/kickoff and deployed source status in a separate fixture-source audit before claiming the football fixture is currently published by the bot.
+
