@@ -52,3 +52,29 @@ Do not claim the Dec 6 race was omitted by the production bot without checking a
 ## Recommendation
 
 Approve a narrow **ChipLevante Guardamar running source investigation**, not an immediate production publish/adapter. It is now justified by the observed 2026-12-06 Cross. First prove registration status and a reliable participant action URL and investigate municipal overlap. No separate marathon subsystem or cron. Preserve this research file as the resumable checkpoint; record validated contracts and test results here at each milestone.
+
+
+## Milestone 5 — organizer-first and strict open-registration gate (2026-10-09)
+
+**Operator decision:** do not publish the future event merely because it has been listed in a calendar. Registration announcement is allowed only if actual participant registration is evidenced as currently actionable. This is a proposed requirement for the running-source slice and must be reconciled with generic event-access semantics before code changes.
+
+Source roles:
+1. Organizer's *contemporaneous, event-specific* first-party announcement/instructions (SOC SPORT/Sportmadness Alicante for 2026 Cross; GRD Vega Baja for 2026 Media Maratón).
+2. Organizer-delegated registration operator (ChipLevante or the exact linked platform): source of truth for the real entry form, current open/closed/full status and registration windows.
+3. Ayuntamiento/Guardamar Turismo: discover and cross-check locality/date/organizers, but never use a calendar entry alone to assert open registration.
+4. Aggregators: non-authoritative discovery only, never publication evidence.
+
+**Evidence gate:**
+- `open` only if event-specific official/delegated page explicitly states registration open **and** offers an actionable application/payment/registration flow; OR an organizer's dated explicit currently valid open-registration instruction gives a usable sign-up contact/process. For contact-only registration, distinguish explicit “inscribe by contacting X” instructions from a generic organizer email listed for inquiries. Generic email or unrelated website by itself is NOT registration proof.
+- A registration link alone is not enough if the destination says closed, full, not yet open, historical edition or is inaccessible/ambiguous.
+- A merely listed future event, pricing ladder, theoretical closing date, organizer contact listing, historic form, or `INSCRIPCIONES` navigation label is NOT evidence of present open status.
+- A real online form should be verified at least through an event-specific available selection/application step, never submit participant data or initiate payment. If required browser/JS makes status inaccessible in bounded Termux requests, fail closed.
+- Prove current date/time window, year, exact Guardamar occurrence, access action URL or explicit organizer-proven email/phone instruction, status and freshness; preserve attribution. `unknown` until demonstrated otherwise. Do not extrapolate next-year availability.
+- Once rooted, status transitions or material corrections use shared v3 EventAccess and its strict deduplication/uncertain-delivery policy. No special running state machine.
+
+**Evidence observed:** 2026-12-06 Cross card https://www.chiplevante.com/es/prueba/cross-urbano-guardamar-del-segura-998-2026 has distance/price/organizer contact and links to rules/social posts, but current page text **does not show a validated event-specific active registration form or confirmed-open inscription action**. Therefore **NO REGISTRATION-OPEN PUBLICATION YET**. Organizer shown SOC SPORT - SPORTMADNESS ALICANTE, `socsport2018@socsport.net` is only a generic contact unless an explicit sign-up instruction is found. The ChipLevante service docs https://www.chiplevante.com/es/gestioninscripciones separately distinguish calendar event listing from managing registrations, confirming why these cannot be conflated.
+
+2026 half-marathon https://www.chiplevante.com/es/prueba/2026MMGUARDAMAR-1015-2026 identifies organizer GRUPO DE RECREACIÓN DEPORTIVA VEGA BAJA; the event's actual registration endpoint https://inscripciones.chiplevante.com/es/evento/media-maraton-10k-dama-de-guardamar-2026/inscripcion/selecciona-tarifa currently says “Inscripciones cerradas”, historical opening 2026-02-05 09:00 and closing 2026-04-05 23:59. Demonstrates a useful **browserless status contract**, but it must be validated live from Termux for future events. The public chip timing card may still show pricing after registration has closed.
+
+**Next milestone:** bounded read-only production probe of current 2026 Cross entry flow and organizer's official posts; inspect links without guessing slugs; verify the real enrollment platform and whether it publishes an actionable HTML state. Check actual organizer registration contact instruction, not generic contacts. Then adapt only source-proven running events using existing local event + EventAccess pipeline; add focused false-positive regression tests for “calendar only”, “price only”, “generic organizer email only”, “closed signup page”, “form pending” and “explicit currently open sign-up process”. Preserve the existing planning/sports-today behavior distinction for events with no access: operator's strict no-publication rule needs a specific scope decision before routing (do not silently apply to all other sports).
+
