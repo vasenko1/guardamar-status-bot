@@ -97,3 +97,31 @@ Question: Is there any Guardamar-hosted October 2026 road race, marathon, half-m
 
 **Remaining verification:** no Termux production state inspection was performed. No source-specific running adapter was implemented, no production side effect. Confirm live FFCV venue/kickoff and deployed source status in a separate fixture-source audit before claiming the football fixture is currently published by the bot.
 
+
+
+## Milestone 7 — organizer-first broad source audit (2026-10-09)
+
+Full findings and priority registry were recorded at
+`research/2026-10-09-guardamar-sport-organizers-registration-audit.md` (same research branch).
+This file is still the running/Cross-specific resume point. The other file is
+the new broader sport-organizer resume point.
+
+High-value discovery: Promochess, which partners with the local Dama chess club,
+has **two specific future Guardamar registration products**:
+- VII Torneo Abierto de Navidad, 2026-12-13:
+  https://promochess.com/tienda/inscripcion-vii-torneo-navidad/
+- VIII Open Esphouses, 5th circuit stage, 2027-04-18:
+  https://promochess.com/tienda/etapa-5-guardamar-del-segura/
+
+Both publicly show edition-matched signup, categories and add-to-cart; no
+checkout/payment or Termux test was executed and no Telegram publication was
+made. A stale `2025` deadline in Christmas 2026 event rules must not become
+a bot trigger. Check for existing Telegram roots and source duplicate
+ownership before any publication.
+
+Cross 2026 still has no demonstrated active registration despite calendar +
+prices; organizer SOC SPORT's linked Facebook/Instagram were inaccessible to
+static web retrieval, and the ChipLevante `REGLAMENTO` link returned 404.
+RFET tennis, FTTCV table tennis, athletics and triathlon were evaluated as
+secondary candidate discovery sources. Do not mix `Guardamar de la Safor`
+with Guardamar del Segura or publish sports belonging to another town.
