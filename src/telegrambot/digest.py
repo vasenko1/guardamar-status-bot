@@ -906,12 +906,24 @@ def build_message(
         ])
 
     if digest.traffic is not None and digest.traffic.active_count > 0:
-        if digest.traffic.active_count == 1 and digest.traffic.labels:
+        labels = tuple(dict.fromkeys(digest.traffic.labels))
+        if digest.traffic.active_count == 1 and labels:
             traffic_line = (
                 "🚧 <b>Дороги:</b> действует ограничение движения — "
-                + html.escape(digest.traffic.labels[0])
+                + html.escape(labels[0])
                 + "."
             )
+        elif labels:
+            visible = labels[:3]
+            traffic_line = (
+                "🚧 <b>Дороги:</b> активных ограничений движения: "
+                f"<b>{digest.traffic.active_count}</b> — "
+                + ", ".join(html.escape(label) for label in visible)
+            )
+            hidden = digest.traffic.active_count - len(visible)
+            if hidden > 0:
+                traffic_line += f" · и ещё {hidden}"
+            traffic_line += "."
         else:
             traffic_line = (
                 "🚧 <b>Дороги:</b> активных ограничений движения: "
