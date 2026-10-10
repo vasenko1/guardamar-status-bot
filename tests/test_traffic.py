@@ -15,6 +15,7 @@ from telegrambot.traffic import (
     TrafficIncident,
     TrafficLocation,
     TrafficState,
+    active_traffic_summary,
     build_alert_message,
     build_batch_alert_message,
     fallback_body,
@@ -273,7 +274,7 @@ class TrafficFormattingTests(unittest.TestCase):
         body = fallback_body(
             incident(category="laneClosed"),
             location(street="Avenida del Mediterráneo"),
-            "ongoing",
+            "new_present",
             NOW,
         )
 
@@ -307,7 +308,7 @@ class TrafficFormattingTests(unittest.TestCase):
         body = fallback_body(
             incident(ends_at=NOW - timedelta(minutes=30)),
             location(),
-            "ongoing",
+            "new_present",
             NOW,
         )
 
@@ -517,7 +518,7 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
             NOW.date().isoformat(),
         )
 
-    async def test_simultaneous_ongoing_restrictions_are_one_daily_batch(self):
+    async def test_simultaneous_ongoing_restrictions_do_not_repeat_next_day(self):
         first = incident(provider_id="TTI-a")
         second = incident(
             provider_id="TTI-b",
@@ -577,13 +578,12 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
                     fetcher=fetcher,
                     locator=locator,
                 ),
-                1,
+                0,
             )
 
-        self.assertEqual(len(sent), 2)
-        self.assertIn("проезд остаётся перекрыт", sent[-1][0])
-        self.assertIn("Avenida del Mediterráneo", sent[-1][0])
-        self.assertIn("Calle Mayor", sent[-1][0])
+        self.assertEqual(len(sent), 1)
+        self.assertIn("Avenida del Mediterráneo", sent[0][0])
+        self.assertIn("Calle Mayor", sent[0][0])
 
     async def test_simultaneous_tomorrow_restrictions_are_one_batch(self):
         tomorrow = NOW + timedelta(days=1)
@@ -809,7 +809,7 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(locator.await_count, 1)
 
-    async def test_known_incident_refreshes_location_only_when_publishing(self):
+    async def test_known_incident_does_not_refresh_location_without_transition(self):
         with tempfile.TemporaryDirectory() as directory:
             state = TrafficState(Path(directory) / "traffic.json")
             sent = []
@@ -847,7 +847,7 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
                 locator=locator,
             )
             next_day = datetime(2026, 9, 25, 8, 30, tzinfo=MADRID)
-            await monitor_traffic(
+            delivered = await monitor_traffic(
                 state,
                 next_day,
                 "key",
@@ -857,20 +857,26 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
                 locator=locator,
             )
 
-        self.assertEqual(locator.await_count, 2)
-        self.assertIn("Avenida de Cervantes", sent[-1][0])
+        self.assertEqual(delivered, 0)
+        self.assertEqual(locator.await_count, 1)
+        self.assertEqual(len(sent), 1)
 
-    async def test_known_incident_skips_publication_if_fresh_location_no_longer_confirms_guardamar(self):
+    async def test_category_change_skips_publication_if_fresh_location_no_longer_confirms_guardamar(self):
         with tempfile.TemporaryDirectory() as directory:
             state = TrafficState(Path(directory) / "traffic.json")
             sent = []
             locator = AsyncMock(side_effect=[
                 location(street="Avenida del Mediterráneo"),
                 None,
+                location(street="Avenida del Mediterráneo"),
             ])
 
+            lane = incident(category="laneClosed")
+            road = incident(category="roadClosed")
+            rows = [lane]
+
             async def fetcher(_key):
-                return (incident(),)
+                return tuple(rows)
 
             async def composer(_facts):
                 return None
@@ -888,10 +894,22 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
                 fetcher=fetcher,
                 locator=locator,
             )
-            next_day = datetime(2026, 9, 25, 8, 30, tzinfo=MADRID)
-            delivered = await monitor_traffic(
+            rows[:] = [road]
+            first_attempt = await monitor_traffic(
                 state,
-                next_day,
+                NOW + timedelta(hours=1),
+                "key",
+                composer,
+                publish,
+                fetcher=fetcher,
+                locator=locator,
+            )
+            stale_before_retry = active_traffic_summary(
+                state, NOW + timedelta(hours=2, minutes=1)
+            )
+            second_attempt = await monitor_traffic(
+                state,
+                NOW + timedelta(hours=3),
                 "key",
                 composer,
                 publish,
@@ -899,9 +917,12 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
                 locator=locator,
             )
 
-        self.assertEqual(delivered, 0)
-        self.assertEqual(locator.await_count, 2)
-        self.assertEqual(len(sent), 1)
+        self.assertEqual(first_attempt, 0)
+        self.assertIsNone(stale_before_retry)
+        self.assertEqual(second_attempt, 1)
+        self.assertEqual(locator.await_count, 3)
+        self.assertEqual(len(sent), 2)
+        self.assertIn("теперь полностью перекрыт", sent[-1][0])
 
     async def test_new_present_road_closure_uses_reviewed_copy(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -930,7 +951,7 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("\nОграничение действует с 23 сентября.", message)
         self.assertNotIn("В Гуардамаре перекрыт проезд.", message)
 
-    async def test_new_present_alerts_once_then_repeats_next_morning(self):
+    async def test_new_present_alerts_once_without_daily_repeats(self):
         with tempfile.TemporaryDirectory() as directory:
             state = TrafficState(Path(directory) / "traffic.json")
             sent = []
@@ -953,12 +974,10 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
             next_day = datetime(2026, 9, 25, 8, 30, tzinfo=MADRID)
             self.assertEqual(
                 await self._run(state, next_day, (incident(),), sent),
-                1,
+                0,
             )
 
-        self.assertEqual(len(sent), 2)
-        self.assertIn("остаётся перекрыт", sent[1][0])
-        self.assertIsNone(sent[1][1])
+        self.assertEqual(len(sent), 1)
 
     async def test_future_alerts_day_before_then_present_alerts_on_start_day(self):
         tomorrow = NOW + timedelta(days=1)
@@ -1016,6 +1035,7 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(sent), 2)
         self.assertEqual(sent[1][1], sent[0][2])
         self.assertIn("Дорога снова открыта", sent[1][0])
+        self.assertIn("Ограничение действовало с 23 сентября.", sent[1][0])
 
     async def test_provider_id_rotation_preserves_one_physical_lifecycle(self):
         first = incident(
@@ -1380,7 +1400,93 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sent[1][1], sent[0][2])
         self.assertIn("теперь полностью перекрыт", sent[1][0])
 
-    async def test_reason_end_and_geometry_changes_do_not_push_same_day(self):
+    async def test_material_segment_change_publishes_one_reply(self):
+        original = incident()
+        changed = incident(
+            to_place="Avenida de Cervantes",
+            coordinates=(
+                original.coordinates[0],
+                original.coordinates[1],
+                (-0.6552000, 38.0839000),
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+            await self._run(state, NOW, (original,), sent)
+            delivered = await self._run(
+                state, NOW + timedelta(hours=1), (changed,), sent
+            )
+            repeated = await self._run(
+                state, NOW + timedelta(hours=2), (changed,), sent
+            )
+
+        self.assertEqual(delivered, 1)
+        self.assertEqual(repeated, 0)
+        self.assertEqual(len(sent), 2)
+        self.assertEqual(sent[-1][1], sent[0][2])
+        self.assertIn("Изменились границы перекрытия", sent[-1][0])
+        self.assertIn("Avenida de Cervantes", sent[-1][0])
+
+    async def test_material_segment_change_retries_after_explicit_send_failure(self):
+        original = incident()
+        changed = incident(
+            to_place="Avenida de Cervantes",
+            coordinates=(
+                original.coordinates[0],
+                original.coordinates[1],
+                (-0.6552000, 38.0839000),
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+            await self._run(state, NOW, (original,), sent)
+
+            async def fetcher(_key):
+                return (changed,)
+
+            async def locator(_item, _key):
+                return location()
+
+            async def composer(_facts):
+                return None
+
+            async def failing_publish(_message, _reply_to):
+                raise RuntimeError("telegram rejected")
+
+            with self.assertRaises(RuntimeError):
+                await monitor_traffic(
+                    state,
+                    NOW + timedelta(hours=1),
+                    "key",
+                    composer,
+                    failing_publish,
+                    fetcher=fetcher,
+                    locator=locator,
+                )
+
+            retried = []
+
+            async def publish(message, reply_to):
+                retried.append((message, reply_to))
+                return 777
+
+            delivered = await monitor_traffic(
+                state,
+                NOW + timedelta(hours=2),
+                "key",
+                composer,
+                publish,
+                fetcher=fetcher,
+                locator=locator,
+            )
+
+        self.assertEqual(delivered, 1)
+        self.assertEqual(len(retried), 1)
+        self.assertIn("Изменились границы перекрытия", retried[0][0])
+
+    async def test_reason_end_and_boundary_wording_without_geometry_change_do_not_push(self):
         original = incident()
         changed = incident(
             descriptions=("Cerrado", "Obras"),
@@ -1468,6 +1574,109 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(record["last_present_alert_date"], NOW.date().isoformat())
         self.assertIn("pending_delivery", record)
         self.assertNotIn("last_message_id", record)
+
+    async def test_reappearing_after_uncertain_reopening_is_reconfirmed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+            await self._run(state, NOW, (incident(),), sent)
+            await self._run(state, NOW + timedelta(hours=1), (), sent)
+
+            async def empty_fetch(_key):
+                return ()
+
+            async def composer(_facts):
+                return None
+
+            async def uncertain_publish(_message, _reply_to):
+                raise TrafficDeliveryUncertain()
+
+            with self.assertRaises(TrafficDeliveryUncertain):
+                await monitor_traffic(
+                    state,
+                    NOW + timedelta(hours=2),
+                    "key",
+                    composer,
+                    uncertain_publish,
+                    fetcher=empty_fetch,
+                    locator=AsyncMock(),
+                )
+
+            async def present_fetch(_key):
+                return (incident(),)
+
+            reconfirmed = []
+
+            async def publish(message, reply_to):
+                reconfirmed.append((message, reply_to))
+                return 1000
+
+            delivered = await monitor_traffic(
+                state,
+                NOW + timedelta(hours=3),
+                "key",
+                composer,
+                publish,
+                fetcher=present_fetch,
+                locator=AsyncMock(return_value=location()),
+            )
+
+        self.assertEqual(delivered, 1)
+        self.assertEqual(len(reconfirmed), 1)
+        self.assertEqual(reconfirmed[0][1], sent[0][2])
+        self.assertIn("по-прежнему перекрыт", reconfirmed[0][0])
+
+    async def test_uncertain_reopening_is_not_retried(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+            await self._run(state, NOW, (incident(),), sent)
+            await self._run(state, NOW + timedelta(hours=1), (), sent)
+
+            async def empty_fetch(_key):
+                return ()
+
+            async def composer(_facts):
+                return None
+
+            uncertain_calls = []
+
+            async def uncertain_publish(_message, _reply_to):
+                uncertain_calls.append("called")
+                raise TrafficDeliveryUncertain()
+
+            with self.assertRaises(TrafficDeliveryUncertain):
+                await monitor_traffic(
+                    state,
+                    NOW + timedelta(hours=2),
+                    "key",
+                    composer,
+                    uncertain_publish,
+                    fetcher=empty_fetch,
+                    locator=AsyncMock(),
+                )
+
+            retry_calls = []
+
+            async def publish(message, reply_to):
+                retry_calls.append((message, reply_to))
+                return 999
+
+            delivered = await monitor_traffic(
+                state,
+                NOW + timedelta(hours=3),
+                "key",
+                composer,
+                publish,
+                fetcher=empty_fetch,
+                locator=AsyncMock(),
+            )
+            value = state.read()
+
+        self.assertEqual(uncertain_calls, ["called"])
+        self.assertEqual(delivered, 0)
+        self.assertEqual(retry_calls, [])
+        self.assertIn("ended_at", value["events"]["TTR1"])
 
     async def test_uncertain_initial_alert_does_not_create_orphan_reopen_message(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1638,6 +1847,61 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(delivered, 1)
         self.assertEqual(len(sent), 3)
         self.assertNotIn("остаётся перекрыт", sent[-1][0])
+
+    async def test_active_summary_uses_fresh_announced_present_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+            await self._run(state, NOW, (incident(),), sent)
+
+            summary = active_traffic_summary(state, NOW + timedelta(hours=1))
+
+        self.assertIsNotNone(summary)
+        self.assertEqual(summary.active_count, 1)
+        self.assertEqual(summary.labels, ("Avenida del Mediterráneo",))
+
+    async def test_active_summary_omits_stale_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+            await self._run(state, NOW, (incident(),), sent)
+
+            summary = active_traffic_summary(
+                state, NOW + timedelta(hours=2, minutes=1)
+            )
+
+        self.assertIsNone(summary)
+
+    async def test_active_summary_omits_confirmed_ended_event(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+            await self._run(state, NOW, (incident(),), sent)
+            await self._run(state, NOW + timedelta(hours=1), (), sent)
+            await self._run(state, NOW + timedelta(hours=2), (), sent)
+
+            summary = active_traffic_summary(state, NOW + timedelta(hours=2))
+
+        self.assertIsNone(summary)
+
+    async def test_active_summary_deduplicates_mirrored_segment_records(self):
+        first = incident(provider_id="TTI-a")
+        second = incident(
+            provider_id="TTI-b",
+            from_place=first.to_place,
+            to_place=first.from_place,
+            coordinates=tuple(reversed(first.coordinates)),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+            await self._run(state, NOW, (first, second), sent)
+
+            summary = active_traffic_summary(state, NOW + timedelta(hours=1))
+
+        self.assertIsNotNone(summary)
+        self.assertEqual(summary.active_count, 1)
+        self.assertEqual(summary.labels, ("Avenida del Mediterráneo",))
 
     async def test_corrupt_nested_state_fails_closed(self):
         with tempfile.TemporaryDirectory() as directory:

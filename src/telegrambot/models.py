@@ -169,6 +169,14 @@ class BeachNotice:
 
 
 @dataclass(frozen=True)
+class TrafficSummary:
+    """Fresh resident-facing summary of currently active road restrictions."""
+
+    active_count: int
+    labels: Tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class MorningDigest:
     weather: Optional[Weather]
     warnings: Tuple[Warning, ...]
@@ -190,3 +198,4 @@ class MorningDigest:
     dry_thunderstorm_risk_level: Optional[int] = None
     hydrology_state: Optional[str] = None
     clock_change: Optional[ClockChange] = None
+    traffic: Optional[TrafficSummary] = None

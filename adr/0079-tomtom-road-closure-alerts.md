@@ -54,9 +54,9 @@ to affect normal local movement.
 
 - A newly observed eligible `present` closure publishes immediately.
 - When one successful hourly snapshot would otherwise produce two or more
-  standalone notifications (new active restrictions, next-day planned
-  restrictions, or daily ongoing reminders), combine them into one traffic
-  summary instead of sending a burst of per-street messages. Each included
+  standalone notifications (new active restrictions or next-day planned
+  restrictions), combine them into one traffic summary instead of sending a
+  burst of per-street messages. Each included
   incident keeps its own lifecycle markers and stores the same Telegram message
   ID as its reply anchor. Reply-based category changes and confirmed endings
   remain per incident.
@@ -64,10 +64,17 @@ to affect normal local movement.
   its start: "tomorrow ...".
 - When that planned incident actually becomes `present`, publish the normal
   active alert.
-- A continuing `present` incident may publish at most one reminder on each
-  later local day, beginning with the first successful hourly check at or after
-  08:00 Europe/Madrid.
-- Traffic closures do not enter Morning Digest.
+- An unchanged continuing `present` incident does not create another standalone
+  Telegram notification. The hourly monitor keeps its state fresh but remains
+  silent until a resident-useful transition occurs.
+- Morning Digest may show one compact read-only road-status line so a long-lived
+  closure remains visible without producing a daily traffic post. It uses only
+  `present` incidents that have entered the resident-notification lifecycle
+  in the existing traffic state and whose
+  `last_seen_at` is no more than two hours old (at most one missed hourly cycle). Mirrored TomTom records for the
+  same physical segment are collapsed with the same segment identity used by
+  traffic batch presentation. No extra TomTom or reverse-geocoding request is
+  made for Morning Digest; stale or invalid state is omitted rather than shown.
 - A known future `endTime` is only an estimate. If the incident remains
   `present` after that time, present validity wins and the expired estimate is
   omitted from later copy.
@@ -90,15 +97,22 @@ to affect normal local movement.
   an exact ID or a reconciled equivalent confirm the local monitor transition.
 - A confirmed end of `roadClosed` or `laneClosed` publishes a reply to the
   latest stored alert when possible; if the Telegram anchor no longer exists,
-  use the existing standalone fallback.
+  use the existing standalone fallback. The reopening copy repeats the affected
+  segment and, when known, when the restriction began, so it remains
+  self-contained even after a long closure.
 - If an already announced `future` incident disappears for two successful
   snapshots before becoming present, reply conservatively that the planned
   restriction is no longer shown in current TomTom data; do not claim a
   cancellation without explicit evidence.
 - Category transitions between lane and full road closure are resident-useful
-  and may publish one reply. Changes only to reason/details, expected end,
-  probability, reports, timestamps or small geometry corrections do not create
-  a new push. The next normal alert may use the fresher facts.
+  and may publish one reply. A same-provider incident may also publish one reply
+  when the physical extent materially changes: with complete source boundaries,
+  the boundary set must change and an endpoint must move by more than 25 metres;
+  when boundaries are incomplete, endpoint movement must exceed 50 metres.
+  Reversed direction alone is not a change. Changes only to reason/details,
+  expected end, probability, reports, timestamps, boundary wording without a
+  corresponding material geometry change, or small geometry corrections do not
+  create a new push. The next normal alert may use the fresher facts.
 
 ## Editorial contract
 
@@ -122,8 +136,8 @@ closed because of those works.
 ## State and failure policy
 
 Use one small atomic `state/traffic.json` protected by a file lock. Store only
-the current/recent incident facts, consecutive-missing count, last daily
-publication dates and latest Telegram message ID. A provider-ID handoff rekeys
+the current/recent incident facts, consecutive-missing count, lifecycle
+publication markers and latest Telegram message ID. A provider-ID handoff rekeys
 the existing record in place; it adds no alias table, logical-ID field, raw
 history or schema migration. Retain recent records for a bounded period; no
 database, raw-response archive, generic notification framework or event history
@@ -135,9 +149,11 @@ new incidents before first publication; refresh a known incident's location only
 when another public message is actually due, falling back to the cached verified
 location if that refresh fails. Telegram non-idempotent sends use the existing
 uncertain-delivery policy: preserve the uncertain marker and stop the current
-run, so a network ambiguity cannot cascade into multiple uncertain sends. A
-reopening/cancellation reply is sent only when a confirmed prior Telegram
-message ID exists.
+run, so a network ambiguity cannot cascade into multiple uncertain sends. If a
+closure reappears before an ambiguously delivered reopening is finalized, send
+one corrective reply confirming that the restriction is still active; this is
+a consistency repair, not a routine reminder. A reopening/cancellation reply
+is sent only when a confirmed prior Telegram message ID exists.
 
 The Termux monitor runs hourly at minute :37, away from the existing main
 monitor checkpoints. With a 31-day month this consumes at most 744 Traffic

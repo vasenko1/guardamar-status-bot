@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 
 from ._transport import BoundedFetchError, fetch_bounded
 from .branding import with_footer
+from .models import TrafficSummary
 
 TRAFFIC_URL = "https://api.tomtom.com/maps/orbis/traffic/incidents/details"
 REVERSE_URL = "https://api.tomtom.com/maps/orbis/places/reverseGeocode"
@@ -36,9 +37,12 @@ MAX_TEXT_LENGTH = 240
 STATE_VERSION = 1
 STATE_RETENTION = timedelta(days=14)
 MISSING_CONFIRMATIONS = 2
-DAILY_REPEAT_HOUR = 8
+# The monitor runs hourly at :37. Tolerate one missed cycle, never two.
+ACTIVE_SUMMARY_MAX_AGE = timedelta(hours=2)
 CONTINUITY_START_TOLERANCE = timedelta(minutes=2)
 CONTINUITY_ENDPOINT_TOLERANCE_METERS = 5.0
+SEGMENT_UPDATE_ENDPOINT_TOLERANCE_METERS = 25.0
+SEGMENT_UPDATE_FALLBACK_TOLERANCE_METERS = 50.0
 _EARTH_RADIUS_METERS = 6_371_000.0
 
 _STATE_REQUIRED_FIELDS = frozenset({
@@ -518,12 +522,6 @@ def fallback_body(
             body = f"Завтра{when} {place} будет перекрыт проезд."
         else:
             body = f"Завтра{when} {place} будет перекрыта полоса движения."
-    elif mode == "ongoing":
-        body = (
-            f"Проезд {place} остаётся перекрыт."
-            if incident.category == "roadClosed"
-            else f"{_sentence_start(place)} остаётся перекрыта полоса движения."
-        )
     elif mode == "category_change":
         if incident.category == "roadClosed":
             body = f"{_sentence_start(place)} теперь полностью перекрыт проезд."
@@ -532,6 +530,19 @@ def fallback_body(
                 f"{_sentence_start(place)} полное перекрытие снято, "
                 "но полоса движения остаётся закрыта."
             )
+    elif mode == "reconfirmed_present":
+        body = (
+            f"По актуальным данным, проезд {place} по-прежнему перекрыт."
+            if incident.category == "roadClosed"
+            else f"{_sentence_start(place)} полоса движения по-прежнему закрыта."
+        )
+    elif mode == "segment_change":
+        label = location_label(incident, location)
+        body = (
+            f"Изменились границы перекрытия: {label}."
+            if incident.category == "roadClosed"
+            else f"Изменились границы ограничения полосы: {label}."
+        )
     else:
         if incident.category == "roadClosed":
             body = f"{_sentence_start(place)} перекрыт проезд."
@@ -639,16 +650,8 @@ def _batch_status(incident: TrafficIncident, mode: str) -> str:
             )
         return status
     if incident.category == "roadClosed":
-        return (
-            "⛔ проезд остаётся перекрыт"
-            if mode == "ongoing"
-            else "⛔ проезд перекрыт"
-        )
-    return (
-        "⚠️ полоса движения остаётся перекрыта"
-        if mode == "ongoing"
-        else "⚠️ перекрыта полоса движения"
-    )
+        return "⛔ проезд перекрыт"
+    return "⚠️ перекрыта полоса движения"
 
 
 def _batch_segment_block(
@@ -871,6 +874,49 @@ def _same_physical_closure(
         <= CONTINUITY_ENDPOINT_TOLERANCE_METERS
     )
     return reverse_boundaries and reverse_geometry
+
+
+def _material_segment_change(
+    previous: TrafficIncident,
+    current: TrafficIncident,
+) -> bool:
+    """Ignore source jitter; publish only a material same-ID extent change."""
+
+    previous_start = previous.coordinates[0]
+    previous_end = previous.coordinates[-1]
+    current_start = current.coordinates[0]
+    current_end = current.coordinates[-1]
+    direct_shift = max(
+        _point_distance_meters(previous_start, current_start),
+        _point_distance_meters(previous_end, current_end),
+    )
+    reverse_shift = max(
+        _point_distance_meters(previous_start, current_end),
+        _point_distance_meters(previous_end, current_start),
+    )
+    endpoint_shift = min(direct_shift, reverse_shift)
+
+    previous_boundaries = {
+        value for value in (
+            _boundary_key(previous.from_place),
+            _boundary_key(previous.to_place),
+        ) if value is not None
+    }
+    current_boundaries = {
+        value for value in (
+            _boundary_key(current.from_place),
+            _boundary_key(current.to_place),
+        ) if value is not None
+    }
+    complete_boundaries = (
+        len(previous_boundaries) == 2 and len(current_boundaries) == 2
+    )
+    if complete_boundaries:
+        return (
+            previous_boundaries != current_boundaries
+            and endpoint_shift > SEGMENT_UPDATE_ENDPOINT_TOLERANCE_METERS
+        )
+    return endpoint_shift > SEGMENT_UPDATE_FALLBACK_TOLERANCE_METERS
 
 
 def _reconcile_provider_ids(
@@ -1217,6 +1263,57 @@ def _validate_state_record(provider_id: Any, record: Any) -> None:
             raise TrafficError("traffic pending delivery state is invalid", code="STATE")
 
 
+def _summary_label(location: TrafficLocation) -> str:
+    subdivision = _strip_urbanization(location.subdivision)
+    street = _clean_text(location.street)
+    if subdivision and street:
+        return f"{subdivision} — {street}"
+    return street or subdivision or "участок дороги в Гуардамаре"
+
+
+def active_traffic_summary(
+    state: TrafficState,
+    now: datetime,
+    *,
+    max_age: timedelta = ACTIVE_SUMMARY_MAX_AGE,
+) -> Optional[TrafficSummary]:
+    """Return a fresh deduplicated summary of announced active restrictions."""
+
+    if max_age <= timedelta(0):
+        raise ValueError("traffic summary max_age must be positive")
+    local_now = now.astimezone(GUARDAMAR_TIMEZONE)
+    value = state.read()
+    labels: list[str] = []
+    seen = set()
+
+    for provider_id in sorted(value["events"]):
+        record = value["events"][provider_id]
+        if record.get("ended_at") is not None:
+            continue
+        if _alert_date(record, "last_present_alert_date") is None:
+            continue
+        incident = _record_incident(record)
+        if incident.validity != "present":
+            continue
+        last_seen = _safe_iso(record.get("last_seen_at"))
+        if last_seen is None:
+            continue
+        if local_now - last_seen.astimezone(GUARDAMAR_TIMEZONE) > max_age:
+            continue
+        location = _record_location(record)
+        key = _batch_segment_key(incident, location, "current")
+        if key in seen:
+            continue
+        seen.add(key)
+        labels.append(_summary_label(location))
+
+    if not labels:
+        return None
+    active_count = len(labels)
+    unique_labels = tuple(sorted(dict.fromkeys(labels), key=str.casefold))
+    return TrafficSummary(active_count=active_count, labels=unique_labels)
+
+
 async def _deliver(
     state: TrafficState,
     value: dict,
@@ -1392,6 +1489,15 @@ async def monitor_traffic(
             if missing < MISSING_CONFIRMATIONS or record.get("ended_at"):
                 continue
 
+            # An ambiguous Telegram send records end_notified_at before the
+            # non-idempotent request. On the next clean snapshot, finalize the
+            # lifecycle silently instead of risking a duplicate reopening or
+            # planned-restriction message.
+            if record.get("end_notified_at") is not None:
+                record["ended_at"] = local_now.isoformat()
+                state.write(value)
+                continue
+
             previous_validity = _clean_text(record.get("validity"), limit=40)
             had_present_alert = _alert_date(record, "last_present_alert_date") is not None
             had_future_alert = _alert_date(record, "last_future_alert_date") is not None
@@ -1404,18 +1510,31 @@ async def monitor_traffic(
             ):
                 incident = _record_incident(record)
                 location = _record_location(record)
+                start_context = ""
+                if (
+                    incident.starts_at is not None
+                    and incident.starts_at <= local_now
+                ):
+                    started = incident.starts_at.astimezone(GUARDAMAR_TIMEZONE)
+                    if started.date() < local_day:
+                        start_context = (
+                            "\nОграничение действовало с "
+                            f"{started.day} {_RU_MONTHS[started.month]}."
+                        )
+                    else:
+                        start_context = f"\nОграничение действовало с {started:%H:%M}."
                 if incident.category == "roadClosed":
                     body = (
                         f"По актуальным данным, проезд по "
                         f"<b>{html.escape(location_label(incident, location))}</b> "
-                        "снова открыт."
+                        f"снова открыт.{start_context}"
                     )
                     title = "✅ <b>Дорога снова открыта</b>"
                 else:
                     body = (
                         f"По актуальным данным, ограничение полосы на "
                         f"<b>{html.escape(location_label(incident, location))}</b> "
-                        "снято."
+                        f"снято.{start_context}"
                     )
                     title = "✅ <b>Полоса движения снова открыта</b>"
                 message = with_footer(
@@ -1509,6 +1628,14 @@ async def monitor_traffic(
                 _clean_text(lifecycle_existing.get("last_alert_category"), limit=40)
                 if lifecycle_existing is not None else None
             )
+            pending_delivery = (
+                lifecycle_existing.get("pending_delivery")
+                if lifecycle_existing is not None else None
+            )
+            uncertain_end_delivery = (
+                isinstance(pending_delivery, dict)
+                and pending_delivery.get("marker") == "end_notified_at"
+            )
             base = _serialize_incident(incident, location)
             if lifecycle_existing is not None:
                 for key in (
@@ -1555,19 +1682,28 @@ async def monitor_traffic(
                     and previous_present_date is not None
                     and (last_alert_category or old_category) != incident.category
                 )
-                if newly_present:
+                segment_changed = (
+                    lifecycle_existing is not None
+                    and old_incident is not None
+                    and old_validity == "present"
+                    and previous_present_date is not None
+                    and _material_segment_change(old_incident, incident)
+                )
+                if uncertain_end_delivery:
+                    mode = "reconfirmed_present"
+                    marker = "last_present_alert_date"
+                    reply_to = last_message
+                elif newly_present:
                     mode = "new_present"
                     marker = "last_present_alert_date"
                 elif category_changed:
                     mode = "category_change"
                     marker = "last_present_alert_date"
                     reply_to = last_message
-                elif (
-                    previous_present_date != local_day
-                    and local_now.hour >= DAILY_REPEAT_HOUR
-                ):
-                    mode = "ongoing"
+                elif segment_changed:
+                    mode = "segment_change"
                     marker = "last_present_alert_date"
+                    reply_to = last_message
                 else:
                     continue
 
@@ -1590,6 +1726,16 @@ async def monitor_traffic(
                             "publication skipped",
                             incident.provider_id,
                         )
+                        # Preserve the last published lifecycle baseline so a
+                        # resident-useful transition can be retried on the next
+                        # successful geolocation check. Reset absence tracking,
+                        # but deliberately do not refresh last_seen_at: the
+                        # current geometry was not verified as local, so the
+                        # Morning Digest must be allowed to age this state out.
+                        restored = dict(lifecycle_existing)
+                        restored["missing_successes"] = 0
+                        events[incident.provider_id] = restored
+                        state.write(value)
                         continue
                     location = refreshed_location
                     record["location"] = _location_data(location)
@@ -1608,6 +1754,8 @@ async def monitor_traffic(
                 mode,
                 local_now,
             )
+            if mode in {"reconfirmed_present", "segment_change"}:
+                body = fallback_body(incident, location, mode, local_now)
             if body is None:
                 try:
                     body = await compose_body(facts)
@@ -1637,7 +1785,7 @@ async def monitor_traffic(
                 if incident.validity == "present" else None
             )
             if reply_to is None and mode in {
-                "new_present", "ongoing", "future_tomorrow"
+                "new_present", "future_tomorrow"
             }:
                 standalone_alerts.append((
                     incident,
@@ -1651,17 +1799,25 @@ async def monitor_traffic(
                 ))
                 continue
 
-            delivered += await _deliver(
-                state,
-                value,
-                record,
-                message=message,
-                publish=publish,
-                reply_to=reply_to,
-                marker=marker,
-                marker_value=marker_value,
-                remember=remember,
-            )
+            try:
+                delivered += await _deliver(
+                    state,
+                    value,
+                    record,
+                    message=message,
+                    publish=publish,
+                    reply_to=reply_to,
+                    marker=marker,
+                    marker_value=marker_value,
+                    remember=remember,
+                )
+            except TrafficDeliveryUncertain:
+                raise
+            except Exception:
+                if mode == "segment_change" and lifecycle_existing is not None:
+                    events[incident.provider_id] = lifecycle_existing
+                    state.write(value)
+                raise
 
         if len(standalone_alerts) == 1:
             (

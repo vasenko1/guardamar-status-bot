@@ -47,6 +47,7 @@ from .environment import (
     EnvironmentError, fetch_cams, fetch_meteosalud, fetch_meteosalud_cold,
 )
 from .emergency_risks import EmergencyRiskError, EmergencyRiskState
+from .traffic import TrafficError, TrafficState, active_traffic_summary
 from .models import ColdHealthRisk, HeatHealthRisk, MorningDigest
 
 LOGGER = logging.getLogger(__name__)
@@ -688,6 +689,7 @@ async def produce_message(
     environment_detail_observer: Optional[Callable] = None,
     fetch_environment: bool = True,
     emergency_risk_state_path: Path = Path("state/emergency_risks.json"),
+    traffic_state_path: Path = Path("state/traffic.json"),
 ) -> str:
     """Build the Morning Digest without beach-status collection."""
 
@@ -1037,6 +1039,18 @@ async def produce_message(
             exc.diagnostic_code,
         )
 
+    traffic_summary = None
+    try:
+        traffic_summary = active_traffic_summary(
+            TrafficState(traffic_state_path),
+            now,
+        )
+    except TrafficError as exc:
+        LOGGER.warning(
+            "Traffic state unavailable; omitting compact road line: %s",
+            exc.diagnostic_code,
+        )
+
     morning_events = _morning_events_without_sport(
         _merge_events(
             weekly_events,
@@ -1068,6 +1082,7 @@ async def produce_message(
             fire_risk_level=fire_risk_level,
             dry_thunderstorm_risk_level=dry_thunderstorm_risk_level,
             hydrology_state=hydrology_state,
+            traffic=traffic_summary,
         ),
         now=now,
     )

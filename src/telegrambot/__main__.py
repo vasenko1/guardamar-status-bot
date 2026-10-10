@@ -408,6 +408,9 @@ async def _produce_message(api_key: str, now: datetime) -> str:
             pharmacy_state_path=Path(os.environ.get(
                 "PHARMACY_STATE_PATH", DEFAULT_PHARMACY_STATE_PATH
             )),
+            traffic_state_path=Path(os.environ.get(
+                "TRAFFIC_STATE_PATH", DEFAULT_TRAFFIC_STATE_PATH
+            )),
             cams_data_url=os.environ.get("CAMS_DATA_URL", CAMS_DATA_URL).strip(),
             cams_cache_path=preview_cams_cache,
         )
@@ -850,6 +853,9 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             aemet_fallback=fallback,
             aemet_observer=refreshed_aemet.append,
             pharmacy_state_path=pharmacy_path,
+            traffic_state_path=Path(os.environ.get(
+                "TRAFFIC_STATE_PATH", DEFAULT_TRAFFIC_STATE_PATH
+            )),
             cams_data_url=cams_data_url,
             cams_cache_path=cams_cache_path,
             fetch_cams_remote=fetch_cams_remote,
@@ -2469,6 +2475,9 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     fetch_aemet=fetch_live,
                     aemet_observer=morning_aemet.append,
                     pharmacy_state_path=pharmacy_path,
+                    traffic_state_path=Path(os.environ.get(
+                        "TRAFFIC_STATE_PATH", DEFAULT_TRAFFIC_STATE_PATH
+                    )),
                     cams_data_url=cams_data_url,
                     cams_cache_path=cams_cache_path,
                     environment_detail_observer=lambda heat, cold, air, pollen, base: (
