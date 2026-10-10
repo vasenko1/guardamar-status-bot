@@ -53,7 +53,12 @@ CAMS or Meteosalud request cadence, add a resident process, or persist raw CAP
 responses. A failed CAP observation preserves the prior delivered/pending state
 and does not publish a potentially stale pending warning on that invocation.
 
-The OCI capacity search also runs only on a GitHub-hosted runner. Each invocation
+The OCI capacity search also runs only on a GitHub-hosted runner.
+ADR 0107 schedules it every five minutes at :03/:08/.../:58 UTC and keeps
+Termux recovery at :00/:05/.../:55 after device-side installer deployment.
+Any OCI 429 (preflight, report or launch) is fail-closed and requests workflow
+disablement without a retry; the workflow must be deliberately re-enabled after
+review. This rate-limit halt supersedes the old passive RATE_LIMITED behavior. Each invocation
 is short-lived, has no SDK automatic retry, uses one concurrency group, and may
 make at most one `LaunchInstance` request after two complete OCI-state checks.
 One optional capacity-report call may choose the 2 GB A1 fallback only from an
@@ -64,8 +69,8 @@ installation receives no OCI SDK or credential. A larger trial service limit
 must never override the explicit 2 OCPU, 12 GB RAM, and 200 GB Always Free cost
 ceilings. Any existing non-terminated target makes subsequent runs read-only.
 An optional Termux one-shot backstop uses only standard-library outbound GitHub
-API calls five minutes after each GitHub schedule slot. It dispatches only when
-the workflow is active and no queued/in-progress or younger-than-ten-minute
+API calls two minutes after each five-minute GitHub schedule slot. It dispatches only when
+the workflow is active and no queued/in-progress or younger-than-four-minute
 `main` run exists. The phone holds only a single-repository Actions PAT in a
 private file; it never receives OCI credentials, OCI SDK, launch logic or audit
 logic. Failed metadata reads and ambiguous dispatch responses do not trigger
