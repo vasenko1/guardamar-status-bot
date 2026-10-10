@@ -904,9 +904,12 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
                 fetcher=fetcher,
                 locator=locator,
             )
+            stale_before_retry = active_traffic_summary(
+                state, NOW + timedelta(hours=2, minutes=1)
+            )
             second_attempt = await monitor_traffic(
                 state,
-                NOW + timedelta(hours=2),
+                NOW + timedelta(hours=3),
                 "key",
                 composer,
                 publish,
@@ -915,6 +918,7 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(first_attempt, 0)
+        self.assertIsNone(stale_before_retry)
         self.assertEqual(second_attempt, 1)
         self.assertEqual(locator.await_count, 3)
         self.assertEqual(len(sent), 2)
