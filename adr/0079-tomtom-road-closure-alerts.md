@@ -54,9 +54,9 @@ to affect normal local movement.
 
 - A newly observed eligible `present` closure publishes immediately.
 - When one successful hourly snapshot would otherwise produce two or more
-  standalone notifications (new active restrictions, next-day planned
-  restrictions, or daily ongoing reminders), combine them into one traffic
-  summary instead of sending a burst of per-street messages. Each included
+  standalone notifications (new active restrictions or next-day planned
+  restrictions), combine them into one traffic summary instead of sending a
+  burst of per-street messages. Each included
   incident keeps its own lifecycle markers and stores the same Telegram message
   ID as its reply anchor. Reply-based category changes and confirmed endings
   remain per incident.
@@ -64,10 +64,16 @@ to affect normal local movement.
   its start: "tomorrow ...".
 - When that planned incident actually becomes `present`, publish the normal
   active alert.
-- A continuing `present` incident may publish at most one reminder on each
-  later local day, beginning with the first successful hourly check at or after
-  08:00 Europe/Madrid.
-- Traffic closures do not enter Morning Digest.
+- An unchanged continuing `present` incident does not create another standalone
+  Telegram notification. The hourly monitor keeps its state fresh but remains
+  silent until a resident-useful transition occurs.
+- Morning Digest may show one compact read-only road-status line so a long-lived
+  closure remains visible without producing a daily traffic post. It uses only
+  already-announced `present` incidents from the existing traffic state whose
+  `last_seen_at` is no more than three hours old. Mirrored TomTom records for the
+  same physical segment are collapsed with the same segment identity used by
+  traffic batch presentation. No extra TomTom or reverse-geocoding request is
+  made for Morning Digest; stale or invalid state is omitted rather than shown.
 - A known future `endTime` is only an estimate. If the incident remains
   `present` after that time, present validity wins and the expired estimate is
   omitted from later copy.
@@ -90,7 +96,9 @@ to affect normal local movement.
   an exact ID or a reconciled equivalent confirm the local monitor transition.
 - A confirmed end of `roadClosed` or `laneClosed` publishes a reply to the
   latest stored alert when possible; if the Telegram anchor no longer exists,
-  use the existing standalone fallback.
+  use the existing standalone fallback. The reopening copy repeats the affected
+  segment and, when known, when the restriction began, so it remains
+  self-contained even after a long closure.
 - If an already announced `future` incident disappears for two successful
   snapshots before becoming present, reply conservatively that the planned
   restriction is no longer shown in current TomTom data; do not claim a
