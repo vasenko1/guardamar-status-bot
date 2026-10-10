@@ -26,6 +26,8 @@ jobs:
           python-version: "3.12"
       - name: Check module syntax
         run: python -m py_compile automation/guardamar_capacity.py
+      - name: Check Termux shell syntax
+        run: sh -n termux/install-capacity-cron.sh termux/trigger-guardamar-capacity.sh
       - name: Run capacity and backstop tests
         run: |
           python -m unittest discover -s tests -p test_guardamar_capacity.py -v
