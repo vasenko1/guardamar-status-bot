@@ -39,6 +39,7 @@ class MonitorRun:
     beach_phase: Optional[int]
     check_aemet: bool
     check_environment: bool
+    initial_beach_recovery: bool = False
 
 
 def scheduled_run(now: datetime) -> MonitorRun:
@@ -59,12 +60,28 @@ def scheduled_run(now: datetime) -> MonitorRun:
         else {11, 15, 19}
     )
     environment_hours = set(legacy_environment_hours)
-    if beach_window:
+    # ADR 0099 freezes the established CAMS/Meteosalud checkpoints.
+    # Extending SafeBeach beyond the former 15 October boundary must not
+    # silently extend unrelated environment polling.
+    legacy_environment_beach_overlap = (
+        (6, 1) <= (day.month, day.day) <= (10, 15)
+    )
+    if legacy_environment_beach_overlap:
         environment_hours.update(beach_hours)
 
     beach_phase = None
+    initial_beach_recovery = False
     if beach_window and local.hour in beach_hours:
         beach_phase = {0: 1, 5: 2, 10: 3}.get(local.minute)
+    elif beach_window and day.month == 10 and local.hour == 13:
+        # October SafeBeach can become usable late in its short active day.
+        # Two source-only recovery windows close the 12:00-14:00 blind spot
+        # without changing CAMS/Meteosalud or AEMET schedules.
+        beach_phase = {
+            0: 1, 5: 2, 10: 3,
+            30: 1, 35: 2, 40: 3,
+        }.get(local.minute)
+        initial_beach_recovery = beach_phase is not None
 
     return MonitorRun(
         beach_phase=beach_phase,
@@ -72,6 +89,7 @@ def scheduled_run(now: datetime) -> MonitorRun:
         check_environment=(
             local.minute == 0 and local.hour in environment_hours
         ),
+        initial_beach_recovery=initial_beach_recovery,
     )
 
 
@@ -364,6 +382,7 @@ def observe_beaches(state: dict, status: BeachStatus, phase: int) -> None:
                 "stage": 2,
                 "candidates": rolled,
                 "held": held,
+                "initial": bool(pending.get("initial")),
             }
             return
 

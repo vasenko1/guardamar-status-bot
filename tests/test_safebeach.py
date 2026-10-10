@@ -80,12 +80,12 @@ class SafeBeachNormalizationTests(unittest.TestCase):
         )
         self.assertTrue(
             in_query_window(
-                datetime(2026, 10, 15, 23, 59, tzinfo=MADRID)
+                datetime(2026, 10, 31, 23, 59, tzinfo=MADRID)
             )
         )
         self.assertFalse(
             in_query_window(
-                datetime(2026, 10, 16, 0, 0, tzinfo=MADRID)
+                datetime(2026, 11, 1, 0, 0, tzinfo=MADRID)
             )
         )
 

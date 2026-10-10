@@ -248,6 +248,12 @@ def _safebeach_initial_checkpoint(now: datetime) -> bool:
     return local.hour == 10 and local.minute in range(10, 41, 5)
 
 
+def _mayor_beach_notice_window(now: datetime) -> bool:
+    """Preserve the pre-ADR-0106 Mayor beach-notice request budget."""
+    local = now.astimezone(GUARDAMAR_TIMEZONE)
+    return (6, 1) <= (local.month, local.day) <= (10, 15)
+
+
 def _promote_cams_snapshot(
     cache_path: Path,
     now: datetime,
@@ -1173,6 +1179,12 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     seed_warnings(value, snapshot.warnings)
 
             phase = schedule.beach_phase
+            published_beach_status, _ = publication_state.beach_root_facts(
+                now.date()
+            )
+            needs_initial_beach_recovery = (
+                daily_record is not None and published_beach_status is None
+            )
             if phase == 1 and value.get("beach_pending") is not None:
                 value["beach_pending"] = None
             elif (
@@ -1182,17 +1194,31 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             ):
                 miss_beach_sample(value, phase)
             has_ready_beach = bool(value.get("beach_ready"))
-            should_fetch_beach = (phase == 1 and not has_ready_beach) or (
-                phase in {2, 3}
-                and isinstance(value.get("beach_pending"), dict)
-                and value["beach_pending"].get("stage") == phase - 1
+            should_fetch_beach = (
+                not schedule.initial_beach_recovery
+                or needs_initial_beach_recovery
+            ) and (
+                (phase == 1 and not has_ready_beach)
+                or (
+                    phase in {2, 3}
+                    and isinstance(value.get("beach_pending"), dict)
+                    and value["beach_pending"].get("stage") == phase - 1
+                )
             )
             if should_fetch_beach:
                 try:
                     beach = await fetch_beach_status(now)
                     if is_current_status(beach, now):
+                        logging.info(
+                            "Operational SafeBeach fetched: %d current flag record(s)",
+                            len(beach.nearby_flags),
+                        )
                         observe_beaches(value, beach, phase)
                     else:
+                        logging.info(
+                            "Operational SafeBeach fetched: "
+                            "no eligible current beach status"
+                        )
                         miss_beach_sample(value, phase)
                 except SafeBeachError as exc:
                     logging.warning(
@@ -1224,9 +1250,6 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
 
             if phase is not None:
                 beach_anchor = publication_state.beach_message_id(now.date())
-                published_beach_status, _ = publication_state.beach_root_facts(
-                    now.date()
-                )
                 ready_changes = value.get("beach_ready") or []
                 initial_ready = bool(ready_changes) and all(
                     change.get("initial") for change in ready_changes
@@ -2473,7 +2496,15 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
         try:
             candidate = await fetch_beach_status(now)
             if is_current_status(candidate, now):
+                logging.info(
+                    "SafeBeach fetched: %d current flag record(s)",
+                    len(candidate.nearby_flags),
+                )
                 beach = candidate
+            else:
+                logging.info(
+                    "SafeBeach fetched: no eligible current beach status"
+                )
         except SafeBeachError as exc:
             logging.warning(
                 "SafeBeach update check failed: SB-%s", exc.diagnostic_code
@@ -2483,15 +2514,16 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             "SKIP: SafeBeach root edits are limited to 10:10-10:40 checkpoints"
         )
 
-    _, previous_notice = state.beach_root_facts(now.date())
-    since = datetime.fromisoformat(existing["morning_published_at"])
-    if previous_notice is not None and previous_notice.published_at > since:
-        since = previous_notice.published_at
-    try:
-        notice = await latest_beach_notice(now, since)
-    except Exception as exc:
-        logging.warning("Mayor channel update check failed: %s", exc)
-        notice = None
+    notice = None
+    if _mayor_beach_notice_window(now):
+        _, previous_notice = state.beach_root_facts(now.date())
+        since = datetime.fromisoformat(existing["morning_published_at"])
+        if previous_notice is not None and previous_notice.published_at > since:
+            since = previous_notice.published_at
+        try:
+            notice = await latest_beach_notice(now, since)
+        except Exception as exc:
+            logging.warning("Mayor channel update check failed: %s", exc)
 
     if beach is None and notice is None:
         logging.info("SKIP: no current beach facts became available")

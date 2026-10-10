@@ -1,6 +1,6 @@
 # ADR 0064: Immutable morning anchor and semantic operational updates
 
-Status: accepted (2026-09-14)
+Status: accepted (2026-09-14); annual SafeBeach query window and October later-day cadence superseded by ADR 0106
 
 The 07:30 Morning Digest is an immutable daily snapshot and remains the
 reply anchor. Later CAMS, Meteosalud and AEMET changes are compact,

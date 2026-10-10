@@ -231,8 +231,8 @@ allowed for the guide.
 
 - Prepare compact event translations before publication and one normalized
   AEMET snapshot at 07:15; the 07:30 process reuses them. In season, allow
-  only seven quick SafeBeach checks
-  from 10:10 through 10:40 and at most one later full recollection.
+  only seven quick SafeBeach checks from 10:10 through 10:40 plus the
+  bounded seasonal operational checkpoints defined by the SafeBeach lifecycle.
 - Leave exact timing to a lightweight external Termux scheduler.
 - Install recurring cron rows by merging them with the existing crontab; never
   replace unrelated jobs owned by another bot.
@@ -283,10 +283,15 @@ allowed for the guide.
   checks already provide seasonal recovery. The daily publication state may
   retain only one small normalized whole partial response until the 10:40
   fallback. Its bounded HTML limit is 512 KiB.
-- Later-day beach monitoring uses four or five primary seasonal checks. A
-  five-minute confirmation request occurs only for a candidate change; one
+- Later-day beach monitoring uses four primary checks in June/September,
+  five in July/August, and six scheduled phase-one opportunities in October:
+  the normal 12:00/14:00/16:00/18:00 shoulder checks plus initial-recovery
+  opportunities at 13:00 and 13:30. The two recovery opportunities make no
+  SafeBeach HTTP request once a confirmed SafeBeach status exists for the day.
+  A five-minute confirmation request occurs only for a candidate change; one
   final request is allowed only when that confirmation reveals a different
-  explicit state. Later AEMET checks request only the CAP warning product
+  explicit state. The October recovery checkpoints do not add environment,
+  Mayor-channel or AEMET source work. Later AEMET checks request only the CAP warning product
   hourly at :51 from 07:51 through 23:51 and remain independent of beach and
   environment delivery. AEMET pending state never adds SafeBeach requests, and
   beach confirmation never suppresses an AEMET CAP checkpoint.
