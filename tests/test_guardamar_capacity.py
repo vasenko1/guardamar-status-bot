@@ -490,11 +490,24 @@ class CapacityAuditTests(unittest.TestCase):
             raise FakeError("Rate limit", status=429, code="TooManyRequests")
 
         gateway.get_resource_availability = limit_error
-        env = {"GUARDAMAR_LAUNCH_SWITCH": capacity.LAUNCH_SWITCH_VALUE}
-        self.assertEqual(
-            capacity.main(["launch", "--allow-launch"], env, lambda _: gateway, lambda _: None),
-            0,
-        )
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "output"
+            env = {
+                "GUARDAMAR_LAUNCH_SWITCH": capacity.LAUNCH_SWITCH_VALUE,
+                "GITHUB_OUTPUT": str(output),
+            }
+            self.assertEqual(
+                capacity.main(
+                    ["launch", "--allow-launch"],
+                    env,
+                    lambda _: gateway,
+                    lambda _: None,
+                ),
+                0,
+            )
+            emitted = output.read_text()
+            self.assertIn("outcome=RATE_LIMITED", emitted)
+            self.assertIn("disable_schedule=true", emitted)
         self.assertEqual(gateway.launch_calls, [])
         self.assertEqual(gateway.capacity_report_calls, 0)
 
