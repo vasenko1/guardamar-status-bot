@@ -585,6 +585,23 @@ class CapacityAuditTests(unittest.TestCase):
         self.assertEqual(result.outcome, "READY")
         self.assertEqual(gateway.launch_calls, [])
 
+    def test_429_during_vnic_ready_check_stops_without_retry(self):
+        gateway = FakeGateway()
+        gateway.instance_snapshots = [[record()]]
+        vnic_reads = []
+
+        def throttled_vnic(_identifier):
+            vnic_reads.append(1)
+            raise FakeError("Too many requests", status=429, code="TooManyRequests")
+
+        gateway.get_primary_vnic = throttled_vnic
+        result = capacity.run_launch(gateway, {}, lambda _: None)
+
+        self.assertEqual(result.outcome, "RATE_LIMITED")
+        self.assertTrue(result.disable_schedule)
+        self.assertEqual(len(vnic_reads), 1)
+        self.assertEqual(gateway.launch_calls, [])
+
     def test_failed_discovery_after_ambiguous_response_disables_schedule(self):
         gateway = FakeGateway()
         gateway.launch_error = TimeoutError("response lost")
