@@ -463,6 +463,33 @@ class CapacityAuditTests(unittest.TestCase):
         self.assertFalse(result.disable_schedule)
         self.assertEqual(len(gateway.launch_calls), 1)
 
+    def test_capacity_report_429_prevents_launch_and_stops_schedule(self):
+        gateway = FakeGateway()
+        gateway.capacity_report_error = FakeError(
+            "Rate limit", status=429, code="TooManyRequests"
+        )
+        result = capacity.run_launch(gateway, {}, lambda _: None)
+        self.assertEqual(result.outcome, "RATE_LIMITED")
+        self.assertTrue(result.disable_schedule)
+        self.assertEqual(result.capacity_report["status"], "RATE_LIMITED")
+        self.assertEqual(gateway.capacity_report_calls, 1)
+        self.assertEqual(gateway.launch_calls, [])
+
+    def test_preflight_429_stops_without_launch(self):
+        gateway = FakeGateway()
+
+        def limit_error():
+            raise FakeError("Rate limit", status=429, code="TooManyRequests")
+
+        gateway.get_resource_availability = limit_error
+        env = {"GUARDAMAR_LAUNCH_SWITCH": capacity.LAUNCH_SWITCH_VALUE}
+        self.assertEqual(
+            capacity.main(["launch", "--allow-launch"], env, lambda _: gateway, lambda _: None),
+            0,
+        )
+        self.assertEqual(gateway.launch_calls, [])
+        self.assertEqual(gateway.capacity_report_calls, 0)
+
     def test_rate_limit_makes_exactly_one_request_and_no_retry(self):
         gateway = FakeGateway()
         gateway.launch_error = FakeError(
@@ -472,6 +499,7 @@ class CapacityAuditTests(unittest.TestCase):
         result = capacity.run_launch(gateway, {}, lambda _: None)
 
         self.assertEqual(result.outcome, "RATE_LIMITED")
+        self.assertTrue(result.disable_schedule)
         self.assertEqual(len(gateway.launch_calls), 1)
 
     def test_fatal_launch_rejection_disables_schedule(self):
@@ -608,7 +636,7 @@ class CapacityAuditTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertEqual(workflow.count("automation.guardamar_capacity launch"), 1)
         self.assertEqual(workflow.count("automation.guardamar_capacity audit"), 1)
-        self.assertIn('cron: "7,22,37,52 * * * *"', workflow)
+        self.assertIn('cron: "3-58/5 * * * *"', workflow)
         self.assertIn("cancel-in-progress: false", workflow)
         self.assertIn("GUARDAMAR_LAUNCH_SWITCH", workflow)
         self.assertNotIn("pull_request:", workflow)
