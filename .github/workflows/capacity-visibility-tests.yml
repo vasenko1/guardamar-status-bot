@@ -6,6 +6,9 @@ on:
       - "automation/guardamar_capacity.py"
       - "tests/test_guardamar_capacity.py"
       - "tests/test_capacity_backstop.py"
+      - ".github/workflows/guardamar-capacity.yml"
+      - "termux/dispatch-guardamar-capacity.py"
+      - "termux/install-capacity-cron.sh"
       - ".github/workflows/capacity-visibility-tests.yml"
   workflow_dispatch:
 
@@ -23,6 +26,8 @@ jobs:
           python-version: "3.12"
       - name: Check module syntax
         run: python -m py_compile automation/guardamar_capacity.py
+      - name: Check Termux shell syntax
+        run: sh -n termux/install-capacity-cron.sh termux/trigger-guardamar-capacity.sh
       - name: Run capacity and backstop tests
         run: |
           python -m unittest discover -s tests -p test_guardamar_capacity.py -v

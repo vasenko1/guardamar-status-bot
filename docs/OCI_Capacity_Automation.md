@@ -64,8 +64,8 @@ target instances and zero A1 OCPU, A1 RAM, and free-storage usage. Its one SDK
 launch call reached the capacity check and returned `Out of host capacity`.
 There was no retry, no instance identifier, and a fresh Console check showed no
 instance or partial resource. This confirms the IAM and launch path. The
-workflow is active and continues the bounded search at minutes 7, 22, 37, and
-52; scheduled attempts no longer require individual approval under the Phase 2
+workflow is active and initially searched at minutes 7, 22, 37, and 52; ADR 0107 increases
+the schedule to one slot every five minutes, and scheduled attempts no longer require individual approval under the Phase 2
 authorization.
 
 ## Execution gates
@@ -95,7 +95,8 @@ data, both profiles available, or both profiles unavailable all preserve the
 original 6 GB launch. The report never creates or reserves a VM and never causes
 a second launch request.
 
-`Out of host capacity` and HTTP 429 end the current run without retry. An
+`Out of host capacity` ends the run without retry. Any OCI 429 at preflight,
+capacity report or launch requests workflow disablement without retry. An
 ambiguous response starts only bounded read-after-write discovery; it never
 repeats `LaunchInstance`. A permanent rejection or unresolved ambiguous result
 requests workflow disablement. An accepted or previously discovered instance
@@ -105,16 +106,16 @@ the result becomes `READY`. OCI retry tokens are profile-bound so a GitHub
 rerun cannot reuse one idempotency key for different 6 GB and 2 GB payloads.
 
 Manual dispatch defaults to `audit`; `launch` must be deliberately selected.
-The workflow has one concurrency group and runs at minutes 7, 22, 37, and 52.
+The workflow has one concurrency group and runs at minutes :03, :08, ..., :58 (ADR 0107).
 After `READY` it asks GitHub to disable this workflow. If that request fails,
 future runs still find the OCI instance and make zero launch calls.
 
 ## Optional Termux schedule backstop
 
 The GitHub-hosted workflow remains the only place that runs OCI SDK code,
-holds OCI credentials or calls `LaunchInstance`. Its schedule at minutes
-7, 22, 37 and 52 is unchanged. An optional one-shot Termux wrapper can check
-at minutes **12, 27, 42 and 57**. It does not run until the operator creates
+holds OCI credentials or calls `LaunchInstance`. Its GitHub schedule is :03/:08/.../:58. An optional one-shot Termux wrapper
+checks at minutes **00, 05, 10, ..., 55** after the updated installer is
+actually run on the device. It does not run until the operator creates
 a GitHub token on the phone and installs its cron block after deployment.
 
 The operator-created fine-grained PAT must have repository access set to
@@ -129,12 +130,13 @@ created by this repository.
 After the token is in place, the operator may run
 `termux/install-capacity-cron.sh` on the phone. The installer checks token
 permissions, backs up the current crontab once, preserves unrelated jobs and
-adds only its own `12,27,42,57 * * * *` block. It starts `crond` and displays
-that block and the service status. This PR does not install the block.
+adds only its own `*/5 * * * *` block. It starts `crond` and displays
+that block and the service status. Merging the PR does not install the block: the owner must run the installer
+on the production phone after the reviewed main is deployed.
 
 Each invocation makes one bounded GET for the exact workflow and one bounded
 GET for its latest `main` run (`per_page=1`). An inactive workflow, failed or
-invalid GET, queued/in-progress run, or run created less than ten minutes ago
+invalid GET, queued/in-progress run, or run created less than four minutes ago
 causes a safe skip. Otherwise Termux sends exactly one `workflow_dispatch`
 with `ref=main` and `action=launch`. The pinned GitHub REST API version is
 `2026-03-10`; its successful dispatch response is HTTP 200 with a
@@ -207,3 +209,18 @@ inconclusive result preserves the old 6 GB attempt. The fallback implementation
 passed compile validation and 43 focused capacity/backstop tests in GitHub
 Actions run `37154248312`. The temporary probe workflow was removed after the
 measurement.
+
+## Five-minute guarded cadence (2026-10-11)
+
+PR #362 first added visibility of 6 GB, 2 GB and read-only 1 GB capacity
+reports. ADR 0107 now authorizes GitHub `3-58/5 * * * *` and the Termux
+backstop `*/5 * * * *`. The backstop ignores completed runs younger than
+four minutes and skips all active runs. Merging GitHub changes does **not**
+update Android crontab: the owner must fast-forward the reviewed `main` and
+rerun `termux/install-capacity-cron.sh` on the phone for five-minute recovery.
+
+Any OCI `429 TooManyRequests`, including at audit or capacity-report stages,
+returns `RATE_LIMITED`, prevents further launch calls, and requests disabling
+the GitHub workflow. This deliberate halt requires investigation and manual
+re-enable at reduced cadence; no indefinite retry loop is installed.
+The one-launch-per-run guard and Always Free cost ceilings remain unchanged.

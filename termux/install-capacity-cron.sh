@@ -15,7 +15,7 @@ UPDATED=$(mktemp)
 ERRORS=$(mktemp)
 BEGIN_MARKER='# BEGIN guardamar-status capacity backstop'
 END_MARKER='# END guardamar-status capacity backstop'
-JOB="12,27,42,57 * * * * $TRIGGER"
+JOB="*/5 * * * * $TRIGGER"
 
 cleanup() {
     rm -f "$CURRENT" "$UPDATED" "$ERRORS"
@@ -46,6 +46,25 @@ if ! awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" '
     exit 1
 fi
 
+# Use the explicit Termux runit root in SSH/non-interactive shells.
+if [ -z "${SVDIR:-}" ]; then
+    if [ -z "${PREFIX:-}" ] || [ ! -d "$PREFIX/var/service" ]; then
+        echo "ERROR: Termux service directory unavailable" >&2
+        exit 1
+    fi
+    SVDIR="$PREFIX/var/service"
+    export SVDIR
+fi
+CROND_STATUS=$(sv status crond 2>/dev/null) || {
+    echo "ERROR: cannot inspect Termux crond service" >&2
+    exit 1
+}
+case "$CROND_STATUS" in
+    run:*) CAPACITY_CROND_RUNNING=yes ;;
+    down:*) CAPACITY_CROND_RUNNING=no ;;
+    *) echo "ERROR: unexpected crond service state" >&2; exit 1 ;;
+esac
+
 mkdir -p "$BACKUP_DIR"
 if [ ! -e "$BACKUP" ]; then
     cp "$CURRENT" "$BACKUP"
@@ -58,11 +77,13 @@ awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" '
 printf '%s\n%s\n%s\n' "$BEGIN_MARKER" "$JOB" "$END_MARKER" >>"$UPDATED"
 crontab "$UPDATED"
 
-sv up crond
+if [ "$CAPACITY_CROND_RUNNING" != yes ]; then
+    sv up crond
+fi
 crontab -l >"$CURRENT"
 awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" '
     $0 == begin { managed = 1 }
     managed { print }
     $0 == end { managed = 0 }
 ' "$CURRENT"
-sv status crond
+sv status crond | grep -q "^run:" || { echo "ERROR: crond is not running" >&2; exit 1; }

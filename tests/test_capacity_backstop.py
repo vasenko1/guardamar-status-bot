@@ -77,7 +77,7 @@ class CapacityBackstopTests(unittest.TestCase):
 
     def test_recent_completed_run_skips(self):
         outcome, request = self.dispatch([
-            workflow(), runs(created_at="2026-09-13T11:55:00Z")
+            workflow(), runs(created_at="2026-09-13T11:57:00Z")
         ])
         self.assertEqual(outcome, "SKIP recent_run run_id=123 status=completed")
         self.assertEqual(request.call_count, 2)
@@ -88,6 +88,21 @@ class CapacityBackstopTests(unittest.TestCase):
                 outcome, request = self.dispatch([workflow(), runs(status=status)])
                 self.assertEqual(outcome, f"SKIP recent_run run_id=123 status={status}")
                 self.assertEqual(request.call_count, 2)
+
+    def test_five_minute_schedule_and_backstop_are_aligned(self):
+        root = Path(__file__).parents[1]
+        schedule = (root / ".github/workflows/guardamar-capacity.yml").read_text()
+        installer = (root / "termux/install-capacity-cron.sh").read_text()
+        self.assertIn('cron: "3-58/5 * * * *"', schedule)
+        self.assertIn('JOB="*/5 * * * * $TRIGGER"', installer)
+        self.assertEqual(backstop.RECENT_WINDOW.total_seconds(), 4 * 60)
+
+    def test_previous_slot_five_minutes_old_allows_dispatch(self):
+        outcome, request = self.dispatch([
+            workflow(), runs(created_at="2026-09-13T11:55:00Z"), accepted()
+        ])
+        self.assertEqual(outcome, "DISPATCHED run_id=456")
+        self.assertEqual(request.call_count, 3)
 
     def test_old_completed_run_allows_dispatch(self):
         outcome, request = self.dispatch([workflow(), runs(), accepted()])

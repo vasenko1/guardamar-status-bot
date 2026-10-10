@@ -463,6 +463,54 @@ class CapacityAuditTests(unittest.TestCase):
         self.assertFalse(result.disable_schedule)
         self.assertEqual(len(gateway.launch_calls), 1)
 
+    def test_rate_limit_classification_precedes_capacity_text(self):
+        error = FakeError(
+            "Out of host capacity; TooManyRequests",
+            status=429,
+            code="TooManyRequests",
+        )
+        self.assertEqual(capacity._error_kind(error), "rate_limit")
+
+    def test_capacity_report_429_prevents_launch_and_stops_schedule(self):
+        gateway = FakeGateway()
+        gateway.capacity_report_error = FakeError(
+            "Rate limit", status=429, code="TooManyRequests"
+        )
+        result = capacity.run_launch(gateway, {}, lambda _: None)
+        self.assertEqual(result.outcome, "RATE_LIMITED")
+        self.assertTrue(result.disable_schedule)
+        self.assertEqual(result.capacity_report["status"], "RATE_LIMITED")
+        self.assertEqual(gateway.capacity_report_calls, 1)
+        self.assertEqual(gateway.launch_calls, [])
+
+    def test_preflight_429_stops_without_launch(self):
+        gateway = FakeGateway()
+
+        def limit_error():
+            raise FakeError("Rate limit", status=429, code="TooManyRequests")
+
+        gateway.get_resource_availability = limit_error
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "output"
+            env = {
+                "GUARDAMAR_LAUNCH_SWITCH": capacity.LAUNCH_SWITCH_VALUE,
+                "GITHUB_OUTPUT": str(output),
+            }
+            self.assertEqual(
+                capacity.main(
+                    ["launch", "--allow-launch"],
+                    env,
+                    lambda _: gateway,
+                    lambda _: None,
+                ),
+                0,
+            )
+            emitted = output.read_text()
+            self.assertIn("outcome=RATE_LIMITED", emitted)
+            self.assertIn("disable_schedule=true", emitted)
+        self.assertEqual(gateway.launch_calls, [])
+        self.assertEqual(gateway.capacity_report_calls, 0)
+
     def test_rate_limit_makes_exactly_one_request_and_no_retry(self):
         gateway = FakeGateway()
         gateway.launch_error = FakeError(
@@ -472,6 +520,7 @@ class CapacityAuditTests(unittest.TestCase):
         result = capacity.run_launch(gateway, {}, lambda _: None)
 
         self.assertEqual(result.outcome, "RATE_LIMITED")
+        self.assertTrue(result.disable_schedule)
         self.assertEqual(len(gateway.launch_calls), 1)
 
     def test_fatal_launch_rejection_disables_schedule(self):
@@ -534,6 +583,23 @@ class CapacityAuditTests(unittest.TestCase):
         result = capacity.run_launch(gateway, {}, lambda _: None)
 
         self.assertEqual(result.outcome, "READY")
+        self.assertEqual(gateway.launch_calls, [])
+
+    def test_429_during_vnic_ready_check_stops_without_retry(self):
+        gateway = FakeGateway()
+        gateway.instance_snapshots = [[record()]]
+        vnic_reads = []
+
+        def throttled_vnic(_identifier):
+            vnic_reads.append(1)
+            raise FakeError("Too many requests", status=429, code="TooManyRequests")
+
+        gateway.get_primary_vnic = throttled_vnic
+        result = capacity.run_launch(gateway, {}, lambda _: None)
+
+        self.assertEqual(result.outcome, "RATE_LIMITED")
+        self.assertTrue(result.disable_schedule)
+        self.assertEqual(len(vnic_reads), 1)
         self.assertEqual(gateway.launch_calls, [])
 
     def test_failed_discovery_after_ambiguous_response_disables_schedule(self):
@@ -608,7 +674,7 @@ class CapacityAuditTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertEqual(workflow.count("automation.guardamar_capacity launch"), 1)
         self.assertEqual(workflow.count("automation.guardamar_capacity audit"), 1)
-        self.assertIn('cron: "7,22,37,52 * * * *"', workflow)
+        self.assertIn('cron: "3-58/5 * * * *"', workflow)
         self.assertIn("cancel-in-progress: false", workflow)
         self.assertIn("GUARDAMAR_LAUNCH_SWITCH", workflow)
         self.assertNotIn("pull_request:", workflow)
