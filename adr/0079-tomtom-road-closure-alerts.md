@@ -130,8 +130,8 @@ closed because of those works.
 ## State and failure policy
 
 Use one small atomic `state/traffic.json` protected by a file lock. Store only
-the current/recent incident facts, consecutive-missing count, last daily
-publication dates and latest Telegram message ID. A provider-ID handoff rekeys
+the current/recent incident facts, consecutive-missing count, lifecycle
+publication markers and latest Telegram message ID. A provider-ID handoff rekeys
 the existing record in place; it adds no alias table, logical-ID field, raw
 history or schema migration. Retain recent records for a bounded period; no
 database, raw-response archive, generic notification framework or event history
