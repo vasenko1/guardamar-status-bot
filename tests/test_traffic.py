@@ -1725,7 +1725,9 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
             sent = []
             await self._run(state, NOW, (incident(),), sent)
 
-            summary = active_traffic_summary(state, NOW + timedelta(hours=4))
+            summary = active_traffic_summary(
+                state, NOW + timedelta(hours=2, minutes=1)
+            )
 
         self.assertIsNone(summary)
 
