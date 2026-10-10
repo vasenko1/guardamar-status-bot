@@ -659,9 +659,10 @@ def _observe_instance(
             try:
                 vnic = gateway.get_primary_vnic(identifier)
             except Exception as exc:
-                if _error_kind(exc) == "fatal":
+                kind = _error_kind(exc)
+                if kind in {"fatal", "rate_limit"}:
                     return CapacityResult(
-                        "BLOCKED",
+                        "RATE_LIMITED" if kind == "rate_limit" else "BLOCKED",
                         "READY verification failed: " + _safe_error(exc),
                         disable_schedule=True,
                         instance_id=identifier,
