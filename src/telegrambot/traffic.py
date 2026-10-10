@@ -1630,6 +1630,16 @@ async def monitor_traffic(
                             "publication skipped",
                             incident.provider_id,
                         )
+                        # Preserve the last published lifecycle baseline so a
+                        # resident-useful transition can be retried on the next
+                        # successful geolocation check. The incident was seen,
+                        # so reset absence tracking without accepting the
+                        # unpublishable transition into public state.
+                        restored = dict(lifecycle_existing)
+                        restored["last_seen_at"] = local_now.isoformat()
+                        restored["missing_successes"] = 0
+                        events[incident.provider_id] = restored
+                        state.write(value)
                         continue
                     location = refreshed_location
                     record["location"] = _location_data(location)
