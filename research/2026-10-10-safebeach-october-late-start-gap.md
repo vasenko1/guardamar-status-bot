@@ -145,3 +145,35 @@ Transport/contract errors continue to use the existing `SB-...` diagnostics.
 ## Decision
 
 Implemented architecture is recorded in ADR 0106.
+
+## Post-deploy validation at 14:00-14:07
+
+The first production release of ADR 0106 was deployed at approximately 13:59
+CEST on 10 October.
+
+At 14:00:02 the operational monitor fetched one current SafeBeach flag record
+and entered the expected initial confirmation state. At 14:05:01 a second
+matching sample confirmed Centre / Babilònia = yellow and created daily beach
+root message 8228. The confirmation state then cleared and the compact baseline
+became Centre = yellow. This proves that the late-start recovery path fixed the
+original missing-root incident.
+
+The same read-only state check exposed a narrower follow-up defect. The newly
+created late root stored the confirmed flag but its persisted `BeachStatus`
+lost passive fields from the confirming SafeBeach sample, including explicit
+jellyfish state and source update time. The normal 10:10-10:40 root path keeps
+those normalized fields. A positive jellyfish observation could therefore have
+been omitted from a root created later by the operational path.
+
+The follow-up fix keeps the flag/jellyfish change state machine compact and
+unchanged, but enriches the first late root from the last current confirming
+SafeBeach sample only for beaches whose flag already matches the confirmed
+state. It does not widen the confirmed beach set or create new alert triggers.
+If Telegram root delivery fails after confirmation, the next scheduled phase
+may make one bounded context refetch before retrying the already-confirmed root;
+an unavailable retry sample degrades safely to the confirmed flag-only status.
+
+Sea temperature, qualitative sea state and wind remain passive normalized
+context. This fix does not change the current beach-root renderer to display
+those fields; that separate product recommendation remains documented in
+`research/2026-10-06-safebeach-daily-sea-context.md`.

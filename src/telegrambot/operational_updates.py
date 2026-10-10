@@ -504,6 +504,58 @@ def confirmed_beach_status(state: dict, now: datetime) -> Optional[BeachStatus]:
     )
 
 
+def enrich_initial_beach_status(
+    confirmed: Optional[BeachStatus],
+    observed: Optional[BeachStatus],
+) -> Optional[BeachStatus]:
+    """Attach passive context from the confirming sample without widening flags."""
+    if confirmed is None or observed is None:
+        return confirmed
+
+    observed_flags = dict(observed.nearby_flags)
+    matching_names = {
+        name
+        for name, color in confirmed.nearby_flags
+        if observed_flags.get(name) == color
+    }
+    if not matching_names:
+        return confirmed
+
+    jellyfish_states = tuple(
+        (name, present)
+        for name, present in observed.jellyfish_states
+        if name in matching_names
+    )
+    updated_times = tuple(
+        (name, value)
+        for name, value in observed.updated_times
+        if name in matching_names
+    )
+    centre_matches = "Centre" in matching_names
+
+    return BeachStatus(
+        flag_color=observed.flag_color if centre_matches else None,
+        sea_temperature_c=(
+            observed.sea_temperature_c if centre_matches else None
+        ),
+        wind_direction=observed.wind_direction if centre_matches else None,
+        wind_speed_kmh=observed.wind_speed_kmh if centre_matches else None,
+        sea_state=observed.sea_state if centre_matches else None,
+        nearby_flags=confirmed.nearby_flags,
+        jellyfish_beaches=tuple(
+            name for name, present in jellyfish_states if present
+        ),
+        jellyfish_states=jellyfish_states,
+        flag_meanings=tuple(
+            (name, meaning)
+            for name, meaning in observed.flag_meanings
+            if name in matching_names
+        ),
+        updated_times=updated_times,
+        source_date=observed.source_date or confirmed.source_date,
+    )
+
+
 def observe_warnings(
     state: dict,
     warnings: Sequence[Warning],

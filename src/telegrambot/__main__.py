@@ -114,6 +114,7 @@ from .operational_updates import (
     build_update_message,
     clear_beach_ready,
     confirmed_beach_status,
+    enrich_initial_beach_status,
     finalize_delivery,
     miss_beach_sample,
     observe_beaches,
@@ -1194,38 +1195,56 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
             ):
                 miss_beach_sample(value, phase)
             has_ready_beach = bool(value.get("beach_ready"))
-            should_fetch_beach = (
-                not schedule.initial_beach_recovery
-                or needs_initial_beach_recovery
-            ) and (
-                (phase == 1 and not has_ready_beach)
-                or (
-                    phase in {2, 3}
-                    and isinstance(value.get("beach_pending"), dict)
-                    and value["beach_pending"].get("stage") == phase - 1
+            initial_ready_waiting_for_root = (
+                has_ready_beach
+                and published_beach_status is None
+                and all(
+                    isinstance(change, dict) and change.get("initial")
+                    for change in value.get("beach_ready") or ()
                 )
             )
+            should_fetch_beach = (
+                (
+                    not schedule.initial_beach_recovery
+                    or needs_initial_beach_recovery
+                )
+                and (
+                    (phase == 1 and not has_ready_beach)
+                    or (
+                        phase in {2, 3}
+                        and isinstance(value.get("beach_pending"), dict)
+                        and value["beach_pending"].get("stage") == phase - 1
+                    )
+                )
+            ) or (
+                phase is not None and initial_ready_waiting_for_root
+            )
+            observed_beach = None
             if should_fetch_beach:
                 try:
                     beach = await fetch_beach_status(now)
                     if is_current_status(beach, now):
+                        observed_beach = beach
                         logging.info(
                             "Operational SafeBeach fetched: %d current flag record(s)",
                             len(beach.nearby_flags),
                         )
-                        observe_beaches(value, beach, phase)
+                        if not initial_ready_waiting_for_root:
+                            observe_beaches(value, beach, phase)
                     else:
                         logging.info(
                             "Operational SafeBeach fetched: "
                             "no eligible current beach status"
                         )
-                        miss_beach_sample(value, phase)
+                        if not initial_ready_waiting_for_root:
+                            miss_beach_sample(value, phase)
                 except SafeBeachError as exc:
                     logging.warning(
                         "Operational SafeBeach check failed: SB-%s",
                         exc.diagnostic_code,
                     )
-                    miss_beach_sample(value, phase)
+                    if not initial_ready_waiting_for_root:
+                        miss_beach_sample(value, phase)
 
             aemet_observed = False
             if schedule.check_aemet:
@@ -1260,6 +1279,11 @@ async def _run_command(command: str, extra: tuple = ()) -> int:
                     and root_status is not None
                     and published_beach_status is None
                 )
+                if needs_initial_status:
+                    root_status = enrich_initial_beach_status(
+                        root_status,
+                        observed_beach,
+                    )
                 if ready_changes and (beach_anchor is None or needs_initial_status):
                     # The 10:10-10:40 update cycle owns live SafeBeach root edits.
                     # Later monitoring waits for confirmation before creating a
