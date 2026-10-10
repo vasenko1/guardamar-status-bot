@@ -105,9 +105,14 @@ to affect normal local movement.
   restriction is no longer shown in current TomTom data; do not claim a
   cancellation without explicit evidence.
 - Category transitions between lane and full road closure are resident-useful
-  and may publish one reply. Changes only to reason/details, expected end,
-  probability, reports, timestamps or small geometry corrections do not create
-  a new push. The next normal alert may use the fresher facts.
+  and may publish one reply. A same-provider incident may also publish one reply
+  when the physical extent materially changes: with complete source boundaries,
+  the boundary set must change and an endpoint must move by more than 25 metres;
+  when boundaries are incomplete, endpoint movement must exceed 50 metres.
+  Reversed direction alone is not a change. Changes only to reason/details,
+  expected end, probability, reports, timestamps, boundary wording without a
+  corresponding material geometry change, or small geometry corrections do not
+  create a new push. The next normal alert may use the fresher facts.
 
 ## Editorial contract
 
