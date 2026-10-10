@@ -2,6 +2,11 @@
 
 Checked 2026-10-03.
 
+> Historical note (2026-10-10): the 15 October guard and four-window October
+> cadence recorded below were superseded by ADR 0106 after later service-horizon
+> evidence and a production late-start observation. The 3 October source
+> observation itself remains valid evidence.
+
 ## Question
 
 Does Guardamar's public SafeBeach source still publish current operational
@@ -36,9 +41,10 @@ Use a fixed lightweight request guard rail rather than a universal public
 - do not add dynamic season detection, background probing or winter heartbeat
   state.
 
-The stable decision is recorded in ADR 0094. Future observations can move the
-guard rail through a new decision without changing the meaning of any official
-municipal season.
+The decision made from this observation was recorded in ADR 0094. It was
+superseded on 10 October 2026 by ADR 0106, which moves the internal guard
+through 31 October and adds bounded October late-start recovery checkpoints
+without changing the meaning of any official municipal season.
 
 ## Sources
 

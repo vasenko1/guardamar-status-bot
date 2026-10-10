@@ -105,13 +105,17 @@ The project is successful when the digest is:
 
 ## Current phase
 
-The MVP first publishes one immutable short message at 07:30. During the
-SafeBeach season, short external invocations check for complete current beach
-data every five minutes from 10:10 through 10:40. Before the final attempt,
-completeness requires current flags for all six known Guardamar zones. At
-10:40, any non-empty verified Guardamar beach set is eligible. The first
-usable beach or Mayor fact creates a separate daily beach root; later verified
-coverage enriches that same root without changing the Morning Digest.
+The MVP first publishes one immutable short message at 07:30. From 1 June
+through 31 October, short external invocations check SafeBeach every five
+minutes from 10:10 through 10:40. The first non-empty verified current Guardamar
+flag set creates the separate daily beach root immediately; later valid
+responses in that initial window replace its SafeBeach snapshot as one whole
+current response. After 10:40, bounded operational checks confirm material
+flag/jellyfish changes before replying to the beach root. In October, two
+SafeBeach-only initial-recovery opportunities at 13:00 and 13:30 close the
+observed late-start gap and stop fetching once the daily root already has a
+confirmed SafeBeach status. Mayor bathing notices remain an independent
+sidecar and do not inherit the SafeBeach-only 16–31 October extension.
 There is no resident scheduler, sleeping retry process, background collector,
 or cache synchronization. A separate optional
 operator listener may use one idle Telegram long poll solely for allowlisted

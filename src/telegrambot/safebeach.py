@@ -29,7 +29,7 @@ BEACH_ORDER = {
 KNOWN_BEACHES = tuple(BEACH_PRIORITY.values())
 GUARDAMAR_TIMEZONE = ZoneInfo("Europe/Madrid")
 QUERY_WINDOW_START = (6, 1)
-QUERY_WINDOW_END = (10, 15)
+QUERY_WINDOW_END = (10, 31)
 
 _MARKERS_ASSIGNMENT = re.compile(rb"\bwindow\.SB_MARKERS\s*=\s*")
 _PAGE_DATE_PATTERN = re.compile(

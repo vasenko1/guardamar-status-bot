@@ -35,8 +35,11 @@ accepted only when the page is current and the record itself is active
 (`hasActividad`) and not ended (`serviceEnded`). The request boundary is an
 internal stale-data guard rail, not an official season and not coupled to the
 parking notice. The later 3 October 2026 observation proved that the former
-September cutoff was too early; ADR 0094 now owns the 1 June–15 October runtime
-guard. See `research/2026-10-03-safebeach-post-september-observation.md`.
+September cutoff was too early. ADR 0094 temporarily moved the runtime guard
+through 15 October; ADR 0106 superseded that boundary on 10 October 2026 after
+new service-horizon and production evidence and now owns the 1 June–31 October
+guard. See `research/2026-10-03-safebeach-post-september-observation.md` and
+`research/2026-10-10-safebeach-october-late-start-gap.md`.
 
 The annual bathing-water programme is also independent. Its current dates and
 latest weekly report are now discovered from the municipal programme index

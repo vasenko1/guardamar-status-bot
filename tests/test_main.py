@@ -12,6 +12,7 @@ from telegrambot.__main__ import (
     _cams_update_checkpoint,
     _current_morning_message_id,
     _refresh_event_catalogs_once,
+    _mayor_beach_notice_window,
     _safebeach_initial_checkpoint,
     _send_operational_update,
     _produce_message,
@@ -187,6 +188,20 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
         ))
         self.assertFalse(_cams_update_checkpoint(
             datetime(2026, 9, 11, 10, 45, tzinfo=MADRID)
+        ))
+
+    def test_mayor_beach_notice_window_keeps_pre_extension_boundary(self):
+        self.assertTrue(_mayor_beach_notice_window(
+            datetime(2026, 6, 1, 10, 10, tzinfo=MADRID)
+        ))
+        self.assertTrue(_mayor_beach_notice_window(
+            datetime(2026, 10, 15, 10, 40, tzinfo=MADRID)
+        ))
+        self.assertFalse(_mayor_beach_notice_window(
+            datetime(2026, 10, 16, 10, 10, tzinfo=MADRID)
+        ))
+        self.assertFalse(_mayor_beach_notice_window(
+            datetime(2026, 10, 31, 10, 10, tzinfo=MADRID)
         ))
 
     def test_safebeach_initial_cycle_has_exact_1040_boundary(self):
@@ -614,6 +629,115 @@ class PreviewReportTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(await _run_command("update"), 0)
 
         beach_fetch.assert_awaited_once_with(now)
+
+    async def test_extended_october_update_fetches_safebeach_without_mayor_sidecar(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "delivery.json"
+            now = datetime(2026, 10, 16, 10, 25, tzinfo=MADRID)
+            state = PublicationState(state_path)
+            state.mark_morning(now.date(), 10, now.replace(hour=7, minute=30))
+            beach_fetch = AsyncMock(return_value=None)
+            mayor_fetch = AsyncMock(return_value=None)
+            with (
+                patch.dict(os.environ, {
+                    "AEMET_API_KEY": "aemet",
+                    "TELEGRAM_BOT_TOKEN": "telegram",
+                    "TELEGRAM_CHAT_ID": "group",
+                    "MORNING_DIGEST_STATE_PATH": str(state_path),
+                }),
+                patch("telegrambot.__main__.datetime") as clock,
+                patch(
+                    "telegrambot.__main__._cams_update_checkpoint",
+                    return_value=False,
+                ),
+                patch(
+                    "telegrambot.__main__._refresh_event_catalogs_once",
+                    new=AsyncMock(),
+                ),
+                patch(
+                    "telegrambot.__main__.fetch_beach_status",
+                    new=beach_fetch,
+                ),
+                patch(
+                    "telegrambot.__main__.latest_beach_notice",
+                    new=mayor_fetch,
+                ),
+            ):
+                clock.now.return_value = now
+                self.assertEqual(await _run_command("update"), 0)
+
+        beach_fetch.assert_awaited_once_with(now)
+        mayor_fetch.assert_not_awaited()
+
+    async def test_october_recovery_skips_http_after_safebeach_root_exists(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "delivery.json"
+            monitor_path = Path(directory) / "operational.json"
+            now = datetime(2026, 10, 10, 13, 0, tzinfo=MADRID)
+            state = PublicationState(state_path)
+            state.mark_morning(now.date(), 10, now.replace(hour=7, minute=30))
+            status = BeachStatus(
+                flag_color="yellow",
+                sea_temperature_c=25,
+                source_date=now.date(),
+                nearby_flags=(("Centre", "yellow"),),
+                jellyfish_beaches=(),
+                jellyfish_states=(("Centre", False),),
+                updated_times=(("Centre", time(10, 0)),),
+            )
+            state.mark_beach_message(now.date(), 20, status=status)
+            beach_fetch = AsyncMock()
+            with (
+                patch.dict(os.environ, {
+                    "AEMET_API_KEY": "aemet",
+                    "TELEGRAM_BOT_TOKEN": "telegram",
+                    "TELEGRAM_CHAT_ID": "group",
+                    "MORNING_DIGEST_STATE_PATH": str(state_path),
+                    "OPERATIONAL_UPDATE_STATE_PATH": str(monitor_path),
+                }),
+                patch("telegrambot.__main__.datetime") as clock,
+                patch(
+                    "telegrambot.__main__.fetch_beach_status",
+                    new=beach_fetch,
+                ),
+            ):
+                clock.now.return_value = now
+                self.assertEqual(await _run_command("monitor-updates"), 0)
+
+            beach_fetch.assert_not_awaited()
+
+    async def test_october_recovery_still_fetches_for_mayor_only_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "delivery.json"
+            monitor_path = Path(directory) / "operational.json"
+            now = datetime(2026, 10, 10, 13, 0, tzinfo=MADRID)
+            state = PublicationState(state_path)
+            state.mark_morning(now.date(), 10, now.replace(hour=7, minute=30))
+            notice = BeachNotice(
+                "Купаться с осторожностью",
+                False,
+                now.replace(hour=12, minute=30),
+            )
+            state.mark_beach_message(now.date(), 20, notice=notice)
+            beach_fetch = AsyncMock(return_value=None)
+            with (
+                patch.dict(os.environ, {
+                    "AEMET_API_KEY": "aemet",
+                    "TELEGRAM_BOT_TOKEN": "telegram",
+                    "TELEGRAM_CHAT_ID": "group",
+                    "MORNING_DIGEST_STATE_PATH": str(state_path),
+                    "OPERATIONAL_UPDATE_STATE_PATH": str(monitor_path),
+                }),
+                patch("telegrambot.__main__.datetime") as clock,
+                patch(
+                    "telegrambot.__main__.fetch_beach_status",
+                    new=beach_fetch,
+                ),
+            ):
+                clock.now.return_value = now
+                self.assertEqual(await _run_command("monitor-updates"), 0)
+
+            beach_fetch.assert_awaited_once_with(now)
 
     async def test_operational_beach_change_replies_without_editing_existing_root(self):
         with tempfile.TemporaryDirectory() as directory:

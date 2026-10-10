@@ -1,6 +1,6 @@
 # ADR 0031: Bounded operational change monitoring
 
-- Status: Accepted for beach monitoring; initial-publication rules superseded by ADR 0064; annual SafeBeach query window superseded by ADR 0094; AEMET cadence and cross-lifecycle coupling superseded by ADR 0099
+- Status: Accepted for beach monitoring; initial-publication rules superseded by ADR 0064; annual SafeBeach query window and October recovery cadence superseded by ADR 0106; AEMET cadence and cross-lifecycle coupling superseded by ADR 0099
 - Date: 2026-08-07
 
 ## Context

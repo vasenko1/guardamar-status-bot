@@ -20,7 +20,7 @@ official endpoints and lightweight access methods are validated.
 | CAMS European Air Quality Forecasts | Forecast pollutants, mineral dust, wildfire PM10 contribution and six pollen types | High for model forecast; not an observation or official measured ICA | Separate public producer makes bounded morning publication attempts; bot checks at 10:40 and then only through existing operational recovery until today's cycle is accepted | Yes, optional |
 | ESIOS / Red Eléctrica | Next-day PVPC 2.0TD hourly active-energy term | High; official system operator publication | Indicator API `1001`; personal API key required | Yes, evening feature |
 | Official marine service | Sea state and relevant marine warnings | High for its jurisdiction | API or published feed | Yes |
-| SafeBeach public Guardamar page | Active beach flags and jellyfish operational status | High when municipal lifeguards actively maintain it | Small structured payload embedded in the public page; queried only 1 June–15 October, with no SafeBeach requests from 16 October through 31 May | Yes |
+| SafeBeach public Guardamar page | Active beach flags and jellyfish operational status | High when municipal lifeguards actively maintain it | Small structured payload embedded in the public page; queried only 1 June–31 October, with no SafeBeach requests from 1 November through 31 May | Yes |
 | Generalitat Valenciana bathing-zone control via Guardamar publication index | Current-year control window, actual sample dates, and official weekly laboratory/visual beach ratings | High; control authority is Servicio de Calidad de Aguas, while Guardamar publishes the local report index | One bounded index read at 19:35 during the official 1 June–15 September season; PDF downloaded only for a new report identity and parsed fail-closed with existing Poppler | Yes, weekly public notice |
 | Civil protection or emergency authority | Safety warnings | Highest priority | Alert feed or official publication | Yes |
 | CCE — 112 Comunitat Valenciana | Active emergency and hydrological authority state relevant to Guardamar/Segura | Highest priority for authority decisions; complements rather than duplicates AEMET | Public `emergencias.jsf` plus current text-readable CCE PDF, checked by one bounded hourly watcher | Yes, narrow operational monitor |
@@ -319,19 +319,22 @@ only if EULEN or the Ayuntamiento publishes a Guardamar-specific official
 endpoint with adequate freshness and source guarantees. See
 `research/2026-08-14-eulen-sport-beach-status-source.md`.
 
-Only active, non-ended lifeguard records are eligible. Before the final 10:40
-attempt, the initial daily beach root requires plausible current flags for all
-six known zones. At 10:40, one or more valid current flags are sufficient.
-A missing timestamp omits only that beach; it delays an early complete root but
-does not block the final partial root. Missing beaches are omitted and their
+Only active, non-ended lifeguard records are eligible. During the 10:10–10:40
+initial lifecycle, any valid current response containing at least one known
+Guardamar flag may create the daily beach root immediately; later valid
+responses in that window replace the SafeBeach snapshot as one whole response.
+A missing timestamp omits only that beach and never blocks another valid beach
+from creating or refreshing the root. Missing beaches are omitted and their
 colors are never inferred. Optional sea, wind, and jellyfish fields never block
 collection.
 
 SafeBeach operational flags are never injected into the immutable 07:30
 Morning Digest. The separate daily beach root uses verified flag colors and
 explicit positive jellyfish state. AEMET remains the morning source for sea
-temperature, sea state, and forecast wind. Missing SafeBeach records cannot
-remove previously confirmed beaches from an existing daily root.
+temperature, sea state, and forecast wind. During the 10:10–10:40 live-root window, a later whole current response may
+expand or narrow the displayed SafeBeach set. After 10:40, operational
+monitoring preserves the confirmed baseline when a later partial response
+omits a previously known beach.
 
 After the daily root exists, later seasonal monitoring uses bounded scheduled
 checks and confirms candidate changes before publication. The root is edited
@@ -342,11 +345,14 @@ If the root disappears between edit and reply, the bot recreates the complete
 confirmed root first and retries the reply against that root. A change message
 is never promoted into the beach-root slot.
 The public `@AlcaldeGuardamar` page is also checked for a newer explicit bathing
-transition during the initial root window and on the first invocation of each
-already scheduled operational window. The check is bounded by the last stored
-Mayor notice timestamp (or morning publication time when none exists), so an
-old notice is not replayed. A newer prohibition or caution refreshes the same
-beach root; source failure preserves the previous verified root facts.
+transition during the legacy beach sidecar window through 15 October: during
+the initial root cycle and on the first invocation of each already scheduled
+operational window. ADR 0106 extends SafeBeach alone through 31 October; the
+16-31 October extension adds no Mayor-page reads. The Mayor check is bounded by
+the last stored notice timestamp (or morning publication time when none
+exists), so an old notice is not replayed. A newer prohibition or caution
+refreshes the same beach root; source failure preserves the previous verified
+root facts.
 
 The adapter makes one bounded HTTPS request to the exact public SafeBeach host,
 accepts HTML only, and validates the page's calendar date against
@@ -361,9 +367,9 @@ cookie state, raw-response cache, or status history. A page with no eligible
 record is a valid empty result, not a source error.
 
 SafeBeach is currently requested only inside the local safety window from
-15 June through 15 September, inclusive. Outside this window all operational
-SafeBeach values are omitted, preventing a stale active record from exposing a
-winter flag. This boundary is an internal guard rail only: it is not presented
+1 June through 31 October, inclusive. From 1 November through 31 May all
+scheduled SafeBeach requests are suppressed, preventing a stale active record
+from exposing an off-season flag. This boundary is an internal guard rail only: it is not presented
 to users as an official beach season and it does not control Zona Azul or any
 other municipal service. SafeBeach's current-date, `hasActividad`, and
 `serviceEnded` checks remain mandatory inside the window. Removing the guard

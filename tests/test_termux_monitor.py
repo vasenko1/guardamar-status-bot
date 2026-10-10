@@ -127,7 +127,9 @@ class OperationalMonitorTermuxTests(unittest.TestCase):
         self.assertIn("51 7-23 * * *", installed)
         self.assertIn("0,5,10 11,13,15,17,19 * 7,8 *", installed)
         self.assertIn("0,5,10 12,14,16,18 * 6,9 *", installed)
-        self.assertIn("0,5,10 12,14,16,18 1-15 10 *", installed)
+        self.assertIn("0,5,10 12,14,16,18 * 10 *", installed)
+        self.assertIn("0,5,10,30,35,40 13 * 10 *", installed)
+        self.assertNotIn("1-15 10", installed)
         self.assertIn("0 20 * 6,9 *", installed)
         self.assertIn("0 11,15,19 * 1-5,10-12 *", installed)
 

@@ -60,6 +60,7 @@ class ScheduleTests(unittest.TestCase):
             datetime(2026, 8, 7, 11, 10, tzinfo=MADRID)
         )
         self.assertEqual(final_confirmation.beach_phase, 3)
+        self.assertFalse(final_confirmation.initial_beach_recovery)
         self.assertFalse(final_confirmation.check_environment)
         self.assertFalse(final_confirmation.check_aemet)
 
@@ -92,22 +93,37 @@ class ScheduleTests(unittest.TestCase):
         self.assertTrue(september_primary.check_environment)
         self.assertFalse(september_primary.check_aemet)
 
-        october_primary = scheduled_run(
+        old_october_overlap = scheduled_run(
             datetime(2026, 10, 15, 14, 0, tzinfo=MADRID)
         )
+        self.assertEqual(old_october_overlap.beach_phase, 1)
+        self.assertTrue(old_october_overlap.check_environment)
+        self.assertFalse(old_october_overlap.check_aemet)
+
+        extended_october_beach = scheduled_run(
+            datetime(2026, 10, 16, 14, 0, tzinfo=MADRID)
+        )
+        self.assertEqual(extended_october_beach.beach_phase, 1)
+        self.assertFalse(extended_october_beach.check_environment)
+        self.assertFalse(extended_october_beach.check_aemet)
+
+        october_primary = scheduled_run(
+            datetime(2026, 10, 31, 14, 0, tzinfo=MADRID)
+        )
         self.assertEqual(october_primary.beach_phase, 1)
-        self.assertTrue(october_primary.check_environment)
+        self.assertFalse(october_primary.initial_beach_recovery)
+        self.assertFalse(october_primary.check_environment)
         self.assertFalse(october_primary.check_aemet)
 
         october_environment = scheduled_run(
-            datetime(2026, 10, 15, 15, 0, tzinfo=MADRID)
+            datetime(2026, 10, 31, 15, 0, tzinfo=MADRID)
         )
         self.assertIsNone(october_environment.beach_phase)
         self.assertTrue(october_environment.check_environment)
         self.assertFalse(october_environment.check_aemet)
 
         after_window = scheduled_run(
-            datetime(2026, 10, 16, 14, 0, tzinfo=MADRID)
+            datetime(2026, 11, 1, 14, 0, tzinfo=MADRID)
         )
         self.assertIsNone(after_window.beach_phase)
         self.assertFalse(after_window.check_environment)
@@ -119,6 +135,52 @@ class ScheduleTests(unittest.TestCase):
         self.assertIsNone(winter.beach_phase)
         self.assertTrue(winter.check_environment)
         self.assertFalse(winter.check_aemet)
+
+    def test_october_recovery_windows_are_safebeach_only(self):
+        first = scheduled_run(
+            datetime(2026, 10, 10, 13, 0, tzinfo=MADRID)
+        )
+        self.assertEqual(first.beach_phase, 1)
+        self.assertTrue(first.initial_beach_recovery)
+        self.assertFalse(first.check_environment)
+        self.assertFalse(first.check_aemet)
+
+        first_confirmation = scheduled_run(
+            datetime(2026, 10, 10, 13, 5, tzinfo=MADRID)
+        )
+        self.assertEqual(first_confirmation.beach_phase, 2)
+        self.assertTrue(first_confirmation.initial_beach_recovery)
+        self.assertFalse(first_confirmation.check_environment)
+
+        second = scheduled_run(
+            datetime(2026, 10, 10, 13, 30, tzinfo=MADRID)
+        )
+        self.assertEqual(second.beach_phase, 1)
+        self.assertTrue(second.initial_beach_recovery)
+        self.assertFalse(second.check_environment)
+        self.assertFalse(second.check_aemet)
+
+        second_confirmation = scheduled_run(
+            datetime(2026, 10, 10, 13, 35, tzinfo=MADRID)
+        )
+        self.assertEqual(second_confirmation.beach_phase, 2)
+        self.assertTrue(second_confirmation.initial_beach_recovery)
+        self.assertFalse(second_confirmation.check_environment)
+
+        final_confirmation = scheduled_run(
+            datetime(2026, 10, 10, 13, 40, tzinfo=MADRID)
+        )
+        self.assertEqual(final_confirmation.beach_phase, 3)
+        self.assertTrue(final_confirmation.initial_beach_recovery)
+        self.assertFalse(final_confirmation.check_environment)
+
+        idle = scheduled_run(
+            datetime(2026, 10, 10, 13, 15, tzinfo=MADRID)
+        )
+        self.assertIsNone(idle.beach_phase)
+        self.assertFalse(idle.initial_beach_recovery)
+        self.assertFalse(idle.check_environment)
+        self.assertFalse(idle.check_aemet)
 
     def test_aemet_hourly_bounds_and_exact_minute(self):
         for hour in (7, 8, 12, 19, 23):
@@ -157,6 +219,28 @@ class BeachConfirmationTests(unittest.TestCase):
         self.assertTrue(state["beach_ready"][0]["initial"])
         clear_beach_ready(state)
         self.assertEqual(state["beaches"]["Centre"]["flag"], "green")
+
+    def test_initial_state_changed_on_second_sample_gets_final_confirmation(self):
+        state = OperationalUpdateState.empty("2026-08-07")
+        first = _status({"Centre": "yellow"}, {"Centre": False}, minute=0)
+        changed = _status({"Centre": "red"}, {"Centre": False}, minute=5)
+        confirmed = _status({"Centre": "red"}, {"Centre": False}, minute=10)
+
+        observe_beaches(state, first, 1)
+        self.assertTrue(state["beach_pending"]["initial"])
+
+        observe_beaches(state, changed, 2)
+        self.assertEqual(state["beach_pending"]["stage"], 2)
+        self.assertTrue(state["beach_pending"]["initial"])
+        self.assertEqual(state["beach_pending"]["candidates"][0]["new"], "red")
+
+        observe_beaches(state, confirmed, 3)
+        self.assertIsNone(state["beach_pending"])
+        self.assertEqual(state["beach_ready"][0]["new"], "red")
+        self.assertTrue(state["beach_ready"][0]["initial"])
+
+        clear_beach_ready(state)
+        self.assertEqual(state["beaches"]["Centre"]["flag"], "red")
 
     def test_published_full_digest_can_seed_beach_baseline(self):
         state = OperationalUpdateState.empty("2026-08-07")

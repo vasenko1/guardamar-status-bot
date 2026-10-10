@@ -143,7 +143,8 @@ CRON_TZ=Europe/Madrid
 51 7-23 * * * /path/to/TelegramBot/termux/monitor-updates.sh
 0,5,10 11,13,15,17,19 * 7,8 * /path/to/TelegramBot/termux/monitor-updates.sh
 0,5,10 12,14,16,18 * 6,9 * /path/to/TelegramBot/termux/monitor-updates.sh
-0,5,10 12,14,16,18 1-15 10 * /path/to/TelegramBot/termux/monitor-updates.sh
+0,5,10 12,14,16,18 * 10 * /path/to/TelegramBot/termux/monitor-updates.sh
+0,5,10,30,35,40 13 * 10 * /path/to/TelegramBot/termux/monitor-updates.sh
 0 20 * 6,9 * /path/to/TelegramBot/termux/monitor-updates.sh
 0 11,15,19 * 1-5,10-12 * /path/to/TelegramBot/termux/monitor-updates.sh
 2 9 * * * /path/to/TelegramBot/termux/sync-guide.sh
@@ -193,14 +194,17 @@ The validated Android deployment uses the scripts in `termux/`:
   event-planning managed cron block at 08:25 with one 09:25 recovery and reads
   only fresh local event snapshots before Telegram delivery.
   `termux/update-daily.sh` runs every five minutes
-  from 10:10 through 10:40; from 1 June through 15 October its first valid
+  from 10:10 through 10:40; from 1 June through 31 October its first valid
   SafeBeach response creates the separate beach root immediately and later
-  responses edit that root in place. From 16 October through 31 May these
+  responses edit that root in place. From 1 November through 31 May these
   invocations make no SafeBeach request. CAMS uses only the 10:40 invocation for
   its early late-cycle check;
-- `termux/monitor-updates.sh` uses the same 1 June–15 October beach guard.
-  SafeBeach keeps its existing seasonal primary/confirmation windows and
-  CAMS/Meteosalud keep their existing recovery checkpoints. Independent AEMET
+- `termux/monitor-updates.sh` uses the same 1 June–31 October beach guard.
+  SafeBeach keeps its existing seasonal primary/confirmation windows; October
+  adds SafeBeach-only 13:00 and 13:30 initial-recovery opportunities that stop
+  fetching once today's root has a confirmed SafeBeach status, with bounded
+  +5/+10 confirmations while pending. CAMS/Meteosalud keep their existing
+  checkpoints. Independent AEMET
   CAP-only checks run hourly at `:51` from 07:51 through 23:51 year-round;
   confirmed later beach changes remain replies to the root, while AEMET changes
   reply to the Morning Digest;
@@ -296,7 +300,8 @@ CRON_TZ=Europe/Madrid
 51 7-23 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
 0,5,10 11,13,15,17,19 * 7,8 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
 0,5,10 12,14,16,18 * 6,9 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
-0,5,10 12,14,16,18 1-15 10 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
+0,5,10 12,14,16,18 * 10 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
+0,5,10,30,35,40 13 * 10 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
 0 20 * 6,9 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
 0 11,15,19 * 1-5,10-12 * /data/data/com.termux/files/home/bots/guardamar-status/termux/monitor-updates.sh
 2 9 * * * /data/data/com.termux/files/home/bots/guardamar-status/termux/sync-guide.sh

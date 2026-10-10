@@ -30,8 +30,8 @@ schemas, and library choices belong in later design work or ADRs.
    check; later recovery uses only the first invocation of already scheduled
    operational windows until today's UTC cycle is accepted, comparing the remaining
    local day semantically, and send one compact reply only for a material
-   change. From 1 June through 15 October, every update invocation also
-   checks SafeBeach. The first valid current response with at least one flag
+   change. From 1 June through 31 October, eligible update invocations also
+   check SafeBeach. The first valid current response with at least one flag
    creates the separate beach root immediately; later valid responses edit
    that same root through 10:40. Event catalogs are attempted at most once
    that day so later event facts are saved without seven repeat calls.
@@ -63,7 +63,7 @@ no message.
 | --- | --- | --- |
 | Morning Digest | 07:30 daily | One immutable daily message; pharmacy, non-sport events, holidays/markets, AEMET weather/sea/UV, locally computed sunrise/sunset, CAMS/Meteosalud baseline and fresh CCE hydrology contribute here without becoming separate morning processes. Sport is intentionally omitted once the same release activates Sports Today. |
 | SUMA tax reminders | 08:05 daily one-shot | Independent one-shot cross-checks two official HTML pages and may publish at most one exact-date tax/debit reminder; separate state, no daemon or resident scheduler. |\n| Sports Today | 08:25 daily, recovery 09:25 | Reads only fresh accepted same-day local event snapshots through the shared planning loader; no source HTTP or AI. Sends one crash-safe current-day sports reminder/correction when qualifying sport exists; sent/uncertain state blocks recovery duplicates, while no sport creates no delivery marker. |
-| SafeBeach + Mayor bathing status | 10:10–10:40 in season, then bounded operational checks | Separate daily beach root, live early edits, later confirmed replies; explicit Mayor bathing restrictions remain an independent safety signal. |
+| SafeBeach + Mayor bathing status | SafeBeach 10:10–10:40 through 31 Oct plus bounded operational checks; Mayor bathing sidecar retains its pre-extension boundary through 15 Oct | Separate daily beach root, live early edits, later confirmed replies; explicit Mayor bathing restrictions remain an independent safety signal without inheriting the SafeBeach-only 16–31 Oct extension. |
 | AEMET operational warnings | Hourly at `:51` from 07:51 through 23:51 | One bounded CAP-only check; material warning changes reply to the Morning Digest. |
 | CAMS / Meteosalud late environment | 10:40 CAMS early check plus existing operational recovery; Meteosalud on operational checkpoints | Material air-quality, pollen, heat or cold changes reply to the Morning Digest. |
 | CCE / Previfoc emergency risks | Hourly at `:19` | CCE/Segura hydrological transitions remain immediate. Previfoc is still observed hourly, but changes seen before 07:00 are kept silent and only the still-current delta may publish on the first run after 07:00; fresh active hydrology may also appear in the next Morning Digest. |
@@ -376,9 +376,17 @@ the weather blocks independently of the separate SafeBeach lifecycle.
 
 The SafeBeach adapter performs one bounded HTML request per invocation and
 does not add an internal retry or response cache. Scheduled SafeBeach requests
-are allowed only from 1 June through 15 October; from 16 October through
-31 May there are none. October uses the reduced four-window SafeBeach cadence
-while AEMET retains its existing year-round warning schedule. Morning Digest collection never calls SafeBeach.
+are allowed only from 1 June through 31 October; from 1 November through
+31 May there are none. October keeps the 12:00/14:00/16:00/18:00 primary
+cadence and adds SafeBeach-only initial-recovery opportunities at 13:00 and
+13:30 with bounded +5/+10 confirmations. They stop fetching SafeBeach once the
+daily root has a confirmed SafeBeach status; those recovery checkpoints do not
+add CAMS,
+Meteosalud, Mayor-channel or AEMET work. Extending SafeBeach beyond 15 October
+also does not extend the pre-existing environment or Mayor sidecars:
+CAMS/Meteosalud keep their prior 11:00/15:00/19:00 recovery cadence on
+16-31 October, and the 10:10-10:40 Mayor bathing-notice reads retain their
+pre-extension boundary. AEMET retains its existing year-round warning schedule. Morning Digest collection never calls SafeBeach.
 The 10:10–10:40 update invocations request it every five minutes inside the
 annual window. Any valid current response with at least one known beach flag
 is publishable immediately: the first creates the daily beach root and later
