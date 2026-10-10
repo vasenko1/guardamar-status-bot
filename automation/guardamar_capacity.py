@@ -744,6 +744,8 @@ def _select_launch_memory(gateway: Any) -> tuple[float, dict[str, Any]]:
     try:
         availability = gateway.get_a1_capacity_report()
     except Exception as exc:
+        if _error_kind(exc) == "rate_limit":
+            return MEMORY_GBS, {"status": "RATE_LIMITED", "error": _safe_error(exc)}
         return MEMORY_GBS, {"status": "UNAVAILABLE", "error": _safe_error(exc)}
 
     snapshot = {
@@ -815,6 +817,14 @@ def run_launch(
         )
 
     selected_memory_gbs, capacity_snapshot = _select_launch_memory(gateway)
+    if capacity_snapshot["status"] == "RATE_LIMITED":
+        return CapacityResult(
+            "RATE_LIMITED",
+            "OCI throttled the capacity report; launch skipped and search stop requested",
+            disable_schedule=True,
+            report=final_report,
+            capacity_report=capacity_snapshot,
+        )
 
     try:
         identifier = gateway.launch_instance(
@@ -836,7 +846,8 @@ def run_launch(
         if kind == "rate_limit":
             return CapacityResult(
                 "RATE_LIMITED",
-                "OCI rate-limited the single request; no retry in this run",
+                "OCI rate-limited the single request; stop search to prevent repeated 429",
+                disable_schedule=True,
                 report=final_report,
                 memory_in_gbs=selected_memory_gbs,
                 capacity_report=capacity_snapshot,
@@ -948,9 +959,10 @@ def main(
     except Exception as exc:
         kind = _error_kind(exc)
         result = CapacityResult(
-            "BLOCKED" if kind == "fatal" else "AUDIT_UNAVAILABLE",
+            "RATE_LIMITED" if kind == "rate_limit" else
+            ("BLOCKED" if kind == "fatal" else "AUDIT_UNAVAILABLE"),
             "preflight unavailable: " + _safe_error(exc),
-            disable_schedule=kind == "fatal",
+            disable_schedule=kind in {"fatal", "rate_limit"},
         )
     _emit_result(result, current_env)
     return result.exit_code
