@@ -130,8 +130,9 @@ created by this repository.
 After the token is in place, the operator may run
 `termux/install-capacity-cron.sh` on the phone. The installer checks token
 permissions, backs up the current crontab once, preserves unrelated jobs and
-adds only its own `12,27,42,57 * * * *` block. It starts `crond` and displays
-that block and the service status. This PR does not install the block.
+adds only its own `*/5 * * * *` block. It starts `crond` and displays
+that block and the service status. Merging the PR does not install the block: the owner must run the installer
+on the production phone after the reviewed main is deployed.
 
 Each invocation makes one bounded GET for the exact workflow and one bounded
 GET for its latest `main` run (`per_page=1`). An inactive workflow, failed or
