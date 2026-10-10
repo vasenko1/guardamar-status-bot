@@ -868,6 +868,7 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
             locator = AsyncMock(side_effect=[
                 location(street="Avenida del Mediterráneo"),
                 None,
+                location(street="Avenida del Mediterráneo"),
             ])
 
             lane = incident(category="laneClosed")
@@ -894,7 +895,7 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
                 locator=locator,
             )
             rows[:] = [road]
-            delivered = await monitor_traffic(
+            first_attempt = await monitor_traffic(
                 state,
                 NOW + timedelta(hours=1),
                 "key",
@@ -903,10 +904,21 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
                 fetcher=fetcher,
                 locator=locator,
             )
+            second_attempt = await monitor_traffic(
+                state,
+                NOW + timedelta(hours=2),
+                "key",
+                composer,
+                publish,
+                fetcher=fetcher,
+                locator=locator,
+            )
 
-        self.assertEqual(delivered, 0)
-        self.assertEqual(locator.await_count, 2)
-        self.assertEqual(len(sent), 1)
+        self.assertEqual(first_attempt, 0)
+        self.assertEqual(second_attempt, 1)
+        self.assertEqual(locator.await_count, 3)
+        self.assertEqual(len(sent), 2)
+        self.assertIn("теперь полностью перекрыт", sent[-1][0])
 
     async def test_new_present_road_closure_uses_reviewed_copy(self):
         with tempfile.TemporaryDirectory() as directory:
