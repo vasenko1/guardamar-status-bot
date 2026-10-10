@@ -1,6 +1,8 @@
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 from automation import guardamar_capacity as capacity
 
@@ -289,6 +291,63 @@ class CapacityAuditTests(unittest.TestCase):
         self.assertEqual(result.outcome, "BLOCKED")
         self.assertTrue(result.disable_schedule)
         self.assertEqual(gateway.launch_calls, [])
+
+    def test_capacity_report_sdk_request_contains_all_three_memory_profiles(self):
+        class FakeShapeRequest:
+            def __init__(self, instance_shape, instance_shape_config):
+                self.instance_shape = instance_shape
+                self.instance_shape_config = instance_shape_config
+
+        class FakeShapeConfig:
+            def __init__(self, ocpus, memory_in_gbs):
+                self.ocpus = ocpus
+                self.memory_in_gbs = memory_in_gbs
+
+        class FakeReportRequest:
+            def __init__(self, compartment_id, availability_domain, shape_availabilities):
+                self.compartment_id = compartment_id
+                self.availability_domain = availability_domain
+                self.shape_availabilities = shape_availabilities
+
+        model = SimpleNamespace(
+            CreateCapacityReportShapeAvailabilityDetails=FakeShapeRequest,
+            CapacityReportInstanceShapeConfig=FakeShapeConfig,
+            CreateComputeCapacityReportDetails=FakeReportRequest,
+        )
+        fake_oci = SimpleNamespace(
+            core=SimpleNamespace(models=model),
+            retry=SimpleNamespace(NoneRetryStrategy=lambda: "NO_RETRY"),
+        )
+        fake_compute = Mock()
+        returned = [
+            SimpleNamespace(
+                instance_shape=capacity.SHAPE,
+                instance_shape_config=FakeShapeConfig(capacity.OCPUS, memory),
+                availability_status=capacity.CAPACITY_STATUS_OUT_OF_HOST_CAPACITY,
+                available_count=None,
+            )
+            for memory in (6.0, 2.0, 1.0)
+        ]
+        fake_compute.create_compute_capacity_report.return_value = SimpleNamespace(
+            data=SimpleNamespace(shape_availabilities=returned)
+        )
+
+        gateway = object.__new__(capacity.OciGateway)
+        gateway._oci = fake_oci
+        gateway._compute = fake_compute
+        report = gateway.get_a1_capacity_report()
+
+        self.assertEqual(set(report), {6.0, 2.0, 1.0})
+        fake_compute.create_compute_capacity_report.assert_called_once()
+        args, kwargs = fake_compute.create_compute_capacity_report.call_args
+        self.assertEqual(kwargs["retry_strategy"], "NO_RETRY")
+        self.assertEqual(args[0].compartment_id, capacity.COMPARTMENT_OCID)
+        self.assertEqual(args[0].availability_domain, capacity.AVAILABILITY_DOMAIN)
+        self.assertEqual(
+            [(row.instance_shape_config.ocpus, row.instance_shape_config.memory_in_gbs)
+             for row in args[0].shape_availabilities],
+            [(1.0, 6.0), (1.0, 2.0), (1.0, 1.0)],
+        )
 
     def test_every_run_reports_6gb_2gb_and_read_only_1gb(self):
         gateway = FakeGateway()
