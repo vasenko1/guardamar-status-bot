@@ -1250,7 +1250,9 @@ def active_traffic_summary(
 
     if not labels:
         return None
-    return TrafficSummary(active_count=len(labels), labels=tuple(labels))
+    active_count = len(labels)
+    unique_labels = tuple(sorted(dict.fromkeys(labels), key=str.casefold))
+    return TrafficSummary(active_count=active_count, labels=unique_labels)
 
 
 async def _deliver(
