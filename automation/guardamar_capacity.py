@@ -778,6 +778,7 @@ def _select_launch_memory(gateway: Any) -> tuple[float, dict[str, Any]]:
         return FALLBACK_MEMORY_GBS, snapshot
     return MEMORY_GBS, snapshot
 
+
 def run_launch(
     gateway: Any,
     env: Mapping[str, str],
@@ -859,6 +860,7 @@ def run_launch(
             disable_schedule=True,
             report=final_report,
             memory_in_gbs=selected_memory_gbs,
+            capacity_report=capacity_snapshot,
         )
 
     result = _observe_instance(gateway, identifier, sleep)
