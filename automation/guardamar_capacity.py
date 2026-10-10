@@ -604,10 +604,11 @@ def _error_kind(exc: BaseException) -> str:
     message = str(getattr(exc, "message", exc)).lower()
     status = getattr(exc, "status", None)
     code = str(getattr(exc, "code", "")).lower()
-    if "out of host capacity" in message or "outofhostcapacity" in code:
-        return "capacity"
+    # A throttle response always takes precedence over a capacity-like message.
     if status == 429 or code == "toomanyrequests":
         return "rate_limit"
+    if "out of host capacity" in message or "outofhostcapacity" in code:
+        return "capacity"
     if isinstance(status, int) and 400 <= status < 500:
         return "fatal"
     if isinstance(exc, (SafetyError, KeyError, TypeError, ValueError)):
