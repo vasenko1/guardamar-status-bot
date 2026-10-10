@@ -528,6 +528,12 @@ def fallback_body(
                 f"{_sentence_start(place)} полное перекрытие снято, "
                 "но полоса движения остаётся закрыта."
             )
+    elif mode == "reconfirmed_present":
+        body = (
+            f"По актуальным данным, проезд {place} по-прежнему перекрыт."
+            if incident.category == "roadClosed"
+            else f"{_sentence_start(place)} полоса движения по-прежнему закрыта."
+        )
     else:
         if incident.category == "roadClosed":
             body = f"{_sentence_start(place)} перекрыт проезд."
@@ -1570,6 +1576,14 @@ async def monitor_traffic(
                 _clean_text(lifecycle_existing.get("last_alert_category"), limit=40)
                 if lifecycle_existing is not None else None
             )
+            pending_delivery = (
+                lifecycle_existing.get("pending_delivery")
+                if lifecycle_existing is not None else None
+            )
+            uncertain_end_delivery = (
+                isinstance(pending_delivery, dict)
+                and pending_delivery.get("marker") == "end_notified_at"
+            )
             base = _serialize_incident(incident, location)
             if lifecycle_existing is not None:
                 for key in (
@@ -1616,7 +1630,11 @@ async def monitor_traffic(
                     and previous_present_date is not None
                     and (last_alert_category or old_category) != incident.category
                 )
-                if newly_present:
+                if uncertain_end_delivery:
+                    mode = "reconfirmed_present"
+                    marker = "last_present_alert_date"
+                    reply_to = last_message
+                elif newly_present:
                     mode = "new_present"
                     marker = "last_present_alert_date"
                 elif category_changed:
@@ -1673,6 +1691,8 @@ async def monitor_traffic(
                 mode,
                 local_now,
             )
+            if mode == "reconfirmed_present":
+                body = fallback_body(incident, location, mode, local_now)
             if body is None:
                 try:
                     body = await compose_body(facts)
