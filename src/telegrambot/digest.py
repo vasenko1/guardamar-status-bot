@@ -905,6 +905,20 @@ def build_message(
             "🌊 CCE: действует гидрологическое предупреждение.",
         ])
 
+    if digest.traffic is not None and digest.traffic.active_count > 0:
+        if digest.traffic.active_count == 1 and digest.traffic.labels:
+            traffic_line = (
+                "🚧 <b>Дороги:</b> действует ограничение движения — "
+                + html.escape(digest.traffic.labels[0])
+                + "."
+            )
+        else:
+            traffic_line = (
+                "🚧 <b>Дороги:</b> активных ограничений движения: "
+                f"<b>{digest.traffic.active_count}</b>."
+            )
+        lines.extend(["", traffic_line])
+
     standalone_environment = []
     if (
         digest.heat_health_risk is not None
