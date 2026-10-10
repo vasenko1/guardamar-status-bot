@@ -1485,6 +1485,57 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("pending_delivery", record)
         self.assertNotIn("last_message_id", record)
 
+    async def test_reappearing_after_uncertain_reopening_is_reconfirmed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+            await self._run(state, NOW, (incident(),), sent)
+            await self._run(state, NOW + timedelta(hours=1), (), sent)
+
+            async def empty_fetch(_key):
+                return ()
+
+            async def composer(_facts):
+                return None
+
+            async def uncertain_publish(_message, _reply_to):
+                raise TrafficDeliveryUncertain()
+
+            with self.assertRaises(TrafficDeliveryUncertain):
+                await monitor_traffic(
+                    state,
+                    NOW + timedelta(hours=2),
+                    "key",
+                    composer,
+                    uncertain_publish,
+                    fetcher=empty_fetch,
+                    locator=AsyncMock(),
+                )
+
+            async def present_fetch(_key):
+                return (incident(),)
+
+            reconfirmed = []
+
+            async def publish(message, reply_to):
+                reconfirmed.append((message, reply_to))
+                return 1000
+
+            delivered = await monitor_traffic(
+                state,
+                NOW + timedelta(hours=3),
+                "key",
+                composer,
+                publish,
+                fetcher=present_fetch,
+                locator=AsyncMock(return_value=location()),
+            )
+
+        self.assertEqual(delivered, 1)
+        self.assertEqual(len(reconfirmed), 1)
+        self.assertEqual(reconfirmed[0][1], sent[0][2])
+        self.assertIn("по-прежнему перекрыт", reconfirmed[0][0])
+
     async def test_uncertain_reopening_is_not_retried(self):
         with tempfile.TemporaryDirectory() as directory:
             state = TrafficState(Path(directory) / "traffic.json")
