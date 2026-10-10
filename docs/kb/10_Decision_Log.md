@@ -206,6 +206,8 @@ Detailed decisions belong in `adr/`.
 | 2026-07-28 | Bound SafeBeach to a conservative summer window | Municipal service dates can vary inside a broader official window; use SafeBeach only from 20 June through 14 September to prevent stale winter flags while retaining its live activity checks. | `adr/0018-nearby-beach-flags.md` |
 | 2026-07-29 | ~~Normalize Policía traffic documents into independent mobility measures~~ | Superseded by ADR 0073 when the source proved unsuitable as a dependable current runtime feed. | `adr/0022-structured-mobility-measures.md`, `adr/0073-retire-police-traffic-source.md` |
 
+| 2026-10-11 | Shorten OCI A1 capacity search to five minutes with fail-closed 429 | GitHub :03/:08/.../:58 and operator-installed Termux :00/:05/.../:55 use a four-minute freshness guard; any OCI 429 stops the workflow for manual review. No additional create calls or widened Always Free limits. | `adr/0107-five-minute-guarded-oracle-capacity-search.md` |
+
 ## Adding a decision
 
 1. Create an ADR for a durable or consequential architecture choice.
