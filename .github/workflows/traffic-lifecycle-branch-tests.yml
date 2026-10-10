@@ -1,0 +1,20 @@
+name: Traffic lifecycle branch tests
+
+on:
+  push:
+    branches:
+      - feature/traffic-lifecycle-current-state
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e .
+      - run: python -m unittest tests.test_traffic tests.test_digest tests.test_termux_traffic
