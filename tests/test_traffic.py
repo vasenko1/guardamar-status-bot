@@ -1400,6 +1400,92 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sent[1][1], sent[0][2])
         self.assertIn("теперь полностью перекрыт", sent[1][0])
 
+    async def test_material_segment_change_publishes_one_reply(self):
+        original = incident()
+        changed = incident(
+            to_place="Avenida de Cervantes",
+            coordinates=(
+                original.coordinates[0],
+                original.coordinates[1],
+                (-0.6552000, 38.0839000),
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+            await self._run(state, NOW, (original,), sent)
+            delivered = await self._run(
+                state, NOW + timedelta(hours=1), (changed,), sent
+            )
+            repeated = await self._run(
+                state, NOW + timedelta(hours=2), (changed,), sent
+            )
+
+        self.assertEqual(delivered, 1)
+        self.assertEqual(repeated, 0)
+        self.assertEqual(len(sent), 2)
+        self.assertEqual(sent[-1][1], sent[0][2])
+        self.assertIn("Изменились границы перекрытия", sent[-1][0])
+        self.assertIn("Avenida de Cervantes", sent[-1][0])
+
+    async def test_material_segment_change_retries_after_explicit_send_failure(self):
+        original = incident()
+        changed = incident(
+            to_place="Avenida de Cervantes",
+            coordinates=(
+                original.coordinates[0],
+                original.coordinates[1],
+                (-0.6552000, 38.0839000),
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            state = TrafficState(Path(directory) / "traffic.json")
+            sent = []
+            await self._run(state, NOW, (original,), sent)
+
+            async def fetcher(_key):
+                return (changed,)
+
+            async def locator(_item, _key):
+                return location()
+
+            async def composer(_facts):
+                return None
+
+            async def failing_publish(_message, _reply_to):
+                raise RuntimeError("telegram rejected")
+
+            with self.assertRaises(RuntimeError):
+                await monitor_traffic(
+                    state,
+                    NOW + timedelta(hours=1),
+                    "key",
+                    composer,
+                    failing_publish,
+                    fetcher=fetcher,
+                    locator=locator,
+                )
+
+            retried = []
+
+            async def publish(message, reply_to):
+                retried.append((message, reply_to))
+                return 777
+
+            delivered = await monitor_traffic(
+                state,
+                NOW + timedelta(hours=2),
+                "key",
+                composer,
+                publish,
+                fetcher=fetcher,
+                locator=locator,
+            )
+
+        self.assertEqual(delivered, 1)
+        self.assertEqual(len(retried), 1)
+        self.assertIn("Изменились границы перекрытия", retried[0][0])
+
     async def test_reason_end_and_geometry_changes_do_not_push_same_day(self):
         original = incident()
         changed = incident(
