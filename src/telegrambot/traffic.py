@@ -37,7 +37,8 @@ MAX_TEXT_LENGTH = 240
 STATE_VERSION = 1
 STATE_RETENTION = timedelta(days=14)
 MISSING_CONFIRMATIONS = 2
-ACTIVE_SUMMARY_MAX_AGE = timedelta(hours=3)
+# The monitor runs hourly at :37. Tolerate one missed cycle, never two.
+ACTIVE_SUMMARY_MAX_AGE = timedelta(hours=2)
 CONTINUITY_START_TOLERANCE = timedelta(minutes=2)
 CONTINUITY_ENDPOINT_TOLERANCE_METERS = 5.0
 _EARTH_RADIUS_METERS = 6_371_000.0
