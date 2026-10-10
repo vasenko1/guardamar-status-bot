@@ -24,6 +24,8 @@ OCPUS = 1.0
 MEMORY_GBS = 6.0
 FALLBACK_MEMORY_GBS = 2.0
 ALLOWED_MEMORY_GBS = (MEMORY_GBS, FALLBACK_MEMORY_GBS)
+# Diagnostic 1 GB is read-only: Oracle Linux 9 on ARM requires >=2 GB.
+CAPACITY_REPORT_MEMORY_GBS = ALLOWED_MEMORY_GBS + (1.0,)
 CAPACITY_STATUS_AVAILABLE = "AVAILABLE"
 CAPACITY_STATUS_OUT_OF_HOST_CAPACITY = "OUT_OF_HOST_CAPACITY"
 IMAGE_OCID = (
@@ -157,6 +159,7 @@ class CapacityResult:
     public_ip: Optional[str] = None
     report: Optional[AuditReport] = None
     memory_in_gbs: Optional[float] = None
+    capacity_report: Optional[dict[str, Any]] = None
 
     @property
     def exit_code(self) -> int:
@@ -457,7 +460,7 @@ class OciGateway:
     def get_a1_capacity_report(
         self,
     ) -> dict[float, tuple[str, Optional[int]]]:
-        """Return one fresh host-capacity snapshot for the approved A1 profiles."""
+        """Return capacity snapshots for launchable and probe-only A1 profiles."""
 
         oci = self._oci
         requested = [
@@ -468,7 +471,7 @@ class OciGateway:
                     memory_in_gbs=memory_in_gbs,
                 ),
             )
-            for memory_in_gbs in ALLOWED_MEMORY_GBS
+            for memory_in_gbs in CAPACITY_REPORT_MEMORY_GBS
         ]
         details = oci.core.models.CreateComputeCapacityReportDetails(
             compartment_id=COMPARTMENT_OCID,
@@ -489,7 +492,7 @@ class OciGateway:
             if float(config.ocpus) != OCPUS:
                 continue
             memory_in_gbs = float(config.memory_in_gbs)
-            if memory_in_gbs not in ALLOWED_MEMORY_GBS:
+            if memory_in_gbs not in CAPACITY_REPORT_MEMORY_GBS:
                 continue
             if memory_in_gbs in result:
                 raise SafetyError("OCI returned duplicate A1 capacity rows")
@@ -735,18 +738,34 @@ def _discover_after_ambiguous(
     return None
 
 
-def _select_launch_memory(gateway: Any) -> float:
-    """Use 2 GB only on one explicit, positive host-capacity signal."""
+def _select_launch_memory(gateway: Any) -> tuple[float, dict[str, Any]]:
+    """Check every memory profile; never allow 1 GB as a launch target."""
 
     try:
         availability = gateway.get_a1_capacity_report()
-    except Exception:
-        return MEMORY_GBS
+    except Exception as exc:
+        return MEMORY_GBS, {"status": "UNAVAILABLE", "error": _safe_error(exc)}
 
+    snapshot = {
+        "status": "RECEIVED",
+        "profiles": {
+            f"{memory_in_gbs:g}gb": {
+                "status": (
+                    availability[memory_in_gbs][0]
+                    if memory_in_gbs in availability else "NOT_RETURNED"
+                ),
+                "available_count": (
+                    availability[memory_in_gbs][1]
+                    if memory_in_gbs in availability else None
+                ),
+            }
+            for memory_in_gbs in CAPACITY_REPORT_MEMORY_GBS
+        },
+    }
     primary = availability.get(MEMORY_GBS)
     fallback = availability.get(FALLBACK_MEMORY_GBS)
     if primary is None or fallback is None:
-        return MEMORY_GBS
+        return MEMORY_GBS, snapshot
 
     primary_status, _ = primary
     fallback_status, fallback_count = fallback
@@ -756,8 +775,8 @@ def _select_launch_memory(gateway: Any) -> float:
         and fallback_status == CAPACITY_STATUS_AVAILABLE
         and fallback_has_count
     ):
-        return FALLBACK_MEMORY_GBS
-    return MEMORY_GBS
+        return FALLBACK_MEMORY_GBS, snapshot
+    return MEMORY_GBS, snapshot
 
 
 def run_launch(
@@ -795,7 +814,7 @@ def run_launch(
             report=final_report,
         )
 
-    selected_memory_gbs = _select_launch_memory(gateway)
+    selected_memory_gbs, capacity_snapshot = _select_launch_memory(gateway)
 
     try:
         identifier = gateway.launch_instance(
@@ -812,6 +831,7 @@ def run_launch(
                 "no retry in this run",
                 report=final_report,
                 memory_in_gbs=selected_memory_gbs,
+                capacity_report=capacity_snapshot,
             )
         if kind == "rate_limit":
             return CapacityResult(
@@ -819,6 +839,7 @@ def run_launch(
                 "OCI rate-limited the single request; no retry in this run",
                 report=final_report,
                 memory_in_gbs=selected_memory_gbs,
+                capacity_report=capacity_snapshot,
             )
         if kind == "fatal":
             return CapacityResult(
@@ -827,10 +848,11 @@ def run_launch(
                 disable_schedule=True,
                 report=final_report,
                 memory_in_gbs=selected_memory_gbs,
+                capacity_report=capacity_snapshot,
             )
         discovered = _discover_after_ambiguous(gateway, sleep)
         if discovered is not None:
-            return CapacityResult(**{**asdict(discovered), "report": final_report})
+            return CapacityResult(**{**asdict(discovered), "report": final_report, "capacity_report": capacity_snapshot})
         return CapacityResult(
             "AMBIGUOUS",
             "launch response was ambiguous and no target became visible; "
@@ -838,10 +860,11 @@ def run_launch(
             disable_schedule=True,
             report=final_report,
             memory_in_gbs=selected_memory_gbs,
+            capacity_report=capacity_snapshot,
         )
 
     result = _observe_instance(gateway, identifier, sleep)
-    return CapacityResult(**{**asdict(result), "report": final_report})
+    return CapacityResult(**{**asdict(result), "report": final_report, "capacity_report": capacity_snapshot})
 
 
 def _emit_result(result: CapacityResult, env: Mapping[str, str]) -> None:
