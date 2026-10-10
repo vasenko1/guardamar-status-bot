@@ -41,6 +41,8 @@ MISSING_CONFIRMATIONS = 2
 ACTIVE_SUMMARY_MAX_AGE = timedelta(hours=2)
 CONTINUITY_START_TOLERANCE = timedelta(minutes=2)
 CONTINUITY_ENDPOINT_TOLERANCE_METERS = 5.0
+SEGMENT_UPDATE_ENDPOINT_TOLERANCE_METERS = 25.0
+SEGMENT_UPDATE_FALLBACK_TOLERANCE_METERS = 50.0
 _EARTH_RADIUS_METERS = 6_371_000.0
 
 _STATE_REQUIRED_FIELDS = frozenset({
@@ -534,6 +536,13 @@ def fallback_body(
             if incident.category == "roadClosed"
             else f"{_sentence_start(place)} полоса движения по-прежнему закрыта."
         )
+    elif mode == "segment_change":
+        label = location_label(incident, location)
+        body = (
+            f"Изменились границы перекрытия: {label}."
+            if incident.category == "roadClosed"
+            else f"Изменились границы ограничения полосы: {label}."
+        )
     else:
         if incident.category == "roadClosed":
             body = f"{_sentence_start(place)} перекрыт проезд."
@@ -865,6 +874,49 @@ def _same_physical_closure(
         <= CONTINUITY_ENDPOINT_TOLERANCE_METERS
     )
     return reverse_boundaries and reverse_geometry
+
+
+def _material_segment_change(
+    previous: TrafficIncident,
+    current: TrafficIncident,
+) -> bool:
+    """Ignore source jitter; publish only a material same-ID extent change."""
+
+    previous_start = previous.coordinates[0]
+    previous_end = previous.coordinates[-1]
+    current_start = current.coordinates[0]
+    current_end = current.coordinates[-1]
+    direct_shift = max(
+        _point_distance_meters(previous_start, current_start),
+        _point_distance_meters(previous_end, current_end),
+    )
+    reverse_shift = max(
+        _point_distance_meters(previous_start, current_end),
+        _point_distance_meters(previous_end, current_start),
+    )
+    endpoint_shift = min(direct_shift, reverse_shift)
+
+    previous_boundaries = {
+        value for value in (
+            _boundary_key(previous.from_place),
+            _boundary_key(previous.to_place),
+        ) if value is not None
+    }
+    current_boundaries = {
+        value for value in (
+            _boundary_key(current.from_place),
+            _boundary_key(current.to_place),
+        ) if value is not None
+    }
+    complete_boundaries = (
+        len(previous_boundaries) == 2 and len(current_boundaries) == 2
+    )
+    if complete_boundaries:
+        return (
+            previous_boundaries != current_boundaries
+            and endpoint_shift > SEGMENT_UPDATE_ENDPOINT_TOLERANCE_METERS
+        )
+    return endpoint_shift > SEGMENT_UPDATE_FALLBACK_TOLERANCE_METERS
 
 
 def _reconcile_provider_ids(
@@ -1630,6 +1682,13 @@ async def monitor_traffic(
                     and previous_present_date is not None
                     and (last_alert_category or old_category) != incident.category
                 )
+                segment_changed = (
+                    lifecycle_existing is not None
+                    and old_incident is not None
+                    and old_validity == "present"
+                    and previous_present_date is not None
+                    and _material_segment_change(old_incident, incident)
+                )
                 if uncertain_end_delivery:
                     mode = "reconfirmed_present"
                     marker = "last_present_alert_date"
@@ -1639,6 +1698,10 @@ async def monitor_traffic(
                     marker = "last_present_alert_date"
                 elif category_changed:
                     mode = "category_change"
+                    marker = "last_present_alert_date"
+                    reply_to = last_message
+                elif segment_changed:
+                    mode = "segment_change"
                     marker = "last_present_alert_date"
                     reply_to = last_message
                 else:
@@ -1691,7 +1754,7 @@ async def monitor_traffic(
                 mode,
                 local_now,
             )
-            if mode == "reconfirmed_present":
+            if mode in {"reconfirmed_present", "segment_change"}:
                 body = fallback_body(incident, location, mode, local_now)
             if body is None:
                 try:
@@ -1736,17 +1799,25 @@ async def monitor_traffic(
                 ))
                 continue
 
-            delivered += await _deliver(
-                state,
-                value,
-                record,
-                message=message,
-                publish=publish,
-                reply_to=reply_to,
-                marker=marker,
-                marker_value=marker_value,
-                remember=remember,
-            )
+            try:
+                delivered += await _deliver(
+                    state,
+                    value,
+                    record,
+                    message=message,
+                    publish=publish,
+                    reply_to=reply_to,
+                    marker=marker,
+                    marker_value=marker_value,
+                    remember=remember,
+                )
+            except TrafficDeliveryUncertain:
+                raise
+            except Exception:
+                if mode == "segment_change" and lifecycle_existing is not None:
+                    events[incident.provider_id] = lifecycle_existing
+                    state.write(value)
+                raise
 
         if len(standalone_alerts) == 1:
             (
