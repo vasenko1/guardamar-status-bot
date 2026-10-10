@@ -273,11 +273,25 @@ class DigestMessageTests(unittest.TestCase):
         ))
 
         self.assertIn(
-            "🚧 <b>Дороги:</b> активных ограничений движения: <b>3</b>.",
+            "🚧 <b>Дороги:</b> активных ограничений движения: <b>3</b> — "
+            "Avenida del Mediterráneo, Calle Mayor, Plaza de la Constitución.",
             message,
         )
-        self.assertNotIn("Calle Mayor", message)
-        self.assertNotIn("Plaza de la Constitución", message)
+
+    def test_many_active_road_restrictions_are_bounded(self):
+        message = build_message(self._routine_digest(
+            traffic=TrafficSummary(
+                active_count=5,
+                labels=("A", "B", "C", "D", "E"),
+            )
+        ))
+
+        self.assertIn(
+            "активных ограничений движения: <b>5</b> — A, B, C · и ещё 2.",
+            message,
+        )
+        self.assertNotIn(", D", message)
+        self.assertNotIn(", E", message)
 
     def test_aemet_source_only_event_is_not_rendered_as_hazard(self):
         self.assertIsNone(_warning_text("Aviso AEMET"))
