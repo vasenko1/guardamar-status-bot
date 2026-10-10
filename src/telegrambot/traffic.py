@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 
 from ._transport import BoundedFetchError, fetch_bounded
 from .branding import with_footer
+from .models import TrafficSummary
 
 TRAFFIC_URL = "https://api.tomtom.com/maps/orbis/traffic/incidents/details"
 REVERSE_URL = "https://api.tomtom.com/maps/orbis/places/reverseGeocode"
@@ -36,7 +37,7 @@ MAX_TEXT_LENGTH = 240
 STATE_VERSION = 1
 STATE_RETENTION = timedelta(days=14)
 MISSING_CONFIRMATIONS = 2
-DAILY_REPEAT_HOUR = 8
+ACTIVE_SUMMARY_MAX_AGE = timedelta(hours=3)
 CONTINUITY_START_TOLERANCE = timedelta(minutes=2)
 CONTINUITY_ENDPOINT_TOLERANCE_METERS = 5.0
 _EARTH_RADIUS_METERS = 6_371_000.0
@@ -518,12 +519,6 @@ def fallback_body(
             body = f"Завтра{when} {place} будет перекрыт проезд."
         else:
             body = f"Завтра{when} {place} будет перекрыта полоса движения."
-    elif mode == "ongoing":
-        body = (
-            f"Проезд {place} остаётся перекрыт."
-            if incident.category == "roadClosed"
-            else f"{_sentence_start(place)} остаётся перекрыта полоса движения."
-        )
     elif mode == "category_change":
         if incident.category == "roadClosed":
             body = f"{_sentence_start(place)} теперь полностью перекрыт проезд."
@@ -639,16 +634,8 @@ def _batch_status(incident: TrafficIncident, mode: str) -> str:
             )
         return status
     if incident.category == "roadClosed":
-        return (
-            "⛔ проезд остаётся перекрыт"
-            if mode == "ongoing"
-            else "⛔ проезд перекрыт"
-        )
-    return (
-        "⚠️ полоса движения остаётся перекрыта"
-        if mode == "ongoing"
-        else "⚠️ перекрыта полоса движения"
-    )
+        return "⛔ проезд перекрыт"
+    return "⚠️ перекрыта полоса движения"
 
 
 def _batch_segment_block(
@@ -1217,6 +1204,55 @@ def _validate_state_record(provider_id: Any, record: Any) -> None:
             raise TrafficError("traffic pending delivery state is invalid", code="STATE")
 
 
+def _summary_label(location: TrafficLocation) -> str:
+    subdivision = _strip_urbanization(location.subdivision)
+    street = _clean_text(location.street)
+    if subdivision and street:
+        return f"{subdivision} — {street}"
+    return street or subdivision or "участок дороги в Гуардамаре"
+
+
+def active_traffic_summary(
+    state: TrafficState,
+    now: datetime,
+    *,
+    max_age: timedelta = ACTIVE_SUMMARY_MAX_AGE,
+) -> Optional[TrafficSummary]:
+    """Return a fresh deduplicated summary of announced active restrictions."""
+
+    if max_age <= timedelta(0):
+        raise ValueError("traffic summary max_age must be positive")
+    local_now = now.astimezone(GUARDAMAR_TIMEZONE)
+    value = state.read()
+    labels: list[str] = []
+    seen = set()
+
+    for provider_id in sorted(value["events"]):
+        record = value["events"][provider_id]
+        if record.get("ended_at") is not None:
+            continue
+        if _alert_date(record, "last_present_alert_date") is None:
+            continue
+        incident = _record_incident(record)
+        if incident.validity != "present":
+            continue
+        last_seen = _safe_iso(record.get("last_seen_at"))
+        if last_seen is None:
+            continue
+        if local_now - last_seen.astimezone(GUARDAMAR_TIMEZONE) > max_age:
+            continue
+        location = _record_location(record)
+        key = _batch_segment_key(incident, location, "current")
+        if key in seen:
+            continue
+        seen.add(key)
+        labels.append(_summary_label(location))
+
+    if not labels:
+        return None
+    return TrafficSummary(active_count=len(labels), labels=tuple(labels))
+
+
 async def _deliver(
     state: TrafficState,
     value: dict,
@@ -1404,18 +1440,28 @@ async def monitor_traffic(
             ):
                 incident = _record_incident(record)
                 location = _record_location(record)
+                start_context = ""
+                if incident.starts_at is not None:
+                    started = incident.starts_at.astimezone(GUARDAMAR_TIMEZONE)
+                    if started.date() < local_day:
+                        start_context = (
+                            "\nОграничение действовало с "
+                            f"{started.day} {_RU_MONTHS[started.month]}."
+                        )
+                    else:
+                        start_context = f"\nОграничение действовало с {started:%H:%M}."
                 if incident.category == "roadClosed":
                     body = (
                         f"По актуальным данным, проезд по "
                         f"<b>{html.escape(location_label(incident, location))}</b> "
-                        "снова открыт."
+                        f"снова открыт.{start_context}"
                     )
                     title = "✅ <b>Дорога снова открыта</b>"
                 else:
                     body = (
                         f"По актуальным данным, ограничение полосы на "
                         f"<b>{html.escape(location_label(incident, location))}</b> "
-                        "снято."
+                        f"снято.{start_context}"
                     )
                     title = "✅ <b>Полоса движения снова открыта</b>"
                 message = with_footer(
@@ -1562,12 +1608,6 @@ async def monitor_traffic(
                     mode = "category_change"
                     marker = "last_present_alert_date"
                     reply_to = last_message
-                elif (
-                    previous_present_date != local_day
-                    and local_now.hour >= DAILY_REPEAT_HOUR
-                ):
-                    mode = "ongoing"
-                    marker = "last_present_alert_date"
                 else:
                     continue
 
@@ -1637,7 +1677,7 @@ async def monitor_traffic(
                 if incident.validity == "present" else None
             )
             if reply_to is None and mode in {
-                "new_present", "ongoing", "future_tomorrow"
+                "new_present", "future_tomorrow"
             }:
                 standalone_alerts.append((
                     incident,
