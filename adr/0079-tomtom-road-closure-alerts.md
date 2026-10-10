@@ -144,9 +144,11 @@ new incidents before first publication; refresh a known incident's location only
 when another public message is actually due, falling back to the cached verified
 location if that refresh fails. Telegram non-idempotent sends use the existing
 uncertain-delivery policy: preserve the uncertain marker and stop the current
-run, so a network ambiguity cannot cascade into multiple uncertain sends. A
-reopening/cancellation reply is sent only when a confirmed prior Telegram
-message ID exists.
+run, so a network ambiguity cannot cascade into multiple uncertain sends. If a
+closure reappears before an ambiguously delivered reopening is finalized, send
+one corrective reply confirming that the restriction is still active; this is
+a consistency repair, not a routine reminder. A reopening/cancellation reply
+is sent only when a confirmed prior Telegram message ID exists.
 
 The Termux monitor runs hourly at minute :37, away from the existing main
 monitor checkpoints. With a 31-day month this consumes at most 744 Traffic
