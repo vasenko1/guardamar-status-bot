@@ -1430,6 +1430,15 @@ async def monitor_traffic(
             if missing < MISSING_CONFIRMATIONS or record.get("ended_at"):
                 continue
 
+            # An ambiguous Telegram send records end_notified_at before the
+            # non-idempotent request. On the next clean snapshot, finalize the
+            # lifecycle silently instead of risking a duplicate reopening or
+            # planned-restriction message.
+            if record.get("end_notified_at") is not None:
+                record["ended_at"] = local_now.isoformat()
+                state.write(value)
+                continue
+
             previous_validity = _clean_text(record.get("validity"), limit=40)
             had_present_alert = _alert_date(record, "last_present_alert_date") is not None
             had_future_alert = _alert_date(record, "last_future_alert_date") is not None
