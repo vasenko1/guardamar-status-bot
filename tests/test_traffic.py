@@ -1486,7 +1486,7 @@ class TrafficLifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(retried), 1)
         self.assertIn("Изменились границы перекрытия", retried[0][0])
 
-    async def test_reason_end_and_geometry_changes_do_not_push_same_day(self):
+    async def test_reason_end_and_boundary_wording_without_geometry_change_do_not_push(self):
         original = incident()
         changed = incident(
             descriptions=("Cerrado", "Obras"),
