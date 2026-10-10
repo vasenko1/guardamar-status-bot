@@ -6,6 +6,9 @@ on:
       - "automation/guardamar_capacity.py"
       - "tests/test_guardamar_capacity.py"
       - "tests/test_capacity_backstop.py"
+      - ".github/workflows/guardamar-capacity.yml"
+      - "termux/dispatch-guardamar-capacity.py"
+      - "termux/install-capacity-cron.sh"
       - ".github/workflows/capacity-visibility-tests.yml"
   workflow_dispatch:
 
