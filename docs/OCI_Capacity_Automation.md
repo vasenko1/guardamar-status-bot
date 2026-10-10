@@ -83,7 +83,11 @@ non-terminated target causes zero launch calls. OCI SDK automatic retries are
 disabled at both client and request level.
 
 After both audits pass, one best-effort Compute Capacity Report requests the
-approved A1 profiles together: 1 OCPU / 6 GB and 1 OCPU / 2 GB. The normal
+approved A1 profiles (1 OCPU / 6 GB and 1 OCPU / 2 GB) and an additional
+read-only 1 OCPU / 1 GB diagnostic profile. The 1 GB profile is not an
+approved launch target for the pinned Oracle Linux 9 aarch64 image.
+The JSON log records each reported status and count, or `NOT_RETURNED` for
+missing rows, and a sanitized error when the report fails. The normal
 launch remains 6 GB. The selector chooses 2 GB only when that same report says
 6 GB is `OUT_OF_HOST_CAPACITY` and 2 GB is `AVAILABLE` with a positive
 `available_count` when OCI supplies one. Report failure, missing or unexpected
