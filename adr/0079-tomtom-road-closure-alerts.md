@@ -69,7 +69,8 @@ to affect normal local movement.
   silent until a resident-useful transition occurs.
 - Morning Digest may show one compact read-only road-status line so a long-lived
   closure remains visible without producing a daily traffic post. It uses only
-  already-announced `present` incidents from the existing traffic state whose
+  `present` incidents that have entered the resident-notification lifecycle
+  in the existing traffic state and whose
   `last_seen_at` is no more than two hours old (at most one missed hourly cycle). Mirrored TomTom records for the
   same physical segment are collapsed with the same segment identity used by
   traffic batch presentation. No extra TomTom or reverse-geocoding request is
