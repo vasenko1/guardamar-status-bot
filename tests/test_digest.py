@@ -22,6 +22,7 @@ from telegrambot.models import (
     ColdHealthRisk,
     AirQualitySummary,
     PollenSummary,
+    TrafficSummary,
 )
 
 
@@ -244,6 +245,39 @@ class DigestMessageTests(unittest.TestCase):
         }
         values.update(changes)
         return MorningDigest(**values)
+
+    def test_single_active_road_restriction_is_compact_and_named(self):
+        message = build_message(self._routine_digest(
+            traffic=TrafficSummary(
+                active_count=1,
+                labels=("Avenida del Mediterráneo",),
+            )
+        ))
+
+        self.assertIn(
+            "🚧 <b>Дороги:</b> действует ограничение движения — "
+            "Avenida del Mediterráneo.",
+            message,
+        )
+
+    def test_multiple_active_road_restrictions_show_count_only(self):
+        message = build_message(self._routine_digest(
+            traffic=TrafficSummary(
+                active_count=3,
+                labels=(
+                    "Avenida del Mediterráneo",
+                    "Calle Mayor",
+                    "Plaza de la Constitución",
+                ),
+            )
+        ))
+
+        self.assertIn(
+            "🚧 <b>Дороги:</b> активных ограничений движения: <b>3</b>.",
+            message,
+        )
+        self.assertNotIn("Calle Mayor", message)
+        self.assertNotIn("Plaza de la Constitución", message)
 
     def test_aemet_source_only_event_is_not_rendered_as_hazard(self):
         self.assertIsNone(_warning_text("Aviso AEMET"))
