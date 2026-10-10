@@ -74,6 +74,7 @@ class FakeGateway:
                 capacity.CAPACITY_STATUS_OUT_OF_HOST_CAPACITY,
                 None,
             ),
+            1.0: (capacity.CAPACITY_STATUS_OUT_OF_HOST_CAPACITY, None),
         }
         self.vnics = [
             capacity.VnicRecord("vnic-id", capacity.SUBNET_OCID, "203.0.113.7")
@@ -289,6 +290,30 @@ class CapacityAuditTests(unittest.TestCase):
         self.assertTrue(result.disable_schedule)
         self.assertEqual(gateway.launch_calls, [])
 
+    def test_every_run_reports_6gb_2gb_and_read_only_1gb(self):
+        gateway = FakeGateway()
+        result = capacity.run_launch(
+            gateway, {"GITHUB_RUN_ID": "123"}, lambda _: None
+        )
+        self.assertEqual(gateway.capacity_report_calls, 1)
+        self.assertEqual(set(result.capacity_report["profiles"]), {"6gb", "2gb", "1gb"})
+        self.assertEqual(
+            result.capacity_report["profiles"]["1gb"]["status"],
+            capacity.CAPACITY_STATUS_OUT_OF_HOST_CAPACITY,
+        )
+        self.assertEqual(gateway.launch_memories, [capacity.MEMORY_GBS])
+        with self.assertRaises(capacity.SafetyError):
+            capacity.launch_manifest(1.0)
+
+    def test_missing_1gb_report_row_is_visible(self):
+        gateway = FakeGateway()
+        gateway.capacity_report.pop(1.0)
+        result = capacity.run_launch(
+            gateway, {"GITHUB_RUN_ID": "123"}, lambda _: None
+        )
+        self.assertEqual(result.capacity_report["profiles"]["1gb"]["status"], "NOT_RETURNED")
+        self.assertEqual(gateway.launch_memories, [capacity.MEMORY_GBS])
+
     def test_selector_uses_2gb_only_when_6gb_is_out_and_2gb_is_available(self):
         gateway = FakeGateway()
         gateway.capacity_report = {
@@ -343,6 +368,8 @@ class CapacityAuditTests(unittest.TestCase):
 
         self.assertEqual(result.outcome, "READY")
         self.assertEqual(gateway.capacity_report_calls, 1)
+        self.assertEqual(result.capacity_report["status"], "UNAVAILABLE")
+        self.assertIn("TimeoutError", result.capacity_report["error"])
         self.assertEqual(gateway.launch_memories, [capacity.MEMORY_GBS])
 
     def test_selector_does_not_use_2gb_when_available_count_is_zero(self):
