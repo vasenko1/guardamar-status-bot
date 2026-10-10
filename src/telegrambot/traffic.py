@@ -1644,11 +1644,11 @@ async def monitor_traffic(
                         )
                         # Preserve the last published lifecycle baseline so a
                         # resident-useful transition can be retried on the next
-                        # successful geolocation check. The incident was seen,
-                        # so reset absence tracking without accepting the
-                        # unpublishable transition into public state.
+                        # successful geolocation check. Reset absence tracking,
+                        # but deliberately do not refresh last_seen_at: the
+                        # current geometry was not verified as local, so the
+                        # Morning Digest must be allowed to age this state out.
                         restored = dict(lifecycle_existing)
-                        restored["last_seen_at"] = local_now.isoformat()
                         restored["missing_successes"] = 0
                         events[incident.provider_id] = restored
                         state.write(value)
