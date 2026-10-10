@@ -1453,7 +1453,10 @@ async def monitor_traffic(
                 incident = _record_incident(record)
                 location = _record_location(record)
                 start_context = ""
-                if incident.starts_at is not None:
+                if (
+                    incident.starts_at is not None
+                    and incident.starts_at <= local_now
+                ):
                     started = incident.starts_at.astimezone(GUARDAMAR_TIMEZONE)
                     if started.date() < local_day:
                         start_context = (
