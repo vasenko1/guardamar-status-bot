@@ -463,6 +463,14 @@ class CapacityAuditTests(unittest.TestCase):
         self.assertFalse(result.disable_schedule)
         self.assertEqual(len(gateway.launch_calls), 1)
 
+    def test_rate_limit_classification_precedes_capacity_text(self):
+        error = FakeError(
+            "Out of host capacity; TooManyRequests",
+            status=429,
+            code="TooManyRequests",
+        )
+        self.assertEqual(capacity._error_kind(error), "rate_limit")
+
     def test_capacity_report_429_prevents_launch_and_stops_schedule(self):
         gateway = FakeGateway()
         gateway.capacity_report_error = FakeError(
