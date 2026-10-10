@@ -20,7 +20,9 @@ DISPATCH_PATH = WORKFLOW_PATH + "/dispatches"
 TOKEN_PATH = Path.home() / ".config/guardamar-capacity/github-token"
 RESPONSE_LIMIT = 128 * 1024
 NETWORK_TIMEOUT = 15
-RECENT_WINDOW = timedelta(minutes=10)
+# GitHub slots are :03/:08/.../:58, phone backstop checks :05/:10/.../:00.
+# A completed run younger than 4 minutes belongs to the current slot.
+RECENT_WINDOW = timedelta(minutes=4)
 ACTIVE_RUN_STATUSES = frozenset(
     {"queued", "requested", "waiting", "pending", "in_progress"}
 )
