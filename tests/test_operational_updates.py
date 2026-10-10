@@ -11,6 +11,7 @@ from telegrambot.operational_updates import (
     build_beach_message,
     build_update_message,
     clear_beach_ready,
+    enrich_initial_beach_status,
     finalize_delivery,
     miss_beach_sample,
     observe_beaches,
@@ -241,6 +242,67 @@ class BeachConfirmationTests(unittest.TestCase):
 
         clear_beach_ready(state)
         self.assertEqual(state["beaches"]["Centre"]["flag"], "red")
+
+    def test_initial_root_context_keeps_only_confirmed_matching_beaches(self):
+        confirmed = BeachStatus(
+            flag_color=None,
+            sea_temperature_c=None,
+            nearby_flags=(("Centre", "yellow"),),
+            source_date=date(2026, 10, 10),
+        )
+        observed = BeachStatus(
+            flag_color="yellow",
+            sea_temperature_c=25,
+            wind_direction="N",
+            wind_speed_kmh=6,
+            sea_state="slight",
+            nearby_flags=(
+                ("Centre", "yellow"),
+                ("Roqueta", "green"),
+            ),
+            jellyfish_beaches=("Centre", "Roqueta"),
+            jellyfish_states=(
+                ("Centre", True),
+                ("Roqueta", True),
+            ),
+            updated_times=(
+                ("Centre", time(10, 0)),
+                ("Roqueta", time(10, 5)),
+            ),
+            source_date=date(2026, 10, 10),
+        )
+
+        enriched = enrich_initial_beach_status(confirmed, observed)
+
+        self.assertEqual(enriched.nearby_flags, (("Centre", "yellow"),))
+        self.assertEqual(enriched.jellyfish_beaches, ("Centre",))
+        self.assertEqual(enriched.jellyfish_states, (("Centre", True),))
+        self.assertEqual(enriched.updated_times, (("Centre", time(10, 0)),))
+        self.assertEqual(enriched.sea_temperature_c, 25)
+        self.assertEqual(enriched.sea_state, "slight")
+        self.assertEqual(enriched.wind_direction, "N")
+        self.assertEqual(enriched.wind_speed_kmh, 6)
+
+    def test_initial_root_context_does_not_copy_mismatched_unconfirmed_flag(self):
+        confirmed = BeachStatus(
+            flag_color=None,
+            sea_temperature_c=None,
+            nearby_flags=(("Centre", "yellow"),),
+            source_date=date(2026, 10, 10),
+        )
+        observed = BeachStatus(
+            flag_color="red",
+            sea_temperature_c=25,
+            nearby_flags=(("Centre", "red"),),
+            jellyfish_beaches=("Centre",),
+            jellyfish_states=(("Centre", True),),
+            updated_times=(("Centre", time(10, 5)),),
+            source_date=date(2026, 10, 10),
+        )
+
+        enriched = enrich_initial_beach_status(confirmed, observed)
+
+        self.assertEqual(enriched, confirmed)
 
     def test_published_full_digest_can_seed_beach_baseline(self):
         state = OperationalUpdateState.empty("2026-08-07")
